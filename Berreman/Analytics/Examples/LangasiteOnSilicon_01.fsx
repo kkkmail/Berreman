@@ -1,6 +1,4 @@
-﻿
-printfn "Loading..."
-//===========================================================
+﻿//===========================================================
 #load "References.fsx"
 //===========================================================
 open Berreman.FieldFunctions
@@ -23,7 +21,7 @@ let e = ellipticityRange numberOfPoints
 let p =polarizationRange numberOfPoints
 let w = wavelength250to600Range numberOfPoints
 
-let thickness = Thickness.mm 0.001
+let thickness = Thickness.mm 0.01
 
 //let ww = wavelength250to600 numberOfPoints
 
@@ -40,8 +38,7 @@ let f = langasiteFilmOnSilicon 0.0 thickness
 let s = langasiteSubstrateOnSilicon 0.0 thickness
 
 #time
-plot f w fn
-plot s w fn
+plot f fn w
+plot s fn w
+plotComparison [ f; s ] fn w
 #time
-
-printfn "Completed."

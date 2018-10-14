@@ -18,7 +18,7 @@ let numberOfPoints = 200
 let i = incidenceAngleRange numberOfPoints
 let e = ellipticityRange numberOfPoints
 let p = polarizationRange numberOfPoints
-let w = wavelength250to600Range numberOfPoints
+let w = wavelength200to800Range numberOfPoints
 
 let thickness1 = Thickness.nm (600.0 / 1.52 / 4.0)
 let thickness2 = Thickness.nm (600.0 / 1.00 / 4.0)
@@ -79,9 +79,10 @@ let f = { incidentLightInfo = light600nmNormalLPs; opticalSystem = filmSystem.fu
 #time
 plot f i fn
 plot f w fn
+#time
 
-plot3D f p i fn
+#time
+//plot3D f p i fn
 plot3D f w i fn
-plot3D f e p fn
-
+//plot3D f e p fn
 #time

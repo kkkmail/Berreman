@@ -30,7 +30,7 @@ open FSharp.Plotly
 
 module Charting =
 
-    let plot (f : FixedInfo) (x : RangedVariable) (fn : List<OpticalFunction>) =
+    let plot (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = calculate f x
 
         let getFuncData (e : OpticalFunction) = 
@@ -43,6 +43,23 @@ module Charting =
         |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
         |> Chart.Show
 
+    /// Plots several different models (function by function) on the same plots.
+    let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
+        let data = f |> List.map (fun e -> calculate e x)
+
+        let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) = 
+            d 
+            |> Array.map (fun (v, s) -> (v, s.func e))
+            |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
+
+        //FSharp.Plotly
+        let plotFunc (f : OpticalFunction) = 
+            Chart.Combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
+            |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
+            |> Chart.Show
+
+        fn |> List.map plotFunc
+
 
     let mapFun (data : #seq<#seq<double * double * Solution>>) (fn : OpticalFunction) = 
         data
@@ -50,7 +67,7 @@ module Charting =
         |> Array.ofSeq
 
 
-    let plot3D (f : FixedInfo) (x : RangedVariable) (y : RangedVariable) (fn : List<OpticalFunction>) =
+    let plot3D (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) (y : RangedVariable) =
         let xVal = x.plotPoints
         let yVal = y.plotPoints
         let data = calculate3D f x y

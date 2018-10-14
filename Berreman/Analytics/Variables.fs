@@ -173,7 +173,6 @@ module Variables =
                 ellipticity = getValue l.ellipticity getEllipticity i
             }
 
-        // TODO kk:20180917 - Implement.
         let getOpticalSystem i = 
             let w = getValue l.waveLength getWaveLength i
             f.opticalSystem.getSystem w
@@ -202,7 +201,6 @@ module Variables =
                 ellipticity = getValue l.ellipticity getEllipticity i j
             }
 
-        // TODO kk:20180922 - Implement.
         let getOpticalSystem i j = 
             let w = getValue l.waveLength getWaveLength i j
             f.opticalSystem.getSystem w
@@ -212,6 +210,7 @@ module Variables =
         [| for i in 0..x.length -> i |]
         |> PSeq.map (fun i -> [| for j in 0..y.length -> (x.plotValue i, y.plotValue j, getSolution i j) |])
         |> Array.ofSeq
+
 
     let calculateOpticalProp 
         (c : OpticalPropertyComponent) 
