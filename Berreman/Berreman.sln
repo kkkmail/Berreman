@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2003
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Berreman", "Berreman\Berreman.fsproj", "{790FDD25-2DB2-4A42-9A19-4855FBB5F850}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "BerremanTests", "BerremanTests\BerremanTests.fsproj", "{5AD8EECF-4BB1-4592-B375-4534259070E5}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "OpticalProperties", "OpticalProperties\OpticalProperties.fsproj", "{31A3D7D4-252A-419B-A848-F778C9014748}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Analytics", "Analytics\Analytics.fsproj", "{E33CEBE8-BE13-4D9B-9331-0BED73519DF4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Numerics", "..\MathNetNumerics\src\Numerics\Numerics.csproj", "{97F61634-4E8A-441B-B5AB-CE0150476BA6}"
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "FSharp", "..\MathNetNumerics\src\FSharp\FSharp.fsproj", "{883F0730-3A47-4176-B521-A93B57B1A678}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{790FDD25-2DB2-4A42-9A19-4855FBB5F850}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{790FDD25-2DB2-4A42-9A19-4855FBB5F850}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{790FDD25-2DB2-4A42-9A19-4855FBB5F850}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{790FDD25-2DB2-4A42-9A19-4855FBB5F850}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5AD8EECF-4BB1-4592-B375-4534259070E5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AD8EECF-4BB1-4592-B375-4534259070E5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AD8EECF-4BB1-4592-B375-4534259070E5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AD8EECF-4BB1-4592-B375-4534259070E5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{31A3D7D4-252A-419B-A848-F778C9014748}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{31A3D7D4-252A-419B-A848-F778C9014748}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{31A3D7D4-252A-419B-A848-F778C9014748}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{31A3D7D4-252A-419B-A848-F778C9014748}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E33CEBE8-BE13-4D9B-9331-0BED73519DF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E33CEBE8-BE13-4D9B-9331-0BED73519DF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E33CEBE8-BE13-4D9B-9331-0BED73519DF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E33CEBE8-BE13-4D9B-9331-0BED73519DF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{97F61634-4E8A-441B-B5AB-CE0150476BA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{97F61634-4E8A-441B-B5AB-CE0150476BA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{97F61634-4E8A-441B-B5AB-CE0150476BA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{97F61634-4E8A-441B-B5AB-CE0150476BA6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{883F0730-3A47-4176-B521-A93B57B1A678}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{883F0730-3A47-4176-B521-A93B57B1A678}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{883F0730-3A47-4176-B521-A93B57B1A678}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{883F0730-3A47-4176-B521-A93B57B1A678}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D7E14C7A-C356-42BC-B0EE-FDC5A7A4AAFF}
+	EndGlobalSection
+EndGlobal
