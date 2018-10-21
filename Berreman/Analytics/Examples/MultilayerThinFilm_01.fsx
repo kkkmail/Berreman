@@ -13,12 +13,20 @@ open Berreman.Dispersion
 open OpticalProperties.Dispersive
 //===========================================================
 let fn = [ R; T ]
-let numberOfPoints = 200
+
+let numberOfPoints = 1000
+let numberOfPoints3D = 100
 
 let i = incidenceAngleRange numberOfPoints
 let e = ellipticityRange numberOfPoints
 let p = polarizationRange numberOfPoints
 let w = wavelength200to800Range numberOfPoints
+
+let i3D = incidenceAngleRange numberOfPoints3D
+let e3D = ellipticityRange numberOfPoints3D
+let p3D = polarizationRange numberOfPoints3D
+let w3D = wavelength200to800Range numberOfPoints3D
+
 
 let thickness1 = Thickness.nm (600.0 / 1.52 / 4.0)
 let thickness2 = Thickness.nm (600.0 / 1.00 / 4.0)
@@ -77,12 +85,12 @@ let filmSystem =
 let f = { incidentLightInfo = light600nmNormalLPs; opticalSystem = filmSystem.fullSystem.dispersive }
 
 #time
-plot f i fn
-plot f w fn
+plot f fn i
+plot f fn w
 #time
 
 #time
-//plot3D f p i fn
-plot3D f w i fn
-//plot3D f e p fn
+//plot3D f fn p3D i3D
+plot3D f fn w3D i3D
+//plot3D f fn e3D p3D
 #time
