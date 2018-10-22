@@ -5,11 +5,11 @@
 open Berreman.FieldFunctions
 open Berreman.MaterialProperties
 open OpticalProperties.Standard
-open Analytics.Charting
-open Analytics.StandardSystems
 open Analytics.Variables
+open Analytics.StandardSystems
+open Analytics.StandardLightVariables
+open Analytics.Charting
 open Berreman.Media
-open Berreman.Fields
 open Berreman.Dispersion
 open OpticalProperties.Dispersive
 //===========================================================
@@ -19,24 +19,33 @@ let numberOfPoints3D = 200
 
 let i = incidenceAngleRange numberOfPoints
 let e = ellipticityRange numberOfPoints
-let p  =polarizationRange numberOfPoints
+let p = polarizationRange numberOfPoints
 
+let i3D = incidenceAngleRange numberOfPoints3D
+let e3D = ellipticityRange numberOfPoints3D
+let p3D = polarizationRange numberOfPoints3D
 
-plot transpGlass600nmNormalLPs i fn
-plot (transpGlass600nmInclindedLPs 59.0) e fn
-plot3D transpGlass600nmNormalLPs e i fn
+#time
+plot (transpGlass light600nmNormalLPs) fn i
+plot (transpGlass (light600nmInclinedDegreelLPs 59.0)) fn e
+plot3D (transpGlass light600nmNormalLPs) fn e3D i3D
+#time
 
 let thickness = Thickness.nm 200.
 let thickness1 = Thickness.nm (600.0 / 1.52 / 4.0)
 let thickness2 = Thickness.nm (600.0 / 1.00 / 4.0)
 
-plot (biaxialCrystalFilm600nmNormalLPs thickness) i fn
-plot (biaxialCrystalFilm600nmInclindedLPs 59.0 thickness) e fn
-plot3D (biaxialCrystalFilm600nmNormalLPs thickness) e i fn
+#time
+plot (biaxialCrystalFilm thickness light600nmNormalLPs) fn i
+plot (biaxialCrystalFilm thickness (light600nmInclinedDegreelLPs 59.0)) fn e
+plot3D (biaxialCrystalFilm thickness light600nmNormalLPs) fn e3D i3D
+#time
 
-plot (transparentGassFilm600nmNormalLPs thickness) i fn
-plot (transparentGassFilm600nmInclindedLPs 59.0 thickness) p fn
-plot3D (transparentGassFilm600nmNormalLPs thickness) p i fn
+#time
+plot (transparentGassFilm thickness light600nmNormalLPs) fn i
+plot (transparentGassFilm thickness (light600nmInclinedDegreelLPs 59.0)) fn p
+plot3D (transparentGassFilm thickness light600nmNormalLPs) fn p3D i3D
+#time
 
 let baseSystem = 
     {
@@ -135,6 +144,7 @@ let f1 = { f0 with opticalSystem = filmSystem.fullSystem.dispersive }
 
 let w = wavelength250to600 numberOfPoints
 
+#time
 plotN11 langasiteOpticalProperties w
 plotXi11 langasiteOpticalProperties w
 
@@ -143,18 +153,17 @@ plotXi22 langasiteOpticalProperties w
 
 plotRho11 langasiteOpticalProperties w
 plotRho33 langasiteOpticalProperties w
-
 #time
 
 /////////////////////////////////////
 
 let thickness3 = Thickness.mm 0.001
-let f3 = langasiteFilmOnSilicon 0.0 thickness3
-let f4 = langasiteSubstrateOnSilicon 0.0 thickness
+let f3 = langasiteFilmOnSilicon thickness3 light600nmNormalLPs
+let f4 = langasiteSubstrateOnSilicon thickness light600nmNormalLPs
 
 #time
-plot f3 (wavelength200to800Range numberOfPoints) fn
-plot f4 (wavelength200to800Range numberOfPoints) fn
+plot f3 fn (wavelength200to800Range numberOfPoints)
+plot f4 fn (wavelength200to800Range numberOfPoints)
 #time
 
 printfn "Completed."
