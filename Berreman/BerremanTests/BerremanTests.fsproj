@@ -104,9 +104,6 @@
     <Reference Include="xunit.should">
       <HintPath>..\packages\xunit.should.1.1\lib\net35\xunit.should.dll</HintPath>
     </Reference>
-    <Reference Include="Xunit.SkippableFact">
-      <HintPath>..\packages\Xunit.SkippableFact.1.3.6\lib\net452\Xunit.SkippableFact.dll</HintPath>
-    </Reference>
     <ProjectReference Include="..\..\MathNetNumerics\src\FSharp\FSharp.fsproj">
       <Name>FSharp</Name>
       <Project>{883f0730-3a47-4176-b521-a93b57b1a678}</Project>
@@ -127,6 +124,9 @@
       <Project>{31a3d7d4-252a-419b-a848-f778c9014748}</Project>
       <Private>True</Private>
     </ProjectReference>
+    <Reference Include="Xunit.SkippableFact">
+      <HintPath>..\packages\Xunit.SkippableFact.1.3.12\lib\net452\Xunit.SkippableFact.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

@@ -49,7 +49,6 @@
     <None Include="TestChart.fsx" />
     <Content Include="packages.config" />
     <Content Include="Google.DataTable.Net.Wrapper.XML" />
-    <Compile Include="Charting_old.fs" />
     <None Include="References.fsx" />
     <None Include="Examples\References.fsx" />
     <None Include="Examples\LangasiteOnSilicon_01.fsx" />

@@ -47,5 +47,11 @@
     <None Include="MathNet.Numerics.fsx" />
     <None Include="MathNet.Numerics.IfSharp.fsx" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="runtime.native.System" Version="4.3.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="4.5.2" />
+  </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>
