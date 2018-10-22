@@ -11,6 +11,9 @@ open Berreman.Dispersion
 
 module Variables = 
 
+    /// https://stackoverflow.com/questions/35185143/how-to-create-new-line-in-plot-ly-js-title
+    let lineBrake = "<br>"
+
     type Range<'T> = 
         {
             startValue : 'T
@@ -173,7 +176,7 @@ module Variables =
         member private __.toLightDescription d =
             d
             |> List.map snd
-            |> List.fold (fun acc r -> acc + (if acc <> "" then ", " else "") + r) ""
+            |> List.fold (fun acc r -> acc + (if acc <> "" then lineBrake else "") + r) ""
 
         member this.getLightDescription (x : RangedVariable) =
             removeLightVariable x this.descriptionInfo |> this.toLightDescription

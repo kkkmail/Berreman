@@ -1,27 +1,9 @@
 ﻿namespace Analytics
 
-open FSharp.Collections.ParallelSeq
-open System.Numerics
-open MathNet.Numerics.LinearAlgebra
-open Berreman.MathNetNumericsMath
-open Berreman.MatrixExp
-
-open Berreman.Constants
 open Berreman.Fields
-open Berreman.BerremanMatrix
-open Berreman.Geometry
-open Berreman.MaterialProperties
-open Berreman.Media
 open Berreman.Solvers
 open Berreman.FieldFunctions
 open Berreman.Dispersion
-open OpticalProperties.Standard
-open Berreman
-open OpticalProperties
-open Analytics.StandardSystems
-
-open Standard
-
 open Analytics.Variables
 
 //open FSharp.Charting
@@ -48,7 +30,7 @@ module Charting =
     /// Plots several different models (function by function) on the same plots.
     let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = f |> List.map (fun e -> calculate e x)
-        let (title, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + "\n", i + 1)) ("", 1)
+        let (title, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 1)
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) = 
             d 
