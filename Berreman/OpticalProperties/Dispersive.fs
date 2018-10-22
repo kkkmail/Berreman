@@ -1,15 +1,11 @@
 ﻿namespace OpticalProperties
 
 open System.Numerics
-open MathNet.Numerics
-open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
-open Berreman.Media
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Dispersion
-open Berreman.BerremanMatrix
 
 module Dispersive =
     //let refrIndexSquared (WaveLength lambda) kCoeff (WaveLength lambdaNull) =

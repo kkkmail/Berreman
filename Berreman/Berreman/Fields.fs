@@ -156,6 +156,7 @@ module Fields =
         with
         static member nm l = l * Constants.nm |> WaveLength
         static member mkm l = l * Constants.mkm |> WaveLength
+        member this.description = this.ToString()
 
 
     type Ellipticity =
@@ -167,6 +168,7 @@ module Fields =
         static member defaultValue = Ellipticity 0.0
         static member minValue = Ellipticity -1.0
         static member maxValue = Ellipticity 1.0
+        member this.description = this.ToString()
 
 
     type Polarization =
@@ -183,6 +185,7 @@ module Fields =
         // TODO Check angle
         static member s = Angle 0.0 |> Polarization
         static member p = Polarization.s.crossed
+        member this.description = this.ToString()
 
 
     type IncidenceAngle = 
@@ -192,6 +195,7 @@ module Fields =
 
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
+        member this.description = this.ToString()
 
 
     /// n1 * sin(fita), where fita is the incidence angle and n1 is the refraction index of upper media.
@@ -205,6 +209,7 @@ module Fields =
         member this.complex = 
             let (N1SinFita nsf) = this
             cplx nsf
+        member this.description = this.ToString()
 
 
     type IncidentLightInfo = 
@@ -284,6 +289,8 @@ module Fields =
                 polarization = Polarization.p
                 ellipticity = Ellipticity.defaultValue
             }
+
+    
 
 
     type EmFieldXY =

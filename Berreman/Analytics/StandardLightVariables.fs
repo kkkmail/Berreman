@@ -3,8 +3,8 @@
 open Berreman.Fields
 open Variables
 
-module StandardLightVariables = 
-    /// Incident light variable from 0 to 89 degrees
+module StandardLightVariables =
+    /// Incidence angle variable from 0 to 89 degrees.
     let incidenceAngle n = Range<_>.create n IncidenceAngle.normal IncidenceAngle.maxValue
     let incidenceAngleRange n = incidenceAngle n |> IncidenceAngleRange
 

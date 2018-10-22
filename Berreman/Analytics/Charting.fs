@@ -32,6 +32,7 @@ module Charting =
 
     let plot (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = calculate f x
+        let title = f.getDescription x
 
         let getFuncData (e : OpticalFunction) = 
             data 
@@ -41,11 +42,13 @@ module Charting =
          //FSharp.Plotly
         Chart.Combine (fn |> List.map (fun e -> Chart.Line(getFuncData e, Name = e.info.fullName)))
         |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
+        |> Chart.withTitle(title)
         |> Chart.Show
 
     /// Plots several different models (function by function) on the same plots.
     let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = f |> List.map (fun e -> calculate e x)
+        let (title, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + "\n", i + 1)) ("", 1)
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) = 
             d 
@@ -56,6 +59,7 @@ module Charting =
         let plotFunc (f : OpticalFunction) = 
             Chart.Combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
             |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
+            |> Chart.withTitle(title)
             |> Chart.Show
 
         fn |> List.map plotFunc
@@ -71,15 +75,18 @@ module Charting =
         let xVal = x.plotPoints
         let yVal = y.plotPoints
         let data = calculate3D f x y
+        let title = f.getDescription (x, y)
+
 
         let plotFun e = 
             let zVal = mapFun data e
 
-            // kk:20180922 The axes are somehow mysteriouly reversed. Here we swap X with Y for both the data and the names.
+            // kk:20180922 The axes are somehow mysteriouly swapped. Here we swap X with Y back for both data and names.
             Chart.Surface(zVal, yVal, xVal, Opacity = 0.7, Contours = Contours.initXyz(Show = true), Name = e.info.name)
             |> Chart.withX_AxisStyle(y.name)
             |> Chart.withY_AxisStyle(x.name)
             |> Chart.withZ_AxisStyle(e.info.name)
+            |> Chart.withTitle(title)
             |> Chart.Show
 
         fn |> List.map (fun e -> plotFun e)

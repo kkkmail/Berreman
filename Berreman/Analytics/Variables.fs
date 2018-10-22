@@ -1,22 +1,13 @@
 ﻿namespace Analytics
 
 open FSharp.Collections.ParallelSeq
-open System.Numerics
-open MathNet.Numerics.LinearAlgebra
 open Berreman.MathNetNumericsMath
-open Berreman.MatrixExp
-
 open Berreman.Constants
 open Berreman.Fields
-open Berreman.BerremanMatrix
 open Berreman.Geometry
 open Berreman.MaterialProperties
-open Berreman.Media
 open Berreman.Solvers
 open Berreman.Dispersion
-open Berreman.FieldFunctions
-open OpticalProperties.Standard
-open Berreman
 
 module Variables = 
 
@@ -149,11 +140,63 @@ module Variables =
         | _ -> None
 
 
+    /// Labels to distinguish varialbes in incident light. Refactor when nameof is available in F#.
+    let private incidentLightLabels = ("w", "r", "i", "p", "e")
+
+
+    let removeLightVariable x d = 
+        let (w, _, i, p, e) = incidentLightLabels
+
+        match x with
+        | IncidenceAngleRange _ -> d |> List.choose (fun (k, v) -> if k = i then None else Some (k, v))
+        | PolarizationRange _ -> d |> List.choose (fun (k, v) -> if k = p then None else Some (k, v))
+        | EllipticityRange _ -> d |> List.choose (fun (k, v) -> if k = e then None else Some (k, v))
+        | WaveLengthRange _ -> d |> List.choose (fun (k, v) -> if k = w then None else Some (k, v))
+
+
     type FixedInfo =
-         {
+        {
             incidentLightInfo : IncidentLightInfo
             opticalSystem : OpticalSystemWithDisp
-         }
+        }
+
+        member private this.descriptionInfo =
+            let (w, _, i, p, e) = incidentLightLabels
+
+            [
+                (i, this.incidentLightInfo.incidenceAngle.description)
+                (p, this.incidentLightInfo.polarization.description)
+                (e, this.incidentLightInfo.ellipticity.description)
+                (w, this.incidentLightInfo.waveLength.description)
+            ]
+
+        member private __.toLightDescription d =
+            d
+            |> List.map snd
+            |> List.fold (fun acc r -> acc + (if acc <> "" then ", " else "") + r) ""
+
+        member this.getLightDescription (x : RangedVariable) =
+            removeLightVariable x this.descriptionInfo |> this.toLightDescription
+
+        member this.getLightDescription (x : RangedVariable, y : RangedVariable) =
+            this.descriptionInfo
+            |> removeLightVariable x
+            |> removeLightVariable y
+            |> this.toLightDescription
+
+        member this.getDescription (x : RangedVariable) =
+            let light = this.getLightDescription x
+
+            match this.opticalSystem.description with
+            | Some d -> light + ", " + d
+            | None -> light
+
+        member this.getDescription (x : RangedVariable, y : RangedVariable) =
+            let light = this.getLightDescription (x, y)
+
+            match this.opticalSystem.description with
+            | Some d -> light + ", " + d
+            | None -> light
 
 
     let calculate (f: FixedInfo) (x : RangedVariable) = 

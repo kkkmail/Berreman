@@ -11,7 +11,7 @@ open Berreman.MaterialProperties
 module Standard =
 
     type RefractionIndex
-        with 
+        with
 
         /// Standard trnasparent glass with refractive index 1.52.
         static member transparentGlass = RefractionIndex 1.52
