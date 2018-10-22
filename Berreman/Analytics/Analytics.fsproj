@@ -44,6 +44,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Variables.fs" />
+    <Compile Include="StandardLightVariables.fs" />
     <Compile Include="StandardSystems.fs" />
     <Compile Include="Charting.fs" />
     <None Include="TestChart.fsx" />

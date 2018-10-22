@@ -3,14 +3,12 @@
 //===========================================================
 open Berreman.FieldFunctions
 open Berreman.MaterialProperties
-open OpticalProperties.Standard
-open Analytics.Charting
-open Analytics.StandardSystems
-open Analytics.Variables
 open Berreman.Media
-open Berreman.Fields
 open Berreman.Dispersion
-open OpticalProperties.Dispersive
+open OpticalProperties.Standard
+open Analytics.Variables
+open Analytics.StandardLightVariables
+open Analytics.Charting
 //===========================================================
 let fn = [ R; T ]
 

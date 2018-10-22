@@ -1,17 +1,13 @@
 ﻿namespace OpticalProperties
 
-open Berreman.Constants
-open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Media
 open Berreman.Fields
 open Berreman.MaterialProperties
-open Berreman.BerremanMatrix
 
-
-// !!! DO NOT CHANGE ANY VALUES HERE !!!
-// Standard optical properties without dispresion to be used in various simple calculations and tests.
-// If some other values are desired, introduce another module and set the new values there.
+/// !!! DO NOT CHANGE ANY VALUES HERE !!!
+/// Standard optical properties without dispresion to be used in various simple calculations and tests.
+/// If some other values are desired, introduce another module and set the new values there OR add them at the end of this module.
 module Standard =
 
     type RefractionIndex
@@ -21,11 +17,9 @@ module Standard =
         static member transparentGlass = RefractionIndex 1.52
 
     type Eps
-        with 
+        with
         static member transparentGlass = RefractionIndex.transparentGlass |> Eps.fromRefractionIndex
-
         static member uniaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65) |> Eps.fromRefractionIndex
-
         static member biaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75) |> Eps.fromRefractionIndex
 
 
@@ -96,9 +90,9 @@ module Standard =
 
     let private w600nm = 600.0
 
-    /// 600 nm light falling at normal.
+    /// 600 nm S-polarized light falling at normal.
     let light600nmNormalLPs = WaveLength.nm w600nm |> IncidentLightInfo.create
 
-    /// 600 nm light falling at some incidence angle (in degrees).
+    /// 600 nm S-polarized light falling at some incidence angle (in degrees).
     let light600nmInclinedDegreelLPs angleDegree = 
         IncidentLightInfo.createInclined (WaveLength.nm w600nm) (Angle.degree angleDegree |> IncidenceAngle.create)

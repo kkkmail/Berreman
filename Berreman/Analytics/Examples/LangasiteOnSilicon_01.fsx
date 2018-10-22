@@ -2,15 +2,17 @@
 #load "References.fsx"
 //===========================================================
 open Berreman.FieldFunctions
-open Berreman.MaterialProperties
-open OpticalProperties.Standard
-open Analytics.Charting
-open Analytics.StandardSystems
-open Analytics.Variables
 open Berreman.Media
 open Berreman.Fields
 open Berreman.Dispersion
+open Berreman.MaterialProperties
+open OpticalProperties.Standard
+open Analytics.StandardLightVariables
+open Analytics.StandardSystems
+open Analytics.Charting
+open Analytics.Variables
 open OpticalProperties.Dispersive
+
 //===========================================================
 let fn = [ R; T ]
 
@@ -34,11 +36,11 @@ let thickness = Thickness.mm 0.01
 //plotRho11 langasiteOpticalProperties ww
 //plotRho33 langasiteOpticalProperties ww
 
-let f = langasiteFilmOnSilicon 0.0 thickness
-let s = langasiteSubstrateOnSilicon 0.0 thickness
+let film = langasiteFilmOnSilicon thickness light600nmNormalLPs
+let substrate = langasiteSubstrateOnSilicon thickness light600nmNormalLPs
 
 #time
-plot f fn w
-plot s fn w
-plotComparison [ f; s ] fn w
+plot film fn w
+plot substrate fn w
+plotComparison [ film; substrate ] fn w
 #time
