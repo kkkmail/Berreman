@@ -7,21 +7,23 @@ open Newtonsoft.Json
 module HTML =
 
     let doc =
-        """<!DOCTYPE html>
-                    <html>
-        <head>
-  <!-- Plotly.js -->
-  <meta http-equiv="X-UA-Compatible" content="IE=11" >
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</head>
-
-<body>
-  [CHART]
-</body>
+        """
+<!DOCTYPE html>
+<html>
+    <head>
+        <!-- Plotly.js -->
+        <meta http-equiv="X-UA-Compatible" content="IE=11" >
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    </head>
+    <body>
+      [CHART]
+      [DESCRIPTION]
+    </body>
 </html>"""
 
+
     let chart =
-        """<div id="[ID]" style="width: [WIDTH]px; height: [HEIGHT]px;"><!-- Plotly chart will be drawn inside this DIV --></div>        
+        """<div id="[ID]" style="width: [WIDTH]px; height: [HEIGHT]px;"><!-- Plotly chart will be drawn inside this DIV --></div>
   <script>
     var data = [DATA];
     var layout = [LAYOUT];
@@ -29,10 +31,10 @@ module HTML =
   </script>"""
 
     let staticChart =
-        """<div id="[ID]" style="width: [WIDTH]px; height: [HEIGHT]px;display: none;"><!-- Plotly chart will be drawn inside this DIV --></div>        
-  
+        """<div id="[ID]" style="width: [WIDTH]px; height: [HEIGHT]px;display: none;"><!-- Plotly chart will be drawn inside this DIV --></div>
+
   <img id="jpg-export"></img>
-  
+
   <script>
     var d3 = Plotly.d3;
     var img_jpg= d3.select('#jpg-export');
@@ -65,11 +67,10 @@ module GenericChart =
         | MultiChart of Trace list * Layout
 
 
-        
     let getTraces gChart =
         match gChart with
         | Chart (trace,_)       -> [trace]
-        | MultiChart (traces,_) -> traces  
+        | MultiChart (traces,_) -> traces
 
     let getLayout gChart =
         match gChart with
@@ -130,7 +131,6 @@ module GenericChart =
     //     let l' = layout |> List.rev
     //     reduce l' (Layout())
 
-        
 
     /// Converts a GenericChart to it HTML representation
     let toChartHTML gChart =
@@ -170,14 +170,19 @@ module GenericChart =
                 .Replace("[DATA]", tracesJson)
                 .Replace("[LAYOUT]", layoutJson)
         html
-        
-    /// Converts a GenericChart to it HTML representation and embeds it into a html page
-    let toEmbeddedHTML gChart =
-        let html =
-            let chartMarkup =
-                toChartHTML gChart
-            HTML.doc.Replace("[CHART]", chartMarkup)
-        html
+
+
+    let toEmbeddedHtmlWithDescription description gChart =
+        let chartMarkup =
+            toChartHTML gChart
+
+        HTML.doc
+            .Replace("[CHART]", chartMarkup)
+            .Replace("[DESCRIPTION]", description)
+
+
+    /// Converts a GenericChart to it HTML representation and embeds it into a html page.
+    let toEmbeddedHTML gChart = toEmbeddedHtmlWithDescription "" gChart
 
 
     /// Converts a GenericChart to its Image representation

@@ -187,19 +187,16 @@ module Variables =
             |> removeLightVariable y
             |> this.toLightDescription
 
-        member this.getDescription (x : RangedVariable) =
-            let light = this.getLightDescription x
-
+        member private this.toFullDescription light =
             match this.opticalSystem.description with
-            | Some d -> light + ", " + d
-            | None -> light
+            | Some d -> d + lineBrake + light + lineBrake
+            | None -> light + lineBrake
+
+        member this.getDescription (x : RangedVariable) =
+            this.getLightDescription x |> this.toFullDescription
 
         member this.getDescription (x : RangedVariable, y : RangedVariable) =
-            let light = this.getLightDescription (x, y)
-
-            match this.opticalSystem.description with
-            | Some d -> light + ", " + d
-            | None -> light
+            this.getLightDescription (x, y) |> this.toFullDescription
 
 
     let calculate (f: FixedInfo) (x : RangedVariable) = 

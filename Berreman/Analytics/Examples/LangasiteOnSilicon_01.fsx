@@ -17,6 +17,7 @@ open OpticalProperties.Dispersive
 let fn = [ R; T ]
 
 let numberOfPoints = 2000
+let incidenceAngleDegree = 79.0
 
 let i = incidenceAngleRange numberOfPoints
 let e = ellipticityRange numberOfPoints
@@ -39,8 +40,12 @@ let thickness = Thickness.mm 0.01
 let film = langasiteFilmOnSilicon thickness light600nmNormalLPs
 let substrate = langasiteSubstrateOnSilicon thickness light600nmNormalLPs
 
+let film1 = langasiteFilmOnSilicon thickness (light600nmInclinedDegreelLPs incidenceAngleDegree)
+let substrate1 = langasiteSubstrateOnSilicon thickness (light600nmInclinedDegreelLPs incidenceAngleDegree)
+
 #time
 plot film fn w
 plot substrate fn w
 plotComparison [ film; substrate ] fn w
+plotComparison [ film1; substrate1 ] fn w
 #time

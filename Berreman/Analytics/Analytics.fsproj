@@ -62,19 +62,10 @@
     <Reference Include="FSharp.Collections.ParallelSeq">
       <HintPath>..\packages\FSharp.Collections.ParallelSeq.1.1.2\lib\net45\FSharp.Collections.ParallelSeq.dll</HintPath>
     </Reference>
-    <Reference Include="FSharp.Core">
-      <HintPath>..\packages\FSharp.Plotly.1.1.21\lib\net47\FSharp.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="FSharp.Plotly">
-      <HintPath>..\packages\FSharp.Plotly.1.1.21\lib\net47\FSharp.Plotly.dll</HintPath>
-    </Reference>
     <Reference Include="Google.DataTable.Net.Wrapper">
       <HintPath>..\packages\Google.DataTable.Net.Wrapper.3.1.2.0\lib\Google.DataTable.Net.Wrapper.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib" />
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\packages\Newtonsoft.Json.11.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
@@ -91,6 +82,11 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\FSharp.Plotly\src\FSharp.Plotly\FSharp.Plotly.fsproj">
+      <Name>FSharp.Plotly</Name>
+      <Project>{f8cc1c30-c80e-4e73-940c-4111adf82f82}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\..\MathNetNumerics\src\FSharp\FSharp.fsproj">
       <Name>FSharp</Name>
       <Project>{883f0730-3a47-4176-b521-a93b57b1a678}</Project>

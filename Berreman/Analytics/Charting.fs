@@ -14,7 +14,7 @@ module Charting =
 
     let plot (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = calculate f x
-        let title = f.getDescription x
+        let description = f.getDescription x
 
         let getFuncData (e : OpticalFunction) = 
             data 
@@ -24,13 +24,13 @@ module Charting =
          //FSharp.Plotly
         Chart.Combine (fn |> List.map (fun e -> Chart.Line(getFuncData e, Name = e.info.fullName)))
         |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-        |> Chart.withTitle(title)
-        |> Chart.Show
+        //|> Chart.withTitle(title)
+        |> Chart.ShowWithDescription description
 
     /// Plots several different models (function by function) on the same plots.
     let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = f |> List.map (fun e -> calculate e x)
-        let (title, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 1)
+        let (description, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 0)
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) = 
             d 
@@ -41,8 +41,8 @@ module Charting =
         let plotFunc (f : OpticalFunction) = 
             Chart.Combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
             |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-            |> Chart.withTitle(title)
-            |> Chart.Show
+            //|> Chart.withTitle(title)
+            |> Chart.ShowWithDescription description
 
         fn |> List.map plotFunc
 
@@ -57,7 +57,7 @@ module Charting =
         let xVal = x.plotPoints
         let yVal = y.plotPoints
         let data = calculate3D f x y
-        let title = f.getDescription (x, y)
+        let description = f.getDescription (x, y)
 
 
         let plotFun e = 
@@ -68,8 +68,8 @@ module Charting =
             |> Chart.withX_AxisStyle(y.name)
             |> Chart.withY_AxisStyle(x.name)
             |> Chart.withZ_AxisStyle(e.info.name)
-            |> Chart.withTitle(title)
-            |> Chart.Show
+            //|> Chart.withTitle(title)
+            |> Chart.ShowWithDescription description
 
         fn |> List.map (fun e -> plotFun e)
 
@@ -77,11 +77,12 @@ module Charting =
     let plotDispersion calc name (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) = 
         let data = calc o r
         let x = r |> WaveLengthRange
+        //let description = o.description
 
          //FSharp.Plotly
         Chart.Line(data, Name = name)
         |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-        |> Chart.Show
+        |> Chart.Show //WithDescription description
 
 
     let plotN11 (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) = plotDispersion calculateN11Re "Re[e11]" o r

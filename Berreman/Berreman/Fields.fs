@@ -156,8 +156,10 @@ module Fields =
         with
         static member nm l = l * Constants.nm |> WaveLength
         static member mkm l = l * Constants.mkm |> WaveLength
-        member this.description = this.ToString()
-
+        member this.description = 
+            let (WaveLength w) = this
+            if w < Constants.mkm then sprintf "wavelength: %A nm" (w / Constants.nm)
+            else sprintf "wavelength: %A mkm" (w / Constants.mkm)
 
     type Ellipticity =
         | Ellipticity of float
@@ -168,7 +170,9 @@ module Fields =
         static member defaultValue = Ellipticity 0.0
         static member minValue = Ellipticity -1.0
         static member maxValue = Ellipticity 1.0
-        member this.description = this.ToString()
+        member this.description = 
+            let (Ellipticity e) = this
+            sprintf "ellipticity: %A" e
 
 
     type Polarization =
@@ -185,7 +189,9 @@ module Fields =
         // TODO Check angle
         static member s = Angle 0.0 |> Polarization
         static member p = Polarization.s.crossed
-        member this.description = this.ToString()
+        member this.description = 
+            let (Polarization (Angle a)) = this
+            sprintf "polarization: %A degree(s)" (a / degree)
 
 
     type IncidenceAngle = 
@@ -195,7 +201,9 @@ module Fields =
 
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
-        member this.description = this.ToString()
+        member this.description = 
+            let (IncidenceAngle (Angle a)) = this
+            sprintf "incidence angle: %A degree(s)" (a / degree)
 
 
     /// n1 * sin(fita), where fita is the incidence angle and n1 is the refraction index of upper media.
