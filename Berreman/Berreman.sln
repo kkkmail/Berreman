@@ -19,6 +19,8 @@ Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "FSharp.Plotly", "..\FSharp.
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Minimization", "Minimization\Minimization.fsproj", "{28E2E9FA-55AF-4205-89D0-3F0970572873}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "OdeSolvers", "OdeSolvers\OdeSolvers.fsproj", "{CABC1334-FA26-483E-AE65-9F93C86DCE2D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -57,6 +59,10 @@ Global
 		{28E2E9FA-55AF-4205-89D0-3F0970572873}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{28E2E9FA-55AF-4205-89D0-3F0970572873}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{28E2E9FA-55AF-4205-89D0-3F0970572873}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CABC1334-FA26-483E-AE65-9F93C86DCE2D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CABC1334-FA26-483E-AE65-9F93C86DCE2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CABC1334-FA26-483E-AE65-9F93C86DCE2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CABC1334-FA26-483E-AE65-9F93C86DCE2D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
