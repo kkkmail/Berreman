@@ -49,6 +49,9 @@
     <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="FSharp.Collections.ParallelSeq">
+      <HintPath>..\packages\FSharp.Collections.ParallelSeq.1.1.2\lib\net45\FSharp.Collections.ParallelSeq.dll</HintPath>
+    </Reference>
     <Reference Include="FSharp.Core">
       <HintPath>..\packages\FSharp.Core.4.5.2\lib\net45\FSharp.Core.dll</HintPath>
     </Reference>
@@ -76,9 +79,9 @@
       <Project>{97f61634-4e8a-441b-b5ab-ce0150476ba6}</Project>
       <Private>True</Private>
     </ProjectReference>
-    <ProjectReference Include="..\Berreman\Berreman.fsproj">
-      <Name>Berreman</Name>
-      <Project>{790fdd25-2db2-4a42-9a19-4855fbb5f850}</Project>
+    <ProjectReference Include="..\AlgLib\AlgLib.csproj">
+      <Name>AlgLib</Name>
+      <Project>{5d23cbc1-d7c8-4942-b9c4-22993f4f5e30}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>
