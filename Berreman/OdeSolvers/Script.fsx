@@ -33,7 +33,8 @@ let inline mapi (f : int -> 'T -> 'U) (array : 'T[]) : 'U[]=
       result
 
 
-let n = 100000
+let n = 1_000_000
+
 let tEnd = 1000.0
 let odeParams = { OdeParams.defaultValue with endTime = tEnd }
 
@@ -47,7 +48,7 @@ let d t (v : Vector<double>) = f (v.ToArray()) t |> vector
 
 let i = [| for i in 1..n -> double i |]
 
-printfn "Solving..."
+printfn "Solving for n = %A..." n
 #time
 let result1 = solveA odeParams f i
 #time
