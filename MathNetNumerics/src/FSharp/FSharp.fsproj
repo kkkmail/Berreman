@@ -51,7 +51,7 @@
     <PackageReference Include="runtime.native.System" Version="4.3.1" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Update="FSharp.Core" Version="4.5.2" />
+    <PackageReference Update="FSharp.Core" Version="4.6.1" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>
