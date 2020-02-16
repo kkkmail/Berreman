@@ -1,57 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Microsoft.NET.Sdk">
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>d00091d3-8a84-4770-82e3-a5cfb39d6e28</ProjectGuid>
     <OutputType>Library</OutputType>
-    <TargetFrameworks>net45;netstandard1.6;netstandard2.0</TargetFrameworks>
-    <AssemblyName>MathNet.Numerics.FSharp</AssemblyName>
     <RootNamespace>MathNet.Numerics</RootNamespace>
-    <IsPackable>true</IsPackable>
-    <PackageId>MathNet.Numerics.FSharp$(PackageIdSuffix)</PackageId>
-    <VersionPrefix>4.5.1</VersionPrefix>
-    <VersionSuffix></VersionSuffix>
-    <Title>Math.NET Numerics for F#$(TitleSuffix)</Title>
-    <Description>F# Modules for Math.NET Numerics, the numerical foundation of the Math.NET project, aiming to provide methods and algorithms for numerical computations in science, engineering and every day use. Supports .Net Framework 4.5 or higher and .Net Standard 1.6 or higher, on Windows, Linux and Mac.$(DescriptionSuffix)</Description>
-    <PackageReleaseNotes>Signed NuGet packages</PackageReleaseNotes>
-    <PackageTags>fsharp F# math numeric statistics probability integration interpolation regression solve fit linear algebra matrix fft</PackageTags>
-    <IsTool>false</IsTool>
-    <NeutralLanguage>en</NeutralLanguage>
-    <NoPackageAnalysis>false</NoPackageAnalysis>
-    <IncludeBuildOutput>true</IncludeBuildOutput>
-    <IncludeContentInPack>false</IncludeContentInPack>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <NoWarn>2003</NoWarn>
+    <AssemblyName>MathNet.Numerics.FSharp</AssemblyName>
+    <UseStandardResourceNames>true</UseStandardResourceNames>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <WarningsAsErrors>3239;$(WarningsAsErrors)</WarningsAsErrors>
+    <Name>FSharp</Name>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Numerics\Numerics.csproj" />
-  </ItemGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <Tailcalls>false</Tailcalls>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <WarningLevel>3</WarningLevel>
+    <DocumentationFile>bin\$(Configuration)\$(AssemblyName).XML</DocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <Tailcalls>true</Tailcalls>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <WarningLevel>3</WarningLevel>
+    <DocumentationFile>bin\$(Configuration)\$(AssemblyName).XML</DocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(FSharpTargetsPath)' == '' AND Exists('$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\FSharp\Microsoft.FSharp.Targets') ">
+    <FSharpTargetsPath>$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\FSharp\Microsoft.FSharp.Targets</FSharpTargetsPath>
+  </PropertyGroup>
+  <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="Statistics.fs" />
-    <Compile Include="Random.fs" />
-    <Compile Include="Distributions.fs" />
-    <Compile Include="Generate.fs" />
-    <Compile Include="LinearAlgebra.Vector.fs" />
-    <Compile Include="LinearAlgebra.Matrix.fs" />
-    <Compile Include="Complex.fs" />
-    <Compile Include="BigIntegerExtensions.fs" />
-    <Compile Include="BigRational.fsi" />
-    <Compile Include="BigRational.fs" />
-    <Compile Include="Differentiate.fs" />
-    <Compile Include="Fit.fs" />
-    <Compile Include="FindRoots.fs" />
-    <Compile Include="RandomVariable.fs" />
-    <Compile Include="Quaternion.fs" />
-    <None Include="MathNet.Numerics.fsx" />
-    <None Include="MathNet.Numerics.IfSharp.fsx" />
+    <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="runtime.native.System" Version="4.3.1" />
+    <Reference Include="FSharp.Core">
+      <HintPath>..\..\..\Berreman\packages\FSharp.Core.4.7.0\lib\net45\FSharp.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="mscorlib" />
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.ValueTuple">
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="FSharp.Core" Version="4.6.1" />
-  </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
 </Project>

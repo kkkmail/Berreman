@@ -76,7 +76,7 @@
       <HintPath>..\packages\FParsec.1.0.3\lib\net40-client\FParsecCS.dll</HintPath>
     </Reference>
     <Reference Include="FSharp.Core">
-      <HintPath>..\packages\FSharp.Core.4.6.1\lib\net45\FSharp.Core.dll</HintPath>
+      <HintPath>..\packages\FSharp.Core.4.7.0\lib\net45\FSharp.Core.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="System" />
@@ -88,14 +88,14 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\MathNetNumerics\src\FSharp\FSharp.fsproj">
+    <ProjectReference Include="..\..\MathNetNumerics\src\FSharp\FSharp\FSharp.fsproj">
       <Name>FSharp</Name>
-      <Project>{883f0730-3a47-4176-b521-a93b57b1a678}</Project>
+      <Project>{d00091d3-8a84-4770-82e3-a5cfb39d6e28}</Project>
       <Private>True</Private>
     </ProjectReference>
     <ProjectReference Include="..\..\MathNetNumerics\src\Numerics\Numerics.csproj">
       <Name>Numerics</Name>
-      <Project>{97f61634-4e8a-441b-b5ab-ce0150476ba6}</Project>
+      <Project>{50e8dcfb-1893-4550-8118-e00da762ea2f}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>

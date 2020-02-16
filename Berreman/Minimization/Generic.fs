@@ -11,9 +11,9 @@ open System
 //open System.Collections.Generic
 //open System.Linq
 
-module Generic = 
+module Generic =
 
-    type OptimizationParams = 
+    type OptimizationParams =
         {
             convergenceTolerance : double
             maximumIterations : int

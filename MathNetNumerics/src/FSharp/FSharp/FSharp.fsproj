@@ -5,14 +5,15 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>e33cebe8-be13-4d9b-9331-0bed73519df4</ProjectGuid>
+    <ProjectGuid>d00091d3-8a84-4770-82e3-a5cfb39d6e28</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>Analytics</RootNamespace>
-    <AssemblyName>Analytics</AssemblyName>
+    <RootNamespace>MathNet.Numerics</RootNamespace>
+    <AssemblyName>MathNet.Numerics.FSharp</AssemblyName>
     <UseStandardResourceNames>true</UseStandardResourceNames>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Name>Analytics</Name>
+    <WarningsAsErrors>3239;$(WarningsAsErrors)</WarningsAsErrors>
+    <Name>FSharp</Name>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -23,7 +24,6 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>bin\$(Configuration)\$(AssemblyName).XML</DocumentationFile>
-    <OtherFlags>--warnaserror+:25</OtherFlags>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -43,64 +43,41 @@
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
-    <Compile Include="Variables.fs" />
-    <Compile Include="StandardLightVariables.fs" />
-    <Compile Include="StandardSystems.fs" />
-    <Compile Include="Charting.fs" />
+    <Compile Include="Statistics.fs" />
+    <Compile Include="Random.fs" />
+    <Compile Include="Distributions.fs" />
+    <Compile Include="Generate.fs" />
+    <Compile Include="LinearAlgebra.Vector.fs" />
+    <Compile Include="LinearAlgebra.Matrix.fs" />
+    <Compile Include="Complex.fs" />
+    <Compile Include="BigIntegerExtensions.fs" />
+    <Compile Include="BigRational.fsi" />
+    <Compile Include="BigRational.fs" />
+    <Compile Include="Differentiate.fs" />
+    <Compile Include="Fit.fs" />
+    <Compile Include="FindRoots.fs" />
+    <Compile Include="RandomVariable.fs" />
+    <Compile Include="Quaternion.fs" />
+    <None Include="MathNet.Numerics.fsx" />
+    <None Include="MathNet.Numerics.IfSharp.fsx" />
     <Content Include="packages.config" />
-    <Content Include="Google.DataTable.Net.Wrapper.XML" />
-    <None Include="References.fsx" />
-    <None Include="Examples\References.fsx" />
-    <None Include="Examples\LangasiteOnSilicon_01.fsx" />
-    <None Include="Examples\MultilayerThinFilm_01.fsx" />
-    <None Include="Examples\TestChart.fsx" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="FSharp.Charting">
-      <HintPath>..\packages\FSharp.Charting.2.1.0\lib\net45\FSharp.Charting.dll</HintPath>
-    </Reference>
-    <Reference Include="FSharp.Collections.ParallelSeq">
-      <HintPath>..\packages\FSharp.Collections.ParallelSeq.1.1.2\lib\net45\FSharp.Collections.ParallelSeq.dll</HintPath>
-    </Reference>
     <Reference Include="FSharp.Core">
-      <HintPath>..\packages\FSharp.Core.4.7.0\lib\net45\FSharp.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="Google.DataTable.Net.Wrapper">
-      <HintPath>..\packages\Google.DataTable.Net.Wrapper.3.1.2.0\lib\Google.DataTable.Net.Wrapper.dll</HintPath>
+      <HintPath>..\..\..\..\Berreman\packages\FSharp.Core.4.7.0\lib\net45\FSharp.Core.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib" />
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\packages\Newtonsoft.Json.12.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Drawing" />
     <Reference Include="System.Numerics" />
-    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.ValueTuple">
       <Private>True</Private>
     </Reference>
-    <Reference Include="XPlot.GoogleCharts">
-      <HintPath>..\packages\XPlot.GoogleCharts.1.5.0\lib\net45\XPlot.GoogleCharts.dll</HintPath>
-    </Reference>
-    <Reference Include="XPlot.Plotly">
-      <HintPath>..\packages\XPlot.Plotly.1.5.0\lib\net45\XPlot.Plotly.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\FSharp.Plotly\FSharp.Plotly.fsproj">
-      <Name>FSharp.Plotly</Name>
-      <Project>{c609d8ec-f1ea-4917-a43c-12efb173b8f3}</Project>
-      <Private>True</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\Berreman\Berreman.fsproj">
-      <Name>Berreman</Name>
-      <Project>{790fdd25-2db2-4a42-9a19-4855fbb5f850}</Project>
-      <Private>True</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj">
-      <Name>OpticalProperties</Name>
-      <Project>{31a3d7d4-252a-419b-a848-f778c9014748}</Project>
+    <ProjectReference Include="..\..\Numerics\Numerics.csproj">
+      <Name>Numerics</Name>
+      <Project>{50e8dcfb-1893-4550-8118-e00da762ea2f}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFrameworks>net470</TargetFrameworks>
+    <AssemblyName>MathNet.Numerics</AssemblyName>
+    <RootNamespace>MathNet.Numerics</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <PackageId>MathNet.Numerics$(PackageIdSuffix)</PackageId>
+    <VersionPrefix>4.5.1</VersionPrefix>
+    <VersionSuffix></VersionSuffix>
+    <Title>Math.NET Numerics$(TitleSuffix)</Title>
+    <Description>Math.NET Numerics is the numerical foundation of the Math.NET project, aiming to provide methods and algorithms for numerical computations in science, engineering and every day use. Supports .Net Framework 4.0 or higher and .Net Standard 1.3 or higher, on Windows, Linux and Mac.$(DescriptionSuffix)</Description>
+    <PackageReleaseNotes>Signed NuGet packages</PackageReleaseNotes>
+    <PackageTags>math numeric statistics probability integration interpolation regression solve fit linear algebra matrix fft</PackageTags>
+    <IsTool>false</IsTool>
+    <NeutralLanguage>en</NeutralLanguage>
+    <NoPackageAnalysis>false</NoPackageAnalysis>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+    <IncludeContentInPack>false</IncludeContentInPack>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <NoWarn>1701;1702;1705;1591;1573</NoWarn>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net40'">
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>
