@@ -36,7 +36,7 @@ module Dispersive =
 
 
     [<AbstractClass>]
-    type DispersiveMaterial() = 
+    type DispersiveMaterial() =
         abstract member opticalProperties : OpticalPropertiesWithDisp
 
 
@@ -82,7 +82,7 @@ module Dispersive =
         //let g33La3Ga5SiO14 lambda =
         //    gyration33Func lambda refrIndexLa3Ga5SiO14Average 0.6072e-11 (WaveLength.mkm 0.198)
 
-        let g33La3Ga5SiO14 (WaveLength lambda) = 
+        let g33La3Ga5SiO14 (WaveLength lambda) =
             (3.0359999999999996e-12 * lambda * (re(((cplx 0.00005) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.4981088 * lambda**2.0) / (-1.6845031370328092e-14 + lambda**2.0)) |> cplx)) + re(((cplx 0.0001) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.5408145 * lambda**2.0) / (-1.6679115500522497e-14 + lambda**2.0)) |> cplx)))) / (-3.9204e-14 + lambda**2.0)
 
 

@@ -28,14 +28,14 @@ module Standard =
         
         static member transparentGlass = Eps.transparentGlass |> OpticalProperties.fromEpsion
         static member uniaxialCrystal = Eps.uniaxialCrystal |> OpticalProperties.fromEpsion
-        static member biaxialCrystal =  Eps.biaxialCrystal |> OpticalProperties.fromEpsion
+        static member biaxialCrystal = Eps.biaxialCrystal |> OpticalProperties.fromEpsion
 
 
     type BaseOpticalSystem
         with 
 
         /// Standard vacuum / transparent glass system.
-        static member transparentGlassSystem = 
+        static member transparentGlassSystem =
             {
                 description = Some "Standard vacuum / transparent glass system."
                 upper = OpticalProperties.vacuum
@@ -53,7 +53,7 @@ module Standard =
             }
 
         /// Standard vacuum / biaxial crystal system.
-        static member biaxialCrystalSystem = 
+        static member biaxialCrystalSystem =
             {
                 description = Some "Standard vacuum / biaxial crystal system."
                 upper = OpticalProperties.vacuum
@@ -62,7 +62,7 @@ module Standard =
             }
 
         /// Standard vacuum / transparent glass film / vacuum system.
-        static member transparentGlasslFilmSystem thickness = 
+        static member transparentGlasslFilmSystem thickness =
             {
                 description = Some "Standard vacuum / transparent glass film / vacuum system."
                 upper = OpticalProperties.vacuum
@@ -71,7 +71,7 @@ module Standard =
             }
 
         /// Standard vacuum / uniaxial crystal film / vacuum system.
-        static member uniaxialCrystalFilmSystem thickness = 
+        static member uniaxialCrystalFilmSystem thickness =
             {
                 description = Some "Standard vacuum / uniaxial crystal film / transparent glass system."
                 upper = OpticalProperties.vacuum
@@ -80,7 +80,7 @@ module Standard =
             }
 
         /// Standard vacuum / biaxial crystal film / vacuum system.
-        static member biaxialCrystalFilmSystem thickness = 
+        static member biaxialCrystalFilmSystem thickness =
             {
                 description = Some "Standard vacuum / biaxial crystal film / transparent glass system."
                 upper = OpticalProperties.vacuum
@@ -94,5 +94,5 @@ module Standard =
     let light600nmNormalLPs = WaveLength.nm w600nm |> IncidentLightInfo.create
 
     /// 600 nm S-polarized light falling at some incidence angle (in degrees).
-    let light600nmInclinedDegreelLPs angleDegree = 
+    let light600nmInclinedDegreelLPs angleDegree =
         IncidentLightInfo.createInclined (WaveLength.nm w600nm) (Angle.degree angleDegree |> IncidenceAngle.create)
