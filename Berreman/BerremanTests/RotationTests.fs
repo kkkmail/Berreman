@@ -17,7 +17,7 @@ open Xunit.Abstractions
 
 type RotationTests(output : ITestOutputHelper) =
 
-    let data = 
+    let data =
         [|
             {
                 eps = failwith ""
@@ -26,10 +26,12 @@ type RotationTests(output : ITestOutputHelper) =
             }
         |]
 
+
     let runTest (d : RotationTestData) = 
         let p = d.eps |> OpticalProperties.fromEpsion
         let r = p.rotate d.rotation
         verifyMatrixEqualityEps output r.eps d.expectedEps
 
-    [<Fact>]
-    member __.rotationTest0 () = runTest (data.[0])
+
+    //[<Fact>]
+    //member __.rotationTest0 () = runTest (data.[0])
