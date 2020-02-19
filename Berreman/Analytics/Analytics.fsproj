@@ -83,6 +83,16 @@
       <Project>{c609d8ec-f1ea-4917-a43c-12efb173b8f3}</Project>
       <Private>True</Private>
     </ProjectReference>
+    <ProjectReference Include="..\..\MathNetNumerics\src\FSharp\FSharp\FSharp.fsproj">
+      <Name>FSharp</Name>
+      <Project>{d00091d3-8a84-4770-82e3-a5cfb39d6e28}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\..\MathNetNumerics\src\Numerics\Numerics.csproj">
+      <Name>Numerics</Name>
+      <Project>{50e8dcfb-1893-4550-8118-e00da762ea2f}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\Berreman\Berreman.fsproj">
       <Name>Berreman</Name>
       <Project>{790fdd25-2db2-4a42-9a19-4855fbb5f850}</Project>
