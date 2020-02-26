@@ -16,11 +16,20 @@ module Standard =
         /// Standard trnasparent glass with refractive index 1.52.
         static member transparentGlass = RefractionIndex 1.52
 
+        //=======================================
+        // Add any custom values after this line.
+        //=======================================
+
+
     type Eps
         with
         static member transparentGlass = RefractionIndex.transparentGlass |> Eps.fromRefractionIndex
         static member uniaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65) |> Eps.fromRefractionIndex
         static member biaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75) |> Eps.fromRefractionIndex
+
+        //=======================================
+        // Add any custom values after this line.
+        //=======================================
 
 
     type OpticalProperties
@@ -29,6 +38,10 @@ module Standard =
         static member transparentGlass = Eps.transparentGlass |> OpticalProperties.fromEpsion
         static member uniaxialCrystal = Eps.uniaxialCrystal |> OpticalProperties.fromEpsion
         static member biaxialCrystal = Eps.biaxialCrystal |> OpticalProperties.fromEpsion
+
+        //=======================================
+        // Add any custom values after this line.
+        //=======================================
 
 
     type BaseOpticalSystem
@@ -87,6 +100,11 @@ module Standard =
                 films = [ { properties = OpticalProperties.biaxialCrystal; thickness = thickness } ]
                 lower = OpticalProperties.vacuum
             }
+
+    //=======================================
+    // Add any custom values after this line.
+    //=======================================
+
 
     let private w600nm = 600.0
 
