@@ -29,12 +29,12 @@ let w3D = wavelength200to800Range numberOfPoints3D
 let thickness1 = Thickness.nm (600.0 / 1.52 / 4.0)
 let thickness2 = Thickness.nm (600.0 / 1.00 / 4.0)
 
-let filmSystem = 
+let filmSystem =
     {
         description = Some "Multilayer thin film system."
         upper = OpticalProperties.vacuum
-        films = 
-            [ 
+        films =
+            [
                 { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
                 { properties = OpticalProperties.vacuum; thickness = thickness2 }
                 { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
