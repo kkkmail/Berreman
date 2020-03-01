@@ -80,7 +80,7 @@ module Dispersion =
             thickness : Thickness
         }
 
-        member this.getLayer w = 
+        member this.getLayer w =
             {
                 properties = this.propertiesWithDisp.getProperties w
                 thickness = this.thickness
@@ -89,14 +89,14 @@ module Dispersion =
 
     type Layer
         with
-        member this.dispersive = 
+        member this.dispersive =
             {
                 propertiesWithDisp = this.properties.dispersive
                 thickness = this.thickness
             }
 
 
-    type OpticalSystemWithDisp = 
+    type OpticalSystemWithDisp =
         {
             description : string option
             upperWithDisp : OpticalPropertiesWithDisp
@@ -120,7 +120,7 @@ module Dispersion =
 
     type OpticalSystem
         with
-        member this.dispersive = 
+        member this.dispersive =
             {
                 description = this.description
                 upperWithDisp = this.upper.dispersive

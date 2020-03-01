@@ -20,6 +20,8 @@ module Standard =
         // Add any custom values after this line.
         //=======================================
 
+        static member getTransparentGlass n = RefractionIndex n
+
 
     type Eps
         with
@@ -30,6 +32,8 @@ module Standard =
         //=======================================
         // Add any custom values after this line.
         //=======================================
+
+        static member getTransparentGlass n = RefractionIndex.getTransparentGlass n |> Eps.fromRefractionIndex
 
 
     type OpticalProperties
@@ -43,9 +47,11 @@ module Standard =
         // Add any custom values after this line.
         //=======================================
 
+        static member getTransparentGlass n = Eps.getTransparentGlass n |> OpticalProperties.fromEpsion
+
 
     type BaseOpticalSystem
-        with 
+        with
 
         /// Standard vacuum / transparent glass system.
         static member transparentGlassSystem =
@@ -57,7 +63,7 @@ module Standard =
             }
 
         /// Standard vacuum / uniaxial crystal system.
-        static member uniaxialCrystalSystem = 
+        static member uniaxialCrystalSystem =
             {
                 description = Some "Standard vacuum / uniaxial crystal system."
                 upper = OpticalProperties.vacuum
@@ -101,15 +107,26 @@ module Standard =
                 lower = OpticalProperties.vacuum
             }
 
-    //=======================================
-    // Add any custom values after this line.
-    //=======================================
+        //=======================================
+        // Add any custom values after this line.
+        //=======================================
+
+        /// Standard vacuum / transparent glass system with refraction index n.
+        static member getTransparentGlassSystem n =
+            {
+                description = Some "Standard vacuum / transparent glass system."
+                upper = OpticalProperties.vacuum
+                films = []
+                lower = OpticalProperties.getTransparentGlass n
+            }
 
 
     let private w600nm = 600.0
 
+
     /// 600 nm S-polarized light falling at normal.
     let light600nmNormalLPs = WaveLength.nm w600nm |> IncidentLightInfo.create
+
 
     /// 600 nm S-polarized light falling at some incidence angle (in degrees).
     let light600nmInclinedDegreelLPs angleDegree =

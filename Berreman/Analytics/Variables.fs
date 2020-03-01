@@ -9,12 +9,12 @@ open Berreman.MaterialProperties
 open Berreman.Solvers
 open Berreman.Dispersion
 
-module Variables = 
+module Variables =
 
     /// https://stackoverflow.com/questions/35185143/how-to-create-new-line-in-plot-ly-js-title
     let lineBrake = "<br>"
 
-    type Range<'T> = 
+    type Range<'T> =
         {
             startValue : 'T
             endValue : 'T
@@ -24,121 +24,122 @@ module Variables =
         static member create n s e = { startValue = s; endValue = e; numberOfPoints = n }
 
 
-    type RangedVariable = 
+    /// Type to describe a single variable used in charts.
+    type RangedVariable =
         | IncidenceAngleRange of Range<IncidenceAngle>
         | PolarizationRange of Range<Polarization>
         | EllipticityRange of Range<Ellipticity>
         | WaveLengthRange of Range<WaveLength>
 
-        member this.length = 
-            match this with 
+        member this.length =
+            match this with
             | IncidenceAngleRange v -> v.numberOfPoints
             | PolarizationRange v -> v.numberOfPoints
             | EllipticityRange v -> v.numberOfPoints
             | WaveLengthRange v -> v.numberOfPoints
 
-        member this.name = 
-            match this with 
+        member this.name =
+            match this with
             | IncidenceAngleRange _ -> "f"
             | PolarizationRange _ -> "p"
             | EllipticityRange _ -> "e"
             | WaveLengthRange _ -> "w (nm)"
 
-        member this.value i = 
-            match this with 
-            | IncidenceAngleRange r -> 
+        member this.value i =
+            match this with
+            | IncidenceAngleRange r ->
                 let (IncidenceAngle (Angle s)) = r.startValue
                 let (IncidenceAngle (Angle e)) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
-            | PolarizationRange r -> 
+            | PolarizationRange r ->
                 let (Polarization (Angle s)) = r.startValue
                 let (Polarization (Angle e)) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
-            | EllipticityRange r -> 
+            | EllipticityRange r ->
                 let (Ellipticity s) = r.startValue
                 let (Ellipticity e) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
-            | WaveLengthRange r -> 
+            | WaveLengthRange r ->
                 let (WaveLength s) = r.startValue
                 let (WaveLength e) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
 
-        member this.plotValue i = 
-            match this with 
+        member this.plotValue i =
+            match this with
             | IncidenceAngleRange _ -> (this.value i) |> toDegree
             | PolarizationRange _ -> (this.value i) |> toDegree
             | EllipticityRange _ -> this.value i
             | WaveLengthRange _ -> (this.value i) |> toNanometers
 
-        member this.plotMinValue = 
-            match this with 
-            | IncidenceAngleRange r -> 
+        member this.plotMinValue =
+            match this with
+            | IncidenceAngleRange r ->
                 let (IncidenceAngle (Angle s)) = r.startValue
                 s |> toDegree
-            | PolarizationRange r -> 
+            | PolarizationRange r ->
                 let (Polarization (Angle s)) = r.startValue
                 s |> toDegree
-            | EllipticityRange r -> 
+            | EllipticityRange r ->
                 let (Ellipticity s) = r.startValue
                 s
             | WaveLengthRange r -> 
                 let (WaveLength s) = r.startValue
                 s |> toNanometers
 
-        member this.plotMaxValue = 
+        member this.plotMaxValue =
             match this with 
-            | IncidenceAngleRange r -> 
+            | IncidenceAngleRange r ->
                 let (IncidenceAngle (Angle e)) = r.endValue
                 e |> toDegree
-            | PolarizationRange r -> 
+            | PolarizationRange r ->
                 let (Polarization (Angle e)) = r.endValue
                 e |> toDegree
-            | EllipticityRange r -> 
+            | EllipticityRange r ->
                 let (Ellipticity e) = r.endValue
                 e
-            | WaveLengthRange r -> 
+            | WaveLengthRange r ->
                 let (WaveLength e) = r.endValue
                 e |> toNanometers
 
         member this.plotPoints = [| for i in 0..this.length -> this.plotValue i |]
 
 
-    let getWaveLengthValue (v : Range<WaveLength>) i = 
+    let getWaveLengthValue (v : Range<WaveLength>) i =
         (WaveLengthRange v).value i |> WaveLength
 
 
-    let waveLengthPlotMinValue (v : Range<WaveLength>) = 
+    let waveLengthPlotMinValue (v : Range<WaveLength>) =
         (WaveLengthRange v).plotMinValue
 
 
-    let waveLengthPlotMaxValue (v : Range<WaveLength>) = 
+    let waveLengthPlotMaxValue (v : Range<WaveLength>) =
         (WaveLengthRange v).plotMaxValue
 
 
-    let waveLengthPlotPoints (v : Range<WaveLength>) = 
+    let waveLengthPlotPoints (v : Range<WaveLength>) =
         (WaveLengthRange v).plotPoints
 
 
-    let getWaveLength (v : RangedVariable) i = 
+    let getWaveLength (v : RangedVariable) i =
         match v with
         | WaveLengthRange w -> getWaveLengthValue w i |> Some
         | _ -> None
 
 
     let getIncidenceAngle (v : RangedVariable) i = 
-        match v with 
+        match v with
         | IncidenceAngleRange _ -> v.value i |> Angle |> IncidenceAngle |> Some
         | _ -> None
 
 
-    let getPolarization (v : RangedVariable) i = 
-        match v with 
+    let getPolarization (v : RangedVariable) i =
+        match v with
         | PolarizationRange _ -> v.value i |> Angle |> Polarization |> Some
         | _ -> None
 
 
-    let getEllipticity (v : RangedVariable) i = 
-        match v with 
+    let getEllipticity (v : RangedVariable) i =
+        match v with
         | EllipticityRange _ -> v.value i |> Ellipticity |> Some
         | _ -> None
 
@@ -147,7 +148,7 @@ module Variables =
     let private incidentLightLabels = ("w", "r", "i", "p", "e")
 
 
-    let removeLightVariable x d = 
+    let removeLightVariable x d =
         let (w, _, i, p, e) = incidentLightLabels
 
         match x with
@@ -157,6 +158,7 @@ module Variables =
         | WaveLengthRange _ -> d |> List.choose (fun (k, v) -> if k = w then None else Some (k, v))
 
 
+    /// Combination of incident light and optical system with dispersion.
     type FixedInfo =
         {
             incidentLightInfo : IncidentLightInfo
