@@ -20,6 +20,7 @@ module Standard =
         // Add any custom values after this line.
         //=======================================
 
+        static member transparentGlass200 = RefractionIndex 2.00
         static member getTransparentGlass n = RefractionIndex n
 
 

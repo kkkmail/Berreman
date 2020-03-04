@@ -89,6 +89,6 @@ plot f fn w
 
 #time
 //plot3D f fn p3D i3D
-plot3D f fn w3D i3D
+//plot3D f fn w3D i3D
 //plot3D f fn e3D p3D
 #time

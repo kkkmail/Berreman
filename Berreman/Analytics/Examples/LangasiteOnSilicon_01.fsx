@@ -21,7 +21,7 @@ let incidenceAngleDegree = 79.0
 
 let i = incidenceAngleRange numberOfPoints
 let e = ellipticityRange numberOfPoints
-let p =polarizationRange numberOfPoints
+let p = polarizationRange numberOfPoints
 let w = wavelength250to600Range numberOfPoints
 
 let thickness = Thickness.mm 0.01
