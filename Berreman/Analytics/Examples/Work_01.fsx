@@ -10,7 +10,8 @@ open Analytics.Variables
 open Analytics.StandardLightVariables
 open Analytics.Charting
 //===========================================================
-let fn = [ R; T ]
+let fn = [ R; T; ]
+//EllipticityR
 
 let numberOfPoints = 1000
 let numberOfPoints3D = 100
@@ -36,46 +37,46 @@ let filmSystem =
         films = 
             [ 
                 { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                { properties = OpticalProperties.vacuum; thickness = thickness2 }
-                { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                //{ properties = OpticalProperties.vacuum; thickness = thickness2 }
+                //{ properties = OpticalProperties.transparentGlass; thickness = thickness1 }
             ]
         lower = OpticalProperties.vacuum
     }
