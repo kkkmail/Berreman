@@ -5,40 +5,36 @@ open Berreman.Solvers
 open Berreman.FieldFunctions
 open Berreman.Dispersion
 open Analytics.Variables
-
-//open FSharp.Charting
 open FSharp.Plotly
-//open XPlot.Plotly
 
 module Charting =
 
+    /// Plots several functions (e.g. [ R; T; I; ... ] ) on the same plot.
     let plot (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = calculate f x
         let description = f.getDescription x
 
-        let getFuncData (e : OpticalFunction) = 
+        let getFuncData (e : OpticalFunction) =
             data 
             |> Array.map (fun (v, s) -> (v, s.func e))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
-         //FSharp.Plotly
         Chart.Combine (fn |> List.map (fun e -> Chart.Line(getFuncData e, Name = e.info.fullName)))
         |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-        //|> Chart.withTitle(title)
         |> Chart.ShowWithDescription true description
+
 
     /// Plots several different models (function by function) on the same plots.
     let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = f |> List.map (fun e -> calculate e x)
         let (description, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 0)
 
-        let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) = 
+        let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) =
             d 
             |> Array.map (fun (v, s) -> (v, s.func e))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
-        //FSharp.Plotly
-        let plotFunc (f : OpticalFunction) = 
+        let plotFunc (f : OpticalFunction) =
             Chart.Combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
             |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
             //|> Chart.withTitle(title)
@@ -53,6 +49,7 @@ module Charting =
         |> Array.ofSeq
 
 
+    /// Plots 3D functions.
     let plot3D (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) (y : RangedVariable) =
         let xVal = x.plotPoints
         let yVal = y.plotPoints
@@ -79,7 +76,6 @@ module Charting =
         let x = r |> WaveLengthRange
         //let description = o.description
 
-         //FSharp.Plotly
         Chart.Line(data, Name = name)
         |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
         |> Chart.Show //WithDescription description

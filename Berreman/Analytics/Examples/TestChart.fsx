@@ -47,7 +47,8 @@ plot (transparentGassFilm thickness (light600nmInclinedDegreelLPs 59.0)) fn p
 plot3D (transparentGassFilm thickness light600nmNormalLPs) fn p3D i3D
 #time
 
-let baseSystem = 
+
+let baseSystem =
     {
         description = None
         upper = OpticalProperties.vacuum
@@ -55,12 +56,13 @@ let baseSystem =
         lower = OpticalProperties.transparentGlass
     }
 
-let filmSystem = 
+
+let filmSystem =
     {
         description = None
         upper = OpticalProperties.vacuum
-        films = 
-            [ 
+        films =
+            [
                 { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
                 { properties = OpticalProperties.vacuum; thickness = thickness2 }
                 { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
@@ -118,7 +120,7 @@ let transparentGlassSubstrate =
         properties = OpticalProperties.transparentGlass
     }
 
-//let substrate = 
+//let substrate =
 //    {
 //        thickness = Thickness.nm 1000.0
 //        properties = OpticalProperties.biaxialCrystal

@@ -31,7 +31,7 @@ type IncidentLightTests(output : ITestOutputHelper) =
     let waveLength = WaveLength.nm 600.0
     let getN1SinFita incidenceAngle = N1SinFita.create 1.0 incidenceAngle
 
-    let data = 
+    let data =
         [
             (
                 let incidenceAngle = Angle.degree 7.0 |> IncidenceAngle
@@ -39,7 +39,7 @@ type IncidentLightTests(output : ITestOutputHelper) =
 
                 {
                     description = "Linear polarization, 0 degrees polarization angle."
-                    info = 
+                    info =
                         {
                             waveLength = waveLength
                             refractionIndex = RefractionIndex.vacuum
@@ -47,15 +47,15 @@ type IncidentLightTests(output : ITestOutputHelper) =
                             polarization = Polarization.defaultValue
                             ellipticity = Ellipticity.defaultValue
                         }
-                    expected = 
+                    expected =
                             {
                                 waveLength = waveLength
                                 n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
-                                e = 
+                                e =
                                     [ 0.992546151641322; 0.; -0.12186934340514745 ]
                                     |> E.fromRe
-                                h = 
+                                h =
                                     [ 0.; 0.9999999999999998; 0. ]
                                     |> H.fromRe
                             }
@@ -68,7 +68,7 @@ type IncidentLightTests(output : ITestOutputHelper) =
 
                 {
                     description = "Elliptic polarization (0.2), 0 degrees polarization angle."
-                    info = 
+                    info =
                         {
                             waveLength = waveLength
                             refractionIndex = RefractionIndex.vacuum
@@ -76,15 +76,15 @@ type IncidentLightTests(output : ITestOutputHelper) =
                             polarization = Polarization.defaultValue
                             ellipticity = Ellipticity 0.2
                         }
-                    expected = 
+                    expected =
                             {
                                 waveLength = waveLength
                                 n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
-                                e = 
+                                e =
                                     [ createComplex 0.97327157603087 0.; createComplex 0. 0.19611613513818404; createComplex -0.11950272310222826 0. ]
                                     |> E.create
-                                h = 
+                                h =
                                     [ createComplex 0. -0.194654315206174; createComplex 0.9805806756909199 0.; createComplex 0. 0.02390054462044566 ]
                                     |> H.create
                             }
@@ -98,7 +98,7 @@ type IncidentLightTests(output : ITestOutputHelper) =
 
                 {
                     description = "Linear polarization, 25 degrees polarization angle."
-                    info = 
+                    info =
                         {
                             waveLength = waveLength
                             refractionIndex = RefractionIndex.vacuum
@@ -106,15 +106,15 @@ type IncidentLightTests(output : ITestOutputHelper) =
                             polarization = Polarization beta
                             ellipticity = Ellipticity.defaultValue
                         }
-                    expected = 
+                    expected =
                             {
                                 waveLength = waveLength
                                 n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
-                                e = 
+                                e =
                                     [ 0.8995523062257899; 0.42261826174069944; -0.11045113492912874 ]
                                     |> E.fromRe
-                                h = 
+                                h =
                                     [ -0.4194681293040762; 0.9063077870366498; 0.0515042100693638 ]
                                     |> H.fromRe
                             }
@@ -129,7 +129,7 @@ type IncidentLightTests(output : ITestOutputHelper) =
 
                 {
                     description = "Linear polarization, 25 degrees polarization angle."
-                    info = 
+                    info =
                         {
                             waveLength = waveLength
                             refractionIndex = RefractionIndex.vacuum
@@ -137,15 +137,15 @@ type IncidentLightTests(output : ITestOutputHelper) =
                             polarization = Polarization beta
                             ellipticity = ellipticity
                         }
-                    expected = 
+                    expected =
                             {
                                 waveLength = waveLength
                                 n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
-                                e = 
+                                e =
                                     [ createComplex 0.7607323158175443 0.1949857619013546; createComplex -0.5227243445459797 0.2944888699958045; createComplex -0.14787138271966674 -0.03790139267583888 ]
                                     |> E.create
-                                h = 
+                                h =
                                     [ createComplex 0.5131204260561963 -0.2890782800106668; createComplex 0.774970710515275 0.1986352509274723; createComplex -0.09974050704168126 0.05619112543347336 ]
                                     |> H.create
                             }
@@ -155,13 +155,13 @@ type IncidentLightTests(output : ITestOutputHelper) =
 
     let createField (d : IncidentLightTestData) = EmField.create(d.info, OpticalProperties.vacuum)
 
-    member __.runTest (d : IncidentLightTestData) = 
+    member __.runTest (d : IncidentLightTestData) =
         output.WriteLine d.description
         let i = createField d
         verifyVectorEqualityE output "eI" i.e d.expected.e
         verifyVectorEqualityH output "hI" i.h d.expected.h
 
-    member __.runAzimuthAndEllipticityTest(d : IncidentLightTestData) = 
+    member __.runAzimuthAndEllipticityTest(d : IncidentLightTestData) =
         output.WriteLine d.description
         let i = createField d
         let el = i.ellipticity
