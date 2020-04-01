@@ -3,14 +3,14 @@ open MaterialProperties
 open Fields
 open Media
 
-module Dispersion = 
+module Dispersion =
 
-    type EpsWithDisp = 
+    type EpsWithDisp =
         | EpsWithDisp of (WaveLength -> Eps)
         | EpsWithoutDisp of Eps
 
-        member this.getEps w = 
-            match this with 
+        member this.getEps w =
+            match this with
             | EpsWithDisp f -> f w
             | EpsWithoutDisp e -> e
 
@@ -20,12 +20,12 @@ module Dispersion =
         member eps.dispersive = EpsWithoutDisp eps
 
 
-    type MuWithDisp = 
+    type MuWithDisp =
         | MuWithDisp of (WaveLength -> Mu)
         | MuWithoutDisp of Mu
 
-        member this.getMu w = 
-            match this with 
+        member this.getMu w =
+            match this with
             | MuWithDisp f -> f w
             | MuWithoutDisp e -> e
 
@@ -34,12 +34,12 @@ module Dispersion =
         member mu.dispersive = MuWithoutDisp mu
 
 
-    type RhoWithDisp = 
+    type RhoWithDisp =
         | RhoWithDisp of (WaveLength -> Rho)
         | RhoWithoutDisp of Rho
 
-        member this.getRho w = 
-            match this with 
+        member this.getRho w =
+            match this with
             | RhoWithDisp f -> f w
             | RhoWithoutDisp e -> e
 
@@ -49,14 +49,14 @@ module Dispersion =
         member rho.dispersive = RhoWithoutDisp rho
 
 
-    type OpticalPropertiesWithDisp = 
+    type OpticalPropertiesWithDisp =
         {
             epsWithDisp : EpsWithDisp
             muWithDisp : MuWithDisp
             rhoWithDisp : RhoWithDisp
         }
 
-        member this.getProperties w = 
+        member this.getProperties w =
             {
                 eps = this.epsWithDisp.getEps w
                 mu = this.muWithDisp.getMu w
@@ -66,7 +66,7 @@ module Dispersion =
 
     type OpticalProperties
         with
-        member this.dispersive = 
+        member this.dispersive =
             {
                 epsWithDisp = this.eps.dispersive
                 muWithDisp = this.mu.dispersive

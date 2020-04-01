@@ -45,13 +45,13 @@ module MaterialProperties =
         static member vacuum = RefractionIndex.create 1.0
 
 
-    type ComplexRefractionIndex = 
+    type ComplexRefractionIndex =
         ComplexRefractionIndex of Complex
         with 
         static member create n = ComplexRefractionIndex n
 
 
-    type Eps = 
+    type Eps =
         | Eps of ComplexMatrix3x3
 
         static member create a = a |> ComplexMatrix3x3.create |> Eps
@@ -68,10 +68,10 @@ module MaterialProperties =
                 let (Eps (ComplexMatrix3x3 v)) = eps
                 v.[i.numeric, j.numeric]
 
-        static member fromRefractionIndex (RefractionIndex n) = 
+        static member fromRefractionIndex (RefractionIndex n) =
             (n * n |> cplx) * ComplexMatrix3x3.identity |> Eps
 
-        static member fromRefractionIndex (RefractionIndex n1, RefractionIndex n2, RefractionIndex n3) = 
+        static member fromRefractionIndex (RefractionIndex n1, RefractionIndex n2, RefractionIndex n3) =
             [
                 [ n1 * n1; 0.; 0. ]
                 [ 0.; n2 * n2; 0. ]
@@ -94,7 +94,7 @@ module MaterialProperties =
             e.re.toComplex() |> Eps
 
 
-    type Mu = 
+    type Mu =
         | Mu of ComplexMatrix3x3
 
         static member (*) (ComplexVector3 a, Mu (ComplexMatrix3x3 b)) : ComplexVector3 = a * b |> ComplexVector3
@@ -114,7 +114,7 @@ module MaterialProperties =
                 v.[i.numeric, j.numeric]
 
 
-    type Rho = 
+    type Rho =
         | Rho of ComplexMatrix3x3
 
         static member (*) (ComplexVector3 a, Rho (ComplexMatrix3x3 b)) : ComplexVector3 = a * b |> ComplexVector3
@@ -134,7 +134,7 @@ module MaterialProperties =
                 v.[i.numeric, j.numeric]
 
 
-    type RhoT = 
+    type RhoT =
         | RhoT of ComplexMatrix3x3
 
         static member (*) (ComplexVector3 a, RhoT (ComplexMatrix3x3 b)) : ComplexVector3 = a * b |> ComplexVector3
@@ -146,14 +146,14 @@ module MaterialProperties =
                 v.[i, j]
 
 
-    type OpticalProperties = 
+    type OpticalProperties =
         {
             eps : Eps
             mu : Mu
             rho : Rho
         }
 
-        member this.rhoT : RhoT = 
+        member this.rhoT : RhoT =
             let (Rho (ComplexMatrix3x3 r)) = this.rho
             r.conjugateTranspose |> ComplexMatrix3x3 |> RhoT
 
@@ -168,7 +168,7 @@ module MaterialProperties =
         static member fromRefractionIndex (n1, n2, n3) = Eps.fromRefractionIndex(n1, n2, n3) |> OpticalProperties.fromEpsion
         static member vacuum = Eps.vacuum |> OpticalProperties.fromEpsion
 
-        member this.rotate (Rotation r) = 
+        member this.rotate (Rotation r) =
             let c = r.toComplex()
             let cInv = c.inverse
             let rotate e = cInv * e * c
@@ -190,7 +190,7 @@ module MaterialProperties =
         member this.rotateY a = Rotation.rotateY a |> this.rotate
         member this.rotateZ a = Rotation.rotateZ a |> this.rotate
 
-        member this.opticalComponent c = 
+        member this.opticalComponent c =
             match c with 
             | EpsComp -> 
                 let (Eps eps) = this.eps
