@@ -18,9 +18,14 @@ let fn = [ R; T ]
 
 let numberOfPoints = 2000
 let incidenceAngleDegree = 79.0
-let thickness = Thickness.mm 0.001
-let refractionIndex = RefractionIndex 1.5
-let refractionIndex2 = RefractionIndex 2.25
+
+type RefractionIndexThickness =
+    | RefractionIndexThickness of RefractionIndex * Thickness
+
+
+let nh1 = RefractionIndexThickness (RefractionIndex 1.50, Thickness.mm (0.001 * 0.0))
+let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00)
+
 
 let incidentLight = light600nmInclinedDegreelLPs incidenceAngleDegree
 
@@ -52,12 +57,32 @@ let opticalProperties refractionIndex =
     }
 
 
-let getGlassInfo useThickPlate refractionIndex thickness light =
-    let film =
+let getGlassInfo useThickPlate nh1 nh2Opt light =
+    let (RefractionIndexThickness (n1, h1)) = nh1
+
+    let film1 =
         {
-            thickness = thickness
-            propertiesWithDisp = opticalProperties refractionIndex
+            thickness = h1
+            propertiesWithDisp = opticalProperties n1
         }
+
+    let film2Opt =
+        match nh2Opt with
+        | Some (RefractionIndexThickness (n2, h2)) ->
+            {
+                thickness = h2
+                propertiesWithDisp = opticalProperties n2
+            }
+            |> Some
+        | None -> None
+
+
+    let (films, substr) =
+        match useThickPlate, film2Opt with
+        | false, None -> [ film1 ], None
+        | false, Some film2 -> [ film1; film2 ], None
+        | true, None -> [], Some film1
+        | true, Some film2 -> [ film1 ], Some film2
 
     {
         incidentLightInfo = light
@@ -65,23 +90,20 @@ let getGlassInfo useThickPlate refractionIndex thickness light =
             {
                 description = Some ("Glass " + (if useThickPlate then "substrate" else "film"))
                 upperWithDisp = OpticalProperties.vacuum.dispersive
-                filmsWithDisp = if useThickPlate then [] else [ film ]
-                substrateWithDisp = if useThickPlate then Some film else None
+                filmsWithDisp = films
+                substrateWithDisp = substr
                 lowerWithDisp = OpticalProperties.vacuum.dispersive
             }
     }
 
 
-let film = getGlassInfo false refractionIndex thickness incidentLight
-let substrate = getGlassInfo true refractionIndex thickness incidentLight
-
-let film2 = getGlassInfo false refractionIndex2 thickness incidentLight
-let substrate2 = getGlassInfo true refractionIndex2 thickness incidentLight
+let film = getGlassInfo false nh1 (Some nh2) incidentLight
+let substrate = getGlassInfo true nh1 (Some nh2) incidentLight
 
 
 #time
 //plot film fn polarizationRange
 //plot substrate fn polarizationRange
 //plotComparison [ film; substrate ] fn ellipticityRange
-plotComparison [ film; film2 ] fn incidenceAngleRange
+plotComparison [ film; substrate ] fn incidenceAngleRange
 #time
