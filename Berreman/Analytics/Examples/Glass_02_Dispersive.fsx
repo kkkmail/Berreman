@@ -1,6 +1,7 @@
 ﻿//===========================================================
 #load "References.fsx"
 //===========================================================
+open Berreman
 open Berreman.FieldFunctions
 open Berreman.Media
 open Berreman.Fields
@@ -19,20 +20,38 @@ let fn = [ R; T ]
 let numberOfPoints = 2000
 let incidenceAngleDegree = 79.0
 
+
+let getOpticalProperties g =
+    {
+        epsWithDisp = g >> Eps.fromRefractionIndex |> EpsWithDisp
+        muWithDisp = Mu.vacuum.dispersive
+        rhoWithDisp = Rho.vacuum.dispersive
+    }
+
+
+/// nO
+let getRefractionIndexO (w : WaveLength) =
+    // Wavelength in mkm
+    let q = w.value / Constants.mkm
+    let nSq = 1.0 + 1.43 * q * q / (q * q - 0.073 * 0.073) + 0.65 * q * q / (q * q - 0.12 * 0.12)
+    sqrt nSq |> RefractionIndex
+
+
 type RefractionIndexThickness =
-    | RefractionIndexThickness of RefractionIndex * Thickness
+    | RefractionIndexThickness of (WaveLength -> RefractionIndex) * Thickness
 
 
-//let nh1 = RefractionIndexThickness (RefractionIndex 1.50, Thickness.mm (0.001))
-let nh1 = RefractionIndexThickness (RefractionIndex 1.78052, Thickness.mm (0.001))
-let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00)
+let nh1 = RefractionIndexThickness (getRefractionIndexO, Thickness.mm (0.001))
+let nh2 = RefractionIndexThickness ((fun _ -> RefractionIndex 2.25), Thickness.mm 1.00)
 
 
 let incidentLight = light600nmInclinedDegreelLPs incidenceAngleDegree
 
-let wavelengthRange =
+let wlRange =
     Range<_>.create numberOfPoints (WaveLength.nm 300.0) (WaveLength.nm 700.0)
-    |> WaveLengthRange
+
+
+let wavelengthRange = WaveLengthRange wlRange
 
 
 let incidenceAngleRange =
@@ -64,7 +83,7 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
     let film1 =
         {
             thickness = h1
-            propertiesWithDisp = opticalProperties n1
+            propertiesWithDisp = getOpticalProperties n1
         }
 
     let film2Opt =
@@ -72,7 +91,7 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
         | Some (RefractionIndexThickness (n2, h2)) ->
             {
                 thickness = h2
-                propertiesWithDisp = opticalProperties n2
+                propertiesWithDisp = getOpticalProperties n2
             }
             |> Some
         | None -> None
@@ -100,14 +119,15 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
 
 let film = getGlassInfo false nh1 None incidentLight
 let substrate = getGlassInfo true nh1 None incidentLight
+
 //let film = getGlassInfo false nh1 (Some nh2) incidentLight
 //let substrate = getGlassInfo true nh1 (Some nh2) incidentLight
-
 
 #time
 //plot film fn polarizationRange
 //plot substrate fn polarizationRange
 //plotComparison [ film; substrate ] fn ellipticityRange
-plotComparison [ film; substrate ] fn incidenceAngleRange
-//plotComparison [ film; substrate ] fn wavelengthRange
+//plotComparison [ film; substrate ] fn incidenceAngleRange
+plotComparison [ film; substrate ] fn wavelengthRange
+plotN11 film.opticalSystem.filmsWithDisp.Head.propertiesWithDisp wlRange
 #time
