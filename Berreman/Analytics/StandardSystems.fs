@@ -53,14 +53,14 @@ module StandardSystems =
 
     /// Langasite thick plate on silicon sbstrate.
     let langasiteSubstrateOnSilicon thickness light =
-        { 
+        {
             incidentLightInfo = light
             opticalSystem = langasiteSubstrateOnSiliconSystem thickness
         }
 
     /// Langasite thin film on silicon sbstrate.
     let langasiteFilmOnSilicon thickness light =
-        { 
+        {
             incidentLightInfo = light
             opticalSystem = langasiteFilmOnSiliconSystem thickness
         }
