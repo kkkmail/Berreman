@@ -151,12 +151,13 @@ module Fields =
         static member create a = a |> ComplexVector2.create |> H2
 
 
-    type WaveLength = 
-        WaveLength of double
+    type WaveLength =
+        | WaveLength of double
         with
+        member this.value = let (WaveLength w) = this in w
         static member nm l = l * Constants.nm |> WaveLength
         static member mkm l = l * Constants.mkm |> WaveLength
-        member this.description = 
+        member this.description =
             let (WaveLength w) = this
             if w < Constants.mkm then sprintf "wavelength: %A nm" (w / Constants.nm)
             else sprintf "wavelength: %A mkm" (w / Constants.mkm)

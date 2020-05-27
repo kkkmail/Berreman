@@ -58,7 +58,7 @@ module Dispersive =
             |> Rho
 
 
-        override __.opticalProperties=
+        override _.opticalProperties =
             {
                 epsWithDisp = epsLa3Ga5SiO14 |> EpsWithDisp
                 muWithDisp = Mu.vacuum.dispersive
@@ -78,7 +78,7 @@ module Dispersive =
         let refrIndexSi lambda = createComplex (nSi lambda) (xiSiFinal lambda) |> ComplexRefractionIndex
         let epsSi lambda = refrIndexSi lambda |> Eps.fromComplexRefractionIndex
 
-        override __.opticalProperties=
+        override _.opticalProperties =
             {
                 epsWithDisp = epsSi |> EpsWithDisp
                 muWithDisp = Mu.vacuum.dispersive
