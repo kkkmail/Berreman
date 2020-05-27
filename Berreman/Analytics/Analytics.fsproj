@@ -55,6 +55,7 @@
     <None Include="Examples\TestChart.fsx" />
     <None Include="Examples\Glass_01.fsx" />
     <None Include="Examples\Glass_02_Dispersive.fsx" />
+    <None Include="Examples\Work_01.fsx" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Charting">
