@@ -19,24 +19,24 @@ module FieldFunctions =
 
     type ComplexVector3
         with
-        /// I.V. Lindell: Methods for Electromagnetic Field Analysis, Chaptr 1, Vector p.
-        member this.pVector = 
+        /// I.V. Lindell: Methods for Electromagnetic Field Analysis, Chapter 1, Vector p.
+        member this.pVector =
             let n = this.norm
 
             if n < almostZero then RealVector3.zeroVector
             else ((ComplexVector3.cross this this.conjugate) / (createComplex 0.0 (n * n))).re
 
-        /// I.V. Lindell: Methods for Electromagnetic Field Analysis, Chaptr 1, Vector q.
-        member a.qVector = 
+        /// I.V. Lindell: Methods for Electromagnetic Field Analysis, Chapter 1, Vector q.
+        member a.qVector =
             let n = a.norm
 
             if n < almostZero then RealVector3.zeroVector
-            else 
+            else
                 let aa = a * a
                 let r = (a / (sqrt aa)).re
                 (aa.abs / (n * n)) * (r / r.norm)
 
-        member this.ellipticity : Ellipticity = 
+        member this.ellipticity : Ellipticity =
             let v = this.pVector.norm
             if v < almostZero then Ellipticity.defaultValue
             else (1.0 - sqrt(1.0 - v * v)) / v |> Ellipticity
@@ -45,7 +45,7 @@ module FieldFunctions =
     type EmField
         with
         member em.stokesVector =
-            let stokes (b : ComplexBasis3) = 
+            let stokes (b : ComplexBasis3) =
                 let (E e) = em.e
                 let ex = e * b.cX
                 let ey = e * b.cY
@@ -57,24 +57,24 @@ module FieldFunctions =
 
             thread em.complexBasis stokes
 
-        member em.intensity (i : EmField) = 
+        member em.intensity (i : EmField) =
             let (S s) = em.s
             let (S is) = i.s
             (s.z |> abs) / is.z
 
-        member em.intensityX (i : EmField) = 
+        member em.intensityX (i : EmField) =
             let (E e) = em.e
             let (H h) = em.h
             let (S is) = i.s
             (ComplexVector3.cross (ComplexBasis3.defaultValue.toX e) h.conjugate).re.norm / is.z
 
-        member em.intensityY (i : EmField) = 
+        member em.intensityY (i : EmField) =
             let (E e) = em.e
             let (H h) = em.h
             let (S is) = i.s
             (ComplexVector3.cross (ComplexBasis3.defaultValue.toY e) h.conjugate).re.norm / is.z
 
-        member em.ellipticity : Ellipticity = 
+        member em.ellipticity : Ellipticity =
             let (E e) = em.e
             let (S s) = em.s
             let p = e.pVector
@@ -82,34 +82,34 @@ module FieldFunctions =
             if p * s >= 0.0 then -e.ellipticity
             else e.ellipticity
 
-        member em.azimuth : Polarization = 
+        member em.azimuth : Polarization =
             let (E e) = em.e
             let q = e.qVector
 
             let n = q.norm
             if n < almostZero then Polarization.defaultValue
-            else 
+            else
                 let v = (q / q.norm) * RealBasis3.defaultValue.vY
                 let a = asin v
                 a |> Angle |> Polarization
 
-        member em.muellerMatrix : MuellerMatrix = 
+        member em.muellerMatrix : MuellerMatrix =
             failwith ""
 
 
-    type FunctionDescription = 
+    type FunctionDescription =
         {
             name : string
             subscript : string option
             description : string option
         }
         member this.fullName =
-            match this.subscript with 
+            match this.subscript with
             | Some s -> this.name + s
             | None -> this.name
 
 
-    type OpticalFunction = 
+    type OpticalFunction =
         | I
         | Ip
         | Is
@@ -125,7 +125,7 @@ module FieldFunctions =
         | AzimuthT
 
 
-        member this.info = 
+        member this.info =
             match this with
             | I -> { name = "I"; subscript = None; description = None }
             | Ip -> { name = "I"; subscript = None; description = None }
@@ -143,7 +143,7 @@ module FieldFunctions =
 
 
     type EmFieldSystem
-        with 
+        with
         member this.i = this.incident.intensity this.incident
         member this.ip = this.incident.intensityX this.incident
         member this.is = this.incident.intensityY this.incident
@@ -157,23 +157,23 @@ module FieldFunctions =
         member this.tp = this.transmitted.intensityX this.incident
         member this.ts = this.transmitted.intensityY this.incident
 
-        member this.ellipticityR = 
+        member this.ellipticityR =
             let (Ellipticity e) = this.reflected.ellipticity
             e
 
-        member this.ellipticityT = 
+        member this.ellipticityT =
             let (Ellipticity e) = this.transmitted.ellipticity
             e
 
-        member this.azimuthR = 
+        member this.azimuthR =
             let (Polarization (Angle a)) = this.reflected.azimuth
             a
 
-        member this.azimuthT = 
+        member this.azimuthT =
             let (Polarization (Angle a)) = this.transmitted.azimuth
             a
 
-        member this.func f = 
+        member this.func f =
             match f with
             | I -> this.i
             | Ip -> this.ip
@@ -192,10 +192,10 @@ module FieldFunctions =
 
     type Solution
         with
-        member this.func f = 
-            match this with 
+        member this.func f =
+            match this with
             | Single b -> b.emSys.func f |> Some
-            | Multiple m -> 
+            | Multiple m ->
                 let r () = m.rt |> List.choose (fun (r, _) -> r)
                 let t () = m.rt |> List.choose (fun (_, t) -> t)
                 let fn g l = l |> List.fold (fun acc e -> acc + g e m.incident) 0.0 |> Some
@@ -217,18 +217,18 @@ module FieldFunctions =
                 | AzimuthR -> None
                 | AzimuthT -> None
 
-        member this.stokesI : StokesVector = 
-            match this with 
-            | Single b -> 
+        member this.stokesI : StokesVector =
+            match this with
+            | Single b ->
                 match b.emSys.incident.stokesVector with
                 | Some v -> v
                 | None -> failwith "We should never be here. Refactor..."
             | Multiple m -> failwith "Not implemented yet..."
 
 
-        member this.stokesR : StokesVector = 
-            match this with 
-            | Single b -> 
+        member this.stokesR : StokesVector =
+            match this with
+            | Single b ->
                 match b.emSys.reflected.stokesVector with
                 | Some v -> v
                 | None -> failwith "We should never be here. Refactor..."
