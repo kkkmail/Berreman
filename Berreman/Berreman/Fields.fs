@@ -207,25 +207,36 @@ module Fields =
         static member create (Angle p) =
             (p % (pi / 2.0) + pi) % (pi / 2.0) |> Angle |> IncidenceAngle
 
+        member angle.value = let (IncidenceAngle a) = angle in a.value
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
         member this.description =
             let (IncidenceAngle (Angle a)) = this
             sprintf "incidence angle: %A degree(s)" (a / degree)
 
+        static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
+        static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle
+
 
     /// n1 * sin(fita), where fita is the incidence angle and n1 is the refraction index of upper media.
     /// This is an invariant and it deserves a type.
     type N1SinFita =
-        | N1SinFita of double
+        {
+            n1 : RefractionIndex
+            fita : IncidenceAngle
+        }
 
-        static member create n (IncidenceAngle(Angle f)) = n * (sin f) |> N1SinFita
-        static member normal = N1SinFita 0.0
+        static member create n f =
+            {
+                n1 = n
+                fita = f
+            }
 
-        member this.complex =
-            let (N1SinFita nsf) = this
-            cplx nsf
+        static member normal = N1SinFita.create RefractionIndex.vacuum IncidenceAngle.normal
+        member this.value = this.n1.value * (sin this.fita.value)
+        member this.complex = this.value |> cplx
         member this.description = this.ToString()
+        member this.rotateY y = { this with fita = this.fita + y }
 
 
     type IncidentLightInfo =
@@ -264,11 +275,7 @@ module Fields =
         member this.eh90 = this.getEH this.polarization.crossed
         member this.ehS = this.getEH Polarization.s
         member this.ehP = this.getEH Polarization.p
-
-        member this.n1SinFita =
-            let (IncidenceAngle (Angle a)) = this.incidenceAngle
-            let (RefractionIndex n) = this.refractionIndex
-            n * (sin a) |> N1SinFita
+        member this.n1SinFita = N1SinFita.create this.refractionIndex this.incidenceAngle
 
         static member create w =
             {
@@ -306,7 +313,7 @@ module Fields =
                 ellipticity = Ellipticity.defaultValue
             }
 
-
+        member this.rotateY y = { this with incidenceAngle = this.incidenceAngle + y }
 
 
     type EmFieldXY =
@@ -330,7 +337,7 @@ module Fields =
         member emf.d = emf.opticalProperties.eps * emf.e + emf.opticalProperties.rho * emf.h
         member emf.b = emf.opticalProperties.rhoT * emf.e + emf.opticalProperties.mu * emf.h
 
-        // Poynting vector
+        /// Poynting vector
         member emf.s =
             let (E e) = emf.e
             let (H h) = emf.h
@@ -346,8 +353,8 @@ module Fields =
 
         member emf.complexNormal = thread emf.normal (fun n -> [ cplx n.x; cplx n.y; cplx n.z ] |> ComplexVector3.create)
 
-        /// Basis in the system of coordinates where ez is the directon of propagation of incident light,
-        /// ey lays in the plane of media boundary and is orthogonal to directon of propagation,
+        /// Basis in the system of coordinates where ez is the direction of propagation of incident light,
+        /// ey lays in the plane of media boundary and is orthogonal to direction of propagation,
         /// and ex = cross ey ez.
         member emf.complexBasis =
             thread emf.complexNormal (fun cz ->
@@ -386,7 +393,7 @@ module Fields =
                 h = a0 * h0 + cplxI * a90 * h90
             }
 
-        member emf.rotate (Rotation r) : EmField =
+        member private emf.rotate (Rotation r) : EmField =
             let c = r.toComplex()
             let cInv = c.inverse
 
@@ -395,6 +402,7 @@ module Fields =
             { emf with e = cInv * e |> E; h = cInv * h |> H; opticalProperties = emf.opticalProperties.rotate (Rotation r) }
 
         member emf.rotatePiX = emf.rotate Rotation.rotatePiX
+        member emf.rotateY y = Rotation.rotateY y |> emf.rotate
 
         /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
         member emf.amplitudeS =
@@ -443,7 +451,10 @@ module Fields =
         | StokesVector of RealVector4
 
         static member create v = v |> RealVector4.create |> StokesVector
+        static member (+) (StokesVector a, StokesVector b) = a + b |> StokesVector
 
+        static member Zero
+            with get () = StokesVector RealVector4.Zero
 
     type StokesSystem =
         {

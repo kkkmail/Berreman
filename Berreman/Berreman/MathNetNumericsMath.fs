@@ -22,7 +22,7 @@ module MathNetNumericsMath =
 
 
     type Complex
-        with 
+        with
         member this.conjugate
             with get () = Complex.Conjugate this
 
@@ -32,8 +32,8 @@ module MathNetNumericsMath =
 
     type RealVector =
         | RealVector of Vector<double>
-        member this.Item 
-            with get (i: int) = 
+        member this.Item
+            with get (i: int) =
                 let (RealVector v) = this
                 v.[i]
 
@@ -42,57 +42,53 @@ module MathNetNumericsMath =
         static member (*) (RealVector a, b : double) = b * a |> RealVector
         static member (/) (RealVector a, b : double) = a / b |> RealVector
         static member create (a : #seq<double>) = vector a |> RealVector
+        static member (+) (RealVector a, RealVector b) = a + b |> RealVector
+        static member (-) (RealVector a, RealVector b) = a - b |> RealVector
 
-        member this.norm = 
+        member this.norm =
             let (RealVector v) = this
             v * v |> sqrt
 
 
-    type ComplexVector = 
+    type ComplexVector =
         | ComplexVector of Vector<Complex>
-        static member (*) (ComplexVector a, ComplexVector b) = 
-            a.DotProduct(b)
-
-        static member (*) ((a : Complex), ComplexVector b) = 
-            (a * b) |> ComplexVector
-
+        static member (*) (ComplexVector a, ComplexVector b) = a.DotProduct(b)
+        static member (*) ((a : Complex), ComplexVector b) = (a * b) |> ComplexVector
         static member (*) (a : ComplexVector, (b : Complex)) = b * a
-
-        static member (+) (ComplexVector a, ComplexVector b) = 
-            (a + b) |> ComplexVector
-
+        static member (+) (ComplexVector a, ComplexVector b) = (a + b) |> ComplexVector
+        static member (-) (ComplexVector a, ComplexVector b) = (a - b) |> ComplexVector
         static member create (a : #seq<Complex>) = vector a |> ComplexVector
 
-        static member fromRe (a : #seq<double>) = 
+        static member fromRe (a : #seq<double>) =
             a
             |> Seq.map (fun e -> cplx e)
             |> vector
             |> ComplexVector
 
-        static member fromIm (a : #seq<double>) = 
+        static member fromIm (a : #seq<double>) =
            (createComplex 0. 1.) * (ComplexVector.fromRe a)
 
-        member this.Item 
-            with get (i: int) = 
+        member this.Item
+            with get (i: int) =
                 let (ComplexVector v) = this
                 v.[i]
 
-        member this.conjugate = 
+        member this.conjugate =
             let (ComplexVector v) = this
             v.Conjugate() |> ComplexVector
 
-        member this.re = 
+        member this.re =
             let (ComplexVector v) = this
             v.Real() |> RealVector
 
-        member this.im = 
+        member this.im =
             let (ComplexVector v) = this
             v.Imaginary() |> RealVector
 
         member this.norm = (this * this.conjugate).Real |> sqrt
 
 
-    type RealMatrix = 
+    type RealMatrix =
         | RealMatrix  of Matrix<double>
 
         member this.Item
@@ -102,62 +98,62 @@ module MathNetNumericsMath =
 
         static member create (a : #seq<#seq<double>>) = matrix a |> RealMatrix
 
-        static member (*) (RealMatrix a, RealMatrix b) = 
+        static member (*) (RealMatrix a, RealMatrix b) =
             (a * b) |> RealMatrix
 
-        static member (*) ((a : double), RealMatrix b) = 
+        static member (*) ((a : double), RealMatrix b) =
             (a * b) |> RealMatrix
 
         static member (*) (a : RealMatrix, b : double) = b * a
 
-        static member (+) (RealMatrix a, RealMatrix b) = 
+        static member (+) (RealMatrix a, RealMatrix b) =
             (a + b) |> RealMatrix
 
-        static member (-) (RealMatrix a, RealMatrix b) = 
+        static member (-) (RealMatrix a, RealMatrix b) =
             (a - b) |> RealMatrix
 
-        static member (*) (RealVector a, RealMatrix b) : RealVector = 
+        static member (*) (RealVector a, RealMatrix b) : RealVector =
             a * b |> RealVector
 
-        static member (*) (RealMatrix a, RealVector b) : RealVector = 
+        static member (*) (RealMatrix a, RealVector b) : RealVector =
             a * b |> RealVector
 
 
-    type ComplexMatrix = 
+    type ComplexMatrix =
         | ComplexMatrix of Matrix<Complex>
 
-        static member (*) (ComplexMatrix a, ComplexMatrix b) = 
+        static member (*) (ComplexMatrix a, ComplexMatrix b) =
             (a * b) |> ComplexMatrix
 
-        static member (*) ((a : Complex), ComplexMatrix b) = 
+        static member (*) ((a : Complex), ComplexMatrix b) =
             (a * b) |> ComplexMatrix
 
         static member (*) (a : ComplexMatrix, b : Complex) = b * a
 
-        static member (+) (ComplexMatrix a, ComplexMatrix b) = 
+        static member (+) (ComplexMatrix a, ComplexMatrix b) =
             (a + b) |> ComplexMatrix
 
-        static member (-) (ComplexMatrix a, ComplexMatrix b) = 
+        static member (-) (ComplexMatrix a, ComplexMatrix b) =
             (a - b) |> ComplexMatrix
 
-        static member (*) (ComplexVector a, ComplexMatrix b) : ComplexVector = 
+        static member (*) (ComplexVector a, ComplexMatrix b) : ComplexVector =
             a * b |> ComplexVector
 
-        static member (*) (ComplexMatrix a, ComplexVector b) : ComplexVector = 
+        static member (*) (ComplexMatrix a, ComplexVector b) : ComplexVector =
             a * b |> ComplexVector
 
         static member create (a : #seq<#seq<Complex>>) = matrix a |> ComplexMatrix
 
-        static member fromRe (a : #seq<#seq<double>>) = 
+        static member fromRe (a : #seq<#seq<double>>) =
             a
             |> Seq.map (fun e -> e |> Seq.map (fun x -> cplx x))
-            |> matrix 
+            |> matrix
             |> ComplexMatrix
 
-        static member fromIm (a : #seq<#seq<double>>) = 
+        static member fromIm (a : #seq<#seq<double>>) =
             (createComplex 0. 1.) * (ComplexMatrix.fromRe a)
 
-        member this.inverse = 
+        member this.inverse =
             let (ComplexMatrix m) = this
             m.Inverse() |> ComplexMatrix
 
@@ -166,26 +162,26 @@ module MathNetNumericsMath =
                 let (ComplexMatrix v) = this
                 v.[i, j]
 
-        member this.conjugateTranspose = 
+        member this.conjugateTranspose =
             let (ComplexMatrix m) = this
             m.ConjugateTranspose() |> ComplexMatrix
 
-        member this.determinant = 
+        member this.determinant =
             let (ComplexMatrix m) = this
             m.Determinant()
 
-        member this.re = 
+        member this.re =
             let (ComplexMatrix m) = this
             let len = m.RowCount
             [| for i in 0..(len-1) -> [| for j in 0..(len-1) -> m.[i, j].Real |] |] |> RealMatrix.create
 
-        member this.im = 
+        member this.im =
             let (ComplexMatrix m) = this
             let len = m.RowCount
             [| for i in 0..(len-1) -> [| for j in 0..(len-1) -> m.[i, j].Imaginary |] |] |> RealMatrix.create
 
 
-    let realDiagonalMatrix (n : int) (e : double) = 
+    let realDiagonalMatrix (n : int) (e : double) =
         DiagonalMatrix.create n e |> RealMatrix
 
 
@@ -195,7 +191,7 @@ module MathNetNumericsMath =
         |> DiagonalMatrix.ofDiagArray
 
 
-    let complexDiagonalMatrix (n : int) (e : Complex) = 
+    let complexDiagonalMatrix (n : int) (e : Complex) =
         DiagonalMatrix.create n e |> ComplexMatrix
 
 

@@ -82,12 +82,12 @@ module Variables =
             | EllipticityRange r ->
                 let (Ellipticity s) = r.startValue
                 s
-            | WaveLengthRange r -> 
+            | WaveLengthRange r ->
                 let (WaveLength s) = r.startValue
                 s |> toNanometers
 
         member this.plotMaxValue =
-            match this with 
+            match this with
             | IncidenceAngleRange r ->
                 let (IncidenceAngle (Angle e)) = r.endValue
                 e |> toDegree
@@ -126,7 +126,7 @@ module Variables =
         | _ -> None
 
 
-    let getIncidenceAngle (v : RangedVariable) i = 
+    let getIncidenceAngle (v : RangedVariable) i =
         match v with
         | IncidenceAngleRange _ -> v.value i |> Angle |> IncidenceAngle |> Some
         | _ -> None
@@ -175,7 +175,7 @@ module Variables =
                 (w, this.incidentLightInfo.waveLength.description)
             ]
 
-        member private __.toLightDescription d =
+        member private _.toLightDescription d =
             d
             |> List.map snd
             |> List.fold (fun acc r -> acc + (if acc <> "" then lineBrake else "") + r) ""
@@ -201,15 +201,15 @@ module Variables =
             this.getLightDescription (x, y) |> this.toFullDescription
 
 
-    let calculate (f: FixedInfo) (x : RangedVariable) = 
+    let calculate (f: FixedInfo) (x : RangedVariable) =
         let l = f.incidentLightInfo
 
-        let getValue d g i = 
-            match g x i with 
+        let getValue d g i =
+            match g x i with
             | Some v -> v
             | None -> d
 
-        let getLight i = 
+        let getLight i =
             {
                 waveLength = getValue l.waveLength getWaveLength i
                 refractionIndex = l.refractionIndex
@@ -218,7 +218,7 @@ module Variables =
                 ellipticity = getValue l.ellipticity getEllipticity i
             }
 
-        let getOpticalSystem i = 
+        let getOpticalSystem i =
             let w = getValue l.waveLength getWaveLength i
             f.opticalSystem.getSystem w
 
@@ -229,15 +229,15 @@ module Variables =
     let calculate3D (f: FixedInfo) (x : RangedVariable) (y : RangedVariable) =
         let l = f.incidentLightInfo
 
-        let getValue d g i j = 
-            match g x i with 
+        let getValue d g i j =
+            match g x i with
             | Some v -> v
             | None ->
-                match g y j with 
+                match g y j with
                 | Some w -> w
                 | None -> d
 
-        let getLight i j = 
+        let getLight i j =
             {
                 waveLength = getValue l.waveLength getWaveLength i j
                 refractionIndex = l.refractionIndex
@@ -246,7 +246,7 @@ module Variables =
                 ellipticity = getValue l.ellipticity getEllipticity i j
             }
 
-        let getOpticalSystem i j = 
+        let getOpticalSystem i j =
             let w = getValue l.waveLength getWaveLength i j
             f.opticalSystem.getSystem w
 
@@ -257,17 +257,17 @@ module Variables =
         |> Array.ofSeq
 
 
-    let calculateOpticalProp 
-        (c : OpticalPropertyComponent) 
+    let calculateOpticalProp
+        (c : OpticalPropertyComponent)
         (t : OpticalTransformation)
         (i : Index, j : Index)
         (u : UseReIm)
-        (o : OpticalPropertiesWithDisp) 
-        (r : Range<WaveLength>) = 
+        (o : OpticalPropertiesWithDisp)
+        (r : Range<WaveLength>) =
 
-        let f w = 
+        let f w =
             let p =((o.getProperties w).opticalComponent c).[i, j] |> t.transform
-            match u with 
+            match u with
             | UseRe -> p.Real
             | UseIm -> p.Imaginary
 

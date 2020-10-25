@@ -15,7 +15,7 @@ module StandardSystems =
 
     /// Vacuum / standard transparent glass film / vacuum system with some incident light.
     let transparentGlassFilm thickness light =
-        { incidentLightInfo = light; opticalSystem = (BaseOpticalSystem.transparentGlasslFilmSystem thickness).fullSystem.dispersive }
+        { incidentLightInfo = light; opticalSystem = (BaseOpticalSystem.transparentGlassFilmSystem thickness).fullSystem.dispersive }
 
 
     /// Vacuum / standard biaxial thin film / vacuum system with some incident light.

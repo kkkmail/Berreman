@@ -124,8 +124,8 @@ module Solvers =
                 transmitted = t
             }
 
-        member __.cfm = cfmVal
-        member __.emSys = ems
+        member _.cfm = cfmVal
+        member _.emSys = ems
 
         new (info : IncidentLightInfo, system : BaseOpticalSystem) = BaseOpticalSystemSolver (InfoBased (info, system))
         new (emf : EmField, system : ShortOpticalSystem) = BaseOpticalSystemSolver (EmFieldBased (emf, system))
@@ -211,8 +211,28 @@ module Solvers =
                     |> snd
                     |> List.map (fun (r, t) -> { reflected = r; transmitted = t })
                     |> Solution.create incidentLight
-                | Wedge w ->
-                    failwith "Not implemented yet."
+                | Wedge s ->
+                    let angle = s.angle
+                    let ems = BaseOpticalSystemSolver(info.rotateY angle, system.baseSystem.rotateY angle).emSys
+                    let start = (ems.transmitted.propagate s, [ (Some ems.reflected, None) ])
+
+                    let downSys : ShortOpticalSystem =
+                        {
+                            films = []
+                            lower = system.lower.rotateY angle
+                        }
+
+                    let transmit (emf, acc) =
+                        let sys = BaseOpticalSystemSolver(emf, downSys).emSys
+                        (None, sys.transmitted.rotateY (-angle) |> Some) :: acc
+
+                    let r =
+                        start
+                        |> transmit
+                        |> List.map (fun (r, t) -> { reflected = r; transmitted = t })
+                        |> Solution.create ems.incident
+
+                    r
 
         // These must be functions as otherwise we will have an infinite loop.
         let solS () = OpticalSystemSolver (info.s, system, parameters)

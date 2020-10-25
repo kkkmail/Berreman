@@ -2,19 +2,17 @@
 
 module FieldFunctions =
 
-    open System.Numerics
     open MathNetNumericsMath
-    open MatrixExp
 
     open Constants
     open Geometry
     open Fields
-    open Media
-    open BerremanMatrix
-    open System.ComponentModel
-    open System.Net.Configuration
     open Solvers
-    open Geometry
+
+    let toValue errMessage x =
+        match x with
+        | Some v -> v
+        | None -> failwith errMessage
 
 
     type ComplexVector3
@@ -217,19 +215,31 @@ module FieldFunctions =
                 | AzimuthR -> None
                 | AzimuthT -> None
 
+
         member this.stokesI : StokesVector =
             match this with
-            | Single b ->
-                match b.emSys.incident.stokesVector with
-                | Some v -> v
-                | None -> failwith "We should never be here. Refactor..."
-            | Multiple m -> failwith "Not implemented yet..."
-
+            | Single b -> b.emSys.incident.stokesVector |> Option.defaultValue StokesVector.Zero
+            | Multiple m -> m.incident.stokesVector |> Option.defaultValue StokesVector.Zero
 
         member this.stokesR : StokesVector =
             match this with
-            | Single b ->
-                match b.emSys.reflected.stokesVector with
-                | Some v -> v
-                | None -> failwith "We should never be here. Refactor..."
-            | Multiple m -> failwith "Not implemented yet..."
+            | Single b -> b.emSys.reflected.stokesVector |> Option.defaultValue StokesVector.Zero
+            | Multiple m ->
+                m.rt
+                |> List.map (fun e -> e.reflected)
+                |> List.choose id
+                |> List.map (fun e -> e.stokesVector)
+                |> List.choose id
+                |> List.sum
+
+        member this.stokesT : StokesVector =
+            match this with
+            | Single b -> b.emSys.transmitted.stokesVector |> Option.defaultValue StokesVector.Zero
+            | Multiple m ->
+                m.rt
+                |> List.map (fun e -> e.transmitted)
+                |> List.choose id
+                |> List.map (fun e -> e.stokesVector)
+                |> List.choose id
+                |> List.sum
+

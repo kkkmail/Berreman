@@ -39,7 +39,7 @@ module Standard =
 
     type OpticalProperties
         with
-        
+
         static member transparentGlass = Eps.transparentGlass |> OpticalProperties.fromEpsion
         static member uniaxialCrystal = Eps.uniaxialCrystal |> OpticalProperties.fromEpsion
         static member biaxialCrystal = Eps.biaxialCrystal |> OpticalProperties.fromEpsion
@@ -82,7 +82,7 @@ module Standard =
             }
 
         /// Standard vacuum / transparent glass film / vacuum system.
-        static member transparentGlasslFilmSystem thickness =
+        static member transparentGlassFilmSystem thickness =
             {
                 description = Some "Standard vacuum / transparent glass film / vacuum system."
                 upper = OpticalProperties.vacuum
@@ -108,10 +108,6 @@ module Standard =
                 lower = OpticalProperties.vacuum
             }
 
-        //=======================================
-        // Add any custom values after this line.
-        //=======================================
-
         /// Standard vacuum / transparent glass system with refraction index n.
         static member getTransparentGlassSystem n =
             {
@@ -120,6 +116,10 @@ module Standard =
                 films = []
                 lower = OpticalProperties.getTransparentGlass n
             }
+
+        //=======================================
+        // Add any custom values after this line.
+        //=======================================
 
 
     let private w600nm = 600.0
@@ -130,5 +130,35 @@ module Standard =
 
 
     /// 600 nm S-polarized light falling at some incidence angle (in degrees).
-    let light600nmInclinedDegreelLPs angleDegree =
+    let light600nmInclinedDegreeLPs angleDegree =
         IncidentLightInfo.createInclined (WaveLength.nm w600nm) (Angle.degree angleDegree |> IncidenceAngle.create)
+
+
+    type OpticalSystem
+        with
+
+        /// Standard vacuum / biaxial crystal substrate / vacuum system with thick plate.
+        static member biaxialCrystalSubstrateSystem thickness =
+            {
+                description = Some "Standard vacuum / biaxial crystal film / transparent glass system."
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate = { properties = OpticalProperties.biaxialCrystal; thickness = thickness } |> Plate |> Some
+                lower = OpticalProperties.vacuum
+            }
+
+        /// Standard vacuum / biaxial crystal wedge / vacuum system with thick plate.
+        static member biaxialCrystalWedgeSystem thickness angle =
+            {
+                description = Some "Standard vacuum / biaxial crystal film / transparent glass system."
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate =
+                    {
+                        layer = { properties = OpticalProperties.biaxialCrystal; thickness = thickness }
+                        angle = angle
+                    }
+                    |> Wedge
+                    |> Some
+                lower = OpticalProperties.vacuum
+            }

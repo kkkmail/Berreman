@@ -3,7 +3,6 @@
 module Media =
 
     open MaterialProperties
-    open Fields
     open Geometry
 
 
@@ -14,7 +13,7 @@ module Media =
         static member nm t = t * Constants.nm |> Thickness
         static member mkm t = t * Constants.mkm |> Thickness
         static member mm t = t * Constants.mm |> Thickness
-        member __.toInfinity () = Thickness.Infinity
+        member _.toInfinity () = Thickness.Infinity
 
 
     type Layer =

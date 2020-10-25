@@ -38,6 +38,8 @@ module Geometry =
 
     type Angle =
         | Angle of double
+
+        member angle.value = let (Angle a) = angle in a
         static member degree a = a * degree |> Angle
         static member radian r = r |> Angle
         static member zero = Angle.radian 0.0
@@ -112,6 +114,11 @@ module Geometry =
                 v.[i]
 
          static member create a = RealVector.create a |> RealVector4
+        static member (+) (RealVector4 a, RealVector4 b) = a + b |> RealVector4
+        static member (-) (RealVector4 a, RealVector4 b) = a - b |> RealVector4
+
+        static member Zero
+            with get () = [ 0.0; 0.0; 0.0; 0.0 ] |> RealVector4.create
 
 
     type ComplexVector2 =
