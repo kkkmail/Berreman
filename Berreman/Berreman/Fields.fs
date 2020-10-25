@@ -1,6 +1,6 @@
 ﻿namespace Berreman
 
-module Fields = 
+module Fields =
 
     //open ExtremeNumericsMath
 
@@ -11,8 +11,13 @@ module Fields =
     open MaterialProperties
     open Constants
 
-    // CGS usits are used.
-    // TODO kk:20180922 - Get rid of boilier plate code below.
+    // CGS units are used.
+    // TODO kk:20180922 - Get rid of boiler plate code below.
+
+
+    type RT =
+        | Reflected
+        | Transmitted
 
 
     /// Electromagnetic field E.
@@ -117,7 +122,7 @@ module Fields =
 
 
     /// Poynting vector S.
-    type S = 
+    type S =
         | S of RealVector3
 
 
@@ -155,12 +160,13 @@ module Fields =
         | WaveLength of double
         with
         member this.value = let (WaveLength w) = this in w
-        static member nm l = l * Constants.nm |> WaveLength
-        static member mkm l = l * Constants.mkm |> WaveLength
+        static member nm l = l * nm |> WaveLength
+        static member mkm l = l * mkm |> WaveLength
         member this.description =
             let (WaveLength w) = this
-            if w < Constants.mkm then sprintf "wavelength: %A nm" (w / Constants.nm)
-            else sprintf "wavelength: %A mkm" (w / Constants.mkm)
+            if w < mkm then sprintf "wavelength: %A nm" (w / nm)
+            else sprintf "wavelength: %A mkm" (w / mkm)
+
 
     type Ellipticity =
         | Ellipticity of float
@@ -171,17 +177,18 @@ module Fields =
         static member defaultValue = Ellipticity 0.0
         static member minValue = Ellipticity -1.0
         static member maxValue = Ellipticity 1.0
-        member this.description = 
+        member this.description =
             let (Ellipticity e) = this
             sprintf "ellipticity: %A" e
 
 
     type Polarization =
         | Polarization of Angle
+
         static member create (Angle p) =
             p % (pi / 2.0) |> Angle |> Polarization
 
-        member this.crossed = 
+        member this.crossed =
             let (Polarization (Angle p)) = this
             Angle (p + (pi / 2.0)) |> Polarization
 
@@ -190,19 +197,19 @@ module Fields =
         // TODO Check angle
         static member s = Angle 0.0 |> Polarization
         static member p = Polarization.s.crossed
-        member this.description = 
+        member this.description =
             let (Polarization (Angle a)) = this
             sprintf "polarization: %A degree(s)" (a / degree)
 
 
-    type IncidenceAngle = 
+    type IncidenceAngle =
         | IncidenceAngle of Angle
         static member create (Angle p) =
             (p % (pi / 2.0) + pi) % (pi / 2.0) |> Angle |> IncidenceAngle
 
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
-        member this.description = 
+        member this.description =
             let (IncidenceAngle (Angle a)) = this
             sprintf "incidence angle: %A degree(s)" (a / degree)
 
@@ -215,13 +222,13 @@ module Fields =
         static member create n (IncidenceAngle(Angle f)) = n * (sin f) |> N1SinFita
         static member normal = N1SinFita 0.0
 
-        member this.complex = 
+        member this.complex =
             let (N1SinFita nsf) = this
             cplx nsf
         member this.description = this.ToString()
 
 
-    type IncidentLightInfo = 
+    type IncidentLightInfo =
         {
             waveLength : WaveLength
             refractionIndex : RefractionIndex
@@ -229,7 +236,7 @@ module Fields =
             polarization : Polarization
             ellipticity : Ellipticity
         }
-        member this.getEH (Polarization (Angle beta)) = 
+        member this.getEH (Polarization (Angle beta)) =
             let (RefractionIndex n1) = this.refractionIndex
             let (IncidenceAngle (Angle fita)) = this.incidenceAngle
 
@@ -258,12 +265,12 @@ module Fields =
         member this.ehS = this.getEH Polarization.s
         member this.ehP = this.getEH Polarization.p
 
-        member this.n1SinFita = 
+        member this.n1SinFita =
             let (IncidenceAngle (Angle a)) = this.incidenceAngle
             let (RefractionIndex n) = this.refractionIndex
             n * (sin a) |> N1SinFita
 
-        static member create w = 
+        static member create w =
             {
                 waveLength = w
                 refractionIndex = RefractionIndex.vacuum
@@ -272,7 +279,7 @@ module Fields =
                 ellipticity = Ellipticity.defaultValue
             }
 
-        static member createInclined w a = 
+        static member createInclined w a =
             {
                 waveLength = w
                 refractionIndex = RefractionIndex.vacuum
@@ -281,7 +288,7 @@ module Fields =
                 ellipticity = Ellipticity.defaultValue
             }
 
-        member this.s = 
+        member this.s =
             {
                 waveLength = this.waveLength
                 refractionIndex = this.refractionIndex
@@ -290,7 +297,7 @@ module Fields =
                 ellipticity = Ellipticity.defaultValue
             }
 
-        member this.p = 
+        member this.p =
             {
                 waveLength = this.waveLength
                 refractionIndex = this.refractionIndex
@@ -299,7 +306,7 @@ module Fields =
                 ellipticity = Ellipticity.defaultValue
             }
 
-    
+
 
 
     type EmFieldXY =
@@ -329,7 +336,7 @@ module Fields =
             let (H h) = emf.h
             (ComplexVector3.cross e h.conjugate).re |> S
 
-        member emf.normal : RealVector3 option = 
+        member emf.normal : RealVector3 option =
             let (S s) = emf.s
             let norm = s.norm
 
@@ -342,9 +349,9 @@ module Fields =
         /// Basis in the system of coordinates where ez is the directon of propagation of incident light,
         /// ey lays in the plane of media boundary and is orthogonal to directon of propagation,
         /// and ex = cross ey ez.
-        member emf.complexBasis = 
-            thread emf.complexNormal (fun cz -> 
-                let cy = 
+        member emf.complexBasis =
+            thread emf.complexNormal (fun cz ->
+                let cy =
                     if (cz * ComplexBasis3.defaultValue.cZ).Real >= 0.0
                     then [ cplx 0.0; cplx 1.0; cplx 0.0 ] |> ComplexVector3.create
                     else  [ cplx 0.0; cplx -1.0; cplx 0.0 ] |> ComplexVector3.create
@@ -357,14 +364,14 @@ module Fields =
 
         static member create (emXY : EmFieldXY, eZ, hZ) : EmField =
             {
-                waveLength = emXY.waveLength 
-                n1SinFita = emXY.n1SinFita 
+                waveLength = emXY.waveLength
+                n1SinFita = emXY.n1SinFita
                 opticalProperties = emXY.opticalProperties
                 e = [ emXY.e2.x; emXY.e2.y; eZ ] |> ComplexVector.create |> ComplexVector3 |> E
                 h = [ emXY.h2.x; emXY.h2.y; hZ ] |> ComplexVector.create |> ComplexVector3 |> H
             }
 
-        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField = 
+        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
             let (Ellipticity e) = info.ellipticity
             let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
             let a90 = e / sqrt(1.0 + e * e) |> cplx
@@ -379,7 +386,7 @@ module Fields =
                 h = a0 * h0 + cplxI * a90 * h90
             }
 
-        member emf.rotate (Rotation r) : EmField = 
+        member emf.rotate (Rotation r) : EmField =
             let c = r.toComplex()
             let cInv = c.inverse
 
@@ -391,8 +398,8 @@ module Fields =
 
         /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
         member emf.amplitudeS =
-            let cX = 
-                match emf.complexBasis with 
+            let cX =
+                match emf.complexBasis with
                 | Some b -> b.cX
                 | None -> ComplexBasis3.defaultValue.cX // If the value is too small, then we don't care about the direction.
 
@@ -400,9 +407,9 @@ module Fields =
             (cX * e)
 
         /// p = y' for transmitted but -y' for reflected.
-        member emf.amplitudeP = 
-            let cY = 
-                match emf.complexBasis with 
+        member emf.amplitudeP =
+            let cY =
+                match emf.complexBasis with
                 | Some b -> b.cY
                 | None -> ComplexBasis3.defaultValue.cY // If the value is too small, then we don't care about the direction.
 
@@ -417,23 +424,28 @@ module Fields =
             transmitted : EmField
         }
 
+    type ReflectedTransmitted =
+        {
+            reflected : EmField option
+            transmitted : EmField option
+        }
 
     type MultipleEmFieldSystem =
         {
             incident : EmField
 
             /// List of reflected * transmitted
-            rt : List<EmField option * EmField option>
+            rt : List<ReflectedTransmitted>
         }
 
 
-    type StokesVector = 
+    type StokesVector =
         | StokesVector of RealVector4
 
         static member create v = v |> RealVector4.create |> StokesVector
 
 
-    type StokesSystem = 
+    type StokesSystem =
         {
             incidentStokes : StokesVector
             reflectedStokes : StokesVector
@@ -441,9 +453,10 @@ module Fields =
         }
 
 
-    type MuellerMatrix = 
+    type MuellerMatrix =
         | MuellerMatrix of RealMatrix4x4
-        static member create (kSS : Complex) (kSP : Complex) (kPS : Complex) (kPP : Complex) = 
+
+        static member create (kSS : Complex) (kSP : Complex) (kPS : Complex) (kPP : Complex) =
             let conjugate (a : Complex) = a.conjugate
 
             (
@@ -478,8 +491,20 @@ module Fields =
             ).re
             |> MuellerMatrix
 
-        static member (*) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), StokesVector (RealVector4 (RealVector b))) : StokesVector = 
+        static member fromEmFields (s : EmField) (p : EmField) =
+            let rSS = s.amplitudeS
+            let rSP = s.amplitudeP
+
+            let rPS = p.amplitudeS
+            let rPP = p.amplitudeP
+
+            MuellerMatrix.create rSS rSP rPS rPP
+
+        static member (*) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), StokesVector (RealVector4 (RealVector b))) : StokesVector =
             a * b |> StokesVector.create
 
-        static member (+) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), MuellerMatrix (RealMatrix4x4 (RealMatrix b))) : MuellerMatrix = 
+        static member (+) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), MuellerMatrix (RealMatrix4x4 (RealMatrix b))) : MuellerMatrix =
             a + b |> RealMatrix |> RealMatrix4x4 |> MuellerMatrix
+
+        static member Zero
+            with get () = MuellerMatrix RealMatrix4x4.Zero

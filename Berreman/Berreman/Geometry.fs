@@ -261,6 +261,16 @@ module Geometry =
 
         static member create a = RealMatrix.create a |> RealMatrix4x4
 
+        static member Zero
+            with get () =
+                [
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                ]
+                |> RealMatrix4x4.create
+
 
     type ComplexMatrix3x3 =
         | ComplexMatrix3x3 of ComplexMatrix
@@ -336,6 +346,7 @@ module Geometry =
 
         static member create l =
             let fail() = failwith "EigenBasis::Invalid input data."
+
             match l with
             | [] -> fail()
             | h0 :: t ->
@@ -348,7 +359,7 @@ module Geometry =
                             v0 = fst h0
                             v1 = fst h1
                             e0 = snd h0
-                            e1= snd h1
+                            e1 = snd h1
                         }
                     | _ -> fail()
 

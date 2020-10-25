@@ -196,8 +196,8 @@ module FieldFunctions =
             match this with
             | Single b -> b.emSys.func f |> Some
             | Multiple m ->
-                let r () = m.rt |> List.choose (fun (r, _) -> r)
-                let t () = m.rt |> List.choose (fun (_, t) -> t)
+                let r () = m.rt |> List.choose (fun e -> e.reflected)
+                let t () = m.rt |> List.choose (fun e -> e.transmitted)
                 let fn g l = l |> List.fold (fun acc e -> acc + g e m.incident) 0.0 |> Some
 
                 match f with
