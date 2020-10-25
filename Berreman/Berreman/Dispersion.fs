@@ -119,7 +119,7 @@ module Dispersion =
             }
 
 
-    type InclinedLayer
+    type WedgeLayer
         with
         member this.dispersive =
             {

@@ -9,7 +9,7 @@ open Xunit.Abstractions
 open MatrixComparison
 
 
-type MatriExpTestData =
+type MatrixExpTestData =
     {
         matrix : ComplexMatrix
         exp : ComplexMatrix
@@ -115,8 +115,8 @@ type MatrixExpTests(output : ITestOutputHelper) =
             }
         |]
 
-    // Complex matrix and expected matrix exponent
-    member _.runTest (d : MatriExpTestData) = verifyMatrixEquality output (d.matrix.matrixExp()) d.exp
+    /// Complex matrix and expected matrix exponent.
+    member _.runTest (d : MatrixExpTestData) = verifyMatrixEquality output (d.matrix.matrixExp()) d.exp
 
     [<Fact>]
     member this.matrixExpTest0 () = this.runTest (data.[0])

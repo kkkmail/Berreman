@@ -1,6 +1,5 @@
 ﻿namespace BerremanTests
 
-open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
@@ -26,7 +25,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
     let data =
         [
             {
-                description = "One layer homegenious media, normal incidence angle."
+                description = "One layer homogeneous media, normal incidence angle."
                 thinFilms =
                     [
                         {
@@ -53,7 +52,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
             }
 
             {
-                description = "One layer homegenious media, 85 degrees incidence angle."
+                description = "One layer homogeneous media, 85 degrees incidence angle."
                 thinFilms =
                     [
                         {

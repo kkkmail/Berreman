@@ -6,22 +6,34 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 
 /// !!! DO NOT CHANGE ANY VALUES HERE !!!
-/// Standard optical properties without dispresion to be used in various simple calculations and tests.
+/// Standard optical properties without dispersion to be used in various simple calculations and tests.
 /// If some other values are desired, introduce another module and set the new values there OR add them at the end of this module.
 module Standard =
+
+    let private w600nm = 600.0
+
+
+    /// 600 nm S-polarized light falling at normal.
+    let light600nmNormalLPs = WaveLength.nm w600nm |> IncidentLightInfo.create
+
+
+    /// 600 nm S-polarized light falling at some incidence angle (in degrees).
+    let light600nmInclinedDegreeLPs angleDegree =
+        IncidentLightInfo.createInclined (WaveLength.nm w600nm) (Angle.degree angleDegree |> IncidenceAngle.create)
+
 
     type RefractionIndex
         with
 
-        /// Standard trnasparent glass with refractive index 1.52.
+        /// Standard transparent glass with refractive index 1.52.
         static member transparentGlass = RefractionIndex 1.52
+
+        static member transparentGlass200 = RefractionIndex 2.00
+        static member getTransparentGlass n = RefractionIndex n
 
         //=======================================
         // Add any custom values after this line.
         //=======================================
-
-        static member transparentGlass200 = RefractionIndex 2.00
-        static member getTransparentGlass n = RefractionIndex n
 
 
     type Eps
@@ -29,12 +41,11 @@ module Standard =
         static member transparentGlass = RefractionIndex.transparentGlass |> Eps.fromRefractionIndex
         static member uniaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65) |> Eps.fromRefractionIndex
         static member biaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75) |> Eps.fromRefractionIndex
+        static member getTransparentGlass n = RefractionIndex.getTransparentGlass n |> Eps.fromRefractionIndex
 
         //=======================================
         // Add any custom values after this line.
         //=======================================
-
-        static member getTransparentGlass n = RefractionIndex.getTransparentGlass n |> Eps.fromRefractionIndex
 
 
     type OpticalProperties
@@ -43,12 +54,11 @@ module Standard =
         static member transparentGlass = Eps.transparentGlass |> OpticalProperties.fromEpsion
         static member uniaxialCrystal = Eps.uniaxialCrystal |> OpticalProperties.fromEpsion
         static member biaxialCrystal = Eps.biaxialCrystal |> OpticalProperties.fromEpsion
+        static member getTransparentGlass n = Eps.getTransparentGlass n |> OpticalProperties.fromEpsion
 
         //=======================================
         // Add any custom values after this line.
         //=======================================
-
-        static member getTransparentGlass n = Eps.getTransparentGlass n |> OpticalProperties.fromEpsion
 
 
     type BaseOpticalSystem
@@ -122,35 +132,23 @@ module Standard =
         //=======================================
 
 
-    let private w600nm = 600.0
-
-
-    /// 600 nm S-polarized light falling at normal.
-    let light600nmNormalLPs = WaveLength.nm w600nm |> IncidentLightInfo.create
-
-
-    /// 600 nm S-polarized light falling at some incidence angle (in degrees).
-    let light600nmInclinedDegreeLPs angleDegree =
-        IncidentLightInfo.createInclined (WaveLength.nm w600nm) (Angle.degree angleDegree |> IncidenceAngle.create)
-
-
     type OpticalSystem
         with
 
-        /// Standard vacuum / biaxial crystal substrate / vacuum system with thick plate.
+        /// Standard vacuum / biaxial crystal substrate / vacuum system.
         static member biaxialCrystalSubstrateSystem thickness =
             {
-                description = Some "Standard vacuum / biaxial crystal film / transparent glass system."
+                description = Some "Standard vacuum / biaxial crystal thick plate / vacuum system."
                 upper = OpticalProperties.vacuum
                 films = []
                 substrate = { properties = OpticalProperties.biaxialCrystal; thickness = thickness } |> Plate |> Some
                 lower = OpticalProperties.vacuum
             }
 
-        /// Standard vacuum / biaxial crystal wedge / vacuum system with thick plate.
+        /// Standard vacuum / biaxial crystal wedge / vacuum system.
         static member biaxialCrystalWedgeSystem thickness angle =
             {
-                description = Some "Standard vacuum / biaxial crystal film / transparent glass system."
+                description = Some "Standard vacuum / biaxial crystal wedge / vacuum system."
                 upper = OpticalProperties.vacuum
                 films = []
                 substrate =
@@ -162,3 +160,7 @@ module Standard =
                     |> Some
                 lower = OpticalProperties.vacuum
             }
+
+        //=======================================
+        // Add any custom values after this line.
+        //=======================================

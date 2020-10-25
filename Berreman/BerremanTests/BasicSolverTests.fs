@@ -369,19 +369,17 @@ type BasicSolverTests(output : ITestOutputHelper) =
     [<Fact>]
     member _.muellerMatrixR_Test0 () = runTestMuellerMatrixR1 (data.[0])
 
-    // Useless
-    //[<Fact>]
-    //member _.muellerMatrixR_Test1 () = runTestMuellerMatrixR (data.[1])
+    [<Fact>]
+    member _.muellerMatrixR_Test1 () = runTestMuellerMatrixR1 (data.[1])
 
-    //[<Fact>]
-    //member _.muellerMatrixR_Test2 () = runTestMuellerMatrixR (data.[2])
+    [<Fact>]
+    member _.muellerMatrixR_Test2 () = runTestMuellerMatrixR1 (data.[2])
 
-    //[<Fact>]
-    //member _.muellerMatrixR_Test3 () = runTestMuellerMatrixR (data.[3])
+    [<Fact>]
+    member _.muellerMatrixR_Test3 () = runTestMuellerMatrixR1 (data.[3])
 
-    // Does not work yet.
-    //[<Fact>]
-    //member _.muellerMatrixR_Random () = runTestMuellerMatrixR1 randomData
+    [<Fact>]
+    member _.muellerMatrixR_Random () = runTestMuellerMatrixR1 randomData
 
     [<Fact>]
     member _.muellerMatrixR_TransparentGlassSystem () =

@@ -213,7 +213,7 @@ module Solvers =
                     |> Solution.create incidentLight
                 | Wedge s ->
                     let angle = s.angle
-                    let ems = BaseOpticalSystemSolver(info.rotateY angle, system.baseSystem.rotateY angle).emSys
+                    let ems = BaseOpticalSystemSolver(info, system.baseSystem).emSys
                     let start = (ems.transmitted.propagate s, [ (Some ems.reflected, None) ])
 
                     let downSys : ShortOpticalSystem =
@@ -222,8 +222,8 @@ module Solvers =
                             lower = system.lower.rotateY angle
                         }
 
-                    let transmit (emf, acc) =
-                        let sys = BaseOpticalSystemSolver(emf, downSys).emSys
+                    let transmit (emf : EmField, acc) =
+                        let sys = BaseOpticalSystemSolver(emf.rotateY angle, downSys).emSys
                         (None, sys.transmitted.rotateY (-angle) |> Some) :: acc
 
                     let r =

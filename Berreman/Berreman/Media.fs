@@ -26,7 +26,7 @@ module Media =
         member this.rotatePiX = this.rotate Rotation.rotatePiX
 
 
-    type InclinedLayer =
+    type WedgeLayer =
         {
             layer : Layer
             angle : Angle
@@ -34,7 +34,7 @@ module Media =
 
     type Substrate =
         | Plate of Layer
-        | Wedge of InclinedLayer
+        | Wedge of WedgeLayer
 
         member this.properties =
             match this with

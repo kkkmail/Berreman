@@ -171,7 +171,7 @@ module BerremanMatrix =
             | Thickness t -> m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * t / w))) |> BerremanMatrixPropagated
             | Infinity -> failwith "TODO: Implement infinite thickness by making that layer the output media."
 
-        static member propagateInclinedLayer (l : InclinedLayer) (em : EmField) : BerremanMatrixPropagated =
+        static member propagateInclinedLayer (l : WedgeLayer) (em : EmField) : BerremanMatrixPropagated =
             if abs em.n1SinFita.fita.value < almostZero
             then BerremanMatrixPropagated.propagateLayer l.layer em
             else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
@@ -246,5 +246,5 @@ module BerremanMatrix =
         member this.propagate (s : Layer) : EmField =
             BerremanMatrixPropagated.propagateLayer s this |> propagate this
 
-        member this.propagate (s : InclinedLayer) : EmField =
+        member this.propagate (s : WedgeLayer) : EmField =
             BerremanMatrixPropagated.propagateInclinedLayer s this |> propagate this
