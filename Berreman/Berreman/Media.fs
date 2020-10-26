@@ -1,5 +1,7 @@
 ﻿namespace Berreman
 
+open Berreman.Fields
+
 module Media =
 
     open MaterialProperties
@@ -29,7 +31,7 @@ module Media =
     type WedgeLayer =
         {
             layer : Layer
-            angle : Angle
+            angle : WedgeAngle
         }
 
     type Substrate =

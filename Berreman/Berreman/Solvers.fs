@@ -212,7 +212,7 @@ module Solvers =
                     |> List.map (fun (r, t) -> { reflected = r; transmitted = t })
                     |> Solution.create incidentLight
                 | Wedge s ->
-                    let angle = s.angle
+                    let (WedgeAngle angle) = s.angle
                     let ems = BaseOpticalSystemSolver(info, system.baseSystem).emSys
                     let start = (ems.transmitted.propagate s, [ (Some ems.reflected, None) ])
 

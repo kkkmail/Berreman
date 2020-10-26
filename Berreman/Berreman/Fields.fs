@@ -170,36 +170,26 @@ module Fields =
 
     type Ellipticity =
         | Ellipticity of float
-        static member create (e : double) =
-            Ellipticity (max (min e 1.0) -1.0)
 
+        member this.value = let (Ellipticity w) = this in w
+        static member create (e : double) = Ellipticity (max (min e 1.0) -1.0)
         static member (~-) (Ellipticity a) = -a |> Ellipticity
         static member defaultValue = Ellipticity 0.0
         static member minValue = Ellipticity -1.0
         static member maxValue = Ellipticity 1.0
-        member this.description =
-            let (Ellipticity e) = this
-            sprintf "ellipticity: %A" e
+        member this.description = sprintf "ellipticity: %A" this.value
 
 
     type Polarization =
         | Polarization of Angle
 
-        static member create (Angle p) =
-            p % (pi / 2.0) |> Angle |> Polarization
-
-        member this.crossed =
-            let (Polarization (Angle p)) = this
-            Angle (p + (pi / 2.0)) |> Polarization
-
+        member angle.value = let (Polarization a) = angle in a.value
+        static member create (Angle p) = p % (pi / 2.0) |> Angle |> Polarization
+        member this.crossed = Angle (this.value + (pi / 2.0)) |> Polarization
         static member defaultValue = Angle 0.0 |> Polarization
-
-        // TODO Check angle
         static member s = Angle 0.0 |> Polarization
         static member p = Polarization.s.crossed
-        member this.description =
-            let (Polarization (Angle a)) = this
-            sprintf "polarization: %A degree(s)" (a / degree)
+        member this.description = sprintf "polarization: %A degree(s)" (this.value / degree)
 
 
     type IncidenceAngle =
@@ -210,12 +200,17 @@ module Fields =
         member angle.value = let (IncidenceAngle a) = angle in a.value
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
-        member this.description =
-            let (IncidenceAngle (Angle a)) = this
-            sprintf "incidence angle: %A degree(s)" (a / degree)
-
+        member this.description = sprintf "incidence angle: %A degree(s)" (this.value / degree)
         static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
         static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle
+
+
+    type WedgeAngle =
+        | WedgeAngle of Angle
+
+        member angle.value = let (WedgeAngle a) = angle in a.value
+        member this.description = sprintf "wedge angle: %A degree(s)" (this.value / degree)
+        static member defaultValue = 0.0 |> Angle |> WedgeAngle
 
 
     /// n1 * sin(fita), where fita is the incidence angle and n1 is the refraction index of upper media.

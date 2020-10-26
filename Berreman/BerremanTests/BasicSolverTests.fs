@@ -525,5 +525,5 @@ type BasicSolverTests(output : ITestOutputHelper) =
     member _.muellerMatrixT_BiaxialCrystalWedgeSystem_Polarized_WithEllipticity () =
         let descr = "Biaxial Crystal 1000 nm, NORMAL incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmNormalLPs with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
-        runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalWedgeSystem (Thickness.nm 1000.0) (Angle.degree 10.0))
+        runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalWedgeSystem (Thickness.nm 1000.0) (Angle.degree 10.0 |> WedgeAngle))
 

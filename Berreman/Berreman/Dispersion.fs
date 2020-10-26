@@ -90,13 +90,13 @@ module Dispersion =
     type InclinedLayerWithDisp =
         {
             layerWithDisp : LayerWithDisp
-            angle : Angle
+            angle : WedgeAngle
         }
 
-        member this.getInclinedLayer w =
+        member this.getInclinedLayer w v =
             {
                 layer = this.layerWithDisp.getLayer w
-                angle = this.angle
+                angle = v
             }
 
 
@@ -104,10 +104,10 @@ module Dispersion =
         | PlateWithDisp of LayerWithDisp
         | WedgeWithDisp of InclinedLayerWithDisp
 
-        member this.getSubstrate w =
+        member this.getSubstrate w v =
             match this with
             | PlateWithDisp e -> e.getLayer w |> Plate
-            | WedgeWithDisp e -> e.getInclinedLayer w |> Wedge
+            | WedgeWithDisp e -> e.getInclinedLayer w v |> Wedge
 
 
     type Layer
@@ -145,17 +145,22 @@ module Dispersion =
             lowerWithDisp : OpticalPropertiesWithDisp
         }
 
-        member this.getSystem w =
+        member this.getSystem w v =
             {
                 description = this.description
                 upper = this.upperWithDisp.getProperties w
                 films = this.filmsWithDisp |> List.map (fun f -> f.getLayer w)
                 substrate =
                     match this.substrateWithDisp with
-                    | Some s -> s.getSubstrate w |> Some
+                    | Some s -> s.getSubstrate w v |> Some
                     | None -> None
                 lower = this.lowerWithDisp.getProperties w
             }
+
+        member this.getWedgeAngle() =
+            match this.substrateWithDisp with
+            | Some (WedgeWithDisp w) -> Some w.angle
+            | _ -> None
 
 
     type OpticalSystem

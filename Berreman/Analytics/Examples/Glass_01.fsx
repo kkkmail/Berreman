@@ -28,7 +28,7 @@ let nh1 = RefractionIndexThickness (RefractionIndex 1.78052, Thickness.mm (0.001
 let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00)
 
 
-let incidentLight = light600nmInclinedDegreelLPs incidenceAngleDegree
+let incidentLight = light600nmInclinedDegreeLPs incidenceAngleDegree
 
 let wavelengthRange =
     Range<_>.create numberOfPoints (WaveLength.nm 300.0) (WaveLength.nm 700.0)
