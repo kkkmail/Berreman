@@ -28,6 +28,7 @@ module Standard =
         /// Standard transparent glass with refractive index 1.52.
         static member transparentGlass = RefractionIndex 1.52
 
+        static member transparentGlass150 = RefractionIndex 1.50
         static member transparentGlass200 = RefractionIndex 2.00
         static member getTransparentGlass n = RefractionIndex n
 
@@ -39,6 +40,7 @@ module Standard =
     type Eps
         with
         static member transparentGlass = RefractionIndex.transparentGlass |> Eps.fromRefractionIndex
+        static member transparentGlass150 = RefractionIndex.transparentGlass150 |> Eps.fromRefractionIndex
         static member uniaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65) |> Eps.fromRefractionIndex
         static member biaxialCrystal = (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75) |> Eps.fromRefractionIndex
         static member getTransparentGlass n = RefractionIndex.getTransparentGlass n |> Eps.fromRefractionIndex
@@ -52,6 +54,7 @@ module Standard =
         with
 
         static member transparentGlass = Eps.transparentGlass |> OpticalProperties.fromEpsion
+        static member transparentGlass150 = Eps.transparentGlass150 |> OpticalProperties.fromEpsion
         static member uniaxialCrystal = Eps.uniaxialCrystal |> OpticalProperties.fromEpsion
         static member biaxialCrystal = Eps.biaxialCrystal |> OpticalProperties.fromEpsion
         static member getTransparentGlass n = Eps.getTransparentGlass n |> OpticalProperties.fromEpsion

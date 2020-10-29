@@ -5,13 +5,9 @@ module MaterialProperties =
 
     open System.Numerics
     open MathNetNumericsMath
-
     open Geometry
-    open System.Numerics
-    open System.Numerics
 
-
-    /// DU indices to be used for choosing Eps / Mu / Rho.
+    /// DU to be used for choosing Eps / Mu / Rho.
     type OpticalPropertyComponent =
         | EpsComp
         | MuComp

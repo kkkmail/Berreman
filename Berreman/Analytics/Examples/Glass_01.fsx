@@ -7,11 +7,8 @@ open Berreman.Fields
 open Berreman.Dispersion
 open Berreman.MaterialProperties
 open OpticalProperties.Standard
-open Analytics.StandardLightVariables
-open Analytics.StandardSystems
 open Analytics.Charting
 open Analytics.Variables
-open OpticalProperties.Dispersive
 
 //===========================================================
 let fn = [ R; T ]

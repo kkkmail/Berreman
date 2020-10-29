@@ -56,6 +56,7 @@
     <None Include="Examples\Glass_01.fsx" />
     <None Include="Examples\Glass_02_Dispersive.fsx" />
     <None Include="Examples\Glass_03_Wedge.fsx" />
+    <None Include="Examples\TotalRefl_01fsx.fsx" />
     <None Include="Examples\Work_01.fsx" />
   </ItemGroup>
   <ItemGroup>
