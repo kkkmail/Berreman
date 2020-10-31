@@ -1,13 +1,15 @@
 ﻿namespace Berreman
 
-module Solvers =
-    //open ExtremeNumericsMath
-    open MathNetNumericsMath
+open System
+//open ExtremeNumericsMath
+open MathNetNumericsMath
 
-    open Geometry
-    open Fields
-    open Media
-    open BerremanMatrix
+open Geometry
+open Fields
+open Media
+open BerremanMatrix
+
+module Solvers =
 
     type SolverParameters =
         {
@@ -71,6 +73,7 @@ module Solvers =
             |> ComplexMatrix.create
 
         let cfmVal = coeffTblVal.inverse
+        let detInv = cfmVal.determinant
 
         let freeTblVal =
             [
@@ -81,25 +84,66 @@ module Solvers =
             ]
             |> ComplexVector.create
 
-        let sol = cfmVal * freeTblVal
+        let ehr, eht =
+            match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
+            | false, false ->
+                let sol = cfmVal * freeTblVal
 
-        let ehr =
-            [
-                b1.up.e0.[0] * sol.[0] + b1.up.e1.[0] * sol.[1]
-                b1.up.e0.[1] * sol.[0] + b1.up.e1.[1] * sol.[1]
-                b1.up.e0.[2] * sol.[0] + b1.up.e1.[2] * sol.[1]
-                b1.up.e0.[3] * sol.[0] + b1.up.e1.[3] * sol.[1]
-            ]
-            |> ComplexVector4.create
+                let ehr =
+                    [
+                        b1.up.e0.[0] * sol.[0] + b1.up.e1.[0] * sol.[1]
+                        b1.up.e0.[1] * sol.[0] + b1.up.e1.[1] * sol.[1]
+                        b1.up.e0.[2] * sol.[0] + b1.up.e1.[2] * sol.[1]
+                        b1.up.e0.[3] * sol.[0] + b1.up.e1.[3] * sol.[1]
+                    ]
+                    |> ComplexVector4.create
 
-        let eht =
-            [
-                b2.down.e0.[0] * sol.[2] + b2.down.e1.[0] * sol.[3]
-                b2.down.e0.[1] * sol.[2] + b2.down.e1.[1] * sol.[3]
-                b2.down.e0.[2] * sol.[2] + b2.down.e1.[2] * sol.[3]
-                b2.down.e0.[3] * sol.[2] + b2.down.e1.[3] * sol.[3]
-            ]
-            |> ComplexVector4.create
+                let eht =
+                    [
+                        b2.down.e0.[0] * sol.[2] + b2.down.e1.[0] * sol.[3]
+                        b2.down.e0.[1] * sol.[2] + b2.down.e1.[1] * sol.[3]
+                        b2.down.e0.[2] * sol.[2] + b2.down.e1.[2] * sol.[3]
+                        b2.down.e0.[3] * sol.[2] + b2.down.e1.[3] * sol.[3]
+                    ]
+                    |> ComplexVector4.create
+
+                ehr, eht
+            | _ ->
+                // This is a case of total reflection.
+
+                let coeffTblVal2x2 =
+                    [
+                        [ coeffTblVal.[0,0]; coeffTblVal.[0,0] ]
+                        [ coeffTblVal.[1,0]; coeffTblVal.[1,1] ]
+                    ]
+                    |> ComplexMatrix.create
+
+                let det2 = coeffTblVal2x2.determinant
+                let cfmVal2x2 = coeffTblVal2x2.inverse
+
+                let sol0 = cplx 1.0
+                let sol1 = cplx 1.0
+
+
+                let ehr =
+                    [
+                        b1.up.e0.[0] * sol0 + b1.up.e1.[0] * sol1
+                        b1.up.e0.[1] * sol0 + b1.up.e1.[1] * sol1
+                        b1.up.e0.[2] * sol0 + b1.up.e1.[2] * sol1
+                        b1.up.e0.[3] * sol0 + b1.up.e1.[3] * sol1
+                    ]
+                    |> ComplexVector4.create
+
+                let eht =
+                    [
+                        cplx 0.0
+                        cplx 0.0
+                        cplx 0.0
+                        cplx 0.0
+                    ]
+                    |> ComplexVector4.create
+
+                ehr, eht
 
         let r =
             {
