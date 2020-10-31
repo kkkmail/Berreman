@@ -138,6 +138,16 @@ module Standard =
     type OpticalSystem
         with
 
+        /// Standard transparent glass / vacuum system for testing internal reflection.
+        static member totalReflGlass150System =
+            {
+                description = Some "Standard transparent glass with n = 1.50 / vacuum system for testing internal reflection."
+                upper = OpticalProperties.transparentGlass150
+                films = []
+                substrate = None
+                lower = OpticalProperties.vacuum
+            }
+
         /// Standard vacuum / biaxial crystal substrate / vacuum system.
         static member biaxialCrystalSubstrateSystem thickness =
             {

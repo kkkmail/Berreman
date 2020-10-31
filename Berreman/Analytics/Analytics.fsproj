@@ -56,7 +56,7 @@
     <None Include="Examples\Glass_01.fsx" />
     <None Include="Examples\Glass_02_Dispersive.fsx" />
     <None Include="Examples\Glass_03_Wedge.fsx" />
-    <None Include="Examples\TotalRefl_01fsx.fsx" />
+    <None Include="Examples\TotalRefl_01.fsx" />
     <None Include="Examples\Work_01.fsx" />
   </ItemGroup>
   <ItemGroup>
@@ -64,10 +64,10 @@
       <HintPath>..\packages\FSharp.Charting.2.1.0\lib\net45\FSharp.Charting.dll</HintPath>
     </Reference>
     <Reference Include="FSharp.Collections.ParallelSeq">
-      <HintPath>..\packages\FSharp.Collections.ParallelSeq.1.1.2\lib\net45\FSharp.Collections.ParallelSeq.dll</HintPath>
+      <HintPath>..\packages\FSharp.Collections.ParallelSeq.1.1.4\lib\net45\FSharp.Collections.ParallelSeq.dll</HintPath>
     </Reference>
     <Reference Include="FSharp.Core">
-      <HintPath>..\packages\FSharp.Core.4.7.0\lib\net45\FSharp.Core.dll</HintPath>
+      <HintPath>..\packages\FSharp.Core.5.0.0\lib\netstandard2.0\FSharp.Core.dll</HintPath>
     </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="Newtonsoft.Json">

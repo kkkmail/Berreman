@@ -3,6 +3,7 @@
 //===========================================================
 open Berreman.FieldFunctions
 open Berreman.Media
+open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Dispersion
 open Berreman.MaterialProperties
@@ -18,11 +19,11 @@ let numberOfPoints = 2000
 let incidenceAngleDegree = 0.0
 let polarization = Polarization.p
 
-let incidentLight = light600nmInclinedDegreeLPs incidenceAngleDegree
+let incidentLight = { light600nmInclinedDegreeLPs incidenceAngleDegree with refractionIndex = RefractionIndex.transparentGlass150 }
 
 
 let incidenceAngleRange =
-    Range<_>.create numberOfPoints IncidenceAngle.normal IncidenceAngle.maxValue
+    Range<_>.create numberOfPoints IncidenceAngle.normal (60.0 |> Angle.degree |> IncidenceAngle)
     |> IncidenceAngleRange
 
 

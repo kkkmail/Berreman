@@ -1,14 +1,15 @@
 ﻿namespace BerremanTests
 
-module MatrixComparison =
-    open System.Numerics
-    open Berreman.MathNetNumericsMath
-    open Berreman.Geometry
-    open Berreman.MaterialProperties
-    open Berreman.Fields
-    open Xunit
-    open Xunit.Abstractions
+open System.Numerics
+open Berreman.MathNetNumericsMath
+open Berreman.Geometry
+open Berreman.MaterialProperties
+open Berreman.Fields
+open Xunit
+open Xunit.Abstractions
+open FluentAssertions
 
+module MatrixComparison =
 
     let allowedDiff = 1.0e-05
 
@@ -30,7 +31,7 @@ module MatrixComparison =
 
         output.WriteLine ("norm = {0}", norm)
         output.WriteLine ("diffValue = {0}", diffNorm)
-        Assert.True(diffNorm / norm < allowedDiff)
+        (diffNorm / norm).Should().BeLessThan(allowedDiff, (sprintf "(%A / %A) exceeds allowed value" diffNorm norm)) |> ignore
 
     let verifyMatrixEqualityEps o (Eps (ComplexMatrix3x3 r)) (Eps (ComplexMatrix3x3 e)) = verifyMatrixEquality o r e
 
@@ -46,7 +47,7 @@ module MatrixComparison =
 
         output.WriteLine ("norm = {0}", norm)
         output.WriteLine ("diffValue = {0}", diffNorm)
-        Assert.True(diffNorm / norm < allowedDiff)
+        (diffNorm / norm).Should().BeLessThan(allowedDiff, (sprintf "(%A / %A) exceeds allowed value" diffNorm norm)) |> ignore
 
 
     let verifyRealVectorEquality (output : ITestOutputHelper) (msg : string) (RealVector result) (RealVector expected) =
@@ -60,7 +61,7 @@ module MatrixComparison =
 
         output.WriteLine ("norm = {0}", norm)
         output.WriteLine ("diffValue = {0}", diffNorm)
-        Assert.True(diffNorm / norm < allowedDiff)
+        (diffNorm / norm).Should().BeLessThan(allowedDiff, (sprintf "(%A / %A) exceeds allowed value" diffNorm norm)) |> ignore
 
 
     let verifyVectorEqualityE o m (E r) (E e) = verifyComplexVectorEquality o m r e
@@ -82,7 +83,7 @@ module MatrixComparison =
 
 
     // Compares two pairs of complex basis (value + vector) for equality.
-    let eigenBasisEquality (output : ITestOutputHelper) (msg : string) (result : EigenBasis) (expected : EigenBasis) = 
+    let eigenBasisEquality (output : ITestOutputHelper) (msg : string) (result : EigenBasis) (expected : EigenBasis) =
         outputData output msg result expected
         
         let diff00 = evdDiff output result.v0 expected.v0 result.e0 expected.e0
@@ -94,7 +95,7 @@ module MatrixComparison =
         let diffAlt = diff01 + diff10
 
         let diffMin = min diff diffAlt
-        Assert.True(diffMin < allowedDiff)
+        diffMin.Should().BeLessThan(allowedDiff, (sprintf "%A exceeds allowed value" diffMin)) |> ignore
 
     let verifyPolarizationEquality (output : ITestOutputHelper) (msg : string) (Polarization (Angle result)) (Polarization (Angle expected)) = 
         outputData output msg result expected
@@ -104,4 +105,4 @@ module MatrixComparison =
     let verifyEllipticityEquality (output : ITestOutputHelper) (msg : string) (Ellipticity result) (Ellipticity expected) = 
         outputData output msg result expected
         let diff = abs (result - expected)
-        Assert.True(diff < allowedDiff)
+        diff.Should().BeLessThan(allowedDiff, (sprintf "%A exceeds allowed value" diff)) |> ignore
