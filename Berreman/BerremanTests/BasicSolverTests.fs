@@ -315,7 +315,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
                                 [ 0.0; -1.0; 0.0 ]
                                 |> E.fromRe
                             h =
-                                [ -0.964181; 0.0; 1.14907 ]
+                                [ -0.964181; 0.0; -1.14907 ]
                                 |> H.fromRe
                         }
                     transmitted =
