@@ -55,11 +55,6 @@ module FieldFunctions =
 
             thread em.complexBasis stokes
 
-        member em.intensity (i : EmField) =
-            let (S s) = em.s
-            let (S is) = i.s
-            (s.z |> abs) / is.z
-
         member em.intensityX (i : EmField) =
             let (E e) = em.e
             let (H h) = em.h
@@ -71,6 +66,12 @@ module FieldFunctions =
             let (H h) = em.h
             let (S is) = i.s
             (ComplexVector3.cross (ComplexBasis3.defaultValue.toY e) h.conjugate).re.norm / is.z
+
+        member em.intensity (i : EmField) =
+            //(em.intensityX i) + (em.intensityY i)
+            let (S s) = em.s
+            let (S is) = i.s
+            (s.z |> abs) / is.z
 
         member em.ellipticity : Ellipticity =
             let (E e) = em.e

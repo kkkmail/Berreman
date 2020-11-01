@@ -203,7 +203,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
         }
 
 
-    let totalReflectionAt50Degrees =
+    let totalReflectionAt50DegreesS =
         let incidenceAngle = Angle.degree 50.0 |> IncidenceAngle
         
         let refractionIndex = RefractionIndex.transparentGlass150
@@ -220,7 +220,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
                     waveLength = waveLength
                     refractionIndex = refractionIndex
                     incidenceAngle = incidenceAngle
-                    polarization = Polarization.defaultValue
+                    polarization = Polarization.s
                     ellipticity = Ellipticity.defaultValue
                 }
             expected =
@@ -231,7 +231,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
                             n1SinFita = n1SinFita
                             opticalProperties = opticalSystem.upper
                             e =
-                                [ 0.766044; 0.; -0.642788 ]
+                                [ 0.642788; 0.; -0.766044 ]
                                 |> E.fromRe
                             h =
                                 [ 0.; 1.5; 0. ]
@@ -243,10 +243,10 @@ type BasicSolverTests(output : ITestOutputHelper) =
                             n1SinFita = n1SinFita
                             opticalProperties = opticalSystem.upper
                             e =
-                                [ -0.242322; 0.; -0.203333 ]
+                                [ 0.642788; 0.; 0.766044 ]
                                 |> E.fromRe
                             h =
-                                [ 0.; 0.474494; 0. ]
+                                [ 0.; -1.5; 0. ]
                                 |> H.fromRe
                         }
                     transmitted =
@@ -255,10 +255,79 @@ type BasicSolverTests(output : ITestOutputHelper) =
                             n1SinFita = n1SinFita
                             opticalProperties = opticalSystem.lower
                             e =
-                                [ 0.523722; 0.; -1.90377; ]
+                                [ 0.0; 0.; 0.0 ]
                                 |> E.fromRe
                             h =
-                                [ 0.; 1.97449; 0. ]
+                                [ 0.0; 0.0; 0.0 ]
+                                |> H.fromRe
+                        }
+                }
+
+            stokes = None
+//                {
+//                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+//                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+//                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+//                } |> Some
+        }
+
+
+    let totalReflectionAt50DegreesP =
+        let incidenceAngle = Angle.degree 50.0 |> IncidenceAngle
+        
+        let refractionIndex = RefractionIndex.transparentGlass150
+        let opticalSystem = OpticalSystem.totalReflGlass150System.baseSystem
+        
+        let waveLength = WaveLength.nm 600.0
+        let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
+
+        {
+            description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
+            opticalSystem = opticalSystem
+            info =
+                {
+                    waveLength = waveLength
+                    refractionIndex = refractionIndex
+                    incidenceAngle = incidenceAngle
+                    polarization = Polarization.p
+                    ellipticity = Ellipticity.defaultValue
+                }
+            expected =
+                {
+                    incident =
+                        {
+                            waveLength = waveLength
+                            n1SinFita = n1SinFita
+                            opticalProperties = opticalSystem.upper
+                            e =
+                                [ 0.0; 1.0; 0.0 ]
+                                |> E.fromRe
+                            h =
+                                [ -0.964181; 0.0; 1.14907 ]
+                                |> H.fromRe
+                        }
+                    reflected =
+                        {
+                            waveLength = waveLength
+                            n1SinFita = n1SinFita
+                            opticalProperties = opticalSystem.upper
+                            e =
+                                [ 0.0; -1.0; 0.0 ]
+                                |> E.fromRe
+                            h =
+                                [ -0.964181; 0.0; 1.14907 ]
+                                |> H.fromRe
+                        }
+                    transmitted =
+                        {
+                            waveLength = waveLength
+                            n1SinFita = n1SinFita
+                            opticalProperties = opticalSystem.lower
+                            e =
+                                [ 0.0; 0.; 0.0 ]
+                                |> E.fromRe
+                            h =
+                                [ 0.0; 0.0; 0.0 ]
                                 |> H.fromRe
                         }
                 }
@@ -673,6 +742,8 @@ type BasicSolverTests(output : ITestOutputHelper) =
     [<Fact>]
     member _.totalReflectionAt40DegreesTest () = runTest totalReflectionAt40Degrees Field
 
+    [<Fact>]
+    member _.totalReflectionAt50DegreesTestS () = runTest totalReflectionAt50DegreesS Field
 
     [<Fact>]
-    member _.totalReflectionAt50DegreesTest () = runTest totalReflectionAt50Degrees Field
+    member _.totalReflectionAt50DegreesTestP () = runTest totalReflectionAt50DegreesP Field

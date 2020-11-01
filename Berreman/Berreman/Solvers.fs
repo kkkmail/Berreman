@@ -113,7 +113,7 @@ module Solvers =
 
                 let coeffTblVal2x2 =
                     [
-                        [ coeffTblVal.[0,0]; coeffTblVal.[0,0] ]
+                        [ coeffTblVal.[0,0]; coeffTblVal.[0,1] ]
                         [ coeffTblVal.[1,0]; coeffTblVal.[1,1] ]
                     ]
                     |> ComplexMatrix.create
@@ -121,8 +121,11 @@ module Solvers =
                 let det2 = coeffTblVal2x2.determinant
                 let cfmVal2x2 = coeffTblVal2x2.inverse
 
-                let sol0 = cplx 1.0
-                let sol1 = cplx 1.0
+                let c20 = coeffTblVal.[2,0]
+                let c02 = coeffTblVal.[0,2]
+
+                let sol0 = freeTblVal.[2] / coeffTblVal.[2,0]
+                let sol1 = freeTblVal.[1] / coeffTblVal.[1,1]
 
 
                 let ehr =
