@@ -46,7 +46,7 @@ module Variables =
             | PolarizationRange _ -> "p"
             | EllipticityRange _ -> "e"
             | WaveLengthRange _ -> "w (nm)"
-            | WedgeAngleRange _ -> "w (nm)"
+            | WedgeAngleRange _ -> "c"
 
         member this.value i =
             match this with
