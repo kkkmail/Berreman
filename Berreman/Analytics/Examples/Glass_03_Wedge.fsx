@@ -16,6 +16,7 @@ let fn = [ R; T ]
 
 let numberOfPoints = 2000
 let incidenceAngleDegree = 0.0
+let polarization = 45.0 |> Angle.degree |> Polarization.create
 
 type RefractionIndexThickness =
     | RefractionIndexThickness of RefractionIndex * Thickness
@@ -84,7 +85,7 @@ let getGlassInfo useThickPlate nh1 nh2Opt light angle =
         | true, Some film2 -> [ film1 ], { layerWithDisp = film2; angle = angle } |> WedgeWithDisp |> Some
 
     {
-        incidentLightInfo = light
+        incidentLightInfo = { light with polarization = polarization }
         opticalSystem =
             {
                 description = Some ("Glass " + (if useThickPlate then "substrate" else "film"))
@@ -109,6 +110,6 @@ let substrate = getGlassInfo true nh1 (Some nh2) incidentLight thirtyDegreeWedge
 #time
 plot substrate fn wedgeAngleRange
 //plot substrate fn polarizationRange
-plotComparison [ film; substrate ] fn ellipticityRange
+//plotComparison [ film; substrate ] fn ellipticityRange
 //plotComparison [ film; substrate ] fn wavelengthRange
 #time

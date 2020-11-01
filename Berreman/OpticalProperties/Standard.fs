@@ -1,5 +1,6 @@
 ﻿namespace OpticalProperties
 
+open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Media
 open Berreman.Fields
@@ -145,6 +146,28 @@ module Standard =
                 upper = OpticalProperties.transparentGlass150
                 films = []
                 substrate = None
+                lower = OpticalProperties.vacuum
+            }
+
+
+        /// Standard transparent glass / vacuum system for testing wedge reflection.
+        static member wedgelGlass150System =
+            {
+                description = Some "Standard transparent glass with n = 1.50 / vacuum system for testing wedge."
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate =
+                    {
+                        layer =
+                            {
+                                properties = OpticalProperties.transparentGlass150
+                                thickness = 1.0 * mm |> Thickness
+                            }
+
+                        angle = 40.0 |> Angle.degree |> WedgeAngle
+                    }
+                    |> Wedge
+                    |> Some
                 lower = OpticalProperties.vacuum
             }
 
