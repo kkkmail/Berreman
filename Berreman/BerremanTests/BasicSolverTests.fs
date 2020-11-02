@@ -19,25 +19,37 @@ open OpticalProperties.Standard
 open FluentAssertions.Execution
 
 
-type BaseOpticalSystemTestData =
+type ResultComparisionType =
+    | Field
+    | Intensity
+
+
+type OpticalSystemTestData =
     {
         description : string
-        opticalSystem : BaseOpticalSystem
+        oopticalSystem : OpticalSystem
         info : IncidentLightInfo
         expected : EmFieldSystem
         stokes : StokesSystem option
     }
 
 
-type ResultComparisionType =
-    | Field
-    | Intensity
+type BaseOpticalSystemTestData =
+    {
+        description : string
+        baseOpticalSystem : BaseOpticalSystem
+        info : IncidentLightInfo
+        expected : EmFieldSystem
+        stokes : StokesSystem option
+    }
+
+    //member sys.opticalSystemTestData : OpticalSystemTestData = 0
 
 
-type BasicSolverTests(output : ITestOutputHelper) =
+type SolverTests(output : ITestOutputHelper) =
 
     let addLayer (l : Layer) (d : BaseOpticalSystemTestData) =
-        { d with opticalSystem = { d.opticalSystem with films = l :: d.opticalSystem.films } }
+        { d with baseOpticalSystem = { d.baseOpticalSystem with films = l :: d.baseOpticalSystem.films } }
 
 
     let rec addLayers (ls : List<Layer>) (d : BaseOpticalSystemTestData) =
@@ -68,7 +80,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
         {
             description = description
-            opticalSystem =
+            baseOpticalSystem =
                 {
                     description = Some description
                     upper = OpticalProperties.vacuum
@@ -145,7 +157,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
         {
             description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
-            opticalSystem = opticalSystem
+            baseOpticalSystem = opticalSystem
             info =
                 {
                     waveLength = waveLength
@@ -214,7 +226,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
         {
             description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
-            opticalSystem = opticalSystem
+            baseOpticalSystem = opticalSystem
             info =
                 {
                     waveLength = waveLength
@@ -283,7 +295,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
         {
             description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
-            opticalSystem = opticalSystem
+            baseOpticalSystem = opticalSystem
             info =
                 {
                     waveLength = waveLength
@@ -367,7 +379,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
         {
             description = "Random 1-layer film (r04), incidence angle 50 degrees."
-            opticalSystem =
+            baseOpticalSystem =
                 {
                     description = None
                     upper = OpticalProperties.vacuum
@@ -461,13 +473,13 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
 
     /// Random optical properties are in the film there.
-    let randomProperties = randomData.opticalSystem.films.Head.properties
+    let randomProperties = randomData.baseOpticalSystem.films.Head.properties
 
 
     let runTest (d : BaseOpticalSystemTestData) (c : ResultComparisionType) =
         output.WriteLine d.description
         use e = new AssertionScope()
-        let solver = BaseOpticalSystemSolver (d.info, d.opticalSystem)
+        let solver = BaseOpticalSystemSolver (d.info, d.baseOpticalSystem)
 
         //output.WriteLine("eigenBasisUpper = {0}\n", solver.eigenBasisUpper)
         //output.WriteLine("eigenBasisFilm = {0}\n", solver.eigenBasisFilm)
@@ -539,7 +551,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
 
     let runTestMuellerMatrixR1 (d : BaseOpticalSystemTestData) =
-        runTestMuellerMatrixR d.description d.info d.opticalSystem.fullSystem
+        runTestMuellerMatrixR d.description d.info d.baseOpticalSystem.fullSystem
 
 
     let runTestMuellerMatrixT descr info (sys : OpticalSystem) =
@@ -560,7 +572,7 @@ type BasicSolverTests(output : ITestOutputHelper) =
 
 
     let runTestMuellerMatrixT1 (d : BaseOpticalSystemTestData) =
-        runTestMuellerMatrixT d.description d.info d.opticalSystem.fullSystem
+        runTestMuellerMatrixT d.description d.info d.baseOpticalSystem.fullSystem
 
 
     [<Fact>]
