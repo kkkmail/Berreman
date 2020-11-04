@@ -11,7 +11,6 @@ open Berreman.FieldFunctions
 
 open Xunit
 open Xunit.Abstractions
-open FluentAssertions
 
 open MatrixComparison
 open Berreman.Media
@@ -24,35 +23,42 @@ type ResultComparisionType =
     | Intensity
 
 
-type OpticalSystemTestData =
+type TestData =
     {
         description : string
-        oopticalSystem : OpticalSystem
         info : IncidentLightInfo
         expected : EmFieldSystem
         stokes : StokesSystem option
+    }
+
+
+type OpticalSystemTestData =
+    {
+        opticalSystem : OpticalSystem
+        testData : TestData
     }
 
 
 type BaseOpticalSystemTestData =
     {
-        description : string
         baseOpticalSystem : BaseOpticalSystem
-        info : IncidentLightInfo
-        expected : EmFieldSystem
-        stokes : StokesSystem option
+        testData : TestData
     }
 
-    //member sys.opticalSystemTestData : OpticalSystemTestData = 0
+    member sys.opticalSystemTestData : OpticalSystemTestData =
+        {
+            testData = sys.testData
+            opticalSystem = sys.baseOpticalSystem.fullSystem
+        }
 
 
 type SolverTests(output : ITestOutputHelper) =
 
-    let addLayer (l : Layer) (d : BaseOpticalSystemTestData) =
-        { d with baseOpticalSystem = { d.baseOpticalSystem with films = l :: d.baseOpticalSystem.films } }
+    let addLayer (l : Layer) (d : OpticalSystemTestData) =
+        { d with opticalSystem = { d.opticalSystem with films = l :: d.opticalSystem.films } }
 
 
-    let rec addLayers (ls : List<Layer>) (d : BaseOpticalSystemTestData) =
+    let rec addLayers (ls : List<Layer>) (d : OpticalSystemTestData) =
         match (ls |> List.rev) with
         | [] -> d
         | h :: t -> addLayers (t |> List.rev) (addLayer h d)
@@ -79,8 +85,66 @@ type SolverTests(output : ITestOutputHelper) =
         let n1SinFita = N1SinFita.create RefractionIndex.vacuum incidenceAngle
 
         {
-            description = description
-            baseOpticalSystem =
+            testData =
+                {
+                description = description
+                info =
+                    {
+                        waveLength = waveLength
+                        refractionIndex = RefractionIndex.vacuum
+                        incidenceAngle = incidenceAngle
+                        polarization = Polarization.defaultValue
+                        ellipticity = Ellipticity.defaultValue
+                    }
+                expected =
+                    {
+                        incident =
+                            {
+                                waveLength = waveLength
+                                n1SinFita = n1SinFita
+                                opticalProperties = OpticalProperties.vacuum
+                                e =
+                                    [ 0.992546151641322; 0.; -0.12186934340514745 ]
+                                    |> E.fromRe
+                                h =
+                                    [ 0.; 0.9999999999999998; 0. ]
+                                    |> H.fromRe
+                            }
+                        reflected =
+                            {
+                                waveLength = waveLength
+                                n1SinFita = n1SinFita
+                                opticalProperties = OpticalProperties.vacuum
+                                e =
+                                    [ -0.2027874513413428; 0.; -0.024899168169565895 ]
+                                    |> E.fromRe
+                                h =
+                                    [ 0.; 0.2043103497061609; 0. ]
+                                    |> H.fromRe
+                            }
+                        transmitted =
+                            {
+                                waveLength = waveLength
+                                n1SinFita = n1SinFita
+                                opticalProperties = opticalProperties
+                                e =
+                                    [ 0.7897587002999794; 0.; -0.06352515217049573; ]
+                                    |> E.fromRe
+                                h =
+                                    [ 0.; 1.2043103497061607; 0. ]
+                                    |> H.fromRe
+                            }
+                    }
+
+                stokes =
+                    {
+                        incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+                        reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+                        transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+                    } |> Some
+                }
+
+            opticalSystem =
                 {
                     description = Some description
                     upper = OpticalProperties.vacuum
@@ -88,268 +152,298 @@ type SolverTests(output : ITestOutputHelper) =
                         [
                         ]
                     lower = opticalProperties
-                }
-            info =
-                {
-                    waveLength = waveLength
-                    refractionIndex = RefractionIndex.vacuum
-                    incidenceAngle = incidenceAngle
-                    polarization = Polarization.defaultValue
-                    ellipticity = Ellipticity.defaultValue
-                }
-            expected =
-                {
-                    incident =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = OpticalProperties.vacuum
-                            e =
-                                [ 0.992546151641322; 0.; -0.12186934340514745 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 0.9999999999999998; 0. ]
-                                |> H.fromRe
-                        }
-                    reflected =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = OpticalProperties.vacuum
-                            e =
-                                [ -0.2027874513413428; 0.; -0.024899168169565895 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 0.2043103497061609; 0. ]
-                                |> H.fromRe
-                        }
-                    transmitted =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalProperties
-                            e =
-                                [ 0.7897587002999794; 0.; -0.06352515217049573; ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 1.2043103497061607; 0. ]
-                                |> H.fromRe
-                        }
-                }
-
-            stokes =
-                {
-                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
-                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
-                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
-                } |> Some
+                }.fullSystem
         }
 
 
     let totalReflectionAt40Degrees =
         let incidenceAngle = Angle.degree 40.0 |> IncidenceAngle
-        
+
         let refractionIndex = RefractionIndex.transparentGlass150
-        let opticalSystem = OpticalSystem.totalReflGlass150System.baseSystem
-        
+        let opticalSystem = OpticalSystem.totalReflGlass150System
+
         let waveLength = WaveLength.nm 600.0
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
-            description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
-            baseOpticalSystem = opticalSystem
-            info =
-                {
-                    waveLength = waveLength
-                    refractionIndex = refractionIndex
-                    incidenceAngle = incidenceAngle
-                    polarization = Polarization.defaultValue
-                    ellipticity = Ellipticity.defaultValue
-                }
-            expected =
-                {
-                    incident =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.upper
-                            e =
-                                [ 0.766044; 0.; -0.642788 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 1.5; 0. ]
-                                |> H.fromRe
-                        }
-                    reflected =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.upper
-                            e =
-                                [ -0.242322; 0.; -0.203333 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 0.474494; 0. ]
-                                |> H.fromRe
-                        }
-                    transmitted =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.lower
-                            e =
-                                [ 0.523722; 0.; -1.90377; ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 1.97449; 0. ]
-                                |> H.fromRe
-                        }
-                }
+            opticalSystem = opticalSystem
 
-            stokes = None
-//                {
-//                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
-//                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
-//                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
-//                } |> Some
+            testData =
+                {
+                    description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = refractionIndex
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization.defaultValue
+                            ellipticity = Ellipticity.defaultValue
+                        }
+                    expected =
+                        {
+                            incident =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 0.766044; 0.; -0.642788 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.5; 0. ]
+                                        |> H.fromRe
+                                }
+                            reflected =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ -0.242322; 0.; -0.203333 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 0.474494; 0. ]
+                                        |> H.fromRe
+                                }
+                            transmitted =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.lower
+                                    e =
+                                        [ 0.523722; 0.; -1.90377; ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.97449; 0. ]
+                                        |> H.fromRe
+                                }
+                        }
+
+                    stokes = None
+        //                {
+        //                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+        //                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+        //                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+        //                } |> Some
+                }
         }
 
 
     let totalReflectionAt50DegreesS =
         let incidenceAngle = Angle.degree 50.0 |> IncidenceAngle
-        
+
         let refractionIndex = RefractionIndex.transparentGlass150
-        let opticalSystem = OpticalSystem.totalReflGlass150System.baseSystem
-        
+        let opticalSystem = OpticalSystem.totalReflGlass150System
+
         let waveLength = WaveLength.nm 600.0
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
-            description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
-            baseOpticalSystem = opticalSystem
-            info =
-                {
-                    waveLength = waveLength
-                    refractionIndex = refractionIndex
-                    incidenceAngle = incidenceAngle
-                    polarization = Polarization.s
-                    ellipticity = Ellipticity.defaultValue
-                }
-            expected =
-                {
-                    incident =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.upper
-                            e =
-                                [ 0.642788; 0.; -0.766044 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; 1.5; 0. ]
-                                |> H.fromRe
-                        }
-                    reflected =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.upper
-                            e =
-                                [ 0.642788; 0.; 0.766044 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.; -1.5; 0. ]
-                                |> H.fromRe
-                        }
-                    transmitted =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.lower
-                            e =
-                                [ 0.0; 0.; 0.0 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.0; 0.0; 0.0 ]
-                                |> H.fromRe
-                        }
-                }
+            opticalSystem = opticalSystem
 
-            stokes = None
-//                {
-//                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
-//                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
-//                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
-//                } |> Some
+            testData =
+                {
+                    description = opticalSystem.description |> Option.defaultValue String.Empty
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = refractionIndex
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization.s
+                            ellipticity = Ellipticity.defaultValue
+                        }
+                    expected =
+                        {
+                            incident =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 0.642788; 0.; -0.766044 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.5; 0. ]
+                                        |> H.fromRe
+                                }
+                            reflected =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 0.642788; 0.; 0.766044 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; -1.5; 0. ]
+                                        |> H.fromRe
+                                }
+                            transmitted =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.lower
+                                    e =
+                                        [ 0.0; 0.; 0.0 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.0; 0.0; 0.0 ]
+                                        |> H.fromRe
+                                }
+                        }
+
+                    stokes = None
+        //                {
+        //                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+        //                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+        //                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+        //                } |> Some
+                }
         }
 
 
     let totalReflectionAt50DegreesP =
         let incidenceAngle = Angle.degree 50.0 |> IncidenceAngle
-        
+
         let refractionIndex = RefractionIndex.transparentGlass150
-        let opticalSystem = OpticalSystem.totalReflGlass150System.baseSystem
-        
+        let opticalSystem = OpticalSystem.totalReflGlass150System
+
         let waveLength = WaveLength.nm 600.0
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
-            description = OpticalSystem.totalReflGlass150System.description |> Option.defaultValue String.Empty
-            baseOpticalSystem = opticalSystem
-            info =
-                {
-                    waveLength = waveLength
-                    refractionIndex = refractionIndex
-                    incidenceAngle = incidenceAngle
-                    polarization = Polarization.p
-                    ellipticity = Ellipticity.defaultValue
-                }
-            expected =
-                {
-                    incident =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.upper
-                            e =
-                                [ 0.0; 1.0; 0.0 ]
-                                |> E.fromRe
-                            h =
-                                [ -0.964181; 0.0; 1.14907 ]
-                                |> H.fromRe
-                        }
-                    reflected =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.upper
-                            e =
-                                [ 0.0; -1.0; 0.0 ]
-                                |> E.fromRe
-                            h =
-                                [ -0.964181; 0.0; -1.14907 ]
-                                |> H.fromRe
-                        }
-                    transmitted =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalSystem.lower
-                            e =
-                                [ 0.0; 0.; 0.0 ]
-                                |> E.fromRe
-                            h =
-                                [ 0.0; 0.0; 0.0 ]
-                                |> H.fromRe
-                        }
-                }
+            opticalSystem = opticalSystem
 
-            stokes = None
-//                {
-//                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
-//                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
-//                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
-//                } |> Some
+            testData =
+                {
+                    description = opticalSystem.description |> Option.defaultValue String.Empty
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = refractionIndex
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization.p
+                            ellipticity = Ellipticity.defaultValue
+                        }
+                    expected =
+                        {
+                            incident =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 0.0; 1.0; 0.0 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ -0.964181; 0.0; 1.14907 ]
+                                        |> H.fromRe
+                                }
+                            reflected =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 0.0; -1.0; 0.0 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ -0.964181; 0.0; -1.14907 ]
+                                        |> H.fromRe
+                                }
+                            transmitted =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.lower
+                                    e =
+                                        [ 0.0; 0.; 0.0 ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.0; 0.0; 0.0 ]
+                                        |> H.fromRe
+                                }
+                        }
+
+                    stokes = None
+        //                {
+        //                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+        //                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+        //                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+        //                } |> Some
+                }
+        }
+
+
+    let wedgeAt40Degrees =
+        let incidenceAngle = IncidenceAngle.normal
+        let refractionIndex = RefractionIndex.vacuum
+        let opticalSystem = OpticalSystem.wedge40DegGlass150System
+
+        let waveLength = WaveLength.nm 600.0
+        let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
+
+        {
+            opticalSystem = opticalSystem
+
+            testData =
+                {
+                    description = opticalSystem.description |> Option.defaultValue String.Empty
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = refractionIndex
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization.defaultValue
+                            ellipticity = Ellipticity.defaultValue
+                        }
+                    expected =
+                        {
+                            incident =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 1.0; 0.; 0. ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.0; 0. ]
+                                        |> H.fromRe
+                                }
+                            reflected =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ -0.2; 0.; 0. ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 0.2; 0. ]
+                                        |> H.fromRe
+                                }
+                            transmitted =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.lower
+                                    e =
+                                        [ 0.523722; 0.; -1.90377; ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.97449; 0. ]
+                                        |> H.fromRe
+                                }
+                        }
+
+                    stokes = None
+        //                {
+        //                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+        //                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+        //                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+        //                } |> Some
+                }
         }
 
 
@@ -378,8 +472,7 @@ type SolverTests(output : ITestOutputHelper) =
         let ellipticity = Ellipticity 0.41378575406900664
 
         {
-            description = "Random 1-layer film (r04), incidence angle 50 degrees."
-            baseOpticalSystem =
+            opticalSystem =
                 {
                     description = None
                     upper = OpticalProperties.vacuum
@@ -414,72 +507,81 @@ type SolverTests(output : ITestOutputHelper) =
                             }
                         ]
                     lower = opticalProperties
-                }
-            info =
-                {
-                    waveLength = waveLength
-                    refractionIndex = RefractionIndex.vacuum
-                    incidenceAngle = incidenceAngle
-                    polarization = Polarization beta
-                    ellipticity = ellipticity
-                }
-            expected =
-                {
-                    incident =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = OpticalProperties.vacuum
-                            e =
-                                [ createComplex 0.5244250568473124 -0.1153807433449855; createComplex 0.4338007527265541 0.3375914755203022; createComplex -0.6249854455442077 0.13750541539757702 ]
-                                |> E.create
-                            h =
-                                [ createComplex -0.27884174892532315 -0.21699961760024683; createComplex 0.8158605563399906 -0.17950057158265997; createComplex 0.3323106560470066 0.258610073866664 ]
-                                |> H.create
-                        }
-                    reflected =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = OpticalProperties.vacuum
-                            e =
-                                [ createComplex -0.007302575642388954 0.024443690065852296; createComplex -0.08450713524591316 -0.15735967361301947; createComplex -0.008702870757008006 0.029130855452238875 ]
-                                |> E.create
-                            h =
-                                [ createComplex -0.0543201394661776 -0.10114884846276676; createComplex 0.011360790924314978 -0.03802763105183758; createComplex -0.0647362213590357 -0.12054450354226964 ]
-                                |> H.create
-                        }
-                    transmitted =
-                        {
-                            waveLength = waveLength
-                            n1SinFita = n1SinFita
-                            opticalProperties = opticalProperties
-                            e =
-                                [ createComplex 0.07161377408818743 0.5399618144532632; createComplex -0.20383484246715727 0.17727725562901583; createComplex -0.041786434962015576 -0.3150661940234894 ]
-                                |> E.create
-                            h =
-                                [ createComplex 0.2676046341577096 -0.2327384983003056; createComplex 0.1260284311223 0.950243737436539; createComplex -0.1561465483859981 0.13580225656599015 ]
-                                |> H.create
-                        }
-                }
+                }.fullSystem
 
-            stokes = None
-                //{
-                //    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
-                //    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
-                //    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
-                //} |> Some
+            testData =
+                {
+                    description = "Random 1-layer film (r04), incidence angle 50 degrees."
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = RefractionIndex.vacuum
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization beta
+                            ellipticity = ellipticity
+                        }
+                    expected =
+                        {
+                            incident =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = OpticalProperties.vacuum
+                                    e =
+                                        [ createComplex 0.5244250568473124 -0.1153807433449855; createComplex 0.4338007527265541 0.3375914755203022; createComplex -0.6249854455442077 0.13750541539757702 ]
+                                        |> E.create
+                                    h =
+                                        [ createComplex -0.27884174892532315 -0.21699961760024683; createComplex 0.8158605563399906 -0.17950057158265997; createComplex 0.3323106560470066 0.258610073866664 ]
+                                        |> H.create
+                                }
+                            reflected =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = OpticalProperties.vacuum
+                                    e =
+                                        [ createComplex -0.007302575642388954 0.024443690065852296; createComplex -0.08450713524591316 -0.15735967361301947; createComplex -0.008702870757008006 0.029130855452238875 ]
+                                        |> E.create
+                                    h =
+                                        [ createComplex -0.0543201394661776 -0.10114884846276676; createComplex 0.011360790924314978 -0.03802763105183758; createComplex -0.0647362213590357 -0.12054450354226964 ]
+                                        |> H.create
+                                }
+                            transmitted =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalProperties
+                                    e =
+                                        [ createComplex 0.07161377408818743 0.5399618144532632; createComplex -0.20383484246715727 0.17727725562901583; createComplex -0.041786434962015576 -0.3150661940234894 ]
+                                        |> E.create
+                                    h =
+                                        [ createComplex 0.2676046341577096 -0.2327384983003056; createComplex 0.1260284311223 0.950243737436539; createComplex -0.1561465483859981 0.13580225656599015 ]
+                                        |> H.create
+                                }
+                        }
+
+                    stokes = None
+                        //{
+                        //    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+                        //    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+                        //    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+                        //} |> Some
+                }
         }
 
 
     /// Random optical properties are in the film there.
-    let randomProperties = randomData.baseOpticalSystem.films.Head.properties
+    let randomProperties = randomData.opticalSystem.films.Head.properties
 
 
-    let runTest (d : BaseOpticalSystemTestData) (c : ResultComparisionType) =
-        output.WriteLine d.description
+    let runTest (d : OpticalSystemTestData) (c : ResultComparisionType) =
+        let t = d.testData
+
+        output.WriteLine t.description
         use e = new AssertionScope()
-        let solver = BaseOpticalSystemSolver (d.info, d.baseOpticalSystem)
+        let solver = OpticalSystemSolver (t.info, d.opticalSystem)
+
+        let emSys = solver.solution.emSys
 
         //output.WriteLine("eigenBasisUpper = {0}\n", solver.eigenBasisUpper)
         //output.WriteLine("eigenBasisFilm = {0}\n", solver.eigenBasisFilm)
@@ -488,41 +590,41 @@ type SolverTests(output : ITestOutputHelper) =
         //output.WriteLine("freeTbl = {0}\n", solver.freeTbl)
         //output.WriteLine("cfm = {0}\n", solver.cfm)
 
-        output.WriteLine("stokesVector (I) = {0}\n", solver.emSys.incident.stokesVector)
-        output.WriteLine("stokesVector (R) = {0}\n", solver.emSys.reflected.stokesVector)
-        output.WriteLine("stokesVector (T) = {0}\n", solver.emSys.transmitted.stokesVector)
+        output.WriteLine("stokesVector (I) = {0}\n", emSys.incident.stokesVector)
+        output.WriteLine("stokesVector (R) = {0}\n", emSys.reflected.stokesVector)
+        output.WriteLine("stokesVector (T) = {0}\n", emSys.transmitted.stokesVector)
 
-        output.WriteLine("I = {0}\n", solver.emSys.i)
-        output.WriteLine("Ip = {0}\n", solver.emSys.ip)
-        output.WriteLine("Is = {0}\n", solver.emSys.is)
+        output.WriteLine("I = {0}\n", emSys.i)
+        output.WriteLine("Ip = {0}\n", emSys.ip)
+        output.WriteLine("Is = {0}\n", emSys.is)
 
-        output.WriteLine("R = {0}\n", solver.emSys.r)
-        output.WriteLine("Rp = {0}\n", solver.emSys.rp)
-        output.WriteLine("Rs = {0}\n", solver.emSys.rs)
+        output.WriteLine("R = {0}\n", emSys.r)
+        output.WriteLine("Rp = {0}\n", emSys.rp)
+        output.WriteLine("Rs = {0}\n", emSys.rs)
 
-        output.WriteLine("T = {0}\n", solver.emSys.t)
-        output.WriteLine("Tp = {0}\n", solver.emSys.tp)
-        output.WriteLine("Ts = {0}\n", solver.emSys.ts)
+        output.WriteLine("T = {0}\n", emSys.t)
+        output.WriteLine("Tp = {0}\n", emSys.tp)
+        output.WriteLine("Ts = {0}\n", emSys.ts)
 
-        let eI = solver.emSys.incident.e
-        let hI = solver.emSys.incident.h
+        let eI = emSys.incident.e
+        let hI = emSys.incident.h
 
-        let eR = solver.emSys.reflected.e
-        let hR = solver.emSys.reflected.h
+        let eR = emSys.reflected.e
+        let hR = emSys.reflected.h
 
-        let eT = solver.emSys.transmitted.e
-        let hT = solver.emSys.transmitted.h
+        let eT = emSys.transmitted.e
+        let hT = emSys.transmitted.h
 
         match c with
         | Field ->
-            verifyVectorEqualityE output "eI" eI d.expected.incident.e
-            verifyVectorEqualityH output "hI" hI d.expected.incident.h
+            verifyVectorEqualityE output "eI" eI t.expected.incident.e
+            verifyVectorEqualityH output "hI" hI t.expected.incident.h
 
-            verifyVectorEqualityE output "eR" eR d.expected.reflected.e
-            verifyVectorEqualityH output "hR" hR d.expected.reflected.h
+            verifyVectorEqualityE output "eR" eR t.expected.reflected.e
+            verifyVectorEqualityH output "hR" hR t.expected.reflected.h
 
-            verifyVectorEqualityE output "eT" eT d.expected.transmitted.e
-            verifyVectorEqualityH output "hT" hT d.expected.transmitted.h
+            verifyVectorEqualityE output "eT" eT t.expected.transmitted.e
+            verifyVectorEqualityH output "hT" hT t.expected.transmitted.h
         | Intensity ->
             Skip.If(true, "Intensity based checks are not implemented yet.")
 
@@ -550,8 +652,8 @@ type SolverTests(output : ITestOutputHelper) =
         verifyVectorEqualityStokes output "[Stokes vector R] vs mR * [Stokes vector I]" r r1
 
 
-    let runTestMuellerMatrixR1 (d : BaseOpticalSystemTestData) =
-        runTestMuellerMatrixR d.description d.info d.baseOpticalSystem.fullSystem
+    let runTestMuellerMatrixR1 (d : OpticalSystemTestData) =
+        runTestMuellerMatrixR d.testData.description d.testData.info d.opticalSystem
 
 
     let runTestMuellerMatrixT descr info (sys : OpticalSystem) =
@@ -572,7 +674,7 @@ type SolverTests(output : ITestOutputHelper) =
 
 
     let runTestMuellerMatrixT1 (d : BaseOpticalSystemTestData) =
-        runTestMuellerMatrixT d.description d.info d.baseOpticalSystem.fullSystem
+        runTestMuellerMatrixT d.testData.description d.testData.info d.baseOpticalSystem.fullSystem
 
 
     [<Fact>]
@@ -759,3 +861,6 @@ type SolverTests(output : ITestOutputHelper) =
 
     [<Fact>]
     member _.totalReflectionAt50DegreesTestP () = runTest totalReflectionAt50DegreesP Field
+
+    [<Fact>]
+    member _.wedgeAt40DegreesTest () = runTest wedgeAt40Degrees Field

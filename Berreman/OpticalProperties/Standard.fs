@@ -151,7 +151,7 @@ module Standard =
 
 
         /// Standard transparent glass / vacuum system for testing wedge reflection.
-        static member wedgelGlass150System =
+        static member wedge40DegGlass150System =
             {
                 description = Some "Standard transparent glass with n = 1.50 / vacuum system for testing wedge."
                 upper = OpticalProperties.vacuum

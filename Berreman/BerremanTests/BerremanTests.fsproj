@@ -64,7 +64,7 @@
     <Compile Include="ThinFilmTests.fs" />
     <Compile Include="RotationTests.fs" />
     <Compile Include="FieldFunctionTests.fs" />
-    <Compile Include="BasicSolverTests.fs" />
+    <Compile Include="SolverTests.fs" />
     <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

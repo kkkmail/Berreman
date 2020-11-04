@@ -182,10 +182,26 @@ module Solvers =
         | Single of BaseOpticalSystemSolver
         | Multiple of MultipleEmFieldSystem
 
-        member sol.stSys =
+        member sol.emSys =
             match sol with
             | Single s -> s.emSys
-            | Multiple _ -> failwith ""
+            | Multiple m ->
+                let d =
+                    {
+                        EmField.getDefaultValue m.incident.waveLength
+                            with
+                                n1SinFita = m.incident.n1SinFita
+                                opticalProperties = m.incident.opticalProperties
+                    }
+
+                let choose mapper =
+                    m.rt |> List.map mapper |> List.choose id |> List.tryHead |> Option.defaultValue d
+
+                {
+                    incident = m.incident
+                    reflected = choose (fun e -> e.reflected)
+                    transmitted = choose (fun e -> e.transmitted)
+                }
 
         static member create i rt =
             {

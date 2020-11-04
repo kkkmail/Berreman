@@ -34,6 +34,7 @@ module Fields =
 
         static member create a = a |> ComplexVector3.create |> E
         static member fromRe a = a |> ComplexVector3.fromRe |> E
+        static member defaultValue = [ 0.0; 0.0; 0.0 ] |> E.fromRe
 
         member this.x =
             let (E a) = this
@@ -62,6 +63,7 @@ module Fields =
 
         static member create a = a |> ComplexVector3.create |> H
         static member fromRe a = a |> ComplexVector3.fromRe |> H
+        static member defaultValue = [ 0.0; 0.0; 0.0 ] |> H.fromRe
 
         member this.x =
             let (H a) = this
@@ -81,10 +83,8 @@ module Fields =
         | D of ComplexVector3
 
         static member (+) (D (ComplexVector3 a), D (ComplexVector3 b)) : D = a + b |> ComplexVector3 |> D
-
         static member (*) (a : Complex, D (ComplexVector3 b)) = a * b |> ComplexVector3 |> D
         static member (*) (D (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> D
-
 
         member this.x =
             let (D a) = this
@@ -329,6 +329,16 @@ module Fields =
             e : E
             h : H
         }
+
+        static member getDefaultValue w =
+            {
+                waveLength = w
+                n1SinFita = N1SinFita.normal
+                opticalProperties = OpticalProperties.vacuum
+                e = E.defaultValue
+                h = H.defaultValue
+            }
+
         member emf.d = emf.opticalProperties.eps * emf.e + emf.opticalProperties.rho * emf.h
         member emf.b = emf.opticalProperties.rhoT * emf.e + emf.opticalProperties.mu * emf.h
 
