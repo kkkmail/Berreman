@@ -407,7 +407,8 @@ module Fields =
             { emf with e = cInv * e |> E; h = cInv * h |> H; opticalProperties = emf.opticalProperties.rotate (Rotation r) }
 
         member emf.rotatePiX = emf.rotate Rotation.rotatePiX
-        member emf.rotateY y = Rotation.rotateY y |> emf.rotate
+        member emf.rotateY y =
+            { (Rotation.rotateY y |> emf.rotate) with n1SinFita = emf.n1SinFita.rotateY y }
 
         /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
         member emf.amplitudeS =

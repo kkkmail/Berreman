@@ -286,8 +286,10 @@ module Solvers =
                         }
 
                     let transmit (emf : EmField, acc) =
-                        let sys = BaseOpticalSystemSolver(emf.rotateY angle, downSys).emSys
-                        (None, sys.transmitted.rotateY (-angle) |> Some) :: acc
+                        let emfRot = emf.rotateY angle
+                        let sys = BaseOpticalSystemSolver(emfRot, downSys).emSys
+                        let tRot = sys.transmitted.rotateY (-angle)
+                        (None, tRot |> Some) :: acc
 
                     let r =
                         start

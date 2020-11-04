@@ -151,7 +151,7 @@ module Standard =
 
 
         /// Standard transparent glass / vacuum system for testing wedge reflection.
-        static member wedge40DegGlass150System =
+        static member getWedgeGlass150System a =
             {
                 description = Some "Standard transparent glass with n = 1.50 / vacuum system for testing wedge."
                 upper = OpticalProperties.vacuum
@@ -164,12 +164,16 @@ module Standard =
                                 thickness = 1.0 * mm |> Thickness
                             }
 
-                        angle = 40.0 |> Angle.degree |> WedgeAngle
+                        angle = a
                     }
                     |> Wedge
                     |> Some
                 lower = OpticalProperties.vacuum
             }
+
+        /// Standard transparent glass / vacuum system for testing wedge reflection.
+        static member wedge40DegGlass150System =
+            40.0 |> Angle.degree |> WedgeAngle |> OpticalSystem.getWedgeGlass150System
 
         /// Standard vacuum / biaxial crystal substrate / vacuum system.
         static member biaxialCrystalSubstrateSystem thickness =
