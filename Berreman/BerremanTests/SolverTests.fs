@@ -375,7 +375,7 @@ type SolverTests(output : ITestOutputHelper) =
         }
 
 
-    let wedgeAt0Degrees =
+    let wedgeAt00Degrees =
         let incidenceAngle = IncidenceAngle.normal
         let refractionIndex = RefractionIndex.vacuum
         let opticalSystem = OpticalSystem.getWedgeGlass150System WedgeAngle.defaultValue
@@ -429,10 +429,82 @@ type SolverTests(output : ITestOutputHelper) =
                                     n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
-                                        [ 0.523722; 0.; -1.90377; ]
+                                        [ 0.96; 0.0; 0.0; ]
                                         |> E.fromRe
                                     h =
-                                        [ 0.; 1.97449; 0. ]
+                                        [ 0.; 0.96; 0. ]
+                                        |> H.fromRe
+                                }
+                        }
+
+                    stokes = None
+        //                {
+        //                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+        //                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+        //                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+        //                } |> Some
+                }
+        }
+
+
+    let wedgeAt07DegreesS =
+        let incidenceAngle = IncidenceAngle.normal
+        let refractionIndex = RefractionIndex.vacuum
+        let opticalSystem = OpticalSystem.getWedgeGlass150System (7.0 |> Angle.degree |> WedgeAngle)
+
+        let waveLength = WaveLength.nm 600.0
+        let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
+
+        {
+            opticalSystem = opticalSystem
+
+            testData =
+                {
+                    description = opticalSystem.description |> Option.defaultValue String.Empty
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = refractionIndex
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization.s
+                            ellipticity = Ellipticity.defaultValue
+                        }
+                    expected =
+                        {
+                            incident =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 1.0; 0.; 0. ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.0; 0. ]
+                                        |> H.fromRe
+                                }
+                            reflected =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ -0.2; 0.; 0. ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 0.2; 0. ]
+                                        |> H.fromRe
+                                }
+                            transmitted =
+                                {
+                                    waveLength = waveLength
+                                    n1SinFita = n1SinFita
+                                    opticalProperties = opticalSystem.lower
+                                    e =
+                                        [ 0.96; 0.0; 0.0; ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 0.96; 0. ]
                                         |> H.fromRe
                                 }
                         }
@@ -1007,7 +1079,10 @@ type SolverTests(output : ITestOutputHelper) =
     member _.totalReflectionAt50DegreesTestP () = runTest totalReflectionAt50DegreesP Field
 
     [<Fact>]
-    member _.wedgeAt0DegreesTest () = runTest wedgeAt0Degrees Field
+    member _.wedgeAt00DegreesTest () = runTest wedgeAt00Degrees Field
+
+    [<Fact>]
+    member _.wedgeAt07DegreesTestS () = runTest wedgeAt07DegreesS Field
 
     [<Fact>]
     member _.wedgeAt40DegreesTestS () = runTest wedgeAt40DegreesS Field

@@ -15,7 +15,7 @@ open Analytics.Variables
 let fn = [ R; T ]
 
 let numberOfPoints = 2000
-let polarization = Polarization.p
+let polarization = Polarization.s
 
 let light = light600nmNormalLPs
 
@@ -28,7 +28,7 @@ let wedgeAngleRange =
 let wedgeInfo =
     {
         incidentLightInfo = { light with polarization = polarization }
-        opticalSystem = OpticalSystem.wedgelGlass150System.dispersive
+        opticalSystem = OpticalSystem.wedge40DegGlass150System.dispersive
     }
 
 
