@@ -14,6 +14,7 @@ module BerremanMatrix =
     open Media
     open Constants
 
+    /// Normalizes complex vector using L2 norm.
     let normalize (v : #seq<Complex>) =
         //printfn "v = %A" (v |> List.ofSeq)
         let norm = v |> Seq.fold (fun acc r -> acc + r.Real * r.Real + r.Imaginary * r.Imaginary) 0.0 |> sqrt |> cplx
@@ -46,8 +47,11 @@ module BerremanMatrix =
         member b.eY = b.eh.[2]
         member b.hX = - b.eh.[3]
 
-        // z component of Poynting vector
+        /// z component of Poynting vector
         member b.sZ = ((b.eX) * (b.hY.conjugate) - (b.eY) * (b.hX.conjugate)).Real
+
+        /// Relative x or y "polarization" of the field.
+        member b.xy = (b.eX.abs * b.eX.abs - b.eY.abs * b.eY.abs) / (b.eX.abs * b.eX.abs + b.eY.abs * b.eY.abs)
 
 
     type BerremanField =
@@ -188,7 +192,7 @@ module BerremanMatrix =
     type ComplexMatrix4x4
         with
 
-        member this.eigenBasis () : FullEigenBasis =
+        member this.eigenBasis() =
             let (ComplexMatrix4x4 (ComplexMatrix m)) = this
             let evd = m.Evd()
 
@@ -209,8 +213,8 @@ module BerremanMatrix =
                 Array.zip (evd.EigenValues.ToArray()) (evd.EigenVectors |> toArrays)
                 |> List.ofArray
                 |> List.map (fun (v, e) -> v, e |> normalize |> ComplexVector4.create)
-                |> List.map (fun (v, e) -> v, e, (BerremanFieldEH e).sZ)
-                |> List.sortBy (fun (_, _, s) -> s)
+                |> List.map (fun (v, e) -> v, e, ((BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
+                |> List.sortBy (fun (_, _, s) -> s) // Sort by z component of Poynting vector first, then by x <-> y relative polarization.
                 |> List.map (fun (v, e, _) -> v, e)
 
             let up = ve |> List.take 2 |> EigenBasis.create
@@ -224,14 +228,14 @@ module BerremanMatrix =
 
     type BerremanMatrix
         with
-        member this.eigenBasis () : FullEigenBasis = this.berremanMatrix.eigenBasis ()
+        member this.eigenBasis() = this.berremanMatrix.eigenBasis()
 
 
     type BerremanMatrixPropagated
         with
-        member this.eigenBasis () : FullEigenBasis =
+        member this.eigenBasis() =
             let (BerremanMatrixPropagated p) = this
-            p.eigenBasis ()
+            p.eigenBasis()
 
 
     let private propagate (emf : EmField) (BerremanMatrixPropagated bmp) =

@@ -39,8 +39,8 @@ module Solvers =
                 e, bm e.opticalProperties, bm system.lower, e.waveLength, e.n1SinFita, system.films, e.opticalProperties, system.lower
 
         let (BerremanMatrixPropagated p) = BerremanMatrixPropagated.propagate (films, i)
-        let b1 = m1.eigenBasis ()
-        let b2 = m2.eigenBasis ()
+        let b1 = m1.eigenBasis()
+        let b2 = m2.eigenBasis()
 
         // Generated, do not modify.
         let coeffTblVal =
@@ -110,6 +110,7 @@ module Solvers =
                 ehr, eht
             | _ ->
                 // This is a case of total reflection.
+                // The matrix is degenerate and we can't inverse it.
 
                 let coeffTblVal2x2 =
                     [

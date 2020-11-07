@@ -16,10 +16,12 @@ open Berreman.MaterialProperties
 //let fn = [ R; T ]
 //let fn = [ Rp; Rs; Tp; Ts]
 let fn = [ Rp; Rs; ]
+//let fn = [ Tp; Ts; ]
 
 let numberOfPoints = 2000
 let incidenceAngleDegree = 0.0
-let polarization = 45.0 |> Angle.degree |> Polarization.create
+let polarization = 90.0 |> Angle.degree |> Polarization.create
+//let polarization = Polarization.p
 
 let incidentLight = { light600nmInclinedDegreeLPs incidenceAngleDegree with refractionIndex = RefractionIndex.transparentGlass150 }
 

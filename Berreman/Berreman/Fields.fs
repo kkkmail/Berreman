@@ -26,27 +26,15 @@ module Fields =
 
         static member (*) (Eps (ComplexMatrix3x3 a), E (ComplexVector3 b)) = a * b |> ComplexVector3 |> D
         static member (*) (RhoT (ComplexMatrix3x3 a), E (ComplexVector3 b)) = a * b |> ComplexVector3 |> B
-
         static member (+) (E (ComplexVector3 a), E (ComplexVector3 b)) : E = a + b |> ComplexVector3 |> E
-
         static member (*) (a : Complex, E (ComplexVector3 b)) = a * b |> ComplexVector3 |> E
         static member (*) (E (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> E
-
         static member create a = a |> ComplexVector3.create |> E
         static member fromRe a = a |> ComplexVector3.fromRe |> E
         static member defaultValue = [ 0.0; 0.0; 0.0 ] |> E.fromRe
-
-        member this.x =
-            let (E a) = this
-            a.x
-
-        member this.y =
-            let (E a) = this
-            a.y
-
-        member this.z =
-            let (E a) = this
-            a.z
+        member this.x = let (E a) = this in a.x
+        member this.y = let (E a) = this in a.y
+        member this.z = let (E a) = this in a.z
 
 
     /// Electromagnetic field H.
@@ -55,27 +43,15 @@ module Fields =
 
         static member (*) (Rho (ComplexMatrix3x3 a), H (ComplexVector3 b)) = a * b |> ComplexVector3 |> D
         static member (*) (Mu (ComplexMatrix3x3 a), H (ComplexVector3 b)) = a * b |> ComplexVector3 |> B
-
         static member (+) (H (ComplexVector3 a), H (ComplexVector3 b)) : H = a + b |> ComplexVector3 |> H
-
         static member (*) (a : Complex, H (ComplexVector3 b)) = a * b |> ComplexVector3 |> H
         static member (*) (H (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> H
-
         static member create a = a |> ComplexVector3.create |> H
         static member fromRe a = a |> ComplexVector3.fromRe |> H
         static member defaultValue = [ 0.0; 0.0; 0.0 ] |> H.fromRe
-
-        member this.x =
-            let (H a) = this
-            a.x
-
-        member this.y =
-            let (H a) = this
-            a.y
-
-        member this.z =
-            let (H a) = this
-            a.z
+        member this.x = let (H a) = this in a.x
+        member this.y = let (H a) = this in a.y
+        member this.z = let (H a) = this in a.z
 
 
     /// Electromagnetic field D.
@@ -85,18 +61,9 @@ module Fields =
         static member (+) (D (ComplexVector3 a), D (ComplexVector3 b)) : D = a + b |> ComplexVector3 |> D
         static member (*) (a : Complex, D (ComplexVector3 b)) = a * b |> ComplexVector3 |> D
         static member (*) (D (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> D
-
-        member this.x =
-            let (D a) = this
-            a.x
-
-        member this.y =
-            let (D a) = this
-            a.y
-
-        member this.z =
-            let (D a) = this
-            a.z
+        member this.x = let (D a) = this in a.x
+        member this.y = let (D a) = this in a.y
+        member this.z = let (D a) = this in a.z
 
 
     /// Electromagnetic field B.
@@ -104,21 +71,11 @@ module Fields =
         | B of ComplexVector3
 
         static member (+) (B (ComplexVector3 a), B (ComplexVector3 b)) : B = a + b |> ComplexVector3 |> B
-
         static member (*) (a : Complex, B (ComplexVector3 b)) = a * b |> ComplexVector3 |> B
         static member (*) (B (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> B
-
-        member this.x =
-            let (B a) = this
-            a.x
-
-        member this.y =
-            let (B a) = this
-            a.y
-
-        member this.z =
-            let (B a) = this
-            a.z
+        member this.x = let (B a) = this in a.x
+        member this.y = let (B a) = this in a.y
+        member this.z = let (B a) = this in a.z
 
 
     /// Poynting vector S.
@@ -126,18 +83,26 @@ module Fields =
         | S of RealVector3
 
 
+    type WaveVector =
+        {
+            k1Basis : ComplexBasis3
+            k1Value : double
+            k2Basis : ComplexBasis3
+            k2Value : double
+        }
+
+        static member create (E e1) (H h1) (E e2) (H h2) =
+            let s1 = (ComplexVector3.cross e1 h1.conjugate).re
+            let s2 = (ComplexVector3.cross e2 h2.conjugate).re
+
+            0
+
     /// Two component of electromagnetic field E.
     type E2 =
         | E2 of ComplexVector2
 
-        member this.x =
-            let (E2 a) = this
-            a.x
-
-        member this.y =
-            let (E2 a) = this
-            a.y
-
+        member this.x = let (E2 a) = this in a.x
+        member this.y = let (E2 a) = this in a.y
         static member create a = a |> ComplexVector2.create |> E2
 
 
@@ -145,14 +110,8 @@ module Fields =
     and H2 =
         | H2 of ComplexVector2
 
-        member this.x =
-            let (H2 a) = this
-            a.x
-
-        member this.y =
-            let (H2 a) = this
-            a.y
-
+        member this.x = let (H2 a) = this in a.x
+        member this.y = let (H2 a) = this in a.y
         static member create a = a |> ComplexVector2.create |> H2
 
 
@@ -184,7 +143,7 @@ module Fields =
         | Polarization of Angle
 
         member angle.value = let (Polarization a) = angle in a.value
-        static member create (Angle p) = p % (pi / 2.0) |> Angle |> Polarization
+        static member create (Angle p) = ((p + (pi / 2.0)) % pi) - (pi / 2.0) |> Angle |> Polarization
         member this.crossed = Angle (this.value + (pi / 2.0)) |> Polarization
         static member defaultValue = Angle 0.0 |> Polarization
         static member s = Angle 0.0 |> Polarization
@@ -461,6 +420,7 @@ module Fields =
 
         static member Zero
             with get () = StokesVector RealVector4.Zero
+
 
     type StokesSystem =
         {
