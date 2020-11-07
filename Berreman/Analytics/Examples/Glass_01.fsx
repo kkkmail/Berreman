@@ -7,11 +7,8 @@ open Berreman.Fields
 open Berreman.Dispersion
 open Berreman.MaterialProperties
 open OpticalProperties.Standard
-open Analytics.StandardLightVariables
-open Analytics.StandardSystems
 open Analytics.Charting
 open Analytics.Variables
-open OpticalProperties.Dispersive
 
 //===========================================================
 let fn = [ R; T ]
@@ -28,7 +25,7 @@ let nh1 = RefractionIndexThickness (RefractionIndex 1.78052, Thickness.mm (0.001
 let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00)
 
 
-let incidentLight = light600nmInclinedDegreelLPs incidenceAngleDegree
+let incidentLight = light600nmInclinedDegreeLPs incidenceAngleDegree
 
 let wavelengthRange =
     Range<_>.create numberOfPoints (WaveLength.nm 300.0) (WaveLength.nm 700.0)
@@ -82,8 +79,8 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
         match useThickPlate, film2Opt with
         | false, None -> [ film1 ], None
         | false, Some film2 -> [ film1; film2 ], None
-        | true, None -> [], Some film1
-        | true, Some film2 -> [ film1 ], Some film2
+        | true, None -> [], film1 |> PlateWithDisp |> Some
+        | true, Some film2 -> [ film1 ], film2 |> PlateWithDisp |> Some
 
     {
         incidentLightInfo = light

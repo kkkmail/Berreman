@@ -1,5 +1,5 @@
 ﻿namespace Berreman
-module Geometry = 
+module Geometry =
 
     //open ExtremeNumericsMath
     //open MathNet.Numerics
@@ -10,7 +10,7 @@ module Geometry =
     open MatrixExp
 
 
-    let thread a f = 
+    let thread a f =
         match a with
         | Some b -> f b |> Some
         | None -> None
@@ -19,18 +19,18 @@ module Geometry =
     let realIdentityMatrix n = realDiagonalMatrix n 1.0
     let realZeroMatrix n = realDiagonalMatrix n 0.0
 
-    let comlpexIdentityMatrix n = complexDiagonalMatrix n (cplx 1.0)
-    let comlpexZeroMatrix n = complexDiagonalMatrix n (cplx 0.0)
+    let complexIdentityMatrix n = complexDiagonalMatrix n (cplx 1.0)
+    let complexZeroMatrix n = complexDiagonalMatrix n (cplx 0.0)
 
 
     /// DU indices to be used in 3x3 matrices, like Eps, Mu, Rho.
-    type Index = 
+    type Index =
         | One
         | Two
         | Three
 
-        member this.numeric = 
-            match this with 
+        member this.numeric =
+            match this with
             | One -> 0
             | Two -> 1
             | Three -> 2
@@ -38,6 +38,8 @@ module Geometry =
 
     type Angle =
         | Angle of double
+
+        member angle.value = let (Angle a) = angle in a
         static member degree a = a * degree |> Angle
         static member radian r = r |> Angle
         static member zero = Angle.radian 0.0
@@ -50,8 +52,8 @@ module Geometry =
 
     type RealVector3 =
         | RealVector3 of RealVector
-        member this.Item 
-            with get i = 
+        member this.Item
+            with get i =
                 let (RealVector3 v) = this
                 v.[i]
 
@@ -59,7 +61,7 @@ module Geometry =
         member this.y = this.[1]
         member this.z = this.[2]
 
-        member this.norm = 
+        member this.norm =
             let (RealVector3 v) = this
             v.norm
 
@@ -69,7 +71,7 @@ module Geometry =
         static member (/) (RealVector3 a, b : double) = a / b |> RealVector3
         static member create a = RealVector.create a |> RealVector3
 
-        static member cross (u : RealVector3) (v : RealVector3) = 
+        static member cross (u : RealVector3) (v : RealVector3) =
             [
                 u.y * v.z - u.z * v.y
                 u.z * v.x -  u.x * v.z
@@ -81,22 +83,22 @@ module Geometry =
 
 
     /// Orthonormal real basis
-    type RealBasis3 = 
+    type RealBasis3 =
         {
             vX : RealVector3
             vY : RealVector3
             vZ : RealVector3
         }
-        member b.toX (v : RealVector3) = 
+        member b.toX (v : RealVector3) =
             b.vX * (b.vX * v)
 
-        member b.toY (v : RealVector3) = 
+        member b.toY (v : RealVector3) =
             b.vY * (b.vY * v)
 
-        member b.toZ (v : RealVector3) = 
+        member b.toZ (v : RealVector3) =
             b.vZ * (b.vZ * v)
 
-        static member defaultValue = 
+        static member defaultValue =
             {
                 vX = [ 1.0; 0.0; 0.0 ] |> RealVector3.create
                 vY = [ 0.0; 1.0; 0.0 ] |> RealVector3.create
@@ -106,18 +108,23 @@ module Geometry =
 
     type RealVector4 =
         | RealVector4 of RealVector
-        member this.Item 
-            with get i = 
+        member this.Item
+            with get i =
                 let (RealVector4 v) = this
                 v.[i]
 
          static member create a = RealVector.create a |> RealVector4
+        static member (+) (RealVector4 a, RealVector4 b) = a + b |> RealVector4
+        static member (-) (RealVector4 a, RealVector4 b) = a - b |> RealVector4
+
+        static member Zero
+            with get () = [ 0.0; 0.0; 0.0; 0.0 ] |> RealVector4.create
 
 
     type ComplexVector2 =
         | ComplexVector2 of ComplexVector
-        member this.Item 
-            with get i = 
+        member this.Item
+            with get i =
                 let (ComplexVector2 v) = this
                 v.[i]
 
@@ -129,8 +136,8 @@ module Geometry =
 
     type ComplexVector3 =
         | ComplexVector3 of ComplexVector
-        member this.Item 
-            with get i = 
+        member this.Item
+            with get i =
                 let (ComplexVector3 v) = this
                 v.[i]
 
@@ -143,7 +150,7 @@ module Geometry =
         static member fromIm a = a |> ComplexVector.fromIm |> ComplexVector3
         static member (+) (ComplexVector3 a, ComplexVector3 b) : ComplexVector3 = a + b |> ComplexVector3
 
-        static member cross (u : ComplexVector3) (v : ComplexVector3) = 
+        static member cross (u : ComplexVector3) (v : ComplexVector3) =
             [
                 u.y * v.z - u.z * v.y
                 u.z * v.x -  u.x * v.z
@@ -153,49 +160,49 @@ module Geometry =
 
         static member (*) (ComplexVector3 a, ComplexVector3 b) = a * b
 
-        member this.conjugate = 
+        member this.conjugate =
             let (ComplexVector3 v) = this
             v.conjugate |> ComplexVector3
 
-        member this.re = 
+        member this.re =
             let (ComplexVector3 v) = this
             v.re |> RealVector3
 
-        member this.im = 
+        member this.im =
             let (ComplexVector3 v) = this
             v.im |> RealVector3
 
-        static member (*) (a : Complex, ComplexVector3 b) = 
+        static member (*) (a : Complex, ComplexVector3 b) =
             a * b |> ComplexVector3
 
-        static member (*) (ComplexVector3 a, b : Complex) = 
+        static member (*) (ComplexVector3 a, b : Complex) =
             a * b |> ComplexVector3
 
-        static member (/) (ComplexVector3 a, b : Complex) = 
+        static member (/) (ComplexVector3 a, b : Complex) =
             (a * (complexOne / b)) |> ComplexVector3
 
-        member this.norm = 
+        member this.norm =
             let (ComplexVector3 v) = this
             v.norm
 
 
     /// Orthonormal complex basis
-    type ComplexBasis3 = 
+    type ComplexBasis3 =
         {
             cX : ComplexVector3
             cY : ComplexVector3
             cZ : ComplexVector3
         }
-        member b.toX (v : ComplexVector3) = 
+        member b.toX (v : ComplexVector3) =
             b.cX * ((b.cX.conjugate * v) / (b.cX * b.cX.conjugate))
 
-        member b.toY (v : ComplexVector3) = 
+        member b.toY (v : ComplexVector3) =
             b.cY * ((b.cY.conjugate * v)/ (b.cY * b.cY.conjugate))
 
-        member b.toZ (v : ComplexVector3) = 
+        member b.toZ (v : ComplexVector3) =
             b.cZ * ((b.cZ.conjugate * v)/ (b.cZ * b.cZ.conjugate))
 
-        static member defaultValue = 
+        static member defaultValue =
             {
                 cX = [ cplx 1.0; cplx 0.0; cplx 0.0 ] |> ComplexVector3.create
                 cY = [ cplx 0.0; cplx 1.0; cplx 0.0 ] |> ComplexVector3.create
@@ -203,17 +210,17 @@ module Geometry =
             }
 
 
-    type ComplexVector4 = 
+    type ComplexVector4 =
         | ComplexVector4 of ComplexVector
-        member this.Item 
-            with get i = 
+        member this.Item
+            with get i =
                 let (ComplexVector4 v) = this
                 v.[i]
 
-        static member (*) (a : Complex, ComplexVector4 b) : ComplexVector4 = 
+        static member (*) (a : Complex, ComplexVector4 b) : ComplexVector4 =
             a * b |> ComplexVector4
 
-        static member (*) (ComplexVector4 a, b : Complex) : ComplexVector4 = 
+        static member (*) (ComplexVector4 a, b : Complex) : ComplexVector4 =
             a * b |> ComplexVector4
 
         static member create a = a |> ComplexVector.create |> ComplexVector4
@@ -221,7 +228,7 @@ module Geometry =
         static member fromIm a = a |> ComplexVector.fromIm |> ComplexVector4
 
 
-    type RealMatrix3x3 = 
+    type RealMatrix3x3 =
         | RealMatrix3x3 of RealMatrix
         member this.Item
             with get(i, j) =
@@ -236,23 +243,23 @@ module Geometry =
         static member create a = a |> RealMatrix.create |> RealMatrix3x3
         static member identity = realIdentityMatrix 3 |> RealMatrix3x3
 
-        static member (*) (RealMatrix3x3 a, RealMatrix3x3 b) : RealMatrix3x3 = 
+        static member (*) (RealMatrix3x3 a, RealMatrix3x3 b) : RealMatrix3x3 =
             a * b |> RealMatrix3x3
 
-        static member (*) (a : double, RealMatrix3x3 b) : RealMatrix3x3 = 
+        static member (*) (a : double, RealMatrix3x3 b) : RealMatrix3x3 =
             a * b |> RealMatrix3x3
 
-        static member (*) (RealMatrix3x3 a, b : double) : RealMatrix3x3 = 
+        static member (*) (RealMatrix3x3 a, b : double) : RealMatrix3x3 =
             a * b |> RealMatrix3x3
 
-        static member (*) (RealVector3 a, RealMatrix3x3 b) : RealVector3 = 
+        static member (*) (RealVector3 a, RealMatrix3x3 b) : RealVector3 =
             a * b |> RealVector3
 
-        static member (*) (RealMatrix3x3 a, RealVector3 b) : RealVector3 = 
+        static member (*) (RealMatrix3x3 a, RealVector3 b) : RealVector3 =
             a * b |> RealVector3
 
 
-    type RealMatrix4x4 = 
+    type RealMatrix4x4 =
         | RealMatrix4x4 of RealMatrix
         member this.Item
             with get(i, j) =
@@ -261,8 +268,18 @@ module Geometry =
 
         static member create a = RealMatrix.create a |> RealMatrix4x4
 
+        static member Zero
+            with get () =
+                [
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                    [ 0.0; 0.0; 0.0; 0.0 ]
+                ]
+                |> RealMatrix4x4.create
 
-    type ComplexMatrix3x3 = 
+
+    type ComplexMatrix3x3 =
         | ComplexMatrix3x3 of ComplexMatrix
         member this.Item
             with get(i, j) =
@@ -274,50 +291,50 @@ module Geometry =
                 let (ComplexMatrix3x3 v) = this
                 v.[i.numeric, j.numeric]
 
-        static member (*) (ComplexMatrix3x3 a, ComplexMatrix3x3 b) : ComplexMatrix3x3 = 
+        static member (*) (ComplexMatrix3x3 a, ComplexMatrix3x3 b) : ComplexMatrix3x3 =
             a * b |> ComplexMatrix3x3
 
-        static member (*) (a : Complex, ComplexMatrix3x3 b) : ComplexMatrix3x3 = 
+        static member (*) (a : Complex, ComplexMatrix3x3 b) : ComplexMatrix3x3 =
             a * b |> ComplexMatrix3x3
 
-        static member (*) (ComplexMatrix3x3 a, b : Complex) : ComplexMatrix3x3 = 
+        static member (*) (ComplexMatrix3x3 a, b : Complex) : ComplexMatrix3x3 =
             a * b |> ComplexMatrix3x3
 
-        static member (*) (ComplexVector3 a, ComplexMatrix3x3 b) : ComplexVector3 = 
+        static member (*) (ComplexVector3 a, ComplexMatrix3x3 b) : ComplexVector3 =
             a * b |> ComplexVector3
 
-        static member (*) (ComplexMatrix3x3 a, ComplexVector3 b) : ComplexVector3 = 
+        static member (*) (ComplexMatrix3x3 a, ComplexVector3 b) : ComplexVector3 =
             a * b |> ComplexVector3
 
-        static member identity = comlpexIdentityMatrix 3 |> ComplexMatrix3x3
-        static member zero = comlpexZeroMatrix 3 |> ComplexMatrix3x3
+        static member identity = complexIdentityMatrix 3 |> ComplexMatrix3x3
+        static member zero = complexZeroMatrix 3 |> ComplexMatrix3x3
         static member create a = a |> ComplexMatrix.create |> ComplexMatrix3x3
         static member fromRe a = a |> ComplexMatrix.fromRe |> ComplexMatrix3x3
         static member fromIm a = a |> ComplexMatrix.fromIm |> ComplexMatrix3x3
 
-        member this.inverse = 
+        member this.inverse =
             let (ComplexMatrix3x3 m) = this
             m.inverse |> ComplexMatrix3x3
 
-        member this.re = 
+        member this.re =
             let (ComplexMatrix3x3 m) = this
             m.re |> RealMatrix3x3
 
-        member this.im = 
+        member this.im =
             let (ComplexMatrix3x3 m) = this
             m.im |> RealMatrix3x3
 
 
     type RealMatrix3x3
-        with 
-        member this.toComplex () = 
+        with
+        member this.toComplex () =
             let (RealMatrix3x3 (RealMatrix m)) = this
             let len = m.RowCount
             [| for i in 0..(len-1) -> [| for j in 0..(len-1) -> cplx m.[i, j] |] |] |> ComplexMatrix3x3.create
 
 
     // It is only needed for 4x4 matrices here.
-    type EigenValueVector = 
+    type EigenValueVector =
         {
             value : Complex
             vector : ComplexVector4
@@ -334,33 +351,34 @@ module Geometry =
         member this.values = [ this.v0; this.v1 ]
         member this.vectors = [ this.e0; this.e1 ]
 
-        static member create l = 
+        static member create l =
             let fail() = failwith "EigenBasis::Invalid input data."
-            match l with 
+
+            match l with
             | [] -> fail()
             | h0 :: t ->
-                match t with 
+                match t with
                 | [] -> fail()
-                | h1 :: t1 -> 
-                    match t1 with 
-                    | [] -> 
+                | h1 :: t1 ->
+                    match t1 with
+                    | [] ->
                         {
                             v0 = fst h0
                             v1 = fst h1
                             e0 = snd h0
-                            e1= snd h1
+                            e1 = snd h1
                         }
                     | _ -> fail()
 
 
-    type FullEigenBasis = 
+    type FullEigenBasis =
         {
             down : EigenBasis
             up : EigenBasis
         }
 
 
-    type ComplexMatrix4x4 = 
+    type ComplexMatrix4x4 =
         | ComplexMatrix4x4 of ComplexMatrix
         member this.Item
             with get(i, j) =
@@ -371,38 +389,38 @@ module Geometry =
         static member fromRe a = a |> ComplexMatrix.fromRe |> ComplexMatrix4x4
         static member fromIm a = a |> ComplexMatrix.fromIm |> ComplexMatrix4x4
 
-        static member (*) (ComplexMatrix4x4 a, ComplexMatrix4x4 b) : ComplexMatrix4x4 = 
+        static member (*) (ComplexMatrix4x4 a, ComplexMatrix4x4 b) : ComplexMatrix4x4 =
             a * b |> ComplexMatrix4x4
 
-        static member (*) (a : Complex, ComplexMatrix4x4 b) : ComplexMatrix4x4 = 
+        static member (*) (a : Complex, ComplexMatrix4x4 b) : ComplexMatrix4x4 =
             a * b |> ComplexMatrix4x4
 
-        static member (*) (ComplexMatrix4x4 a, b : Complex) : ComplexMatrix4x4 = 
+        static member (*) (ComplexMatrix4x4 a, b : Complex) : ComplexMatrix4x4 =
             a * b |> ComplexMatrix4x4
 
-        static member (*) (ComplexVector4 a, ComplexMatrix4x4 b) : ComplexVector4 = 
+        static member (*) (ComplexVector4 a, ComplexMatrix4x4 b) : ComplexVector4 =
             a * b |> ComplexVector4
 
-        static member (*) (ComplexMatrix4x4 a, ComplexVector4 b) : ComplexVector4 = 
+        static member (*) (ComplexMatrix4x4 a, ComplexVector4 b) : ComplexVector4 =
             a * b |> ComplexVector4
 
-        member this.matrixExp (x : Complex) : ComplexMatrix4x4 = 
+        member this.matrixExp (x : Complex) : ComplexMatrix4x4 =
             let (ComplexMatrix4x4 v) = this * x
             v.matrixExp () |> ComplexMatrix4x4
 
-        static member identity = comlpexIdentityMatrix 4 |> ComplexMatrix4x4
+        static member identity = complexIdentityMatrix 4 |> ComplexMatrix4x4
 
-        member this.re = 
+        member this.re =
             let (ComplexMatrix4x4 m) = this
             m.re |> RealMatrix4x4
 
-        member this.im = 
+        member this.im =
             let (ComplexMatrix4x4 m) = this
             m.im |> RealMatrix4x4
 
 
     // Rotation around x axis.
-    let xRotation (Angle xAngle) = 
+    let xRotation (Angle xAngle) =
         [
             [ 1.; 0.; 0. ]
             [ 0.; cos(xAngle); -sin(xAngle) ]
@@ -412,7 +430,7 @@ module Geometry =
 
 
     // Rotation around y axis.
-    let yRotation (Angle yAngle) = 
+    let yRotation (Angle yAngle) =
         [
             [ cos(yAngle); 0.; sin(yAngle) ]
             [ 0.; 1.; 0. ]
@@ -422,7 +440,7 @@ module Geometry =
 
 
     // Rotation around z axis.
-    let zRotation (Angle zAngle) = 
+    let zRotation (Angle zAngle) =
         [
             [ cos(zAngle); -sin(zAngle); 0. ]
             [ sin(zAngle); cos(zAngle); 0. ]
@@ -433,7 +451,7 @@ module Geometry =
 
     /// Rotation in opposite direction is marked with "-".
     /// Rotation for angle (Pi - z) means rotating for the angle (Pi - alphaZ) around z axis.
-    type RotationConvention = 
+    type RotationConvention =
         | ZmXpZm // Rotation around (-z), (x'), (-z'')
         | ZmYpXp // Rotation around (-z), (y'), (x'')
         | ZpYpXp // Rotation around (z), (y'), (x'')
@@ -441,7 +459,7 @@ module Geometry =
         // For compatibility with Mathematica code.
         | PiZmXpPiZm //Rotation around (Pi - z), (x'), (Pi - z'') = Euler angles in Mathematica code.
 
-        static member conventionMapping convention = 
+        static member conventionMapping convention =
             match convention with
             | ZmXpZm -> [ (fun a -> zRotation (-a)); xRotation; (fun a -> zRotation (-a)) ]
             | ZmYpXp -> [ (fun a -> zRotation (-a)); yRotation; xRotation]
@@ -449,10 +467,10 @@ module Geometry =
             | PiZmXpPiZm -> [ (fun a -> zRotation (Angle.pi - a)); xRotation; (fun a -> zRotation (Angle.pi - a)) ]
 
 
-    type Rotation = 
+    type Rotation =
         | Rotation of RealMatrix3x3
 
-        static member create convention phi theta psi = 
+        static member create convention phi theta psi =
             [ phi; theta; psi ]
             |> List.zip (RotationConvention.conventionMapping convention)
             |> List.map (fun (r, a) -> r a)

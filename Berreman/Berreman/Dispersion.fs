@@ -1,4 +1,5 @@
 ﻿namespace Berreman
+open Berreman.Geometry
 open MaterialProperties
 open Fields
 open Media
@@ -74,7 +75,7 @@ module Dispersion =
             }
 
 
-    type LayerWithDisp = 
+    type LayerWithDisp =
         {
             propertiesWithDisp : OpticalPropertiesWithDisp
             thickness : Thickness
@@ -86,6 +87,28 @@ module Dispersion =
                 thickness = this.thickness
             }
 
+    type InclinedLayerWithDisp =
+        {
+            layerWithDisp : LayerWithDisp
+            angle : WedgeAngle
+        }
+
+        member this.getInclinedLayer w v =
+            {
+                layer = this.layerWithDisp.getLayer w
+                angle = v
+            }
+
+
+    type SubstrateWithDisp =
+        | PlateWithDisp of LayerWithDisp
+        | WedgeWithDisp of InclinedLayerWithDisp
+
+        member this.getSubstrate w v =
+            match this with
+            | PlateWithDisp e -> e.getLayer w |> Plate
+            | WedgeWithDisp e -> e.getInclinedLayer w v |> Wedge
+
 
     type Layer
         with
@@ -96,26 +119,48 @@ module Dispersion =
             }
 
 
+    type WedgeLayer
+        with
+        member this.dispersive =
+            {
+                layerWithDisp = this.layer.dispersive
+                angle = this.angle
+            }
+
+
+    type Substrate
+        with
+        member this.dispersive =
+            match this with
+            | Plate e -> PlateWithDisp e.dispersive
+            | Wedge e -> WedgeWithDisp e.dispersive
+
+
     type OpticalSystemWithDisp =
         {
             description : string option
             upperWithDisp : OpticalPropertiesWithDisp
             filmsWithDisp : List<LayerWithDisp>
-            substrateWithDisp : LayerWithDisp option
+            substrateWithDisp : SubstrateWithDisp option
             lowerWithDisp : OpticalPropertiesWithDisp
         }
 
-        member this.getSystem w =
+        member this.getSystem w v =
             {
                 description = this.description
                 upper = this.upperWithDisp.getProperties w
                 films = this.filmsWithDisp |> List.map (fun f -> f.getLayer w)
-                substrate = 
+                substrate =
                     match this.substrateWithDisp with
-                    | Some s -> s.getLayer w |> Some
+                    | Some s -> s.getSubstrate w v |> Some
                     | None -> None
                 lower = this.lowerWithDisp.getProperties w
             }
+
+        member this.getWedgeAngle() =
+            match this.substrateWithDisp with
+            | Some (WedgeWithDisp w) -> Some w.angle
+            | _ -> None
 
 
     type OpticalSystem
@@ -125,7 +170,7 @@ module Dispersion =
                 description = this.description
                 upperWithDisp = this.upper.dispersive
                 filmsWithDisp = this.films |> List.map (fun f -> f.dispersive)
-                substrateWithDisp = 
+                substrateWithDisp =
                     match this.substrate with
                     | Some s -> s.dispersive |> Some
                     | None -> None

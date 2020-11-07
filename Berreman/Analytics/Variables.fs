@@ -30,6 +30,7 @@ module Variables =
         | PolarizationRange of Range<Polarization>
         | EllipticityRange of Range<Ellipticity>
         | WaveLengthRange of Range<WaveLength>
+        | WedgeAngleRange of Range<WedgeAngle>
 
         member this.length =
             match this with
@@ -37,6 +38,7 @@ module Variables =
             | PolarizationRange v -> v.numberOfPoints
             | EllipticityRange v -> v.numberOfPoints
             | WaveLengthRange v -> v.numberOfPoints
+            | WedgeAngleRange v -> v.numberOfPoints
 
         member this.name =
             match this with
@@ -44,6 +46,7 @@ module Variables =
             | PolarizationRange _ -> "p"
             | EllipticityRange _ -> "e"
             | WaveLengthRange _ -> "w (nm)"
+            | WedgeAngleRange _ -> "c"
 
         member this.value i =
             match this with
@@ -63,6 +66,10 @@ module Variables =
                 let (WaveLength s) = r.startValue
                 let (WaveLength e) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
+            | WedgeAngleRange r ->
+                let (WedgeAngle (Angle s)) = r.startValue
+                let (WedgeAngle (Angle e)) = r.endValue
+                s + (e - s) * (double i) / (double r.numberOfPoints)
 
         member this.plotValue i =
             match this with
@@ -70,36 +77,23 @@ module Variables =
             | PolarizationRange _ -> (this.value i) |> toDegree
             | EllipticityRange _ -> this.value i
             | WaveLengthRange _ -> (this.value i) |> toNanometers
+            | WedgeAngleRange _ -> (this.value i) |> toDegree
 
         member this.plotMinValue =
             match this with
-            | IncidenceAngleRange r ->
-                let (IncidenceAngle (Angle s)) = r.startValue
-                s |> toDegree
-            | PolarizationRange r ->
-                let (Polarization (Angle s)) = r.startValue
-                s |> toDegree
-            | EllipticityRange r ->
-                let (Ellipticity s) = r.startValue
-                s
-            | WaveLengthRange r -> 
-                let (WaveLength s) = r.startValue
-                s |> toNanometers
+            | IncidenceAngleRange r -> r.startValue.value |> toDegree
+            | PolarizationRange r -> r.startValue.value |> toDegree
+            | EllipticityRange r -> r.startValue.value
+            | WaveLengthRange r -> r.startValue.value |> toNanometers
+            | WedgeAngleRange r -> r.startValue.value |> toDegree
 
         member this.plotMaxValue =
-            match this with 
-            | IncidenceAngleRange r ->
-                let (IncidenceAngle (Angle e)) = r.endValue
-                e |> toDegree
-            | PolarizationRange r ->
-                let (Polarization (Angle e)) = r.endValue
-                e |> toDegree
-            | EllipticityRange r ->
-                let (Ellipticity e) = r.endValue
-                e
-            | WaveLengthRange r ->
-                let (WaveLength e) = r.endValue
-                e |> toNanometers
+            match this with
+            | IncidenceAngleRange r -> r.endValue.value |> toDegree
+            | PolarizationRange r -> r.endValue.value |> toDegree
+            | EllipticityRange r -> r.endValue.value
+            | WaveLengthRange r -> r.endValue.value |> toNanometers
+            | WedgeAngleRange r -> r.endValue.value |> toDegree
 
         member this.plotPoints = [| for i in 0..this.length -> this.plotValue i |]
 
@@ -126,7 +120,7 @@ module Variables =
         | _ -> None
 
 
-    let getIncidenceAngle (v : RangedVariable) i = 
+    let getIncidenceAngle (v : RangedVariable) i =
         match v with
         | IncidenceAngleRange _ -> v.value i |> Angle |> IncidenceAngle |> Some
         | _ -> None
@@ -144,7 +138,13 @@ module Variables =
         | _ -> None
 
 
-    /// Labels to distinguish varialbes in incident light. Refactor when nameof is available in F#.
+    let getWedgeAngle (v : RangedVariable) i =
+        match v with
+        | WedgeAngleRange _ -> v.value i |> Angle |> WedgeAngle |> Some
+        | _ -> None
+
+
+    /// Labels to distinguish variables in incident light. Refactor when nameof is available in F#.
     let private incidentLightLabels = ("w", "r", "i", "p", "e")
 
 
@@ -156,6 +156,7 @@ module Variables =
         | PolarizationRange _ -> d |> List.choose (fun (k, v) -> if k = p then None else Some (k, v))
         | EllipticityRange _ -> d |> List.choose (fun (k, v) -> if k = e then None else Some (k, v))
         | WaveLengthRange _ -> d |> List.choose (fun (k, v) -> if k = w then None else Some (k, v))
+        | WedgeAngleRange _ -> d
 
 
     /// Combination of incident light and optical system with dispersion.
@@ -175,7 +176,7 @@ module Variables =
                 (w, this.incidentLightInfo.waveLength.description)
             ]
 
-        member private __.toLightDescription d =
+        member private _.toLightDescription d =
             d
             |> List.map snd
             |> List.fold (fun acc r -> acc + (if acc <> "" then lineBrake else "") + r) ""
@@ -201,15 +202,15 @@ module Variables =
             this.getLightDescription (x, y) |> this.toFullDescription
 
 
-    let calculate (f: FixedInfo) (x : RangedVariable) = 
+    let calculate (f: FixedInfo) (x : RangedVariable) =
         let l = f.incidentLightInfo
 
-        let getValue d g i = 
-            match g x i with 
+        let getValue d g i =
+            match g x i with
             | Some v -> v
             | None -> d
 
-        let getLight i = 
+        let getLight i =
             {
                 waveLength = getValue l.waveLength getWaveLength i
                 refractionIndex = l.refractionIndex
@@ -218,9 +219,11 @@ module Variables =
                 ellipticity = getValue l.ellipticity getEllipticity i
             }
 
-        let getOpticalSystem i = 
+        let getOpticalSystem i =
             let w = getValue l.waveLength getWaveLength i
-            f.opticalSystem.getSystem w
+            let a = f.opticalSystem.getWedgeAngle() |> Option.defaultValue WedgeAngle.defaultValue
+            let v = getValue a getWedgeAngle i
+            f.opticalSystem.getSystem w v
 
         let getSolution i = OpticalSystemSolver(getLight i, getOpticalSystem i, SolverParameters.defaultValue).solution
         [| for i in 0..x.length -> (x.plotValue i, getSolution i) |]
@@ -229,15 +232,15 @@ module Variables =
     let calculate3D (f: FixedInfo) (x : RangedVariable) (y : RangedVariable) =
         let l = f.incidentLightInfo
 
-        let getValue d g i j = 
-            match g x i with 
+        let getValue d g i j =
+            match g x i with
             | Some v -> v
             | None ->
-                match g y j with 
+                match g y j with
                 | Some w -> w
                 | None -> d
 
-        let getLight i j = 
+        let getLight i j =
             {
                 waveLength = getValue l.waveLength getWaveLength i j
                 refractionIndex = l.refractionIndex
@@ -246,9 +249,11 @@ module Variables =
                 ellipticity = getValue l.ellipticity getEllipticity i j
             }
 
-        let getOpticalSystem i j = 
+        let getOpticalSystem i j =
             let w = getValue l.waveLength getWaveLength i j
-            f.opticalSystem.getSystem w
+            let a = f.opticalSystem.getWedgeAngle() |> Option.defaultValue WedgeAngle.defaultValue
+            let v = getValue a getWedgeAngle i j
+            f.opticalSystem.getSystem w v
 
         let getSolution i j = OpticalSystemSolver(getLight i j, getOpticalSystem i j, SolverParameters.defaultValue).solution
 
@@ -257,17 +262,17 @@ module Variables =
         |> Array.ofSeq
 
 
-    let calculateOpticalProp 
-        (c : OpticalPropertyComponent) 
+    let calculateOpticalProp
+        (c : OpticalPropertyComponent)
         (t : OpticalTransformation)
         (i : Index, j : Index)
         (u : UseReIm)
-        (o : OpticalPropertiesWithDisp) 
-        (r : Range<WaveLength>) = 
+        (o : OpticalPropertiesWithDisp)
+        (r : Range<WaveLength>) =
 
-        let f w = 
+        let f w =
             let p =((o.getProperties w).opticalComponent c).[i, j] |> t.transform
-            match u with 
+            match u with
             | UseRe -> p.Real
             | UseIm -> p.Imaginary
 

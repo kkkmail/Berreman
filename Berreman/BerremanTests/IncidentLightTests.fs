@@ -29,7 +29,7 @@ type IncidentLightTestData =
 type IncidentLightTests(output : ITestOutputHelper) =
 
     let waveLength = WaveLength.nm 600.0
-    let getN1SinFita incidenceAngle = N1SinFita.create 1.0 incidenceAngle
+    let getN1SinFita incidenceAngle = N1SinFita.create RefractionIndex.vacuum incidenceAngle
 
     let data =
         [
@@ -155,13 +155,13 @@ type IncidentLightTests(output : ITestOutputHelper) =
 
     let createField (d : IncidentLightTestData) = EmField.create(d.info, OpticalProperties.vacuum)
 
-    member __.runTest (d : IncidentLightTestData) =
+    member _.runTest (d : IncidentLightTestData) =
         output.WriteLine d.description
         let i = createField d
         verifyVectorEqualityE output "eI" i.e d.expected.e
         verifyVectorEqualityH output "hI" i.h d.expected.h
 
-    member __.runAzimuthAndEllipticityTest(d : IncidentLightTestData) =
+    member _.runAzimuthAndEllipticityTest(d : IncidentLightTestData) =
         output.WriteLine d.description
         let i = createField d
         let el = i.ellipticity

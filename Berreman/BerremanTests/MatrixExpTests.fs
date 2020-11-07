@@ -9,7 +9,7 @@ open Xunit.Abstractions
 open MatrixComparison
 
 
-type MatriExpTestData =
+type MatrixExpTestData =
     {
         matrix : ComplexMatrix
         exp : ComplexMatrix
@@ -17,10 +17,10 @@ type MatriExpTestData =
 
 
 type MatrixExpTests(output : ITestOutputHelper) =
-    let data = 
+    let data =
         [|
             {
-                matrix = 
+                matrix =
                     [
                         [ 1.; 0.; 0.; 0. ]
                         [ 0.; 1.; 0.; 0. ]
@@ -28,7 +28,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
                         [ 0.; 0.; 0.; 1. ]
                     ]
                     |> ComplexMatrix.fromRe
-                exp = 
+                exp =
                     [
                         [ 2.718281828459045; 0.; 0.; 0. ]
                         [ 0.; 2.718281828459045; 0.; 0. ]
@@ -39,7 +39,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
             }
 
             {
-                matrix = 
+                matrix =
                     [
                         [ 0.; 0.; 0.; 1. ]
                         [ 0.; 0.; 1.; 0. ]
@@ -47,7 +47,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
                         [ 1.; 0.; 0.; 0. ]
                     ]
                     |> ComplexMatrix.fromRe
-                exp = 
+                exp =
                     [
                         [ 1.5430806348152437; 0.; 0.; 1.1752011936438014 ]
                         [ 0.; 1.5430806348152437; 1.1752011936438014; 0. ]
@@ -58,7 +58,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
             }
 
             {
-                matrix = 
+                matrix =
                     [
                         [ 0.; 1.; 0.; 0. ]
                         [ 2.25; 0.; 0.; 0. ]
@@ -66,7 +66,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
                         [ 0.; 0.; 2.25; 0. ]
                     ]
                     |> ComplexMatrix.fromRe
-                exp = 
+                exp =
                     [
                         [ 2.352409615243247; 1.4195196367298781; 0.; 0. ]
                         [ 3.1939191826422255; 2.3524096152432468; 0.; 0. ]
@@ -77,7 +77,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
             }
 
             {
-                matrix = 
+                matrix =
                     [
                         [ createComplex 0.434019224414145 0.3597936176617338; createComplex -0.028969337488555125 -0.2331671374340436; createComplex -0.38793719441289354 -0.17669428507034324; createComplex -0.3683415930192917 -0.1866072073826357 ]
                         [ createComplex -0.05288986643686955 -0.26613918522944213; createComplex -0.3872670051288296 0.054708036112359526; createComplex 0.44826408380231353 -0.06677607969711241; createComplex -0.47643529127135253 0.2679087432590246 ]
@@ -85,7 +85,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
                         [ createComplex 0.16659862837095085 0.022244704795009174; createComplex 0.48894614408726356 0.38797810060764326; createComplex 0.23324167272783902 0.09536921773102325; createComplex 0.16152033609014071 0.055957933963475925 ]
                     ]
                     |> ComplexMatrix.create
-                exp = 
+                exp =
                     [
                         [ createComplex 1.301107463228251 0.30149892205262907; createComplex 0.035994474436527014 -0.3594482497768818; createComplex -0.6028227611799336 -0.37242907436917494; createComplex -0.46836947017605535 -0.329899169881008 ]
                         [ createComplex 0.07424919735412158 -0.17208118696828723; createComplex 0.49120419109194813 0.04142968284048359; createComplex 0.3104091059312637 -0.05379263120721354; createComplex -0.36279080282391385 0.25001280133413606 ]
@@ -96,7 +96,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
             }
 
             {
-                matrix = 
+                matrix =
                     [
                         [ createComplex 3.0788513100411707 0.49469830314298635; createComplex -1.2080122993694453 -2.9928065873634124; createComplex 2.4599665563888995 -1.951807695221146; createComplex 1.2099931269579978 -0.6828005219227951 ]
                         [ createComplex 3.3050571888868996 0.995186567278834; createComplex 2.229025568155867 3.597611495379678; createComplex -0.10073452994519005 3.0077337086555; createComplex -4.979881057783793 -0.6444300340434861 ]
@@ -104,7 +104,7 @@ type MatrixExpTests(output : ITestOutputHelper) =
                         [ createComplex 1.4593960547080087 3.5343157315154206; createComplex -0.03742460540420822 2.5349218035454313; createComplex 0.9800291706836317 -2.836872950400562; createComplex 0.579580853515842 -3.9496444121256213 ]
                     ]
                     |> ComplexMatrix.create
-                exp = 
+                exp =
                     [
                         [ createComplex -219.37086621359 -115.23008858190974; createComplex -19.902768973161834 97.50032057594959; createComplex -97.06734461578789 112.760545242185; createComplex -98.86670930101616 -53.47253717705648 ]
                         [ createComplex 106.01381822534191 36.11684971301449; createComplex -16.262352063490873 -38.36044749694726; createComplex 23.92161817624071 -79.20561686192471; createComplex 81.68704653744192 7.447492693074164 ]
@@ -115,8 +115,8 @@ type MatrixExpTests(output : ITestOutputHelper) =
             }
         |]
 
-    // Complex matrix and expected matrix exponent
-    member __.runTest (d : MatriExpTestData) = verifyMatrixEquality output (d.matrix.matrixExp()) d.exp
+    /// Complex matrix and expected matrix exponent.
+    member _.runTest (d : MatrixExpTestData) = verifyMatrixEquality output (d.matrix.matrixExp()) d.exp
 
     [<Fact>]
     member this.matrixExpTest0 () = this.runTest (data.[0])

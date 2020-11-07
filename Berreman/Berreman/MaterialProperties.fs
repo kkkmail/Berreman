@@ -1,36 +1,32 @@
 ﻿namespace Berreman
-module MaterialProperties = 
+module MaterialProperties =
 
     //open ExtremeNumericsMath
 
     open System.Numerics
     open MathNetNumericsMath
-
     open Geometry
-    open System.Numerics
-    open System.Numerics
 
-
-    /// DU indices to be used for choosing Eps / Mu / Rho.
-    type OpticalPropertyComponent = 
+    /// DU to be used for choosing Eps / Mu / Rho.
+    type OpticalPropertyComponent =
         | EpsComp
         | MuComp
         | RhoComp
 
 
     /// DU to be used for choosing re or im.
-    type UseReIm = 
+    type UseReIm =
         | UseRe
         | UseIm
 
 
     /// DU to be used for performing some transformation: for Eps we usually want to take a square root first.
-    type OpticalTransformation = 
+    type OpticalTransformation =
         | NoTransformation
         | SquareRoot
         | MultByMillion
 
-        member this.transform : (Complex -> Complex) = 
+        member this.transform : (Complex -> Complex) =
             match this with
             | NoTransformation -> id
             | SquareRoot -> sqrt
@@ -38,16 +34,18 @@ module MaterialProperties =
 
 
     // Covers only real refraction indices.
-    type RefractionIndex = 
-        RefractionIndex of double
-        with 
+    type RefractionIndex =
+        | RefractionIndex of double
+
+        member r.value = let (RefractionIndex v) = r in v
         static member create n = RefractionIndex n
         static member vacuum = RefractionIndex.create 1.0
 
 
     type ComplexRefractionIndex =
-        ComplexRefractionIndex of Complex
-        with 
+        | ComplexRefractionIndex of Complex
+
+        member r.value = let (ComplexRefractionIndex v) = r in v
         static member create n = ComplexRefractionIndex n
 
 
@@ -79,7 +77,7 @@ module MaterialProperties =
             ]
             |> Eps.fromRe
 
-        static member fromComplexRefractionIndex (ComplexRefractionIndex n1, ComplexRefractionIndex n2, ComplexRefractionIndex n3) = 
+        static member fromComplexRefractionIndex (ComplexRefractionIndex n1, ComplexRefractionIndex n2, ComplexRefractionIndex n3) =
             [
                 [ n1 * n1; complexZero; complexZero ]
                 [ complexZero; n2 * n2; complexZero ]
@@ -177,10 +175,10 @@ module MaterialProperties =
                 eps =
                     let (Eps a) = this.eps
                     a |> rotate |> Eps
-                mu = 
+                mu =
                     let (Mu a) = this.mu
                     a |> rotate |> Mu
-                rho = 
+                rho =
                     let (Rho a) = this.rho
                     a |> rotate |> Rho
             }
@@ -191,13 +189,13 @@ module MaterialProperties =
         member this.rotateZ a = Rotation.rotateZ a |> this.rotate
 
         member this.opticalComponent c =
-            match c with 
-            | EpsComp -> 
+            match c with
+            | EpsComp ->
                 let (Eps eps) = this.eps
                 eps
-            | MuComp -> 
+            | MuComp ->
                 let (Mu mu) = this.mu
                 mu
-            | RhoComp -> 
+            | RhoComp ->
                 let (Rho rho) = this.rho
                 rho

@@ -1,6 +1,5 @@
 ﻿namespace BerremanTests
 
-open Berreman.Constants
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
@@ -26,7 +25,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
     let data =
         [
             {
-                description = "One layer homegenious media, normal incidence angle."
+                description = "One layer homogeneous media, normal incidence angle."
                 thinFilms =
                     [
                         {
@@ -53,7 +52,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
             }
 
             {
-                description = "One layer homegenious media, 85 degrees incidence angle."
+                description = "One layer homogeneous media, 85 degrees incidence angle."
                 thinFilms =
                     [
                         {
@@ -124,7 +123,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
                         {
                             properties =
                                 {
-                                    eps = 
+                                    eps =
                                         [
                                             [ createComplex 3.5021307590677586 0.004910796055146478; createComplex 0.1448188382704857 0.000834260445303435; createComplex 0.0421100441439744 -0.0008311798560446699 ]
                                             [ createComplex 0.1448188382704858 0.0008342604453034346; createComplex 4.395445093161517 0.004762172783970623; createComplex 0.01455357523209506 -0.00008366130786027271 ]
@@ -306,7 +305,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
             }
         ]
 
-    member __.runTest (d : ThinFilmTestData) =
+    member _.runTest (d : ThinFilmTestData) =
         output.WriteLine d.description
 
         let (BerremanMatrixPropagated (ComplexMatrix4x4 bm)) =

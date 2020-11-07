@@ -1,7 +1,7 @@
 ﻿//===========================================================
 #load "References.fsx"
 //===========================================================
-open Berreman
+open Berreman.Geometry
 open Berreman.FieldFunctions
 open Berreman.Media
 open Berreman.Fields
@@ -15,45 +15,23 @@ open Analytics.Variables
 let fn = [ R; T ]
 
 let numberOfPoints = 2000
-let incidenceAngleDegree = 79.0
-
-
-let getOpticalProperties g =
-    {
-        epsWithDisp = g >> Eps.fromRefractionIndex |> EpsWithDisp
-        muWithDisp = Mu.vacuum.dispersive
-        rhoWithDisp = Rho.vacuum.dispersive
-    }
-
-
-/// nO
-let getRefractionIndexO (w : WaveLength) =
-    // Wavelength in mkm
-    let q = w.value / Constants.mkm
-    let nSq = 1.0 + 1.43 * q * q / (q * q - 0.073 * 0.073) + 0.65 * q * q / (q * q - 0.12 * 0.12)
-    sqrt nSq |> RefractionIndex
-
+let incidenceAngleDegree = 0.0
+let polarization = 45.0 |> Angle.degree |> Polarization.create
 
 type RefractionIndexThickness =
-    | RefractionIndexThickness of (WaveLength -> RefractionIndex) * Thickness
+    | RefractionIndexThickness of RefractionIndex * Thickness
 
 
-let nh1 = RefractionIndexThickness (getRefractionIndexO, Thickness.mm (0.001))
-let nh2 = RefractionIndexThickness ((fun _ -> RefractionIndex 2.25), Thickness.mm 1.00)
+//let nh1 = RefractionIndexThickness (RefractionIndex 1.50, Thickness.mm (0.001))
+let nh1 = RefractionIndexThickness (RefractionIndex 1.78052, Thickness.mm (0.001))
+let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00)
 
 
 let incidentLight = light600nmInclinedDegreeLPs incidenceAngleDegree
 
-let wlRange =
+let wavelengthRange =
     Range<_>.create numberOfPoints (WaveLength.nm 300.0) (WaveLength.nm 700.0)
-
-
-let wavelengthRange = WaveLengthRange wlRange
-
-
-let incidenceAngleRange =
-    Range<_>.create numberOfPoints IncidenceAngle.normal IncidenceAngle.maxValue
-    |> IncidenceAngleRange
+    |> WaveLengthRange
 
 
 let ellipticityRange =
@@ -66,6 +44,11 @@ let polarizationRange =
     |> PolarizationRange
 
 
+let wedgeAngleRange =
+    Range<_>.create numberOfPoints (0.0 |> Angle.degree |> WedgeAngle) (85.0 |> Angle.degree |> WedgeAngle)
+    |> WedgeAngleRange
+
+
 let opticalProperties refractionIndex =
     {
         epsWithDisp = (Eps.fromRefractionIndex refractionIndex).dispersive
@@ -74,13 +57,13 @@ let opticalProperties refractionIndex =
     }
 
 
-let getGlassInfo useThickPlate nh1 nh2Opt light =
+let getGlassInfo useThickPlate nh1 nh2Opt light angle =
     let (RefractionIndexThickness (n1, h1)) = nh1
 
     let film1 =
         {
             thickness = h1
-            propertiesWithDisp = getOpticalProperties n1
+            propertiesWithDisp = opticalProperties n1
         }
 
     let film2Opt =
@@ -88,7 +71,7 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
         | Some (RefractionIndexThickness (n2, h2)) ->
             {
                 thickness = h2
-                propertiesWithDisp = getOpticalProperties n2
+                propertiesWithDisp = opticalProperties n2
             }
             |> Some
         | None -> None
@@ -99,10 +82,10 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
         | false, None -> [ film1 ], None
         | false, Some film2 -> [ film1; film2 ], None
         | true, None -> [], film1 |> PlateWithDisp |> Some
-        | true, Some film2 -> [ film1 ], film2 |> PlateWithDisp |> Some
+        | true, Some film2 -> [ film1 ], { layerWithDisp = film2; angle = angle } |> WedgeWithDisp |> Some
 
     {
-        incidentLightInfo = light
+        incidentLightInfo = { light with polarization = polarization }
         opticalSystem =
             {
                 description = Some ("Glass " + (if useThickPlate then "substrate" else "film"))
@@ -114,17 +97,19 @@ let getGlassInfo useThickPlate nh1 nh2Opt light =
     }
 
 
-let film = getGlassInfo false nh1 None incidentLight
-let substrate = getGlassInfo true nh1 None incidentLight
+let zeroDegreeWedge = (0.0 |> Angle.degree |> WedgeAngle)
+let thirtyDegreeWedge = (30.0 |> Angle.degree |> WedgeAngle)
 
-//let film = getGlassInfo false nh1 (Some nh2) incidentLight
-//let substrate = getGlassInfo true nh1 (Some nh2) incidentLight
+
+//let film = getGlassInfo false nh1 None incidentLight zeroDegreeWedge
+//let substrate = getGlassInfo true nh1 None incidentLight thirtyDegreeWedge
+let film = getGlassInfo false nh1 (Some nh2) incidentLight zeroDegreeWedge
+let substrate = getGlassInfo true nh1 (Some nh2) incidentLight thirtyDegreeWedge
+
 
 #time
-//plot film fn polarizationRange
+plot substrate fn wedgeAngleRange
 //plot substrate fn polarizationRange
 //plotComparison [ film; substrate ] fn ellipticityRange
-//plotComparison [ film; substrate ] fn incidenceAngleRange
-plotComparison [ film; substrate ] fn wavelengthRange
-plotN11 film.opticalSystem.filmsWithDisp.Head.propertiesWithDisp wlRange
+//plotComparison [ film; substrate ] fn wavelengthRange
 #time

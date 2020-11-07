@@ -1,20 +1,21 @@
 ﻿namespace Berreman
 
+open Berreman.Fields
+
 module Media =
 
     open MaterialProperties
-    open Fields
     open Geometry
 
 
-    type Thickness = 
+    type Thickness =
         | Thickness of double
         | Infinity
         with
         static member nm t = t * Constants.nm |> Thickness
         static member mkm t = t * Constants.mkm |> Thickness
         static member mm t = t * Constants.mm |> Thickness
-        member __.toInfinity () = Thickness.Infinity
+        member _.toInfinity () = Thickness.Infinity
 
 
     type Layer =
@@ -27,15 +28,36 @@ module Media =
         member this.rotatePiX = this.rotate Rotation.rotatePiX
 
 
+    type WedgeLayer =
+        {
+            layer : Layer
+            angle : WedgeAngle
+        }
+
+    type Substrate =
+        | Plate of Layer
+        | Wedge of WedgeLayer
+
+        member this.properties =
+            match this with
+            | Plate p -> p.properties
+            | Wedge w -> w.layer.properties
+
+        member this.rotate r =
+            match this with
+            | Plate p -> p.rotate r |> Plate
+            | Wedge w -> { w with layer = w.layer.rotate r } |> Wedge
+
+
     /// Use when upper system is coming with incident light EmField
-    type ShortOpticalSystem = 
+    type ShortOpticalSystem =
         {
             films : List<Layer>
             lower : OpticalProperties
         }
 
 
-    type BaseOpticalSystem = 
+    type BaseOpticalSystem =
         {
             description : string option
             upper : OpticalProperties
@@ -43,7 +65,7 @@ module Media =
             lower : OpticalProperties
         }
 
-        member this.fullSystem = 
+        member this.fullSystem =
             {
                 description = this.description
                 upper = this.upper
@@ -52,8 +74,8 @@ module Media =
                 lower = this.lower
             }
 
-        member system.rotate (r : Rotation) : BaseOpticalSystem = 
-            let newFilms = 
+        member system.rotate (r : Rotation) : BaseOpticalSystem =
+            let newFilms =
                 system.films
                 |> List.map (fun f -> { f with properties = f.properties.rotate r })
                 |> List.rev
@@ -66,25 +88,25 @@ module Media =
         member system.rotateZ a = Rotation.rotateZ a |> system.rotate
 
 
-    and OpticalSystem = 
+    and OpticalSystem =
         {
             description : string option
             upper : OpticalProperties
             films : List<Layer>
-            substrate : Layer option
+            substrate : Substrate option
             lower : OpticalProperties
         }
 
-        member this.baseSystem = 
+        member this.baseSystem =
             match this.substrate with
-            | None -> 
+            | None ->
                 {
                     description = this.description
                     upper = this.upper
                     films = this.films
                     lower = this.lower
                 }
-            | Some s -> 
+            | Some s ->
                 {
                     description = this.description
                     upper = this.upper
@@ -92,12 +114,11 @@ module Media =
                     lower = s.properties
                 }
 
-        member system.rotate (r : Rotation) : OpticalSystem = 
+        member system.rotate (r : Rotation) : OpticalSystem =
             let sr = (system.baseSystem.rotate r).fullSystem
 
-            match system.substrate with 
+            match system.substrate with
             | Some s -> { sr with substrate = s.rotate r |> Some}
             | None -> sr
 
         member this.rotatePiX = this.rotate Rotation.rotatePiX
-

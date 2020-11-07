@@ -3,15 +3,10 @@
 //===========================================================
 open Berreman.FieldFunctions
 open Berreman.Media
-open Berreman.Fields
-open Berreman.Dispersion
-open Berreman.MaterialProperties
 open OpticalProperties.Standard
 open Analytics.StandardLightVariables
 open Analytics.StandardSystems
 open Analytics.Charting
-open Analytics.Variables
-open OpticalProperties.Dispersive
 
 //===========================================================
 let fn = [ R; T ]
@@ -40,8 +35,8 @@ let thickness = Thickness.mm 0.01
 let film = langasiteFilmOnSilicon thickness light600nmNormalLPs
 let substrate = langasiteSubstrateOnSilicon thickness light600nmNormalLPs
 
-let film1 = langasiteFilmOnSilicon thickness (light600nmInclinedDegreelLPs incidenceAngleDegree)
-let substrate1 = langasiteSubstrateOnSilicon thickness (light600nmInclinedDegreelLPs incidenceAngleDegree)
+let film1 = langasiteFilmOnSilicon thickness (light600nmInclinedDegreeLPs incidenceAngleDegree)
+let substrate1 = langasiteSubstrateOnSilicon thickness (light600nmInclinedDegreeLPs incidenceAngleDegree)
 
 #time
 plot film fn w

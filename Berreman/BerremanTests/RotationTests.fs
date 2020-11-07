@@ -27,11 +27,11 @@ type RotationTests(output : ITestOutputHelper) =
         |]
 
 
-    let runTest (d : RotationTestData) = 
+    let runTest (d : RotationTestData) =
         let p = d.eps |> OpticalProperties.fromEpsion
         let r = p.rotate d.rotation
         verifyMatrixEqualityEps output r.eps d.expectedEps
 
 
     //[<Fact>]
-    //member __.rotationTest0 () = runTest (data.[0])
+    //member _.rotationTest0 () = runTest (data.[0])
