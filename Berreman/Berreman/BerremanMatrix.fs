@@ -1,18 +1,16 @@
 ﻿namespace Berreman
 
+open System.Numerics
+open MathNet.Numerics.LinearAlgebra
+open MathNetNumericsMath
+
+open Geometry
+open Fields
+open MaterialProperties
+open Media
+open Constants
+
 module BerremanMatrix =
-
-    //open ExtremeNumericsMath
-
-    open System.Numerics
-    open MathNet.Numerics.LinearAlgebra
-    open MathNetNumericsMath
-
-    open Geometry
-    open Fields
-    open MaterialProperties
-    open Media
-    open Constants
 
     /// Normalizes complex vector using L2 norm.
     let normalize (v : #seq<Complex>) =
@@ -57,7 +55,7 @@ module BerremanMatrix =
     type BerremanField =
         {
             waveLength : WaveLength
-            n1SinFita : N1SinFita
+//            n1SinFita : N1SinFita
             opticalProperties : OpticalProperties
             eh : BerremanFieldEH
         }
@@ -70,7 +68,7 @@ module BerremanMatrix =
         static member create (info : IncidentLightInfo) (o : OpticalProperties) (eh : ComplexVector4) =
             {
                 waveLength = info.waveLength
-                n1SinFita = info.n1SinFita
+//                n1SinFita = info.n1SinFita
                 opticalProperties = o
                 eh = eh |> BerremanFieldEH
             }
@@ -83,10 +81,10 @@ module BerremanMatrix =
             opticalProperties : OpticalProperties
         }
 
+        /// Generated, do not modify.
         static member create (nsf : N1SinFita) (o : OpticalProperties) =
             let n1SinFita = nsf.complex
 
-            // Generated, do not modify.
             let berremanMatrix =
                 [
                     [
@@ -124,9 +122,8 @@ module BerremanMatrix =
 
         static member identity = BerremanMatrix.create N1SinFita.normal OpticalProperties.vacuum
 
-        // Generated, do not modify.
-        static member createEmField (o : OpticalProperties) (emXY : EmFieldXY) =
-            let nsf = emXY.n1SinFita
+        /// Generated, do not modify.
+        static member createEmField (nsf : N1SinFita) (o : OpticalProperties) (emXY : EmFieldXY) : EmField =
             let n1SinFita = nsf.complex
 
             let eX = emXY.e2.x
@@ -135,16 +132,17 @@ module BerremanMatrix =
             let hY = emXY.h2.y
             let eZ = ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * o.rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * o.rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
             let hZ = ((-(o.eps.[2, 2] * o.rhoT.[2, 0]) + o.eps.[2, 0] * o.rhoT.[2, 2]) * eX - o.eps.[2, 2] * o.rhoT.[2, 1] * eY + o.eps.[2, 1] * o.rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * o.rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + o.rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
-            EmField.create (emXY, eZ, hZ)
+            //EmField.create (emXY, eZ, hZ)
+            0
 
 
     type BerremanField
         with
-        member this.toEmField () =
+        member this.toEmField() : EmField =
             let emXY =
                 {
                     waveLength = this.waveLength
-                    n1SinFita = this.n1SinFita
+//                    n1SinFita = this.n1SinFita
                     opticalProperties = this.opticalProperties
                     e2 = [ this.eX; this.eY ] |> E2.create
                     h2 = [ this.hX; this.hY ] |> H2.create
@@ -155,7 +153,7 @@ module BerremanMatrix =
 
     type EmField
         with
-        member this.toBerremanField () : BerremanField =
+        member this.toBerremanField() : BerremanField =
             {
                 waveLength = this.waveLength
                 n1SinFita = this.n1SinFita

@@ -28,7 +28,127 @@ module Solvers =
         | EmFieldBased of EmField * ShortOpticalSystem
 
 
+    /// Generated, do not modify.
+    let private getCoeffTblVal (BerremanMatrixPropagated p) (b1 : FullEigenBasis) (b2 : FullEigenBasis) =
+        [
+            [
+                b1.up.e0.[0] * p.[0, 0] + b1.up.e0.[1] * p.[0, 1] + b1.up.e0.[2] * p.[0, 2] + b1.up.e0.[3] * p.[0, 3]
+                b1.up.e1.[0] * p.[0, 0] + b1.up.e1.[1] * p.[0, 1] + b1.up.e1.[2] * p.[0, 2] + b1.up.e1.[3] * p.[0, 3]
+                -b2.down.e0.[0]
+                -b2.down.e1.[0]
+            ]
+            [
+                b1.up.e0.[0] * p.[1, 0] + b1.up.e0.[1] * p.[1, 1] + b1.up.e0.[2] * p.[1, 2] + b1.up.e0.[3] * p.[1, 3]
+                b1.up.e1.[0] * p.[1, 0] + b1.up.e1.[1] * p.[1, 1] + b1.up.e1.[2] * p.[1, 2] + b1.up.e1.[3] * p.[1, 3]
+                -b2.down.e0.[1]
+                -b2.down.e1.[1]
+            ]
+            [
+                b1.up.e0.[0] * p.[2, 0] + b1.up.e0.[1] * p.[2, 1] + b1.up.e0.[2] * p.[2, 2] + b1.up.e0.[3] * p.[2, 3]
+                b1.up.e1.[0] * p.[2, 0] + b1.up.e1.[1] * p.[2, 1] + b1.up.e1.[2] * p.[2, 2] + b1.up.e1.[3] * p.[2, 3]
+                -b2.down.e0.[2]
+                -b2.down.e1.[2]
+            ]
+            [
+                b1.up.e0.[0] * p.[3, 0] + b1.up.e0.[1] * p.[3, 1] + b1.up.e0.[2] * p.[3, 2] + b1.up.e0.[3] * p.[3, 3]
+                b1.up.e1.[0] * p.[3, 0] + b1.up.e1.[1] * p.[3, 1] + b1.up.e1.[2] * p.[3, 2] + b1.up.e1.[3] * p.[3, 3]
+                -b2.down.e0.[3]
+                -b2.down.e1.[3]
+            ]
+        ]
+        |> ComplexMatrix.create
+
+
+    /// Generated, do not modify.
+    let private getFreeTblVal (BerremanMatrixPropagated p) (i : EmField) (b1 : FullEigenBasis) (b2 : FullEigenBasis) =
+        [
+            ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[0, 1] + b1.down.e0.[3] * p.[0, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[0, 0] + b1.down.e1.[1] * i.e.x * p.[0, 1] + b1.down.e1.[0] * i.e.y * p.[0, 2] + b1.down.e1.[3] * i.e.x * p.[0, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[0, 0] + b1.down.e1.[1] * i.e.y * p.[0, 1] + b1.down.e1.[2] * i.e.y * p.[0, 2] + b1.down.e1.[3] * i.e.y * p.[0, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
+            ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[1, 1] + b1.down.e0.[3] * p.[1, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[1, 0] + b1.down.e1.[1] * i.e.x * p.[1, 1] + b1.down.e1.[0] * i.e.y * p.[1, 2] + b1.down.e1.[3] * i.e.x * p.[1, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[1, 0] + b1.down.e1.[1] * i.e.y * p.[1, 1] + b1.down.e1.[2] * i.e.y * p.[1, 2] + b1.down.e1.[3] * i.e.y * p.[1, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
+            ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[2, 1] + b1.down.e0.[3] * p.[2, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[2, 0] + b1.down.e1.[1] * i.e.x * p.[2, 1] + b1.down.e1.[0] * i.e.y * p.[2, 2] + b1.down.e1.[3] * i.e.x * p.[2, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[2, 0] + b1.down.e1.[1] * i.e.y * p.[2, 1] + b1.down.e1.[2] * i.e.y * p.[2, 2] + b1.down.e1.[3] * i.e.y * p.[2, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
+            ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[3, 1] + b1.down.e0.[3] * p.[3, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[3, 0] + b1.down.e1.[1] * i.e.x * p.[3, 1] + b1.down.e1.[0] * i.e.y * p.[3, 2] + b1.down.e1.[3] * i.e.x * p.[3, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[3, 0] + b1.down.e1.[1] * i.e.y * p.[3, 1] + b1.down.e1.[2] * i.e.y * p.[3, 2] + b1.down.e1.[3] * i.e.y * p.[3, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
+        ]
+        |> ComplexVector.create
+
+
+    let private getRT (coeffTblVal : ComplexMatrix) (freeTblVal : ComplexVector) (b1 : FullEigenBasis) (b2 : FullEigenBasis) =
+        let cfmVal = coeffTblVal.inverse
+        let detInv = cfmVal.determinant
+
+        match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
+        | false, false ->
+            let sol = cfmVal * freeTblVal
+
+            let ehr =
+                [
+                    b1.up.e0.[0] * sol.[0] + b1.up.e1.[0] * sol.[1]
+                    b1.up.e0.[1] * sol.[0] + b1.up.e1.[1] * sol.[1]
+                    b1.up.e0.[2] * sol.[0] + b1.up.e1.[2] * sol.[1]
+                    b1.up.e0.[3] * sol.[0] + b1.up.e1.[3] * sol.[1]
+                ]
+                |> ComplexVector4.create
+
+            let eht =
+                [
+                    b2.down.e0.[0] * sol.[2] + b2.down.e1.[0] * sol.[3]
+                    b2.down.e0.[1] * sol.[2] + b2.down.e1.[1] * sol.[3]
+                    b2.down.e0.[2] * sol.[2] + b2.down.e1.[2] * sol.[3]
+                    b2.down.e0.[3] * sol.[2] + b2.down.e1.[3] * sol.[3]
+                ]
+                |> ComplexVector4.create
+
+            ehr, eht
+        | _ ->
+            // This is a case of total reflection.
+            // The matrix is degenerate and we can't inverse it.
+
+            let coeffTblVal2x2 =
+                [
+                    [ coeffTblVal.[0,0]; coeffTblVal.[0,1] ]
+                    [ coeffTblVal.[1,0]; coeffTblVal.[1,1] ]
+                ]
+                |> ComplexMatrix.create
+
+            let det2 = coeffTblVal2x2.determinant
+            let cfmVal2x2 = coeffTblVal2x2.inverse
+
+            let c20 = coeffTblVal.[2,0]
+            let c02 = coeffTblVal.[0,2]
+
+            let sol0 = freeTblVal.[2] / coeffTblVal.[2,0]
+            let sol1 = freeTblVal.[1] / coeffTblVal.[1,1]
+
+
+            let ehr =
+                [
+                    b1.up.e0.[0] * sol0 + b1.up.e1.[0] * sol1
+                    b1.up.e0.[1] * sol0 + b1.up.e1.[1] * sol1
+                    b1.up.e0.[2] * sol0 + b1.up.e1.[2] * sol1
+                    b1.up.e0.[3] * sol0 + b1.up.e1.[3] * sol1
+                ]
+                |> ComplexVector4.create
+
+            let eht =
+                [
+                    cplx 0.0
+                    cplx 0.0
+                    cplx 0.0
+                    cplx 0.0
+                ]
+                |> ComplexVector4.create
+
+            ehr, eht
+
+
     type BaseOpticalSystemSolver private (input : InputData) =
+//        let i, m1, m2, waveLength, n1SinFita, films, upper, lower =
+//            match input with
+//            | InfoBased (info, system) ->
+//                let bm = BerremanMatrix.create info.n1SinFita
+//                EmField.create (info, system.upper), bm system.upper, bm system.lower, info.waveLength, info.n1SinFita, system.films, system.upper, system.lower
+//            | EmFieldBased (e, system) ->
+//                let bm = BerremanMatrix.create e.n1SinFita
+//                e, bm e.opticalProperties, bm system.lower, e.waveLength, e.n1SinFita, system.films, e.opticalProperties, system.lower
+
         let i, m1, m2, waveLength, n1SinFita, films, upper, lower =
             match input with
             | InfoBased (info, system) ->
@@ -38,132 +158,28 @@ module Solvers =
                 let bm = BerremanMatrix.create e.n1SinFita
                 e, bm e.opticalProperties, bm system.lower, e.waveLength, e.n1SinFita, system.films, e.opticalProperties, system.lower
 
-        let (BerremanMatrixPropagated p) = BerremanMatrixPropagated.propagate (films, i)
+        let p = BerremanMatrixPropagated.propagate (films, i)
         let b1 = m1.eigenBasis()
         let b2 = m2.eigenBasis()
-
-        // Generated, do not modify.
-        let coeffTblVal =
-            [
-                [
-                    b1.up.e0.[0] * p.[0, 0] + b1.up.e0.[1] * p.[0, 1] + b1.up.e0.[2] * p.[0, 2] + b1.up.e0.[3] * p.[0, 3]
-                    b1.up.e1.[0] * p.[0, 0] + b1.up.e1.[1] * p.[0, 1] + b1.up.e1.[2] * p.[0, 2] + b1.up.e1.[3] * p.[0, 3]
-                    -b2.down.e0.[0]
-                    -b2.down.e1.[0]
-                ]
-                [
-                    b1.up.e0.[0] * p.[1, 0] + b1.up.e0.[1] * p.[1, 1] + b1.up.e0.[2] * p.[1, 2] + b1.up.e0.[3] * p.[1, 3]
-                    b1.up.e1.[0] * p.[1, 0] + b1.up.e1.[1] * p.[1, 1] + b1.up.e1.[2] * p.[1, 2] + b1.up.e1.[3] * p.[1, 3]
-                    -b2.down.e0.[1]
-                    -b2.down.e1.[1]
-                ]
-                [
-                    b1.up.e0.[0] * p.[2, 0] + b1.up.e0.[1] * p.[2, 1] + b1.up.e0.[2] * p.[2, 2] + b1.up.e0.[3] * p.[2, 3]
-                    b1.up.e1.[0] * p.[2, 0] + b1.up.e1.[1] * p.[2, 1] + b1.up.e1.[2] * p.[2, 2] + b1.up.e1.[3] * p.[2, 3]
-                    -b2.down.e0.[2]
-                    -b2.down.e1.[2]
-                ]
-                [
-                    b1.up.e0.[0] * p.[3, 0] + b1.up.e0.[1] * p.[3, 1] + b1.up.e0.[2] * p.[3, 2] + b1.up.e0.[3] * p.[3, 3]
-                    b1.up.e1.[0] * p.[3, 0] + b1.up.e1.[1] * p.[3, 1] + b1.up.e1.[2] * p.[3, 2] + b1.up.e1.[3] * p.[3, 3]
-                    -b2.down.e0.[3]
-                    -b2.down.e1.[3]
-                ]
-            ]
-            |> ComplexMatrix.create
-
-        let cfmVal = coeffTblVal.inverse
-        let detInv = cfmVal.determinant
-
-        let freeTblVal =
-            [
-                ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[0, 1] + b1.down.e0.[3] * p.[0, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[0, 0] + b1.down.e1.[1] * i.e.x * p.[0, 1] + b1.down.e1.[0] * i.e.y * p.[0, 2] + b1.down.e1.[3] * i.e.x * p.[0, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[0, 0] + b1.down.e1.[1] * i.e.y * p.[0, 1] + b1.down.e1.[2] * i.e.y * p.[0, 2] + b1.down.e1.[3] * i.e.y * p.[0, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
-                ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[1, 1] + b1.down.e0.[3] * p.[1, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[1, 0] + b1.down.e1.[1] * i.e.x * p.[1, 1] + b1.down.e1.[0] * i.e.y * p.[1, 2] + b1.down.e1.[3] * i.e.x * p.[1, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[1, 0] + b1.down.e1.[1] * i.e.y * p.[1, 1] + b1.down.e1.[2] * i.e.y * p.[1, 2] + b1.down.e1.[3] * i.e.y * p.[1, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
-                ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[2, 1] + b1.down.e0.[3] * p.[2, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[2, 0] + b1.down.e1.[1] * i.e.x * p.[2, 1] + b1.down.e1.[0] * i.e.y * p.[2, 2] + b1.down.e1.[3] * i.e.x * p.[2, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[2, 0] + b1.down.e1.[1] * i.e.y * p.[2, 1] + b1.down.e1.[2] * i.e.y * p.[2, 2] + b1.down.e1.[3] * i.e.y * p.[2, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
-                ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[3, 1] + b1.down.e0.[3] * p.[3, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[3, 0] + b1.down.e1.[1] * i.e.x * p.[3, 1] + b1.down.e1.[0] * i.e.y * p.[3, 2] + b1.down.e1.[3] * i.e.x * p.[3, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[3, 0] + b1.down.e1.[1] * i.e.y * p.[3, 1] + b1.down.e1.[2] * i.e.y * p.[3, 2] + b1.down.e1.[3] * i.e.y * p.[3, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
-            ]
-            |> ComplexVector.create
-
-        let ehr, eht =
-            match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
-            | false, false ->
-                let sol = cfmVal * freeTblVal
-
-                let ehr =
-                    [
-                        b1.up.e0.[0] * sol.[0] + b1.up.e1.[0] * sol.[1]
-                        b1.up.e0.[1] * sol.[0] + b1.up.e1.[1] * sol.[1]
-                        b1.up.e0.[2] * sol.[0] + b1.up.e1.[2] * sol.[1]
-                        b1.up.e0.[3] * sol.[0] + b1.up.e1.[3] * sol.[1]
-                    ]
-                    |> ComplexVector4.create
-
-                let eht =
-                    [
-                        b2.down.e0.[0] * sol.[2] + b2.down.e1.[0] * sol.[3]
-                        b2.down.e0.[1] * sol.[2] + b2.down.e1.[1] * sol.[3]
-                        b2.down.e0.[2] * sol.[2] + b2.down.e1.[2] * sol.[3]
-                        b2.down.e0.[3] * sol.[2] + b2.down.e1.[3] * sol.[3]
-                    ]
-                    |> ComplexVector4.create
-
-                ehr, eht
-            | _ ->
-                // This is a case of total reflection.
-                // The matrix is degenerate and we can't inverse it.
-
-                let coeffTblVal2x2 =
-                    [
-                        [ coeffTblVal.[0,0]; coeffTblVal.[0,1] ]
-                        [ coeffTblVal.[1,0]; coeffTblVal.[1,1] ]
-                    ]
-                    |> ComplexMatrix.create
-
-                let det2 = coeffTblVal2x2.determinant
-                let cfmVal2x2 = coeffTblVal2x2.inverse
-
-                let c20 = coeffTblVal.[2,0]
-                let c02 = coeffTblVal.[0,2]
-
-                let sol0 = freeTblVal.[2] / coeffTblVal.[2,0]
-                let sol1 = freeTblVal.[1] / coeffTblVal.[1,1]
-
-
-                let ehr =
-                    [
-                        b1.up.e0.[0] * sol0 + b1.up.e1.[0] * sol1
-                        b1.up.e0.[1] * sol0 + b1.up.e1.[1] * sol1
-                        b1.up.e0.[2] * sol0 + b1.up.e1.[2] * sol1
-                        b1.up.e0.[3] * sol0 + b1.up.e1.[3] * sol1
-                    ]
-                    |> ComplexVector4.create
-
-                let eht =
-                    [
-                        cplx 0.0
-                        cplx 0.0
-                        cplx 0.0
-                        cplx 0.0
-                    ]
-                    |> ComplexVector4.create
-
-                ehr, eht
+        let coeffTblVal = getCoeffTblVal p b1 b2
+        let freeTblVal = getFreeTblVal p i b1 b2
+        let (ehr, eht) = getRT coeffTblVal freeTblVal b1 b2
 
         let r =
             {
                 waveLength = waveLength
-                n1SinFita = n1SinFita
+//                n1SinFita = n1SinFita
                 opticalProperties = upper
                 eh = ehr |> BerremanFieldEH
-            }.toEmField ()
+            }.toEmField()
 
         let t =
             {
                 waveLength = waveLength
-                n1SinFita = n1SinFita
+//                n1SinFita = n1SinFita
                 opticalProperties = lower
                 eh = eht |> BerremanFieldEH
-            }.toEmField ()
+            }.toEmField()
 
         let ems =
             {
@@ -172,7 +188,7 @@ module Solvers =
                 transmitted = t
             }
 
-        member _.cfm = cfmVal
+//        member _.cfm = cfmVal
         member _.emSys = ems
 
         new (info : IncidentLightInfo, system : BaseOpticalSystem) = BaseOpticalSystemSolver (InfoBased (info, system))

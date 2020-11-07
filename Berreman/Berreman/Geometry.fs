@@ -1,14 +1,9 @@
 ﻿namespace Berreman
+open System.Numerics
+open MathNetNumericsMath
+open MatrixExp
+
 module Geometry =
-
-    //open ExtremeNumericsMath
-    //open MathNet.Numerics
-    //open MathNet.Numerics.LinearAlgebra
-
-    open System.Numerics
-    open MathNetNumericsMath
-    open MatrixExp
-
 
     let thread a f =
         match a with
@@ -82,7 +77,7 @@ module Geometry =
         static member zeroVector = [ 0.; 0.; 0. ] |> RealVector3.create
 
 
-    /// Orthonormal real basis
+    /// Orthonormal real basis.
     type RealBasis3 =
         {
             vX : RealVector3
@@ -257,6 +252,10 @@ module Geometry =
 
         static member (*) (RealMatrix3x3 a, RealVector3 b) : RealVector3 =
             a * b |> RealVector3
+
+        member this.inverse =
+            let (RealMatrix3x3 m) = this
+            m.inverse |> RealMatrix3x3
 
 
     type RealMatrix4x4 =
@@ -484,3 +483,20 @@ module Geometry =
         static member rotateX a = Rotation.createZmYpXp Angle.zero Angle.zero a |> Rotation
         static member rotateY a = Rotation.createZmYpXp Angle.zero a Angle.zero |> Rotation
         static member rotateZ a = Rotation.createZmYpXp a Angle.zero Angle.zero |> Rotation
+
+
+    type RealVector3
+        with
+
+        member v.rotate (Rotation r) =
+            let rInv = r.inverse
+            rInv * v
+
+
+    type ComplexVector3
+        with
+
+        member v.rotate (Rotation r) =
+            let rInv = r.toComplex().inverse
+            rInv * v
+

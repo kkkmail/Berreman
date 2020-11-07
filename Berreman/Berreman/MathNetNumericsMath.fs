@@ -118,6 +118,10 @@ module MathNetNumericsMath =
         static member (*) (RealMatrix a, RealVector b) : RealVector =
             a * b |> RealVector
 
+        member this.inverse =
+            let (RealMatrix m) = this
+            m.Inverse() |> RealMatrix
+
 
     type ComplexMatrix =
         | ComplexMatrix of Matrix<Complex>
