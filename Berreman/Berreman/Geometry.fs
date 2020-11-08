@@ -38,8 +38,8 @@ module Geometry =
         static member degree a = a * degree |> Angle
         static member radian r = r |> Angle
         static member zero = Angle.radian 0.0
-        static member pi = Angle.radian MathNetNumericsMath.pi
-        static member piDivideByTwo = Angle.radian (MathNetNumericsMath.pi / 2.0)
+        static member pi = Angle.radian pi
+        static member piDivideByTwo = Angle.radian (pi / 2.0)
         static member (+) (Angle a, Angle b) = a + b |> Angle
         static member (-) (Angle a, Angle b) = a - b |> Angle
         static member (~-) (Angle a) = -a |> Angle
@@ -212,15 +212,14 @@ module Geometry =
                 let (ComplexVector4 v) = this
                 v.[i]
 
-        static member (*) (a : Complex, ComplexVector4 b) : ComplexVector4 =
-            a * b |> ComplexVector4
-
-        static member (*) (ComplexVector4 a, b : Complex) : ComplexVector4 =
-            a * b |> ComplexVector4
-
+        static member (*) (a : Complex, ComplexVector4 b) : ComplexVector4 = a * b |> ComplexVector4
+        static member (*) (ComplexVector4 a, b : Complex) : ComplexVector4 = a * b |> ComplexVector4
+        static member (*) (ComplexVector4 a, ComplexVector4 b) : Complex = a * b
         static member create a = a |> ComplexVector.create |> ComplexVector4
         static member fromRe a = a |> ComplexVector.fromRe |> ComplexVector4
         static member fromIm a = a |> ComplexVector.fromIm |> ComplexVector4
+        member this.conjugate = let (ComplexVector4 v) = this in v.conjugate |> ComplexVector4
+        member this.norm =  let (ComplexVector4 v) = this in v.norm
 
 
     type RealMatrix3x3 =
@@ -405,7 +404,7 @@ module Geometry =
 
         member this.matrixExp (x : Complex) : ComplexMatrix4x4 =
             let (ComplexMatrix4x4 v) = this * x
-            v.matrixExp () |> ComplexMatrix4x4
+            v.matrixExp() |> ComplexMatrix4x4
 
         static member identity = complexIdentityMatrix 4 |> ComplexMatrix4x4
 
@@ -418,7 +417,7 @@ module Geometry =
             m.im |> RealMatrix4x4
 
 
-    // Rotation around x axis.
+    /// Rotation around x axis.
     let xRotation (Angle xAngle) =
         [
             [ 1.; 0.; 0. ]
@@ -428,7 +427,7 @@ module Geometry =
         |> RealMatrix3x3.create
 
 
-    // Rotation around y axis.
+    /// Rotation around y axis.
     let yRotation (Angle yAngle) =
         [
             [ cos(yAngle); 0.; sin(yAngle) ]
@@ -438,7 +437,7 @@ module Geometry =
         |> RealMatrix3x3.create
 
 
-    // Rotation around z axis.
+    /// Rotation around z axis.
     let zRotation (Angle zAngle) =
         [
             [ cos(zAngle); -sin(zAngle); 0. ]
@@ -499,4 +498,3 @@ module Geometry =
         member v.rotate (Rotation r) =
             let rInv = r.toComplex().inverse
             rInv * v
-

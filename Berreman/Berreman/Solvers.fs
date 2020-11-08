@@ -196,8 +196,14 @@ module Solvers =
                 match substrate with
                 | Plate s ->
                     let firstSys : BaseOpticalSystem = system.baseSystem
-                    let firstOut (ems : EmFieldSystem) : EmField = ems.transmitted.propagate s
-                    let firstAcc (ems : EmFieldSystem) : (EmField option * EmField option) = (Some ems.reflected, None)
+
+                    let firstOut (ems : EmFieldSystem) : EmField =
+                        let a = ems.transmitted.propagate s
+                        a
+
+                    let firstAcc (ems : EmFieldSystem) : (EmField option * EmField option) =
+                        let a = (Some ems.reflected, None)
+                        a
 
                     let downSys : ShortOpticalSystem =
                         {
@@ -219,7 +225,8 @@ module Solvers =
 
                     let first, incidentLight =
                         let ems = BaseOpticalSystemSolver(info, firstSys).emSys
-                        ((DownStep, ems |> firstOut), [ ems |> firstAcc ]), ems.incident
+                        let (f, i) = ((DownStep, ems |> firstOut), [ ems |> firstAcc ]), ems.incident
+                        f, i
 
                     let makeStep ((nextStep : SolutionNextStep, emf : EmField), acc) =
                         match nextStep with

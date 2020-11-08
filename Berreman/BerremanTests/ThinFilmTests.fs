@@ -308,11 +308,10 @@ type ThinFilmTests(output : ITestOutputHelper) =
     member _.runTest (d : ThinFilmTestData) =
         output.WriteLine d.description
 
-//        let (BerremanMatrixPropagated (ComplexMatrix4x4 bm)) =
-//            BerremanMatrixPropagated.propagate (d.thinFilms, EmField.create (d.light, OpticalProperties.vacuum))
-//
-//        verifyMatrixEquality output bm d.expected
-        failwith "BerremanMatrixPropagated.propagate is not implemented yet."
+        let (BerremanMatrixPropagated (ComplexMatrix4x4 bm)) =
+            BerremanMatrixPropagated.propagate (d.thinFilms, (EmField.create (d.light, OpticalProperties.vacuum)).emComponents.[0], d.light.waveLength)
+
+        verifyMatrixEquality output bm d.expected
 
     [<Fact>]
     member this.berremanMatrixTest0 () = this.runTest (data.[0])

@@ -90,28 +90,16 @@ module BerremanMatrix =
                 ]
                 |> ComplexMatrix4x4.create
 
-            {
-                berremanMatrix = berremanMatrix
-                n1SinFita = nsf
-                opticalProperties = o
-            }
+            let a =
+                {
+                    berremanMatrix = berremanMatrix
+                    n1SinFita = nsf
+                    opticalProperties = o
+                }
+
+            a
 
         static member identity = BerremanMatrix.create OpticalProperties.vacuum N1SinFita.normal
-
-
-//    type BerremanField
-//        with
-//        member this.toEmField() : EmField =
-//            let emXY =
-//                {
-//                    waveLength = this.waveLength
-////                    n1SinFita = this.n1SinFita
-//                    opticalProperties = this.opticalProperties
-//                    e2 = [ this.eX; this.eY ] |> E2.create
-//                    h2 = [ this.hX; this.hY ] |> H2.create
-//                } : EmFieldXY
-//
-//            BerremanMatrix.createEmField this.opticalProperties emXY
 
 
     type EmField
@@ -127,20 +115,22 @@ module BerremanMatrix =
     type BerremanMatrixPropagated =
         | BerremanMatrixPropagated of ComplexMatrix4x4
 
-        static member propagateLayer (l : Layer) (em : EmComponent) (WaveLength w) : BerremanMatrixPropagated =
-            let m = BerremanMatrix.create l.properties em.n1SinFita
+        static member propagateLayer (l : Layer) (emc : EmComponent) (WaveLength w) : BerremanMatrixPropagated =
+            let m = BerremanMatrix.create l.properties emc.n1SinFita
 
             match l.thickness with
-            | Thickness x -> m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * x / w))) |> BerremanMatrixPropagated
+            | Thickness x ->
+                let a = m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * x / w))) |> BerremanMatrixPropagated
+                a
             | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
-        static member propagateInclinedLayer (l : WedgeLayer) (em : EmComponent) (w : WaveLength) : BerremanMatrixPropagated =
-            if abs em.n1SinFita.value < almostZero
-            then BerremanMatrixPropagated.propagateLayer l.layer em w
+        static member propagateInclinedLayer (l : WedgeLayer) (emc : EmComponent) (w : WaveLength) : BerremanMatrixPropagated =
+            if abs emc.n1SinFita.value < almostZero
+            then BerremanMatrixPropagated.propagateLayer l.layer emc w
             else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
 
-        static member propagate (ls : List<Layer>, em : EmComponent, w : WaveLength) : BerremanMatrixPropagated =
-            ls |> List.fold (fun acc r -> (BerremanMatrixPropagated.propagateLayer r em w) * acc) BerremanMatrixPropagated.identity
+        static member propagate (ls : List<Layer>, emc : EmComponent, w : WaveLength) : BerremanMatrixPropagated =
+            ls |> List.fold (fun acc r -> (BerremanMatrixPropagated.propagateLayer r emc w) * acc) BerremanMatrixPropagated.identity
 
         static member identity = ComplexMatrix4x4.identity |> BerremanMatrixPropagated
 
@@ -206,9 +196,11 @@ module BerremanMatrix =
 
     type EmField
         with
-        member emf.propagate (s : Layer) : EmField =
-//             failwith "EmField.propagate is not yet implemented"
 
+        /// TODO kk:20201108 - Does not work properly yet.
+        /// Both propagate and propagate1 seems to produce the same result except that the identity tests,
+        /// e.g. muellerMatrixR_BiaxialCrystalSubstrateSystem_Polarized_WithEllipticity then fail.
+        member emf.propagate (s : Layer) : EmField =
             let propagate (emc : EmComponent) =
                 match s.thickness with
                 | Thickness x ->
@@ -216,18 +208,25 @@ module BerremanMatrix =
                     emc * multiplier
                 | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
-            let a =
-                emf.emComponents
-                |> List.map propagate
+            let propagate1 (emc : EmComponent) : EmComponent =
+                let (BerremanMatrixPropagated bmp) = BerremanMatrixPropagated.propagateLayer s emc emf.waveLength
+                let beh = [ emc.emEigenVector.e.x; emc.emEigenVector.h.y; emc.emEigenVector.e.y; -emc.emEigenVector.h.x ] |> ComplexVector.create |> ComplexVector4
+                let bp = bmp * beh
+                let norm = beh.norm
+                let multiplier = bp * (beh.conjugate) / ((norm * norm) |> cplx)
+                emc * multiplier
 
-            { emf with emComponents = a }
+            let a = emf.emComponents |> List.map propagate
+            let a1 = emf.emComponents |> List.map propagate1
+
+            let retVal = { emf with emComponents = a1 }
+            retVal
 
         member emf.propagate (s : WedgeLayer) : EmField =
-//             failwith "EmField.propagate is not yet implemented"
-//            if abs emf.n1SinFita.value < almostZero
-//            then BerremanMatrixPropagated.propagateLayer s.layer em w
-//            else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
-//
-//            BerremanMatrixPropagated.propagateInclinedLayer s emf |> propagate emf
+            let m = emf.emComponents |> List.map (fun e -> abs e.n1SinFita.value)|> List.max
 
-            emf.propagate s.layer
+            if m < almostZero
+            then emf.propagate s.layer
+            else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
+
+
