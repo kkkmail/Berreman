@@ -22,7 +22,7 @@ type IncidentLightTestData =
     {
         description : string
         info : IncidentLightInfo
-        expected : EmField
+        expected : EmFieldValue
     }
 
 
@@ -50,7 +50,6 @@ type IncidentLightTests(output : ITestOutputHelper) =
                     expected =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
                                     [ 0.992546151641322; 0.; -0.12186934340514745 ]
@@ -79,7 +78,6 @@ type IncidentLightTests(output : ITestOutputHelper) =
                     expected =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
                                     [ createComplex 0.97327157603087 0.; createComplex 0. 0.19611613513818404; createComplex -0.11950272310222826 0. ]
@@ -109,7 +107,6 @@ type IncidentLightTests(output : ITestOutputHelper) =
                     expected =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
                                     [ 0.8995523062257899; 0.42261826174069944; -0.11045113492912874 ]
@@ -140,7 +137,6 @@ type IncidentLightTests(output : ITestOutputHelper) =
                     expected =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
                                     [ createComplex 0.7607323158175443 0.1949857619013546; createComplex -0.5227243445459797 0.2944888699958045; createComplex -0.14787138271966674 -0.03790139267583888 ]

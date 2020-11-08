@@ -342,13 +342,15 @@ module Geometry =
 
     type EigenBasis =
         {
-            v0 : Complex
-            v1 : Complex
-            e0 : ComplexVector4
-            e1 : ComplexVector4
+            evv0 : EigenValueVector
+            evv1 : EigenValueVector
         }
-        member this.values = [ this.v0; this.v1 ]
-        member this.vectors = [ this.e0; this.e1 ]
+        member this.values = [ this.evv0.value; this.evv1.value ]
+        member this.vectors = [ this.evv0.vector; this.evv1.vector ]
+        member this.e0 = this.evv0.vector
+        member this.e1 = this.evv1.vector
+        member this.v0 = this.evv0.value
+        member this.v1 = this.evv1.value
 
         static member create l =
             let fail() = failwith "EigenBasis::Invalid input data."
@@ -362,10 +364,8 @@ module Geometry =
                     match t1 with
                     | [] ->
                         {
-                            v0 = fst h0
-                            v1 = fst h1
-                            e0 = snd h0
-                            e1 = snd h1
+                            evv0 = { value = fst h0; vector = snd h0 }
+                            evv1 = { value = fst h1; vector = snd h1 }
                         }
                     | _ -> fail()
 

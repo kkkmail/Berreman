@@ -1,13 +1,13 @@
 ﻿namespace Berreman
 
 open System
-//open ExtremeNumericsMath
 open MathNetNumericsMath
 
 open Geometry
 open Fields
 open Media
 open BerremanMatrix
+open MaterialProperties
 
 module Solvers =
 
@@ -60,7 +60,7 @@ module Solvers =
 
 
     /// Generated, do not modify.
-    let private getFreeTblVal (BerremanMatrixPropagated p) (i : EmField) (b1 : FullEigenBasis) (b2 : FullEigenBasis) =
+    let private getFreeTblVal (BerremanMatrixPropagated p) (i : EmComponent) (b1 : FullEigenBasis) (b2 : FullEigenBasis) =
         [
             ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[0, 1] + b1.down.e0.[3] * p.[0, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[0, 0] + b1.down.e1.[1] * i.e.x * p.[0, 1] + b1.down.e1.[0] * i.e.y * p.[0, 2] + b1.down.e1.[3] * i.e.x * p.[0, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[0, 0] + b1.down.e1.[1] * i.e.y * p.[0, 1] + b1.down.e1.[2] * i.e.y * p.[0, 2] + b1.down.e1.[3] * i.e.y * p.[0, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
             ((b1.down.e1.[2] * i.e.x - b1.down.e1.[0] * i.e.y) * (b1.down.e0.[1] * p.[1, 1] + b1.down.e0.[3] * p.[1, 3]) - b1.down.e0.[2] * (b1.down.e1.[0] * i.e.x * p.[1, 0] + b1.down.e1.[1] * i.e.x * p.[1, 1] + b1.down.e1.[0] * i.e.y * p.[1, 2] + b1.down.e1.[3] * i.e.x * p.[1, 3]) + b1.down.e0.[0] * (b1.down.e1.[2] * i.e.x * p.[1, 0] + b1.down.e1.[1] * i.e.y * p.[1, 1] + b1.down.e1.[2] * i.e.y * p.[1, 2] + b1.down.e1.[3] * i.e.y * p.[1, 3]))/(b1.down.e0.[2] * b1.down.e1.[0] - b1.down.e0.[0] * b1.down.e1.[2])
@@ -70,116 +70,92 @@ module Solvers =
         |> ComplexVector.create
 
 
-    let private getRT (coeffTblVal : ComplexMatrix) (freeTblVal : ComplexVector) (b1 : FullEigenBasis) (b2 : FullEigenBasis) =
+    /// Functions getEz and getHz were generated, do not modify.
+    let createEmComponent (emv : EigenValueVector) amplitude (nsf : N1SinFita) (o : OpticalProperties) : EmComponent =
+        let n1SinFita = nsf.complex
+        let bf = emv.vector |> BerremanFieldEH
+
+        let getEz eX eY hX hY =
+            ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * o.rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * o.rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
+
+        let getHz eX eY hX hY =
+             ((-(o.eps.[2, 2] * o.rhoT.[2, 0]) + o.eps.[2, 0] * o.rhoT.[2, 2]) * eX - o.eps.[2, 2] * o.rhoT.[2, 1] * eY + o.eps.[2, 1] * o.rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * o.rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + o.rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
+
+        let eX = bf.eX
+        let eY = bf.eY
+        let hX = bf.hX
+        let hY = bf.hY
+        let eZ = getEz eX eY hX hY
+        let hZ = getHz eX eY hX hY
+
+        {
+            amplitude = emv.value * amplitude
+
+            emEigenVector =
+                {
+                    e = [ eX; eY; eZ ] |> E.create
+                    h = [ hX; hY; hZ ] |> H.create
+                }
+        }
+
+    let private getRT upper lower films (i : EmComponent) =
+        let n1SinFita = i.n1SinFita
+        let m1 : BerremanMatrix = BerremanMatrix.create upper n1SinFita
+        let m2 : BerremanMatrix = BerremanMatrix.create lower n1SinFita
+        let b1 = m1.eigenBasis()
+        let b2 = m2.eigenBasis()
+        let p = BerremanMatrixPropagated.propagate (films, i)
+
+        let coeffTblVal = getCoeffTblVal p b1 b2
+        let freeTblVal = getFreeTblVal p i b1 b2
         let cfmVal = coeffTblVal.inverse
         let detInv = cfmVal.determinant
 
-        match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
-        | false, false ->
-            let sol = cfmVal * freeTblVal
+        let getEH (sol : ComplexVector) =
+            let ehr0 = createEmComponent b1.up.evv0 (sol.[0]) n1SinFita upper
+            let ehr1 = createEmComponent b1.up.evv1 (sol.[1]) n1SinFita upper
 
-            let ehr =
-                [
-                    b1.up.e0.[0] * sol.[0] + b1.up.e1.[0] * sol.[1]
-                    b1.up.e0.[1] * sol.[0] + b1.up.e1.[1] * sol.[1]
-                    b1.up.e0.[2] * sol.[0] + b1.up.e1.[2] * sol.[1]
-                    b1.up.e0.[3] * sol.[0] + b1.up.e1.[3] * sol.[1]
-                ]
-                |> ComplexVector4.create
+            let eht0 = createEmComponent b2.down.evv0 (sol.[2]) n1SinFita lower
+            let eht1 = createEmComponent b2.down.evv1 (sol.[3]) n1SinFita lower
 
-            let eht =
-                [
-                    b2.down.e0.[0] * sol.[2] + b2.down.e1.[0] * sol.[3]
-                    b2.down.e0.[1] * sol.[2] + b2.down.e1.[1] * sol.[3]
-                    b2.down.e0.[2] * sol.[2] + b2.down.e1.[2] * sol.[3]
-                    b2.down.e0.[3] * sol.[2] + b2.down.e1.[3] * sol.[3]
-                ]
-                |> ComplexVector4.create
-
+            let ehr = [ ehr0; ehr1 ]
+            let eht = [ eht0; eht1 ]
             ehr, eht
+
+        match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
+        | false, false -> cfmVal * freeTblVal |> getEH
         | _ ->
             // This is a case of total reflection.
             // The matrix is degenerate and we can't inverse it.
-
-            let coeffTblVal2x2 =
-                [
-                    [ coeffTblVal.[0,0]; coeffTblVal.[0,1] ]
-                    [ coeffTblVal.[1,0]; coeffTblVal.[1,1] ]
-                ]
-                |> ComplexMatrix.create
-
-            let det2 = coeffTblVal2x2.determinant
-            let cfmVal2x2 = coeffTblVal2x2.inverse
-
-            let c20 = coeffTblVal.[2,0]
-            let c02 = coeffTblVal.[0,2]
-
-            let sol0 = freeTblVal.[2] / coeffTblVal.[2,0]
-            let sol1 = freeTblVal.[1] / coeffTblVal.[1,1]
-
-
-            let ehr =
-                [
-                    b1.up.e0.[0] * sol0 + b1.up.e1.[0] * sol1
-                    b1.up.e0.[1] * sol0 + b1.up.e1.[1] * sol1
-                    b1.up.e0.[2] * sol0 + b1.up.e1.[2] * sol1
-                    b1.up.e0.[3] * sol0 + b1.up.e1.[3] * sol1
-                ]
-                |> ComplexVector4.create
-
-            let eht =
-                [
-                    cplx 0.0
-                    cplx 0.0
-                    cplx 0.0
-                    cplx 0.0
-                ]
-                |> ComplexVector4.create
-
-            ehr, eht
+            [ freeTblVal.[2] / coeffTblVal.[2,0] ; freeTblVal.[1] / coeffTblVal.[1,1]; cplx 0.0; cplx 0.0 ]
+            |> ComplexVector.create
+            |> getEH
 
 
     type BaseOpticalSystemSolver private (input : InputData) =
-//        let i, m1, m2, waveLength, n1SinFita, films, upper, lower =
-//            match input with
-//            | InfoBased (info, system) ->
-//                let bm = BerremanMatrix.create info.n1SinFita
-//                EmField.create (info, system.upper), bm system.upper, bm system.lower, info.waveLength, info.n1SinFita, system.films, system.upper, system.lower
-//            | EmFieldBased (e, system) ->
-//                let bm = BerremanMatrix.create e.n1SinFita
-//                e, bm e.opticalProperties, bm system.lower, e.waveLength, e.n1SinFita, system.films, e.opticalProperties, system.lower
-
-        let i, m1, m2, waveLength, n1SinFita, films, upper, lower =
+        let i, waveLength, films, upper, lower =
             match input with
             | InfoBased (info, system) ->
-                let bm = BerremanMatrix.create info.n1SinFita
-                EmField.create (info, system.upper), bm system.upper, bm system.lower, info.waveLength, info.n1SinFita, system.films, system.upper, system.lower
+                EmField.create (info, system.upper), info.waveLength, system.films, system.upper, system.lower
             | EmFieldBased (e, system) ->
-                let bm = BerremanMatrix.create e.n1SinFita
-                e, bm e.opticalProperties, bm system.lower, e.waveLength, e.n1SinFita, system.films, e.opticalProperties, system.lower
+                e, e.waveLength, system.films, e.opticalProperties, system.lower
 
-        let p = BerremanMatrixPropagated.propagate (films, i)
-        let b1 = m1.eigenBasis()
-        let b2 = m2.eigenBasis()
-        let coeffTblVal = getCoeffTblVal p b1 b2
-        let freeTblVal = getFreeTblVal p i b1 b2
-        let (ehr, eht) = getRT coeffTblVal freeTblVal b1 b2
+        let getRT = getRT upper lower films
+        let (ehr, eht) = i.emComponents |> List.map getRT |> List.unzip
 
         let r =
             {
                 waveLength = waveLength
-//                n1SinFita = n1SinFita
                 opticalProperties = upper
-                eh = ehr |> BerremanFieldEH
-            }.toEmField()
+                emComponents = ehr |> List.concat
+            }
 
         let t =
             {
                 waveLength = waveLength
-//                n1SinFita = n1SinFita
                 opticalProperties = lower
-                eh = eht |> BerremanFieldEH
-            }.toEmField()
+                emComponents = eht |> List.concat
+            }
 
         let ems =
             {
@@ -188,9 +164,7 @@ module Solvers =
                 transmitted = t
             }
 
-//        member _.cfm = cfmVal
         member _.emSys = ems
-
         new (info : IncidentLightInfo, system : BaseOpticalSystem) = BaseOpticalSystemSolver (InfoBased (info, system))
         new (emf : EmField, system : ShortOpticalSystem) = BaseOpticalSystemSolver (EmFieldBased (emf, system))
 
@@ -207,7 +181,6 @@ module Solvers =
                     {
                         EmField.getDefaultValue m.incident.waveLength
                             with
-                                n1SinFita = m.incident.n1SinFita
                                 opticalProperties = m.incident.opticalProperties
                     }
 

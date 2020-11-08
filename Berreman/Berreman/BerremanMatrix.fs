@@ -82,7 +82,7 @@ module BerremanMatrix =
         }
 
         /// Generated, do not modify.
-        static member create (nsf : N1SinFita) (o : OpticalProperties) =
+        static member create (o : OpticalProperties) (nsf : N1SinFita) =
             let n1SinFita = nsf.complex
 
             let berremanMatrix =
@@ -120,35 +120,22 @@ module BerremanMatrix =
                 opticalProperties = o
             }
 
-        static member identity = BerremanMatrix.create N1SinFita.normal OpticalProperties.vacuum
-
-        /// Generated, do not modify.
-        static member createEmField (nsf : N1SinFita) (o : OpticalProperties) (emXY : EmFieldXY) : EmField =
-            let n1SinFita = nsf.complex
-
-            let eX = emXY.e2.x
-            let eY = emXY.e2.y
-            let hX = emXY.h2.x
-            let hY = emXY.h2.y
-            let eZ = ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * o.rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * o.rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
-            let hZ = ((-(o.eps.[2, 2] * o.rhoT.[2, 0]) + o.eps.[2, 0] * o.rhoT.[2, 2]) * eX - o.eps.[2, 2] * o.rhoT.[2, 1] * eY + o.eps.[2, 1] * o.rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * o.rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + o.rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
-            //EmField.create (emXY, eZ, hZ)
-            0
+        static member identity = BerremanMatrix.create OpticalProperties.vacuum N1SinFita.normal
 
 
-    type BerremanField
-        with
-        member this.toEmField() : EmField =
-            let emXY =
-                {
-                    waveLength = this.waveLength
-//                    n1SinFita = this.n1SinFita
-                    opticalProperties = this.opticalProperties
-                    e2 = [ this.eX; this.eY ] |> E2.create
-                    h2 = [ this.hX; this.hY ] |> H2.create
-                } : EmFieldXY
-
-            BerremanMatrix.createEmField this.opticalProperties emXY
+//    type BerremanField
+//        with
+//        member this.toEmField() : EmField =
+//            let emXY =
+//                {
+//                    waveLength = this.waveLength
+////                    n1SinFita = this.n1SinFita
+//                    opticalProperties = this.opticalProperties
+//                    e2 = [ this.eX; this.eY ] |> E2.create
+//                    h2 = [ this.hX; this.hY ] |> H2.create
+//                } : EmFieldXY
+//
+//            BerremanMatrix.createEmField this.opticalProperties emXY
 
 
     type EmField
@@ -156,7 +143,6 @@ module BerremanMatrix =
         member this.toBerremanField() : BerremanField =
             {
                 waveLength = this.waveLength
-                n1SinFita = this.n1SinFita
                 opticalProperties = this.opticalProperties
                 eh = [ this.e.x; this.h.y; this.e.y; -this.h.x ] |> ComplexVector.create |> ComplexVector4 |> BerremanFieldEH
             }
@@ -165,20 +151,20 @@ module BerremanMatrix =
     type BerremanMatrixPropagated =
         | BerremanMatrixPropagated of ComplexMatrix4x4
 
-        static member propagateLayer (l : Layer) (em : EmField) : BerremanMatrixPropagated =
-            let m = BerremanMatrix.create em.n1SinFita l.properties
+        static member propagateLayer (l : Layer) (em : EmComponent) : BerremanMatrixPropagated =
+            let m = BerremanMatrix.create l.properties em.n1SinFita
             let (WaveLength w) = em.waveLength
 
             match l.thickness with
             | Thickness t -> m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * t / w))) |> BerremanMatrixPropagated
             | Infinity -> failwith "TODO: Implement infinite thickness by making that layer the output media."
 
-        static member propagateInclinedLayer (l : WedgeLayer) (em : EmField) : BerremanMatrixPropagated =
-            if abs em.n1SinFita.fita.value < almostZero
+        static member propagateInclinedLayer (l : WedgeLayer) (em : EmComponent) : BerremanMatrixPropagated =
+            if abs em.n1SinFita.value < almostZero
             then BerremanMatrixPropagated.propagateLayer l.layer em
             else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
 
-        static member propagate (ls : List<Layer>, em : EmField) : BerremanMatrixPropagated =
+        static member propagate (ls : List<Layer>, em : EmComponent) : BerremanMatrixPropagated =
             ls |> List.fold (fun acc r -> (BerremanMatrixPropagated.propagateLayer r em) * acc) BerremanMatrixPropagated.identity
 
         static member identity = ComplexMatrix4x4.identity |> BerremanMatrixPropagated

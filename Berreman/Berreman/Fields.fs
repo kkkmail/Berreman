@@ -11,6 +11,19 @@ module Fields =
 
     // CGS units are used.
 
+    type IncidenceAngle =
+        | IncidenceAngle of Angle
+        static member create (Angle p) =
+            (p % (pi / 2.0) + pi) % (pi / 2.0) |> Angle |> IncidenceAngle
+
+        member angle.value = let (IncidenceAngle a) = angle in a.value
+        static member normal = IncidenceAngle.create (Angle.degree 0.0)
+        static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
+        member this.description = sprintf "incidence angle: %A degree(s)" (this.value / degree)
+        static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
+        static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle
+
+
     /// n1 * sin(fita), where fita is the incidence angle and n1 is the refraction index of upper media.
     type N1SinFita =
         | N1SinFita of double
@@ -19,23 +32,7 @@ module Fields =
         member nsf.value = let (N1SinFita v) = nsf in v
         member nsf.complex = nsf.value |> cplx
         static member normal = N1SinFita 0.0
-
-
-//        {
-//            n1 : RefractionIndex
-//            fita : IncidenceAngle
-//        }
-//
-//        static member create n f =
-//            {
-//                n1 = n
-//                fita = f
-//            }
-//
-//        member this.value = this.n1.value * (sin this.fita.value)
-//        member this.complex = this.value |> cplx
-//        member this.description = this.ToString()
-//        member this.rotateY y = { this with fita = this.fita + y }
+        static member create (RefractionIndex n) (IncidenceAngle (Angle f)) = n * (sin f)
 
 
     type RT =
@@ -161,7 +158,7 @@ module Fields =
         member emc.rotatePiX = { emc with emEigenVector = emc.emEigenVector.rotatePiX }
         member emc.n1SinFita = emc.emEigenVector.n1SinFita
 
-        static member create v (E e) =
+        static member create v (E e) (H _) =
 
             {
                 amplitude = (e * v.e.value.conjugate) / (v.e.value * v.e.value.conjugate)
@@ -221,19 +218,6 @@ module Fields =
         static member s = Angle 0.0 |> Polarization
         static member p = Polarization.s.crossed
         member this.description = sprintf "polarization: %A degree(s)" (this.value / degree)
-
-
-    type IncidenceAngle =
-        | IncidenceAngle of Angle
-        static member create (Angle p) =
-            (p % (pi / 2.0) + pi) % (pi / 2.0) |> Angle |> IncidenceAngle
-
-        member angle.value = let (IncidenceAngle a) = angle in a.value
-        static member normal = IncidenceAngle.create (Angle.degree 0.0)
-        static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
-        member this.description = sprintf "incidence angle: %A degree(s)" (this.value / degree)
-        static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
-        static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle
 
 
     type WedgeAngle =
@@ -325,7 +309,6 @@ module Fields =
     type EmFieldXY =
         {
             waveLength : WaveLength
-//            n1SinFita : N1SinFita
             opticalProperties : OpticalProperties
             e2 : E2
             h2 : H2
@@ -335,16 +318,12 @@ module Fields =
     type EmField =
         {
             waveLength : WaveLength
-//            n1SinFita : N1SinFita
             opticalProperties : OpticalProperties
-//            e : E
-//            h : H
-            eh1 : EmComponent
-            eh2 : EmComponent
+            emComponents : List<EmComponent>
         }
 
-        member emf.e = emf.eh1.e + emf.eh2.e
-        member emf.h = emf.eh1.h + emf.eh2.h
+        member emf.e = emf.emComponents |> List.fold (fun acc r -> acc + r.e) E.defaultValue
+        member emf.h = emf.emComponents |> List.fold (fun acc r -> acc + r.h) H.defaultValue
         member emf.d = emf.opticalProperties.eps * emf.e + emf.opticalProperties.rho * emf.h
         member emf.b = emf.opticalProperties.rhoT * emf.e + emf.opticalProperties.mu * emf.h
         member emf.s = S.create emf.e emf.h
@@ -352,39 +331,39 @@ module Fields =
         member emf.complexNormal = thread emf.normal (fun n -> [ cplx n.x; cplx n.y; cplx n.z ] |> ComplexVector3.create)
 
         member emf.rotate r =
-            { emf with opticalProperties = emf.opticalProperties.rotate r; eh1 = emf.eh1.rotate r; eh2 = emf.eh2.rotate r  }
+            { emf with opticalProperties = emf.opticalProperties.rotate r; emComponents = emf.emComponents |> List.map (fun e -> e.rotate r)  }
 
         member emf.rotatePiX = emf.rotate Rotation.rotatePiX
         member emf.rotateY y = Rotation.rotateY y |> emf.rotate
 
-//        static member getDefaultValue w =
-//            {
-//                waveLength = w
-////                n1SinFita = N1SinFita.normal
-//                opticalProperties = OpticalProperties.vacuum
-////                e = E.defaultValue
-////                h = H.defaultValue
+        static member getDefaultValue w =
+            {
+                waveLength = w
+//                n1SinFita = N1SinFita.normal
+                opticalProperties = OpticalProperties.vacuum
+//                e = E.defaultValue
+//                h = H.defaultValue
 //                eh1 = 0
 //                eh2 = 0
-//            }
-//
-//
-//        /// Basis in the system of coordinates where ez is the direction of propagation of incident light,
-//        /// ey lays in the plane of media boundary and is orthogonal to direction of propagation,
-//        /// and ex = cross ey ez.
-//        member emf.complexBasis =
-//            thread emf.complexNormal (fun cz ->
-//                let cy =
-//                    if (cz * ComplexBasis3.defaultValue.cZ).Real >= 0.0
-//                    then [ cplx 0.0; cplx 1.0; cplx 0.0 ] |> ComplexVector3.create
-//                    else  [ cplx 0.0; cplx -1.0; cplx 0.0 ] |> ComplexVector3.create
-//
-//                {
-//                    cX = ComplexVector3.cross cy cz
-//                    cY = cy
-//                    cZ = cz
-//                })
-//
+                emComponents = []
+            }
+
+        /// Basis in the system of coordinates where ez is the direction of propagation of incident light,
+        /// ey lays in the plane of media boundary and is orthogonal to direction of propagation,
+        /// and ex = cross ey ez.
+        member emf.complexBasis =
+            thread emf.complexNormal (fun cz ->
+                let cy =
+                    if (cz * ComplexBasis3.defaultValue.cZ).Real >= 0.0
+                    then [ cplx 0.0; cplx 1.0; cplx 0.0 ] |> ComplexVector3.create
+                    else  [ cplx 0.0; cplx -1.0; cplx 0.0 ] |> ComplexVector3.create
+
+                {
+                    cX = ComplexVector3.cross cy cz
+                    cY = cy
+                    cZ = cz
+                })
+
 //        static member create (emXY : EmFieldXY, eZ, hZ) : EmField =
 //            {
 //                waveLength = emXY.waveLength
@@ -394,40 +373,51 @@ module Fields =
 ////                h = [ emXY.h2.x; emXY.h2.y; hZ ] |> ComplexVector.create |> ComplexVector3 |> H
 //            }
 //
-//        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
-//            let (Ellipticity e) = info.ellipticity
-//            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
-//            let a90 = e / sqrt(1.0 + e * e) |> cplx
-//            let (e0, h0) = info.eh0
-//            let (e90, h90) = info.eh90
+        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
+            let (Ellipticity e) = info.ellipticity
+            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
+            let a90 = e / sqrt(1.0 + e * e) |> cplx
+            let (e0, h0) = info.eh0
+            let (e90, h90) = info.eh90
+
+            {
+                waveLength = info.waveLength
+//                n1SinFita = info.n1SinFita
+                opticalProperties = o
+//                e = a0 * e0 + cplxI * a90 * e90
+//                h = a0 * h0 + cplxI * a90 * h90
+                emComponents = []
+            }
 //
-//            {
-//                waveLength = info.waveLength
-////                n1SinFita = info.n1SinFita
-//                opticalProperties = o
-////                e = a0 * e0 + cplxI * a90 * e90
-////                h = a0 * h0 + cplxI * a90 * h90
-//            }
-//
-//        /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
-//        member emf.amplitudeS =
-//            let cX =
-//                match emf.complexBasis with
-//                | Some b -> b.cX
-//                | None -> ComplexBasis3.defaultValue.cX // If the value is too small, then we don't care about the direction.
-//
-//            let (E e) = emf.e
-//            (cX * e)
-//
-//        /// p = y' for transmitted but -y' for reflected.
-//        member emf.amplitudeP =
-//            let cY =
-//                match emf.complexBasis with
-//                | Some b -> b.cY
-//                | None -> ComplexBasis3.defaultValue.cY // If the value is too small, then we don't care about the direction.
-//
-//            let (E e) = emf.e
-//            (cY * e)
+        /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
+        member emf.amplitudeS =
+            let cX =
+                match emf.complexBasis with
+                | Some b -> b.cX
+                | None -> ComplexBasis3.defaultValue.cX // If the value is too small, then we don't care about the direction.
+
+            let (E e) = emf.e
+            (cX * e)
+
+        /// p = y' for transmitted but -y' for reflected.
+        member emf.amplitudeP =
+            let cY =
+                match emf.complexBasis with
+                | Some b -> b.cY
+                | None -> ComplexBasis3.defaultValue.cY // If the value is too small, then we don't care about the direction.
+
+            let (E e) = emf.e
+            (cY * e)
+
+
+    /// Value representation of EmField to be used by tests.
+    type EmFieldValue =
+        {
+            waveLength : WaveLength
+            opticalProperties : OpticalProperties
+            e : E
+            h : H
+        }
 
 
     type EmFieldSystem =
@@ -508,14 +498,14 @@ module Fields =
             ).re
             |> MuellerMatrix
 
-//        static member fromEmFields (s : EmField) (p : EmField) =
-//            let rSS = s.amplitudeS
-//            let rSP = s.amplitudeP
-//
-//            let rPS = p.amplitudeS
-//            let rPP = p.amplitudeP
-//
-//            MuellerMatrix.create rSS rSP rPS rPP
+        static member fromEmFields (s : EmField) (p : EmField) =
+            let rSS = s.amplitudeS
+            let rSP = s.amplitudeP
+
+            let rPS = p.amplitudeS
+            let rPP = p.amplitudeP
+
+            MuellerMatrix.create rSS rSP rPS rPP
 
         static member (*) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), StokesVector (RealVector4 (RealVector b))) : StokesVector =
             a * b |> StokesVector.create
