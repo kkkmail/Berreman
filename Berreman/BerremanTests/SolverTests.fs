@@ -639,6 +639,75 @@ type SolverTests(output : ITestOutputHelper) =
         }
 
 
+    let wedgeAt50DegreesS =
+        let incidenceAngle = IncidenceAngle.normal
+        let refractionIndex = RefractionIndex.vacuum
+        let opticalSystem = OpticalSystem.wedge50DegGlass150System
+
+        let waveLength = WaveLength.nm 600.0
+        let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
+
+        {
+            opticalSystem = opticalSystem
+
+            testData =
+                {
+                    description = opticalSystem.description |> Option.defaultValue String.Empty
+                    info =
+                        {
+                            waveLength = waveLength
+                            refractionIndex = refractionIndex
+                            incidenceAngle = incidenceAngle
+                            polarization = Polarization.s
+                            ellipticity = Ellipticity.defaultValue
+                        }
+                    expected =
+                        {
+                            incidentValue =
+                                {
+                                    waveLength = waveLength
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ 1.0; 0.; 0. ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.0; 0. ]
+                                        |> H.fromRe
+                                }
+                            reflectedValue =
+                                {
+                                    waveLength = waveLength
+                                    opticalProperties = opticalSystem.upper
+                                    e =
+                                        [ -0.2; 0.; 0. ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 0.2; 0. ]
+                                        |> H.fromRe
+                                }
+                            transmittedValue =
+                                {
+                                    waveLength = waveLength
+                                    opticalProperties = opticalSystem.lower
+                                    e =
+                                        [ 0.523722; 0.; -1.90377; ]
+                                        |> E.fromRe
+                                    h =
+                                        [ 0.; 1.97449; 0. ]
+                                        |> H.fromRe
+                                }
+                        }
+
+                    stokes = None
+        //                {
+        //                    incidentStokes = [ 1.; 1.; 0.; 0. ] |> StokesVector.create
+        //                    reflectedStokes = [ 0.0417427189970538; 0.0417427189970538; 0.; 0. ] |> StokesVector.create
+        //                    transmittedStokes  = [ 0.6277542496577975; 0.6277542496577975; 0.; 0. ] |> StokesVector.create
+        //                } |> Some
+                }
+        }
+
+
     let data =
         [
             createStdGlassLightAt7Degrees "Snell's law for standard transparent glass, 7 degrees incidence angle."
@@ -859,7 +928,7 @@ type SolverTests(output : ITestOutputHelper) =
         output.WriteLine("stokesVector (T1) = {0}\n", t1)
         output.WriteLine("muellerMatrix (T) = {0}\n", mt)
 
-        verifyVectorEqualityStokes output "[Stokes vector R] vs mR * [Stokes vector I]" t t1
+        verifyVectorEqualityStokes output "[Stokes vector T] vs mT * [Stokes vector I]" t t1
 
 
     let runTestMuellerMatrixT1 (d : BaseOpticalSystemTestData) =
@@ -1062,3 +1131,7 @@ type SolverTests(output : ITestOutputHelper) =
 
     [<Fact>]
     member _.wedgeAt40DegreesTestP () = runTest wedgeAt40DegreesP Field
+
+    [<Fact>]
+    member _.wedgeAt50DegreesTestS () = runTest wedgeAt50DegreesS Field
+

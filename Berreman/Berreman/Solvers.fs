@@ -70,34 +70,6 @@ module Solvers =
         |> ComplexVector.create
 
 
-    /// Functions getEz and getHz were generated, do not modify.
-    let createEmComponent (emv : EigenValueVector) amplitude (nsf : N1SinFita) (o : OpticalProperties) : EmComponent =
-        let n1SinFita = nsf.complex
-        let bf = emv.vector |> BerremanFieldEH
-
-        let getEz eX eY hX hY =
-            ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * o.rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * o.rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
-
-        let getHz eX eY hX hY =
-             ((-(o.eps.[2, 2] * o.rhoT.[2, 0]) + o.eps.[2, 0] * o.rhoT.[2, 2]) * eX - o.eps.[2, 2] * o.rhoT.[2, 1] * eY + o.eps.[2, 1] * o.rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * o.rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + o.rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
-
-        let eX = bf.eX
-        let eY = bf.eY
-        let hX = bf.hX
-        let hY = bf.hY
-        let eZ = getEz eX eY hX hY
-        let hZ = getHz eX eY hX hY
-
-        {
-            amplitude = emv.value * amplitude
-
-            emEigenVector =
-                {
-                    e = [ eX; eY; eZ ] |> E.create
-                    h = [ hX; hY; hZ ] |> H.create
-                }
-        }
-
     let private getRT upper lower films w (i : EmComponent) =
         let n1SinFita = i.n1SinFita
         let m1 : BerremanMatrix = BerremanMatrix.create upper n1SinFita
@@ -112,11 +84,11 @@ module Solvers =
         let detInv = cfmVal.determinant
 
         let getEH (sol : ComplexVector) =
-            let ehr0 = createEmComponent b1.up.evv0 (sol.[0]) n1SinFita upper
-            let ehr1 = createEmComponent b1.up.evv1 (sol.[1]) n1SinFita upper
+            let ehr0 = EmComponent.create b1.up.evv0 (sol.[0]) n1SinFita upper
+            let ehr1 = EmComponent.create b1.up.evv1 (sol.[1]) n1SinFita upper
 
-            let eht0 = createEmComponent b2.down.evv0 (sol.[2]) n1SinFita lower
-            let eht1 = createEmComponent b2.down.evv1 (sol.[3]) n1SinFita lower
+            let eht0 = EmComponent.create b2.down.evv0 (sol.[2]) n1SinFita lower
+            let eht1 = EmComponent.create b2.down.evv1 (sol.[3]) n1SinFita lower
 
             let ehr = [ ehr0; ehr1 ]
             let eht = [ eht0; eht1 ]
@@ -269,14 +241,15 @@ module Solvers =
                     let ems = BaseOpticalSystemSolver(info, system.baseSystem).emSys
                     let start = (ems.transmitted.propagate s, [ (Some ems.reflected, None) ])
 
-                    let downSys : ShortOpticalSystem =
-                        {
-                            films = []
-                            lower = system.lower.rotateY angle
-                        }
-
                     let transmit (emf : EmField, acc) =
-                        let emfRot = emf.rotateY angle
+                        let emfRot = emf.rotateY (-angle)
+
+                        let downSys : ShortOpticalSystem =
+                            {
+                                films = []
+                                lower = system.lower.rotateY (-angle)
+                            }
+
                         let sys = BaseOpticalSystemSolver(emfRot, downSys).emSys
                         let tRot = sys.transmitted
                         let tRot1 = sys.transmitted.rotateY (-angle)

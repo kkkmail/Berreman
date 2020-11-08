@@ -175,6 +175,10 @@ module Standard =
         static member wedge40DegGlass150System =
             40.0 |> Angle.degree |> WedgeAngle |> OpticalSystem.getWedgeGlass150System
 
+        /// Standard transparent glass / vacuum system for testing wedge reflection.
+        static member wedge50DegGlass150System =
+            50.0 |> Angle.degree |> WedgeAngle |> OpticalSystem.getWedgeGlass150System
+
         /// Standard vacuum / biaxial crystal substrate / vacuum system.
         static member biaxialCrystalSubstrateSystem thickness =
             {

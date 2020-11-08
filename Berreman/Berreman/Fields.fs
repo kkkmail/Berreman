@@ -11,6 +11,13 @@ module Fields =
 
     // CGS units are used.
 
+
+        /// L2 norm of complex vector.
+    let l2Norm (v : #seq<Complex>) =
+        let norm = v |> Seq.fold (fun acc r -> acc + r.Real * r.Real + r.Imaginary * r.Imaginary) 0.0 |> sqrt
+        norm
+
+
     type IncidenceAngle =
         | IncidenceAngle of Angle
         static member create (Angle p) =
@@ -49,6 +56,7 @@ module Fields =
         static member (+) (E (ComplexVector3 a), E (ComplexVector3 b)) : E = a + b |> ComplexVector3 |> E
         static member (*) (a : Complex, E (ComplexVector3 b)) = a * b |> ComplexVector3 |> E
         static member (*) (E (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> E
+        static member (/) (E (ComplexVector3 a), b : Complex) = a * ((cplx 1.0) / b) |> ComplexVector3 |> E
         static member create a = a |> ComplexVector3.create |> E
         static member fromRe a = a |> ComplexVector3.fromRe |> E
         static member defaultValue = [ 0.0; 0.0; 0.0 ] |> E.fromRe
@@ -68,6 +76,7 @@ module Fields =
         static member (+) (H (ComplexVector3 a), H (ComplexVector3 b)) : H = a + b |> ComplexVector3 |> H
         static member (*) (a : Complex, H (ComplexVector3 b)) = a * b |> ComplexVector3 |> H
         static member (*) (H (ComplexVector3 a), b : Complex) = a * b |> ComplexVector3 |> H
+        static member (/) (H (ComplexVector3 a), b : Complex) = a * ((cplx 1.0) / b) |> ComplexVector3 |> H
         static member create a = a |> ComplexVector3.create |> H
         static member fromRe a = a |> ComplexVector3.fromRe |> H
         static member defaultValue = [ 0.0; 0.0; 0.0 ] |> H.fromRe
@@ -104,6 +113,26 @@ module Fields =
         member b.z = let (B a) = b in a.z
 
 
+    /// [ Ex, Hy, Ey, -Hx ]
+    type BerremanFieldEH =
+        | BerremanFieldEH of ComplexVector4
+
+        member private this.eh =
+            let (BerremanFieldEH v) = this
+            v
+
+        member b.eX = b.eh.[0]
+        member b.hY = b.eh.[1]
+        member b.eY = b.eh.[2]
+        member b.hX = - b.eh.[3]
+
+        /// z component of Poynting vector
+        member b.sZ = ((b.eX) * (b.hY.conjugate) - (b.eY) * (b.hX.conjugate)).Real
+
+        /// Relative x or y "polarization" of the field.
+        member b.xy = (b.eX.abs * b.eX.abs - b.eY.abs * b.eY.abs) / (b.eX.abs * b.eX.abs + b.eY.abs * b.eY.abs)
+
+
     /// Poynting vector S.
     type S =
         | S of RealVector3
@@ -123,25 +152,37 @@ module Fields =
             else None
 
 
+    let normalizeEH (E e, H h) =
+        let norm = [ e.x; h.y; e.y; -h.x ] |> l2Norm |> cplx
+        e / norm |> E, h / norm |> H, norm
+
+
     /// (E, H) eigenvector.
     type EmEigenVector =
         {
+            eigenValue : Complex
             e : E
             h : H
         }
 
+        /// The eigenvectors must be normalized in BerremanFieldEH space: [ Ex, Hy, Ey, -Hx ]
         member emv.rotate r =
-            {
-                e = emv.e.rotate r
-                h = emv.h.rotate r
-            }
+            let (e, h, n) = normalizeEH (emv.e.rotate r, emv.h.rotate r)
 
-        member emv.rotateY a = Rotation.rotateY a |> emv.rotate
+            let v =
+                {
+                    eigenValue = emv.eigenValue
+                    e = e
+                    h = h
+                }
+
+            v, n
+
         member emv.s = S.create emv.e emv.h
-        member emv.rotatePiX = emv.rotate Rotation.rotatePiX
 
         /// For a given EM eigenvector the "old" isotropic n1 * sin(fi) is the x component of Poynting vector.
-        member emv.n1SinFita = emv.s.x |> N1SinFita
+        /// The eigenvalue carries n1 part and normalized x component of s carries sin(fi) part.
+        member emv.n1SinFita = emv.eigenValue.Real * (emv.s.x / emv.s.norm) |> N1SinFita
 
 
     /// (E, H) part, which is proportional to a given eigenvector.
@@ -153,17 +194,48 @@ module Fields =
 
         member emc.e = emc.amplitude * emc.emEigenVector.e
         member emc.h = emc.amplitude * emc.emEigenVector.h
-        member emc.rotate r = { emc with emEigenVector = emc.emEigenVector.rotate r }
-        member emc.rotateY a = { emc with emEigenVector = emc.emEigenVector.rotateY a }
-        member emc.rotatePiX = { emc with emEigenVector = emc.emEigenVector.rotatePiX }
+
+        member emc.rotate r =
+            let (v, n) = emc.emEigenVector.rotate r
+            { emc with amplitude = emc.amplitude * n; emEigenVector = v }
+
+        member emc.rotateY a = Rotation.rotateY a |> emc.rotate
+        member emc.rotatePiX = emc.rotate Rotation.rotatePiX
         member emc.n1SinFita = emc.emEigenVector.n1SinFita
+        static member (*) (a : Complex, b : EmComponent) = { b with amplitude = b.amplitude * a }
+        static member (*) (b : EmComponent, a : Complex) = { b with amplitude = b.amplitude * a }
 
-        static member create v (E e) (H _) =
+        /// Functions getEz and getHz were generated, do not modify.
+        static member create (emv : EigenValueVector) amplitude (nsf : N1SinFita) (o : OpticalProperties) =
+            let n1SinFita = nsf.complex
+            let bf = emv.vector |> BerremanFieldEH
 
-            {
-                amplitude = (e * v.e.value.conjugate) / (v.e.value * v.e.value.conjugate)
-                emEigenVector = v
-            }
+            let getEz eX eY hX hY =
+                ((-(o.eps.[2, 0] * o.mu.[2, 2]) + o.rho.[2, 2] * o.rhoT.[2, 0]) * eX - o.eps.[2, 1] * o.mu.[2, 2] * eY + o.rho.[2, 2] * o.rhoT.[2, 1] * eY - o.rho.[2, 2] * n1SinFita * eY - o.mu.[2, 2] * o.rho.[2, 0] * hX + o.mu.[2, 0] * o.rho.[2, 2] * hX + (o.mu.[2, 1] * o.rho.[2, 2] - o.mu.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
+
+            let getHz eX eY hX hY =
+                 ((-(o.eps.[2, 2] * o.rhoT.[2, 0]) + o.eps.[2, 0] * o.rhoT.[2, 2]) * eX - o.eps.[2, 2] * o.rhoT.[2, 1] * eY + o.eps.[2, 1] * o.rhoT.[2, 2] * eY + o.eps.[2, 2] * n1SinFita * eY - o.eps.[2, 2] * o.mu.[2, 0] * hX + o.rho.[2, 0] * o.rhoT.[2, 2] * hX + (-(o.eps.[2, 2] * o.mu.[2, 1]) + o.rhoT.[2, 2] * (o.rho.[2, 1] + n1SinFita)) * hY)/(o.eps.[2, 2] * o.mu.[2, 2] - o.rho.[2, 2] * o.rhoT.[2, 2])
+
+            let eX = bf.eX
+            let eY = bf.eY
+            let hX = bf.hX
+            let hY = bf.hY
+            let eZ = getEz eX eY hX hY
+            let hZ = getHz eX eY hX hY
+
+            let emc =
+                {
+                    amplitude = amplitude
+
+                    emEigenVector =
+                        {
+                            eigenValue = emv.value
+                            e = [ eX; eY; eZ ] |> E.create
+                            h = [ hX; hY; hZ ] |> H.create
+                        }
+                }
+
+            emc
 
 
     /// Two component of electromagnetic field E.
@@ -375,8 +447,8 @@ module Fields =
             let (Ellipticity e) = info.ellipticity
             let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
             let a90 = e / sqrt(1.0 + e * e) |> cplx
-            let (e0, h0) = info.eh0
-            let (e90, h90) = info.eh90
+            let (e0, h0, n0) = normalizeEH info.eh0
+            let (e90, h90, n90) = normalizeEH info.eh90
 
 //                e = a0 * e0 + cplxI * a90 * e90
 //                h = a0 * h0 + cplxI * a90 * h90
@@ -387,18 +459,20 @@ module Fields =
                 emComponents =
                     [
                         {
-                            amplitude = a0
+                            amplitude = a0 * n0
                             emEigenVector =
                                 {
+                                    eigenValue = cplx info.refractionIndex.value
                                     e = e0
                                     h = h0
                                 }
                         }
 
                         {
-                            amplitude = cplxI * a90
+                            amplitude = cplxI * a90 * n90
                             emEigenVector =
                                 {
+                                    eigenValue = cplx info.refractionIndex.value
                                     e = e90
                                     h = h90
                                 }

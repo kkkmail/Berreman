@@ -14,10 +14,8 @@ module BerremanMatrix =
 
     /// Normalizes complex vector using L2 norm.
     let normalize (v : #seq<Complex>) =
-        //printfn "v = %A" (v |> List.ofSeq)
-        let norm = v |> Seq.fold (fun acc r -> acc + r.Real * r.Real + r.Imaginary * r.Imaginary) 0.0 |> sqrt |> cplx
+        let norm = v |> l2Norm |> cplx
         let retVal = v |> Seq.map (fun e -> e / norm)
-        //printfn "retVal = %A" (retVal |> List.ofSeq)
         retVal
 
 
@@ -32,30 +30,9 @@ module BerremanMatrix =
         |> matrix
 
 
-    // [ Ex, Hy, Ey, -Hx ]
-    type BerremanFieldEH =
-        | BerremanFieldEH of ComplexVector4
-
-        member private this.eh =
-            let (BerremanFieldEH v) = this
-            v
-
-        member b.eX = b.eh.[0]
-        member b.hY = b.eh.[1]
-        member b.eY = b.eh.[2]
-        member b.hX = - b.eh.[3]
-
-        /// z component of Poynting vector
-        member b.sZ = ((b.eX) * (b.hY.conjugate) - (b.eY) * (b.hX.conjugate)).Real
-
-        /// Relative x or y "polarization" of the field.
-        member b.xy = (b.eX.abs * b.eX.abs - b.eY.abs * b.eY.abs) / (b.eX.abs * b.eX.abs + b.eY.abs * b.eY.abs)
-
-
     type BerremanField =
         {
             waveLength : WaveLength
-//            n1SinFita : N1SinFita
             opticalProperties : OpticalProperties
             eh : BerremanFieldEH
         }
@@ -68,7 +45,6 @@ module BerremanMatrix =
         static member create (info : IncidentLightInfo) (o : OpticalProperties) (eh : ComplexVector4) =
             {
                 waveLength = info.waveLength
-//                n1SinFita = info.n1SinFita
                 opticalProperties = o
                 eh = eh |> BerremanFieldEH
             }
@@ -155,8 +131,8 @@ module BerremanMatrix =
             let m = BerremanMatrix.create l.properties em.n1SinFita
 
             match l.thickness with
-            | Thickness t -> m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * t / w))) |> BerremanMatrixPropagated
-            | Infinity -> failwith "TODO: Implement infinite thickness by making that layer the output media."
+            | Thickness x -> m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * x / w))) |> BerremanMatrixPropagated
+            | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
         static member propagateInclinedLayer (l : WedgeLayer) (em : EmComponent) (w : WaveLength) : BerremanMatrixPropagated =
             if abs em.n1SinFita.value < almostZero
@@ -230,8 +206,28 @@ module BerremanMatrix =
 
     type EmField
         with
-        member this.propagate (s : Layer) : EmField = failwith "EmField.propagate is not yet implemented"
-//            BerremanMatrixPropagated.propagateLayer s this |> propagate this
+        member emf.propagate (s : Layer) : EmField =
+//             failwith "EmField.propagate is not yet implemented"
 
-        member this.propagate (s : WedgeLayer) : EmField = failwith "EmField.propagate is not yet implemented"
-//            BerremanMatrixPropagated.propagateInclinedLayer s this |> propagate this
+            let propagate (emc : EmComponent) =
+                match s.thickness with
+                | Thickness x ->
+                    let multiplier = exp (emc.emEigenVector.eigenValue * Complex(0.0, (2.0 * pi * x / emf.waveLength.value)))
+                    emc * multiplier
+                | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
+
+            let a =
+                emf.emComponents
+                |> List.map propagate
+
+            { emf with emComponents = a }
+
+        member emf.propagate (s : WedgeLayer) : EmField =
+//             failwith "EmField.propagate is not yet implemented"
+//            if abs emf.n1SinFita.value < almostZero
+//            then BerremanMatrixPropagated.propagateLayer s.layer em w
+//            else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
+//
+//            BerremanMatrixPropagated.propagateInclinedLayer s emf |> propagate emf
+
+            emf.propagate s.layer
