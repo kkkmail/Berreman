@@ -98,13 +98,13 @@ module Solvers =
                 }
         }
 
-    let private getRT upper lower films (i : EmComponent) =
+    let private getRT upper lower films w (i : EmComponent) =
         let n1SinFita = i.n1SinFita
         let m1 : BerremanMatrix = BerremanMatrix.create upper n1SinFita
         let m2 : BerremanMatrix = BerremanMatrix.create lower n1SinFita
         let b1 = m1.eigenBasis()
         let b2 = m2.eigenBasis()
-        let p = BerremanMatrixPropagated.propagate (films, i)
+        let p = BerremanMatrixPropagated.propagate (films, i, w)
 
         let coeffTblVal = getCoeffTblVal p b1 b2
         let freeTblVal = getFreeTblVal p i b1 b2
@@ -140,7 +140,7 @@ module Solvers =
             | EmFieldBased (e, system) ->
                 e, e.waveLength, system.films, e.opticalProperties, system.lower
 
-        let getRT = getRT upper lower films
+        let getRT = getRT upper lower films waveLength
         let (ehr, eht) = i.emComponents |> List.map getRT |> List.unzip
 
         let r =

@@ -27,7 +27,7 @@ type TestData =
     {
         description : string
         info : IncidentLightInfo
-        expected : EmFieldSystem
+        expected : EmFieldSystemValue
         stokes : StokesSystem option
     }
 
@@ -98,10 +98,9 @@ type SolverTests(output : ITestOutputHelper) =
                     }
                 expected =
                     {
-                        incident =
+                        incidentValue =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
                                     [ 0.992546151641322; 0.; -0.12186934340514745 ]
@@ -110,10 +109,9 @@ type SolverTests(output : ITestOutputHelper) =
                                     [ 0.; 0.9999999999999998; 0. ]
                                     |> H.fromRe
                             }
-                        reflected =
+                        reflectedValue =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = OpticalProperties.vacuum
                                 e =
                                     [ -0.2027874513413428; 0.; -0.024899168169565895 ]
@@ -122,10 +120,9 @@ type SolverTests(output : ITestOutputHelper) =
                                     [ 0.; 0.2043103497061609; 0. ]
                                     |> H.fromRe
                             }
-                        transmitted =
+                        transmittedValue =
                             {
                                 waveLength = waveLength
-                                n1SinFita = n1SinFita
                                 opticalProperties = opticalProperties
                                 e =
                                     [ 0.7897587002999794; 0.; -0.06352515217049573; ]
@@ -181,10 +178,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 0.766044; 0.; -0.642788 ]
@@ -193,10 +189,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 1.5; 0. ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ -0.242322; 0.; -0.203333 ]
@@ -205,10 +200,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 0.474494; 0. ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.523722; 0.; -1.90377; ]
@@ -254,10 +248,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 0.642788; 0.; -0.766044 ]
@@ -266,10 +259,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 1.5; 0. ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 0.642788; 0.; 0.766044 ]
@@ -278,10 +270,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; -1.5; 0. ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.0; 0.; 0.0 ]
@@ -327,10 +318,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 0.0; 1.0; 0.0 ]
@@ -339,10 +329,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ -0.964181; 0.0; 1.14907 ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 0.0; -1.0; 0.0 ]
@@ -351,10 +340,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ -0.964181; 0.0; -1.14907 ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.0; 0.; 0.0 ]
@@ -399,10 +387,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 1.0; 0.; 0. ]
@@ -411,10 +398,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 1.0; 0. ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ -0.2; 0.; 0. ]
@@ -423,10 +409,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 0.2; 0. ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.96; 0.0; 0.0; ]
@@ -471,10 +456,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 1.0; 0.; 0. ]
@@ -483,10 +467,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 1.0; 0. ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ -0.2; 0.; 0. ]
@@ -495,10 +478,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 0.2; 0. ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.96; 0.0; 0.0; ]
@@ -543,10 +525,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 1.0; 0.; 0. ]
@@ -555,10 +536,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 1.0; 0. ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ -0.2; 0.; 0. ]
@@ -567,10 +547,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 0.2; 0. ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.523722; 0.; -1.90377; ]
@@ -615,10 +594,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ 1.0; 0.; 0. ]
@@ -627,10 +605,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 1.0; 0. ]
                                         |> H.fromRe
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.upper
                                     e =
                                         [ -0.2; 0.; 0. ]
@@ -639,10 +616,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ 0.; 0.2; 0. ]
                                         |> H.fromRe
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalSystem.lower
                                     e =
                                         [ 0.523722; 0.; -1.90377; ]
@@ -738,10 +714,9 @@ type SolverTests(output : ITestOutputHelper) =
                         }
                     expected =
                         {
-                            incident =
+                            incidentValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = OpticalProperties.vacuum
                                     e =
                                         [ createComplex 0.5244250568473124 -0.1153807433449855; createComplex 0.4338007527265541 0.3375914755203022; createComplex -0.6249854455442077 0.13750541539757702 ]
@@ -750,10 +725,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ createComplex -0.27884174892532315 -0.21699961760024683; createComplex 0.8158605563399906 -0.17950057158265997; createComplex 0.3323106560470066 0.258610073866664 ]
                                         |> H.create
                                 }
-                            reflected =
+                            reflectedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = OpticalProperties.vacuum
                                     e =
                                         [ createComplex -0.007302575642388954 0.024443690065852296; createComplex -0.08450713524591316 -0.15735967361301947; createComplex -0.008702870757008006 0.029130855452238875 ]
@@ -762,10 +736,9 @@ type SolverTests(output : ITestOutputHelper) =
                                         [ createComplex -0.0543201394661776 -0.10114884846276676; createComplex 0.011360790924314978 -0.03802763105183758; createComplex -0.0647362213590357 -0.12054450354226964 ]
                                         |> H.create
                                 }
-                            transmitted =
+                            transmittedValue =
                                 {
                                     waveLength = waveLength
-                                    n1SinFita = n1SinFita
                                     opticalProperties = opticalProperties
                                     e =
                                         [ createComplex 0.07161377408818743 0.5399618144532632; createComplex -0.20383484246715727 0.17727725562901583; createComplex -0.041786434962015576 -0.3150661940234894 ]
@@ -833,14 +806,14 @@ type SolverTests(output : ITestOutputHelper) =
 
         match c with
         | Field ->
-            verifyVectorEqualityE output "eI" eI t.expected.incident.e
-            verifyVectorEqualityH output "hI" hI t.expected.incident.h
+            verifyVectorEqualityE output "eI" eI t.expected.incidentValue.e
+            verifyVectorEqualityH output "hI" hI t.expected.incidentValue.h
 
-            verifyVectorEqualityE output "eR" eR t.expected.reflected.e
-            verifyVectorEqualityH output "hR" hR t.expected.reflected.h
+            verifyVectorEqualityE output "eR" eR t.expected.reflectedValue.e
+            verifyVectorEqualityH output "hR" hR t.expected.reflectedValue.h
 
-            verifyVectorEqualityE output "eT" eT t.expected.transmitted.e
-            verifyVectorEqualityH output "hT" hT t.expected.transmitted.h
+            verifyVectorEqualityE output "eT" eT t.expected.transmittedValue.e
+            verifyVectorEqualityH output "hT" hT t.expected.transmittedValue.h
         | Intensity ->
             Skip.If(true, "Intensity based checks are not implemented yet.")
 

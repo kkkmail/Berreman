@@ -32,7 +32,7 @@ module Fields =
         member nsf.value = let (N1SinFita v) = nsf in v
         member nsf.complex = nsf.value |> cplx
         static member normal = N1SinFita 0.0
-        static member create (RefractionIndex n) (IncidenceAngle (Angle f)) = n * (sin f)
+        static member create (RefractionIndex n) (IncidenceAngle (Angle f)) = n * (sin f) |> N1SinFita
 
 
     type RT =
@@ -265,7 +265,6 @@ module Fields =
         member this.eh90 = this.getEH this.polarization.crossed
         member this.ehS = this.getEH Polarization.s
         member this.ehP = this.getEH Polarization.p
-//        member this.n1SinFita = N1SinFita.create this.refractionIndex this.incidenceAngle
 
         static member create w =
             {
@@ -339,7 +338,6 @@ module Fields =
         static member getDefaultValue w =
             {
                 waveLength = w
-//                n1SinFita = N1SinFita.normal
                 opticalProperties = OpticalProperties.vacuum
 //                e = E.defaultValue
 //                h = H.defaultValue
@@ -380,15 +378,34 @@ module Fields =
             let (e0, h0) = info.eh0
             let (e90, h90) = info.eh90
 
-            {
-                waveLength = info.waveLength
-//                n1SinFita = info.n1SinFita
-                opticalProperties = o
 //                e = a0 * e0 + cplxI * a90 * e90
 //                h = a0 * h0 + cplxI * a90 * h90
-                emComponents = []
+
+            {
+                waveLength = info.waveLength
+                opticalProperties = o
+                emComponents =
+                    [
+                        {
+                            amplitude = a0
+                            emEigenVector =
+                                {
+                                    e = e0
+                                    h = h0
+                                }
+                        }
+
+                        {
+                            amplitude = cplxI * a90
+                            emEigenVector =
+                                {
+                                    e = e90
+                                    h = h90
+                                }
+                        }
+                    ]
             }
-//
+
         /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
         member emf.amplitudeS =
             let cX =
@@ -425,6 +442,14 @@ module Fields =
             incident : EmField
             reflected : EmField
             transmitted : EmField
+        }
+
+    /// Value representation of EmFieldSystem to be used by tests.
+    type EmFieldSystemValue =
+        {
+            incidentValue : EmFieldValue
+            reflectedValue : EmFieldValue
+            transmittedValue : EmFieldValue
         }
 
     type ReflectedTransmitted =

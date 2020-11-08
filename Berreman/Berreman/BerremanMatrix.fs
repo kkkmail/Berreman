@@ -151,21 +151,20 @@ module BerremanMatrix =
     type BerremanMatrixPropagated =
         | BerremanMatrixPropagated of ComplexMatrix4x4
 
-        static member propagateLayer (l : Layer) (em : EmComponent) : BerremanMatrixPropagated =
+        static member propagateLayer (l : Layer) (em : EmComponent) (WaveLength w) : BerremanMatrixPropagated =
             let m = BerremanMatrix.create l.properties em.n1SinFita
-            let (WaveLength w) = em.waveLength
 
             match l.thickness with
             | Thickness t -> m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * t / w))) |> BerremanMatrixPropagated
             | Infinity -> failwith "TODO: Implement infinite thickness by making that layer the output media."
 
-        static member propagateInclinedLayer (l : WedgeLayer) (em : EmComponent) : BerremanMatrixPropagated =
+        static member propagateInclinedLayer (l : WedgeLayer) (em : EmComponent) (w : WaveLength) : BerremanMatrixPropagated =
             if abs em.n1SinFita.value < almostZero
-            then BerremanMatrixPropagated.propagateLayer l.layer em
+            then BerremanMatrixPropagated.propagateLayer l.layer em w
             else failwith "propagateInclinedLayer for not normal incidence is not yet implemented."
 
-        static member propagate (ls : List<Layer>, em : EmComponent) : BerremanMatrixPropagated =
-            ls |> List.fold (fun acc r -> (BerremanMatrixPropagated.propagateLayer r em) * acc) BerremanMatrixPropagated.identity
+        static member propagate (ls : List<Layer>, em : EmComponent, w : WaveLength) : BerremanMatrixPropagated =
+            ls |> List.fold (fun acc r -> (BerremanMatrixPropagated.propagateLayer r em w) * acc) BerremanMatrixPropagated.identity
 
         static member identity = ComplexMatrix4x4.identity |> BerremanMatrixPropagated
 
@@ -222,17 +221,17 @@ module BerremanMatrix =
             p.eigenBasis()
 
 
-    let private propagate (emf : EmField) (BerremanMatrixPropagated bmp) =
-        let b = emf.toBerremanField()
-        let (BerremanFieldEH beh) = b.eh
-        let bp = { b with eh = bmp * beh |> BerremanFieldEH }
-        bp.toEmField()
+//    let private propagate (emf : EmField) (BerremanMatrixPropagated bmp) =
+//        let b = emf.toBerremanField()
+//        let (BerremanFieldEH beh) = b.eh
+//        let bp = { b with eh = bmp * beh |> BerremanFieldEH }
+//        bp.toEmField()
 
 
     type EmField
         with
-        member this.propagate (s : Layer) : EmField =
-            BerremanMatrixPropagated.propagateLayer s this |> propagate this
+        member this.propagate (s : Layer) : EmField = failwith "EmField.propagate is not yet implemented"
+//            BerremanMatrixPropagated.propagateLayer s this |> propagate this
 
-        member this.propagate (s : WedgeLayer) : EmField =
-            BerremanMatrixPropagated.propagateInclinedLayer s this |> propagate this
+        member this.propagate (s : WedgeLayer) : EmField = failwith "EmField.propagate is not yet implemented"
+//            BerremanMatrixPropagated.propagateInclinedLayer s this |> propagate this
