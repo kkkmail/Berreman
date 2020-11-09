@@ -162,7 +162,8 @@ module BerremanMatrix =
                 Array.zip (evd.EigenValues.ToArray()) (evd.EigenVectors |> toArrays)
                 |> List.ofArray
                 |> List.map (fun (v, e) -> v, e |> normalize |> ComplexVector4.create)
-                |> List.map (fun (v, e) -> v, e, ((BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
+//                |> List.map (fun (v, e) -> v, e, ((BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
+                |> List.map (fun (v, e) -> v, e, (sign (BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
                 |> List.sortBy (fun (_, _, s) -> s) // Sort by z component of Poynting vector first, then by x <-> y relative polarization.
                 |> List.map (fun (v, e, _) -> v, e)
 
@@ -196,6 +197,49 @@ module BerremanMatrix =
 
     type EmField
         with
+
+        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
+            let (Ellipticity e) = info.ellipticity
+            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
+            let a90 = e / sqrt(1.0 + e * e) |> cplx
+            let (e0, h0, n0) = normalizeEH info.eh0
+            let (e90, h90, n90) = normalizeEH info.eh90
+            let n1SinFita = info.refractionIndex.value * (sin info.incidenceAngle.value) |> N1SinFita
+            let bm = BerremanMatrix.create o n1SinFita
+            let ev = bm.eigenBasis()
+
+            let em =
+                {
+                    waveLength = info.waveLength
+                    opticalProperties = o
+                    emComponents =
+                        [
+                            EmComponent.create ev.down.evv0 a90 n1SinFita o
+                            EmComponent.create ev.down.evv1 a0 n1SinFita o
+
+//                            {
+//                                amplitude = a0 * n0
+//                                emEigenVector =
+//                                    {
+//                                        eigenValue = cplx info.refractionIndex.value
+//                                        e = e0
+//                                        h = h0
+//                                    }
+//                            }
+//
+//                            {
+//                                amplitude = cplxI * a90 * n90
+//                                emEigenVector =
+//                                    {
+//                                        eigenValue = cplx info.refractionIndex.value
+//                                        e = e90
+//                                        h = h90
+//                                    }
+//                            }
+                        ]
+                }
+
+            em
 
         /// TODO kk:20201108 - Does not work properly yet.
         /// Both propagate and propagate1 seems to produce the same result except that the identity tests,

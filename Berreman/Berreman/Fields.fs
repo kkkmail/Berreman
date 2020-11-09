@@ -443,42 +443,42 @@ module Fields =
 ////                h = [ emXY.h2.x; emXY.h2.y; hZ ] |> ComplexVector.create |> ComplexVector3 |> H
 //            }
 //
-        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
-            let (Ellipticity e) = info.ellipticity
-            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
-            let a90 = e / sqrt(1.0 + e * e) |> cplx
-            let (e0, h0, n0) = normalizeEH info.eh0
-            let (e90, h90, n90) = normalizeEH info.eh90
-
-//                e = a0 * e0 + cplxI * a90 * e90
-//                h = a0 * h0 + cplxI * a90 * h90
-
-            {
-                waveLength = info.waveLength
-                opticalProperties = o
-                emComponents =
-                    [
-                        {
-                            amplitude = a0 * n0
-                            emEigenVector =
-                                {
-                                    eigenValue = cplx info.refractionIndex.value
-                                    e = e0
-                                    h = h0
-                                }
-                        }
-
-                        {
-                            amplitude = cplxI * a90 * n90
-                            emEigenVector =
-                                {
-                                    eigenValue = cplx info.refractionIndex.value
-                                    e = e90
-                                    h = h90
-                                }
-                        }
-                    ]
-            }
+//        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
+//            let (Ellipticity e) = info.ellipticity
+//            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
+//            let a90 = e / sqrt(1.0 + e * e) |> cplx
+//            let (e0, h0, n0) = normalizeEH info.eh0
+//            let (e90, h90, n90) = normalizeEH info.eh90
+//
+////                e = a0 * e0 + cplxI * a90 * e90
+////                h = a0 * h0 + cplxI * a90 * h90
+//
+//            {
+//                waveLength = info.waveLength
+//                opticalProperties = o
+//                emComponents =
+//                    [
+//                        {
+//                            amplitude = a0 * n0
+//                            emEigenVector =
+//                                {
+//                                    eigenValue = cplx info.refractionIndex.value
+//                                    e = e0
+//                                    h = h0
+//                                }
+//                        }
+//
+//                        {
+//                            amplitude = cplxI * a90 * n90
+//                            emEigenVector =
+//                                {
+//                                    eigenValue = cplx info.refractionIndex.value
+//                                    e = e90
+//                                    h = h90
+//                                }
+//                        }
+//                    ]
+//            }
 
         /// s = x', x' must look in the same direction as x, so that projection of x' on x is positive.
         member emf.amplitudeS =
