@@ -158,6 +158,9 @@ module Fields =
 
 
     /// (E, H) eigenvector.
+    /// The x component of normalized Poynting vector s gives sin(fi).
+    /// And the eigenvalue carries n1 * cos(fi).
+    /// However, here we store invariant eigenvalue calculated using normal incidence.
     type EmEigenVector =
         {
             eigenValue : Complex
@@ -166,6 +169,7 @@ module Fields =
         }
 
         /// The eigenvectors must be normalized in BerremanFieldEH space: [ Ex, Hy, Ey, -Hx ]
+        /// The invariant eigenvalue does not change in contrast to the actual eigenvalue.
         member emv.rotate r =
             let (e, h, n) = normalizeEH (emv.e.rotate r, emv.h.rotate r)
 
@@ -181,7 +185,7 @@ module Fields =
         member emv.s = S.create emv.e emv.h
 
         /// For a given EM eigenvector the "old" isotropic n1 * sin(fi) is the x component of Poynting vector.
-        /// The eigenvalue carries n1 part and normalized x component of s carries sin(fi) part.
+        /// The invariant eigenvalue carries n1 part and normalized x component of s carries sin(fi) part.
         member emv.n1SinFita = emv.eigenValue.Real * (emv.s.x / emv.s.norm) |> N1SinFita
 
 
@@ -206,6 +210,8 @@ module Fields =
         static member (*) (b : EmComponent, a : Complex) = { b with amplitude = b.amplitude * a }
 
         /// Functions getEz and getHz were generated, do not modify.
+        /// The real part of eigenvalue carries n1 * cos(fi).
+        /// The x component of normalized Poynting vector s gives sin(fi).
         static member create (emv : EigenValueVector) amplitude (nsf : N1SinFita) (o : OpticalProperties) =
             let n1SinFita = nsf.complex
             let bf = emv.vector |> BerremanFieldEH
@@ -222,6 +228,14 @@ module Fields =
             let hY = bf.hY
             let eZ = getEz eX eY hX hY
             let hZ = getHz eX eY hX hY
+            let e = [ eX; eY; eZ ] |> E.create
+            let h = [ hX; hY; hZ ] |> H.create
+            let s =  S.create e h
+            let sinFita = s.x / s.norm
+            let fita = asin sinFita
+
+            // We want the invariant eigenvalue calculated at normal incidence.
+            let eigenValue = emv.value / (cos fita |> cplx)
 
             let emc =
                 {
@@ -229,9 +243,9 @@ module Fields =
 
                     emEigenVector =
                         {
-                            eigenValue = emv.value
-                            e = [ eX; eY; eZ ] |> E.create
-                            h = [ hX; hY; hZ ] |> H.create
+                            eigenValue = eigenValue
+                            e = e
+                            h = h
                         }
                 }
 

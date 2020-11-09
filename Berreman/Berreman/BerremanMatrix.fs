@@ -199,14 +199,20 @@ module BerremanMatrix =
         with
 
         static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
-            let (Ellipticity e) = info.ellipticity
-            let a0 = 1.0 / sqrt(1.0 + e * e) |> cplx
-            let a90 = e / sqrt(1.0 + e * e) |> cplx
-            let (e0, h0, n0) = normalizeEH info.eh0
-            let (e90, h90, n90) = normalizeEH info.eh90
             let n1SinFita = info.refractionIndex.value * (sin info.incidenceAngle.value) |> N1SinFita
             let bm = BerremanMatrix.create o n1SinFita
             let ev = bm.eigenBasis()
+            let (Ellipticity e) = info.ellipticity
+            let a90 = e / sqrt(1.0 + e * e)
+            let a0 = 1.0 / sqrt(1.0 + e * e)
+
+            let (e0, h0, n0) = normalizeEH info.eh0
+            let (e90, h90, n90) = normalizeEH info.eh90
+
+            let emc0 = EmComponent.create ev.down.evv0 (cplx 1.0) n1SinFita o
+            let emc1 = EmComponent.create ev.down.evv1 (cplx 1.0) n1SinFita o
+            let norm0 = emc0.e.value.norm
+            let norm1 = emc1.e.value.norm
 
             let em =
                 {
@@ -214,8 +220,9 @@ module BerremanMatrix =
                     opticalProperties = o
                     emComponents =
                         [
-                            EmComponent.create ev.down.evv0 a90 n1SinFita o
-                            EmComponent.create ev.down.evv1 a0 n1SinFita o
+                            { emc0 with amplitude = (a90 / norm0 |> cplx) * cplxI }
+                            { emc1 with amplitude = a0 / norm1 |> cplx }
+
 
 //                            {
 //                                amplitude = a0 * n0
