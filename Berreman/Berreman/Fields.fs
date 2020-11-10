@@ -24,6 +24,7 @@ module Fields =
             (p % (pi / 2.0) + pi) % (pi / 2.0) |> Angle |> IncidenceAngle
 
         member angle.value = let (IncidenceAngle a) = angle in a.value
+        member p.angle = let (IncidenceAngle a) = p in a
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
         member this.description = sprintf "incidence angle: %A degree(s)" (this.value / degree)
@@ -297,7 +298,8 @@ module Fields =
     type Polarization =
         | Polarization of Angle
 
-        member angle.value = let (Polarization a) = angle in a.value
+        member p.value = let (Polarization a) = p in a.value
+        member p.angle = let (Polarization a) = p in a
         static member create (Angle p) = ((p + (pi / 2.0)) % pi) - (pi / 2.0) |> Angle |> Polarization
         member this.crossed = Angle (this.value + (pi / 2.0)) |> Polarization
         static member defaultValue = Angle 0.0 |> Polarization
@@ -323,34 +325,34 @@ module Fields =
             polarization : Polarization
             ellipticity : Ellipticity
         }
-        member this.getEH (Polarization (Angle beta)) =
-            let (RefractionIndex n1) = this.refractionIndex
-            let (IncidenceAngle (Angle fita)) = this.incidenceAngle
-
-            let e =
-                [
-                    cos(beta) * cos(fita) |> cplx
-                    sin(beta) |> cplx
-                    -cos(beta) * sin(fita) |> cplx
-                ]
-                |> ComplexVector3.create
-                |> E
-
-            let h =
-                [
-                    -n1 * cos(fita) * sin(beta) |> cplx
-                    n1 * cos(beta) |> cplx
-                    n1 * sin(beta) * sin(fita) |> cplx
-                ]
-                |> ComplexVector3.create
-                |> H
-
-            (e, h)
-
-        member this.eh0 = this.getEH this.polarization
-        member this.eh90 = this.getEH this.polarization.crossed
-        member this.ehS = this.getEH Polarization.s
-        member this.ehP = this.getEH Polarization.p
+//        member this.getEH (Polarization (Angle beta)) =
+//            let (RefractionIndex n1) = this.refractionIndex
+//            let (IncidenceAngle (Angle fita)) = this.incidenceAngle
+//
+//            let e =
+//                [
+//                    cos(beta) * cos(fita) |> cplx
+//                    sin(beta) |> cplx
+//                    -cos(beta) * sin(fita) |> cplx
+//                ]
+//                |> ComplexVector3.create
+//                |> E
+//
+//            let h =
+//                [
+//                    -n1 * cos(fita) * sin(beta) |> cplx
+//                    n1 * cos(beta) |> cplx
+//                    n1 * sin(beta) * sin(fita) |> cplx
+//                ]
+//                |> ComplexVector3.create
+//                |> H
+//
+//            (e, h)
+//
+//        member this.eh0 = this.getEH this.polarization
+//        member this.eh90 = this.getEH this.polarization.crossed
+//        member this.ehS = this.getEH Polarization.s
+//        member this.ehP = this.getEH Polarization.p
 
         static member create w =
             {
@@ -420,6 +422,8 @@ module Fields =
 
         member emf.rotatePiX = emf.rotate Rotation.rotatePiX
         member emf.rotateY y = Rotation.rotateY y |> emf.rotate
+//        member emf.rotateZY a b = Rotation.rotateZY a b |> emf.rotate
+        member emf.rotateYZ a b = Rotation.rotateYZ a b |> emf.rotate
 
         static member getDefaultValue w =
             {

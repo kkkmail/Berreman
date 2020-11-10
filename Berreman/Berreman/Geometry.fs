@@ -447,12 +447,15 @@ module Geometry =
         |> RealMatrix3x3.create
 
 
-    /// Rotation in opposite direction is marked with "-".
-    /// Rotation for angle (Pi - z) means rotating for the angle (Pi - alphaZ) around z axis.
+    /// Rotation in opposite direction is marked with "-" in the code and "m" in the name.
+    /// Rotation for angle (Pi - z) means rotating for angle (Pi - alphaZ) around z axis.
     type RotationConvention =
         | ZmXpZm // Rotation around (-z), (x'), (-z'')
         | ZmYpXp // Rotation around (-z), (y'), (x'')
+        | ZmYmXp // Rotation around (-z), (-y'), (x'')
         | ZpYpXp // Rotation around (z), (y'), (x'')
+
+        | YmZmXp // Rotation around (-y), (-z'), (x'')
 
         // For compatibility with Mathematica code.
         | PiZmXpPiZm //Rotation around (Pi - z), (x'), (Pi - z'') = Euler angles in Mathematica code.
@@ -461,7 +464,11 @@ module Geometry =
             match convention with
             | ZmXpZm -> [ (fun a -> zRotation (-a)); xRotation; (fun a -> zRotation (-a)) ]
             | ZmYpXp -> [ (fun a -> zRotation (-a)); yRotation; xRotation]
+            | ZmYmXp -> [ (fun a -> zRotation (-a)); (fun a -> yRotation (-a)); xRotation]
             | ZpYpXp -> [ zRotation; yRotation; xRotation]
+
+            | YmZmXp -> [ (fun a -> yRotation (-a)); (fun a -> zRotation (-a)); xRotation]
+
             | PiZmXpPiZm -> [ (fun a -> zRotation (Angle.pi - a)); xRotation; (fun a -> zRotation (Angle.pi - a)) ]
 
 
@@ -476,12 +483,16 @@ module Geometry =
 
         static member createZmXpZm = Rotation.create ZmXpZm
         static member createZmYpXp = Rotation.create ZmYpXp
+        static member createZmYmXp = Rotation.create ZmYmXp
+        static member createYmZmXp = Rotation.create YmZmXp
         static member createZpYpXp = Rotation.create ZpYpXp
         static member createPiZmXpPiZm = Rotation.create PiZmXpPiZm
         static member rotatePiX = Rotation.createZmXpZm Angle.zero Angle.pi Angle.zero |> Rotation
         static member rotateX a = Rotation.createZmYpXp Angle.zero Angle.zero a |> Rotation
         static member rotateY a = Rotation.createZmYpXp Angle.zero a Angle.zero |> Rotation
         static member rotateZ a = Rotation.createZmYpXp a Angle.zero Angle.zero |> Rotation
+//        static member rotateZY a b = Rotation.createZmYpXp a b Angle.zero |> Rotation
+        static member rotateYZ a b = Rotation.createYmZmXp a b Angle.zero |> Rotation
 
 
     type RealVector3
