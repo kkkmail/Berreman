@@ -309,7 +309,7 @@ type ThinFilmTests(output : ITestOutputHelper) =
         output.WriteLine d.description
 
         let (BerremanMatrixPropagated (ComplexMatrix4x4 bm)) =
-            BerremanMatrixPropagated.propagate (d.thinFilms, EmField.create (d.light, OpticalProperties.vacuum))
+            BerremanMatrixPropagated.propagate (d.thinFilms, (EmField.create (d.light, OpticalProperties.vacuum)).emComponents.[0], d.light.waveLength)
 
         verifyMatrixEquality output bm d.expected
 

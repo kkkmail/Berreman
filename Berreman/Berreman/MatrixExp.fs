@@ -1,34 +1,34 @@
 ﻿namespace Berreman
 
-module MatrixExp = 
+open System.Numerics
+open MathNet.Numerics
+open MathNet.Numerics.LinearAlgebra
+open MathNetNumericsMath
 
-    open System.Numerics
-    open MathNet.Numerics
-    open MathNet.Numerics.LinearAlgebra
-    open MathNetNumericsMath
+module MatrixExp =
 
-    // Simple port of https://people.sc.fsu.edu/~jburkardt/c_src/matrix_exponential/matrix_exponential.c & related.
-    // No optimization was performed.
-    // This code is distributed under the GNU LGPL license, which is identical to the source license.
+    /// Simple port of https://people.sc.fsu.edu/~jburkardt/c_src/matrix_exponential/matrix_exponential.c & related.
+    /// No optimization was performed.
+    /// This code is distributed under the GNU LGPL license, which is identical to the source license.
     type ComplexMatrix
     with
-        static member identity (n : int) : ComplexMatrix = 
+        static member identity (n : int) : ComplexMatrix =
             complexDiagonalMatrix n (cplx 1.0)
 
-        member this.lInfinityNorm () : double =
+        member this.lInfinityNorm() : double =
             let (ComplexMatrix m) = this
 
-            let rowSum (v : Vector<Complex>) = 
+            let rowSum (v : Vector<Complex>) =
                 v.ToArray()
                 |> Array.fold (fun acc e -> acc + (sqrt (e.Norm()))) 0.0
 
             let rows = [ for i in 0..m.RowCount - 1 -> m.Row(i) ]
             rows |> List.fold (fun acc v -> max acc (rowSum v)) 0.0
 
-        static member addScaled (a : Complex) (ma : ComplexMatrix) (b : Complex) (mb : ComplexMatrix) = 
+        static member addScaled (a : Complex) (ma : ComplexMatrix) (b : Complex) (mb : ComplexMatrix) =
             a * ma + b * mb
 
-        member this.matrixExp () : ComplexMatrix = 
+        member this.matrixExp() : ComplexMatrix =
             let (ComplexMatrix m) = this
             let q = 6
             let one = cplx 1.0
@@ -62,23 +62,23 @@ module MatrixExp =
 
             let p = true
 
-            let rec update 
+            let rec update
                 (pp : bool)
-                (kk : int) 
-                (cc : Complex) 
-                (dd : ComplexMatrix) 
+                (kk : int)
+                (cc : Complex)
+                (dd : ComplexMatrix)
                 (ee : ComplexMatrix)
-                (xx : ComplexMatrix) = 
+                (xx : ComplexMatrix) =
                 if kk <= q
-                then 
+                then
                     let cn = cc * (cplx ((double (q - kk + 1)) / (double (kk * (2 * q - kk + 1)))))
                     //printfn "cn = %A" cn
 
                     let xn = a2 * xx
                     let en = ComplexMatrix.addScaled cn xn one ee
 
-                    let dn = 
-                        match pp with 
+                    let dn =
+                        match pp with
                         | true -> ComplexMatrix.addScaled cn xn one dd
                         | false -> ComplexMatrix.addScaled (-cn) xn one dd
 
@@ -90,7 +90,7 @@ module MatrixExp =
             let e1 = dn.inverse * en
             //printfn "e1 = %A" e1
 
-            let rec mult (k : int) (res : ComplexMatrix) = 
+            let rec mult (k : int) (res : ComplexMatrix) =
                 if k <= s
                 then mult (k + 1) (res * res)
                 else res

@@ -107,7 +107,7 @@ type BerremanMatrixTests(output : ITestOutputHelper) =
     // Calculated and expected Berreman matrix.
     member _.runTest (d : BerremanMatrixTestData) =
         output.WriteLine d.description
-        let bm = BerremanMatrix.create d.n1SinFita d.opticalProperties
+        let bm = BerremanMatrix.create d.opticalProperties d.n1SinFita
         let (ComplexMatrix4x4 result) = bm.berremanMatrix
         verifyMatrixEquality output result d.expected
 

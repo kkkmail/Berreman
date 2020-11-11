@@ -1,14 +1,9 @@
 ﻿namespace Berreman
+open System.Numerics
+open MathNetNumericsMath
+open MatrixExp
+
 module Geometry =
-
-    //open ExtremeNumericsMath
-    //open MathNet.Numerics
-    //open MathNet.Numerics.LinearAlgebra
-
-    open System.Numerics
-    open MathNetNumericsMath
-    open MatrixExp
-
 
     let thread a f =
         match a with
@@ -43,8 +38,8 @@ module Geometry =
         static member degree a = a * degree |> Angle
         static member radian r = r |> Angle
         static member zero = Angle.radian 0.0
-        static member pi = Angle.radian MathNetNumericsMath.pi
-        static member piDivideByTwo = Angle.radian (MathNetNumericsMath.pi / 2.0)
+        static member pi = Angle.radian pi
+        static member piDivideByTwo = Angle.radian (pi / 2.0)
         static member (+) (Angle a, Angle b) = a + b |> Angle
         static member (-) (Angle a, Angle b) = a - b |> Angle
         static member (~-) (Angle a) = -a |> Angle
@@ -82,7 +77,7 @@ module Geometry =
         static member zeroVector = [ 0.; 0.; 0. ] |> RealVector3.create
 
 
-    /// Orthonormal real basis
+    /// Orthonormal real basis.
     type RealBasis3 =
         {
             vX : RealVector3
@@ -217,15 +212,14 @@ module Geometry =
                 let (ComplexVector4 v) = this
                 v.[i]
 
-        static member (*) (a : Complex, ComplexVector4 b) : ComplexVector4 =
-            a * b |> ComplexVector4
-
-        static member (*) (ComplexVector4 a, b : Complex) : ComplexVector4 =
-            a * b |> ComplexVector4
-
+        static member (*) (a : Complex, ComplexVector4 b) : ComplexVector4 = a * b |> ComplexVector4
+        static member (*) (ComplexVector4 a, b : Complex) : ComplexVector4 = a * b |> ComplexVector4
+        static member (*) (ComplexVector4 a, ComplexVector4 b) : Complex = a * b
         static member create a = a |> ComplexVector.create |> ComplexVector4
         static member fromRe a = a |> ComplexVector.fromRe |> ComplexVector4
         static member fromIm a = a |> ComplexVector.fromIm |> ComplexVector4
+        member this.conjugate = let (ComplexVector4 v) = this in v.conjugate |> ComplexVector4
+        member this.norm =  let (ComplexVector4 v) = this in v.norm
 
 
     type RealMatrix3x3 =
@@ -257,6 +251,10 @@ module Geometry =
 
         static member (*) (RealMatrix3x3 a, RealVector3 b) : RealVector3 =
             a * b |> RealVector3
+
+        member this.inverse =
+            let (RealMatrix3x3 m) = this
+            m.inverse |> RealMatrix3x3
 
 
     type RealMatrix4x4 =
@@ -343,13 +341,15 @@ module Geometry =
 
     type EigenBasis =
         {
-            v0 : Complex
-            v1 : Complex
-            e0 : ComplexVector4
-            e1 : ComplexVector4
+            evv0 : EigenValueVector
+            evv1 : EigenValueVector
         }
-        member this.values = [ this.v0; this.v1 ]
-        member this.vectors = [ this.e0; this.e1 ]
+        member this.values = [ this.evv0.value; this.evv1.value ]
+        member this.vectors = [ this.evv0.vector; this.evv1.vector ]
+        member this.e0 = this.evv0.vector
+        member this.e1 = this.evv1.vector
+        member this.v0 = this.evv0.value
+        member this.v1 = this.evv1.value
 
         static member create l =
             let fail() = failwith "EigenBasis::Invalid input data."
@@ -363,10 +363,8 @@ module Geometry =
                     match t1 with
                     | [] ->
                         {
-                            v0 = fst h0
-                            v1 = fst h1
-                            e0 = snd h0
-                            e1 = snd h1
+                            evv0 = { value = fst h0; vector = snd h0 }
+                            evv1 = { value = fst h1; vector = snd h1 }
                         }
                     | _ -> fail()
 
@@ -406,7 +404,7 @@ module Geometry =
 
         member this.matrixExp (x : Complex) : ComplexMatrix4x4 =
             let (ComplexMatrix4x4 v) = this * x
-            v.matrixExp () |> ComplexMatrix4x4
+            v.matrixExp() |> ComplexMatrix4x4
 
         static member identity = complexIdentityMatrix 4 |> ComplexMatrix4x4
 
@@ -419,7 +417,7 @@ module Geometry =
             m.im |> RealMatrix4x4
 
 
-    // Rotation around x axis.
+    /// Rotation around x axis.
     let xRotation (Angle xAngle) =
         [
             [ 1.; 0.; 0. ]
@@ -429,7 +427,7 @@ module Geometry =
         |> RealMatrix3x3.create
 
 
-    // Rotation around y axis.
+    /// Rotation around y axis.
     let yRotation (Angle yAngle) =
         [
             [ cos(yAngle); 0.; sin(yAngle) ]
@@ -439,7 +437,7 @@ module Geometry =
         |> RealMatrix3x3.create
 
 
-    // Rotation around z axis.
+    /// Rotation around z axis.
     let zRotation (Angle zAngle) =
         [
             [ cos(zAngle); -sin(zAngle); 0. ]
@@ -449,12 +447,15 @@ module Geometry =
         |> RealMatrix3x3.create
 
 
-    /// Rotation in opposite direction is marked with "-".
-    /// Rotation for angle (Pi - z) means rotating for the angle (Pi - alphaZ) around z axis.
+    /// Rotation in opposite direction is marked with "-" in the code and "m" in the name.
+    /// Rotation for angle (Pi - z) means rotating for angle (Pi - alphaZ) around z axis.
     type RotationConvention =
         | ZmXpZm // Rotation around (-z), (x'), (-z'')
         | ZmYpXp // Rotation around (-z), (y'), (x'')
+        | ZmYmXp // Rotation around (-z), (-y'), (x'')
         | ZpYpXp // Rotation around (z), (y'), (x'')
+
+        | YmZmXp // Rotation around (-y), (-z'), (x'')
 
         // For compatibility with Mathematica code.
         | PiZmXpPiZm //Rotation around (Pi - z), (x'), (Pi - z'') = Euler angles in Mathematica code.
@@ -463,7 +464,11 @@ module Geometry =
             match convention with
             | ZmXpZm -> [ (fun a -> zRotation (-a)); xRotation; (fun a -> zRotation (-a)) ]
             | ZmYpXp -> [ (fun a -> zRotation (-a)); yRotation; xRotation]
+            | ZmYmXp -> [ (fun a -> zRotation (-a)); (fun a -> yRotation (-a)); xRotation]
             | ZpYpXp -> [ zRotation; yRotation; xRotation]
+
+            | YmZmXp -> [ (fun a -> yRotation (-a)); (fun a -> zRotation (-a)); xRotation]
+
             | PiZmXpPiZm -> [ (fun a -> zRotation (Angle.pi - a)); xRotation; (fun a -> zRotation (Angle.pi - a)) ]
 
 
@@ -478,9 +483,29 @@ module Geometry =
 
         static member createZmXpZm = Rotation.create ZmXpZm
         static member createZmYpXp = Rotation.create ZmYpXp
+        static member createZmYmXp = Rotation.create ZmYmXp
+        static member createYmZmXp = Rotation.create YmZmXp
         static member createZpYpXp = Rotation.create ZpYpXp
         static member createPiZmXpPiZm = Rotation.create PiZmXpPiZm
         static member rotatePiX = Rotation.createZmXpZm Angle.zero Angle.pi Angle.zero |> Rotation
         static member rotateX a = Rotation.createZmYpXp Angle.zero Angle.zero a |> Rotation
         static member rotateY a = Rotation.createZmYpXp Angle.zero a Angle.zero |> Rotation
         static member rotateZ a = Rotation.createZmYpXp a Angle.zero Angle.zero |> Rotation
+//        static member rotateZY a b = Rotation.createZmYpXp a b Angle.zero |> Rotation
+        static member rotateYZ a b = Rotation.createYmZmXp a b Angle.zero |> Rotation
+
+
+    type RealVector3
+        with
+
+        member v.rotate (Rotation r) =
+            let rInv = r.inverse
+            rInv * v
+
+
+    type ComplexVector3
+        with
+
+        member v.rotate (Rotation r) =
+            let rInv = r.toComplex().inverse
+            rInv * v
