@@ -366,7 +366,7 @@ type SolverTests(output : ITestOutputHelper) =
     let wedgeAt00Degrees =
         let incidenceAngle = IncidenceAngle.normal
         let refractionIndex = RefractionIndex.vacuum
-        let opticalSystem = OpticalSystem.getWedgeGlass150System WedgeAngle.defaultValue
+        let opticalSystem = OpticalSystem.getWedgeGlass150Thickness1mmSystem WedgeAngle.defaultValue
 
         let waveLength = WaveLength.nm 600.0
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
@@ -435,7 +435,7 @@ type SolverTests(output : ITestOutputHelper) =
     let wedgeAt07DegreesS =
         let incidenceAngle = IncidenceAngle.normal
         let refractionIndex = RefractionIndex.vacuum
-        let opticalSystem = OpticalSystem.getWedgeGlass150System (7.0 |> Angle.degree |> WedgeAngle)
+        let opticalSystem = OpticalSystem.getWedgeGlass150Thickness1mmSystem (7.0 |> Angle.degree |> WedgeAngle)
 
         let waveLength = WaveLength.nm 600.0
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
@@ -1110,6 +1110,12 @@ type SolverTests(output : ITestOutputHelper) =
         let descr = "Biaxial Crystal 1000 nm, NORMAL incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmNormalLPs with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
         runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalWedgeSystem (Thickness.nm 1000.0) (Angle.degree 10.0 |> WedgeAngle))
+
+    [<Fact>]
+    member _.muellerMatrixT_TransparentGlassWedgeSystem_Polarized_WithEllipticity () =
+        let descr = "Transparent glass 1000 nm, NORMAL incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
+        let info = { light600nmNormalLPs with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
+        runTestMuellerMatrixT descr info (OpticalSystem.getWedgeGlass150System (Thickness.nm 1000.0) (Angle.degree 10.0 |> WedgeAngle))
 
     [<Fact>]
     member _.totalReflectionAt40DegreesTest () = runTest totalReflectionAt40Degrees Field
