@@ -43,6 +43,19 @@ module Fields =
         static member create (RefractionIndex n) (IncidenceAngle (Angle f)) = n * (sin f) |> N1SinFita
 
 
+    /// Wave vector divided by frequency.
+    type WaveVector =
+        | WaveVector of RealVector3
+
+        member w.rotate r = let (WaveVector a) = w in a.rotate r |> WaveVector
+        member w.rotateY y = Rotation.rotateY y |> w.rotate
+        member w.value = let (WaveVector a) = w in a
+        member w.x = let (WaveVector a) = w in a.x
+        member w.y = let (WaveVector a) = w in a.y
+        member w.z = let (WaveVector a) = w in a.z
+        member w.n1SinFita = w.x |> N1SinFita
+
+
     type RT =
         | Reflected
         | Transmitted
@@ -164,7 +177,7 @@ module Fields =
     /// However, here we store invariant eigenvalue calculated using normal incidence.
     type EmEigenVector =
         {
-            eigenValue : Complex
+            w : WaveVector
             e : E
             h : H
         }
@@ -176,7 +189,7 @@ module Fields =
 
             let v =
                 {
-                    eigenValue = emv.eigenValue
+                    w = emv.w.rotate r
                     e = e
                     h = h
                 }
@@ -184,10 +197,7 @@ module Fields =
             v, n
 
         member emv.s = S.create emv.e emv.h
-
-        /// For a given EM eigenvector the "old" isotropic n1 * sin(fi) is the x component of Poynting vector.
-        /// The invariant eigenvalue carries n1 part and normalized x component of s carries sin(fi) part.
-        member emv.n1SinFita = emv.eigenValue.Real * (emv.s.x / emv.s.norm) |> N1SinFita
+        member emv.n1SinFita = emv.w.n1SinFita
 
 
     /// (E, H) part, which is proportional to a given eigenvector.
@@ -231,12 +241,6 @@ module Fields =
             let hZ = getHz eX eY hX hY
             let e = [ eX; eY; eZ ] |> E.create
             let h = [ hX; hY; hZ ] |> H.create
-            let s =  S.create e h
-            let sinFita = s.x / s.norm
-            let fita = asin sinFita
-
-            // We want the invariant eigenvalue calculated at normal incidence.
-            let eigenValue = emv.value / (cos fita |> cplx)
 
             let emc =
                 {
@@ -244,7 +248,7 @@ module Fields =
 
                     emEigenVector =
                         {
-                            eigenValue = eigenValue
+                            w = [ nsf.value; 0.0; emv.value.Real ] |> RealVector3.create |> WaveVector
                             e = e
                             h = h
                         }

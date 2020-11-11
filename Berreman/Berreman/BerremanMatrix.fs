@@ -188,93 +188,10 @@ module BerremanMatrix =
             p.eigenBasis()
 
 
-//    let private propagate (emf : EmField) (BerremanMatrixPropagated bmp) =
-//        let b = emf.toBerremanField()
-//        let (BerremanFieldEH beh) = b.eh
-//        let bp = { b with eh = bmp * beh |> BerremanFieldEH }
-//        bp.toEmField()
-
-
     type EmField
         with
 
-//        static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
-//            let n1SinFita = info.refractionIndex.value * (sin info.incidenceAngle.value) |> N1SinFita
-//            let bm = BerremanMatrix.create o n1SinFita
-//            let ev = bm.eigenBasis()
-//            let (Ellipticity e) = info.ellipticity
-//            let a90 = e / sqrt(1.0 + e * e)
-//            let a0 = 1.0 / sqrt(1.0 + e * e)
-//
-//            let (e0, h0, n0) = normalizeEH info.eh0
-//            let (e90, h90, n90) = normalizeEH info.eh90
-//
-//            let emc0 = EmComponent.create ev.down.evv0 (cplx 1.0) n1SinFita o
-//            let emc1 = EmComponent.create ev.down.evv1 (cplx 1.0) n1SinFita o
-//            let norm0 = emc0.e.value.norm
-//            let norm1 = emc1.e.value.norm
-//
-//            let em =
-//                {
-//                    waveLength = info.waveLength
-//                    opticalProperties = o
-//                    emComponents =
-//                        [
-//                            { emc0 with amplitude = (a90 / norm0 |> cplx) * cplxI }
-//                            { emc1 with amplitude = a0 / norm1 |> cplx }
-//
-//
-////                            {
-////                                amplitude = a0 * n0
-////                                emEigenVector =
-////                                    {
-////                                        eigenValue = cplx info.refractionIndex.value
-////                                        e = e0
-////                                        h = h0
-////                                    }
-////                            }
-////
-////                            {
-////                                amplitude = cplxI * a90 * n90
-////                                emEigenVector =
-////                                    {
-////                                        eigenValue = cplx info.refractionIndex.value
-////                                        e = e90
-////                                        h = h90
-////                                    }
-////                            }
-//                        ]
-//                }
-//
-//            em
-
-
         static member create (info : IncidentLightInfo, o : OpticalProperties) : EmField =
-//            let n1SinFita = info.refractionIndex.value * (sin info.incidenceAngle.value) |> N1SinFita
-//            let bm = BerremanMatrix.create o n1SinFita
-//            let ev = bm.eigenBasis()
-//            let (Ellipticity e) = info.ellipticity
-//            let a90 = e / sqrt(1.0 + e * e)
-//            let a0 = 1.0 / sqrt(1.0 + e * e)
-//
-//            let emc0 = EmComponent.create ev.down.evv0 (cplx 1.0) n1SinFita o
-//            let emc1 = EmComponent.create ev.down.evv1 (cplx 1.0) n1SinFita o
-//            let norm0 = emc0.e.value.norm
-//            let norm1 = emc1.e.value.norm
-//
-//            let em =
-//                {
-//                    waveLength = info.waveLength
-//                    opticalProperties = o
-//                    emComponents =
-//                        [
-//                            { emc0 with amplitude = (a90 / norm0 |> cplx) * cplxI }
-//                            { emc1 with amplitude = a0 / norm1 |> cplx }
-//                        ]
-//                }
-//
-//            em
-
             let nsf = N1SinFita.normal
             let bm = BerremanMatrix.create o nsf
             let ev = bm.eigenBasis()
@@ -298,7 +215,6 @@ module BerremanMatrix =
                         ]
                 }
 
-//            let emr = em.rotateZY info.polarization.angle (-info.incidenceAngle.angle)
             let emr = em.rotateYZ (info.incidenceAngle.angle) info.polarization.angle
             emr
 
@@ -308,8 +224,8 @@ module BerremanMatrix =
         member emf.propagate (s : Layer) : EmField =
             let propagate (emc : EmComponent) =
                 match s.thickness with
-                | Thickness x ->
-                    let multiplier = exp (emc.emEigenVector.eigenValue * Complex(0.0, (2.0 * pi * x / emf.waveLength.value)))
+                | Thickness h ->
+                    let multiplier = exp (Complex(0.0, (2.0 * pi * h * emc.emEigenVector.w.z / emf.waveLength.value)))
                     emc * multiplier
                 | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
