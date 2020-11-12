@@ -12,12 +12,6 @@ module Fields =
     // CGS units are used.
 
 
-        /// L2 norm of complex vector.
-    let l2Norm (v : #seq<Complex>) =
-        let norm = v |> Seq.fold (fun acc r -> acc + r.Real * r.Real + r.Imaginary * r.Imaginary) 0.0 |> sqrt
-        norm
-
-
     type IncidenceAngle =
         | IncidenceAngle of Angle
         static member create (Angle p) =

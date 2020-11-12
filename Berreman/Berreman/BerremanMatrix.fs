@@ -1,7 +1,6 @@
 ﻿namespace Berreman
 
 open System.Numerics
-open MathNet.Numerics.LinearAlgebra
 open MathNetNumericsMath
 
 open Geometry
@@ -11,24 +10,6 @@ open Media
 open Constants
 
 module BerremanMatrix =
-
-    /// Normalizes complex vector using L2 norm.
-    let normalize (v : #seq<Complex>) =
-        let norm = v |> l2Norm |> cplx
-        let retVal = v |> Seq.map (fun e -> e / norm)
-        retVal
-
-
-    let normalizeMatrix (m : Matrix<Complex>) =
-        let len = m.RowCount
-
-        [| for i in 0..(len-1) ->
-            [| for j in 0..(len-1) -> m.[j, i] |]
-            |> normalize
-            |> Array.ofSeq
-        |]
-        |> matrix
-
 
     type BerremanField =
         {
@@ -142,12 +123,12 @@ module BerremanMatrix =
         with
 
         member this.eigenBasis() =
-            let (ComplexMatrix4x4 (ComplexMatrix m)) = this
-            let evd = m.Evd()
+            let (ComplexMatrix4x4 m) = this
+            let evd = m.evd()
 
             /// We need to normalize and transpose eigenvectors.
-            let toArrays (e : Matrix<Complex>) =
-                let len = e.RowCount
+            let toArrays (e : ComplexMatrix) =
+                let len = e.rowCount
 
                 let normed =
                     [| for i in 0..(len-1) ->
@@ -159,12 +140,12 @@ module BerremanMatrix =
                 [| for i in 0..(len-1) -> [| for j in 0..(len-1) -> normed.[i].[j] |] |]
 
             let ve =
-                Array.zip (evd.EigenValues.ToArray()) (evd.EigenVectors |> toArrays)
+                Array.zip (evd.eigenValues.toArray()) (evd.eigenVectors |> toArrays)
                 |> List.ofArray
                 |> List.map (fun (v, e) -> v, e |> normalize |> ComplexVector4.create)
 //                |> List.map (fun (v, e) -> v, e, ((BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
                 |> List.map (fun (v, e) -> v, e, (sign (BerremanFieldEH e).sZ, (BerremanFieldEH e).xy))
-                |> List.sortBy (fun (_, _, s) -> s) // Sort by z component of Poynting vector first, then by x <-> y relative polarization.
+                |> List.sortBy (fun (_, _, s) -> s) // Sort by sign of z component of Poynting vector first, then by x <-> y relative polarization.
                 |> List.map (fun (v, e, _) -> v, e)
 
             let up = ve |> List.take 2 |> EigenBasis.create
