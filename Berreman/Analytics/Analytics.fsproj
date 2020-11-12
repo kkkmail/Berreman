@@ -5,12 +5,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FSharp.Collections.ParallelSeq" Version="1.1.4" />
     <PackageReference Include="FSharp.Plotly" Version="1.2.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Berreman\Berreman.fsproj" />
     <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Variables.fs" />
+    <Compile Include="StandardLightVariables.fs" />
+    <Compile Include="StandardSystems.fs" />
+    <Compile Include="Charting.fs" />
   </ItemGroup>
 
 </Project>
