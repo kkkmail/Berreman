@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <Compile Include="Standard.fs" />
+    <Compile Include="OpticallyActive.fs" />
     <Compile Include="Dispersive.fs" />
   </ItemGroup>
 
