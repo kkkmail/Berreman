@@ -43,6 +43,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Standard.fs" />
+    <Compile Include="OpticallyActive.fs" />
     <Compile Include="Dispersive.fs" />
     <Content Include="packages.config" />
   </ItemGroup>

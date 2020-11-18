@@ -1,8 +1,6 @@
 ﻿namespace Berreman
 module MaterialProperties =
 
-    //open ExtremeNumericsMath
-
     open System.Numerics
     open MathNetNumericsMath
     open Geometry
@@ -49,6 +47,12 @@ module MaterialProperties =
         static member create n = ComplexRefractionIndex n
 
 
+    type EpsValue =
+        | EpsValue of double
+
+        member eps.value = let (EpsValue e) = eps in e
+
+
     type Eps =
         | Eps of ComplexMatrix3x3
 
@@ -91,6 +95,11 @@ module MaterialProperties =
             let (Eps e) = eps
             e.re.toComplex() |> Eps
 
+    type MuValue =
+        | MuValue of double
+
+        member mu.value = let (MuValue m) = mu in m
+
 
     type Mu =
         | Mu of ComplexMatrix3x3
@@ -110,6 +119,12 @@ module MaterialProperties =
             with get(i : Index, j : Index) =
                 let (Mu (ComplexMatrix3x3 v)) = mu
                 v.[i.numeric, j.numeric]
+
+
+    type RhoValue =
+        | RhoValue of double
+
+        member rho.value = let (RhoValue r) = rho in r
 
 
     type Rho =
