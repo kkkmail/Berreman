@@ -101,7 +101,7 @@ module Solvers =
             |> ComplexVector.create
             |> getEH
 
-        if det.abs > almostZero
+        if det.abs > almostZeroDet
         then
             let cfmVal = coeffTblVal.inverse
             let detInv = cfmVal.determinant
