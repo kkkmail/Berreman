@@ -1154,15 +1154,20 @@ type SolverTests(output : ITestOutputHelper) =
         let d = "Planar active crystal."
         let p = OpticalProperties.planarCrystal e11 e33 r12
         let wedgeAngle = 48.58 |> Angle.degree |> WedgeAngle
-        let opticalSystem = (OpticalSystem.wedgeSystem p d thickness (40.0 |> Angle.degree |> WedgeAngle))
+        let opticalSystem = (OpticalSystem.wedgeSystem p d thickness wedgeAngle)
         let solver = OpticalSystemSolver (light, opticalSystem)
 
         let emSys = solver.solution.emSys
 
         use e = new AssertionScope()
 
-        emSys.ts.Should().BeLessOrEqualTo(1.0, "")
-        emSys.tp.Should().BeLessOrEqualTo(1.0, "")
-        emSys.rs.Should().BeLessOrEqualTo(1.0, "")
-        emSys.rp.Should().BeLessOrEqualTo(1.0, "")
+        let ts = emSys.ts
+        let tp = emSys.tp
+        let rs = emSys.rs
+        let rp = emSys.rs
+
+        ts.Should().BeLessOrEqualTo(1.0, "ts") |> ignore
+        tp.Should().BeLessOrEqualTo(1.0, "tp") |> ignore
+        rs.Should().BeLessOrEqualTo(1.0, "rs") |> ignore
+        rp.Should().BeLessOrEqualTo(1.0, "rp") |> ignore
 
