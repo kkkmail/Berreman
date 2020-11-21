@@ -1,13 +1,12 @@
 ﻿namespace Berreman
 
+open MathNetNumericsMath
+open Constants
+open Geometry
+open Fields
+open Solvers
+
 module FieldFunctions =
-
-    open MathNetNumericsMath
-
-    open Constants
-    open Geometry
-    open Fields
-    open Solvers
 
     let toValue errMessage x =
         match x with
