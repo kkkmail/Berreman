@@ -50,15 +50,15 @@
     <Content Include="packages.config" />
     <None Include="References.fsx" />
     <None Include="Examples\References.fsx" />
-    <None Include="Examples\LangasiteOnSilicon_01.fsx" />
-    <None Include="Examples\MultilayerThinFilm_01.fsx" />
+    <None Include="Examples\LangasiteOnSilicon.fsx" />
+    <None Include="Examples\MultilayerThinFilm.fsx" />
     <None Include="Examples\TestChart.fsx" />
-    <None Include="Examples\Glass_01.fsx" />
-    <None Include="Examples\Glass_02_Dispersive.fsx" />
-    <None Include="Examples\Wedge_01_Glass.fsx" />
-    <None Include="Examples\Wedge_02_BiaxialCrystal.fsx" />
+    <None Include="Examples\Glass.fsx" />
+    <None Include="Examples\Glass_Dispersive.fsx" />
+    <None Include="Examples\Wedge_Glass.fsx" />
+    <None Include="Examples\Wedge_BiaxialCrystal.fsx" />
     <None Include="Examples\Wedge_ActiveCrystal.fsx" />
-    <None Include="Examples\TotalRefl_01.fsx" />
+    <None Include="Examples\TotalRefl_Glass.fsx" />
     <None Include="Examples\Glass_03_Wedge.fsx" />
     <None Include="Examples\Work_01.fsx" />
   </ItemGroup>
