@@ -13,16 +13,18 @@ open Analytics.Charting
 open Analytics.Variables
 
 //===========================================================
-let fn = [ Rs; Rp; Ts; Tp ]
+let fn = [ Is; Ip; Rs; Rp; Ts; Tp ]
 //let fn = [ Rs; Rp ]
 
-let e11 = 1.5 * 1.5 |> EpsValue
-let e33 = 1.7 * 1.7 |> EpsValue
-let r12 = 1.0e-4 |> RhoValue
-let thickness = Thickness.OneMilliMeter
+let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
+let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
+let r12 = 1.5e-4 |> RhoValue
+let thickness = Thickness.oneCentiMeter
+let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
 
 let numberOfPoints = 2000
-let polarization = 45.0 |> Angle.degree |> Polarization.create
+//let polarization = 45.0 |> Angle.degree |> Polarization.create
+let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
 let d = "Planar active crystal."
@@ -32,14 +34,17 @@ let wedgeAngleRange =
     Range<_>.create numberOfPoints (0.0 |> Angle.degree |> WedgeAngle) (85.0 |> Angle.degree |> WedgeAngle)
     |> WedgeAngleRange
 
+let polarizationRange =
+    Range<_>.create numberOfPoints Polarization.minusP Polarization.p
+    |> PolarizationRange
 
 let wedgeInfo =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.wedgeSystem p d thickness (40.0 |> Angle.degree |> WedgeAngle)).dispersive
+        opticalSystem = (OpticalSystem.wedgeSystem p d thickness wedgeAngle).dispersive
     }
 
 
 #time
-plot wedgeInfo fn wedgeAngleRange
+plot wedgeInfo fn polarizationRange
 #time

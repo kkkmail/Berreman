@@ -16,7 +16,8 @@ module Media =
         static member mkm t = t * Constants.mkm |> Thickness
         static member mm t = t * Constants.mm |> Thickness
         member _.toInfinity () = Thickness.Infinity
-        static member OneMilliMeter = Thickness.mm 1.0
+        static member oneMilliMeter = Thickness.mm 1.0
+        static member oneCentiMeter = Thickness.mm 10.0
 
 
     type Layer =

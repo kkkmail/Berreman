@@ -125,8 +125,8 @@ module FieldFunctions =
         member this.info =
             match this with
             | I -> { name = "I"; subscript = None; description = None }
-            | Ip -> { name = "I"; subscript = None; description = None }
-            | Is -> { name = "I"; subscript = None; description = None }
+            | Ip -> { name = "I"; subscript = Some "p"; description = None }
+            | Is -> { name = "I"; subscript = Some "s"; description = None }
             | R -> { name = "R"; subscript = None; description = None }
             | Rp -> { name = "R"; subscript = Some "p"; description = None }
             | Rs -> { name = "R"; subscript = Some "s"; description = None }

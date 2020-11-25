@@ -52,6 +52,8 @@ module MaterialProperties =
 
         member eps.value = let (EpsValue e) = eps in e
 
+        static member fromRefractionIndex (RefractionIndex n) = EpsValue (n * n)
+
 
     type Eps =
         | Eps of ComplexMatrix3x3

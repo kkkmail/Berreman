@@ -1145,10 +1145,10 @@ type SolverTests(output : ITestOutputHelper) =
 
     [<Fact>]
     member _.wedgeActiveShouldNotBlowUp () =
-        let e11 = 1.5 * 1.5 |> EpsValue
-        let e33 = 1.7 * 1.7 |> EpsValue
+        let e11 = 1.5 |> RefractionIndex |> EpsValue.fromRefractionIndex
+        let e33 = 1.7 |> RefractionIndex |> EpsValue.fromRefractionIndex
         let r12 = 1.0e-4 |> RhoValue
-        let thickness = Thickness.OneMilliMeter
+        let thickness = Thickness.oneMilliMeter
         let polarization = 45.0 |> Angle.degree |> Polarization.create
         let light = { light600nmNormalLPs with polarization = polarization }
         let d = "Planar active crystal."
