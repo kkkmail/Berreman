@@ -14,11 +14,11 @@ open Analytics.Variables
 
 //===========================================================
 let fn = [ Is; Ip; Rs; Rp; Ts; Tp ]
-//let fn = [ Rs; Rp ]
+let fn1 = [ Ts; Tp ]
 
 let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
-let r12 = 1.5e-5 |> RhoValue
+let r12 = 1.5e-6 |> RhoValue
 let thickness = Thickness.oneCentiMeter
 let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
 
@@ -38,6 +38,21 @@ let polarizationRange =
     Range<_>.create numberOfPoints Polarization.minusP Polarization.p
     |> PolarizationRange
 
+let updateR12 (o: OpticalSystem) r =
+    match o.substrate with
+    | Some (Wedge w) ->
+        { o with substrate = { w with layer = { w.layer with properties = { w.layer.properties with rho = r |> RhoValue |> Rho.planarCrystal } } } |> Wedge |> Some}
+    | _ -> o
+
+let r12Range =
+    {
+        variableName = "r12"
+        range =  Range<_>.create numberOfPoints 0.0 1.0e-04
+        scale = 1.0
+        getSys = updateR12
+    }
+    |> ArbitraryVariableRange
+
 let wedgeInfo =
     {
         incidentLightInfo = light
@@ -46,5 +61,6 @@ let wedgeInfo =
 
 
 #time
-plot wedgeInfo fn polarizationRange
+//plot wedgeInfo fn polarizationRange
+plot wedgeInfo fn1 r12Range
 #time
