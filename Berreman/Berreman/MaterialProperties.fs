@@ -51,6 +51,7 @@ module MaterialProperties =
         | EpsValue of double
 
         member eps.value = let (EpsValue e) = eps in e
+        member eps.refractionIndex =let (EpsValue e) = eps in e |> sqrt |> RefractionIndex
 
         static member fromRefractionIndex (RefractionIndex n) = EpsValue (n * n)
 

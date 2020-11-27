@@ -20,14 +20,18 @@ let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let r12 = 1.5e-6 |> RhoValue
 let thickness = Thickness.oneCentiMeter
-let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
+
+//let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
+let wedgeAngle = 25.592 |> Angle.degree |> WedgeAngle
+//let wedgeAngle = 25.5925 |> Angle.degree |> WedgeAngle
 
 let numberOfPoints = 2000
 //let polarization = 45.0 |> Angle.degree |> Polarization.create
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = sprintf "Planar active crystal, r12 = %A, e11 = %A, e33 = %A." r12.value e11.value e33.value
+let d = sprintf "Planar active crystal wedge %A degrees, r12 = %A, n11 = %A, n33 = %A." wedgeAngle.degrees r12.value e11.refractionIndex.value e33.refractionIndex.value
+let d1 = sprintf "Planar active crystal wedge %A degrees, n11 = %A, n33 = %A." wedgeAngle.degrees e11.refractionIndex.value e33.refractionIndex.value
 let p = OpticalProperties.planarCrystal e11 e33 r12
 
 let wedgeAngleRange =
@@ -37,6 +41,7 @@ let wedgeAngleRange =
 let polarizationRange =
     Range<_>.create numberOfPoints Polarization.minusP Polarization.p
     |> PolarizationRange
+
 
 let updateR12 (o: OpticalSystem) r =
     match o.substrate with
@@ -59,8 +64,14 @@ let wedgeInfo =
         opticalSystem = (OpticalSystem.wedgeSystem p d thickness wedgeAngle).dispersive
     }
 
+let wedgeInfo1 =
+    {
+        incidentLightInfo = light
+        opticalSystem = (OpticalSystem.wedgeSystem p d1 thickness wedgeAngle).dispersive
+    }
+
 
 #time
-//plot wedgeInfo fn polarizationRange
-plot wedgeInfo fn1 r12Range
+plot wedgeInfo fn polarizationRange
+//plot wedgeInfo1 fn1 r12Range
 #time

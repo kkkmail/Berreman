@@ -317,6 +317,7 @@ module Fields =
         | WedgeAngle of Angle
 
         member angle.value = let (WedgeAngle a) = angle in a.value
+        member angle.degrees = let (WedgeAngle a) = angle in a.degrees
         member this.description = sprintf "wedge angle: %A degree(s)" (this.value / degree)
         static member defaultValue = 0.0 |> Angle |> WedgeAngle
 

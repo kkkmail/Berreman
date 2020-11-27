@@ -35,6 +35,7 @@ module Geometry =
         | Angle of double
 
         member angle.value = let (Angle a) = angle in a
+        member angle.degrees = let (Angle a) = angle in (a / degree)
         static member degree a = a * degree |> Angle
         static member radian r = r |> Angle
         static member zero = Angle.radian 0.0
