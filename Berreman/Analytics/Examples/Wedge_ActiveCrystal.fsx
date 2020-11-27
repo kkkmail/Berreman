@@ -18,7 +18,7 @@ let fn = [ Is; Ip; Rs; Rp; Ts; Tp ]
 
 let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
-let r12 = 1.5e-4 |> RhoValue
+let r12 = 1.5e-5 |> RhoValue
 let thickness = Thickness.oneCentiMeter
 let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
 
@@ -27,7 +27,7 @@ let numberOfPoints = 2000
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = "Planar active crystal."
+let d = sprintf "Planar active crystal, r12 = %A, e11 = %A, e33 = %A." r12.value e11.value e33.value
 let p = OpticalProperties.planarCrystal e11 e33 r12
 
 let wedgeAngleRange =
