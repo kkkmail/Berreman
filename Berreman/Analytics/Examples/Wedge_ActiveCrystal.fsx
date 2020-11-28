@@ -19,10 +19,11 @@ let fn1 = [ Ts; Tp ]
 let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let r12 = 1.5e-6 |> RhoValue
+let r12MaxVal = 5.0e-04
 let thickness = Thickness.oneCentiMeter
 
-//let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
-let wedgeAngle = 25.592 |> Angle.degree |> WedgeAngle
+let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
+//let wedgeAngle = 25.592 |> Angle.degree |> WedgeAngle
 //let wedgeAngle = 25.5925 |> Angle.degree |> WedgeAngle
 
 let numberOfPoints = 2000
@@ -52,7 +53,7 @@ let updateR12 (o: OpticalSystem) r =
 let r12Range =
     {
         variableName = "r12"
-        range =  Range<_>.create numberOfPoints 0.0 1.0e-04
+        range =  Range<_>.create numberOfPoints 0.0 r12MaxVal
         scale = 1.0
         getSys = updateR12
     }
@@ -72,6 +73,6 @@ let wedgeInfo1 =
 
 
 #time
-plot wedgeInfo fn polarizationRange
-//plot wedgeInfo1 fn1 r12Range
+//plot wedgeInfo fn polarizationRange
+plot wedgeInfo1 fn1 r12Range
 #time
