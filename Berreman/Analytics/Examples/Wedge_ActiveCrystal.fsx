@@ -44,18 +44,18 @@ let polarizationRange =
     |> PolarizationRange
 
 
-let updateR12 (o: OpticalSystem) r =
+let updateG12 (o: OpticalSystem) r =
     match o.substrate with
     | Some (Wedge w) ->
         { o with substrate = { w with layer = { w.layer with properties = { w.layer.properties with rho = r |> RhoValue |> Rho.planarCrystal } } } |> Wedge |> Some}
     | _ -> o
 
-let r12Range =
+let g12Range =
     {
-        variableName = "r12"
+        variableName = "g12"
         range =  Range<_>.create numberOfPoints 0.0 r12MaxVal
         scale = 1.0
-        getSys = updateR12
+        getSys = updateG12
     }
     |> ArbitraryVariableRange
 
@@ -74,5 +74,5 @@ let wedgeInfo1 =
 
 #time
 //plot wedgeInfo fn polarizationRange
-plot wedgeInfo1 fn1 r12Range
+plot wedgeInfo1 fn1 g12Range
 #time
