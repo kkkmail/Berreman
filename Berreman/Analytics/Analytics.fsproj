@@ -62,6 +62,8 @@
     <None Include="Examples\TotalRefl_Glass.fsx" />
     <None Include="Examples\Glass_03_Wedge.fsx" />
     <None Include="Examples\Work_01.fsx" />
+    <None Include="Examples\ActiveCrystal.fsx" />
+    <None Include="Examples\ActiveCrystalComparison.fsx" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Charting">

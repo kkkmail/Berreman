@@ -21,22 +21,15 @@ let r12 = 1.5e-6 |> RhoValue
 let r12MaxVal = 5.0e-04
 let thickness = Thickness.oneCentiMeter
 
-let wedgeAngle = 23.0 |> Angle.degree |> WedgeAngle
-//let wedgeAngle = 25.592 |> Angle.degree |> WedgeAngle
-//let wedgeAngle = 25.5925 |> Angle.degree |> WedgeAngle
-
 let numberOfPoints = 2000
+
 //let polarization = 45.0 |> Angle.degree |> Polarization.create
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = sprintf "Planar active crystal wedge %A degrees, r12 = %A, n11 = %A, n33 = %A." wedgeAngle.degrees r12.value e11.refractionIndex.value e33.refractionIndex.value
-let d1 = sprintf "Planar active crystal wedge %A degrees, n11 = %A, n33 = %A." wedgeAngle.degrees e11.refractionIndex.value e33.refractionIndex.value
+let d = sprintf "Planar active crystal plate, r12 = %A, n11 = %A, n33 = %A." r12.value e11.refractionIndex.value e33.refractionIndex.value
+let d1 = sprintf "Planar active crystal plate, n11 = %A, n33 = %A." e11.refractionIndex.value e33.refractionIndex.value
 let p = OpticalProperties.planarCrystal e11 e33 r12
-
-let wedgeAngleRange =
-    Range<_>.create numberOfPoints (0.0 |> Angle.degree |> WedgeAngle) (85.0 |> Angle.degree |> WedgeAngle)
-    |> WedgeAngleRange
 
 let polarizationRange =
     Range<_>.create numberOfPoints Polarization.minusP Polarization.p
@@ -58,20 +51,20 @@ let g12Range =
     }
     |> ArbitraryVariableRange
 
-let wedgeInfo =
+let plateInfo =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.wedgeSystem p d thickness wedgeAngle).dispersive
+        opticalSystem = (OpticalSystem.plateSystem p d thickness).dispersive
     }
 
-let wedgeInfo1 =
+let plateInfo1 =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.wedgeSystem p d1 thickness wedgeAngle).dispersive
+        opticalSystem = (OpticalSystem.plateSystem p d1 thickness).dispersive
     }
 
 
 #time
-//plot wedgeInfo fn polarizationRange
-plot wedgeInfo1 fn1 g12Range
+//plot plateInfo fn polarizationRange
+plot plateInfo1 fn1 g12Range
 #time

@@ -139,6 +139,18 @@ module Standard =
     type OpticalSystem
         with
 
+        static member plateSystem properties description thickness =
+            {
+                description = Some description
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate =
+                    { properties = properties; thickness = thickness }
+                    |> Plate
+                    |> Some
+                lower = OpticalProperties.vacuum
+            }
+
         /// Standard transparent glass / vacuum system for testing internal reflection.
         static member totalReflGlass150System =
             {
