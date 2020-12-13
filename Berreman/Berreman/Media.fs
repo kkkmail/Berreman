@@ -124,3 +124,4 @@ module Media =
             | None -> sr
 
         member this.rotatePiX = this.rotate Rotation.rotatePiX
+        member this.rotateHalfPiY = this.rotate Rotation.rotateHalfPiY

@@ -19,9 +19,9 @@ let fn1 = [ Ts; Tp ]
 let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
 
-let g11 = 1.0e-4 |> RhoValue
+let g11 = 1.0e-3 |> RhoValue
 let g12 = 1.0e-3 |> RhoValue
-let g33 = -2.0e-4 |> RhoValue
+let g33 = 1.0e-3 |> RhoValue
 
 let g12MaxVal = 5.0e-04
 let g11MaxVal = 5.0e-04
@@ -132,19 +132,19 @@ let g33Range update =
 let plateInfoPlanar =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.plateSystem planar d thickness).dispersive
+        opticalSystem = (OpticalSystem.plateSystem planar d thickness).rotateHalfPiY.dispersive
     }
 
 let plateInfoType3_4_6 =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.plateSystem type3_4_6 dType3_4_6 thickness).dispersive
+        opticalSystem = (OpticalSystem.plateSystem type3_4_6 dType3_4_6 thickness).rotateHalfPiY.dispersive
     }
 
 let plateInfoType32_42_62 =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.plateSystem type32_42_62 dType32_42_62 thickness).dispersive
+        opticalSystem = (OpticalSystem.plateSystem type32_42_62 dType32_42_62 thickness).rotateHalfPiY.dispersive
     }
 
 #time
