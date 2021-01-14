@@ -13,8 +13,9 @@ open Analytics.Charting
 open Analytics.Variables
 
 //===========================================================
-let fn = [ Is; Ip; Rs; Rp; Ts; Tp ]
+let fn0 = [ Is; Ip; Rs; Rp; Ts; Tp ]
 let fn1 = [ Ts; Tp ]
+let fn2 = [ AzimuthT; EllipticityT ]
 
 let e11 = 2.315 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 2.226 |> RefractionIndex |> EpsValue.fromRefractionIndex
@@ -30,8 +31,8 @@ let g33MaxVal = 5.0e-04
 let thickness = Thickness.oneMilliMeter
 
 let numberOfPoints = 2000
-//let polarization = 45.0 |> Angle.degree |> Polarization.create
-let polarization = Polarization.s
+let polarization = 45.0 |> Angle.degree |> Polarization.create
+//let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
 let d = sprintf "Planar active crystal plate, r12 = %A, n11 = %A, n33 = %A." g12.value e11.refractionIndex.value e33.refractionIndex.value
@@ -148,9 +149,10 @@ let plateInfoType32_42_62 =
     }
 
 #time
-plot plateInfoPlanar fn1 incidenceAngleRange
-plot plateInfoType3_4_6 fn1 incidenceAngleRange
-plot plateInfoType32_42_62 fn1 incidenceAngleRange
+let fn = fn2
+plot plateInfoPlanar fn incidenceAngleRange
+plot plateInfoType3_4_6 fn incidenceAngleRange
+plot plateInfoType32_42_62 fn incidenceAngleRange
 //===========================================================
 //plot plateInfoPlanar fn1 (g12Range updateG12Planar)
 
