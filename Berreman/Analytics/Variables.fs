@@ -1,5 +1,6 @@
 ﻿namespace Analytics
 
+open Berreman.Media
 open FSharp.Collections.ParallelSeq
 open Berreman.MathNetNumericsMath
 open Berreman.Constants
@@ -8,6 +9,7 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Solvers
 open Berreman.Dispersion
+open FSharp.Collections.ParallelSeq
 
 module Variables =
 
@@ -24,6 +26,15 @@ module Variables =
         static member create n s e = { startValue = s; endValue = e; numberOfPoints = n }
 
 
+    type ArbitraryVariable =
+        {
+            variableName : string
+            range : Range<double>
+            scale : double
+            getSys : OpticalSystem -> double -> OpticalSystem
+        }
+
+
     /// Type to describe a single variable used in charts.
     type RangedVariable =
         | IncidenceAngleRange of Range<IncidenceAngle>
@@ -31,6 +42,7 @@ module Variables =
         | EllipticityRange of Range<Ellipticity>
         | WaveLengthRange of Range<WaveLength>
         | WedgeAngleRange of Range<WedgeAngle>
+        | ArbitraryVariableRange of ArbitraryVariable
 
         member this.length =
             match this with
@@ -39,6 +51,7 @@ module Variables =
             | EllipticityRange v -> v.numberOfPoints
             | WaveLengthRange v -> v.numberOfPoints
             | WedgeAngleRange v -> v.numberOfPoints
+            | ArbitraryVariableRange v -> v.range.numberOfPoints
 
         member this.name =
             match this with
@@ -47,6 +60,7 @@ module Variables =
             | EllipticityRange _ -> "e"
             | WaveLengthRange _ -> "w (nm)"
             | WedgeAngleRange _ -> "c"
+            | ArbitraryVariableRange v -> v.variableName
 
         member this.value i =
             match this with
@@ -70,6 +84,10 @@ module Variables =
                 let (WedgeAngle (Angle s)) = r.startValue
                 let (WedgeAngle (Angle e)) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
+            | ArbitraryVariableRange v ->
+                let s = v.range.startValue
+                let e = v.range.endValue
+                s + (e - s) * (double i) / (double v.range.numberOfPoints)
 
         member this.plotValue i =
             match this with
@@ -78,6 +96,7 @@ module Variables =
             | EllipticityRange _ -> this.value i
             | WaveLengthRange _ -> (this.value i) |> toNanometers
             | WedgeAngleRange _ -> (this.value i) |> toDegree
+            | ArbitraryVariableRange v -> (this.value i) * v.scale
 
         member this.plotMinValue =
             match this with
@@ -86,6 +105,7 @@ module Variables =
             | EllipticityRange r -> r.startValue.value
             | WaveLengthRange r -> r.startValue.value |> toNanometers
             | WedgeAngleRange r -> r.startValue.value |> toDegree
+            | ArbitraryVariableRange v -> v.range.startValue * v.scale
 
         member this.plotMaxValue =
             match this with
@@ -94,6 +114,7 @@ module Variables =
             | EllipticityRange r -> r.endValue.value
             | WaveLengthRange r -> r.endValue.value |> toNanometers
             | WedgeAngleRange r -> r.endValue.value |> toDegree
+            | ArbitraryVariableRange v -> v.range.endValue * v.scale
 
         member this.plotPoints = [| for i in 0..this.length -> this.plotValue i |]
 
@@ -144,6 +165,12 @@ module Variables =
         | _ -> None
 
 
+    let getArbitraryVariable (v : RangedVariable) i =
+        match v with
+        | ArbitraryVariableRange _ -> v.value i |> Some
+        | _ -> None
+
+
     /// Labels to distinguish variables in incident light. Refactor when nameof is available in F#.
     let private incidentLightLabels = ("w", "r", "i", "p", "e")
 
@@ -157,6 +184,7 @@ module Variables =
         | EllipticityRange _ -> d |> List.choose (fun (k, v) -> if k = e then None else Some (k, v))
         | WaveLengthRange _ -> d |> List.choose (fun (k, v) -> if k = w then None else Some (k, v))
         | WedgeAngleRange _ -> d
+        | ArbitraryVariableRange _ -> d
 
 
     /// Combination of incident light and optical system with dispersion.
@@ -223,7 +251,13 @@ module Variables =
             let w = getValue l.waveLength getWaveLength i
             let a = f.opticalSystem.getWedgeAngle() |> Option.defaultValue WedgeAngle.defaultValue
             let v = getValue a getWedgeAngle i
-            f.opticalSystem.getSystem w v
+            let s = f.opticalSystem.getSystem w v
+
+            match x with
+            | ArbitraryVariableRange v ->
+                let z = x.value i
+                v.getSys s z
+            | _ -> s
 
         let getSolution i = OpticalSystemSolver(getLight i, getOpticalSystem i, SolverParameters.defaultValue).solution
         [| for i in 0..x.length -> (x.plotValue i, getSolution i) |]

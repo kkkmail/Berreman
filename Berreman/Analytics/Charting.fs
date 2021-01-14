@@ -15,7 +15,7 @@ module Charting =
         let description = f.getDescription x
 
         let getFuncData (e : OpticalFunction) =
-            data 
+            data
             |> Array.map (fun (v, s) -> (v, s.func e))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
@@ -30,20 +30,20 @@ module Charting =
         let (description, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 0)
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) =
-            d 
+            d
             |> Array.map (fun (v, s) -> (v, s.func e))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
-        let plotFunc (f : OpticalFunction) =
+        let plotFun (f : OpticalFunction) =
             Chart.Combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
             |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
             //|> Chart.withTitle(title)
             |> Chart.ShowWithDescription true description
 
-        fn |> List.map plotFunc
+        fn |> List.map plotFun
 
 
-    let mapFun (data : #seq<#seq<double * double * Solution>>) (fn : OpticalFunction) = 
+    let mapFun (data : #seq<#seq<double * double * Solution>>) (fn : OpticalFunction) =
         data
         |> Seq.map (fun r -> r |> Seq.map (fun (_, _, e) -> e.func fn) |> Seq.choose id |> Array.ofSeq)
         |> Array.ofSeq
@@ -57,10 +57,10 @@ module Charting =
         let description = f.getDescription (x, y)
 
 
-        let plotFun e = 
+        let plotFun e =
             let zVal = mapFun data e
 
-            // kk:20180922 The axes are somehow mysteriouly swapped. Here we swap X with Y back for both data and names.
+            // kk:20180922 The axes are somehow mysteriously swapped. Here we swap X with Y back for both data and names.
             Chart.Surface(zVal, yVal, xVal, Opacity = 0.7, Contours = Contours.initXyz(Show = true), Name = e.info.name)
             |> Chart.withX_AxisStyle(y.name)
             |> Chart.withY_AxisStyle(x.name)
@@ -68,10 +68,10 @@ module Charting =
             //|> Chart.withTitle(title)
             |> Chart.ShowWithDescription true description
 
-        fn |> List.map (fun e -> plotFun e)
+        fn |> List.map plotFun
 
 
-    let plotDispersion calc name (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) = 
+    let plotDispersion calc name (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) =
         let data = calc o r
         let x = r |> WaveLengthRange
         //let description = o.description

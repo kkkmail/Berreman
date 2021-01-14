@@ -35,11 +35,12 @@ module Geometry =
         | Angle of double
 
         member angle.value = let (Angle a) = angle in a
+        member angle.degrees = let (Angle a) = angle in (a / degree)
         static member degree a = a * degree |> Angle
         static member radian r = r |> Angle
         static member zero = Angle.radian 0.0
         static member pi = Angle.radian pi
-        static member piDivideByTwo = Angle.radian (pi / 2.0)
+        static member halfPi = Angle.radian (pi / 2.0)
         static member (+) (Angle a, Angle b) = a + b |> Angle
         static member (-) (Angle a, Angle b) = a - b |> Angle
         static member (~-) (Angle a) = -a |> Angle
@@ -493,6 +494,7 @@ module Geometry =
         static member rotateZ a = Rotation.createZmYpXp a Angle.zero Angle.zero |> Rotation
 //        static member rotateZY a b = Rotation.createZmYpXp a b Angle.zero |> Rotation
         static member rotateYZ a b = Rotation.createYmZmXp a b Angle.zero |> Rotation
+        static member rotateHalfPiY = Rotation.rotateZ Angle.halfPi
 
 
     type RealVector3

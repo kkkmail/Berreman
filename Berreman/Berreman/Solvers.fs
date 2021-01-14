@@ -7,6 +7,7 @@ open Geometry
 open Fields
 open Media
 open BerremanMatrix
+open Constants
 open MaterialProperties
 
 module Solvers =
@@ -19,7 +20,7 @@ module Solvers =
 
         static member defaultValue =
             {
-                numberOfReflections = 5
+                numberOfReflections = 3
             }
 
 
@@ -79,9 +80,8 @@ module Solvers =
         let p = BerremanMatrixPropagated.propagate (films, i, w)
 
         let coeffTblVal = getCoeffTblVal p b1 b2
+        let det = coeffTblVal.determinant
         let freeTblVal = getFreeTblVal p i b1 b2
-        let cfmVal = coeffTblVal.inverse
-        let detInv = cfmVal.determinant
 
         let getEH (sol : ComplexVector) =
             let ehr0 = EmComponent.create b1.up.evv0 (sol.[0]) n1SinFita upper
@@ -94,15 +94,22 @@ module Solvers =
             let eht = [ eht0; eht1 ]
             ehr, eht
 
-        match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
-        | false, false -> cfmVal * freeTblVal |> getEH
-        | _ ->
-            // This is a case of total reflection.
-            // The matrix is degenerate and we can't inverse it.
+        // This is a case of total reflection.
+        // The matrix is degenerate and we can't inverse it.
+        let getTotalReflection() =
             [ freeTblVal.[2] / coeffTblVal.[2,0] ; freeTblVal.[1] / coeffTblVal.[1,1]; cplx 0.0; cplx 0.0 ]
             |> ComplexVector.create
             |> getEH
 
+        if det.abs > almostZeroDet
+        then
+            let cfmVal = coeffTblVal.inverse
+            let detInv = cfmVal.determinant
+
+            match Double.IsNaN(detInv.Real), Double.IsNaN(detInv.Imaginary) with
+            | false, false -> cfmVal * freeTblVal |> getEH
+            | _ -> getTotalReflection()
+        else getTotalReflection()
 
     type BaseOpticalSystemSolver private (input : InputData) =
         let i, waveLength, films, upper, lower =

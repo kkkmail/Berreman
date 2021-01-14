@@ -39,13 +39,6 @@ let incidenceAngleRange =
 
 let ellipticityRange =
     Range<_>.create numberOfPoints Ellipticity.minValue Ellipticity.maxValue
-    |> EllipticityRange
-
-
-let polarizationRange =
-    Range<_>.create numberOfPoints Polarization.s Polarization.p
-    |> PolarizationRange
-
 
 let opticalProperties refractionIndex =
     {

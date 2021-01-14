@@ -307,8 +307,9 @@ module Fields =
         static member create (Angle p) = ((p + (pi / 2.0)) % pi) - (pi / 2.0) |> Angle |> Polarization
         member this.crossed = Angle (this.value + (pi / 2.0)) |> Polarization
         static member defaultValue = Angle 0.0 |> Polarization
-        static member s = Angle 0.0 |> Polarization
-        static member p = Polarization.s.crossed
+        static member s = Angle.degree 0.0 |> Polarization
+        static member p = Angle.degree 90.0 |> Polarization
+        static member minusP = Angle.degree -90.0 |> Polarization
         member this.description = sprintf "polarization: %A degree(s)" (this.value / degree)
 
 
@@ -316,6 +317,7 @@ module Fields =
         | WedgeAngle of Angle
 
         member angle.value = let (WedgeAngle a) = angle in a.value
+        member angle.degrees = let (WedgeAngle a) = angle in a.degrees
         member this.description = sprintf "wedge angle: %A degree(s)" (this.value / degree)
         static member defaultValue = 0.0 |> Angle |> WedgeAngle
 

@@ -139,6 +139,18 @@ module Standard =
     type OpticalSystem
         with
 
+        static member plateSystem properties description thickness =
+            {
+                description = Some description
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate =
+                    { properties = properties; thickness = thickness }
+                    |> Plate
+                    |> Some
+                lower = OpticalProperties.vacuum
+            }
+
         /// Standard transparent glass / vacuum system for testing internal reflection.
         static member totalReflGlass150System =
             {
@@ -191,21 +203,25 @@ module Standard =
                 lower = OpticalProperties.vacuum
             }
 
-        /// Standard vacuum / biaxial crystal wedge / vacuum system.
-        static member biaxialCrystalWedgeSystem thickness angle =
+        static member wedgeSystem properties description thickness angle =
             {
-                description = Some "Standard vacuum / biaxial crystal wedge / vacuum system."
+                description = Some description
                 upper = OpticalProperties.vacuum
                 films = []
                 substrate =
                     {
-                        layer = { properties = OpticalProperties.biaxialCrystal; thickness = thickness }
+                        layer = { properties = properties; thickness = thickness }
                         angle = angle
                     }
                     |> Wedge
                     |> Some
                 lower = OpticalProperties.vacuum
             }
+
+        /// Standard vacuum / biaxial crystal wedge / vacuum system.
+        static member biaxialCrystalWedgeSystem thickness angle =
+            let d = "Standard vacuum / biaxial crystal wedge / vacuum system."
+            OpticalSystem.wedgeSystem OpticalProperties.biaxialCrystal d thickness angle
 
         //=======================================
         // Add any custom values after this line.
