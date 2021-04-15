@@ -6,7 +6,6 @@ open Berreman.FieldFunctions
 open Berreman.Media
 open Berreman.Fields
 open Berreman.Dispersion
-open Berreman.MaterialProperties
 open OpticalProperties.Standard
 open Analytics.Charting
 open Analytics.Variables
@@ -28,7 +27,7 @@ let wedgeAngleRange =
 let wedgeInfo =
     {
         incidentLightInfo = light
-        opticalSystem = (OpticalSystem.biaxialCrystalWedgeSystem Thickness.OneMilliMeter (40.0 |> Angle.degree |> WedgeAngle)).dispersive
+        opticalSystem = (OpticalSystem.biaxialCrystalWedgeSystem Thickness.oneMilliMeter (40.0 |> Angle.degree |> WedgeAngle)).dispersive
     }
 
 
