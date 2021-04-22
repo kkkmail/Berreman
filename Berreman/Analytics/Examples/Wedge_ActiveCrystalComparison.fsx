@@ -13,8 +13,9 @@ open Analytics.Charting
 open Analytics.Variables
 
 //===========================================================
-let fn = [ Is; Ip; Rs; Rp; Ts; Tp ]
+let fn0 = [ Is; Ip; Rs; Rp; Ts; Tp ]
 let fn1 = [ Ts; Tp ]
+let fn2 = [ Ts; Tp; AzimuthT; EllipticityT ]
 
 let e11 = 1.5 |> RefractionIndex |> EpsValue.fromRefractionIndex
 let e33 = 1.53 |> RefractionIndex |> EpsValue.fromRefractionIndex
@@ -151,14 +152,21 @@ let wedgeInfoType32_42_62 =
         opticalSystem = (OpticalSystem.wedgeSystem type32_42_62 dType32_42_62 thickness wedgeAngle).dispersive
     }
 
+let fn = fn2
+
+//#time
+//plot wedgeInfoPlanar fn (g12Range updateG12Planar)
+//
+//plot wedgeInfoType3_4_6 fn (g11Range updateG11Type3_4_6)
+//plot wedgeInfoType3_4_6 fn (g33Range updateG33Type3_4_6)
+//
+//plot wedgeInfoType32_42_62 fn (g11Range updateG11Type32_42_62)
+//plot wedgeInfoType32_42_62 fn (g12Range updateG12Type32_42_62)
+//plot wedgeInfoType32_42_62 fn (g33Range updateG33Type32_42_62)
+//#time
+
 #time
-//plot wedgeInfo fn polarizationRange
-//plot wedgeInfoPlanar fn1 (g12Range updateG12Planar)
-
-//plot wedgeInfoType3_4_6 fn1 (g11Range updateG11Type3_4_6)
-//plot wedgeInfoType3_4_6 fn1 (g33Range updateG33Type3_4_6)
-
-plot wedgeInfoType32_42_62 fn1 (g11Range updateG11Type32_42_62)
-plot wedgeInfoType32_42_62 fn1 (g12Range updateG12Type32_42_62)
-plot wedgeInfoType32_42_62 fn1 (g33Range updateG33Type32_42_62)
+plot wedgeInfoPlanar fn polarizationRange
+plot wedgeInfoType3_4_6 fn polarizationRange
+plot wedgeInfoType32_42_62 fn polarizationRange
 #time

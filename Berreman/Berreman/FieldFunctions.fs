@@ -193,9 +193,15 @@ module FieldFunctions =
             match this with
             | Single b -> b.emSys.func f |> Some
             | Multiple m ->
-                let r () = m.rt |> List.choose (fun e -> e.reflected)
-                let t () = m.rt |> List.choose (fun e -> e.transmitted)
+                let r() = m.rt |> List.choose (fun e -> e.reflected)
+                let t() = m.rt |> List.choose (fun e -> e.transmitted)
                 let fn g l = l |> List.fold (fun acc e -> acc + g e m.incident) 0.0 |> Some
+
+                let fnMax f g l =
+                        l
+                        |> List.sortBy (fun e -> - (f e m.incident))
+                        |> List.tryHead
+                        |> Option.bind (fun e -> g e |> Some)
 
                 match f with
                 | I -> m.incident.intensity m.incident |> Some
@@ -207,12 +213,10 @@ module FieldFunctions =
                 | T -> t() |> fn (fun e -> e.intensity)
                 | Tp -> t() |> fn (fun e -> e.intensityX)
                 | Ts -> t() |> fn (fun e -> e.intensityY)
-
-                // These ones must be calculated via sum of Stokes vectors.
-                | EllipticityR -> None
-                | EllipticityT -> None
-                | AzimuthR -> None
-                | AzimuthT -> None
+                | EllipticityR -> r() |> fnMax (fun e -> e.intensity) (fun e -> e.ellipticity.value)
+                | EllipticityT -> t() |> fnMax (fun e -> e.intensity) (fun e -> e.ellipticity.value)
+                | AzimuthR -> r() |> fnMax (fun e -> e.intensity) (fun e -> e.azimuth.value)
+                | AzimuthT -> t() |> fnMax (fun e -> e.intensity) (fun e -> e.azimuth.value)
 
 
         member this.stokesI : StokesVector =
