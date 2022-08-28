@@ -1,4 +1,0 @@
-group Data
-    NUnit
-    NUnitLite content:none
-    MathNet.Numerics
