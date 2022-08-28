@@ -9,7 +9,6 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Solvers
 open Berreman.Dispersion
-open FSharp.Collections.ParallelSeq
 
 module Variables =
 
