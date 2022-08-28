@@ -15,9 +15,9 @@ module MatrixComparison =
 
 
     let outputData (output : ITestOutputHelper) msg result expected = 
-        output.WriteLine ("{0}", msg.ToString())
-        output.WriteLine ("result = {0}", result.ToString())
-        output.WriteLine ("expected = {0}", expected.ToString())
+        output.WriteLine $"{msg}"
+        output.WriteLine $"result = {result}"
+        output.WriteLine $"expected = {expected}"
 
 
     let verifyMatrixEquality (output : ITestOutputHelper) (ComplexMatrix result) (ComplexMatrix expected) =
@@ -27,10 +27,9 @@ module MatrixComparison =
         let norm = expected.L2Norm ()
         let diffNorm = diff.L2Norm ()
 
-        output.WriteLine ("diff = {0}", diff.ToString())
-
-        output.WriteLine ("norm = {0}", norm)
-        output.WriteLine ("diffValue = {0}", diffNorm)
+        output.WriteLine $"diff = {diff}"
+        output.WriteLine $"norm = {norm}"
+        output.WriteLine $"diffValue = {diffNorm}"
         
         if diffNorm <> 0.0 && norm <> 0.0
         then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
@@ -45,10 +44,9 @@ module MatrixComparison =
         let norm = expected.L2Norm()
         let diffNorm = diff.L2Norm()
 
-        output.WriteLine ("diff = {0}", diff.ToString())
-
-        output.WriteLine ("norm = {0}", norm)
-        output.WriteLine ("diffValue = {0}", diffNorm)
+        output.WriteLine $"diff = {diff}"
+        output.WriteLine $"norm = {norm}"
+        output.WriteLine $"diffValue = {diffNorm}"
         
         if diffNorm <> 0.0 && norm <> 0.0
         then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
@@ -61,11 +59,12 @@ module MatrixComparison =
         let norm = expected.L2Norm ()
         let diffNorm = diff.L2Norm ()
 
-        output.WriteLine ("diff = {0}", diff.ToString())
-
-        output.WriteLine ("norm = {0}", norm)
-        output.WriteLine ("diffValue = {0}", diffNorm)
-        (diffNorm / norm).Should().BeLessThan(allowedDiff, (sprintf "(%A / %A) exceeds allowed value" diffNorm norm)) |> ignore
+        output.WriteLine $"diff = {diff}"
+        output.WriteLine $"norm = {norm}"
+        output.WriteLine $"diffValue = {diffNorm}"
+        
+        if diffNorm <> 0.0 && norm <> 0.0
+        then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
 
     let verifyVectorEqualityE o m (E r) (E e) = verifyComplexVectorEquality o m r e
@@ -75,11 +74,11 @@ module MatrixComparison =
 
     // Compares one pair of complex basis (value + vector) for equality.
     let evdDiff (output : ITestOutputHelper) (v0 : Complex) (v1 : Complex) (ComplexVector4 (ComplexVector e0)) (ComplexVector4 (ComplexVector e1)) =
-        output.WriteLine ("v0 = {0}", v0)
-        output.WriteLine ("v1 = {0}", v1)
+        output.WriteLine $"v0 = {v0}"
+        output.WriteLine $"v1 = {v1}"
 
-        output.WriteLine ("e0 = {0}", e0)
-        output.WriteLine ("e1 = {0}", e1)
+        output.WriteLine $"e0 = {e0}"
+        output.WriteLine $"e1 = {e1}"
 
         let vDiff = (v0 - v1).abs
         let eDiff = (e0 - e1).L2Norm ()
@@ -99,7 +98,7 @@ module MatrixComparison =
         let diffAlt = diff01 + diff10
 
         let diffMin = min diff diffAlt
-        diffMin.Should().BeLessThan(allowedDiff, (sprintf "%A exceeds allowed value" diffMin)) |> ignore
+        diffMin.Should().BeLessThan(allowedDiff, $"%A{diffMin} exceeds allowed value") |> ignore
 
     let verifyPolarizationEquality (output : ITestOutputHelper) (msg : string) (Polarization (Angle result)) (Polarization (Angle expected)) = 
         outputData output msg result expected
@@ -109,4 +108,4 @@ module MatrixComparison =
     let verifyEllipticityEquality (output : ITestOutputHelper) (msg : string) (Ellipticity result) (Ellipticity expected) = 
         outputData output msg result expected
         let diff = abs (result - expected)
-        diff.Should().BeLessThan(allowedDiff, (sprintf "%A exceeds allowed value" diff)) |> ignore
+        diff.Should().BeLessThan(allowedDiff, $"%A{diff} exceeds allowed value") |> ignore
