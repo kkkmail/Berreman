@@ -5,29 +5,32 @@ open Berreman.Solvers
 open Berreman.FieldFunctions
 open Berreman.Dispersion
 open Analytics.Variables
-open FSharp.Plotly
+open Plotly.NET
 
 module Charting =
 
     /// Plots several functions (e.g. [ R; T; I; ... ] ) on the same plot.
     let plot (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = calculate f x
-        let description = f.getDescription x
+        let description = (f.getDescription x, "") ||> ChartDescription.create
+
 
         let getFuncData (e : OpticalFunction) =
             data
             |> Array.map (fun (v, s) -> (v, s.func e))
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
-        Chart.Combine (fn |> List.map (fun e -> Chart.Line(getFuncData e, Name = e.info.fullName)))
-        |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-        |> Chart.ShowWithDescription true description
+        Chart.combine (fn |> List.map (fun e -> Chart.Line(getFuncData e, Name = e.info.fullName)))
+        |> Chart.withXAxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
+        |> Chart.withDescription description
+        |> Chart.show
 
 
     /// Plots several different models (function by function) on the same plots.
     let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = f |> List.map (fun e -> calculate e x)
-        let (description, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 0)
+        let (d, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 0)
+        let description = (d, "") ||> ChartDescription.create
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) =
             d
@@ -35,10 +38,10 @@ module Charting =
             |> Array.choose (fun (x, yo) -> match yo with | Some y -> Some (x, y) | None -> None )
 
         let plotFun (f : OpticalFunction) =
-            Chart.Combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
-            |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-            //|> Chart.withTitle(title)
-            |> Chart.ShowWithDescription true description
+            Chart.combine (data |> List.mapi (fun i e -> Chart.Line(getFuncData e f, Name = f.info.fullName + " (" + i.ToString() + ")")))
+            |> Chart.withXAxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
+            |> Chart.withDescription description
+            |> Chart.show
 
         fn |> List.map plotFun
 
@@ -54,19 +57,19 @@ module Charting =
         let xVal = x.plotPoints
         let yVal = y.plotPoints
         let data = calculate3D f x y
-        let description = f.getDescription (x, y)
+        let description = (f.getDescription (x, y), "") ||> ChartDescription.create
 
 
         let plotFun e =
             let zVal = mapFun data e
 
             // kk:20180922 The axes are somehow mysteriously swapped. Here we swap X with Y back for both data and names.
-            Chart.Surface(zVal, yVal, xVal, Opacity = 0.7, Contours = Contours.initXyz(Show = true), Name = e.info.name)
-            |> Chart.withX_AxisStyle(y.name)
-            |> Chart.withY_AxisStyle(x.name)
-            |> Chart.withZ_AxisStyle(e.info.name)
+            Chart.Surface(zVal, yVal, xVal, Opacity = 0.7, Contours = TraceObjects.Contours.initXyz(Show = true), Name = e.info.name)
+            |> Chart.withXAxisStyle(y.name)
+            |> Chart.withYAxisStyle(x.name)
+            |> Chart.withZAxisStyle(e.info.name)
             //|> Chart.withTitle(title)
-            |> Chart.ShowWithDescription true description
+            |> Chart.withDescription description
 
         fn |> List.map plotFun
 
@@ -77,8 +80,8 @@ module Charting =
         //let description = o.description
 
         Chart.Line(data, Name = name)
-        |> Chart.withX_AxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
-        |> Chart.Show //WithDescription description
+        |> Chart.withXAxisStyle(x.name, MinMax = (x.plotMinValue, x.plotMaxValue))
+        |> Chart.show //WithDescription description
 
 
     let plotN11 (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) = plotDispersion calculateN11Re "Re[e11]" o r
