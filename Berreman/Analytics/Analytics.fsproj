@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Variables.fs" />
+    <Compile Include="StandardLightVariables.fs" />
+    <Compile Include="StandardSystems.fs" />
+    <Compile Include="Charting.fs" />
+    <None Include="References.fsx" />
+    <None Include="Examples\References.fsx" />
+    <None Include="Examples\LangasiteOnSilicon.fsx" />
+    <None Include="Examples\MultilayerThinFilm.fsx" />
+    <None Include="Examples\MultilayerThinFilm_02.fsx" />
+    <None Include="Examples\TestChart.fsx" />
+    <None Include="Examples\Glass.fsx" />
+    <None Include="Examples\Glass_Dispersive.fsx" />
+    <None Include="Examples\Wedge_Glass.fsx" />
+    <None Include="Examples\Wedge_BiaxialCrystal.fsx" />
+    <None Include="Examples\Wedge_ActiveCrystal.fsx" />
+    <None Include="Examples\Wedge_ActiveCrystalComparison.fsx" />
+    <None Include="Examples\TotalRefl_Glass.fsx" />
+    <None Include="Examples\Glass_03_Wedge.fsx" />
+    <None Include="Examples\Work_01.fsx" />
+    <None Include="Examples\ActiveCrystal.fsx" />
+    <None Include="Examples\ActiveCrystalComparison.fsx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Plotly.NET" Version="3.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
+  </ItemGroup>
+
+</Project>
