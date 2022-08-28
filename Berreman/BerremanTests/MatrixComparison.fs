@@ -31,7 +31,9 @@ module MatrixComparison =
 
         output.WriteLine ("norm = {0}", norm)
         output.WriteLine ("diffValue = {0}", diffNorm)
-        (diffNorm / norm).Should().BeLessThan(allowedDiff, (sprintf "(%A / %A) exceeds allowed value" diffNorm norm)) |> ignore
+        
+        if diffNorm <> 0.0 && norm <> 0.0
+        then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
     let verifyMatrixEqualityEps o (Eps (ComplexMatrix3x3 r)) (Eps (ComplexMatrix3x3 e)) = verifyMatrixEquality o r e
 
@@ -40,14 +42,16 @@ module MatrixComparison =
         outputData output msg result expected
 
         let diff = result - expected
-        let norm = expected.L2Norm ()
-        let diffNorm = diff.L2Norm ()
+        let norm = expected.L2Norm()
+        let diffNorm = diff.L2Norm()
 
         output.WriteLine ("diff = {0}", diff.ToString())
 
         output.WriteLine ("norm = {0}", norm)
         output.WriteLine ("diffValue = {0}", diffNorm)
-        (diffNorm / norm).Should().BeLessThan(allowedDiff, (sprintf "(%A / %A) exceeds allowed value" diffNorm norm)) |> ignore
+        
+        if diffNorm <> 0.0 && norm <> 0.0
+        then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
 
     let verifyRealVectorEquality (output : ITestOutputHelper) (msg : string) (RealVector result) (RealVector expected) =
