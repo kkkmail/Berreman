@@ -27,9 +27,9 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
+using System;
 using MathNet.Numerics.LinearAlgebra.Storage;
 using MathNet.Numerics.Threading;
-using System;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex
 {
@@ -251,7 +251,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
         protected override void DoPointwiseAbs(Vector<Complex> result)
         {
-            Map(x => (Complex)Complex.Abs(x), result, Zeros.AllowSkip);
+            Map(x => Complex.Abs(x), result, Zeros.AllowSkip);
         }
         protected override void DoPointwiseAcos(Vector<Complex> result)
         {
@@ -555,7 +555,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// </returns>
         public override double Norm(double p)
         {
-            if (p < 0d) throw new ArgumentOutOfRangeException("p");
+            if (p < 0d) throw new ArgumentOutOfRangeException(nameof(p));
 
             if (p == 1d) return L1Norm();
             if (p == 2d) return L2Norm();
@@ -600,7 +600,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         {
             if (p < 0d)
             {
-                throw new ArgumentOutOfRangeException("p");
+                throw new ArgumentOutOfRangeException(nameof(p));
             }
 
             double norm = Norm(p);

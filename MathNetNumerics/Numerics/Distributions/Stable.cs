@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 
 namespace MathNet.Numerics.Distributions
@@ -62,7 +61,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(alpha, beta, scale, location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -84,7 +83,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(alpha, beta, scale, location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -100,7 +99,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Stable(α = " + _alpha + ", β = " + _beta + ", c = " + _scale + ", μ = " + _location + ")";
+            return $"Stable(α = {_alpha}, β = {_beta}, c = {_scale}, μ = {_location})";
         }
 
         /// <summary>
@@ -118,42 +117,30 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the stability (α) of the distribution. Range: 2 ≥ α > 0.
         /// </summary>
-        public double Alpha
-        {
-            get { return _alpha; }
-        }
+        public double Alpha => _alpha;
 
         /// <summary>
         /// Gets The skewness (β) of the distribution. Range: 1 ≥ β ≥ -1.
         /// </summary>
-        public double Beta
-        {
-            get { return _beta; }
-        }
+        public double Beta => _beta;
 
         /// <summary>
         /// Gets the scale (c) of the distribution. Range: c > 0.
         /// </summary>
-        public double Scale
-        {
-            get { return _scale; }
-        }
+        public double Scale => _scale;
 
         /// <summary>
         /// Gets the location (μ) of the distribution.
         /// </summary>
-        public double Location
-        {
-            get { return _location; }
-        }
+        public double Location => _location;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
@@ -208,10 +195,7 @@ namespace MathNet.Numerics.Distributions
         /// Gets he entropy of the distribution.
         /// </summary>
         /// <remarks>Always throws a not supported exception.</remarks>
-        public double Entropy
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Entropy => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the skewness of the distribution.
@@ -283,10 +267,7 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the maximum of the distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return double.PositiveInfinity; }
-        }
+        public double Maximum => double.PositiveInfinity;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -442,7 +423,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (alpha == 2d)
@@ -477,7 +458,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (alpha == 2d)
@@ -512,7 +493,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (alpha == 2d)
@@ -546,7 +527,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, alpha, beta, scale, location);
@@ -565,7 +546,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, alpha, beta, scale, location);
@@ -585,7 +566,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, alpha, beta, scale, location);
@@ -603,7 +584,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, alpha, beta, scale, location);
@@ -621,7 +602,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, alpha, beta, scale, location);
@@ -640,7 +621,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (alpha <= 0.0 || alpha > 2.0 || beta < -1.0 || beta > 1.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, alpha, beta, scale, location);

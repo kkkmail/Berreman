@@ -28,13 +28,13 @@
 // </copyright>
 
 using System;
-using System.Numerics;
 using System.Collections.Generic;
 using System.Linq;
 using MathNet.Numerics.Distributions;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
+using BigInteger = System.Numerics.BigInteger;
+using Complex = System.Numerics.Complex;
 
 namespace MathNet.Numerics
 {
@@ -68,7 +68,7 @@ namespace MathNet.Numerics
         {
             if (pointsA.Length != pointsB.Length)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength, "pointsB");
+                throw new ArgumentException("The array arguments must have the same length.", nameof(pointsB));
             }
 
             var res = new T[pointsA.Length];
@@ -95,10 +95,10 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
-            if (length == 0) return new double[0];
+            if (length == 0) return Array.Empty<double>();
             if (length == 1) return new[] { stop };
 
             double step = (stop - start)/(length - 1);
@@ -119,10 +119,10 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
-            if (length == 0) return new T[0];
+            if (length == 0) return Array.Empty<T>();
             if (length == 1) return new[] { map(stop) };
 
             double step = (stop - start)/(length - 1);
@@ -144,10 +144,10 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
-            if (length == 0) return new double[0];
+            if (length == 0) return Array.Empty<double>();
             if (length == 1) return new[] { Math.Pow(10, stopExponent) };
 
             double step = (stopExponent - startExponent)/(length - 1);
@@ -168,10 +168,10 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
-            if (length == 0) return new T[0];
+            if (length == 0) return Array.Empty<T>();
             if (length == 1) return new[] { map(Math.Pow(10, stopExponent)) };
 
             double step = (stopExponent - startExponent)/(length - 1);
@@ -218,7 +218,7 @@ namespace MathNet.Numerics
         /// </summary>
         public static int[] LinearRangeInt32(int start, int stop)
         {
-            if (start == stop) return new int[] { start };
+            if (start == stop) return new[] { start };
             if (start < stop)
             {
                 var data = new int[stop - start + 1];
@@ -249,7 +249,7 @@ namespace MathNet.Numerics
             if (start == stop) return new double[] { start };
             if (start < stop && step < 0 || start > stop && step > 0 || step == 0d)
             {
-                return new double[0];
+                return Array.Empty<double>();
             }
 
             var data = new double[(stop - start)/step + 1];
@@ -267,10 +267,10 @@ namespace MathNet.Numerics
         /// </summary>
         public static int[] LinearRangeInt32(int start, int step, int stop)
         {
-            if (start == stop) return new int[] { start };
+            if (start == stop) return new[] { start };
             if (start < stop && step < 0 || start > stop && step > 0 || step == 0d)
             {
-                return new int[0];
+                return Array.Empty<int>();
             }
 
             var data = new int[(stop - start) / step + 1];
@@ -291,7 +291,7 @@ namespace MathNet.Numerics
             if (start == stop) return new[] { start };
             if (start < stop && step < 0 || start > stop && step > 0 || step == 0d)
             {
-                return new double[0];
+                return Array.Empty<double>();
             }
 
             var data = new double[(int)Math.Floor((stop - start)/step + 1d)];
@@ -311,7 +311,7 @@ namespace MathNet.Numerics
             if (start == stop) return new[] { map(start) };
             if (start < stop && step < 0 || start > stop && step > 0 || step == 0d)
             {
-                return new T[0];
+                return Array.Empty<T>();
             }
 
             var data = new T[(int)Math.Floor((stop - start)/step + 1d)];
@@ -335,7 +335,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             double step = frequency/samplingRate*amplitude;
@@ -371,7 +371,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             double step = frequency/samplingRate*amplitude;
@@ -464,7 +464,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             double step = frequency/samplingRate*Constants.Pi2;
@@ -602,7 +602,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var data = new T[length];
@@ -638,7 +638,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var data = new double[length];
@@ -677,7 +677,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var data = new double[length];
@@ -722,7 +722,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var data = new double[length];
@@ -768,15 +768,31 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var data = new T[length];
             for (int i = 0; i < data.Length; i++)
             {
-                Tuple<T, TState> next = f(state);
-                data[i] = next.Item1;
-                state = next.Item2;
+                (data[i], state) = f(state);
+            }
+            return data;
+        }
+
+        /// <summary>
+        /// Generate samples generated by the given computation.
+        /// </summary>
+        public static T[] Unfold<T, TState>(int length, Func<TState, (T, TState)> f, TState state)
+        {
+            if (length < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(length));
+            }
+
+            var data = new T[length];
+            for (int i = 0; i < data.Length; i++)
+            {
+                (data[i], state) = f(state);
             }
             return data;
         }
@@ -788,9 +804,22 @@ namespace MathNet.Numerics
         {
             while (true)
             {
-                Tuple<T, TState> next = f(state);
-                state = next.Item2;
-                yield return next.Item1;
+                var (item, nextState) = f(state);
+                state = nextState;
+                yield return item;
+            }
+        }
+
+        /// <summary>
+        /// Generate an infinite sequence generated by the given computation.
+        /// </summary>
+        public static IEnumerable<T> UnfoldSequence<T, TState>(Func<TState, (T, TState)> f, TState state)
+        {
+            while (true)
+            {
+                var (item, nextState) = f(state);
+                state = nextState;
+                yield return item;
             }
         }
 
@@ -801,7 +830,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var data = new BigInteger[length];
@@ -849,7 +878,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             return SystemRandomSource.FastDoubles(length);
@@ -873,7 +902,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples = SystemRandomSource.FastDoubles(length);
@@ -897,7 +926,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples1 = SystemRandomSource.FastDoubles(length);
@@ -947,7 +976,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples = new double[length];
@@ -970,7 +999,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples = new double[length];
@@ -993,7 +1022,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples = new double[length];
@@ -1048,7 +1077,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples = new double[length];
@@ -1071,7 +1100,7 @@ namespace MathNet.Numerics
         {
             if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length");
+                throw new ArgumentOutOfRangeException(nameof(length));
             }
 
             var samples1 = new double[length];

@@ -1,4 +1,4 @@
-// <copyright file="Test.cs" company="Math.NET">
+// <copyright file="TestFunctions.cs" company="Math.NET">
 // Math.NET Numerics, part of the Math.NET Project
 // http://numerics.mathdotnet.com
 // http://github.com/mathnet/mathnet-numerics
@@ -30,9 +30,8 @@
 using System;
 using System.Linq;
 
-// ReSharper disable CheckNamespace
+// ReSharper disable once CheckNamespace
 namespace MathNet.Numerics
-// ReSharper restore CheckNamespace
 {
     public static class TestFunctions
     {

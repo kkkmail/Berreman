@@ -29,7 +29,6 @@
 
 using System;
 using MathNet.Numerics.LinearAlgebra.Factorization;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Providers.LinearAlgebra;
 
 namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
@@ -101,34 +100,29 @@ namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
             // The solution X should have the same number of columns as B
             if (input.ColumnCount != result.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
             // The dimension compatibility conditions for X = A\B require the two matrices A and B to have the same number of rows
             if (Q.RowCount != input.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension);
+                throw new ArgumentException("Matrix row dimensions must agree.");
             }
 
             // The solution X row dimension is equal to the column dimension of A
             if (FullR.ColumnCount != result.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
-            var dinput = input as DenseMatrix;
-            if (dinput == null)
+            if (input is DenseMatrix dinput && result is DenseMatrix dresult)
+            {
+                LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix) Q).Values, ((DenseMatrix) FullR).Values, Q.RowCount, FullR.ColumnCount, Tau, dinput.Values, input.ColumnCount, dresult.Values, Method);
+            }
+            else
             {
                 throw new NotSupportedException("Can only do QR factorization for dense matrices at the moment.");
             }
-
-            var dresult = result as DenseMatrix;
-            if (dresult == null)
-            {
-                throw new NotSupportedException("Can only do QR factorization for dense matrices at the moment.");
-            }
-
-            LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix) Q).Values, ((DenseMatrix) FullR).Values, Q.RowCount, FullR.ColumnCount, Tau, dinput.Values, input.ColumnCount, dresult.Values, Method);
         }
 
         /// <summary>
@@ -142,7 +136,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
             // Check that b is a column vector with m entries
             if (Q.RowCount != input.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             // Check that x is a column vector with n entries
@@ -151,19 +145,14 @@ namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
                 throw Matrix.DimensionsDontMatch<ArgumentException>(FullR, result);
             }
 
-            var dinput = input as DenseVector;
-            if (dinput == null)
+            if (input is DenseVector dinput && result is DenseVector dresult)
+            {
+                LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix) Q).Values, ((DenseMatrix) FullR).Values, Q.RowCount, FullR.ColumnCount, Tau, dinput.Values, 1, dresult.Values, Method);
+            }
+            else
             {
                 throw new NotSupportedException("Can only do QR factorization for dense vectors at the moment.");
             }
-
-            var dresult = result as DenseVector;
-            if (dresult == null)
-            {
-                throw new NotSupportedException("Can only do QR factorization for dense vectors at the moment.");
-            }
-
-            LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix) Q).Values, ((DenseMatrix) FullR).Values, Q.RowCount, FullR.ColumnCount, Tau, dinput.Values, 1, dresult.Values, Method);
         }
     }
 }

@@ -27,7 +27,6 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
-using MathNet.Numerics.Properties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -60,7 +59,7 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             var logy = new double[y.Length];
@@ -83,7 +82,7 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             Sorting.Sort(x, y);
@@ -110,18 +109,12 @@ namespace MathNet.Numerics.Interpolation
         /// <summary>
         /// Gets a value indicating whether the algorithm supports differentiation (interpolated derivative).
         /// </summary>
-        bool IInterpolation.SupportsDifferentiation
-        {
-            get { return true; }
-        }
+        bool IInterpolation.SupportsDifferentiation => true;
 
         /// <summary>
         /// Gets a value indicating whether the algorithm supports integration (interpolated quadrature).
         /// </summary>
-        bool IInterpolation.SupportsIntegration
-        {
-            get { return false; }
-        }
+        bool IInterpolation.SupportsIntegration => false;
 
         /// <summary>
         /// Interpolate at point t.
@@ -163,19 +156,13 @@ namespace MathNet.Numerics.Interpolation
         /// Indefinite integral at point t.
         /// </summary>
         /// <param name="t">Point t to integrate at.</param>
-        double IInterpolation.Integrate(double t)
-        {
-            throw new NotSupportedException();
-        }
+        double IInterpolation.Integrate(double t) => throw new NotSupportedException();
 
         /// <summary>
         /// Definite integral between points a and b.
         /// </summary>
         /// <param name="a">Left bound of the integration interval [a,b].</param>
         /// <param name="b">Right bound of the integration interval [a,b].</param>
-        double IInterpolation.Integrate(double a, double b)
-        {
-            throw new NotSupportedException();
-        }
+        double IInterpolation.Integrate(double a, double b) => throw new NotSupportedException();
     }
 }

@@ -33,7 +33,6 @@ using System.Diagnostics;
 using System.Linq;
 using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Providers.LinearAlgebra;
 using MathNet.Numerics.Threading;
 
@@ -75,7 +74,6 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <summary>
         /// Create a new square diagonal matrix with the given number of rows and columns.
         /// All cells of the matrix will be initialized to zero.
-        /// Zero-length matrices are not supported.
         /// </summary>
         /// <exception cref="ArgumentException">If the order is less than one.</exception>
         public DiagonalMatrix(int order)
@@ -86,7 +84,6 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <summary>
         /// Create a new diagonal matrix with the given number of rows and columns.
         /// All cells of the matrix will be initialized to zero.
-        /// Zero-length matrices are not supported.
         /// </summary>
         /// <exception cref="ArgumentException">If the row or column count is less than one.</exception>
         public DiagonalMatrix(int rows, int columns)
@@ -97,7 +94,6 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <summary>
         /// Create a new diagonal matrix with the given number of rows and columns.
         /// All diagonal cells of the matrix will be initialized to the provided value, all non-diagonal ones to zero.
-        /// Zero-length matrices are not supported.
         /// </summary>
         /// <exception cref="ArgumentException">If the row or column count is less than one.</exception>
         public DiagonalMatrix(int rows, int columns, Complex diagonalValue)
@@ -153,6 +149,17 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         }
 
         /// <summary>
+        /// Create a new diagonal matrix and initialize each diagonal value from the provided indexed enumerable.
+        /// Keys must be provided at most once, zero is assumed if a key is omitted.
+        /// This new matrix will be independent from the enumerable.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        public static DiagonalMatrix OfIndexedDiagonal(int rows, int columns, IEnumerable<(int, Complex)> diagonal)
+        {
+            return new DiagonalMatrix(DiagonalMatrixStorage<Complex>.OfIndexedEnumerable(rows, columns, diagonal));
+        }
+
+        /// <summary>
         /// Create a new diagonal matrix and initialize each diagonal value from the provided enumerable.
         /// This new matrix will be independent from the enumerable.
         /// A new memory block will be allocated for storing the matrix.
@@ -192,8 +199,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the negation.</param>
         protected override void DoNegate(Matrix<Complex> result)
         {
-            var diagResult = result as DiagonalMatrix;
-            if (diagResult != null)
+            if (result is DiagonalMatrix diagResult)
             {
                 LinearAlgebraControl.Provider.ScaleArray(-1, _data, diagResult._data);
                 return;
@@ -212,8 +218,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the conjugation.</param>
         protected override void DoConjugate(Matrix<Complex> result)
         {
-            var diagResult = result as DiagonalMatrix;
-            if (diagResult != null)
+            if (result is DiagonalMatrix diagResult)
             {
                 LinearAlgebraControl.Provider.ConjugateArray(_data, diagResult._data);
                 return;
@@ -235,9 +240,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         protected override void DoAdd(Matrix<Complex> other, Matrix<Complex> result)
         {
             // diagonal + diagonal = diagonal
-            var diagOther = other as DiagonalMatrix;
-            var diagResult = result as DiagonalMatrix;
-            if (diagOther != null && diagResult != null)
+            if (other is DiagonalMatrix diagOther && result is DiagonalMatrix diagResult)
             {
                 LinearAlgebraControl.Provider.AddArrays(_data, diagOther._data, diagResult._data);
                 return;
@@ -259,9 +262,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         protected override void DoSubtract(Matrix<Complex> other, Matrix<Complex> result)
         {
             // diagonal - diagonal = diagonal
-            var diagOther = other as DiagonalMatrix;
-            var diagResult = result as DiagonalMatrix;
-            if (diagOther != null && diagResult != null)
+            if (other is DiagonalMatrix diagOther && result is DiagonalMatrix diagResult)
             {
                 LinearAlgebraControl.Provider.SubtractArrays(_data, diagOther._data, diagResult._data);
                 return;
@@ -294,14 +295,13 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var diagResult = result as DiagonalMatrix;
-            if (diagResult == null)
+            if (result is DiagonalMatrix diagResult)
             {
-                base.DoMultiply(scalar, result);
+                LinearAlgebraControl.Provider.ScaleArray(scalar, _data, diagResult._data);
             }
             else
             {
-                LinearAlgebraControl.Provider.ScaleArray(scalar, _data, diagResult._data);
+                base.DoMultiply(scalar, result);
             }
         }
 
@@ -320,9 +320,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
             if (d == ColumnCount)
             {
-                var denseOther = rightSide.Storage as DenseVectorStorage<Complex>;
-                var denseResult = result.Storage as DenseVectorStorage<Complex>;
-                if (denseOther != null && denseResult != null)
+                if (rightSide.Storage is DenseVectorStorage<Complex> denseOther && result.Storage is DenseVectorStorage<Complex> denseResult)
                 {
                     LinearAlgebraControl.Provider.PointWiseMultiplyArrays(_data, denseOther.Data, denseResult.Data);
                     return;
@@ -342,9 +340,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the multiplication.</param>
         protected override void DoMultiply(Matrix<Complex> other, Matrix<Complex> result)
         {
-            var diagonalOther = other as DiagonalMatrix;
-            var diagonalResult = result as DiagonalMatrix;
-            if (diagonalOther != null && diagonalResult != null)
+            if (other is DiagonalMatrix diagonalOther && result is DiagonalMatrix diagonalResult)
             {
                 var thisDataCopy = new Complex[diagonalResult._data.Length];
                 var otherDataCopy = new Complex[diagonalResult._data.Length];
@@ -354,8 +350,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var denseOther = other.Storage as DenseColumnMajorMatrixStorage<Complex>;
-            if (denseOther != null)
+            if (other.Storage is DenseColumnMajorMatrixStorage<Complex> denseOther)
             {
                 var dense = denseOther.Data;
                 var diagonal = _data;
@@ -379,12 +374,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
             if (ColumnCount == RowCount)
             {
-                other.Storage.MapIndexedTo(result.Storage, (i, j, x) => x*_data[i], Zeros.AllowSkip, ExistingData.Clear);
+                other.Storage.MapIndexedTo(result.Storage, (i, _, x) => x*_data[i], Zeros.AllowSkip, ExistingData.Clear);
             }
             else
             {
                 result.Clear();
-                other.Storage.MapSubMatrixIndexedTo(result.Storage, (i, j, x) => x*_data[i], 0, 0, other.RowCount, 0, 0, other.ColumnCount, Zeros.AllowSkip, ExistingData.AssumeZeros);
+                other.Storage.MapSubMatrixIndexedTo(result.Storage, (i, _, x) => x*_data[i], 0, 0, Math.Min(RowCount, other.RowCount), 0, 0, other.ColumnCount, Zeros.AllowSkip, ExistingData.AssumeZeros);
             }
         }
 
@@ -395,9 +390,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the multiplication.</param>
         protected override void DoTransposeAndMultiply(Matrix<Complex> other, Matrix<Complex> result)
         {
-            var diagonalOther = other as DiagonalMatrix;
-            var diagonalResult = result as DiagonalMatrix;
-            if (diagonalOther != null && diagonalResult != null)
+            if (other is DiagonalMatrix diagonalOther && result is DiagonalMatrix diagonalResult)
             {
                 var thisDataCopy = new Complex[diagonalResult._data.Length];
                 var otherDataCopy = new Complex[diagonalResult._data.Length];
@@ -407,8 +400,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var denseOther = other.Storage as DenseColumnMajorMatrixStorage<Complex>;
-            if (denseOther != null)
+            if (other.Storage is DenseColumnMajorMatrixStorage<Complex> denseOther)
             {
                 var dense = denseOther.Data;
                 var diagonal = _data;
@@ -439,9 +431,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the multiplication.</param>
         protected override void DoConjugateTransposeAndMultiply(Matrix<Complex> other, Matrix<Complex> result)
         {
-            var diagonalOther = other as DiagonalMatrix;
-            var diagonalResult = result as DiagonalMatrix;
-            if (diagonalOther != null && diagonalResult != null)
+            if (other is DiagonalMatrix diagonalOther && result is DiagonalMatrix diagonalResult)
             {
                 var thisDataCopy = new Complex[diagonalResult._data.Length];
                 var otherDataCopy = new Complex[diagonalResult._data.Length];
@@ -453,8 +443,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var denseOther = other.Storage as DenseColumnMajorMatrixStorage<Complex>;
-            if (denseOther != null)
+            if (other.Storage is DenseColumnMajorMatrixStorage<Complex> denseOther)
             {
                 var dense = denseOther.Data;
                 var diagonal = _data;
@@ -485,9 +474,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the multiplication.</param>
         protected override void DoTransposeThisAndMultiply(Matrix<Complex> other, Matrix<Complex> result)
         {
-            var diagonalOther = other as DiagonalMatrix;
-            var diagonalResult = result as DiagonalMatrix;
-            if (diagonalOther != null && diagonalResult != null)
+            if (other is DiagonalMatrix diagonalOther && result is DiagonalMatrix diagonalResult)
             {
                 var thisDataCopy = new Complex[diagonalResult._data.Length];
                 var otherDataCopy = new Complex[diagonalResult._data.Length];
@@ -497,8 +484,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var denseOther = other.Storage as DenseColumnMajorMatrixStorage<Complex>;
-            if (denseOther != null)
+            if (other.Storage is DenseColumnMajorMatrixStorage<Complex> denseOther)
             {
                 var dense = denseOther.Data;
                 var diagonal = _data;
@@ -522,12 +508,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
             if (ColumnCount == RowCount)
             {
-                other.Storage.MapIndexedTo(result.Storage, (i, j, x) => x*_data[i], Zeros.AllowSkip, ExistingData.Clear);
+                other.Storage.MapIndexedTo(result.Storage, (i, _, x) => x*_data[i], Zeros.AllowSkip, ExistingData.Clear);
             }
             else
             {
                 result.Clear();
-                other.Storage.MapSubMatrixIndexedTo(result.Storage, (i, j, x) => x*_data[i], 0, 0, other.RowCount, 0, 0, other.ColumnCount, Zeros.AllowSkip, ExistingData.AssumeZeros);
+                other.Storage.MapSubMatrixIndexedTo(result.Storage, (i, _, x) => x*_data[i], 0, 0, other.RowCount, 0, 0, other.ColumnCount, Zeros.AllowSkip, ExistingData.AssumeZeros);
             }
         }
 
@@ -538,9 +524,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The result of the multiplication.</param>
         protected override void DoConjugateTransposeThisAndMultiply(Matrix<Complex> other, Matrix<Complex> result)
         {
-            var diagonalOther = other as DiagonalMatrix;
-            var diagonalResult = result as DiagonalMatrix;
-            if (diagonalOther != null && diagonalResult != null)
+            if (other is DiagonalMatrix diagonalOther && result is DiagonalMatrix diagonalResult)
             {
                 var thisDataCopy = new Complex[diagonalResult._data.Length];
                 var otherDataCopy = new Complex[diagonalResult._data.Length];
@@ -552,8 +536,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var denseOther = other.Storage as DenseColumnMajorMatrixStorage<Complex>;
-            if (denseOther != null)
+            if (other.Storage is DenseColumnMajorMatrixStorage<Complex> denseOther)
             {
                 var dense = denseOther.Data;
                 var conjugateDiagonal = new Complex[_data.Length];
@@ -598,9 +581,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
             if (d == RowCount)
             {
-                var denseOther = rightSide.Storage as DenseVectorStorage<Complex>;
-                var denseResult = result.Storage as DenseVectorStorage<Complex>;
-                if (denseOther != null && denseResult != null)
+                if (rightSide.Storage is DenseVectorStorage<Complex> denseOther && result.Storage is DenseVectorStorage<Complex> denseResult)
                 {
                     LinearAlgebraControl.Provider.PointWiseMultiplyArrays(_data, denseOther.Data, denseResult.Data);
                     return;
@@ -628,9 +609,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
             if (d == RowCount)
             {
-                var denseOther = rightSide.Storage as DenseVectorStorage<Complex>;
-                var denseResult = result.Storage as DenseVectorStorage<Complex>;
-                if (denseOther != null && denseResult != null)
+                if (rightSide.Storage is DenseVectorStorage<Complex> denseOther && result.Storage is DenseVectorStorage<Complex> denseResult)
                 {
                     // TODO: merge/MulByConj
                     LinearAlgebraControl.Provider.ConjugateArray(_data, denseResult.Data);
@@ -658,8 +637,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 return;
             }
 
-            var diagResult = result as DiagonalMatrix;
-            if (diagResult != null)
+            if (result is DiagonalMatrix diagResult)
             {
                 LinearAlgebraControl.Provider.ScaleArray(1.0/divisor, _data, diagResult._data);
                 return;
@@ -679,8 +657,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// <param name="result">The matrix to store the result of the division.</param>
         protected override void DoDivideByThis(Complex dividend, Matrix<Complex> result)
         {
-            var diagResult = result as DiagonalMatrix;
-            if (diagResult != null)
+            if (result is DiagonalMatrix diagResult)
             {
                 var resultData = diagResult._data;
                 CommonParallel.For(0, _data.Length, 4096, (a, b) =>
@@ -708,7 +685,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         {
             if (RowCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             return _data.Aggregate(Complex.One, (current, t) => current * t);
@@ -738,7 +715,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         {
             if (source.Length != _data.Length)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength, "source");
+                throw new ArgumentException("The array arguments must have the same length.", nameof(source));
             }
 
             Array.Copy(source, 0, _data, 0, source.Length);
@@ -755,19 +732,19 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         /// this[i,i].</remarks>
         public override void SetDiagonal(Vector<Complex> source)
         {
-            var denseSource = source as DenseVector;
-            if (denseSource == null)
+            if (source is DenseVector denseSource)
+            {
+                if (_data.Length != denseSource.Values.Length)
+                {
+                    throw new ArgumentException("All vectors must have the same dimensionality.", nameof(source));
+                }
+
+                Array.Copy(denseSource.Values, 0, _data, 0, denseSource.Values.Length);
+            }
+            else
             {
                 base.SetDiagonal(source);
-                return;
             }
-
-            if (_data.Length != denseSource.Values.Length)
-            {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "source");
-            }
-
-            Array.Copy(denseSource.Values, 0, _data, 0, denseSource.Values.Length);
         }
 
         /// <summary>Calculates the induced L1 norm of this matrix.</summary>
@@ -821,19 +798,20 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
         {
             if (RowCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             var inverse = (DiagonalMatrix)Clone();
+            var inverseData = inverse._data;
             for (var i = 0; i < _data.Length; i++)
             {
                 if (_data[i] != 0.0)
                 {
-                    inverse._data[i] = 1.0 / _data[i];
+                    inverseData[i] = 1.0 / _data[i];
                 }
                 else
                 {
-                    throw new ArgumentException(Resources.ArgumentMatrixNotSingular);
+                    throw new ArgumentException("Matrix must not be singular.");
                 }
             }
 

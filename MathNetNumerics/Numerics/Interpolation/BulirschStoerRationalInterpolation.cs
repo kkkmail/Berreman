@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Interpolation
 {
@@ -53,12 +52,12 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (x.Length < 1)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, 1), "x");
+                throw new ArgumentException("The given array is too small. It must be at least 1 long.", nameof(x));
             }
 
             _x = x;
@@ -81,7 +80,7 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             Sorting.Sort(x, y);
@@ -100,18 +99,12 @@ namespace MathNet.Numerics.Interpolation
         /// <summary>
         /// Gets a value indicating whether the algorithm supports differentiation (interpolated derivative).
         /// </summary>
-        bool IInterpolation.SupportsDifferentiation
-        {
-            get { return false; }
-        }
+        bool IInterpolation.SupportsDifferentiation => false;
 
         /// <summary>
         /// Gets a value indicating whether the algorithm supports integration (interpolated quadrature).
         /// </summary>
-        bool IInterpolation.SupportsIntegration
-        {
-            get { return false; }
-        }
+        bool IInterpolation.SupportsIntegration => false;
 
         /// <summary>
         /// Interpolate at point t.
@@ -180,38 +173,26 @@ namespace MathNet.Numerics.Interpolation
         /// </summary>
         /// <param name="t">Point t to interpolate at.</param>
         /// <returns>Interpolated first derivative at point t.</returns>
-        double IInterpolation.Differentiate(double t)
-        {
-            throw new NotSupportedException();
-        }
+        double IInterpolation.Differentiate(double t) => throw new NotSupportedException();
 
         /// <summary>
         /// Differentiate twice at point t. NOT SUPPORTED.
         /// </summary>
         /// <param name="t">Point t to interpolate at.</param>
         /// <returns>Interpolated second derivative at point t.</returns>
-        double IInterpolation.Differentiate2(double t)
-        {
-            throw new NotSupportedException();
-        }
+        double IInterpolation.Differentiate2(double t) => throw new NotSupportedException();
 
         /// <summary>
         /// Indefinite integral at point t. NOT SUPPORTED.
         /// </summary>
         /// <param name="t">Point t to integrate at.</param>
-        double IInterpolation.Integrate(double t)
-        {
-            throw new NotSupportedException();
-        }
+        double IInterpolation.Integrate(double t) => throw new NotSupportedException();
 
         /// <summary>
         /// Definite integral between points a and b. NOT SUPPORTED.
         /// </summary>
         /// <param name="a">Left bound of the integration interval [a,b].</param>
         /// <param name="b">Right bound of the integration interval [a,b].</param>
-        double IInterpolation.Integrate(double a, double b)
-        {
-            throw new NotSupportedException();
-        }
+        double IInterpolation.Integrate(double a, double b) => throw new NotSupportedException();
     }
 }

@@ -33,11 +33,9 @@
 // </contribution>
 
 using System;
-using MathNet.Numerics.Properties;
 
-// ReSharper disable CheckNamespace
+// ReSharper disable once CheckNamespace
 namespace MathNet.Numerics
-// ReSharper restore CheckNamespace
 {
 
     public static partial class SpecialFunctions
@@ -53,12 +51,12 @@ namespace MathNet.Numerics
         {
             if (z <= 0.0)
             {
-                throw new ArgumentException(Resources.ArgumentMustBePositive, "z");
+                throw new ArgumentException("Value must be positive.", nameof(z));
             }
 
             if (w <= 0.0)
             {
-                throw new ArgumentException(Resources.ArgumentMustBePositive, "w");
+                throw new ArgumentException("Value must be positive.", nameof(w));
             }
 
             return GammaLn(z) + GammaLn(w) - GammaLn(z + w);
@@ -101,17 +99,17 @@ namespace MathNet.Numerics
         {
             if (a < 0.0)
             {
-                throw new ArgumentOutOfRangeException("a", Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(a), "Value must not be negative (zero is ok).");
             }
 
             if (b < 0.0)
             {
-                throw new ArgumentOutOfRangeException("b", Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(b), "Value must not be negative (zero is ok).");
             }
 
             if (x < 0.0 || x > 1.0)
             {
-                throw new ArgumentOutOfRangeException("x", Resources.ArgumentInIntervalXYInclusive);
+                throw new ArgumentOutOfRangeException(nameof(x), $"Value is expected to be between 0.0 and 1.0 (including 0.0 and 1.0).");
             }
 
             var bt = (x == 0.0 || x == 1.0)
@@ -127,9 +125,7 @@ namespace MathNet.Numerics
             if (symmetryTransformation)
             {
                 x = 1.0 - x;
-                var swap = a;
-                a = b;
-                b = swap;
+                (a, b) = (b, a);
             }
 
             var qab = a + b;

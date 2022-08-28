@@ -131,74 +131,6 @@ namespace MathNet.Numerics
             }
         }
 
-#if NETSTANDARD1_3
-        /// <summary>
-        /// Globalized Parsing: Parse a double number
-        /// </summary>
-        /// <param name="token">First token of the number.</param>
-        /// <returns>The parsed double number using the current culture information.</returns>
-        /// <exception cref="FormatException" />
-        internal static double ParseDouble(ref LinkedListNode<string> token)
-        {
-            // in case the + and - in scientific notation are separated, join them back together.
-            if (token.Value.EndsWith("e", StringComparison.CurrentCultureIgnoreCase))
-            {
-                if (token.Next == null || token.Next.Next == null)
-                {
-                    throw new FormatException();
-                }
-
-                token.Value = token.Value + token.Next.Value + token.Next.Next.Value;
-
-                var list = token.List;
-                list.Remove(token.Next.Next);
-                list.Remove(token.Next);
-            }
-
-            double value;
-            if (!double.TryParse(token.Value, NumberStyles.Any, CultureInfo.CurrentCulture, out value))
-            {
-                throw new FormatException();
-            }
-
-            token = token.Next;
-            return value;
-        }
-
-        /// <summary>
-        /// Globalized Parsing: Parse a float number
-        /// </summary>
-        /// <param name="token">First token of the number.</param>
-        /// <returns>The parsed float number using the current culture information.</returns>
-        /// <exception cref="FormatException" />
-        internal static float ParseSingle(ref LinkedListNode<string> token)
-        {
-            // in case the + and - in scientific notation are separated, join them back together.
-            if (token.Value.EndsWith("e", StringComparison.CurrentCultureIgnoreCase))
-            {
-                if (token.Next == null || token.Next.Next == null)
-                {
-                    throw new FormatException();
-                }
-
-                token.Value = token.Value + token.Next.Value + token.Next.Next.Value;
-
-                var list = token.List;
-                list.Remove(token.Next.Next);
-                list.Remove(token.Next);
-            }
-
-            float value;
-            if (!Single.TryParse(token.Value, NumberStyles.Any, CultureInfo.CurrentCulture, out value))
-            {
-                throw new FormatException();
-            }
-
-            token = token.Next;
-            return value;
-        }
-
-#else
         /// <summary>
         /// Globalized Parsing: Parse a double number
         /// </summary>
@@ -223,8 +155,7 @@ namespace MathNet.Numerics
                 list.Remove(token.Next);
             }
 
-            double value;
-            if (!double.TryParse(token.Value, NumberStyles.Any, culture, out value))
+            if (!double.TryParse(token.Value, NumberStyles.Any, culture, out var value))
             {
                 throw new FormatException();
             }
@@ -257,8 +188,7 @@ namespace MathNet.Numerics
                 list.Remove(token.Next);
             }
 
-            float value;
-            if (!Single.TryParse(token.Value, NumberStyles.Any, culture, out value))
+            if (!float.TryParse(token.Value, NumberStyles.Any, culture, out var value))
             {
                 throw new FormatException();
             }
@@ -266,6 +196,5 @@ namespace MathNet.Numerics
             token = token.Next;
             return value;
         }
-#endif
     }
 }

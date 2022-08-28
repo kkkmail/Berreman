@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Statistics;
 using MathNet.Numerics.Threading;
@@ -80,7 +79,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -112,7 +111,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (histogram == null)
             {
-                throw new ArgumentNullException("histogram");
+                throw new ArgumentNullException(nameof(histogram));
             }
 
             // The probability distribution vector.
@@ -128,7 +127,7 @@ namespace MathNet.Numerics.Distributions
 
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(p))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // Extract unnormalized cumulative distribution
@@ -154,7 +153,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Categorical(Dimension = " + _pmfNormalized.Length + ")";
+            return $"Categorical(Dimension = {_pmfNormalized.Length})";
         }
 
         /// <summary>
@@ -205,18 +204,15 @@ namespace MathNet.Numerics.Distributions
         /// Gets the probability mass vector (non-negative ratios) of the multinomial.
         /// </summary>
         /// <remarks>Sometimes the normalized probability vector cannot be represented exactly in a floating point representation.</remarks>
-        public double[] P
-        {
-            get { return (double[])_pmfNormalized.Clone(); }
-        }
+        public double[] P => (double[])_pmfNormalized.Clone();
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
@@ -241,10 +237,7 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt(Variance); }
-        }
+        public double StdDev => Math.Sqrt(Variance);
 
         /// <summary>
         /// Gets the variance of the distribution.
@@ -278,43 +271,28 @@ namespace MathNet.Numerics.Distributions
         /// Gets the skewness of the distribution.
         /// </summary>
         /// <remarks>Throws a <see cref="NotSupportedException"/>.</remarks>
-        public double Skewness
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Skewness => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the smallest element in the domain of the distributions which can be represented by an integer.
         /// </summary>
-        public int Minimum
-        {
-            get { return 0; }
-        }
+        public int Minimum => 0;
 
         /// <summary>
         /// Gets the largest element in the domain of the distributions which can be represented by an integer.
         /// </summary>
-        public int Maximum
-        {
-            get { return _pmfNormalized.Length - 1; }
-        }
+        public int Maximum => _pmfNormalized.Length - 1;
 
         /// <summary>
         /// Gets he mode of the distribution.
         /// </summary>
         /// <remarks>Throws a <see cref="NotSupportedException"/>.</remarks>
-        public int Mode
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public int Mode => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
-        public double Median
-        {
-            get { return InverseCumulativeDistribution(0.5); }
-        }
+        public double Median => InverseCumulativeDistribution(0.5);
 
         /// <summary>
         /// Computes the probability mass (PMF) at k, i.e. P(X = k).
@@ -386,7 +364,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (probability < 0.0 || probability > 1.0 || double.IsNaN(probability))
             {
-                throw new ArgumentOutOfRangeException("probability");
+                throw new ArgumentOutOfRangeException(nameof(probability));
             }
 
             var denormalizedProbability = probability*_cdfUnnormalized[_cdfUnnormalized.Length - 1];
@@ -410,7 +388,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (k < 0)
@@ -450,7 +428,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x < 0.0)
@@ -479,12 +457,12 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (probability < 0.0 || probability > 1.0 || double.IsNaN(probability))
             {
-                throw new ArgumentOutOfRangeException("probability");
+                throw new ArgumentOutOfRangeException(nameof(probability));
             }
 
             var cdfUnnormalized = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -509,12 +487,12 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (probability < 0.0 || probability > 1.0 || double.IsNaN(probability))
             {
-                throw new ArgumentOutOfRangeException("probability");
+                throw new ArgumentOutOfRangeException(nameof(probability));
             }
 
             var denormalizedProbability = probability*cdfUnnormalized[cdfUnnormalized.Length - 1];
@@ -650,7 +628,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var cdf = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -667,7 +645,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var cdf = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -685,7 +663,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var cdf = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -701,7 +679,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var cdf = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -717,7 +695,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var cdf = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -734,7 +712,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidProbabilityMass(probabilityMass))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var cdf = ProbabilityMassToCumulativeDistribution(probabilityMass);
@@ -751,7 +729,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, cdfUnnormalized);
@@ -767,7 +745,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, cdfUnnormalized);
@@ -784,7 +762,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, cdfUnnormalized);
@@ -799,7 +777,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, cdfUnnormalized);
@@ -814,7 +792,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, cdfUnnormalized);
@@ -830,7 +808,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidCumulativeDistribution(cdfUnnormalized))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, cdfUnnormalized);

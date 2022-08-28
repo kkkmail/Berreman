@@ -39,15 +39,9 @@ namespace MathNet.Numerics.LinearAlgebra.Double
 {
     internal class MatrixBuilder : MatrixBuilder<double>
     {
-        public override double Zero
-        {
-            get { return 0d; }
-        }
+        public override double Zero => 0d;
 
-        public override double One
-        {
-            get { return 1d; }
-        }
+        public override double One => 1d;
 
         public override Matrix<double> Dense(DenseColumnMajorMatrixStorage<double> storage)
         {
@@ -79,19 +73,18 @@ namespace MathNet.Numerics.LinearAlgebra.Double
                 new ResidualStopCriterion<double>(1e-12)
             };
         }
+
+        internal override double Add(double x, double y)
+        {
+            return x + y;
+        }
     }
 
     internal class VectorBuilder : VectorBuilder<double>
     {
-        public override double Zero
-        {
-            get { return 0d; }
-        }
+        public override double Zero => 0d;
 
-        public override double One
-        {
-            get { return 1d; }
-        }
+        public override double One => 1d;
 
         public override Vector<double> Dense(DenseVectorStorage<double> storage)
         {
@@ -114,15 +107,9 @@ namespace MathNet.Numerics.LinearAlgebra.Single
 {
     internal class MatrixBuilder : MatrixBuilder<float>
     {
-        public override float Zero
-        {
-            get { return 0f; }
-        }
+        public override float Zero => 0f;
 
-        public override float One
-        {
-            get { return 1f; }
-        }
+        public override float One => 1f;
 
         public override Matrix<float> Dense(DenseColumnMajorMatrixStorage<float> storage)
         {
@@ -154,19 +141,18 @@ namespace MathNet.Numerics.LinearAlgebra.Single
                 new ResidualStopCriterion<float>(1e-6)
             };
         }
+
+        internal override float Add(float x, float y)
+        {
+            return x + y;
+        }
     }
 
     internal class VectorBuilder : VectorBuilder<float>
     {
-        public override float Zero
-        {
-            get { return 0f; }
-        }
+        public override float Zero => 0f;
 
-        public override float One
-        {
-            get { return 1f; }
-        }
+        public override float One => 1f;
 
         public override Vector<float> Dense(DenseVectorStorage<float> storage)
         {
@@ -191,15 +177,9 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
 
     internal class MatrixBuilder : MatrixBuilder<Complex>
     {
-        public override Complex Zero
-        {
-            get { return Complex.Zero; }
-        }
+        public override Complex Zero => Complex.Zero;
 
-        public override Complex One
-        {
-            get { return Complex.One; }
-        }
+        public override Complex One => Complex.One;
 
         public override Matrix<Complex> Dense(DenseColumnMajorMatrixStorage<Complex> storage)
         {
@@ -231,19 +211,18 @@ namespace MathNet.Numerics.LinearAlgebra.Complex
                 new ResidualStopCriterion<Complex>(1e-12)
             };
         }
+
+        internal override Complex Add(Complex x, Complex y)
+        {
+            return x + y;
+        }
     }
 
     internal class VectorBuilder : VectorBuilder<Complex>
     {
-        public override Complex Zero
-        {
-            get { return Complex.Zero; }
-        }
+        public override Complex Zero => Complex.Zero;
 
-        public override Complex One
-        {
-            get { return Complex.One; }
-        }
+        public override Complex One => Complex.One;
 
         public override Vector<Complex> Dense(DenseVectorStorage<Complex> storage)
         {
@@ -266,15 +245,9 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
 {
     internal class MatrixBuilder : MatrixBuilder<Numerics.Complex32>
     {
-        public override Numerics.Complex32 Zero
-        {
-            get { return Numerics.Complex32.Zero; }
-        }
+        public override Numerics.Complex32 Zero => Numerics.Complex32.Zero;
 
-        public override Numerics.Complex32 One
-        {
-            get { return Numerics.Complex32.One; }
-        }
+        public override Numerics.Complex32 One => Numerics.Complex32.One;
 
         public override Matrix<Numerics.Complex32> Dense(DenseColumnMajorMatrixStorage<Numerics.Complex32> storage)
         {
@@ -306,19 +279,18 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
                 new ResidualStopCriterion<Numerics.Complex32>(1e-6)
             };
         }
+
+        internal override Numerics.Complex32 Add(Numerics.Complex32 x, Numerics.Complex32 y)
+        {
+            return x + y;
+        }
     }
 
     internal class VectorBuilder : VectorBuilder<Numerics.Complex32>
     {
-        public override Numerics.Complex32 Zero
-        {
-            get { return Numerics.Complex32.Zero; }
-        }
+        public override Numerics.Complex32 Zero => Numerics.Complex32.Zero;
 
-        public override Numerics.Complex32 One
-        {
-            get { return Numerics.Complex32.One; }
-        }
+        public override Numerics.Complex32 One => Numerics.Complex32.One;
 
         public override Vector<Numerics.Complex32> Dense(DenseVectorStorage<Numerics.Complex32> storage)
         {
@@ -356,24 +328,21 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public abstract T One { get; }
 
+        internal abstract T Add(T x, T y);
+
         /// <summary>
         /// Create a new matrix straight from an initialized matrix storage instance.
         /// If you have an instance of a discrete storage type instead, use their direct methods instead.
         /// </summary>
         public Matrix<T> OfStorage(MatrixStorage<T> storage)
         {
-            if (storage == null) throw new ArgumentNullException("storage");
+            if (storage == null) throw new ArgumentNullException(nameof(storage));
 
-            var dense = storage as DenseColumnMajorMatrixStorage<T>;
-            if (dense != null) return Dense(dense);
+            if (storage is DenseColumnMajorMatrixStorage<T> dense) return Dense(dense);
+            if (storage is SparseCompressedRowMatrixStorage<T> sparse) return Sparse(sparse);
+            if (storage is DiagonalMatrixStorage<T> diagonal) return Diagonal(diagonal);
 
-            var sparse = storage as SparseCompressedRowMatrixStorage<T>;
-            if (sparse != null) return Sparse(sparse);
-
-            var diagonal = storage as DiagonalMatrixStorage<T>;
-            if (diagonal != null) return Diagonal(diagonal);
-
-            throw new NotSupportedException(string.Format("Matrix storage type '{0}' is not supported. Only DenseColumnMajorMatrixStorage, SparseCompressedRowMatrixStorage and DiagonalMatrixStorage are supported as this point.", storage.GetType().Name));
+            throw new NotSupportedException(FormattableString.Invariant($"Matrix storage type '{storage.GetType().Name}' is not supported. Only DenseColumnMajorMatrixStorage, SparseCompressedRowMatrixStorage and DiagonalMatrixStorage are supported as this point."));
         }
 
         /// <summary>
@@ -489,7 +458,6 @@ namespace MathNet.Numerics.LinearAlgebra
         /// <summary>
         /// Create a new dense matrix with the given number of rows and columns.
         /// All cells of the matrix will be initialized to zero.
-        /// Zero-length matrices are not supported.
         /// </summary>
         public Matrix<T> Dense(int rows, int columns)
         {
@@ -530,7 +498,7 @@ namespace MathNet.Numerics.LinearAlgebra
         public Matrix<T> DenseDiagonal(int rows, int columns, T value)
         {
             if (Zero.Equals(value)) return Dense(rows, columns);
-            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(rows, columns, i => value));
+            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(rows, columns, _ => value));
         }
 
         /// <summary>
@@ -539,7 +507,7 @@ namespace MathNet.Numerics.LinearAlgebra
         public Matrix<T> DenseDiagonal(int order, T value)
         {
             if (Zero.Equals(value)) return Dense(order, order);
-            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(order, order, i => value));
+            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(order, order, _ => value));
         }
 
         /// <summary>
@@ -555,7 +523,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public Matrix<T> DenseIdentity(int rows, int columns)
         {
-            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(rows, columns, i => One));
+            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(rows, columns, _ => One));
         }
 
         /// <summary>
@@ -563,7 +531,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public Matrix<T> DenseIdentity(int order)
         {
-            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(order, order, i => One));
+            return Dense(DenseColumnMajorMatrixStorage<T>.OfDiagonalInit(order, order, _ => One));
         }
 
         /// <summary>
@@ -593,6 +561,17 @@ namespace MathNet.Numerics.LinearAlgebra
         /// A new memory block will be allocated for storing the matrix.
         /// </summary>
         public Matrix<T> DenseOfIndexed(int rows, int columns, IEnumerable<Tuple<int, int, T>> enumerable)
+        {
+            return Dense(DenseColumnMajorMatrixStorage<T>.OfIndexedEnumerable(rows, columns, enumerable));
+        }
+
+        /// <summary>
+        /// Create a new dense matrix as a copy of the given indexed enumerable.
+        /// Keys must be provided at most once, zero is assumed if a key is omitted.
+        /// This new matrix will be independent from the enumerable.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        public Matrix<T> DenseOfIndexed(int rows, int columns, IEnumerable<(int, int, T)> enumerable)
         {
             return Dense(DenseColumnMajorMatrixStorage<T>.OfIndexedEnumerable(rows, columns, enumerable));
         }
@@ -840,6 +819,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// Intended for advanced scenarios where you're working directly with
         /// storage for performance or interop reasons.
         /// </summary>
+        /// <param name="storage">The SparseCompressedRowMatrixStorage</param>
         public abstract Matrix<T> Sparse(SparseCompressedRowMatrixStorage<T> storage);
 
         /// <summary>
@@ -875,7 +855,7 @@ namespace MathNet.Numerics.LinearAlgebra
         public Matrix<T> SparseDiagonal(int rows, int columns, T value)
         {
             if (Zero.Equals(value)) return Sparse(rows, columns);
-            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(rows, columns, i => value));
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(rows, columns, _ => value));
         }
 
         /// <summary>
@@ -884,7 +864,7 @@ namespace MathNet.Numerics.LinearAlgebra
         public Matrix<T> SparseDiagonal(int order, T value)
         {
             if (Zero.Equals(value)) return Sparse(order, order);
-            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(order, order, i => value));
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(order, order, _ => value));
         }
 
         /// <summary>
@@ -900,7 +880,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public Matrix<T> SparseIdentity(int rows, int columns)
         {
-            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(rows, columns, i => One));
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(rows, columns, _ => One));
         }
 
         /// <summary>
@@ -908,7 +888,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public Matrix<T> SparseIdentity(int order)
         {
-            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(order, order, i => One));
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfDiagonalInit(order, order, _ => One));
         }
 
         /// <summary>
@@ -938,6 +918,17 @@ namespace MathNet.Numerics.LinearAlgebra
         /// A new memory block will be allocated for storing the matrix.
         /// </summary>
         public Matrix<T> SparseOfIndexed(int rows, int columns, IEnumerable<Tuple<int, int, T>> enumerable)
+        {
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfIndexedEnumerable(rows, columns, enumerable));
+        }
+
+        /// <summary>
+        /// Create a new sparse matrix as a copy of the given indexed enumerable.
+        /// Keys must be provided at most once, zero is assumed if a key is omitted.
+        /// This new matrix will be independent from the enumerable.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        public Matrix<T> SparseOfIndexed(int rows, int columns, IEnumerable<(int, int, T)> enumerable)
         {
             return Sparse(SparseCompressedRowMatrixStorage<T>.OfIndexedEnumerable(rows, columns, enumerable));
         }
@@ -1181,6 +1172,85 @@ namespace MathNet.Numerics.LinearAlgebra
             return m;
         }
 
+
+        // Representation of Sparse Matrix
+        //
+        // Matrix A = [ 0 b 0 h 0 0 ]
+        //            [ a c e i 0 0 ]
+        //            [ 0 0 f j l n ]
+        //            [ 0 d g k m 0 ]
+        //
+        // rows = 4, columns = 6, valueCount = 14
+        //
+        // (1) COO, Coordinate, ijv, or triplet format:
+        //     cooRowIndices     = { 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3 }
+        //     cooColumnIndices  = { 1, 3, 0, 1, 2, 3, 2, 3, 4, 5, 1, 2, 3, 4 }
+        //     cooValues         = { b, h, a, c, e, i, f, j, l, n, d, g, k, m }
+        //
+        // (2) CSR, Compressed Sparse Row or Compressed Row Storage(CRS) or Yale format:
+        //     csrRowPointers    = { 0, 2, 6, 10, 14 }
+        //     csrColumnIndices  = { 1, 3, 0, 1, 2, 3, 2, 3, 4, 5, 1, 2, 3, 4 }
+        //     csrValues         = { b, h, a, c, e, i, f, j, l, n, d, g, k, m }
+        //
+        // (3) CSC, Compressed Sparse Column or Compressed Column Storage(CCS) format:
+        //     cscColumnPointers = { 0, 1, 4, 7, 11, 13, 14 }
+        //     cscRowIndices     = { 1, 0, 1, 3, 1, 2, 3, 0, 1, 2, 3, 2, 3, 2 }
+        //     cscValues         = { a, b, c, d, e, f, g, h, i, j, k, l, m, n }
+
+        /// <summary>
+        /// Create a new sparse matrix from a coordinate format.
+        /// This new matrix will be independent from the given arrays.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        /// <param name="rows">The number of rows.</param>
+        /// <param name="columns">The number of columns.</param>
+        /// <param name="valueCount">The number of stored values including explicit zeros.</param>
+        /// <param name="rowIndices">The row index array of the coordinate format.</param>
+        /// <param name="columnIndices">The column index array of the coordinate format.</param>
+        /// <param name="values">The data array of the coordinate format.</param>
+        /// <returns>The sparse matrix from the coordinate format.</returns>
+        /// <remarks>Duplicate entries will be summed together and explicit zeros will be not intentionally removed.</remarks>
+        public Matrix<T> SparseFromCoordinateFormat(int rows, int columns, int valueCount, int[] rowIndices, int[] columnIndices, T[] values)
+        {
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfCoordinateFormat(rows, columns, valueCount, rowIndices, columnIndices, values));
+        }
+
+        /// <summary>
+        /// Create a new sparse matrix from a compressed sparse row format.
+        /// This new matrix will be independent from the given arrays.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        /// <param name="rows">The number of rows.</param>
+        /// <param name="columns">The number of columns.</param>
+        /// <param name="valueCount">The number of stored values including explicit zeros.</param>
+        /// <param name="rowPointers">The row pointer array of the compressed sparse row format.</param>
+        /// <param name="columnIndices">The column index array of the compressed sparse row format.</param>
+        /// <param name="values">The data array of the compressed sparse row format.</param>
+        /// <returns>The sparse matrix from the compressed sparse row format.</returns>
+        /// <remarks>Duplicate entries will be summed together and explicit zeros will be not intentionally removed.</remarks>
+        public Matrix<T> SparseFromCompressedSparseRowFormat(int rows, int columns, int valueCount, int[] rowPointers, int[] columnIndices, T[] values)
+        {
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfCompressedSparseRowFormat(rows, columns, valueCount, rowPointers, columnIndices, values));
+        }
+
+        /// <summary>
+        /// Create a new sparse matrix from a compressed sparse column format.
+        /// This new matrix will be independent from the given arrays.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        /// <param name="rows">The number of rows.</param>
+        /// <param name="columns">The number of columns.</param>
+        /// <param name="valueCount">The number of stored values including explicit zeros.</param>
+        /// <param name="rowIndices">The row index array of the compressed sparse column format.</param>
+        /// <param name="columnPointers">The column pointer array of the compressed sparse column format.</param>
+        /// <param name="values">The data array of the compressed sparse column format.</param>
+        /// <returns>The sparse matrix from the compressed sparse column format.</returns>
+        /// <remarks>Duplicate entries will be summed together and explicit zeros will be not intentionally removed.</remarks>
+        public Matrix<T> SparseFromCompressedSparseColumnFormat(int rows, int columns, int valueCount, int[] rowIndices, int[] columnPointers, T[] values)
+        {
+            return Sparse(SparseCompressedRowMatrixStorage<T>.OfCompressedSparseColumnFormat(rows, columns, valueCount, rowIndices, columnPointers, values));
+        }
+
         /// <summary>
         /// Create a new diagonal matrix straight from an initialized matrix storage instance.
         /// The storage is used directly without copying.
@@ -1192,7 +1262,6 @@ namespace MathNet.Numerics.LinearAlgebra
         /// <summary>
         /// Create a new diagonal matrix with the given number of rows and columns.
         /// All cells of the matrix will be initialized to zero.
-        /// Zero-length matrices are not supported.
         /// </summary>
         public Matrix<T> Diagonal(int rows, int columns)
         {
@@ -1327,15 +1396,12 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public Vector<T> OfStorage(VectorStorage<T> storage)
         {
-            if (storage == null) throw new ArgumentNullException("storage");
+            if (storage == null) throw new ArgumentNullException(nameof(storage));
 
-            var dense = storage as DenseVectorStorage<T>;
-            if (dense != null) return Dense(dense);
+            if (storage is DenseVectorStorage<T> dense) return Dense(dense);
+            if (storage is SparseVectorStorage<T> sparse) return Sparse(sparse);
 
-            var sparse = storage as SparseVectorStorage<T>;
-            if (sparse != null) return Sparse(sparse);
-
-            throw new NotSupportedException(string.Format("Vector storage type '{0}' is not supported. Only DenseVectorStorage and SparseVectorStorage are supported as this point.", storage.GetType().Name));
+            throw new NotSupportedException(FormattableString.Invariant($"Vector storage type '{storage.GetType().Name}' is not supported. Only DenseVectorStorage and SparseVectorStorage are supported as this point."));
         }
 
         /// <summary>
@@ -1494,6 +1560,17 @@ namespace MathNet.Numerics.LinearAlgebra
         }
 
         /// <summary>
+        /// Create a new dense vector as a copy of the given indexed enumerable.
+        /// Keys must be provided at most once, zero is assumed if a key is omitted.
+        /// This new vector will be independent from the enumerable.
+        /// A new memory block will be allocated for storing the vector.
+        /// </summary>
+        public Vector<T> DenseOfIndexed(int length, IEnumerable<(int, T)> enumerable)
+        {
+            return Dense(DenseVectorStorage<T>.OfIndexedEnumerable(length, enumerable));
+        }
+
+        /// <summary>
         /// Create a new sparse vector straight from an initialized vector storage instance.
         /// The storage is used directly without copying.
         /// Intended for advanced scenarios where you're working directly with
@@ -1567,6 +1644,17 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             return Sparse(SparseVectorStorage<T>.OfIndexedEnumerable(length, enumerable));
         }
+
+        /// <summary>
+        /// Create a new sparse vector as a copy of the given indexed enumerable.
+        /// Keys must be provided at most once, zero is assumed if a key is omitted.
+        /// This new vector will be independent from the enumerable.
+        /// A new memory block will be allocated for storing the vector.
+        /// </summary>
+        public Vector<T> SparseOfIndexed(int length, IEnumerable<(int, T)> enumerable)
+        {
+            return Sparse(SparseVectorStorage<T>.OfIndexedEnumerable(length, enumerable));
+        }
     }
 
     internal static class BuilderInstance<T> where T : struct, IEquatable<T>, IFormattable
@@ -1578,8 +1666,8 @@ namespace MathNet.Numerics.LinearAlgebra
             if (typeof (T) == typeof (System.Numerics.Complex))
             {
                 return new Tuple<MatrixBuilder<T>, VectorBuilder<T>>(
-                    (MatrixBuilder<T>)(object)new LinearAlgebra.Complex.MatrixBuilder(),
-                    (VectorBuilder<T>)(object)new LinearAlgebra.Complex.VectorBuilder());
+                    (MatrixBuilder<T>)(object)new Complex.MatrixBuilder(),
+                    (VectorBuilder<T>)(object)new Complex.VectorBuilder());
             }
 
             if (typeof (T) == typeof (Numerics.Complex32))
@@ -1603,7 +1691,7 @@ namespace MathNet.Numerics.LinearAlgebra
                     (VectorBuilder<T>)(object)new Single.VectorBuilder());
             }
 
-            throw new NotSupportedException(string.Format("Matrices and vectors of type '{0}' are not supported. Only Double, Single, Complex or Complex32 are supported at this point.", typeof(T).Name));
+            throw new NotSupportedException(FormattableString.Invariant($"Matrices and vectors of type '{typeof(T).Name}' are not supported. Only Double, Single, Complex or Complex32 are supported at this point."));
         }
 
         public static void Register(MatrixBuilder<T> matrixBuilder, VectorBuilder<T> vectorBuilder)
@@ -1611,14 +1699,8 @@ namespace MathNet.Numerics.LinearAlgebra
             _singleton = new Lazy<Tuple<MatrixBuilder<T>, VectorBuilder<T>>>(() => new Tuple<MatrixBuilder<T>, VectorBuilder<T>>(matrixBuilder, vectorBuilder));
         }
 
-        public static MatrixBuilder<T> Matrix
-        {
-            get { return _singleton.Value.Item1; }
-        }
+        public static MatrixBuilder<T> Matrix => _singleton.Value.Item1;
 
-        public static VectorBuilder<T> Vector
-        {
-            get { return _singleton.Value.Item2; }
-        }
+        public static VectorBuilder<T> Vector => _singleton.Value.Item2;
     }
 }

@@ -29,7 +29,6 @@
 
 using System;
 using System.Linq;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 
 namespace MathNet.Numerics.Distributions
@@ -53,7 +52,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(alpha))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -70,7 +69,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(alpha))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -94,7 +93,7 @@ namespace MathNet.Numerics.Distributions
             _random = SystemRandomSource.Default;
             if (Control.CheckDistributionParameters && !IsValidParameterSet(parm))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _alpha = (double[])parm.Clone();
@@ -118,7 +117,7 @@ namespace MathNet.Numerics.Distributions
             _random = randomSource ?? SystemRandomSource.Default;
             if (Control.CheckDistributionParameters && !IsValidParameterSet(parm))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _alpha = (double[])parm.Clone();
@@ -132,7 +131,7 @@ namespace MathNet.Numerics.Distributions
         /// </returns>
         public override string ToString()
         {
-            return "Dirichlet(Dimension = " + Dimension + ")";
+            return $"Dirichlet(Dimension = {Dimension})";
         }
 
         /// <summary>
@@ -164,35 +163,26 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets or sets the parameters of the Dirichlet distribution.
         /// </summary>
-        public double[] Alpha
-        {
-            get { return _alpha; }
-        }
+        public double[] Alpha => _alpha;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the dimension of the Dirichlet distribution.
         /// </summary>
-        public int Dimension
-        {
-            get { return _alpha.Length; }
-        }
+        public int Dimension => _alpha.Length;
 
         /// <summary>
         /// Gets the sum of the Dirichlet parameters.
         /// </summary>
-        double AlphaSum
-        {
-            get { return _alpha.Sum(); }
-        }
+        double AlphaSum => _alpha.Sum();
 
         /// <summary>
         /// Gets the mean of the Dirichlet distribution.
@@ -263,7 +253,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (x == null)
             {
-                throw new ArgumentNullException("x");
+                throw new ArgumentNullException(nameof(x));
             }
 
             var shortVersion = x.Length == (_alpha.Length - 1);
@@ -326,7 +316,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(alpha))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var n = alpha.Length;

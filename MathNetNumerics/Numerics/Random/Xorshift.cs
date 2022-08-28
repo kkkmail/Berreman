@@ -30,11 +30,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using MathNet.Numerics.Properties;
-
-#if !NETSTANDARD1_3
 using System.Runtime;
-#endif
 
 namespace MathNet.Numerics.Random
 {
@@ -248,7 +244,7 @@ namespace MathNet.Numerics.Random
 
             if (a <= c)
             {
-                throw new ArgumentException(string.Format(Resources.ArgumentOutOfRangeGreater, "a", "c"), "a");
+                throw new ArgumentException("a must be greater than c.", nameof(a));
             }
 
             _x = (uint)seed;
@@ -316,7 +312,7 @@ namespace MathNet.Numerics.Random
         {
             if (a <= c)
             {
-                throw new ArgumentException(string.Format(Resources.ArgumentOutOfRangeGreater, "a", "c"), "a");
+                throw new ArgumentException("a must be greater than c.", nameof(a));
             }
 
             if (seed == 0)
@@ -359,7 +355,7 @@ namespace MathNet.Numerics.Random
         {
             if (a <= c)
             {
-                throw new ArgumentException(string.Format(Resources.ArgumentOutOfRangeGreater, "a", "c"), "a");
+                throw new ArgumentException("a must be greater than c.", nameof(a));
             }
 
             if (seed == 0)

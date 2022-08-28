@@ -29,11 +29,8 @@
 
 using System;
 using System.Collections.Generic;
-
-#if !NETSTANDARD1_3
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
-#endif
 
 namespace MathNet.Numerics.Threading
 {
@@ -73,22 +70,22 @@ namespace MathNet.Numerics.Threading
         {
             if (body == null)
             {
-                throw new ArgumentNullException("body");
+                throw new ArgumentNullException(nameof(body));
             }
 
             if (fromInclusive < 0)
             {
-                throw new ArgumentOutOfRangeException("fromInclusive");
+                throw new ArgumentOutOfRangeException(nameof(fromInclusive));
             }
 
             if (fromInclusive > toExclusive)
             {
-                throw new ArgumentOutOfRangeException("toExclusive");
+                throw new ArgumentOutOfRangeException(nameof(toExclusive));
             }
 
             if (rangeSize < 1)
             {
-                throw new ArgumentOutOfRangeException("rangeSize");
+                throw new ArgumentOutOfRangeException(nameof(rangeSize));
             }
 
             var length = toExclusive - fromInclusive;
@@ -163,18 +160,18 @@ namespace MathNet.Numerics.Threading
         {
             if (select == null)
             {
-                throw new ArgumentNullException("select");
+                throw new ArgumentNullException(nameof(select));
             }
 
             if (reduce == null)
             {
-                throw new ArgumentNullException("reduce");
+                throw new ArgumentNullException(nameof(reduce));
             }
 
             // Special case: no action
             if (fromInclusive >= toExclusive)
             {
-                return reduce(new T[0]);
+                return reduce(Array.Empty<T>());
             }
 
             // Special case: single action, inline
@@ -202,7 +199,7 @@ namespace MathNet.Numerics.Threading
                 Partitioner.Create(fromInclusive, toExclusive),
                 CreateParallelOptions(),
                 () => new List<T>(),
-                (range, loop, localData) =>
+                (range, _, localData) =>
                 {
                     var mapped = new T[range.Item2 - range.Item1];
                     for (int k = 0; k < mapped.Length; k++)
@@ -234,18 +231,18 @@ namespace MathNet.Numerics.Threading
         {
             if (select == null)
             {
-                throw new ArgumentNullException("select");
+                throw new ArgumentNullException(nameof(select));
             }
 
             if (reduce == null)
             {
-                throw new ArgumentNullException("reduce");
+                throw new ArgumentNullException(nameof(reduce));
             }
 
             // Special case: no action
             if (array == null || array.Length == 0)
             {
-                return reduce(new TOut[0]);
+                return reduce(Array.Empty<TOut>());
             }
 
             // Special case: single action, inline
@@ -273,7 +270,7 @@ namespace MathNet.Numerics.Threading
                 Partitioner.Create(0, array.Length),
                 CreateParallelOptions(),
                 () => new List<TOut>(),
-                (range, loop, localData) =>
+                (range, _, localData) =>
                 {
                     var mapped = new TOut[range.Item2 - range.Item1];
                     for (int k = 0; k < mapped.Length; k++)

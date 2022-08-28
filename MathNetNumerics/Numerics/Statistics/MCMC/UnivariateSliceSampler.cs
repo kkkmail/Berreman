@@ -27,11 +27,10 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
+using System;
+
 namespace MathNet.Numerics.Statistics.Mcmc
 {
-    using System;
-    using Properties;
-
     /// <summary>
     /// Slice sampling produces samples from distribution P by uniformly sampling from under the pdf of P using
     /// a technique described in "Slice Sampling", R. Neal, 2003. All densities are required to be in log space.
@@ -44,27 +43,27 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <summary>
         /// Evaluates the log density function of the target distribution.
         /// </summary>
-        private readonly DensityLn<double> _pdfLnP;
+        readonly DensityLn<double> _pdfLnP;
 
         /// <summary>
         /// The current location of the sampler.
         /// </summary>
-        private double _current;
+        double _current;
 
         /// <summary>
         /// The log density at the current location.
         /// </summary>
-        private double _currentDensityLn;
+        double _currentDensityLn;
 
         /// <summary>
         /// The number of burn iterations between two samples.
         /// </summary>
-        private int _burnInterval;
+        int _burnInterval;
 
         /// <summary>
         /// The scale of the slice sampler.
         /// </summary>
-        private double _scale;
+        double _scale;
 
         /// <summary>
         /// Constructs a new Slice sampler using the default <see cref="System.Random"/> random
@@ -106,12 +105,12 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <exception cref="ArgumentOutOfRangeException">When burn interval is negative.</exception>
         public int BurnInterval
         {
-            get { return _burnInterval; }
+            get => _burnInterval;
             set
             {
                 if (value < 0)
                 {
-                    throw new ArgumentException(Resources.ArgumentNotNegative);
+                    throw new ArgumentException("Value must not be negative (zero is ok).");
                 }
                 _burnInterval = value;
             }
@@ -122,12 +121,12 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// </summary>
         public double Scale
         {
-            get { return _scale; }
+            get => _scale;
             set
             {
                 if (value <= 0.0)
                 {
-                    throw new ArgumentException(Resources.ArgumentPositive);
+                    throw new ArgumentException("Value must be positive (and not zero).");
                 }
                 _scale = value;
             }
@@ -136,7 +135,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <summary>
         /// This method runs the sampler for a number of iterations without returning a sample
         /// </summary>
-        private void Burn(int n)
+        void Burn(int n)
         {
             for (int i = 0; i < n; i++)
             {

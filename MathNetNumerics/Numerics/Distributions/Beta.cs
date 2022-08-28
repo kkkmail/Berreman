@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.RootFinding;
 using MathNet.Numerics.Threading;
@@ -65,7 +64,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(a, b))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -83,7 +82,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(a, b))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -97,7 +96,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>A string representation of the Beta distribution.</returns>
         public override string ToString()
         {
-            return "Beta(α = " + _shapeA + ", β = " + _shapeB + ")";
+            return $"Beta(α = {_shapeA}, β = {_shapeB})";
         }
 
         /// <summary>
@@ -113,26 +112,20 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the α shape parameter of the Beta distribution. Range: α ≥ 0.
         /// </summary>
-        public double A
-        {
-            get { return _shapeA; }
-        }
+        public double A => _shapeA;
 
         /// <summary>
         /// Gets the β shape parameter of the Beta distribution. Range: β ≥ 0.
         /// </summary>
-        public double B
-        {
-            get { return _shapeB; }
-        }
+        public double B => _shapeB;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
@@ -179,18 +172,12 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the variance of the Beta distribution.
         /// </summary>
-        public double Variance
-        {
-            get { return (_shapeA*_shapeB)/((_shapeA + _shapeB)*(_shapeA + _shapeB)*(_shapeA + _shapeB + 1.0)); }
-        }
+        public double Variance => (_shapeA*_shapeB)/((_shapeA + _shapeB)*(_shapeA + _shapeB)*(_shapeA + _shapeB + 1.0));
 
         /// <summary>
         /// Gets the standard deviation of the Beta distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt((_shapeA*_shapeB)/((_shapeA + _shapeB)*(_shapeA + _shapeB)*(_shapeA + _shapeB + 1.0))); }
-        }
+        public double StdDev => Math.Sqrt((_shapeA*_shapeB)/((_shapeA + _shapeB)*(_shapeA + _shapeB)*(_shapeA + _shapeB + 1.0)));
 
         /// <summary>
         /// Gets the entropy of the Beta distribution.
@@ -312,26 +299,17 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the median of the Beta distribution.
         /// </summary>
-        public double Median
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Median => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the minimum of the Beta distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return 0.0; }
-        }
+        public double Minimum => 0.0;
 
         /// <summary>
         /// Gets the maximum of the Beta distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return 1.0; }
-        }
+        public double Maximum => 1.0;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -414,9 +392,22 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a random number from the Beta distribution.</returns>
         internal static double SampleUnchecked(System.Random rnd, double a, double b)
         {
-            var x = Gamma.SampleUnchecked(rnd, a, 1.0);
-            var y = Gamma.SampleUnchecked(rnd, b, 1.0);
-            return x/(x + y);
+            double x, y;
+            if (a == b)
+            {
+                x = Gamma.SampleUnchecked(rnd, a, 1.0);
+                y = Gamma.SampleUnchecked(rnd, b, 1.0);
+                //When a==b (and possibly a==b==0), return value is equally possible to be 0 or 1
+                if (x == 0 && y == 0)
+                    return Bernoulli.Sample(0.5);//In particular, when a==b==0, Beta distribution degradates to Bernoulli distribution.
+            }
+            else
+                do
+                {
+                    x = Gamma.SampleUnchecked(rnd, a, 1.0);
+                    y = Gamma.SampleUnchecked(rnd, b, 1.0);
+                } while (x == 0 && y == 0);//When a!=b, return value is not equally possible to be 0 or 1. Regenerate.
+            return x / (x + y);
         }
 
         internal static void SamplesUnchecked(System.Random rnd, double[] values, double a, double b)
@@ -453,7 +444,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x < 0.0 || x > 1.0)
@@ -522,7 +513,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x < 0.0 || x > 1.0)
@@ -584,7 +575,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x < 0.0)
@@ -654,7 +645,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0 || p < 0.0 || p > 1.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Brent.FindRoot(x => SpecialFunctions.BetaRegularized(a, b, x) - p, 0.0, 1.0, accuracy: 1e-12);
@@ -671,7 +662,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, a, b);
@@ -688,7 +679,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, a, b);
@@ -706,7 +697,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, a, b);
@@ -722,7 +713,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, a, b);
@@ -738,7 +729,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, a, b);
@@ -755,7 +746,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (a < 0.0 || b < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, a, b);

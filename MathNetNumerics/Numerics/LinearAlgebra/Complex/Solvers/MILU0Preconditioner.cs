@@ -30,7 +30,6 @@
 using System;
 using MathNet.Numerics.LinearAlgebra.Solvers;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 {
@@ -50,13 +49,13 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         // The diagonal (stored in alu(0:n-1) ) is inverted. Each i-th row of the matrix
         // contains the i-th row of L (excluding the diagonal entry = 1) followed by
         // the i-th row of U.
-        private Complex[] _alu;
+        Complex[] _alu;
 
         // The row pointers (stored in jlu(0:n) ) and column indices to off-diagonal elements.
-        private int[] _jlu;
+        int[] _jlu;
 
         // Pointer to the diagonal elements in MSR storage (for faster LU solving).
-        private int[] _diag;
+        int[] _diag;
 
         /// <param name="modified">Use modified or standard ILU(0)</param>
         public MILU0Preconditioner(bool modified = true)
@@ -83,17 +82,16 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         /// instance of SparseCompressedRowMatrixStorage.</exception>
         public void Initialize(Matrix<Complex> matrix)
         {
-            var csr = matrix.Storage as SparseCompressedRowMatrixStorage<Complex>;
-            if (csr == null)
+            if (!(matrix.Storage is SparseCompressedRowMatrixStorage<Complex> csr))
             {
-                throw new ArgumentException(Resources.MatrixMustBeSparse, "matrix");
+                throw new ArgumentException("Matrix must be in sparse storage format", nameof(matrix));
             }
 
             // Dimension of matrix
             int n = csr.RowCount;
             if (n != csr.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare, "matrix");
+                throw new ArgumentException("Matrix must be square.", nameof(matrix));
             }
 
             // Original matrix compressed sparse row storage.
@@ -123,12 +121,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         {
             if (_alu == null)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixDoesNotExist);
+                throw new ArgumentException("The requested matrix does not exist.");
             }
 
             if ((result.Count != input.Count) || (result.Count != _diag.Length))
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             int n = _diag.Length;
@@ -166,7 +164,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         /// <param name="ju">Pointer to diagonal elements (output).</param>
         /// <param name="modified">True if the modified/MILU algorithm should be used (recommended)</param>
         /// <returns>Returns 0 on success or k > 0 if a zero pivot was encountered at step k.</returns>
-        private int Compute(int n, Complex[] a, int[] ja, int[] ia, Complex[] alu, int[] jlu, int[] ju, bool modified)
+        int Compute(int n, Complex[] a, int[] ja, int[] ia, Complex[] alu, int[] jlu, int[] ju, bool modified)
         {
             var iw = new int[n];
             int i;

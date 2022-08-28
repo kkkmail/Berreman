@@ -31,7 +31,6 @@ namespace MathNet.Numerics.Statistics.Mcmc
 {
     using System;
     using Distributions;
-    using Properties;
 
     /// <summary>
     /// The Hybrid (also called Hamiltonian) Monte Carlo produces samples from distribution P using a set
@@ -86,11 +85,8 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <exception cref="ArgumentOutOfRangeException">When burn interval is negative.</exception>
         public int BurnInterval
         {
-            get { return _burnInterval; }
-            set
-            {
-                _burnInterval = SetNonNegative(value);
-            }
+            get => _burnInterval;
+            set => _burnInterval = SetNonNegative(value);
         }
 
         /// <summary>
@@ -99,11 +95,8 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <exception cref="ArgumentOutOfRangeException">When frog leap steps is negative or zero.</exception>
         public int FrogLeapSteps
         {
-            get { return _frogLeapSteps; }
-            set
-            {
-                _frogLeapSteps = SetPositive(value);
-            }
+            get => _frogLeapSteps;
+            set => _frogLeapSteps = SetPositive(value);
         }
 
         /// <summary>
@@ -112,11 +105,8 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <exception cref="ArgumentOutOfRangeException">When step size is negative or zero.</exception>
         public double StepSize
         {
-            get { return _stepSize; }
-            set
-            {
-                _stepSize = SetPositive(value);
-            }
+            get => _stepSize;
+            set => _stepSize = SetPositive(value);
         }
 
         /// <summary>
@@ -282,7 +272,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
         {
             if (value < 0)
             {
-                throw new ArgumentOutOfRangeException("value", Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(value), "Value must not be negative (zero is ok).");
             }
             return value;
         }
@@ -297,7 +287,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
         {
             if (value <= 0)
             {
-                throw new ArgumentOutOfRangeException("value", Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(value), "Value must not be negative (zero is ok).");
             }
             return value;
         }
@@ -312,7 +302,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
         {
             if (value <= 0)
             {
-                throw new ArgumentOutOfRangeException("value", Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(value), "Value must not be negative (zero is ok).");
             }
             return value;
         }

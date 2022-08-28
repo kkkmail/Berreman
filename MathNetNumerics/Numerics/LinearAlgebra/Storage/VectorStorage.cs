@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Storage
 {
@@ -48,9 +47,9 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         protected VectorStorage(int length)
         {
-            if (length <= 0)
+            if (length < 0)
             {
-                throw new ArgumentOutOfRangeException("length", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(length), "Value must not be negative (zero is ok).");
             }
 
             Length = length;
@@ -196,7 +195,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (ReferenceEquals(this, target))
@@ -206,7 +205,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
             if (Length != target.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "target");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(target));
             }
 
             CopyToUnchecked(target, existingData);
@@ -226,12 +225,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (Length != target.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "target");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(target));
             }
 
             ValidateRowRange(target, rowIndex);
@@ -252,12 +251,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (Length != target.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "target");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(target));
             }
 
             ValidateColumnRange(target, columnIndex);
@@ -280,7 +279,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (count == 0)
@@ -324,7 +323,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (columnCount == 0)
@@ -353,7 +352,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (rowCount == 0)
@@ -401,11 +400,11 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             }
         }
 
-        public virtual IEnumerable<Tuple<int, T>> EnumerateIndexed()
+        public virtual IEnumerable<(int, T)> EnumerateIndexed()
         {
             for (var i = 0; i < Length; i++)
             {
-                yield return new Tuple<int, T>(i, At(i));
+                yield return (i, At(i));
             }
         }
 
@@ -421,14 +420,14 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             }
         }
 
-        public virtual IEnumerable<Tuple<int, T>> EnumerateNonZeroIndexed()
+        public virtual IEnumerable<(int, T)> EnumerateNonZeroIndexed()
         {
             for (var i = 0; i < Length; i++)
             {
                 var x = At(i);
                 if (!Zero.Equals(x))
                 {
-                    yield return new Tuple<int, T>(i, x);
+                    yield return (i, x);
                 }
             }
         }
@@ -453,12 +452,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (other == null)
             {
-                throw new ArgumentNullException("other");
+                throw new ArgumentNullException(nameof(other));
             }
 
             if (Length != other.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "other");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(other));
             }
 
             return Find2Unchecked(other, predicate, zeros);
@@ -502,12 +501,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (Length != target.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "target");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(target));
             }
 
             MapToUnchecked(target, f, zeros, existingData);
@@ -527,12 +526,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (Length != target.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "target");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(target));
             }
 
             MapIndexedToUnchecked(target, f, zeros, existingData);
@@ -551,22 +550,22 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             if (other == null)
             {
-                throw new ArgumentNullException("other");
+                throw new ArgumentNullException(nameof(other));
             }
 
             if (Length != target.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "target");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(target));
             }
 
             if (Length != other.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "other");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(other));
             }
 
             Map2ToUnchecked(target, other, f, zeros, existingData);
@@ -587,12 +586,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (other == null)
             {
-                throw new ArgumentNullException("other");
+                throw new ArgumentNullException(nameof(other));
             }
 
             if (Length != other.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "other");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(other));
             }
 
             return Fold2Unchecked(other, f, state, zeros);

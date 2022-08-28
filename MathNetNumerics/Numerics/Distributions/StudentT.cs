@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.RootFinding;
 
@@ -87,7 +86,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(location, scale, freedom))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -108,7 +107,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(location, scale, freedom))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -123,7 +122,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "StudentT(μ = " + _location + ", σ = " + _scale + ", ν = " + _freedom + ")";
+            return $"StudentT(μ = {_location}, σ = {_scale}, ν = {_freedom})";
         }
 
         /// <summary>
@@ -140,43 +139,31 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the location (μ) of the Student t-distribution.
         /// </summary>
-        public double Location
-        {
-            get { return _location; }
-        }
+        public double Location => _location;
 
         /// <summary>
         /// Gets the scale (σ) of the Student t-distribution. Range: σ > 0.
         /// </summary>
-        public double Scale
-        {
-            get { return _scale; }
-        }
+        public double Scale => _scale;
 
         /// <summary>
         /// Gets the degrees of freedom (ν) of the Student t-distribution. Range: ν > 0.
         /// </summary>
-        public double DegreesOfFreedom
-        {
-            get { return _freedom; }
-        }
+        public double DegreesOfFreedom => _freedom;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the Student t-distribution.
         /// </summary>
-        public double Mean
-        {
-            get { return _freedom > 1.0 ? _location : double.NaN; }
-        }
+        public double Mean => _freedom > 1.0 ? _location : double.NaN;
 
         /// <summary>
         /// Gets the variance of the Student t-distribution.
@@ -256,34 +243,22 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the mode of the Student t-distribution.
         /// </summary>
-        public double Mode
-        {
-            get { return _location; }
-        }
+        public double Mode => _location;
 
         /// <summary>
         /// Gets the median of the Student t-distribution.
         /// </summary>
-        public double Median
-        {
-            get { return _location; }
-        }
+        public double Median => _location;
 
         /// <summary>
         /// Gets the minimum of the Student t-distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return double.NegativeInfinity; }
-        }
+        public double Minimum => double.NegativeInfinity;
 
         /// <summary>
         /// Gets the maximum of the Student t-distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return double.PositiveInfinity; }
-        }
+        public double Maximum => double.PositiveInfinity;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -400,7 +375,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // TODO JVG we can probably do a better job for Cauchy special case
@@ -429,7 +404,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // TODO JVG we can probably do a better job for Cauchy special case
@@ -458,7 +433,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // TODO JVG we can probably do a better job for Cauchy special case
@@ -488,7 +463,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // TODO JVG we can probably do a better job for Cauchy special case
@@ -524,7 +499,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, location, scale, freedom);
@@ -542,7 +517,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, location, scale, freedom);
@@ -561,7 +536,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, location, scale, freedom);
@@ -578,7 +553,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, location, scale, freedom);
@@ -595,7 +570,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, location, scale, freedom);
@@ -613,7 +588,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0 || freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, location, scale, freedom);

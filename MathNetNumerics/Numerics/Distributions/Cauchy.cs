@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -63,7 +62,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(location, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -81,7 +80,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(location, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -95,7 +94,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Cauchy(x0 = " + _location + ", γ = " + _scale + ")";
+            return $"Cauchy(x0 = {_location}, γ = {_scale})";
         }
 
         /// <summary>
@@ -111,99 +110,66 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the location  (x0) of the distribution.
         /// </summary>
-        public double Location
-        {
-            get { return _location; }
-        }
+        public double Location => _location;
 
         /// <summary>
         /// Gets the scale (γ) of the distribution. Range: γ > 0.
         /// </summary>
-        public double Scale
-        {
-            get { return _scale; }
-        }
+        public double Scale => _scale;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
-        public double Mean
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Mean => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the variance of the distribution.
         /// </summary>
-        public double Variance
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Variance => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double StdDev => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the entropy of the distribution.
         /// </summary>
-        public double Entropy
-        {
-            get { return Math.Log(4.0*Constants.Pi*_scale); }
-        }
+        public double Entropy => Math.Log(4.0*Constants.Pi*_scale);
 
         /// <summary>
         /// Gets the skewness of the distribution.
         /// </summary>
-        public double Skewness
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Skewness => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the mode of the distribution.
         /// </summary>
-        public double Mode
-        {
-            get { return _location; }
-        }
+        public double Mode => _location;
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
-        public double Median
-        {
-            get { return _location; }
-        }
+        public double Median => _location;
 
         /// <summary>
         /// Gets the minimum of the distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return double.NegativeInfinity; }
-        }
+        public double Minimum => double.NegativeInfinity;
 
         /// <summary>
         /// Gets the maximum of the distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return double.PositiveInfinity; }
-        }
+        public double Maximum => double.PositiveInfinity;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -213,7 +179,8 @@ namespace MathNet.Numerics.Distributions
         /// <seealso cref="PDF"/>
         public double Density(double x)
         {
-            return 1.0/(Constants.Pi*_scale*(1.0 + (((x - _location)/_scale)*((x - _location)/_scale))));
+            var z = (x - _location)/_scale;
+            return 1.0/(Constants.Pi*_scale*(1.0 + z * z));
         }
 
         /// <summary>
@@ -224,7 +191,8 @@ namespace MathNet.Numerics.Distributions
         /// <seealso cref="PDFLn"/>
         public double DensityLn(double x)
         {
-            return -Math.Log(Constants.Pi*_scale*(1.0 + (((x - _location)/_scale)*((x - _location)/_scale))));
+            var z = (x - _location)/_scale;
+            return -Math.Log(Constants.Pi*_scale*(1.0 +  z * z));
         }
 
         /// <summary>
@@ -235,7 +203,7 @@ namespace MathNet.Numerics.Distributions
         /// <seealso cref="CDF"/>
         public double CumulativeDistribution(double x)
         {
-            return ((1.0/Constants.Pi)*Math.Atan((x - _location)/_scale)) + 0.5;
+            return Constants.InvPi*Math.Atan((x - _location)/_scale) + 0.5;
         }
 
         /// <summary>
@@ -314,12 +282,12 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
-            return 1.0/(Constants.Pi*scale*(1.0 + (((x - location)/scale)*((x - location)/scale))));
+            var z = (x - location)/scale;
+            return 1.0/(Constants.Pi*scale*(1.0 + z * z));
         }
-
         /// <summary>
         /// Computes the log probability density of the distribution (lnPDF) at x, i.e. ln(∂P(X ≤ x)/∂x).
         /// </summary>
@@ -332,10 +300,11 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
-            return -Math.Log(Constants.Pi*scale*(1.0 + (((x - location)/scale)*((x - location)/scale))));
+            var z = (x - location)/scale;
+            return -Math.Log(Constants.Pi*scale*(1.0 + z * z ));
         }
 
         /// <summary>
@@ -350,7 +319,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Math.Atan((x - location)/scale)/Constants.Pi + 0.5;
@@ -369,7 +338,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return p <= 0.0 ? double.NegativeInfinity : p >= 1.0 ? double.PositiveInfinity
@@ -387,7 +356,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, location, scale);
@@ -404,7 +373,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, location, scale);
@@ -422,7 +391,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, location, scale);
@@ -438,7 +407,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, location, scale);
@@ -454,7 +423,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, location, scale);
@@ -471,7 +440,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, location, scale);

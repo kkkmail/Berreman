@@ -31,7 +31,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Text;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Statistics
 {
@@ -47,15 +46,12 @@ namespace MathNet.Numerics.Statistics
     /// </remarks>
     [Serializable]
     [DataContract(Namespace = "urn:MathNet/Numerics")]
-    public class Bucket : IComparable<Bucket>
-#if !NETSTANDARD1_3
-        , ICloneable
-#endif
+    public class Bucket : IComparable<Bucket>, ICloneable
     {
         /// <summary>
         /// This <c>IComparer</c> performs comparisons between a point and a bucket.
         /// </summary>
-        private sealed class PointComparer : IComparer<Bucket>
+        sealed class PointComparer : IComparer<Bucket>
         {
             /// <summary>
             /// Compares a point and a bucket. The point will be encapsulated in a bucket with width 0.
@@ -71,7 +67,7 @@ namespace MathNet.Numerics.Statistics
             }
         }
 
-        private static readonly PointComparer Comparer = new PointComparer();
+        static readonly PointComparer Comparer = new PointComparer();
 
         /// <summary>
         /// Lower Bound of the Bucket.
@@ -101,12 +97,12 @@ namespace MathNet.Numerics.Statistics
         {
             if (lowerBound > upperBound)
             {
-                throw new ArgumentException(Resources.ArgumentUpperBoundMustBeLargerThanOrEqualToLowerBound);
+                throw new ArgumentException("The upper bound must be at least as large as the lower bound.");
             }
 
             if (count < 0.0)
             {
-                throw new ArgumentOutOfRangeException("count", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(count), "Value must be positive.");
             }
 
             LowerBound = lowerBound;
@@ -138,27 +134,18 @@ namespace MathNet.Numerics.Statistics
         /// <summary>
         /// Width of the Bucket.
         /// </summary>
-        public double Width
-        {
-            get { return UpperBound - LowerBound; }
-        }
+        public double Width => UpperBound - LowerBound;
 
         /// <summary>
         /// True if this is a single point argument for <see cref="IComparer{Bucket}"/>
         /// when performing a Binary search.
         /// </summary>
-        private bool IsSinglePoint
-        {
-            get { return double.IsNaN(Count); }
-        }
+        bool IsSinglePoint => double.IsNaN(Count);
 
         /// <summary>
         /// Default comparer.
         /// </summary>
-        public static IComparer<Bucket> DefaultPointComparer
-        {
-            get { return Comparer; }
-        }
+        public static IComparer<Bucket> DefaultPointComparer => Comparer;
 
         /// <summary>
         /// This method check whether a point is contained within this bucket.
@@ -195,7 +182,7 @@ namespace MathNet.Numerics.Statistics
         {
             if (UpperBound > bucket.LowerBound && LowerBound < bucket.LowerBound)
             {
-                throw new ArgumentException(Resources.PartialOrderException);
+                throw new ArgumentException("The two arguments can\'t be compared (maybe they are part of a partial ordering?)");
             }
 
             if (UpperBound.Equals(bucket.UpperBound)
@@ -260,13 +247,13 @@ namespace MathNet.Numerics.Statistics
         /// Contains all the <c>Bucket</c>s of the <c>Histogram</c>.
         /// </summary>
         [DataMember(Order = 1)]
-        private readonly List<Bucket> _buckets;
+        readonly List<Bucket> _buckets;
 
         /// <summary>
         /// Indicates whether the elements of <c>buckets</c> are currently sorted.
         /// </summary>
         [DataMember(Order = 2)]
-        private bool _areBucketsSorted;
+        bool _areBucketsSorted;
 
         /// <summary>
         /// Initializes a new instance of the Histogram class.
@@ -288,7 +275,7 @@ namespace MathNet.Numerics.Statistics
         {
             if (nbuckets < 1)
             {
-                throw new ArgumentOutOfRangeException("data", "The number of bins in a histogram should be at least 1.");
+                throw new ArgumentOutOfRangeException(nameof(data), "The number of bins in a histogram should be at least 1.");
             }
 
             double lower = data.Minimum();
@@ -297,7 +284,7 @@ namespace MathNet.Numerics.Statistics
 
             if (double.IsNaN(width))
             {
-                throw new ArgumentException("Data must contain at least one entry.", "data");
+                throw new ArgumentException("Data must contain at least one entry.", nameof(data));
             }
 
             // Add buckets for each bin; the smallest bucket's lowerbound must be slightly smaller
@@ -326,12 +313,12 @@ namespace MathNet.Numerics.Statistics
         {
             if (lower > upper)
             {
-                throw new ArgumentOutOfRangeException("upper", "The histogram lower bound must be smaller than the upper bound.");
+                throw new ArgumentOutOfRangeException(nameof(upper), "The histogram lower bound must be smaller than the upper bound.");
             }
 
             if (nbuckets < 1)
             {
-                throw new ArgumentOutOfRangeException("nbuckets", "The number of bins in a histogram should be at least 1.");
+                throw new ArgumentOutOfRangeException(nameof(nbuckets), "The number of bins in a histogram should be at least 1.");
             }
 
             double width = (upper - lower) / nbuckets;
@@ -397,7 +384,7 @@ namespace MathNet.Numerics.Statistics
         /// <summary>
         /// Sort the buckets if needed.
         /// </summary>
-        private void LazySort()
+        void LazySort()
         {
             if (!_areBucketsSorted)
             {
@@ -432,7 +419,7 @@ namespace MathNet.Numerics.Statistics
 
             if (index < 0)
             {
-                throw new ArgumentException(Resources.ArgumentHistogramContainsNot);
+                throw new ArgumentException("The histogram does not contain the value.");
             }
 
             return index;
@@ -479,10 +466,7 @@ namespace MathNet.Numerics.Statistics
         /// <summary>
         /// Gets the number of buckets.
         /// </summary>
-        public int BucketCount
-        {
-            get { return _buckets.Count; }
-        }
+        public int BucketCount => _buckets.Count;
 
         /// <summary>
         /// Gets the total number of datapoints in the histogram.

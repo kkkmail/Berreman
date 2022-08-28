@@ -31,7 +31,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Serialization;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Threading;
 
 namespace MathNet.Numerics.LinearAlgebra.Storage
@@ -57,12 +56,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data == null)
             {
-                throw new ArgumentNullException("data");
+                throw new ArgumentNullException(nameof(data));
             }
 
             if (data.Length != Math.Min(rows, columns))
             {
-                throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, Math.Min(rows, columns)));
+                throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {Math.Min(rows, columns)}.");
             }
 
             Data = data;
@@ -71,19 +70,13 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         /// <summary>
         /// True if the matrix storage format is dense.
         /// </summary>
-        public override bool IsDense
-        {
-            get { return false; }
-        }
+        public override bool IsDense => false;
 
         /// <summary>
         /// True if all fields of this matrix can be set to any value.
         /// False if some fields are fixed, like on a diagonal matrix.
         /// </summary>
-        public override bool IsFullyMutable
-        {
-            get { return false; }
-        }
+        public override bool IsFullyMutable => false;
 
         /// <summary>
         /// True if the specified field can be set to any value.
@@ -182,13 +175,15 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         public static DiagonalMatrixStorage<T> OfArray(T[,] array)
         {
             var storage = new DiagonalMatrixStorage<T>(array.GetLength(0), array.GetLength(1));
+            var storageData = storage.Data;
+
             for (var i = 0; i < storage.RowCount; i++)
             {
                 for (var j = 0; j < storage.ColumnCount; j++)
                 {
                     if (i == j)
                     {
-                        storage.Data[i] = array[i, j];
+                        storageData[i] = array[i, j];
                     }
                     else if (!Zero.Equals(array[i, j]))
                     {
@@ -202,9 +197,11 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         public static DiagonalMatrixStorage<T> OfValue(int rows, int columns, T diagonalValue)
         {
             var storage = new DiagonalMatrixStorage<T>(rows, columns);
+            var storageData = storage.Data;
+
             for (var i = 0; i < storage.Data.Length; i++)
             {
-                storage.Data[i] = diagonalValue;
+                storageData[i] = diagonalValue;
             }
             return storage;
         }
@@ -212,9 +209,11 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         public static DiagonalMatrixStorage<T> OfInit(int rows, int columns, Func<int, T> init)
         {
             var storage = new DiagonalMatrixStorage<T>(rows, columns);
+            var storageData = storage.Data;
+
             for (var i = 0; i < storage.Data.Length; i++)
             {
-                storage.Data[i] = init(i);
+                storageData[i] = init(i);
             }
             return storage;
         }
@@ -223,11 +222,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data == null)
             {
-                throw new ArgumentNullException("data");
+                throw new ArgumentNullException(nameof(data));
             }
 
-            var arrayData = data as T[];
-            if (arrayData != null)
+            if (data is T[] arrayData)
             {
                 var copy = new T[arrayData.Length];
                 Array.Copy(arrayData, 0, copy, 0, arrayData.Length);
@@ -241,13 +239,32 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data == null)
             {
-                throw new ArgumentNullException("data");
+                throw new ArgumentNullException(nameof(data));
             }
 
             var storage = new DiagonalMatrixStorage<T>(rows, columns);
-            foreach (var item in data)
+            var storageData = storage.Data;
+
+            foreach (var (i,x) in data)
             {
-                storage.Data[item.Item1] = item.Item2;
+                storageData[i] = x;
+            }
+            return storage;
+        }
+
+        public static DiagonalMatrixStorage<T> OfIndexedEnumerable(int rows, int columns, IEnumerable<(int, T)> data)
+        {
+            if (data == null)
+            {
+                throw new ArgumentNullException(nameof(data));
+            }
+
+            var storage = new DiagonalMatrixStorage<T>(rows, columns);
+            var storageData = storage.Data;
+
+            foreach (var (i,x) in data)
+            {
+                storageData[i] = x;
             }
             return storage;
         }
@@ -256,22 +273,19 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         internal override void CopyToUnchecked(MatrixStorage<T> target, ExistingData existingData)
         {
-            var diagonalTarget = target as DiagonalMatrixStorage<T>;
-            if (diagonalTarget != null)
+            if (target is DiagonalMatrixStorage<T> diagonalTarget)
             {
                 CopyToUnchecked(diagonalTarget);
                 return;
             }
 
-            var denseTarget = target as DenseColumnMajorMatrixStorage<T>;
-            if (denseTarget != null)
+            if (target is DenseColumnMajorMatrixStorage<T> denseTarget)
             {
                 CopyToUnchecked(denseTarget, existingData);
                 return;
             }
 
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<T>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<T> sparseTarget)
             {
                 CopyToUnchecked(sparseTarget, existingData);
                 return;
@@ -316,9 +330,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 target.Clear();
             }
 
+            var targetData = target.Data;
             for (int i = 0; i < Data.Length; i++)
             {
-                target.Data[i*(target.RowCount + 1)] = Data[i];
+                targetData[i*(target.RowCount + 1)] = Data[i];
             }
         }
 
@@ -327,15 +342,13 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             int sourceColumnIndex, int targetColumnIndex, int columnCount,
             ExistingData existingData)
         {
-            var denseTarget = target as DenseColumnMajorMatrixStorage<T>;
-            if (denseTarget != null)
+            if (target is DenseColumnMajorMatrixStorage<T> denseTarget)
             {
                 CopySubMatrixToUnchecked(denseTarget, sourceRowIndex, targetRowIndex, rowCount, sourceColumnIndex, targetColumnIndex, columnCount, existingData);
                 return;
             }
 
-            var diagonalTarget = target as DiagonalMatrixStorage<T>;
-            if (diagonalTarget != null)
+            if (target is DiagonalMatrixStorage<T> diagonalTarget)
             {
                 CopySubMatrixToUnchecked(diagonalTarget, sourceRowIndex, targetRowIndex, rowCount, sourceColumnIndex, targetColumnIndex, columnCount);
                 return;
@@ -420,9 +433,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 int step = target.RowCount + 1;
                 int end = Math.Min(columnCount - columnInit, rowCount) + sourceRowIndex;
 
+                var targetData = target.Data;
                 for (int i = sourceRowIndex, j = offset; i < end; i++, j += step)
                 {
-                    target.Data[j] = Data[i];
+                    targetData[j] = Data[i];
                 }
             }
             else if (sourceRowIndex < sourceColumnIndex && sourceRowIndex + rowCount > sourceColumnIndex)
@@ -434,9 +448,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 int step = target.RowCount + 1;
                 int end = Math.Min(columnCount, rowCount - rowInit) + sourceColumnIndex;
 
+                var targetData = target.Data;
                 for (int i = sourceColumnIndex, j = offset; i < end; i++, j += step)
                 {
-                    target.Data[j] = Data[i];
+                    targetData[j] = Data[i];
                 }
             }
             else
@@ -445,9 +460,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 int step = target.RowCount + 1;
                 var end = Math.Min(columnCount, rowCount) + sourceRowIndex;
 
+                var targetData = target.Data;
                 for (int i = sourceRowIndex, j = offset; i < end; i++, j += step)
                 {
-                    target.Data[j] = Data[i];
+                    targetData[j] = Data[i];
                 }
             }
         }
@@ -572,16 +588,14 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             }
         }
 
-        public override IEnumerable<Tuple<int, int, T>> EnumerateIndexed()
+        public override IEnumerable<(int, int, T)> EnumerateIndexed()
         {
             for (int j = 0; j < ColumnCount; j++)
             {
                 for (int i = 0; i < RowCount; i++)
                 {
                     // PERF: consider to break up loop to avoid branching
-                    yield return i == j
-                        ? new Tuple<int, int, T>(i, i, Data[i])
-                        : new Tuple<int, int, T>(i, j, Zero);
+                    yield return (i, j, i == j ? Data[i] : Zero);
                 }
             }
         }
@@ -591,13 +605,13 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             return Data.Where(x => !Zero.Equals(x));
         }
 
-        public override IEnumerable<Tuple<int, int, T>> EnumerateNonZeroIndexed()
+        public override IEnumerable<(int, int, T)> EnumerateNonZeroIndexed()
         {
             for (int i = 0; i < Data.Length; i++)
             {
                 if (!Zero.Equals(Data[i]))
                 {
-                    yield return new Tuple<int, int, T>(i, i, Data[i]);
+                    yield return (i, i, Data[i]);
                 }
             }
         }
@@ -625,8 +639,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         internal override Tuple<int, int, T, TOther> Find2Unchecked<TOther>(MatrixStorage<TOther> other, Func<T, TOther, bool> predicate, Zeros zeros)
         {
-            var denseOther = other as DenseColumnMajorMatrixStorage<TOther>;
-            if (denseOther != null)
+            if (other is DenseColumnMajorMatrixStorage<TOther> denseOther)
             {
                 TOther[] otherData = denseOther.Data;
                 int k = 0;
@@ -644,8 +657,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return null;
             }
 
-            var diagonalOther = other as DiagonalMatrixStorage<TOther>;
-            if (diagonalOther != null)
+            if (other is DiagonalMatrixStorage<TOther> diagonalOther)
             {
                 TOther[] otherData = diagonalOther.Data;
                 for (int i = 0; i < Data.Length; i++)
@@ -666,8 +678,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return null;
             }
 
-            var sparseOther = other as SparseCompressedRowMatrixStorage<TOther>;
-            if (sparseOther != null)
+            if (other is SparseCompressedRowMatrixStorage<TOther> sparseOther)
             {
                 int[] otherRowPointers = sparseOther.RowPointers;
                 int[] otherColumnIndices = sparseOther.ColumnIndices;
@@ -772,19 +783,20 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             var processZeros = zeros == Zeros.Include || !Zero.Equals(f(Zero));
 
-            var diagonalTarget = target as DiagonalMatrixStorage<TU>;
-            if (diagonalTarget != null)
+            if (target is DiagonalMatrixStorage<TU> diagonalTarget)
             {
                 if (processZeros)
                 {
                     throw new NotSupportedException("Cannot map non-zero off-diagonal values into a diagonal matrix");
                 }
 
+                var diagonalTargetData = diagonalTarget.Data;
+
                 CommonParallel.For(0, Data.Length, 4096, (a, b) =>
                 {
                     for (int i = a; i < b; i++)
                     {
-                        diagonalTarget.Data[i] = f(Data[i]);
+                        diagonalTargetData[i] = f(Data[i]);
                     }
                 });
                 return;
@@ -821,19 +833,20 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             var processZeros = zeros == Zeros.Include || !Zero.Equals(f(0, 1, Zero));
 
-            var diagonalTarget = target as DiagonalMatrixStorage<TU>;
-            if (diagonalTarget != null)
+            if (target is DiagonalMatrixStorage<TU> diagonalTarget)
             {
                 if (processZeros)
                 {
                     throw new NotSupportedException("Cannot map non-zero off-diagonal values into a diagonal matrix");
                 }
 
+                var diagonalTargetData = diagonalTarget.Data;
+
                 CommonParallel.For(0, Data.Length, 4096, (a, b) =>
                 {
                     for (int i = a; i < b; i++)
                     {
-                        diagonalTarget.Data[i] = f(i, i, Data[i]);
+                        diagonalTargetData[i] = f(i, i, Data[i]);
                     }
                 });
                 return;
@@ -870,15 +883,13 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             int sourceColumnIndex, int targetColumnIndex, int columnCount,
             Zeros zeros, ExistingData existingData)
         {
-            var diagonalTarget = target as DiagonalMatrixStorage<TU>;
-            if (diagonalTarget != null)
+            if (target is DiagonalMatrixStorage<TU> diagonalTarget)
             {
                 MapSubMatrixIndexedToUnchecked(diagonalTarget, f, sourceRowIndex, targetRowIndex, rowCount, sourceColumnIndex, targetColumnIndex, columnCount, zeros);
                 return;
             }
 
-            var denseTarget = target as DenseColumnMajorMatrixStorage<TU>;
-            if (denseTarget != null)
+            if (target is DenseColumnMajorMatrixStorage<TU> denseTarget)
             {
                 MapSubMatrixIndexedToUnchecked(denseTarget, f, sourceRowIndex, targetRowIndex, rowCount, sourceColumnIndex, targetColumnIndex, columnCount, zeros, existingData);
                 return;
@@ -948,13 +959,14 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             var count = Math.Min(sourceRowIndex + rowCount, sourceColumnIndex + columnCount) - beginInclusive;
             if (count > 0)
             {
+                var targetData = target.Data;
                 var beginTarget = Math.Max(targetRowIndex, targetColumnIndex);
                 CommonParallel.For(0, count, 4096, (a, b) =>
                 {
                     int targetIndex = beginTarget + a;
                     for (int i = a; i < b; i++)
                     {
-                        target.Data[targetIndex] = f(targetIndex, targetIndex, Data[beginInclusive + i]);
+                        targetData[targetIndex] = f(targetIndex, targetIndex, Data[beginInclusive + i]);
                         targetIndex++;
                     }
                 });
@@ -975,6 +987,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
             if (processZeros)
             {
+                var targetData = target.Data;
                 CommonParallel.For(0, columnCount, Math.Max(4096/rowCount, 32), (a, b) =>
                 {
                     int sourceColumn = sourceColumnIndex + a;
@@ -986,7 +999,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                         int targetRow = targetRowIndex;
                         for (int i = 0; i < rowCount; i++)
                         {
-                            target.Data[targetIndex++] = f(targetRow++, targetColumn, sourceRow++ == sourceColumn ? Data[sourceColumn] : Zero);
+                            targetData[targetIndex++] = f(targetRow++, targetColumn, sourceRow++ == sourceColumn ? Data[sourceColumn] : Zero);
                         }
                         sourceColumn++;
                         targetColumn++;
@@ -1004,9 +1017,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                     int step = target.RowCount + 1;
                     int count = Math.Min(columnCount - columnInit, rowCount);
 
+                    var targetData = target.Data;
                     for (int k = 0, j = offset; k < count; j += step, k++)
                     {
-                        target.Data[j] = f(targetRowIndex + k, targetColumnIndex + columnInit + k, Data[sourceRowIndex + k]);
+                        targetData[j] = f(targetRowIndex + k, targetColumnIndex + columnInit + k, Data[sourceRowIndex + k]);
                     }
                 }
                 else if (sourceRowIndex < sourceColumnIndex && sourceRowIndex + rowCount > sourceColumnIndex)
@@ -1018,9 +1032,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                     int step = target.RowCount + 1;
                     int count = Math.Min(columnCount, rowCount - rowInit);
 
+                    var targetData = target.Data;
                     for (int k = 0, j = offset; k < count; j += step, k++)
                     {
-                        target.Data[j] = f(targetRowIndex + rowInit + k, targetColumnIndex + k, Data[sourceColumnIndex + k]);
+                        targetData[j] = f(targetRowIndex + rowInit + k, targetColumnIndex + k, Data[sourceColumnIndex + k]);
                     }
                 }
                 else
@@ -1029,9 +1044,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                     int step = target.RowCount + 1;
                     var count = Math.Min(columnCount, rowCount);
 
+                    var targetData = target.Data;
                     for (int k = 0, j = offset; k < count; j += step, k++)
-                    {
-                        target.Data[j] = f(targetRowIndex + k, targetColumnIndex + k, Data[sourceRowIndex + k]);
+                    {;
+                        targetData[j] = f(targetRowIndex + k, targetColumnIndex + k, Data[sourceRowIndex + k]);
                     }
                 }
             }
@@ -1097,8 +1113,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         internal override TState Fold2Unchecked<TOther, TState>(MatrixStorage<TOther> other, Func<TState, T, TOther, TState> f, TState state, Zeros zeros)
         {
-            var denseOther = other as DenseColumnMajorMatrixStorage<TOther>;
-            if (denseOther != null)
+            if (other is DenseColumnMajorMatrixStorage<TOther> denseOther)
             {
                 TOther[] otherData = denseOther.Data;
                 int k = 0;
@@ -1113,8 +1128,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return state;
             }
 
-            var diagonalOther = other as DiagonalMatrixStorage<TOther>;
-            if (diagonalOther != null)
+            if (other is DiagonalMatrixStorage<TOther> diagonalOther)
             {
                 TOther[] otherData = diagonalOther.Data;
                 for (int i = 0; i < Data.Length; i++)
@@ -1136,8 +1150,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return state;
             }
 
-            var sparseOther = other as SparseCompressedRowMatrixStorage<TOther>;
-            if (sparseOther != null)
+            if (other is SparseCompressedRowMatrixStorage<TOther> sparseOther)
             {
                 int[] otherRowPointers = sparseOther.RowPointers;
                 int[] otherColumnIndices = sparseOther.ColumnIndices;

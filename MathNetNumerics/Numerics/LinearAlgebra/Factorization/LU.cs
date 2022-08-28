@@ -35,7 +35,7 @@ namespace MathNet.Numerics.LinearAlgebra.Factorization
     /// <para>A class which encapsulates the functionality of an LU factorization.</para>
     /// <para>For a matrix A, the LU factorization is a pair of lower triangular matrix L and
     /// upper triangular matrix U so that A = L*U.</para>
-    /// <para>In the Math.Net implementation we also store a set of pivot elements for increased
+    /// <para>In the Math.NET implementation we also store a set of pivot elements for increased
     /// numerical stability. The pivot elements encode a permutation matrix P such that P*A = L*U.</para>
     /// </summary>
     /// <remarks>
@@ -77,26 +77,17 @@ namespace MathNet.Numerics.LinearAlgebra.Factorization
         /// <summary>
         /// Gets the lower triangular factor.
         /// </summary>
-        public Matrix<T> L
-        {
-            get { return _lazyL.Value; }
-        }
+        public Matrix<T> L => _lazyL.Value;
 
         /// <summary>
         /// Gets the upper triangular factor.
         /// </summary>
-        public Matrix<T> U
-        {
-            get { return _lazyU.Value; }
-        }
+        public Matrix<T> U => _lazyU.Value;
 
         /// <summary>
         /// Gets the permutation applied to LU factorization.
         /// </summary>
-        public Permutation P
-        {
-            get { return _lazyP.Value; }
-        }
+        public Permutation P => _lazyP.Value;
 
         /// <summary>
         /// Gets the determinant of the matrix for which the LU factorization was computed.

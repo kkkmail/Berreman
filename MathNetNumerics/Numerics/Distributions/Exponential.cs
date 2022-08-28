@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -55,7 +54,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(rate))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -71,7 +70,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(rate))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -84,7 +83,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Exponential(λ = " + _rate + ")";
+            return $"Exponential(λ = {_rate})";
         }
 
         /// <summary>
@@ -99,91 +98,61 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the rate (λ) parameter of the distribution. Range: λ ≥ 0.
         /// </summary>
-        public double Rate
-        {
-            get { return _rate; }
-        }
+        public double Rate => _rate;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
-        public double Mean
-        {
-            get { return 1.0/_rate; }
-        }
+        public double Mean => 1.0/_rate;
 
         /// <summary>
         /// Gets the variance of the distribution.
         /// </summary>
-        public double Variance
-        {
-            get { return 1.0/(_rate*_rate); }
-        }
+        public double Variance => 1.0/(_rate*_rate);
 
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return 1.0/_rate; }
-        }
+        public double StdDev => 1.0/_rate;
 
         /// <summary>
         /// Gets the entropy of the distribution.
         /// </summary>
-        public double Entropy
-        {
-            get { return 1.0 - Math.Log(_rate); }
-        }
+        public double Entropy => 1.0 - Math.Log(_rate);
 
         /// <summary>
         /// Gets the skewness of the distribution.
         /// </summary>
-        public double Skewness
-        {
-            get { return 2.0; }
-        }
+        public double Skewness => 2.0;
 
         /// <summary>
         /// Gets the mode of the distribution.
         /// </summary>
-        public double Mode
-        {
-            get { return 0.0; }
-        }
+        public double Mode => 0.0;
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
-        public double Median
-        {
-            get { return Math.Log(2.0)/_rate; }
-        }
+        public double Median => Math.Log(2.0)/_rate;
 
         /// <summary>
         /// Gets the minimum of the distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return 0.0; }
-        }
+        public double Minimum => 0.0;
 
         /// <summary>
         /// Gets the maximum of the distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return double.PositiveInfinity; }
-        }
+        public double Maximum => double.PositiveInfinity;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -302,7 +271,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return x < 0.0 ? 0.0 : rate*Math.Exp(-rate*x);
@@ -319,7 +288,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Math.Log(rate) - (rate*x);
@@ -336,7 +305,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return x < 0.0 ? 0.0 : 1.0 - Math.Exp(-rate*x);
@@ -354,7 +323,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return p >= 1.0 ? double.PositiveInfinity : -Math.Log(1 - p)/rate;
@@ -370,7 +339,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, rate);
@@ -387,7 +356,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, rate);
@@ -403,7 +372,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, rate);
@@ -418,7 +387,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, rate);
@@ -434,7 +403,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, rate);
@@ -449,7 +418,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (rate < 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, rate);

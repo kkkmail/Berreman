@@ -29,7 +29,6 @@
 
 using System;
 using MathNet.Numerics.LinearAlgebra.Solvers;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
 {
@@ -80,16 +79,13 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
         /// </summary>
         public int NumberOfBiCgStabSteps
         {
-            get
-            {
-                return _numberOfBiCgStabSteps;
-            }
+            get => _numberOfBiCgStabSteps;
 
             set
             {
                 if (value < 0)
                 {
-                    throw new ArgumentOutOfRangeException("value");
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 }
 
                 _numberOfBiCgStabSteps = value;
@@ -102,16 +98,13 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
         /// </summary>
         public int NumberOfGpBiCgSteps
         {
-            get
-            {
-                return _numberOfGpbiCgSteps;
-            }
+            get => _numberOfGpbiCgSteps;
 
             set
             {
                 if (value < 0)
                 {
-                    throw new ArgumentOutOfRangeException("value");
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 }
 
                 _numberOfGpbiCgSteps = value;
@@ -165,12 +158,12 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
         {
             if (matrix.RowCount != matrix.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare, "matrix");
+                throw new ArgumentException("Matrix must be square.", nameof(matrix));
             }
 
             if (result.Count != input.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (input.Count != matrix.RowCount)

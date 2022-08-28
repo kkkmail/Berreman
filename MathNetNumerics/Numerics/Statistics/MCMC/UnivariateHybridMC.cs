@@ -41,13 +41,13 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <summary>
         /// Distribution to sample momentum from.
         /// </summary>
-        private readonly Normal _distribution;
+        readonly Normal _distribution;
 
         /// <summary>
         /// Standard deviations used in the sampling of the
         /// momentum.
         /// </summary>
-        private double _sdv;
+        double _sdv;
 
         /// <summary>
         /// Gets or sets the standard deviation used in the sampling of the
@@ -56,7 +56,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <exception cref="ArgumentOutOfRangeException">When standard deviation is negative.</exception>
         public double MomentumStdDev
         {
-            get { return _sdv; }
+            get => _sdv;
             set
             {
                 if (_sdv != value)

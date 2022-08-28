@@ -30,7 +30,6 @@
 using System;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 
 namespace MathNet.Numerics.Distributions
@@ -71,7 +70,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(m, v, k))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -92,7 +91,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(m, v, k))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -109,7 +108,7 @@ namespace MathNet.Numerics.Distributions
         /// </returns>
         public override string ToString()
         {
-            return "MatrixNormal(Rows = " + _m.RowCount + ", Columns = " + _m.ColumnCount + ")";
+            return $"MatrixNormal(Rows = {_m.RowCount}, Columns = {_m.ColumnCount})";
         }
 
         /// <summary>
@@ -155,36 +154,27 @@ namespace MathNet.Numerics.Distributions
         /// Gets the mean. (M)
         /// </summary>
         /// <value>The mean of the distribution.</value>
-        public Matrix<double> Mean
-        {
-            get { return _m; }
-        }
+        public Matrix<double> Mean => _m;
 
         /// <summary>
         /// Gets the row covariance. (V)
         /// </summary>
         /// <value>The row covariance.</value>
-        public Matrix<double> RowCovariance
-        {
-            get { return _v; }
-        }
+        public Matrix<double> RowCovariance => _v;
 
         /// <summary>
         /// Gets the column covariance. (K)
         /// </summary>
         /// <value>The column covariance.</value>
-        public Matrix<double> ColumnCovariance
-        {
-            get { return _k; }
-        }
+        public Matrix<double> ColumnCovariance => _k;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
@@ -205,7 +195,7 @@ namespace MathNet.Numerics.Distributions
             var cholK = _k.Cholesky();
 
             return Math.Exp(-0.5*cholK.Solve(a.Transpose()*cholV.Solve(a)).Trace())
-                   /Math.Pow(2.0*Constants.Pi, x.RowCount*x.ColumnCount/2.0)
+                   /Math.Pow(Constants.Pi2, x.RowCount*x.ColumnCount/2.0)
                    /Math.Pow(cholK.Determinant, x.RowCount/2.0)
                    /Math.Pow(cholV.Determinant, x.ColumnCount/2.0);
         }
@@ -232,7 +222,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(m, v, k))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var n = m.RowCount;

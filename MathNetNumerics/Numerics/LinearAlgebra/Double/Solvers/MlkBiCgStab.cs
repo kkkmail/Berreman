@@ -33,7 +33,6 @@ using System.Diagnostics;
 using System.Linq;
 using MathNet.Numerics.Distributions;
 using MathNet.Numerics.LinearAlgebra.Solvers;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
 {
@@ -87,17 +86,14 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
         public int NumberOfStartingVectors
         {
             [DebuggerStepThrough]
-            get
-            {
-                return _numberOfStartingVectors;
-            }
+            get => _numberOfStartingVectors;
 
             [DebuggerStepThrough]
             set
             {
                 if (value <= 1)
                 {
-                    throw new ArgumentOutOfRangeException("value");
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 }
 
                 _numberOfStartingVectors = value;
@@ -119,10 +115,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
         public IList<Vector<double>> StartingVectors
         {
             [DebuggerStepThrough]
-            get
-            {
-                return _startingVectors;
-            }
+            get => _startingVectors;
 
             [DebuggerStepThrough]
             set
@@ -245,12 +238,12 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Solvers
         {
             if (matrix.RowCount != matrix.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare, "matrix");
+                throw new ArgumentException("Matrix must be square.", nameof(matrix));
             }
 
             if (result.Count != input.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (input.Count != matrix.RowCount)

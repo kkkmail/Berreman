@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Solvers
 {
@@ -85,10 +84,7 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         /// <summary>
         /// Gets the current calculation status.
         /// </summary>
-        public IterationStatus Status
-        {
-            get { return _status; }
-        }
+        public IterationStatus Status => _status;
 
         /// <summary>
         /// Determines the status of the iterative calculation based on the stop criteria stored
@@ -107,12 +103,12 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         {
             if (_stopCriteria.Count == 0)
             {
-                throw new ArgumentException(Resources.StopCriterionMissing);
+                throw new ArgumentException("There is no stop criterion in the collection.");
             }
 
             if (iterationNumber < 0)
             {
-                throw new ArgumentOutOfRangeException("iterationNumber");
+                throw new ArgumentOutOfRangeException(nameof(iterationNumber));
             }
 
             // While we're cancelled we don't call on the stop-criteria.

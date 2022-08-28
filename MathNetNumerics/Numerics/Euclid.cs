@@ -29,8 +29,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Runtime.CompilerServices;
+using BigInteger = System.Numerics.BigInteger;
 
 namespace MathNet.Numerics
 {
@@ -42,9 +42,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Canonical Modulus. The result has the sign of the divisor.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static double Modulus(double dividend, double divisor)
         {
             return ((dividend%divisor) + divisor)%divisor;
@@ -53,9 +51,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Canonical Modulus. The result has the sign of the divisor.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static float Modulus(float dividend, float divisor)
         {
             return ((dividend%divisor) + divisor)%divisor;
@@ -64,9 +60,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Canonical Modulus. The result has the sign of the divisor.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static int Modulus(int dividend, int divisor)
         {
             return ((dividend%divisor) + divisor)%divisor;
@@ -75,9 +69,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Canonical Modulus. The result has the sign of the divisor.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static long Modulus(long dividend, long divisor)
         {
             return ((dividend%divisor) + divisor)%divisor;
@@ -86,9 +78,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Canonical Modulus. The result has the sign of the divisor.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static BigInteger Modulus(BigInteger dividend, BigInteger divisor)
         {
             return ((dividend%divisor) + divisor)%divisor;
@@ -97,9 +87,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Remainder (% operator). The result has the sign of the dividend.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static double Remainder(double dividend, double divisor)
         {
             return dividend%divisor;
@@ -108,9 +96,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Remainder (% operator). The result has the sign of the dividend.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static float Remainder(float dividend, float divisor)
         {
             return dividend%divisor;
@@ -119,9 +105,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Remainder (% operator). The result has the sign of the dividend.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static int Remainder(int dividend, int divisor)
         {
             return dividend%divisor;
@@ -130,9 +114,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Remainder (% operator). The result has the sign of the dividend.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static long Remainder(long dividend, long divisor)
         {
             return dividend%divisor;
@@ -141,9 +123,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Remainder (% operator). The result has the sign of the dividend.
         /// </summary>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static BigInteger Remainder(BigInteger dividend, BigInteger divisor)
         {
             return dividend%divisor;
@@ -154,9 +134,7 @@ namespace MathNet.Numerics
         /// </summary>
         /// <param name="number">The number to very whether it's even.</param>
         /// <returns>True if and only if it is an even number.</returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static bool IsEven(this int number)
         {
             return (number & 0x1) == 0x0;
@@ -167,9 +145,7 @@ namespace MathNet.Numerics
         /// </summary>
         /// <param name="number">The number to very whether it's even.</param>
         /// <returns>True if and only if it is an even number.</returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static bool IsEven(this long number)
         {
             return (number & 0x1) == 0x0;
@@ -180,9 +156,7 @@ namespace MathNet.Numerics
         /// </summary>
         /// <param name="number">The number to very whether it's odd.</param>
         /// <returns>True if and only if it is an odd number.</returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static bool IsOdd(this int number)
         {
             return (number & 0x1) == 0x1;
@@ -193,9 +167,7 @@ namespace MathNet.Numerics
         /// </summary>
         /// <param name="number">The number to very whether it's odd.</param>
         /// <returns>True if and only if it is an odd number.</returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static bool IsOdd(this long number)
         {
             return (number & 0x1) == 0x1;
@@ -206,9 +178,7 @@ namespace MathNet.Numerics
         /// </summary>
         /// <param name="number">The number to very whether it's a power of two.</param>
         /// <returns>True if and only if it is a power of two.</returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static bool IsPowerOfTwo(this int number)
         {
             return number > 0 && (number & (number - 1)) == 0x0;
@@ -219,9 +189,7 @@ namespace MathNet.Numerics
         /// </summary>
         /// <param name="number">The number to very whether it's a power of two.</param>
         /// <returns>True if and only if it is a power of two.</returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         public static bool IsPowerOfTwo(this long number)
         {
             return number > 0 && (number & (number - 1)) == 0x0;
@@ -291,7 +259,7 @@ namespace MathNet.Numerics
         {
             if (exponent < 0 || exponent >= 31)
             {
-                throw new ArgumentOutOfRangeException("exponent");
+                throw new ArgumentOutOfRangeException(nameof(exponent));
             }
 
             return 1 << exponent;
@@ -307,7 +275,7 @@ namespace MathNet.Numerics
         {
             if (exponent < 0 || exponent >= 63)
             {
-                throw new ArgumentOutOfRangeException("exponent");
+                throw new ArgumentOutOfRangeException(nameof(exponent));
             }
 
             return ((long)1) << (int)exponent;
@@ -328,8 +296,7 @@ namespace MathNet.Numerics
             return MultiplyDeBruijnBitPosition[(uint)(number * 0x07C4ACDDU) >> 27];
         }
 
-        static readonly int[] MultiplyDeBruijnBitPosition = new int[32]
-        {
+        static readonly int[] MultiplyDeBruijnBitPosition = {
             0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
             8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
         };
@@ -343,7 +310,7 @@ namespace MathNet.Numerics
         /// <exception cref="ArgumentOutOfRangeException"/>
         public static int CeilingToPowerOfTwo(this int number)
         {
-            if (number == Int32.MinValue)
+            if (number == int.MinValue)
             {
                 return 0;
             }
@@ -351,7 +318,7 @@ namespace MathNet.Numerics
             const int maxPowerOfTwo = 0x40000000;
             if (number > maxPowerOfTwo)
             {
-                throw new ArgumentOutOfRangeException("number");
+                throw new ArgumentOutOfRangeException(nameof(number));
             }
 
             number--;
@@ -372,7 +339,7 @@ namespace MathNet.Numerics
         /// <exception cref="ArgumentOutOfRangeException"/>
         public static long CeilingToPowerOfTwo(this long number)
         {
-            if (number == Int64.MinValue)
+            if (number == long.MinValue)
             {
                 return 0;
             }
@@ -380,7 +347,7 @@ namespace MathNet.Numerics
             const long maxPowerOfTwo = 0x4000000000000000;
             if (number > maxPowerOfTwo)
             {
-                throw new ArgumentOutOfRangeException("number");
+                throw new ArgumentOutOfRangeException(nameof(number));
             }
 
             number--;
@@ -421,7 +388,7 @@ namespace MathNet.Numerics
         {
             if (null == integers)
             {
-                throw new ArgumentNullException("integers");
+                throw new ArgumentNullException(nameof(integers));
             }
 
             if (integers.Count == 0)
@@ -471,13 +438,7 @@ namespace MathNet.Numerics
 
             while (b != 0)
             {
-                long rem;
-#if NETSTANDARD1_3
-                rem = a % b;
-                var quot = a / b;
-#else
-                long quot = Math.DivRem(a, b, out rem);
-#endif
+                long quot = Math.DivRem(a, b, out long rem);
                 a = b;
                 b = rem;
 
@@ -527,7 +488,7 @@ namespace MathNet.Numerics
         {
             if (null == integers)
             {
-                throw new ArgumentNullException("integers");
+                throw new ArgumentNullException(nameof(integers));
             }
 
             if (integers.Count == 0)
@@ -575,7 +536,7 @@ namespace MathNet.Numerics
         {
             if (null == integers)
             {
-                throw new ArgumentNullException("integers");
+                throw new ArgumentNullException(nameof(integers));
             }
 
             if (integers.Count == 0)
@@ -625,8 +586,7 @@ namespace MathNet.Numerics
 
             while (!b.IsZero)
             {
-                BigInteger rem;
-                BigInteger quot = BigInteger.DivRem(a, b, out rem);
+                BigInteger quot = BigInteger.DivRem(a, b, out BigInteger rem);
                 a = b;
                 b = rem;
 
@@ -676,7 +636,7 @@ namespace MathNet.Numerics
         {
             if (null == integers)
             {
-                throw new ArgumentNullException("integers");
+                throw new ArgumentNullException(nameof(integers));
             }
 
             if (integers.Count == 0)

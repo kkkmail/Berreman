@@ -27,12 +27,11 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
+using System;
+using MathNet.Numerics.Distributions;
+
 namespace MathNet.Numerics.Statistics.Mcmc
 {
-    using System;
-    using Properties;
-    using Distributions;
-
     /// <summary>
     /// Metropolis sampling produces samples from distribution P by sampling from a proposal distribution Q
     /// and accepting/rejecting based on the density of P. Metropolis sampling requires that the proposal
@@ -47,27 +46,27 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <summary>
         /// Evaluates the log density function of the sampling distribution.
         /// </summary>
-        private readonly DensityLn<T> _pdfLnP;
+        readonly DensityLn<T> _pdfLnP;
 
         /// <summary>
         /// A function which samples from a proposal distribution.
         /// </summary>
-        private readonly LocalProposalSampler<T> _proposal;
+        readonly LocalProposalSampler<T> _proposal;
 
         /// <summary>
         /// The current location of the sampler.
         /// </summary>
-        private T _current;
+        T _current;
 
         /// <summary>
         /// The log density at the current location.
         /// </summary>
-        private double _currentDensityLn;
+        double _currentDensityLn;
 
         /// <summary>
         /// The number of burn iterations between two samples.
         /// </summary>
-        private int _burnInterval;
+        int _burnInterval;
 
         /// <summary>
         /// Constructs a new Metropolis sampler using the default <see cref="System.Random"/> random number generator.
@@ -94,12 +93,12 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <exception cref="ArgumentOutOfRangeException">When burn interval is negative.</exception>
         public int BurnInterval
         {
-            get { return _burnInterval; }
+            get => _burnInterval;
             set
             {
                 if (value < 0)
                 {
-                    throw new ArgumentException(Resources.ArgumentNotNegative);
+                    throw new ArgumentException("Value must not be negative (zero is ok).");
                 }
                 _burnInterval = value;
             }
@@ -108,7 +107,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <summary>
         /// This method runs the sampler for a number of iterations without returning a sample
         /// </summary>
-        private void Burn(int n)
+        void Burn(int n)
         {
             for (int i = 0; i < n; i++)
             {

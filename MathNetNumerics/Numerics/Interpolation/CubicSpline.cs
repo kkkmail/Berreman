@@ -1,4 +1,4 @@
-﻿// <copyright file="CubicSpline.cs" company="Math.NET">
+// <copyright file="CubicSpline.cs" company="Math.NET">
 // Math.NET Numerics, part of the Math.NET Project
 // http://numerics.mathdotnet.com
 // http://github.com/mathnet/mathnet-numerics
@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Interpolation
 {
@@ -56,12 +55,12 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != c0.Length + 1 || x.Length != c1.Length + 1 || x.Length != c2.Length + 1 || x.Length != c3.Length + 1)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (x.Length < 2)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, 2), "x");
+                throw new ArgumentException("The given array is too small. It must be at least 2 long.", nameof(x));
             }
 
             _x = x;
@@ -79,12 +78,12 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length || x.Length != firstDerivatives.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (x.Length < 2)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, 2), "x");
+                throw new ArgumentException("The given array is too small. It must be at least 2 long.", nameof(x));
             }
 
             var c0 = new double[x.Length - 1];
@@ -112,12 +111,12 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length || x.Length != firstDerivatives.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (x.Length < 2)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, 2), "x");
+                throw new ArgumentException("The given array is too small. It must be at least 2 long.", nameof(x));
             }
 
             Sorting.Sort(x, y, firstDerivatives);
@@ -141,12 +140,12 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (x.Length < 5)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, 5), "x");
+                throw new ArgumentException("The given array is too small. It must be at least 5 long.", nameof(x));
             }
 
             /* Prepare divided differences (diff) and weights (w) */
@@ -194,7 +193,7 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             Sorting.Sort(x, y);
@@ -212,6 +211,109 @@ namespace MathNet.Numerics.Interpolation
         }
 
         /// <summary>
+        /// Create a piecewise cubic Hermite interpolating polynomial from an unsorted set of (x,y) value pairs.
+        /// Monotone-preserving interpolation with continuous first derivative.
+        /// </summary>
+        public static CubicSpline InterpolatePchipSorted(double[] x, double[] y)
+        {
+            // Implementation based on "Numerical Computing with Matlab" (Moler, 2004).
+
+            if (x.Length != y.Length)
+            {
+                throw new ArgumentException("All vectors must have the same dimensionality.");
+            }
+
+            if (x.Length < 3)
+            {
+                throw new ArgumentException("The given array is too small. It must be at least 3 long.", nameof(x));
+            }
+
+            var m = new double[x.Length - 1];
+
+            for (int i = 0; i < m.Length; i++)
+            {
+                m[i] = (y[i + 1] - y[i])/(x[i + 1] - x[i]);
+            }
+
+            var dd = new double[x.Length];
+            var hPrev = x[1] - x[0];
+            var mPrevIs0 = m[0].AlmostEqual(0.0);
+
+            for (var i = 1; i < x.Length - 1; ++i)
+            {
+                var h = x[i + 1] - x[i];
+                var mIs0 = m[i].AlmostEqual(0.0);
+
+                if (mIs0 || mPrevIs0 || Math.Sign(m[i]) != Math.Sign(m[i - 1]))
+                {
+                    dd[i] = 0;
+                }
+                else
+                {
+                    // Weighted harmonic mean of each slope.
+                    var w1 = 2 * h + hPrev;
+                    var w2 = h + 2 * hPrev;
+                    dd[i] = (w1 + w2) / (w1 / m[i - 1] + w2 / m[i]);
+                }
+
+                hPrev = h;
+                mPrevIs0 = mIs0;
+            }
+
+            // Special case end-points.
+            dd[0] = PchipEndPoints(x[1] - x[0], x[2] - x[1], m[0], m[1]);
+            dd[dd.Length - 1] = PchipEndPoints(
+                x[x.Length - 1] - x[x.Length - 2], x[x.Length - 2] - x[x.Length - 3],
+                m[m.Length - 1], m[m.Length - 2]);
+
+            return InterpolateHermiteSorted(x, y, dd);
+        }
+
+        static double PchipEndPoints(double h0, double h1, double m0, double m1)
+        {
+            // One-sided, shape-preserving, three-point estimate for the derivative.
+            var d = ((2 * h0 + h1) * m0 - h0 * m1) / (h0 + h1);
+
+            if (Math.Sign(d) != Math.Sign(m0))
+            {
+                return 0.0;
+            }
+
+            if (Math.Sign(m0) != Math.Sign(m1) && (Math.Abs(d) > 3 * Math.Abs(m0)))
+            {
+                return 3 * m0;
+            }
+
+            return d;
+        }
+
+        /// <summary>
+        /// Create a piecewise cubic Hermite interpolating polynomial from an unsorted set of (x,y) value pairs.
+        /// Monotone-preserving interpolation with continuous first derivative.
+        /// WARNING: Works in-place and can thus causes the data array to be reordered.
+        /// </summary>
+        public static CubicSpline InterpolatePchipInplace(double[] x, double[] y)
+        {
+            if (x.Length != y.Length)
+            {
+                throw new ArgumentException("All vectors must have the same dimensionality.");
+            }
+
+            Sorting.Sort(x, y);
+            return InterpolatePchipSorted(x, y);
+        }
+
+        /// <summary>
+        /// Create a piecewise cubic Hermite interpolating polynomial from an unsorted set of (x,y) value pairs.
+        /// Monotone-preserving interpolation with continuous first derivative.
+        /// </summary>
+        public static CubicSpline InterpolatePchip(IEnumerable<double> x, IEnumerable<double> y)
+        {
+            // note: we must make a copy, even if the input was arrays already
+            return InterpolatePchipInplace(x.ToArray(), y.ToArray());
+        }
+
+        /// <summary>
         /// Create a cubic spline interpolation from a set of (x,y) value pairs, sorted ascendingly by x,
         /// and custom boundary/termination conditions.
         /// </summary>
@@ -221,12 +323,12 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (x.Length < 2)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, 2), "x");
+                throw new ArgumentException("The given array is too small. It must be at least 2 long.", nameof(x));
             }
 
             int n = x.Length;
@@ -281,7 +383,7 @@ namespace MathNet.Numerics.Interpolation
                     b[0] = (3*((y[1] - y[0])/(x[1] - x[0]))) - (0.5*leftBoundary*(x[1] - x[0]));
                     break;
                 default:
-                    throw new NotSupportedException(Resources.InvalidLeftBoundaryCondition);
+                    throw new NotSupportedException("Invalid Left Boundary Condition.");
             }
 
             // Central Conditions
@@ -315,7 +417,7 @@ namespace MathNet.Numerics.Interpolation
                     b[n - 1] = (3*(y[n - 1] - y[n - 2])/(x[n - 1] - x[n - 2])) + (0.5*rightBoundary*(x[n - 1] - x[n - 2]));
                     break;
                 default:
-                    throw new NotSupportedException(Resources.InvalidRightBoundaryCondition);
+                    throw new NotSupportedException("Invalid Right Boundary Condition.");
             }
 
             // Build Spline
@@ -333,7 +435,7 @@ namespace MathNet.Numerics.Interpolation
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             Sorting.Sort(x, y);
@@ -399,7 +501,7 @@ namespace MathNet.Numerics.Interpolation
             double t1 = xx[index1] - xx[index0];
             double t2 = xx[index2] - xx[index0];
 
-            double a = (x2 - x0 - (t2/t1*(x1 - x0)))/(t2*t2 - t1*t2);
+            double a = (x2 - x0 - (t2/t1*(x1 - x0)))/(t2*(t2 - t1));
             double b = (x1 - x0 - a*t1*t1)/t1;
             return (2*a*t) + b;
         }
@@ -434,18 +536,12 @@ namespace MathNet.Numerics.Interpolation
         /// <summary>
         /// Gets a value indicating whether the algorithm supports differentiation (interpolated derivative).
         /// </summary>
-        bool IInterpolation.SupportsDifferentiation
-        {
-            get { return true; }
-        }
+        bool IInterpolation.SupportsDifferentiation => true;
 
         /// <summary>
         /// Gets a value indicating whether the algorithm supports integration (interpolated quadrature).
         /// </summary>
-        bool IInterpolation.SupportsIntegration
-        {
-            get { return true; }
-        }
+        bool IInterpolation.SupportsIntegration => true;
 
         /// <summary>
         /// Interpolate at point t.
@@ -499,10 +595,7 @@ namespace MathNet.Numerics.Interpolation
         /// </summary>
         /// <param name="a">Left bound of the integration interval [a,b].</param>
         /// <param name="b">Right bound of the integration interval [a,b].</param>
-        public double Integrate(double a, double b)
-        {
-            return Integrate(b) - Integrate(a);
-        }
+        public double Integrate(double a, double b) => Integrate(b) - Integrate(a);
 
         double[] ComputeIndefiniteIntegral()
         {
@@ -529,6 +622,91 @@ namespace MathNet.Numerics.Interpolation
             }
 
             return Math.Min(Math.Max(index, 0), _x.Length - 2);
+        }
+
+        /// <summary>
+        /// Gets all the t values where the derivative is 0
+        /// see: https://mathworld.wolfram.com/StationaryPoint.html
+        /// </summary>
+        /// <returns>An array of t values (in the domain of the function) where the derivative of the spline is 0</returns>
+        public double[] StationaryPoints()
+        {
+            List<double> points = new List<double>();
+            for (int index = 0; index < _x.Length - 1; index++)
+            {
+                double a = 6 * _c3[index]; //derive ax^3 and multiply by 2
+                double b = 2 * _c2[index]; //derive bx^2
+                double c = _c1[index];//derive cx
+                double d = b * b - 2 * a * c;
+                //first check if a is 0, if so its a linear function, this happens with quadratic condition
+                if (a.AlmostEqual(0))
+                {
+                    double x = _x[index] - c / b;
+                    //check if the result is in the domain
+                    if (_x[index] <= x && x <= _x[index + 1]) points.Add(x);
+                }
+                else if (d.AlmostEqual(0))//its a quadratic with a single solution
+                {
+                    double x = _x[index] - b / a;
+                    if (_x[index] <= x && x <= _x[index + 1]) points.Add(x);
+                }
+                else if (d > 0)//only has a solution if d is greater than 0
+                {
+                    d = (double)System.Math.Sqrt(d);
+                    //apply quadratic equation
+                    double x1 = _x[index] + (-b + d) / a;
+                    double x2 = _x[index] + (-b - d) / a;
+                    //Add any solution points that fall within the domain to the list
+                    if ((_x[index] <= x1) && (x1 <= _x[index + 1])) points.Add(x1);
+                    if ((_x[index] <= x2) && (x2 <= _x[index + 1])) points.Add(x2);
+                }
+            }
+            return points.ToArray();
+        }
+
+        /// <summary>
+        /// Returns the t values in the domain of the spline for which it takes the minimum and maximum value.
+        /// </summary>
+        /// <returns>A tuple containing the t value for which the spline is minimum in the first component and maximum in the second component </returns>
+        public Tuple<double, double> Extrema()
+        {
+            //Check the edges of the domain
+            //set the initial values to the leftmost domain point
+            double t = _x[0];
+            double max = Interpolate(t);
+            double min = max;
+            double minT = t;
+            double maxT = t;
+            //check the rightmost domain point
+            t = _x[_x.Length-1];
+            var ty = Interpolate(t);
+            if (ty > max)
+            {
+                max = ty;
+                maxT = t;
+            }
+            if (ty < min)
+            {
+                min = ty;
+                minT = t;
+            }
+            //check the the inflexion, local minimums and local maximums
+            double[] pointsToCheck = StationaryPoints();
+            foreach (double p in pointsToCheck)
+            {
+                double y = Interpolate(p);
+                if (y > max)
+                {
+                    max = y;
+                    maxT = p;
+                }
+                if (y < min)
+                {
+                    min = y;
+                    minT = p;
+                }
+            }
+            return new Tuple<double, double>(minT, maxT);
         }
     }
 }

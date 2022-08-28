@@ -29,13 +29,12 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.RootFinding
 {
     public static class ZeroCrossingBracketing
     {
-        public static IEnumerable<Tuple<double, double>> FindIntervalsWithin(Func<double, double> f, double lowerBound, double upperBound, int subdivisions)
+        public static IEnumerable<(double, double)> FindIntervalsWithin(Func<double, double> f, double lowerBound, double upperBound, int subdivisions)
         {
             // TODO: Consider binary-style search instead of linear scan
             double fmin = f(lowerBound);
@@ -43,7 +42,7 @@ namespace MathNet.Numerics.RootFinding
 
             if (Math.Sign(fmin) != Math.Sign(fmax))
             {
-                yield return new Tuple<double, double>(lowerBound, upperBound);
+                yield return (lowerBound, upperBound);
                 yield break;
             }
 
@@ -64,7 +63,7 @@ namespace MathNet.Numerics.RootFinding
 
                 if (Math.Sign(sfmax) != sign)
                 {
-                    yield return new Tuple<double, double>(smin, smax);
+                    yield return (smin, smax);
                     sign = Math.Sign(sfmax);
                 }
 
@@ -87,7 +86,7 @@ namespace MathNet.Numerics.RootFinding
 
             if (lowerBound >= upperBound)
             {
-                throw new ArgumentOutOfRangeException("upperBound", string.Format(Resources.ArgumentOutOfRangeGreater, "xmax", "xmin"));
+                throw new ArgumentOutOfRangeException(nameof(upperBound), "xmax must be greater than xmin.");
             }
 
             double fmin = f(lowerBound);
@@ -124,7 +123,7 @@ namespace MathNet.Numerics.RootFinding
 
             if (lowerBound >= upperBound)
             {
-                throw new ArgumentOutOfRangeException("upperBound", string.Format(Resources.ArgumentOutOfRangeGreater, "xmax", "xmin"));
+                throw new ArgumentOutOfRangeException(nameof(upperBound), "xmax must be greater than xmin.");
             }
 
             // TODO: Consider binary-style search instead of linear scan

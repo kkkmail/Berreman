@@ -19,4 +19,9 @@
     <Compile Include="FieldFunctions.fs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\MathNetNumerics\FSharp\FSharp.fsproj" />
+    <ProjectReference Include="..\..\MathNetNumerics\Numerics\Numerics.csproj" />
+  </ItemGroup>
+
 </Project>

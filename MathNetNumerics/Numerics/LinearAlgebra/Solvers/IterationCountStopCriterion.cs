@@ -71,7 +71,7 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         {
             if (maximumNumberOfIterations < 1)
             {
-                throw new ArgumentOutOfRangeException("maximumNumberOfIterations");
+                throw new ArgumentOutOfRangeException(nameof(maximumNumberOfIterations));
             }
 
             _maximumNumberOfIterations = maximumNumberOfIterations;
@@ -84,14 +84,14 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         public int MaximumNumberOfIterations
         {
             [DebuggerStepThrough]
-            get { return _maximumNumberOfIterations; }
+            get => _maximumNumberOfIterations;
 
             [DebuggerStepThrough]
             set
             {
                 if (value < 1)
                 {
-                    throw new ArgumentOutOfRangeException("value");
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 }
 
                 _maximumNumberOfIterations = value;
@@ -123,7 +123,7 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         {
             if (iterationNumber < 0)
             {
-                throw new ArgumentOutOfRangeException("iterationNumber");
+                throw new ArgumentOutOfRangeException(nameof(iterationNumber));
             }
 
             _status = iterationNumber >= _maximumNumberOfIterations ? IterationStatus.StoppedWithoutConvergence : IterationStatus.Continue;
@@ -137,7 +137,7 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         public IterationStatus Status
         {
             [DebuggerStepThrough]
-            get { return _status; }
+            get => _status;
         }
 
         /// <summary>

@@ -27,11 +27,10 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
+using System;
+
 namespace MathNet.Numerics
 {
-    using System;
-    using Properties;
-
     /// <summary>
     /// Class to represent a permutation for a subset of the natural numbers.
     /// </summary>
@@ -43,7 +42,7 @@ namespace MathNet.Numerics
         /// <summary>
         /// Entry _indices[i] represents the location to which i is permuted to.
         /// </summary>
-        private readonly int[] _indices;
+        readonly int[] _indices;
 
         #endregion fields
 
@@ -58,7 +57,7 @@ namespace MathNet.Numerics
         {
             if (!CheckForProperPermutation(indices))
             {
-                throw new ArgumentException(Resources.PermutationAsIntArrayInvalid, "indices");
+                throw new ArgumentException("The integer array does not represent a valid permutation.", nameof(indices));
             }
 
             _indices = (int[])indices.Clone();
@@ -69,23 +68,14 @@ namespace MathNet.Numerics
         /// <summary>
         /// Gets the number of elements this permutation is over.
         /// </summary>
-        public int Dimension
-        {
-            get { return _indices.Length; }
-        }
+        public int Dimension => _indices.Length;
 
         /// <summary>
         /// Computes where <paramref name="idx"/> permutes too.
         /// </summary>
         /// <param name="idx">The index to permute from.</param>
         /// <returns>The index which is permuted to.</returns>
-        public int this[int idx]
-        {
-            get
-            {
-                return _indices[idx];
-            }
-        }
+        public int this[int idx] => _indices[idx];
 
         /// <summary>
         /// Computes the inverse of the permutation.
@@ -123,9 +113,7 @@ namespace MathNet.Numerics
             {
                 if (idx[i] != inv[i])
                 {
-                    int t = idx[i];
-                    idx[i] = idx[inv[i]];
-                    idx[inv[i]] = t;
+                    (idx[i], idx[inv[i]]) = (idx[inv[i]], idx[i]);
                 }
             }
 

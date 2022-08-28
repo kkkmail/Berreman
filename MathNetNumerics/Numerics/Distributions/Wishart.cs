@@ -31,7 +31,6 @@ using System;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
 using MathNet.Numerics.LinearAlgebra.Factorization;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 
 namespace MathNet.Numerics.Distributions
@@ -71,7 +70,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(degreesOfFreedom, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -90,7 +89,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(degreesOfFreedom, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -130,18 +129,12 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets or sets the degrees of freedom (n) for the Wishart distribution.
         /// </summary>
-        public double DegreesOfFreedom
-        {
-            get { return _degreesOfFreedom; }
-        }
+        public double DegreesOfFreedom => _degreesOfFreedom;
 
         /// <summary>
         /// Gets or sets the scale matrix (V) for the Wishart distribution.
         /// </summary>
-        public Matrix<double> Scale
-        {
-            get { return _scale; }
-        }
+        public Matrix<double> Scale => _scale;
 
         /// <summary>
         /// A string representation of the distribution.
@@ -149,7 +142,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Wishart(DegreesOfFreedom = " + _degreesOfFreedom + ", Rows = " + _scale.RowCount + ", Columns = " + _scale.ColumnCount + ")";
+            return $"Wishart(DegreesOfFreedom = {_degreesOfFreedom}, Rows = {_scale.RowCount}, Columns = {_scale.ColumnCount})";
         }
 
         /// <summary>
@@ -157,27 +150,21 @@ namespace MathNet.Numerics.Distributions
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
         /// <value>The mean of the distribution.</value>
-        public Matrix<double> Mean
-        {
-            get { return _degreesOfFreedom*_scale; }
-        }
+        public Matrix<double> Mean => _degreesOfFreedom*_scale;
 
         /// <summary>
         /// Gets the mode of the distribution.
         /// </summary>
         /// <value>The mode of the distribution.</value>
-        public Matrix<double> Mode
-        {
-            get { return (_degreesOfFreedom - _scale.RowCount - 1.0)*_scale; }
-        }
+        public Matrix<double> Mode => (_degreesOfFreedom - _scale.RowCount - 1.0)*_scale;
 
         /// <summary>
         /// Gets the variance of the distribution.
@@ -250,7 +237,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(degreesOfFreedom, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return DoSample(rnd, degreesOfFreedom, scale, scale.Cholesky());

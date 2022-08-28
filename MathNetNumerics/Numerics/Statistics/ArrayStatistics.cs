@@ -28,7 +28,6 @@
 // </copyright>
 
 using System;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Statistics
 {
@@ -282,9 +281,9 @@ namespace MathNet.Numerics.Statistics
         /// Returns NaN for mean if data is empty or any entry is NaN and NaN for variance if data has less than two entries or if any entry is NaN.
         /// </summary>
         /// <param name="samples">Sample array, no sorting is assumed.</param>
-        public static Tuple<double, double> MeanVariance(double[] samples)
+        public static (double Mean, double Variance) MeanVariance(double[] samples)
         {
-            return new Tuple<double, double>(Mean(samples), Variance(samples));
+            return (Mean(samples), Variance(samples));
         }
 
         /// <summary>
@@ -293,9 +292,9 @@ namespace MathNet.Numerics.Statistics
         /// Returns NaN for mean if data is empty or any entry is NaN and NaN for standard deviation if data has less than two entries or if any entry is NaN.
         /// </summary>
         /// <param name="samples">Sample array, no sorting is assumed.</param>
-        public static Tuple<double, double> MeanStandardDeviation(double[] samples)
+        public static (double Mean, double StandardDeviation) MeanStandardDeviation(double[] samples)
         {
-            return new Tuple<double, double>(Mean(samples), StandardDeviation(samples));
+            return (Mean(samples), StandardDeviation(samples));
         }
 
         /// <summary>
@@ -309,7 +308,7 @@ namespace MathNet.Numerics.Statistics
         {
             if (samples1.Length != samples2.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (samples1.Length <= 1)
@@ -339,7 +338,7 @@ namespace MathNet.Numerics.Statistics
         {
             if (population1.Length != population2.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (population1.Length == 0)
@@ -685,9 +684,7 @@ namespace MathNet.Numerics.Statistics
                 {
                     if (high == low + 1 && a[high] < a[low])
                     {
-                        var tmp = a[low];
-                        a[low] = a[high];
-                        a[high] = tmp;
+                        (a[low], a[high]) = (a[high], a[low]);
                     }
 
                     return a[rank];
@@ -695,29 +692,21 @@ namespace MathNet.Numerics.Statistics
 
                 int middle = (low + high) >> 1;
 
-                var tmp1 = a[middle];
-                a[middle] = a[low + 1];
-                a[low + 1] = tmp1;
+                (a[middle], a[low + 1]) = (a[low + 1], a[middle]);
 
                 if (a[low] > a[high])
                 {
-                    var tmp = a[low];
-                    a[low] = a[high];
-                    a[high] = tmp;
+                    (a[low], a[high]) = (a[high], a[low]);
                 }
 
                 if (a[low + 1] > a[high])
                 {
-                    var tmp = a[low + 1];
-                    a[low + 1] = a[high];
-                    a[high] = tmp;
+                    (a[low + 1], a[high]) = (a[high], a[low + 1]);
                 }
 
                 if (a[low] > a[low + 1])
                 {
-                    var tmp = a[low];
-                    a[low] = a[low + 1];
-                    a[low + 1] = tmp;
+                    (a[low], a[low + 1]) = (a[low + 1], a[low]);
                 }
 
                 int begin = low + 1;
@@ -743,9 +732,7 @@ namespace MathNet.Numerics.Statistics
                         break;
                     }
 
-                    var tmp = a[begin];
-                    a[begin] = a[end];
-                    a[end] = tmp;
+                    (a[begin], a[end]) = (a[end], a[begin]);
                 }
 
                 a[low + 1] = a[end];

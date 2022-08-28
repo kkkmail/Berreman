@@ -28,7 +28,6 @@
 // </copyright>
 
 using System;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Double.Factorization
 {
@@ -53,12 +52,12 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Factorization
         {
             if (matrix == null)
             {
-                throw new ArgumentNullException("matrix");
+                throw new ArgumentNullException(nameof(matrix));
             }
 
             if (matrix.RowCount != matrix.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             // Create an array for the pivot indices.
@@ -145,23 +144,23 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Factorization
             // Check for proper arguments.
             if (input == null)
             {
-                throw new ArgumentNullException("input");
+                throw new ArgumentNullException(nameof(input));
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             // Check for proper dimensions.
             if (result.RowCount != input.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension);
+                throw new ArgumentException("Matrix row dimensions must agree.");
             }
 
             if (result.ColumnCount != input.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
             if (input.RowCount != Factors.RowCount)
@@ -231,18 +230,18 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Factorization
             // Check for proper arguments.
             if (input == null)
             {
-                throw new ArgumentNullException("input");
+                throw new ArgumentNullException(nameof(input));
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             // Check for proper dimensions.
             if (input.Count != result.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (input.Count != Factors.RowCount)
@@ -260,9 +259,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double.Factorization
                 }
 
                 var p = Pivots[i];
-                var temp = result[p];
-                result[p] = result[i];
-                result[i] = temp;
+                (result[p], result[i]) = (result[i], result[p]);
             }
 
             var order = Factors.RowCount;

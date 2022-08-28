@@ -30,7 +30,6 @@
 namespace MathNet.Numerics.Statistics.Mcmc
 {
     using System;
-    using Properties;
 
     /// <summary>
     /// Rejection sampling produces samples from distribution P by sampling from a proposal distribution Q
@@ -43,17 +42,17 @@ namespace MathNet.Numerics.Statistics.Mcmc
         /// <summary>
         /// Evaluates the density function of the sampling distribution.
         /// </summary>
-        private readonly Density<T> _pdfP;
+        readonly Density<T> _pdfP;
 
         /// <summary>
         /// Evaluates the density function of the proposal distribution.
         /// </summary>
-        private readonly Density<T> _pdfQ;
+        readonly Density<T> _pdfQ;
 
         /// <summary>
         /// A function which samples from a proposal distribution.
         /// </summary>
-        private readonly GlobalProposalSampler<T> _proposal;
+        readonly GlobalProposalSampler<T> _proposal;
 
         /// <summary>
         /// Constructs a new rejection sampler using the default <see cref="System.Random"/> random number generator.
@@ -90,7 +89,7 @@ namespace MathNet.Numerics.Statistics.Mcmc
 
                 if (q < p)
                 {
-                    throw new ArgumentException(Resources.ProposalDistributionNoUpperBound);
+                    throw new ArgumentException("The sampler\'s proposal distribution is not upper bounding the target density.");
                 }
                 if (u < p)
                 {

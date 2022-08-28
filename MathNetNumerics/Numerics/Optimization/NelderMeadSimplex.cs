@@ -29,8 +29,8 @@
 
 // Converted from code released with a MIT license available at https://code.google.com/p/nelder-mead-simplex/
 
-using MathNet.Numerics.LinearAlgebra;
 using System;
+using MathNet.Numerics.LinearAlgebra;
 
 namespace MathNet.Numerics.Optimization
 {
@@ -108,13 +108,13 @@ namespace MathNet.Numerics.Optimization
         {
             // confirm that we are in a position to commence
             if (objectiveFunction == null)
-                throw new ArgumentNullException("objectiveFunction","ObjectiveFunction must be set to a valid ObjectiveFunctionDelegate");
+                throw new ArgumentNullException(nameof(objectiveFunction),"ObjectiveFunction must be set to a valid ObjectiveFunctionDelegate");
 
             if (initialGuess == null)
-                throw new ArgumentNullException("initialGuess", "initialGuess must be initialized");
+                throw new ArgumentNullException(nameof(initialGuess), "initialGuess must be initialized");
 
             if (initalPertubation == null)
-                throw new ArgumentNullException("initalPertubation", "initalPertubation must be initialized, if unknown use overloaded version of FindMinimum()");
+                throw new ArgumentNullException(nameof(initalPertubation), "initalPertubation must be initialized, if unknown use overloaded version of FindMinimum()");
 
             SimplexConstant[] simplexConstants = SimplexConstant.CreateSimplexConstantsFromVectors(initialGuess,initalPertubation);
 
@@ -122,13 +122,13 @@ namespace MathNet.Numerics.Optimization
             int numDimensions = simplexConstants.Length;
             int numVertices = numDimensions + 1;
             Vector<double>[] vertices = InitializeVertices(simplexConstants);
-            double[] errorValues = new double[numVertices];
 
             int evaluationCount = 0;
-            ExitCondition exitCondition = ExitCondition.None;
+            ExitCondition exitCondition;
             ErrorProfile errorProfile;
 
-            errorValues = InitializeErrorValues(vertices, objectiveFunction);
+            double[] errorValues = InitializeErrorValues(vertices, objectiveFunction);
+            int numTimesHasConverged = 0;
 
             // iterate until we converge, or complete our permitted number of iterations
             while (true)
@@ -136,7 +136,16 @@ namespace MathNet.Numerics.Optimization
                 errorProfile = EvaluateSimplex(errorValues);
 
                 // see if the range in point heights is small enough to exit
+                // to handle the case when the function is symmetrical and extra iteration is performed
                 if (HasConverged(convergenceTolerance, errorProfile, errorValues))
+                {
+                    numTimesHasConverged++;
+                }
+                else
+                {
+                    numTimesHasConverged = 0;
+                }
+                if (numTimesHasConverged == 2)
                 {
                     exitCondition = ExitCondition.Converged;
                     break;
@@ -148,7 +157,7 @@ namespace MathNet.Numerics.Optimization
                 if (reflectionPointValue <= errorValues[errorProfile.LowestIndex])
                 {
                     // it's better than the best point, so attempt an expansion of the simplex
-                    double expansionPointValue = TryToScaleSimplex(2.0, ref errorProfile, vertices, errorValues, objectiveFunction);
+                    TryToScaleSimplex(2.0, ref errorProfile, vertices, errorValues, objectiveFunction);
                     ++evaluationCount;
                 }
                 else if (reflectionPointValue >= errorValues[errorProfile.NextHighestIndex])
@@ -170,9 +179,10 @@ namespace MathNet.Numerics.Optimization
                 // check to see if we have exceeded our alloted number of evaluations
                 if (evaluationCount >= maximumIterations)
                 {
-                    throw new MaximumIterationsException(String.Format("Maximum iterations ({0}) reached.", maximumIterations));
+                    throw new MaximumIterationsException(FormattableString.Invariant($"Maximum iterations ({maximumIterations}) reached."));
                 }
             }
+            objectiveFunction.EvaluateAt(vertices[errorProfile.LowestIndex]);
             var regressionResult = new MinimizationResult(objectiveFunction, evaluationCount, exitCondition);
             return regressionResult;
         }
@@ -208,14 +218,7 @@ namespace MathNet.Numerics.Optimization
             double range = 2 * Math.Abs(errorValues[errorProfile.HighestIndex] - errorValues[errorProfile.LowestIndex]) /
                 (Math.Abs(errorValues[errorProfile.HighestIndex]) + Math.Abs(errorValues[errorProfile.LowestIndex]) + JITTER);
 
-            if (range < convergenceTolerance)
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+            return range < convergenceTolerance;
         }
 
         /// <summary>
@@ -369,7 +372,7 @@ namespace MathNet.Numerics.Optimization
 
         sealed class SimplexConstant
         {
-            public SimplexConstant(double value, double initialPerturbation)
+            SimplexConstant(double value, double initialPerturbation)
             {
                 Value = value;
                 InitialPerturbation = initialPerturbation;

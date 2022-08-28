@@ -72,7 +72,6 @@ namespace MathNet.Numerics.Differentiation
         double _stepSize = Math.Pow(2, -10);
         double _epsilon = Precision.PositiveMachineEpsilon;
         double _baseStepSize = Math.Pow(2, -26);
-        StepType _stepType = StepType.Relative;
         readonly FiniteDifferenceCoefficients _coefficients;
 
         /// <summary>
@@ -91,7 +90,7 @@ namespace MathNet.Numerics.Differentiation
         {
             if (points < 2)
             {
-                throw new ArgumentOutOfRangeException("points", "Points must be two or greater.");
+                throw new ArgumentOutOfRangeException(nameof(points), "Points must be two or greater.");
             }
 
             _center = center;
@@ -110,7 +109,7 @@ namespace MathNet.Numerics.Differentiation
         /// </remarks>
         public double StepSize
         {
-            get { return _stepSize; }
+            get => _stepSize;
             set
             {
                 //Base 2 yields more accurate results...
@@ -125,7 +124,7 @@ namespace MathNet.Numerics.Differentiation
         /// </summary>
         public double BaseStepSize
         {
-            get { return _baseStepSize; }
+            get => _baseStepSize;
             set
             {
                 //Base 2 yields more accurate results...
@@ -140,7 +139,7 @@ namespace MathNet.Numerics.Differentiation
         /// </summary>
         public double Epsilon
         {
-            get { return _epsilon; }
+            get => _epsilon;
             set
             {
                 //Base 2 yields more accurate results...
@@ -154,11 +153,11 @@ namespace MathNet.Numerics.Differentiation
         /// </summary>
         public int Center
         {
-            get { return _center; }
+            get => _center;
             set
             {
                 if (value >= _points || value < 0)
-                    throw new ArgumentOutOfRangeException("value", "Center must lie between 0 and points -1");
+                    throw new ArgumentOutOfRangeException(nameof(value), "Center must lie between 0 and points -1");
                 _center = value;
             }
         }
@@ -173,11 +172,7 @@ namespace MathNet.Numerics.Differentiation
         /// If set to relative, dx = (1+abs(x))*h^(2/(order+1)). This provides accurate results when
         /// h is approximately equal to the square-root of machine accuracy, epsilon.
         /// </summary>
-        public StepType StepType
-        {
-            get { return _stepType; }
-            set { _stepType = value; }
-        }
+        public StepType StepType { get; set; } = StepType.Relative;
 
         /// <summary>
         /// Evaluates the derivative of equidistant points using the finite difference method.
@@ -189,10 +184,10 @@ namespace MathNet.Numerics.Differentiation
         public double EvaluateDerivative(double[] points, int order, double stepSize)
         {
             if (points == null)
-                throw new ArgumentNullException("points");
+                throw new ArgumentNullException(nameof(points));
 
             if (order >= _points || order < 0)
-                throw new ArgumentOutOfRangeException("order", "Order must be between zero and points-1.");
+                throw new ArgumentOutOfRangeException(nameof(order), "Order must be between zero and points-1.");
 
             var c = _coefficients.GetCoefficients(Center, order);
             var result = c.Select((t, i) => t*points[i]).Sum();
@@ -347,7 +342,7 @@ namespace MathNet.Numerics.Differentiation
                                                      int order, double? currentValue = null)
         {
             if (parameterIndex.Length != order)
-                throw new ArgumentOutOfRangeException("parameterIndex",
+                throw new ArgumentOutOfRangeException(nameof(parameterIndex),
                                                       "The number of parameters must match derivative order.");
 
             if (order == 1)
@@ -438,16 +433,7 @@ namespace MathNet.Numerics.Differentiation
             Evaluations = 0;
         }
 
-        private double[] CalculateStepSize(int points, double[] x, double order)
-        {
-            var h = new double[x.Length];
-            for (int i = 1; i < h.Length; i++)
-                h[i] = CalculateStepSize(points, x[i], order);
-
-            return h;
-        }
-
-        private double CalculateStepSize(int points, double x, double order)
+        double CalculateStepSize(int points, double x, double order)
         {
             // Step size relative to function input parameter
             if (StepType == StepType.RelativeX)

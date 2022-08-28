@@ -65,12 +65,12 @@ namespace MathNet.Numerics.Optimization
             IScalarObjectiveFunctionEvaluation middle = objective.Evaluate(middlePointX);
             IScalarObjectiveFunctionEvaluation upper = objective.Evaluate(upperBound);
 
-            ValueChecker(lower.Value, lowerBound);
-            ValueChecker(middle.Value, middlePointX);
-            ValueChecker(upper.Value, upperBound);
+            ValueChecker(lower.Value);
+            ValueChecker(middle.Value);
+            ValueChecker(upper.Value);
 
-            int expansion_steps = 0;
-            while ((expansion_steps < maxExpansionSteps) && (upper.Value < middle.Value || lower.Value < middle.Value))
+            int expansionSteps = 0;
+            while ((expansionSteps < maxExpansionSteps) && (upper.Value < middle.Value || lower.Value < middle.Value))
             {
                 if (lower.Value < middle.Value)
                 {
@@ -87,7 +87,7 @@ namespace MathNet.Numerics.Optimization
                 middlePointX = lowerBound + (upperBound - lowerBound)/(1 + Constants.GoldenRatio);
                 middle = objective.Evaluate(middlePointX);
 
-                expansion_steps += 1;
+                expansionSteps += 1;
             }
 
             if (upper.Value < middle.Value || lower.Value < middle.Value)
@@ -98,9 +98,14 @@ namespace MathNet.Numerics.Optimization
             int iterations = 0;
             while (Math.Abs(upper.Point - lower.Point) > xTolerance && iterations < maxIterations)
             {
+                // Recompute middle point on each iteration to avoid loss of precision
+                middlePointX = lower.Point + (upper.Point - lower.Point)/(1 + Constants.GoldenRatio);
+                middle = objective.Evaluate(middlePointX);
+                ValueChecker(middle.Value);
+
                 double testX = lower.Point + (upper.Point - middle.Point);
                 var test = objective.Evaluate(testX);
-                ValueChecker(test.Value, testX);
+                ValueChecker(test.Value);
 
                 if (test.Point < middle.Point)
                 {
@@ -111,7 +116,6 @@ namespace MathNet.Numerics.Optimization
                     else
                     {
                         upper = middle;
-                        middle = test;
                     }
                 }
                 else
@@ -123,7 +127,6 @@ namespace MathNet.Numerics.Optimization
                     else
                     {
                         lower = middle;
-                        middle = test;
                     }
                 }
 
@@ -138,9 +141,9 @@ namespace MathNet.Numerics.Optimization
             return new ScalarMinimizationResult(middle, iterations, ExitCondition.BoundTolerance);
         }
 
-        static void ValueChecker(double value, double point)
+        static void ValueChecker(double value)
         {
-            if (Double.IsNaN(value) || Double.IsInfinity(value))
+            if (double.IsNaN(value) || double.IsInfinity(value))
             {
                 throw new Exception("Objective function returned non-finite value.");
             }

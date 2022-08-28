@@ -34,11 +34,10 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra
 {
-    [DebuggerDisplay("Vector {Count}")]
+    [DebuggerDisplay("Vector {" + nameof(Count) + "}")]
     public abstract partial class Vector<T>
     {
         /// <summary>
@@ -62,8 +61,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </returns>
         public sealed override bool Equals(object obj)
         {
-            var other = obj as Vector<T>;
-            return other != null && Storage.Equals(other.Storage);
+            return obj is Vector<T> other && Storage.Equals(other.Storage);
         }
 
         /// <summary>
@@ -77,8 +75,6 @@ namespace MathNet.Numerics.LinearAlgebra
             return Storage.GetHashCode();
         }
 
-#if !NETSTANDARD1_3
-
         /// <summary>
         /// Creates a new object that is a copy of the current instance.
         /// </summary>
@@ -89,8 +85,6 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             return Clone();
         }
-
-#endif
 
         int IList<T>.IndexOf(T item)
         {
@@ -112,10 +106,7 @@ namespace MathNet.Numerics.LinearAlgebra
             throw new NotSupportedException();
         }
 
-        bool ICollection<T>.IsReadOnly
-        {
-            get { return false; }
-        }
+        bool ICollection<T>.IsReadOnly => false;
 
         void ICollection<T>.Add(T item)
         {
@@ -142,26 +133,20 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (array == null)
             {
-                throw new ArgumentNullException("array");
+                throw new ArgumentNullException(nameof(array));
             }
 
             Storage.CopySubVectorTo(new DenseVectorStorage<T>(array.Length, array), 0, arrayIndex, Count);
         }
 
-        bool IList.IsReadOnly
-        {
-            get { return false; }
-        }
+        bool IList.IsReadOnly => false;
 
-        bool IList.IsFixedSize
-        {
-            get { return true; }
-        }
+        bool IList.IsFixedSize => true;
 
         object IList.this[int index]
         {
-            get { return Storage[index]; }
-            set { Storage[index] = (T) value; }
+            get => Storage[index];
+            set => Storage[index] = (T) value;
         }
 
         int IList.IndexOf(object value)
@@ -204,25 +189,19 @@ namespace MathNet.Numerics.LinearAlgebra
             throw new NotSupportedException();
         }
 
-        bool ICollection.IsSynchronized
-        {
-            get { return false; }
-        }
+        bool ICollection.IsSynchronized => false;
 
-        object ICollection.SyncRoot
-        {
-            get { return Storage; }
-        }
+        object ICollection.SyncRoot => Storage;
 
         void ICollection.CopyTo(Array array, int index)
         {
             if (array == null)
             {
-                throw new ArgumentNullException("array");
+                throw new ArgumentNullException(nameof(array));
             }
             if (array.Rank != 1)
             {
-                throw new ArgumentException(Resources.ArgumentSingleDimensionArray, "array");
+                throw new ArgumentException("Array must have exactly one dimension (and not be null).", nameof(array));
             }
 
             Storage.CopySubVectorTo(new DenseVectorStorage<T>(array.Length, (T[]) array), 0, index, Count);
@@ -255,7 +234,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public virtual string ToTypeString()
         {
-            return string.Format("{0} {1}-{2}", GetType().Name, Count, typeof (T).Name);
+            return FormattableString.Invariant($"{GetType().Name} {Count}-{typeof(T).Name}");
         }
 
         public string[,] ToVectorStringArray(int maxPerColumn, int maxCharactersWidth, int padding, string ellipsis, Func<T, string> formatValue)
@@ -296,9 +275,10 @@ namespace MathNet.Numerics.LinearAlgebra
             int colIndex = 0;
             foreach (var column in columns)
             {
+                var columnItem2 = column.Item2;
                 for (int k = 0; k < column.Item2.Length; k++)
                 {
-                    array[k, colIndex] = column.Item2[k];
+                    array[k, colIndex] = columnItem2[k];
                 }
                 for (int k = column.Item2.Length; k < rows; k++)
                 {

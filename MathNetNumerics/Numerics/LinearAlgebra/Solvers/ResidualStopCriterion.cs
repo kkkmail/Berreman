@@ -29,7 +29,6 @@
 
 using System;
 using System.Diagnostics;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Solvers
 {
@@ -79,12 +78,12 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         {
             if (maximum < 0)
             {
-                throw new ArgumentOutOfRangeException("maximum");
+                throw new ArgumentOutOfRangeException(nameof(maximum));
             }
 
             if (minimumIterationsBelowMaximum < 0)
             {
-                throw new ArgumentOutOfRangeException("minimumIterationsBelowMaximum");
+                throw new ArgumentOutOfRangeException(nameof(minimumIterationsBelowMaximum));
             }
 
             _maximum = maximum;
@@ -99,14 +98,14 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         public double Maximum
         {
             [DebuggerStepThrough]
-            get { return _maximum; }
+            get => _maximum;
 
             [DebuggerStepThrough]
             set
             {
                 if (value < 0)
                 {
-                    throw new ArgumentOutOfRangeException("value");
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 }
 
                 _maximum = value;
@@ -121,14 +120,14 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         public int MinimumIterationsBelowMaximum
         {
             [DebuggerStepThrough]
-            get { return _minimumIterationsBelowMaximum; }
+            get => _minimumIterationsBelowMaximum;
 
             [DebuggerStepThrough]
             set
             {
                 if (value < 0)
                 {
-                    throw new ArgumentOutOfRangeException("value");
+                    throw new ArgumentOutOfRangeException(nameof(value));
                 }
 
                 _minimumIterationsBelowMaximum = value;
@@ -152,17 +151,17 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         {
             if (iterationNumber < 0)
             {
-                throw new ArgumentOutOfRangeException("iterationNumber");
+                throw new ArgumentOutOfRangeException(nameof(iterationNumber));
             }
 
             if (solutionVector.Count != sourceVector.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "sourceVector");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(sourceVector));
             }
 
             if (solutionVector.Count != residualVector.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "residualVector");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(residualVector));
             }
 
 
@@ -220,7 +219,7 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         public IterationStatus Status
         {
             [DebuggerStepThrough]
-            get { return _status; }
+            get => _status;
         }
 
         /// <summary>

@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -84,7 +83,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(lambda, nu))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -102,7 +101,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(lambda, nu))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -116,7 +115,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>A <see cref="System.String"/> that represents this instance.</returns>
         public override string ToString()
         {
-            return "ConwayMaxwellPoisson(λ = " + _lambda + ", ν = " + _nu + ")";
+            return $"ConwayMaxwellPoisson(λ = {_lambda}, ν = {_nu})";
         }
 
         /// <summary>
@@ -132,26 +131,20 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the lambda (λ) parameter. Range: λ > 0.
         /// </summary>
-        public double Lambda
-        {
-            get { return _lambda; }
-        }
+        public double Lambda => _lambda;
 
         /// <summary>
         /// Gets the rate of decay (ν) parameter. Range: ν ≥ 0.
         /// </summary>
-        public double Nu
-        {
-            get { return _nu; }
-        }
+        public double Nu => _nu;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
@@ -280,58 +273,37 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt(Variance); }
-        }
+        public double StdDev => Math.Sqrt(Variance);
 
         /// <summary>
         /// Gets the entropy of the distribution.
         /// </summary>
-        public double Entropy
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Entropy => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the skewness of the distribution.
         /// </summary>
-        public double Skewness
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Skewness => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the mode of the distribution
         /// </summary>
-        public int Mode
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public int Mode => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
-        public double Median
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Median => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the smallest element in the domain of the distributions which can be represented by an integer.
         /// </summary>
-        public int Minimum
-        {
-            get { return 0; }
-        }
+        public int Minimum => 0;
 
         /// <summary>
         /// Gets the largest element in the domain of the distributions which can be represented by an integer.
         /// </summary>
-        public int Maximum
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public int Maximum => throw new NotSupportedException();
 
         /// <summary>
         /// Computes the probability mass (PMF) at k, i.e. P(X = k).
@@ -381,7 +353,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -399,7 +371,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -418,7 +390,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -585,7 +557,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -602,7 +574,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -620,7 +592,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -636,7 +608,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -652,7 +624,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);
@@ -669,7 +641,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0 && nu >= 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             var z = Normalization(lambda, nu);

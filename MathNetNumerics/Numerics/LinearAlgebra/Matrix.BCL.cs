@@ -62,8 +62,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </returns>
         public override bool Equals(object obj)
         {
-            var other = obj as Matrix<T>;
-            return other != null && Storage.Equals(other.Storage);
+            return obj is Matrix<T> other && Storage.Equals(other.Storage);
         }
 
         /// <summary>
@@ -77,8 +76,6 @@ namespace MathNet.Numerics.LinearAlgebra
             return Storage.GetHashCode();
         }
 
-#if !NETSTANDARD1_3
-
         /// <summary>
         /// Creates a new object that is a copy of the current instance.
         /// </summary>
@@ -90,14 +87,12 @@ namespace MathNet.Numerics.LinearAlgebra
             return Clone();
         }
 
-#endif
-
         /// <summary>
         /// Returns a string that describes the type, dimensions and shape of this matrix.
         /// </summary>
         public virtual string ToTypeString()
         {
-            return string.Format("{0} {1}x{2}-{3}", GetType().Name, RowCount, ColumnCount, typeof (T).Name);
+            return FormattableString.Invariant($"{GetType().Name} {RowCount}x{ColumnCount}-{typeof(T).Name}");
         }
 
         /// <summary>
@@ -232,9 +227,10 @@ namespace MathNet.Numerics.LinearAlgebra
             int colIndex = 0;
             foreach (var column in columnsLeft)
             {
+                var columnItem2 = column.Item2;
                 for (int i = 0; i < column.Item2.Length; i++)
                 {
-                    array[i, colIndex] = column.Item2[i];
+                    array[i, colIndex] = columnItem2[i];
                 }
                 colIndex++;
             }
@@ -257,9 +253,10 @@ namespace MathNet.Numerics.LinearAlgebra
             }
             foreach (var column in columnsRight)
             {
+                var columnItem2 = column.Item2;
                 for (int i = 0; i < column.Item2.Length; i++)
                 {
-                    array[i, colIndex] = column.Item2[i];
+                    array[i, colIndex] = columnItem2[i];
                 }
                 colIndex++;
             }

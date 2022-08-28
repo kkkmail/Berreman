@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -54,7 +53,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(freedom))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -70,7 +69,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(freedom))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -83,7 +82,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "ChiSquared(k = " + _freedom + ")";
+            return $"ChiSquared(k = {_freedom})";
         }
 
         /// <summary>
@@ -98,91 +97,61 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the degrees of freedom (k) of the Chi-Squared distribution. Range: k > 0.
         /// </summary>
-        public double DegreesOfFreedom
-        {
-            get { return _freedom; }
-        }
+        public double DegreesOfFreedom => _freedom;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
-        public double Mean
-        {
-            get { return _freedom; }
-        }
+        public double Mean => _freedom;
 
         /// <summary>
         /// Gets the variance of the distribution.
         /// </summary>
-        public double Variance
-        {
-            get { return 2.0*_freedom; }
-        }
+        public double Variance => 2.0*_freedom;
 
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt(2.0*_freedom); }
-        }
+        public double StdDev => Math.Sqrt(2.0*_freedom);
 
         /// <summary>
         /// Gets the entropy of the distribution.
         /// </summary>
-        public double Entropy
-        {
-            get { return (_freedom/2.0) + Math.Log(2.0*SpecialFunctions.Gamma(_freedom/2.0)) + ((1.0 - (_freedom/2.0))*SpecialFunctions.DiGamma(_freedom/2.0)); }
-        }
+        public double Entropy => (_freedom/2.0) + Math.Log(2.0*SpecialFunctions.Gamma(_freedom/2.0)) + ((1.0 - (_freedom/2.0))*SpecialFunctions.DiGamma(_freedom/2.0));
 
         /// <summary>
         /// Gets the skewness of the distribution.
         /// </summary>
-        public double Skewness
-        {
-            get { return Math.Sqrt(8.0/_freedom); }
-        }
+        public double Skewness => Math.Sqrt(8.0/_freedom);
 
         /// <summary>
         /// Gets the mode of the distribution.
         /// </summary>
-        public double Mode
-        {
-            get { return _freedom - 2.0; }
-        }
+        public double Mode => _freedom - 2.0;
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
-        public double Median
-        {
-            get { return _freedom - (2.0/3.0); }
-        }
+        public double Median => _freedom - (2.0/3.0);
 
         /// <summary>
         /// Gets the minimum of the distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return 0.0; }
-        }
+        public double Minimum => 0.0;
 
         /// <summary>
         /// Gets the maximum of the distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return double.PositiveInfinity; }
-        }
+        public double Maximum => double.PositiveInfinity;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -330,7 +299,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (double.IsPositiveInfinity(freedom) || double.IsPositiveInfinity(x) || x == 0.0)
@@ -357,7 +326,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (double.IsPositiveInfinity(freedom) || double.IsPositiveInfinity(x) || x == 0.0)
@@ -379,7 +348,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (double.IsPositiveInfinity(x))
@@ -406,7 +375,7 @@ namespace MathNet.Numerics.Distributions
         {
             if(!IsValidParameterSet(freedom))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SpecialFunctions.GammaLowerRegularizedInv(freedom / 2.0, p) / 0.5;
@@ -422,7 +391,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, freedom);
@@ -438,7 +407,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, freedom);
@@ -455,7 +424,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, freedom);
@@ -470,7 +439,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, freedom);
@@ -485,7 +454,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, freedom);
@@ -501,7 +470,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (freedom <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, freedom);

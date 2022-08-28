@@ -28,7 +28,6 @@
 // </copyright>
 
 using System;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Storage
 {
@@ -37,9 +36,9 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
     {
         void ValidateRange(int index)
         {
-            if (index < 0 || index >= Length)
+            if ((uint)index >= (uint)Length)
             {
-                throw new ArgumentOutOfRangeException("index");
+                throw new ArgumentOutOfRangeException(nameof(index));
             }
         }
 
@@ -48,61 +47,61 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (count < 1)
             {
-                throw new ArgumentOutOfRangeException("count", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(count), "Value must be positive.");
             }
 
             // Verify Source
 
-            if (sourceIndex >= Length || sourceIndex < 0)
+            if ((uint)sourceIndex >= (uint)Length)
             {
-                throw new ArgumentOutOfRangeException("sourceIndex");
+                throw new ArgumentOutOfRangeException(nameof(sourceIndex));
             }
 
             var sourceMax = sourceIndex + count;
 
             if (sourceMax > Length)
             {
-                throw new ArgumentOutOfRangeException("count");
+                throw new ArgumentOutOfRangeException(nameof(count));
             }
 
             // Verify Target
 
-            if (targetIndex >= target.Length || targetIndex < 0)
+            if ((uint)targetIndex >= (uint)target.Length)
             {
-                throw new ArgumentOutOfRangeException("targetIndex");
+                throw new ArgumentOutOfRangeException(nameof(targetIndex));
             }
 
             var targetMax = targetIndex + count;
 
             if (targetMax > target.Length)
             {
-                throw new ArgumentOutOfRangeException("count");
+                throw new ArgumentOutOfRangeException(nameof(count));
             }
         }
 
         void ValidateRowRange(MatrixStorage<T> target, int rowIndex)
         {
-            if (rowIndex >= target.RowCount || rowIndex < 0)
+            if ((uint)rowIndex >= (uint)target.RowCount)
             {
-                throw new ArgumentOutOfRangeException("rowIndex");
+                throw new ArgumentOutOfRangeException(nameof(rowIndex));
             }
 
             if (target.ColumnCount != Length)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension, "target");
+                throw new ArgumentException("Matrix row dimensions must agree.", nameof(target));
             }
         }
 
         void ValidateColumnRange(MatrixStorage<T> target, int columnIndex)
         {
-            if (columnIndex >= target.ColumnCount || columnIndex < 0)
+            if ((uint)columnIndex >= (uint)target.ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("columnIndex");
+                throw new ArgumentOutOfRangeException(nameof(columnIndex));
             }
 
             if (target.RowCount != Length)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension, "target");
+                throw new ArgumentException("Matrix column dimensions must agree.", nameof(target));
             }
         }
 
@@ -111,36 +110,36 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (columnCount < 1)
             {
-                throw new ArgumentOutOfRangeException("columnCount", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(columnCount), "Value must be positive.");
             }
 
             // Verify Source
 
-            if (sourceColumnIndex >= Length || sourceColumnIndex < 0)
+            if ((uint)sourceColumnIndex >= (uint)Length)
             {
-                throw new ArgumentOutOfRangeException("sourceColumnIndex");
+                throw new ArgumentOutOfRangeException(nameof(sourceColumnIndex));
             }
 
             if (sourceColumnIndex + columnCount > Length)
             {
-                throw new ArgumentOutOfRangeException("columnCount");
+                throw new ArgumentOutOfRangeException(nameof(columnCount));
             }
 
             // Verify Target
 
-            if (rowIndex >= target.RowCount || rowIndex < 0)
+            if ((uint)rowIndex >= (uint)target.RowCount)
             {
-                throw new ArgumentOutOfRangeException("rowIndex");
+                throw new ArgumentOutOfRangeException(nameof(rowIndex));
             }
 
-            if (targetColumnIndex >= target.ColumnCount || targetColumnIndex < 0)
+            if ((uint)targetColumnIndex >= (uint)target.ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("targetColumnIndex");
+                throw new ArgumentOutOfRangeException(nameof(targetColumnIndex));
             }
 
             if (targetColumnIndex + columnCount > target.ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("columnCount");
+                throw new ArgumentOutOfRangeException(nameof(columnCount));
             }
         }
 
@@ -149,36 +148,36 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (rowCount < 1)
             {
-                throw new ArgumentOutOfRangeException("rowCount", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(rowCount), "Value must be positive.");
             }
 
             // Verify Source
 
-            if (sourceRowIndex >= Length || sourceRowIndex < 0)
+            if ((uint)sourceRowIndex >= (uint)Length)
             {
-                throw new ArgumentOutOfRangeException("sourceRowIndex");
+                throw new ArgumentOutOfRangeException(nameof(sourceRowIndex));
             }
 
             if (sourceRowIndex + rowCount > Length)
             {
-                throw new ArgumentOutOfRangeException("rowCount");
+                throw new ArgumentOutOfRangeException(nameof(rowCount));
             }
 
             // Verify Target
 
-            if (columnIndex >= target.ColumnCount || columnIndex < 0)
+            if ((uint)columnIndex >= (uint)target.ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("columnIndex");
+                throw new ArgumentOutOfRangeException(nameof(columnIndex));
             }
 
-            if (targetRowIndex >= target.RowCount || targetRowIndex < 0)
+            if ((uint)targetRowIndex >= (uint)target.RowCount)
             {
-                throw new ArgumentOutOfRangeException("targetRowIndex");
+                throw new ArgumentOutOfRangeException(nameof(targetRowIndex));
             }
 
             if (targetRowIndex + rowCount > target.RowCount)
             {
-                throw new ArgumentOutOfRangeException("rowCount");
+                throw new ArgumentOutOfRangeException(nameof(rowCount));
             }
         }
     }

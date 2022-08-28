@@ -28,14 +28,12 @@
 // </copyright>
 
 using System;
-using System.Numerics;
 using System.Collections.Generic;
 using MathNet.Numerics.LinearAlgebra;
+using Complex = System.Numerics.Complex;
 
 namespace MathNet.Numerics
 {
-    // TODO PERF: Cache/Precompute 10^x terms
-
     public static partial class Precision
     {
         /// <summary>
@@ -355,7 +353,7 @@ namespace MathNet.Numerics
             // 10^(-numberOfDecimalPlaces). We divide by two so that we have half the range
             // on each side of the numbers, e.g. if decimalPlaces == 2,
             // then 0.01 will equal between 0.005 and 0.015, but not 0.02 and not 0.00
-            return Math.Abs(diff) < Math.Pow(10, -decimalPlaces) / 2d;
+            return Math.Abs(diff) < Pow10(-decimalPlaces) * 0.5;
         }
 
         /// <summary>
@@ -399,7 +397,7 @@ namespace MathNet.Numerics
             if (decimalPlaces < 0)
             {
                 // Can't have a negative number of decimal places
-                throw new ArgumentOutOfRangeException("decimalPlaces");
+                throw new ArgumentOutOfRangeException(nameof(decimalPlaces));
             }
 
             // If A or B are a NAN, return false. NANs are equal to nothing,
@@ -431,7 +429,7 @@ namespace MathNet.Numerics
                 // 10^(-numberOfDecimalPlaces). We divide by two so that we have half the range
                 // on each side of the numbers, e.g. if decimalPlaces == 2,
                 // then 0.01 will equal between 0.005 and 0.015, but not 0.02 and not 0.00
-                return Math.Abs(diff) < Math.Pow(10, -decimalPlaces) / 2d;
+                return Math.Abs(diff) < Pow10(-decimalPlaces) * 0.5;
             }
 
             // If the magnitudes of the two numbers are equal to within one magnitude the numbers could potentially be equal
@@ -447,7 +445,7 @@ namespace MathNet.Numerics
             // 10^(-numberOfDecimalPlaces). We divide by two so that we have half the range
             // on each side of the numbers, e.g. if decimalPlaces == 2,
             // then 0.01 will equal between 0.00995 and 0.01005, but not 0.0015 and not 0.0095
-            return Math.Abs(diff) < Math.Pow(10, magnitudeOfMax - decimalPlaces) / 2d;
+            return Math.Abs(diff) < Pow10(magnitudeOfMax - decimalPlaces) * 0.5;
         }
 
         /// <summary>
@@ -592,7 +590,7 @@ namespace MathNet.Numerics
             // default NAN won't compare as equal to anything.
             if (maxNumbersBetween < 1)
             {
-                throw new ArgumentOutOfRangeException("maxNumbersBetween");
+                throw new ArgumentOutOfRangeException(nameof(maxNumbersBetween));
             }
 
             // If A or B are infinity (positive or negative) then
@@ -635,7 +633,7 @@ namespace MathNet.Numerics
             // default NAN won't compare as equal to anything.
             if (maxNumbersBetween < 1)
             {
-                throw new ArgumentOutOfRangeException("maxNumbersBetween");
+                throw new ArgumentOutOfRangeException(nameof(maxNumbersBetween));
             }
 
             // If A or B are infinity (positive or negative) then
@@ -919,7 +917,7 @@ namespace MathNet.Numerics
             return true;
         }
 
-        private static bool ListForAll<T,TP>(IList<T> a, IList<T> b, Func<T, T, TP, bool> predicate, TP parameter)
+        static bool ListForAll<T,TP>(IList<T> a, IList<T> b, Func<T, T, TP, bool> predicate, TP parameter)
         {
             if (a == null && b == null)
             {
@@ -1040,6 +1038,20 @@ namespace MathNet.Numerics
             where T : struct, IEquatable<T>, IFormattable
         {
             return AlmostEqualNormRelative(a.L2Norm(), b.L2Norm(), (a - b).L2Norm(), decimalPlaces);
+        }
+
+        static readonly double[] NegativePowersOf10 = new double[]
+        {
+            1, 0.1, 0.01, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9,
+            1e-10, 1e-11, 1e-12, 1e-13, 1e-14, 1e-15, 1e-16,
+            1e-17, 1e-18, 1e-19, 1e-20
+        };
+
+        static double Pow10(int y)
+        {
+            return -NegativePowersOf10.Length < y && y <= 0
+               ? NegativePowersOf10[-y]
+               : Math.Pow(10.0, y);
         }
     }
 }

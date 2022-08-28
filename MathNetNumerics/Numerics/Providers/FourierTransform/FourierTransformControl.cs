@@ -3,7 +3,7 @@
 // http://numerics.mathdotnet.com
 // http://github.com/mathnet/mathnet-numerics
 //
-// Copyright (c) 2009-2018 Math.NET
+// Copyright (c) 2009-2021 Math.NET
 //
 // Permission is hereby granted, free of charge, to any person
 // obtaining a copy of this software and associated documentation
@@ -34,10 +34,20 @@ namespace MathNet.Numerics.Providers.FourierTransform
     public static class FourierTransformControl
     {
         const string EnvVarFFTProvider = "MathNetNumericsFFTProvider";
-        const string EnvVarFFTProviderPath = "MathNetNumericsFFTProviderPath";
 
         static IFourierTransformProvider _fourierTransformProvider;
         static readonly object StaticLock = new object();
+
+        const string MklTypeName = "MathNet.Numerics.Providers.MKL.FourierTransform.MklFourierTransformControl, MathNet.Numerics.Providers.MKL";
+        static readonly ProviderProbe<IFourierTransformProvider> MklProbe = new ProviderProbe<IFourierTransformProvider>(MklTypeName, AppSwitches.DisableMklNativeProvider);
+
+        /// <summary>
+        /// Optional path to try to load native provider binaries from,
+        /// if the provider specific hint path is not set.
+        /// If neither is set, Numerics falls back to the provider specific
+        /// environment variables, or the default probing paths.
+        /// </summary>
+        public static string HintPath { get; set; }
 
         /// <summary>
         /// Gets or sets the Fourier transform provider. Consider to use UseNativeMKL or UseManaged instead.
@@ -69,53 +79,30 @@ namespace MathNet.Numerics.Providers.FourierTransform
             }
         }
 
-        /// <summary>
-        /// Optional path to try to load native provider binaries from.
-        /// If not set, Numerics will fall back to the environment variable
-        /// `MathNetNumericsFFTProviderPath` or the default probing paths.
-        /// </summary>
-        public static string HintPath { get; set; }
+        public static void UseManaged() => Provider = ManagedFourierTransformProvider.Instance;
 
-        public static IFourierTransformProvider CreateManaged()
-        {
-            return new Managed.ManagedFourierTransformProvider();
-        }
+        public static void UseNativeMKL() => Provider = MklProbe.Create();
+        public static bool TryUseNativeMKL() => TryUse(MklProbe.TryCreate());
 
-        public static void UseManaged()
-        {
-            Provider = CreateManaged();
-        }
-
-#if NATIVE
-        public static IFourierTransformProvider CreateNativeMKL()
-        {
-            return new Mkl.MklFourierTransformProvider(GetCombinedHintPath());
-        }
-
-        public static void UseNativeMKL()
-        {
-            Provider = CreateNativeMKL();
-        }
-
-        public static bool TryUseNativeMKL()
-        {
-            return TryUse(CreateNativeMKL());
-        }
 
         /// <summary>
         /// Try to use a native provider, if available.
         /// </summary>
         public static bool TryUseNative()
         {
+            if (AppSwitches.DisableNativeProviders || AppSwitches.DisableNativeProviderProbing)
+            {
+                return false;
+            }
+
             return TryUseNativeMKL();
         }
-#endif
 
-        static bool TryUse(IFourierTransformProvider provider)
+        public static bool TryUse(IFourierTransformProvider provider)
         {
             try
             {
-                if (!provider.IsAvailable())
+                if (provider == null || !provider.IsAvailable())
                 {
                     return false;
                 }
@@ -135,14 +122,16 @@ namespace MathNet.Numerics.Providers.FourierTransform
         /// </summary>
         public static void UseBest()
         {
-#if NATIVE
+            if (AppSwitches.DisableNativeProviders || AppSwitches.DisableNativeProviderProbing)
+            {
+                UseManaged();
+                return;
+            }
+
             if (!TryUseNative())
             {
                 UseManaged();
             }
-#else
-            UseManaged();
-#endif
         }
 
         /// <summary>
@@ -152,7 +141,12 @@ namespace MathNet.Numerics.Providers.FourierTransform
         /// </summary>
         public static void UseDefault()
         {
-#if NATIVE
+            if (AppSwitches.DisableNativeProviders)
+            {
+                UseManaged();
+                return;
+            }
+
             var value = Environment.GetEnvironmentVariable(EnvVarFFTProvider);
             switch (value != null ? value.ToUpperInvariant() : string.Empty)
             {
@@ -165,30 +159,8 @@ namespace MathNet.Numerics.Providers.FourierTransform
                     UseBest();
                     break;
             }
-#else
-            UseBest();
-#endif
         }
 
-        public static void FreeResources()
-        {
-            Provider.FreeResources();
-        }
-
-        static string GetCombinedHintPath()
-        {
-            if (!String.IsNullOrEmpty(HintPath))
-            {
-                return HintPath;
-            }
-
-            var value = Environment.GetEnvironmentVariable(EnvVarFFTProviderPath);
-            if (!String.IsNullOrEmpty(value))
-            {
-                return value;
-            }
-
-            return null;
-        }
+        public static void FreeResources() => Provider.FreeResources();
     }
 }

@@ -68,11 +68,8 @@
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using System.Threading;
-
-#if !NETSTANDARD1_3
 using System;
 using System.Runtime;
-#endif
 
 namespace MathNet.Numerics.Random
 {
@@ -176,10 +173,7 @@ namespace MathNet.Numerics.Random
         /// <summary>
         /// Default instance, thread-safe.
         /// </summary>
-        public static MersenneTwister Default
-        {
-            get { return DefaultInstance.Value; }
-        }
+        public static MersenneTwister Default => DefaultInstance.Value;
 
         /*/// <summary>
         /// Initializes a new instance of the <see cref="MersenneTwister"/> class.

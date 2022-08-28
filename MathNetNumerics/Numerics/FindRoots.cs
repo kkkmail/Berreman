@@ -28,9 +28,8 @@
 // </copyright>
 
 using System;
-using System.Numerics;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.RootFinding;
+using Complex = System.Numerics.Complex;
 
 namespace MathNet.Numerics
 {
@@ -44,14 +43,12 @@ namespace MathNet.Numerics
         /// <param name="maxIterations">Maximum number of iterations. Example: 100.</param>
         public static double OfFunction(Func<double, double> f, double lowerBound, double upperBound, double accuracy = 1e-8, int maxIterations = 100)
         {
-            double root;
-
             if (!ZeroCrossingBracketing.ExpandReduce(f, ref lowerBound, ref upperBound, 1.6, maxIterations, maxIterations*10))
             {
-                throw new NonConvergenceException(Resources.RootFindingFailed);
+                throw new NonConvergenceException("The algorithm has failed, exceeded the number of iterations allowed or there is no root within the provided bounds.");
             }
 
-            if (Brent.TryFindRoot(f, lowerBound, upperBound, accuracy, maxIterations, out root))
+            if (Brent.TryFindRoot(f, lowerBound, upperBound, accuracy, maxIterations, out var root))
             {
                 return root;
             }
@@ -61,7 +58,7 @@ namespace MathNet.Numerics
                 return root;
             }
 
-            throw new NonConvergenceException(Resources.RootFindingFailed);
+            throw new NonConvergenceException("The algorithm has failed, exceeded the number of iterations allowed or there is no root within the provided bounds.");
         }
 
         /// <summary>Find a solution of the equation f(x)=0.</summary>
@@ -87,37 +84,48 @@ namespace MathNet.Numerics
         /// Find both complex roots of the quadratic equation c + b*x + a*x^2 = 0.
         /// Note the special coefficient order ascending by exponent (consistent with polynomials).
         /// </summary>
-        public static Tuple<Complex, Complex> Quadratic(double c, double b, double a)
+        public static (Complex, Complex) Quadratic(double c, double b, double a)
         {
             if (b == 0d)
             {
                 var t = new Complex(-c/a, 0d).SquareRoot();
-                return new Tuple<Complex, Complex>(t, -t);
+                return (t, -t);
             }
 
             var q = b > 0d
                 ? -0.5*(b + new Complex(b*b - 4*a*c, 0d).SquareRoot())
                 : -0.5*(b - new Complex(b*b - 4*a*c, 0d).SquareRoot());
 
-            return new Tuple<Complex, Complex>(q/a, c/q);
+            return (q/a, c/q);
         }
 
         /// <summary>
         /// Find all three complex roots of the cubic equation d + c*x + b*x^2 + a*x^3 = 0.
         /// Note the special coefficient order ascending by exponent (consistent with polynomials).
         /// </summary>
-        public static Tuple<Complex, Complex, Complex> Cubic(double d, double c, double b, double a)
+        public static (Complex, Complex, Complex) Cubic(double d, double c, double b, double a)
         {
             return RootFinding.Cubic.Roots(d, c, b, a);
         }
+
         /// <summary>
         /// Find all roots of a polynomial by calculating the characteristic polynomial of the companion matrix
         /// </summary>
-        /// <param name="poly">the values for the polynomial in ascending order e.G new double[] {5, 0, 2} = "5 + 0 x^1 + 2 x^2"</param>
-        /// <returns>the roots of the polynomial</returns>
-        public static Complex[] Polynomial(double[] poly)
+        /// <param name="coefficients">The coefficients of the polynomial in ascending order, e.g. new double[] {5, 0, 2} = "5 + 0 x^1 + 2 x^2"</param>
+        /// <returns>The roots of the polynomial</returns>
+        public static Complex[] Polynomial(double[] coefficients)
         {
-            return new Polynomial(poly).GetRoots();
+            return new Polynomial(coefficients).Roots();
+        }
+
+        /// <summary>
+        /// Find all roots of a polynomial by calculating the characteristic polynomial of the companion matrix
+        /// </summary>
+        /// <param name="polynomial">The polynomial.</param>
+        /// <returns>The roots of the polynomial</returns>
+        public static Complex[] Polynomial(Polynomial polynomial)
+        {
+            return polynomial.Roots();
         }
 
         /// <summary>
@@ -131,14 +139,14 @@ namespace MathNet.Numerics
         {
             if (degree < 1)
             {
-                return new double[0];
+                return Array.Empty<double>();
             }
 
             // transform to map to [-1..1] interval
             double location = 0.5*(intervalBegin + intervalEnd);
             double scale = 0.5*(intervalEnd - intervalBegin);
 
-            // evaluate first kind chebyshev nodes
+            // evaluate first kind chebychev nodes
             double angleFactor = Constants.Pi/(2*degree);
 
             var samples = new double[degree];
@@ -160,14 +168,14 @@ namespace MathNet.Numerics
         {
             if (degree < 1)
             {
-                return new double[0];
+                return Array.Empty<double>();
             }
 
             // transform to map to [-1..1] interval
             double location = 0.5*(intervalBegin + intervalEnd);
             double scale = 0.5*(intervalEnd - intervalBegin);
 
-            // evaluate second kind chebyshev nodes
+            // evaluate second kind chebychev nodes
             double angleFactor = Constants.Pi/(degree + 1);
 
             var samples = new double[degree];

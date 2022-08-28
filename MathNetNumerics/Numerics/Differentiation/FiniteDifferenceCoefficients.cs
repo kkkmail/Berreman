@@ -49,7 +49,7 @@ namespace MathNet.Numerics.Differentiation
         /// </summary>
         public int Points
         {
-            get { return _points; }
+            get => _points;
             set
             {
                 CalculateCoefficients(value);
@@ -57,8 +57,8 @@ namespace MathNet.Numerics.Differentiation
             }
         }
 
-        private double[][,] _coefficients;
-        private int _points;
+        double[][,] _coefficients;
+        int _points;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FiniteDifferenceCoefficients"/> class.
@@ -79,9 +79,9 @@ namespace MathNet.Numerics.Differentiation
         public double[] GetCoefficients(int center, int order)
         {
             if (center >= _coefficients.Length)
-                throw new ArgumentOutOfRangeException("center", "Center position must be within the point range.");
+                throw new ArgumentOutOfRangeException(nameof(center), "Center position must be within the point range.");
             if (order >= _coefficients.Length)
-                throw new ArgumentOutOfRangeException("order", "Maximum difference order is points-1.");
+                throw new ArgumentOutOfRangeException(nameof(order), "Maximum difference order is points-1.");
 
             // Return proper row
             var columns = _coefficients[center].GetLength(1);
@@ -99,12 +99,12 @@ namespace MathNet.Numerics.Differentiation
         public double[,] GetCoefficientsForAllOrders(int center)
         {
             if (center >= _coefficients.Length)
-                throw new ArgumentOutOfRangeException("center", "Center position must be within the point range.");
+                throw new ArgumentOutOfRangeException(nameof(center), "Center position must be within the point range.");
 
             return _coefficients[center];
         }
 
-        private void CalculateCoefficients(int points)
+        void CalculateCoefficients(int points)
         {
             var c = new double[points][,];
 

@@ -31,7 +31,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.Serialization;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Storage
 {
@@ -69,35 +68,39 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         /// Gets the number of non zero elements in the matrix.
         /// </summary>
         /// <value>The number of non zero elements.</value>
-        public int ValueCount
-        {
-            get { return RowPointers[RowCount]; }
-        }
+        public int ValueCount => RowPointers[RowCount];
 
         internal SparseCompressedRowMatrixStorage(int rows, int columns)
             : base(rows, columns)
         {
             RowPointers = new int[rows + 1];
-            ColumnIndices = new int[0];
-            Values = new T[0];
+            ColumnIndices = Array.Empty<int>();
+            Values = Array.Empty<T>();
+        }
+
+        internal SparseCompressedRowMatrixStorage(int rows, int columns, int[] rowPointers, int[] columnIndices, T[] values)
+            : base(rows, columns)
+        {
+            RowPointers = rowPointers;
+            ColumnIndices = columnIndices;
+            Values = values;
+
+            // Explicit zeros are not intentionally removed.
+            // Sort ColumnIndices.
+            NormalizeOrdering();
+            NormalizeDuplicates();
         }
 
         /// <summary>
         /// True if the matrix storage format is dense.
         /// </summary>
-        public override bool IsDense
-        {
-            get { return false; }
-        }
+        public override bool IsDense => false;
 
         /// <summary>
         /// True if all fields of this matrix can be set to any value.
         /// False if some fields are fixed, like on a diagonal matrix.
         /// </summary>
-        public override bool IsFullyMutable
-        {
-            get { return true; }
-        }
+        public override bool IsFullyMutable => true;
 
         /// <summary>
         /// True if the specified field can be set to any value.
@@ -170,7 +173,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                     var size = Math.Min(Values.Length + GrowthSize(), (long)RowCount*ColumnCount);
                     if (size > int.MaxValue)
                     {
-                        throw new NotSupportedException(Resources.TooManyElements);
+                        throw new NotSupportedException("We only support sparse matrix with less than int.MaxValue elements.");
                     }
 
                     Array.Resize(ref Values, (int)size);
@@ -292,6 +295,110 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         }
 
         /// <summary>
+        /// Eliminate duplicate entries by adding them together.
+        /// </summary>
+        public void NormalizeDuplicates()
+        {
+            var builder = BuilderInstance<T>.Matrix;
+
+            int valueCount = 0;
+            int last = 0;
+            for (int i = 0; i < RowCount; i++)
+            {
+                int index = last;
+                last = RowPointers[i + 1];
+                while (index < last)
+                {
+                    var col = ColumnIndices[index];
+                    var val = Values[index];
+                    index++;
+                    while (index < last && ColumnIndices[index] == col)
+                    {
+                        val = builder.Add(val, Values[index]);
+                        index++;
+                    }
+                    ColumnIndices[valueCount] = col;
+                    Values[valueCount] = val;
+                    valueCount++;
+                }
+                RowPointers[i + 1] = valueCount;
+            }
+
+            // Remove extra space from arrays.
+            Array.Resize(ref Values, valueCount);
+            Array.Resize(ref ColumnIndices, valueCount);
+        }
+
+        /// <summary>
+        /// Fill zeros explicitly on the diagonal entries as required by the Intel MKL direct sparse solver.
+        /// </summary>
+        public void PopulateExplicitZerosOnDiagonal()
+        {
+            var delta = 0; // number of missing diagonal entries
+
+            for (int row = 0; row < RowCount; row++)
+            {
+                var found = false;
+                for (int j = RowPointers[row]; j < RowPointers[row + 1]; j++)
+                {
+                    if (ColumnIndices[j] == row)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) delta++;
+            }
+
+            if (delta > 0)
+            {
+                var size = Values.Length + delta;
+                if (size > int.MaxValue)
+                {
+                    throw new NotSupportedException("We only support sparse matrix with less than int.MaxValue elements.");
+                }
+
+                var newRowPointers = new int[RowCount + 1];
+                var newColumnIndices = new int[size];
+                var newValues = new T[size];
+
+                delta = 0;
+                for (int row = 0; row < RowCount; row++)
+                {
+                    var found = false;
+                    for (int j = RowPointers[row]; j < RowPointers[row + 1]; j++)
+                    {
+                        newColumnIndices[j + delta] = ColumnIndices[j];
+                        newValues[j + delta] = Values[j];
+                        if (ColumnIndices[j] == row)
+                        {
+                            found = true;
+                        }
+                    }
+                    if (!found)
+                    {
+                        var start = RowPointers[row] + delta;
+                        var end = RowPointers[row + 1] + delta;
+                        var count = end - start + 1;
+
+                        newColumnIndices[end] = row;
+                        newValues[end] = Zero;
+
+                        // Ordering may be not necessary
+                        Sorting.Sort(newColumnIndices, newValues, start, count);
+
+                        delta++;
+                    }
+                    newRowPointers[row + 1] = RowPointers[row + 1] + delta;
+                }
+
+                Array.Copy(newRowPointers, RowPointers, RowCount + 1);
+                ColumnIndices = newColumnIndices;
+                Values = newValues;
+            }
+        }
+
+        /// <summary>
         /// Returns a hash code for this instance.
         /// </summary>
         /// <returns>
@@ -380,7 +487,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             {
                 rows[rowIndices[i]] = true;
             }
-            MapIndexedInplace((i, j, x) => rows[i] ? Zero : x, Zeros.AllowSkip);
+            MapIndexedInplace((i, _, x) => rows[i] ? Zero : x, Zeros.AllowSkip);
         }
 
         internal override void ClearColumnsUnchecked(int[] columnIndices)
@@ -390,7 +497,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             {
                 columns[columnIndices[i]] = true;
             }
-            MapIndexedInplace((i, j, x) => columns[j] ? Zero : x, Zeros.AllowSkip);
+            MapIndexedInplace((_, j, x) => columns[j] ? Zero : x, Zeros.AllowSkip);
         }
 
         // INITIALIZATION
@@ -522,7 +629,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data.Length <= 0)
             {
-                throw new ArgumentOutOfRangeException("data", Resources.MatrixCanNotBeEmpty);
+                throw new ArgumentOutOfRangeException(nameof(data), "Matrices can not be empty and must have at least one row and column.");
             }
 
             var storage = new SparseCompressedRowMatrixStorage<T>(data.Length, data[0].Length);
@@ -554,7 +661,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data.Length <= 0)
             {
-                throw new ArgumentOutOfRangeException("data", Resources.MatrixCanNotBeEmpty);
+                throw new ArgumentOutOfRangeException(nameof(data), "Matrices can not be empty and must have at least one row and column.");
             }
 
             var storage = new SparseCompressedRowMatrixStorage<T>(data[0].Length, data.Length);
@@ -586,7 +693,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data.Length <= 0)
             {
-                throw new ArgumentOutOfRangeException("data", Resources.MatrixCanNotBeEmpty);
+                throw new ArgumentOutOfRangeException(nameof(data), "Matrices can not be empty and must have at least one row and column.");
             }
 
             var storage = new SparseCompressedRowMatrixStorage<T>(data.Length, data[0].Length);
@@ -620,7 +727,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (data.Length <= 0)
             {
-                throw new ArgumentOutOfRangeException("data", Resources.MatrixCanNotBeEmpty);
+                throw new ArgumentOutOfRangeException(nameof(data), "Matrices can not be empty and must have at least one row and column.");
             }
 
             var storage = new SparseCompressedRowMatrixStorage<T>(data[0].Length, data.Length);
@@ -652,12 +759,52 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         public static SparseCompressedRowMatrixStorage<T> OfIndexedEnumerable(int rows, int columns, IEnumerable<Tuple<int, int, T>> data)
         {
             var trows = new List<Tuple<int, T>>[rows];
-            foreach (var item in data)
+            foreach (var (i,j,x) in data)
             {
-                if (!Zero.Equals(item.Item3))
+                if (!Zero.Equals(x))
                 {
-                    var row = trows[item.Item1] ?? (trows[item.Item1] = new List<Tuple<int, T>>());
-                    row.Add(new Tuple<int, T>(item.Item2, item.Item3));
+                    var row = trows[i] ?? (trows[i] = new List<Tuple<int, T>>());
+                    row.Add(new Tuple<int, T>(j, x));
+                }
+            }
+
+            var storage = new SparseCompressedRowMatrixStorage<T>(rows, columns);
+            var rowPointers = storage.RowPointers;
+            var columnIndices = new List<int>();
+            var values = new List<T>();
+
+            int index = 0;
+            for (int row = 0; row < rows; row++)
+            {
+                rowPointers[row] = index;
+                var trow = trows[row];
+                if (trow != null)
+                {
+                    trow.Sort();
+                    foreach (var item in trow)
+                    {
+                        values.Add(item.Item2);
+                        columnIndices.Add(item.Item1);
+                        index++;
+                    }
+                }
+            }
+
+            rowPointers[rows] = values.Count;
+            storage.ColumnIndices = columnIndices.ToArray();
+            storage.Values = values.ToArray();
+            return storage;
+        }
+
+        public static SparseCompressedRowMatrixStorage<T> OfIndexedEnumerable(int rows, int columns, IEnumerable<(int, int, T)> data)
+        {
+            var trows = new List<Tuple<int, T>>[rows];
+            foreach (var (i,j,x) in data)
+            {
+                if (!Zero.Equals(x))
+                {
+                    var row = trows[i] ?? (trows[i] = new List<Tuple<int, T>>());
+                    row.Add(new Tuple<int, T>(j, x));
                 }
             }
 
@@ -700,23 +847,23 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             {
                 for (int row = 0; row < rows; row++)
                 {
-                    if (!rowIterator.MoveNext()) throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, rows));
+                    if (!rowIterator.MoveNext()) throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {rows}.");
                     rowPointers[row] = values.Count;
                     using (var columnIterator = rowIterator.Current.GetEnumerator())
                     {
                         for (int col = 0; col < columns; col++)
                         {
-                            if (!columnIterator.MoveNext()) throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, columns));
+                            if (!columnIterator.MoveNext()) throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {columns}.");
                             if (!Zero.Equals(columnIterator.Current))
                             {
                                 values.Add(columnIterator.Current);
                                 columnIndices.Add(col);
                             }
                         }
-                        if (columnIterator.MoveNext()) throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, columns));
+                        if (columnIterator.MoveNext()) throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {columns}.");
                     }
                 }
-                if (rowIterator.MoveNext()) throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, rows));
+                if (rowIterator.MoveNext()) throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {rows}.");
             }
 
             rowPointers[rows] = values.Count;
@@ -732,12 +879,12 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             {
                 for (int column = 0; column < columns; column++)
                 {
-                    if (!columnIterator.MoveNext()) throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, columns));
+                    if (!columnIterator.MoveNext()) throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {columns}.");
                     using (var rowIterator = columnIterator.Current.GetEnumerator())
                     {
                         for (int row = 0; row < rows; row++)
                         {
-                            if (!rowIterator.MoveNext()) throw new ArgumentOutOfRangeException("data", string.Format(Resources.ArgumentArrayWrongLength, rows));
+                            if (!rowIterator.MoveNext()) throw new ArgumentOutOfRangeException(nameof(data), $"The given array has the wrong length. Should be {rows}.");
                             if (!Zero.Equals(rowIterator.Current))
                             {
                                 var trow = trows[row] ?? (trows[row] = new List<Tuple<int, T>>());
@@ -810,7 +957,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (rows*columns != data.Count)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixDimensions);
+                throw new ArgumentException("Matrix dimensions must agree.");
             }
 
             var storage = new SparseCompressedRowMatrixStorage<T>(rows, columns);
@@ -838,19 +985,179 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             return storage;
         }
 
+        /// <summary>
+        /// Create a new sparse storage from a compressed sparse row (CSR) format.
+        /// This new storage will be independent from the given arrays.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        /// <param name="rows">The number of rows.</param>
+        /// <param name="columns">The number of columns.</param>
+        /// <param name="valueCount">The number of stored values including explicit zeros.</param>
+        /// <param name="rowPointers">The row pointer array of the compressed sparse row format.</param>
+        /// <param name="columnIndices">The column index array of the compressed sparse row format.</param>
+        /// <param name="values">The data array of the compressed sparse row format.</param>
+        /// <returns>The sparse storage from the compressed sparse row format.</returns>
+        /// <remarks>Duplicate entries will be summed together and explicit zeros will be not intentionally removed.</remarks>
+        public static SparseCompressedRowMatrixStorage<T> OfCompressedSparseRowFormat(int rows, int columns, int valueCount, int[] rowPointers, int[] columnIndices, T[] values)
+        {
+            if (values == null) throw new NullReferenceException(nameof(values));
+            if (columnIndices == null) throw new NullReferenceException(nameof(columnIndices));
+            if (rowPointers == null) throw new NullReferenceException(nameof(rowPointers));
+            if (rowPointers.Length < rows) throw new Exception($"The given array has the wrong length. Should be {rows + 1}.");
+            if (valueCount != rowPointers[rows]) throw new Exception($"{nameof(valueCount)} should be same to {rowPointers[rows]}");
+
+            // copy arrays to new memory block.
+            var storage = new SparseCompressedRowMatrixStorage<T>(rows, columns);
+            var csrValues = new T[valueCount];
+            Array.Copy(values, csrValues, valueCount);
+            var csrColumnIndices = new int[valueCount];
+            Array.Copy(columnIndices, csrColumnIndices, valueCount);
+            Array.Copy(rowPointers, storage.RowPointers, rows + 1);
+
+            storage.ColumnIndices = csrColumnIndices;
+            storage.Values = csrValues;
+            storage.NormalizeOrdering();
+            storage.NormalizeDuplicates();
+            return storage;
+        }
+
+        /// <summary>
+        /// Create a new sparse matrix storage from a compressed sparse column (CSC) format.
+        /// This new storage will be independent from the given arrays.
+        /// A new memory block will be allocated.
+        /// </summary>
+        /// <param name="rows">The number of rows.</param>
+        /// <param name="columns">The number of columns.</param>
+        /// <param name="valueCount">The number of stored values including explicit zeros.</param>
+        /// <param name="rowIndices">The row index array of the compressed sparse column format.</param>
+        /// <param name="columnPointers">The column pointer array of the compressed sparse column format.</param>
+        /// <param name="values">The data array of the compressed sparse column format.</param>
+        /// <returns>The sparse storage from the compressed sparse column format.</returns>
+        /// <remarks>Duplicate entries will be summed together and explicit zeros will be not intentionally removed.</remarks>
+        public static SparseCompressedRowMatrixStorage<T> OfCompressedSparseColumnFormat(int rows, int columns, int valueCount, int[] rowIndices, int[] columnPointers, T[] values)
+        {
+            if (values == null) throw new NullReferenceException(nameof(values));
+            if (rowIndices == null) throw new NullReferenceException(nameof(rowIndices));
+            if (columnPointers == null) throw new NullReferenceException(nameof(columnPointers));
+            if (columnPointers.Length < columns) throw new Exception($"The given array has the wrong length. Should be {columns + 1}.");
+            if (valueCount != columnPointers[columns]) throw new Exception($"{nameof(valueCount)} should be same to {columnPointers[columns]}");
+
+            // convert from CSC to CSR
+            var storage = new SparseCompressedRowMatrixStorage<T>(rows, columns);
+            var csrValues = new T[valueCount];
+            var csrRowPointers = storage.RowPointers;
+            var csrColumnIndices = new int[valueCount];
+
+            for (int i = 0; i < columns; i++)
+            {
+                for (int j = columnPointers[i]; j < columnPointers[i + 1]; j++)
+                {
+                    csrRowPointers[rowIndices[j] + 1]++;
+                }
+            }
+
+            for (int i = 1; i < rows + 1; i++)
+            {
+                csrRowPointers[i] += csrRowPointers[i - 1];
+            }
+
+            var curr = new int[rows];
+            for (int i = 0; i < columns; i++)
+            {
+                for (int j = columnPointers[i]; j < columnPointers[i + 1]; j++)
+                {
+                    var loc = csrRowPointers[rowIndices[j]] + curr[rowIndices[j]];
+                    curr[rowIndices[j]]++;
+                    csrColumnIndices[loc] = i;
+                    csrValues[loc] = values[j];
+                }
+            }
+
+            storage.ColumnIndices = csrColumnIndices;
+            storage.Values = csrValues;
+            storage.NormalizeOrdering();
+            storage.NormalizeDuplicates();
+            return storage;
+        }
+
+        /// <summary>
+        /// Create a new sparse storage from a coordinate (COO) format.
+        /// This new storage will be independent from the given arrays.
+        /// A new memory block will be allocated for storing the matrix.
+        /// </summary>
+        /// <param name="rows">The number of rows.</param>
+        /// <param name="columns">The number of columns.</param>
+        /// <param name="valueCount">The number of stored values including explicit zeros.</param>
+        /// <param name="rowIndices">The row index array of the coordinate format.</param>
+        /// <param name="columnIndices">The column index array of the coordinate format.</param>
+        /// <param name="values">The data array of the coordinate format.</param>
+        /// <returns>The sparse storage from the coordinate format.</returns>
+        /// <remarks>Duplicate entries will be summed together and
+        /// explicit zeros will be not intentionally removed.</remarks>
+        public static SparseCompressedRowMatrixStorage<T> OfCoordinateFormat(int rows, int columns, int valueCount, int[] rowIndices, int[] columnIndices, T[] values)
+        {
+            if (values == null) throw new NullReferenceException(nameof(values));
+            if (rowIndices == null) throw new NullReferenceException(nameof(rowIndices));
+            if (columnIndices == null) throw new NullReferenceException(nameof(columnIndices));
+            if (rowIndices.Length < valueCount || columnIndices.Length < valueCount || values.Length < valueCount)
+            {
+                throw new Exception($"The given array has the wrong length. Should be {valueCount}.");
+            }
+
+            // convert from COO to CSR
+            var storage = new SparseCompressedRowMatrixStorage<T>(rows, columns);
+            var csrRowPointers = storage.RowPointers;
+            var csrColumnIndices = new int[valueCount];
+            var csrValues = new T[valueCount];
+
+            for (int i = 0; i < valueCount; i++)
+            {
+                csrRowPointers[rowIndices[i]]++;
+            }
+
+            for (int i = 0, cumsum = 0; i < rows; i++)
+            {
+                var temp = csrRowPointers[i];
+                csrRowPointers[i] = cumsum;
+                cumsum += temp;
+            }
+
+            csrRowPointers[rows] = valueCount;
+
+            for (int i = 0; i < valueCount; i++)
+            {
+                var row = rowIndices[i];
+                var loc = csrRowPointers[row];
+
+                csrColumnIndices[loc] = columnIndices[i];
+                csrValues[loc] = values[i];
+
+                csrRowPointers[row]++;
+            }
+
+            for (int i = 0, last = 0; i <= rows; i++)
+            {
+                (csrRowPointers[i], last) = (last, csrRowPointers[i]);
+            }
+
+            storage.ColumnIndices = csrColumnIndices;
+            storage.Values = csrValues;
+            storage.NormalizeOrdering();
+            storage.NormalizeDuplicates();
+            return storage;
+        }
+
         // MATRIX COPY
 
         internal override void CopyToUnchecked(MatrixStorage<T> target, ExistingData existingData)
         {
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<T>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<T> sparseTarget)
             {
                 CopyToUnchecked(sparseTarget);
                 return;
             }
 
-            var denseTarget = target as DenseColumnMajorMatrixStorage<T>;
-            if (denseTarget != null)
+            if (target is DenseColumnMajorMatrixStorage<T> denseTarget)
             {
                 CopyToUnchecked(denseTarget, existingData);
                 return;
@@ -920,11 +1227,10 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<T>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<T> sparseTarget)
             {
                 CopySubMatrixToUnchecked(sparseTarget,
                     sourceRowIndex, targetRowIndex, rowCount,
@@ -1046,8 +1352,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return;
             }
 
-            var targetSparse = target as SparseVectorStorage<T>;
-            if (targetSparse != null)
+            if (target is SparseVectorStorage<T> targetSparse)
             {
                 if ((sourceColumnIndex == 0) && (targetColumnIndex == 0) && (columnCount == ColumnCount) && (ColumnCount == targetSparse.Length))
                 {
@@ -1087,7 +1392,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                         int newValueCount  = targetSparse.ValueCount - (targetEndPos - targetStartPos) + positionsToCopy;
                         T[] newValues = new T[newValueCount];
                         int[] newIndices = new int[newValueCount];
-                        // copy before 
+                        // copy before
                         Array.Copy(targetSparse.Indices, 0, newIndices, 0, targetStartPos);
                         Array.Copy(targetSparse.Values, 0, newValues, 0, targetStartPos);
                         // copy values themselves, with new positions
@@ -1115,7 +1420,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 }
                 return;
             }
-            // FALLBACK 
+            // FALLBACK
             if (existingData == ExistingData.Clear)
             {
                 target.Clear(targetColumnIndex, columnCount);
@@ -1132,15 +1437,13 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         internal override void TransposeToUnchecked(MatrixStorage<T> target, ExistingData existingData)
         {
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<T>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<T> sparseTarget)
             {
                 TransposeToUnchecked(sparseTarget);
                 return;
             }
 
-            var denseTarget = target as DenseColumnMajorMatrixStorage<T>;
-            if (denseTarget != null)
+            if (target is DenseColumnMajorMatrixStorage<T> denseTarget)
             {
                 TransposeToUnchecked(denseTarget, existingData);
                 return;
@@ -1214,6 +1517,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
             if (ValueCount != 0)
             {
+                var targetData = target.Data;
                 for (int row = 0; row < RowCount; row++)
                 {
                     var targetIndex = row * ColumnCount;
@@ -1221,7 +1525,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                     var endIndex = RowPointers[row + 1];
                     for (var j = startIndex; j < endIndex; j++)
                     {
-                        target.Data[targetIndex + ColumnIndices[j]] = Values[j];
+                        targetData[targetIndex + ColumnIndices[j]] = Values[j];
                     }
                 }
             }
@@ -1382,16 +1686,14 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             }
         }
 
-        public override IEnumerable<Tuple<int, int, T>> EnumerateIndexed()
+        public override IEnumerable<(int, int, T)> EnumerateIndexed()
         {
             int k = 0;
             for (int row = 0; row < RowCount; row++)
             {
                 for (int col = 0; col < ColumnCount; col++)
                 {
-                    yield return k < RowPointers[row + 1] && ColumnIndices[k] == col
-                        ? new Tuple<int, int, T>(row, col, Values[k++])
-                        : new Tuple<int, int, T>(row, col, Zero);
+                    yield return (row, col, k < RowPointers[row + 1] && ColumnIndices[k] == col ? Values[k++] : Zero);
                 }
             }
         }
@@ -1401,7 +1703,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             return Values.Take(ValueCount).Where(x => !Zero.Equals(x));
         }
 
-        public override IEnumerable<Tuple<int, int, T>> EnumerateNonZeroIndexed()
+        public override IEnumerable<(int, int, T)> EnumerateNonZeroIndexed()
         {
             for (int row = 0; row < RowCount; row++)
             {
@@ -1411,7 +1713,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 {
                     if (!Zero.Equals(Values[j]))
                     {
-                        yield return new Tuple<int, int, T>(row, ColumnIndices[j], Values[j]);
+                        yield return (row, ColumnIndices[j], Values[j]);
                     }
                 }
             }
@@ -1459,8 +1761,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         internal override Tuple<int, int, T, TOther> Find2Unchecked<TOther>(MatrixStorage<TOther> other, Func<T, TOther, bool> predicate, Zeros zeros)
         {
-            var denseOther = other as DenseColumnMajorMatrixStorage<TOther>;
-            if (denseOther != null)
+            if (other is DenseColumnMajorMatrixStorage<TOther> denseOther)
             {
                 TOther[] otherData = denseOther.Data;
                 int k = 0;
@@ -1478,8 +1779,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return null;
             }
 
-            var diagonalOther = other as DiagonalMatrixStorage<TOther>;
-            if (diagonalOther != null)
+            if (other is DiagonalMatrixStorage<TOther> diagonalOther)
             {
                 TOther[] otherData = diagonalOther.Data;
                 TOther otherZero = BuilderInstance<TOther>.Matrix.Zero;
@@ -1537,8 +1837,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return null;
             }
 
-            var sparseOther = other as SparseCompressedRowMatrixStorage<TOther>;
-            if (sparseOther != null)
+            if (other is SparseCompressedRowMatrixStorage<TOther> sparseOther)
             {
                 int[] otherRowPointers = sparseOther.RowPointers;
                 int[] otherColumnIndices = sparseOther.ColumnIndices;
@@ -1714,8 +2013,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             var processZeros = zeros == Zeros.Include || !Zero.Equals(f(Zero));
 
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<TU>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<TU> sparseTarget)
             {
                 var newRowPointers = sparseTarget.RowPointers;
                 var newColumnIndices = new List<int>(ColumnIndices.Length);
@@ -1808,8 +2106,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
         {
             var processZeros = zeros == Zeros.Include || !Zero.Equals(f(0, 1, Zero));
 
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<TU>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<TU> sparseTarget)
             {
                 var newRowPointers = sparseTarget.RowPointers;
                 var newColumnIndices = new List<int>(ColumnIndices.Length);
@@ -1903,8 +2200,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
             int sourceColumnIndex, int targetColumnIndex, int columnCount,
             Zeros zeros, ExistingData existingData)
         {
-            var sparseTarget = target as SparseCompressedRowMatrixStorage<TU>;
-            if (sparseTarget != null)
+            if (target is SparseCompressedRowMatrixStorage<TU> sparseTarget)
             {
                 MapSubMatrixIndexedToUnchecked(sparseTarget, f, sourceRowIndex, targetRowIndex, rowCount, sourceColumnIndex, targetColumnIndex, columnCount, zeros, existingData);
                 return;
@@ -2203,8 +2499,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
 
         internal override TState Fold2Unchecked<TOther, TState>(MatrixStorage<TOther> other, Func<TState, T, TOther, TState> f, TState state, Zeros zeros)
         {
-            var denseOther = other as DenseColumnMajorMatrixStorage<TOther>;
-            if (denseOther != null)
+            if (other is DenseColumnMajorMatrixStorage<TOther> denseOther)
             {
                 TOther[] otherData = denseOther.Data;
                 int k = 0;
@@ -2219,8 +2514,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return state;
             }
 
-            var diagonalOther = other as DiagonalMatrixStorage<TOther>;
-            if (diagonalOther != null)
+            if (other is DiagonalMatrixStorage<TOther> diagonalOther)
             {
                 TOther[] otherData = diagonalOther.Data;
                 TOther otherZero = BuilderInstance<TOther>.Matrix.Zero;
@@ -2266,8 +2560,7 @@ namespace MathNet.Numerics.LinearAlgebra.Storage
                 return state;
             }
 
-            var sparseOther = other as SparseCompressedRowMatrixStorage<TOther>;
-            if (sparseOther != null)
+            if (other is SparseCompressedRowMatrixStorage<TOther> sparseOther)
             {
                 int[] otherRowPointers = sparseOther.RowPointers;
                 int[] otherColumnIndices = sparseOther.ColumnIndices;

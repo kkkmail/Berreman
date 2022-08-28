@@ -28,7 +28,6 @@
 // </copyright>
 
 using System;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Providers.LinearAlgebra;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
@@ -56,12 +55,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
         {
             if (matrix == null)
             {
-                throw new ArgumentNullException("matrix");
+                throw new ArgumentNullException(nameof(matrix));
             }
 
             if (matrix.RowCount != matrix.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             // Create an array for the pivot indices.
@@ -89,23 +88,23 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
             // Check for proper arguments.
             if (input == null)
             {
-                throw new ArgumentNullException("input");
+                throw new ArgumentNullException(nameof(input));
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             // Check for proper dimensions.
             if (result.RowCount != input.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension);
+                throw new ArgumentException("Matrix row dimensions must agree.");
             }
 
             if (result.ColumnCount != input.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
             if (input.RowCount != Factors.RowCount)
@@ -113,24 +112,19 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
                 throw Matrix.DimensionsDontMatch<ArgumentException>(input, Factors);
             }
 
-            var dinput = input as DenseMatrix;
-            if (dinput == null)
+            if (input is DenseMatrix dinput && result is DenseMatrix dresult)
+            {
+                // Copy the contents of input to result.
+                Array.Copy(dinput.Values, 0, dresult.Values, 0, dinput.Values.Length);
+
+                // LU solve by overwriting result.
+                var dfactors = (DenseMatrix) Factors;
+                LinearAlgebraControl.Provider.LUSolveFactored(input.ColumnCount, dfactors.Values, dfactors.RowCount, Pivots, dresult.Values);
+            }
+            else
             {
                 throw new NotSupportedException("Can only do LU factorization for dense matrices at the moment.");
             }
-
-            var dresult = result as DenseMatrix;
-            if (dresult == null)
-            {
-                throw new NotSupportedException("Can only do LU factorization for dense matrices at the moment.");
-            }
-
-            // Copy the contents of input to result.
-            Array.Copy(dinput.Values, 0, dresult.Values, 0, dinput.Values.Length);
-
-            // LU solve by overwriting result.
-            var dfactors = (DenseMatrix) Factors;
-            LinearAlgebraControl.Provider.LUSolveFactored(input.ColumnCount, dfactors.Values, dfactors.RowCount, Pivots, dresult.Values);
         }
 
         /// <summary>
@@ -143,18 +137,18 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
             // Check for proper arguments.
             if (input == null)
             {
-                throw new ArgumentNullException("input");
+                throw new ArgumentNullException(nameof(input));
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             // Check for proper dimensions.
             if (input.Count != result.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (input.Count != Factors.RowCount)
@@ -162,24 +156,19 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
                 throw Matrix.DimensionsDontMatch<ArgumentException>(input, Factors);
             }
 
-            var dinput = input as DenseVector;
-            if (dinput == null)
+            if (input is DenseVector dinput && result is DenseVector dresult)
+            {
+                // Copy the contents of input to result.
+                Array.Copy(dinput.Values, 0, dresult.Values, 0, dinput.Values.Length);
+
+                // LU solve by overwriting result.
+                var dfactors = (DenseMatrix) Factors;
+                LinearAlgebraControl.Provider.LUSolveFactored(1, dfactors.Values, dfactors.RowCount, Pivots, dresult.Values);
+            }
+            else
             {
                 throw new NotSupportedException("Can only do LU factorization for dense vectors at the moment.");
             }
-
-            var dresult = result as DenseVector;
-            if (dresult == null)
-            {
-                throw new NotSupportedException("Can only do LU factorization for dense vectors at the moment.");
-            }
-
-            // Copy the contents of input to result.
-            Array.Copy(dinput.Values, 0, dresult.Values, 0, dinput.Values.Length);
-
-            // LU solve by overwriting result.
-            var dfactors = (DenseMatrix) Factors;
-            LinearAlgebraControl.Provider.LUSolveFactored(1, dfactors.Values, dfactors.RowCount, Pivots, dresult.Values);
         }
 
         /// <summary>

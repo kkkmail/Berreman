@@ -40,12 +40,9 @@ namespace MathNet.Numerics.Differentiation
         /// <summary>
         /// Number of function evaluations.
         /// </summary>
-        public int FunctionEvaluations
-        {
-            get { return _df.Evaluations; }
-        }
+        public int FunctionEvaluations => _df.Evaluations;
 
-        private readonly NumericalDerivative _df;
+        readonly NumericalDerivative _df;
 
         /// <summary>
         /// Creates a numerical Hessian object with a three point central difference method.

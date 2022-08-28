@@ -31,7 +31,6 @@ using System;
 using MathNet.Numerics.LinearAlgebra.Complex32.Factorization;
 using MathNet.Numerics.LinearAlgebra.Factorization;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex32
 {
@@ -539,7 +538,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
             }
 
             w.SetDiagonal(s);
-            return (svd.U * w * svd.VT).Transpose();
+            return (svd.U * (w * svd.VT)).ConjugateTranspose();
         }
 
         /// <summary>
@@ -551,7 +550,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         {
             if (RowCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             var sum = Complex32.Zero;
@@ -661,26 +660,26 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         {
             if (norm <= 0.0)
             {
-                throw new ArgumentOutOfRangeException("norm", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(norm), "Value must be positive.");
             }
 
             var ret = new double[RowCount];
             if (norm == 2.0)
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + x.MagnitudeSquared, (x, c) => Math.Sqrt(x), ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + x.MagnitudeSquared, (x, _) => Math.Sqrt(x), ret, Zeros.AllowSkip);
             }
             else if (norm == 1.0)
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + x.Magnitude, (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + x.Magnitude, (x, _) => x, ret, Zeros.AllowSkip);
             }
             else if (double.IsPositiveInfinity(norm))
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => Math.Max(s, x.Magnitude), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => Math.Max(s, x.Magnitude), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else
             {
                 double invnorm = 1.0/norm;
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Pow(x.Magnitude, norm), (x, c) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Pow(x.Magnitude, norm), (x, _) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
             }
             return Vector<double>.Build.Dense(ret);
         }
@@ -693,26 +692,26 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         {
             if (norm <= 0.0)
             {
-                throw new ArgumentOutOfRangeException("norm", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(norm), "Value must be positive.");
             }
 
             var ret = new double[ColumnCount];
             if (norm == 2.0)
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x.MagnitudeSquared, (x, c) => Math.Sqrt(x), ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x.MagnitudeSquared, (x, _) => Math.Sqrt(x), ret, Zeros.AllowSkip);
             }
             else if (norm == 1.0)
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x.Magnitude, (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x.Magnitude, (x, _) => x, ret, Zeros.AllowSkip);
             }
             else if (double.IsPositiveInfinity(norm))
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => Math.Max(s, x.Magnitude), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => Math.Max(s, x.Magnitude), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else
             {
                 double invnorm = 1.0/norm;
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Pow(x.Magnitude, norm), (x, c) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Pow(x.Magnitude, norm), (x, _) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
             }
             return Vector<double>.Build.Dense(ret);
         }
@@ -730,7 +729,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount);
-            Storage.MapIndexedTo(result.Storage, (i, j, x) => ((float)norminv[i])*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
+            Storage.MapIndexedTo(result.Storage, (i, _, x) => ((float)norminv[i])*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
             return result;
         }
 
@@ -747,7 +746,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount);
-            Storage.MapIndexedTo(result.Storage, (i, j, x) => ((float)norminv[j])*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
+            Storage.MapIndexedTo(result.Storage, (_, j, x) => ((float)norminv[j])*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
             return result;
         }
 
@@ -757,7 +756,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         public override Vector<Complex32> RowSums()
         {
             var ret = new Complex32[RowCount];
-            Storage.FoldByRowUnchecked(ret, (s, x) => s + x, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByRowUnchecked(ret, (s, x) => s + x, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<Complex32>.Build.Dense(ret);
         }
 
@@ -767,7 +766,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         public override Vector<Complex32> RowAbsoluteSums()
         {
             var ret = new Complex32[RowCount];
-            Storage.FoldByRowUnchecked(ret, (s, x) => s + x.Magnitude, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByRowUnchecked(ret, (s, x) => s + x.Magnitude, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<Complex32>.Build.Dense(ret);
         }
 
@@ -777,7 +776,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         public override Vector<Complex32> ColumnSums()
         {
             var ret = new Complex32[ColumnCount];
-            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<Complex32>.Build.Dense(ret);
         }
 
@@ -787,7 +786,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32
         public override Vector<Complex32> ColumnAbsoluteSums()
         {
             var ret = new Complex32[ColumnCount];
-            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x.Magnitude, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x.Magnitude, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<Complex32>.Build.Dense(ret);
         }
 

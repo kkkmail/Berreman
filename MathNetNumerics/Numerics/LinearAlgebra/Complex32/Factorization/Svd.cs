@@ -30,7 +30,6 @@
 using System;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra.Factorization;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
 {
@@ -74,13 +73,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
         /// Gets the two norm of the <see cref="Matrix{T}"/>.
         /// </summary>
         /// <returns>The 2-norm of the <see cref="Matrix{T}"/>.</returns>
-        public override double L2Norm
-        {
-            get
-            {
-                return S[0].Magnitude;
-            }
-        }
+        public override double L2Norm => S[0].Magnitude;
 
         /// <summary>
         /// Gets the condition number <b>max(S) / min(S)</b>
@@ -104,7 +97,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex32.Factorization
             {
                 if (U.RowCount != VT.ColumnCount)
                 {
-                    throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                    throw new ArgumentException("Matrix must be square.");
                 }
 
                 var det = Complex32.One;

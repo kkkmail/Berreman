@@ -30,13 +30,12 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Random
 {
     /// <summary>
     /// Base class for random number generators. This class introduces a layer between <see cref="System.Random"/>
-    /// and the Math.Net Numerics random number generators to provide thread safety.
+    /// and the Math.NET Numerics random number generators to provide thread safety.
     /// When used directly it use the System.Random as random number source.
     /// </summary>
     [Serializable]
@@ -153,7 +152,7 @@ namespace MathNet.Numerics.Random
             // Invalid case: Zero and less are not valid use cases.
             if (maxExclusive <= 0)
             {
-                throw new ArgumentException(Resources.ArgumentMustBePositive);
+                throw new ArgumentException("Value must be positive.");
             }
 
             // Fast case: Only zero is allowed to be returned. No sampling is needed.
@@ -196,7 +195,7 @@ namespace MathNet.Numerics.Random
             // Invalid case: empty range.
             if (minInclusive >= maxExclusive)
             {
-                throw new ArgumentException(Resources.ArgumentMaxExclusiveMustBeLargerThanMinInclusive);
+                throw new ArgumentException("In the specified range, the exclusive maximum must be greater than the inclusive minimum.");
             }
 
             // Fast case: Only minInclusive is allowed to be returned. No sampling is needed.
@@ -277,7 +276,7 @@ namespace MathNet.Numerics.Random
             // Invalid case: Zero and less are not valid use cases.
             if (maxExclusive <= 0)
             {
-                throw new ArgumentException(Resources.ArgumentMustBePositive);
+                throw new ArgumentException("Value must be positive.");
             }
 
             // Fast case: Only zero is allowed to be returned. No sampling is needed.
@@ -337,7 +336,7 @@ namespace MathNet.Numerics.Random
             // Invalid case: empty range.
             if (minInclusive >= maxExclusive)
             {
-                throw new ArgumentException(Resources.ArgumentMaxExclusiveMustBeLargerThanMinInclusive);
+                throw new ArgumentException("In the specified range, the exclusive maximum must be greater than the inclusive minimum.");
             }
 
             // Fast case: Only minInclusive is allowed to be returned. No sampling is needed.
@@ -427,7 +426,7 @@ namespace MathNet.Numerics.Random
         {
             if (minInclusive > maxExclusive)
             {
-                throw new ArgumentException(Resources.ArgumentMinValueGreaterThanMaxValue);
+                throw new ArgumentException("In the specified range, the minimum is greater than maximum.");
             }
 
             for (int i = 0; i < 64; i++)
@@ -455,7 +454,7 @@ namespace MathNet.Numerics.Random
         {
             if (buffer == null)
             {
-                throw new ArgumentNullException("buffer");
+                throw new ArgumentNullException(nameof(buffer));
             }
 
             if (_threadSafe)

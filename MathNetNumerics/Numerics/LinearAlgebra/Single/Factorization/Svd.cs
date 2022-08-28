@@ -30,7 +30,6 @@
 using System;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra.Factorization;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
 {
@@ -72,13 +71,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
         /// Gets the two norm of the <see cref="Matrix{T}"/>.
         /// </summary>
         /// <returns>The 2-norm of the <see cref="Matrix{T}"/>.</returns>
-        public override double L2Norm
-        {
-            get
-            {
-                return Math.Abs(S[0]);
-            }
-        }
+        public override double L2Norm => Math.Abs(S[0]);
 
         /// <summary>
         /// Gets the condition number <b>max(S) / min(S)</b>
@@ -102,7 +95,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single.Factorization
             {
                 if (U.RowCount != VT.ColumnCount)
                 {
-                    throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                    throw new ArgumentException("Matrix must be square.");
                 }
 
                 var det = 1.0;

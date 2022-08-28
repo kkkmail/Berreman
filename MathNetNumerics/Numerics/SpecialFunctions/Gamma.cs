@@ -34,9 +34,8 @@
 
 using System;
 
-// ReSharper disable CheckNamespace
+// ReSharper disable once CheckNamespace
 namespace MathNet.Numerics
-// ReSharper restore CheckNamespace
 {
     public static partial class SpecialFunctions
     {
@@ -262,12 +261,12 @@ namespace MathNet.Numerics
 
             if (a < 0d)
             {
-                throw new ArgumentOutOfRangeException("a", Properties.Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(a), "Value must not be negative (zero is ok).");
             }
 
             if (x < 0d)
             {
-                throw new ArgumentOutOfRangeException("x", Properties.Resources.ArgumentNotNegative);
+                throw new ArgumentOutOfRangeException(nameof(x), "Value must not be negative (zero is ok).");
             }
 
             if (a.AlmostEqual(0.0))
@@ -381,12 +380,12 @@ namespace MathNet.Numerics
 
             if (a < 0 || a.AlmostEqual(0.0))
             {
-                throw new ArgumentOutOfRangeException("a");
+                throw new ArgumentOutOfRangeException(nameof(a));
             }
 
             if (y0 < 0 || y0 > 1)
             {
-                throw new ArgumentOutOfRangeException("y0");
+                throw new ArgumentOutOfRangeException(nameof(y0));
             }
 
             if (y0.AlmostEqual(0.0))

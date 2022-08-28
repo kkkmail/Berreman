@@ -31,11 +31,8 @@ using System.Collections.Generic;
 using System.Runtime.Serialization;
 using MathNet.Numerics.Threading;
 using System.Threading;
-
-#if !NETSTANDARD1_3
 using System;
 using System.Runtime;
-#endif
 
 namespace MathNet.Numerics.Random
 {
@@ -88,10 +85,7 @@ namespace MathNet.Numerics.Random
         /// <summary>
         /// Default instance, thread-safe.
         /// </summary>
-        public static SystemRandomSource Default
-        {
-            get { return DefaultInstance.Value; }
-        }
+        public static SystemRandomSource Default => DefaultInstance.Value;
 
         /// <summary>
         /// Returns a random double-precision floating point number greater than or equal to 0.0, and less than 1.0.

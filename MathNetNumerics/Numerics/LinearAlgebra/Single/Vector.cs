@@ -27,9 +27,9 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
+using System;
 using MathNet.Numerics.LinearAlgebra.Storage;
 using MathNet.Numerics.Threading;
-using System;
 
 namespace MathNet.Numerics.LinearAlgebra.Single
 {
@@ -254,7 +254,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
 
         protected override void DoPointwiseAbs(Vector<float> result)
         {
-            Map(x => (float)Math.Abs(x), result, Zeros.AllowSkip);
+            Map(x => Math.Abs(x), result, Zeros.AllowSkip);
         }
         protected override void DoPointwiseAcos(Vector<float> result)
         {
@@ -270,11 +270,11 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         }
         protected override void DoPointwiseAtan2(Vector<float> other, Vector<float> result)
         {
-            Map2((x, y) => (float)Math.Atan2((double)x, (double)y), other, result, Zeros.Include);
+            Map2((x, y) => (float)Math.Atan2(x, y), other, result, Zeros.Include);
         }
         protected override void DoPointwiseAtan2(float scalar, Vector<float> result)
         {
-            Map(x => (float)Math.Atan2((double)x, (double)scalar), result, Zeros.Include);
+            Map(x => (float)Math.Atan2(x, scalar), result, Zeros.Include);
         }
         protected override void DoPointwiseCeiling(Vector<float> result)
         {
@@ -302,7 +302,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         }
         protected override void DoPointwiseSign(Vector<float> result)
         {
-            Map(x => (float)Math.Sign(x), result, Zeros.AllowSkip);
+            Map(x => Math.Sign(x), result, Zeros.AllowSkip);
         }
         protected override void DoPointwiseSin(Vector<float> result)
         {
@@ -553,7 +553,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         /// </returns>
         public override double Norm(double p)
         {
-            if (p < 0d) throw new ArgumentOutOfRangeException("p");
+            if (p < 0d) throw new ArgumentOutOfRangeException(nameof(p));
 
             if (p == 1d) return L1Norm();
             if (p == 2d) return L2Norm();
@@ -622,7 +622,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         {
             if (p < 0d)
             {
-                throw new ArgumentOutOfRangeException("p");
+                throw new ArgumentOutOfRangeException(nameof(p));
             }
 
             double norm = Norm(p);

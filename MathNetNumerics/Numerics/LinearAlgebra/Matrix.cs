@@ -33,7 +33,6 @@ using System.Linq;
 using System.Runtime;
 using System.Runtime.CompilerServices;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Threading;
 
 namespace MathNet.Numerics.LinearAlgebra
@@ -43,11 +42,7 @@ namespace MathNet.Numerics.LinearAlgebra
     /// </summary>
     /// <typeparam name="T">Supported data types are <c>double</c>, <c>single</c>, <see cref="Complex"/>, and <see cref="Complex32"/>.</typeparam>
     [Serializable]
-    public abstract partial class Matrix<T> :
-        IFormattable, IEquatable<Matrix<T>>
-#if !NETSTANDARD1_3
-        , ICloneable
-#endif
+    public abstract partial class Matrix<T> : IFormattable, IEquatable<Matrix<T>>, ICloneable
         where T : struct, IEquatable<T>, IFormattable
     {
         /// <summary>
@@ -93,15 +88,11 @@ namespace MathNet.Numerics.LinearAlgebra
         /// to get and set values without range checking.</remarks>
         public T this[int row, int column]
         {
-#if !NET40
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
             [TargetedPatchingOptOut("Performance critical to inline across NGen image boundaries")]
             get { return Storage[row, column]; }
 
-#if !NET40
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
             [TargetedPatchingOptOut("Performance critical to inline across NGen image boundaries")]
             set { Storage[row, column] = value; }
         }
@@ -118,9 +109,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// <returns>
         /// The requested element.
         /// </returns>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         [TargetedPatchingOptOut("Performance critical to inline across NGen image boundaries")]
         public T At(int row, int column)
         {
@@ -139,9 +128,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// <param name="value">
         /// The value to set the element to.
         /// </param>
-#if !NET40
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#endif
         [TargetedPatchingOptOut("Performance critical to inline across NGen image boundaries")]
         public void At(int row, int column, T value)
         {
@@ -161,9 +148,9 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public void ClearRow(int rowIndex)
         {
-            if (rowIndex < 0 || rowIndex >= RowCount)
+            if ((uint)rowIndex >= (uint)RowCount)
             {
-                throw new ArgumentOutOfRangeException("rowIndex");
+                throw new ArgumentOutOfRangeException(nameof(rowIndex));
             }
 
             Storage.ClearUnchecked(rowIndex, 1, 0, ColumnCount);
@@ -174,9 +161,9 @@ namespace MathNet.Numerics.LinearAlgebra
         /// </summary>
         public void ClearColumn(int columnIndex)
         {
-            if (columnIndex < 0 || columnIndex >= ColumnCount)
+            if ((uint)columnIndex >= (uint)ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("columnIndex");
+                throw new ArgumentOutOfRangeException(nameof(columnIndex));
             }
 
             Storage.ClearUnchecked(0, RowCount, columnIndex, 1);
@@ -248,7 +235,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (target == null)
             {
-                throw new ArgumentNullException("target");
+                throw new ArgumentNullException(nameof(target));
             }
 
             Storage.CopyTo(target.Storage);
@@ -263,9 +250,9 @@ namespace MathNet.Numerics.LinearAlgebra
         /// or greater than or equal to the number of rows.</exception>
         public Vector<T> Row(int index)
         {
-            if (index >= RowCount || index < 0)
+            if ((uint)index >= (uint)RowCount)
             {
-                throw new ArgumentOutOfRangeException("index");
+                throw new ArgumentOutOfRangeException(nameof(index));
             }
 
             var ret = Vector<T>.Build.SameAs(this, ColumnCount);
@@ -286,7 +273,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             Storage.CopyRowTo(result.Storage, index);
@@ -333,7 +320,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             Storage.CopySubRowTo(result.Storage, rowIndex, columnIndex, 0, length);
@@ -348,9 +335,9 @@ namespace MathNet.Numerics.LinearAlgebra
         /// or greater than or equal to the number of columns.</exception>
         public Vector<T> Column(int index)
         {
-            if (index >= ColumnCount || index < 0)
+            if ((uint)index >= (uint)ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("index");
+                throw new ArgumentOutOfRangeException(nameof(index));
             }
 
             var ret = Vector<T>.Build.SameAs(this, RowCount);
@@ -371,7 +358,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             Storage.CopyColumnTo(result.Storage, index);
@@ -419,7 +406,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             Storage.CopySubColumnTo(result.Storage, columnIndex, rowIndex, 0, length);
@@ -469,7 +456,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.RowCount != RowCount || result.ColumnCount != ColumnCount)
@@ -496,7 +483,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.RowCount != RowCount || result.ColumnCount != ColumnCount)
@@ -584,7 +571,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.RowCount != RowCount || result.ColumnCount != ColumnCount)
@@ -629,7 +616,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.RowCount != RowCount || result.ColumnCount != ColumnCount)
@@ -659,17 +646,17 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (column == null)
             {
-                throw new ArgumentNullException("column");
+                throw new ArgumentNullException(nameof(column));
             }
 
-            if (columnIndex < 0 || columnIndex > ColumnCount)
+            if ((uint)columnIndex > (uint)ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("columnIndex");
+                throw new ArgumentOutOfRangeException(nameof(columnIndex));
             }
 
             if (column.Count != RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension, "column");
+                throw new ArgumentException("Matrix row dimensions must agree.", nameof(column));
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount + 1, fullyMutable: true);
@@ -687,9 +674,9 @@ namespace MathNet.Numerics.LinearAlgebra
         /// <exception cref="ArgumentOutOfRangeException">If <paramref name="columnIndex"/> is &lt; zero or &gt;= the number of columns.</exception>
         public Matrix<T> RemoveColumn(int columnIndex)
         {
-            if (columnIndex < 0 || columnIndex >= ColumnCount)
+            if ((uint)columnIndex >= (uint)ColumnCount)
             {
-                throw new ArgumentOutOfRangeException("columnIndex");
+                throw new ArgumentOutOfRangeException(nameof(columnIndex));
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount - 1, fullyMutable: true);
@@ -712,7 +699,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (column == null)
             {
-                throw new ArgumentNullException("column");
+                throw new ArgumentNullException(nameof(column));
             }
 
             column.Storage.CopyToColumn(Storage, columnIndex);
@@ -734,7 +721,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (column == null)
             {
-                throw new ArgumentNullException("column");
+                throw new ArgumentNullException(nameof(column));
             }
 
             column.Storage.CopyToSubColumn(Storage, columnIndex, 0, rowIndex, length);
@@ -756,7 +743,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (column == null)
             {
-                throw new ArgumentNullException("column");
+                throw new ArgumentNullException(nameof(column));
             }
 
             new DenseVectorStorage<T>(column.Length, column).CopyToColumn(Storage, columnIndex);
@@ -775,17 +762,17 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (row == null)
             {
-                throw new ArgumentNullException("row");
+                throw new ArgumentNullException(nameof(row));
             }
 
-            if (rowIndex < 0 || rowIndex > RowCount)
+            if ((uint)rowIndex > (uint)RowCount)
             {
-                throw new ArgumentOutOfRangeException("rowIndex");
+                throw new ArgumentOutOfRangeException(nameof(rowIndex));
             }
 
             if (row.Count != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension, "row");
+                throw new ArgumentException("Matrix row dimensions must agree.", nameof(row));
             }
 
             var result = Build.SameAs(this, RowCount + 1, ColumnCount, fullyMutable: true);
@@ -803,9 +790,9 @@ namespace MathNet.Numerics.LinearAlgebra
         /// <exception cref="ArgumentOutOfRangeException">If <paramref name="rowIndex"/> is &lt; zero or &gt;= the number of rows.</exception>
         public Matrix<T> RemoveRow(int rowIndex)
         {
-            if (rowIndex < 0 || rowIndex >= RowCount)
+            if ((uint)rowIndex >= (uint)RowCount)
             {
-                throw new ArgumentOutOfRangeException("rowIndex");
+                throw new ArgumentOutOfRangeException(nameof(rowIndex));
             }
 
             var result = Build.SameAs(this, RowCount - 1, ColumnCount, fullyMutable: true);
@@ -828,7 +815,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (row == null)
             {
-                throw new ArgumentNullException("row");
+                throw new ArgumentNullException(nameof(row));
             }
 
             row.Storage.CopyToRow(Storage, rowIndex);
@@ -850,7 +837,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (row == null)
             {
-                throw new ArgumentNullException("row");
+                throw new ArgumentNullException(nameof(row));
             }
 
             row.Storage.CopyToSubRow(Storage, rowIndex, 0, columnIndex, length);
@@ -871,7 +858,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (row == null)
             {
-                throw new ArgumentNullException("row");
+                throw new ArgumentNullException(nameof(row));
             }
 
             new DenseVectorStorage<T>(row.Length, row).CopyToRow(Storage, rowIndex);
@@ -954,14 +941,14 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (source == null)
             {
-                throw new ArgumentNullException("source");
+                throw new ArgumentNullException(nameof(source));
             }
 
             var min = Math.Min(RowCount, ColumnCount);
 
             if (source.Count != min)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "source");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(source));
             }
 
             for (var i = 0; i < min; i++)
@@ -984,20 +971,34 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (source == null)
             {
-                throw new ArgumentNullException("source");
+                throw new ArgumentNullException(nameof(source));
             }
 
             var min = Math.Min(RowCount, ColumnCount);
 
             if (source.Length != min)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength, "source");
+                throw new ArgumentException("The array arguments must have the same length.", nameof(source));
             }
 
             for (var i = 0; i < min; i++)
             {
                 At(i, i, source[i]);
             }
+        }
+
+        /// <summary>
+        /// Creates a new matrix with the desired size and copies this matrix to it.
+        /// Values which no longer exist in the new matrix are ignored, new values are set to zero.
+        /// </summary>
+        /// <param name="rowCount">The number of rows of the new matrix.</param>
+        /// <param name="columnCount">The number of columns of the new matrix.</param>
+        /// <returns>A new matrix with the desired rows and columns.</returns>
+        public Matrix<T> Resize(int rowCount, int columnCount)
+        {
+            var result = Build.SameAs(this, rowCount, columnCount, fullyMutable: true);
+            Storage.CopySubMatrixTo(result.Storage, 0, 0, Math.Min(RowCount, rowCount), 0, 0, Math.Min(ColumnCount, columnCount), ExistingData.AssumeZeros);
+            return result;
         }
 
         /// <summary>
@@ -1038,7 +1039,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (p.Dimension != RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength, "p");
+                throw new ArgumentException("The array arguments must have the same length.", nameof(p));
             }
 
             // Get a sequence of inversions from the permutation.
@@ -1067,7 +1068,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (p.Dimension != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength, "p");
+                throw new ArgumentException("The array arguments must have the same length.", nameof(p));
             }
 
             // Get a sequence of inversions from the permutation.
@@ -1099,12 +1100,12 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (right == null)
             {
-                throw new ArgumentNullException("right");
+                throw new ArgumentNullException(nameof(right));
             }
 
             if (right.RowCount != RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension);
+                throw new ArgumentException("Matrix row dimensions must agree.");
             }
 
             var result = Build.SameAs(this, right, RowCount, ColumnCount + right.ColumnCount, fullyMutable: true);
@@ -1124,22 +1125,22 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (right == null)
             {
-                throw new ArgumentNullException("right");
+                throw new ArgumentNullException(nameof(right));
             }
 
             if (right.RowCount != RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension);
+                throw new ArgumentException("Matrix row dimensions must agree.");
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.ColumnCount != (ColumnCount + right.ColumnCount) || result.RowCount != RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
             Storage.CopySubMatrixToUnchecked(result.Storage, 0, 0, RowCount, 0, 0, ColumnCount, ExistingData.Clear);
@@ -1159,12 +1160,12 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (lower == null)
             {
-                throw new ArgumentNullException("lower");
+                throw new ArgumentNullException(nameof(lower));
             }
 
             if (lower.ColumnCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension, "lower");
+                throw new ArgumentException("Matrix column dimensions must agree.", nameof(lower));
             }
 
             var result = Build.SameAs(this, lower, RowCount + lower.RowCount, ColumnCount, fullyMutable: true);
@@ -1186,17 +1187,17 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (lower == null)
             {
-                throw new ArgumentNullException("lower");
+                throw new ArgumentNullException(nameof(lower));
             }
 
             if (lower.ColumnCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension, "lower");
+                throw new ArgumentException("Matrix column dimensions must agree.", nameof(lower));
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.RowCount != (RowCount + lower.RowCount) || result.ColumnCount != ColumnCount)
@@ -1222,7 +1223,7 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (lower == null)
             {
-                throw new ArgumentNullException("lower");
+                throw new ArgumentNullException(nameof(lower));
             }
 
             var result = Build.SameAs(this, lower, RowCount + lower.RowCount, ColumnCount + lower.ColumnCount, RowCount != ColumnCount);
@@ -1245,12 +1246,12 @@ namespace MathNet.Numerics.LinearAlgebra
         {
             if (lower == null)
             {
-                throw new ArgumentNullException("lower");
+                throw new ArgumentNullException(nameof(lower));
             }
 
             if (result == null)
             {
-                throw new ArgumentNullException("result");
+                throw new ArgumentNullException(nameof(result));
             }
 
             if (result.RowCount != RowCount + lower.RowCount || result.ColumnCount != ColumnCount + lower.ColumnCount)
@@ -1443,7 +1444,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// The enumerator will include all values, even if they are zero.
         /// The ordering of the values is unspecified (not necessarily column-wise or row-wise).
         /// </remarks>
-        public IEnumerable<T> Enumerate(Zeros zeros = Zeros.Include)
+        public IEnumerable<T> Enumerate(Zeros zeros)
         {
             switch (zeros)
             {
@@ -1462,7 +1463,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// and the third value being the value of the element at that index.
         /// The enumerator will include all values, even if they are zero.
         /// </remarks>
-        public IEnumerable<Tuple<int, int, T>> EnumerateIndexed()
+        public IEnumerable<(int, int, T)> EnumerateIndexed()
         {
             return Storage.EnumerateIndexed();
         }
@@ -1475,7 +1476,7 @@ namespace MathNet.Numerics.LinearAlgebra
         /// and the third value being the value of the element at that index.
         /// The enumerator will include all values, even if they are zero.
         /// </remarks>
-        public IEnumerable<Tuple<int, int, T>> EnumerateIndexed(Zeros zeros = Zeros.Include)
+        public IEnumerable<(int, int, T)> EnumerateIndexed(Zeros zeros)
         {
             switch (zeros)
             {
@@ -1518,11 +1519,11 @@ namespace MathNet.Numerics.LinearAlgebra
         /// The enumerator returns a Tuple with the first value being the column index
         /// and the second value being the value of the column at that index.
         /// </remarks>
-        public IEnumerable<Tuple<int, Vector<T>>> EnumerateColumnsIndexed()
+        public IEnumerable<(int, Vector<T>)> EnumerateColumnsIndexed()
         {
             for (var i = 0; i < ColumnCount; i++)
             {
-                yield return new Tuple<int, Vector<T>>(i, Column(i));
+                yield return (i, Column(i));
             }
         }
 
@@ -1535,12 +1536,12 @@ namespace MathNet.Numerics.LinearAlgebra
         /// The enumerator returns a Tuple with the first value being the column index
         /// and the second value being the value of the column at that index.
         /// </remarks>
-        public IEnumerable<Tuple<int, Vector<T>>> EnumerateColumnsIndexed(int index, int length)
+        public IEnumerable<(int, Vector<T>)> EnumerateColumnsIndexed(int index, int length)
         {
             var maxIndex = Math.Min(index + length, ColumnCount);
             for (var i = Math.Max(index, 0); i < maxIndex; i++)
             {
-                yield return new Tuple<int, Vector<T>>(i, Column(i));
+                yield return (i, Column(i));
             }
         }
 
@@ -1576,11 +1577,11 @@ namespace MathNet.Numerics.LinearAlgebra
         /// The enumerator returns a Tuple with the first value being the row index
         /// and the second value being the value of the row at that index.
         /// </remarks>
-        public IEnumerable<Tuple<int, Vector<T>>> EnumerateRowsIndexed()
+        public IEnumerable<(int, Vector<T>)> EnumerateRowsIndexed()
         {
             for (var i = 0; i < RowCount; i++)
             {
-                yield return new Tuple<int, Vector<T>>(i, Row(i));
+                yield return (i, Row(i));
             }
         }
 
@@ -1593,12 +1594,12 @@ namespace MathNet.Numerics.LinearAlgebra
         /// The enumerator returns a Tuple with the first value being the row index
         /// and the second value being the value of the row at that index.
         /// </remarks>
-        public IEnumerable<Tuple<int, Vector<T>>> EnumerateRowsIndexed(int index, int length)
+        public IEnumerable<(int, Vector<T>)> EnumerateRowsIndexed(int index, int length)
         {
             var maxIndex = Math.Min(index + length, RowCount);
             for (var i = Math.Max(index, 0); i < maxIndex; i++)
             {
-                yield return new Tuple<int, Vector<T>>(i, Row(i));
+                yield return (i, Row(i));
             }
         }
 
@@ -1725,7 +1726,7 @@ namespace MathNet.Numerics.LinearAlgebra
                     }
                 });
             }
-            Storage.FoldByRowUnchecked(result, f, (x, c) => x, result, zeros);
+            Storage.FoldByRowUnchecked(result, f, (x, _) => x, result, zeros);
             return result;
         }
 
@@ -1746,7 +1747,7 @@ namespace MathNet.Numerics.LinearAlgebra
                     }
                 });
             }
-            Storage.FoldByColumnUnchecked(result, f, (x, c) => x, result, zeros);
+            Storage.FoldByColumnUnchecked(result, f, (x, _) => x, result, zeros);
             return result;
         }
 

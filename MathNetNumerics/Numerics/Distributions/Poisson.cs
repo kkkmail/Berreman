@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 
 namespace MathNet.Numerics.Distributions
@@ -57,7 +56,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(lambda))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -74,7 +73,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(lambda))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -89,7 +88,7 @@ namespace MathNet.Numerics.Distributions
         /// </returns>
         public override string ToString()
         {
-            return "Poisson(λ = " + _lambda + ")";
+            return $"Poisson(λ = {_lambda})";
         }
 
         /// <summary>
@@ -104,93 +103,63 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the Poisson distribution parameter λ. Range: λ > 0.
         /// </summary>
-        public double Lambda
-        {
-            get { return _lambda; }
-        }
+        public double Lambda => _lambda;
 
         /// <summary>
         /// Gets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
-        public double Mean
-        {
-            get { return _lambda; }
-        }
+        public double Mean => _lambda;
 
         /// <summary>
         /// Gets the variance of the distribution.
         /// </summary>
-        public double Variance
-        {
-            get { return _lambda; }
-        }
+        public double Variance => _lambda;
 
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt(_lambda); }
-        }
+        public double StdDev => Math.Sqrt(_lambda);
 
         /// <summary>
         /// Gets the entropy of the distribution.
         /// </summary>
         /// <remarks>Approximation, see Wikipedia <a href="http://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a></remarks>
-        public double Entropy
-        {
-            get { return (0.5*Math.Log(2*Constants.Pi*Constants.E*_lambda)) - (1.0/(12.0*_lambda)) - (1.0/(24.0*_lambda*_lambda)) - (19.0/(360.0*_lambda*_lambda*_lambda)); }
-        }
+        public double Entropy => (0.5*Math.Log(Constants.Pi2*Constants.E*_lambda)) - (1.0/(12.0*_lambda)) - (1.0/(24.0*_lambda*_lambda)) - (19.0/(360.0*_lambda*_lambda*_lambda));
 
         /// <summary>
         /// Gets the skewness of the distribution.
         /// </summary>
-        public double Skewness
-        {
-            get { return 1.0/Math.Sqrt(_lambda); }
-        }
+        public double Skewness => 1.0/Math.Sqrt(_lambda);
 
         /// <summary>
         /// Gets the smallest element in the domain of the distributions which can be represented by an integer.
         /// </summary>
-        public int Minimum
-        {
-            get { return 0; }
-        }
+        public int Minimum => 0;
 
         /// <summary>
         /// Gets the largest element in the domain of the distributions which can be represented by an integer.
         /// </summary>
-        public int Maximum
-        {
-            get { return int.MaxValue; }
-        }
+        public int Maximum => int.MaxValue;
 
         /// <summary>
         /// Gets the mode of the distribution.
         /// </summary>
-        public int Mode
-        {
-            get { return (int)Math.Floor(_lambda); }
-        }
+        public int Mode => (int)Math.Floor(_lambda);
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
         /// <remarks>Approximation, see Wikipedia <a href="http://en.wikipedia.org/wiki/Poisson_distribution">Poisson distribution</a></remarks>
-        public double Median
-        {
-            get { return Math.Floor(_lambda + (1.0/3.0) - (0.02/_lambda)); }
-        }
+        public double Median => Math.Floor(_lambda + (1.0/3.0) - (0.02/_lambda));
 
         /// <summary>
         /// Computes the probability mass (PMF) at k, i.e. P(X = k).
@@ -232,7 +201,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Math.Exp(-lambda + (k*Math.Log(lambda)) - SpecialFunctions.FactorialLn(k));
@@ -248,7 +217,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return -lambda + (k*Math.Log(lambda)) - SpecialFunctions.FactorialLn(k);
@@ -265,7 +234,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return 1.0 - SpecialFunctions.GammaLowerRegularized(x + 1, lambda);
@@ -441,7 +410,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, lambda);
@@ -457,7 +426,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, lambda);
@@ -474,7 +443,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, lambda);
@@ -489,7 +458,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, lambda);
@@ -504,7 +473,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, lambda);
@@ -520,7 +489,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(lambda > 0.0))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, lambda);

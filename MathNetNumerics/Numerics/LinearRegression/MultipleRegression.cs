@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearRegression
 {
@@ -137,12 +136,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.RowCount != y.Count)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.RowCount, y.Count));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.RowCount} and {y.Count} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.ColumnCount > y.Count)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, x.ColumnCount, y.Count));
+                throw new ArgumentException($"A regression of the requested order requires at least {x.ColumnCount} samples. Only {y.Count} samples have been provided.");
             }
 
             return x.TransposeThisAndMultiply(x).Cholesky().Solve(x.TransposeThisAndMultiply(y));
@@ -159,12 +158,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.RowCount != y.RowCount)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.RowCount, y.RowCount));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.RowCount} and {y.RowCount} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.ColumnCount > y.RowCount)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, x.ColumnCount, y.RowCount));
+                throw new ArgumentException($"A regression of the requested order requires at least {x.ColumnCount} samples. Only {y.RowCount} samples have been provided.");
             }
 
             return x.TransposeThisAndMultiply(x).Cholesky().Solve(x.TransposeThisAndMultiply(y));
@@ -188,12 +187,12 @@ namespace MathNet.Numerics.LinearRegression
 
             if (predictor.RowCount != y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, predictor.RowCount, y.Length));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {predictor.RowCount} and {y.Length} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (predictor.ColumnCount > y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, predictor.ColumnCount, y.Length));
+                throw new ArgumentException($"A regression of the requested order requires at least {predictor.ColumnCount} samples. Only {y.Length} samples have been provided.");
             }
 
             var response = Vector<T>.Build.Dense(y);
@@ -209,8 +208,21 @@ namespace MathNet.Numerics.LinearRegression
         /// <returns>Best fitting list of model parameters β for each element in the predictor-arrays.</returns>
         public static T[] NormalEquations<T>(IEnumerable<Tuple<T[], T>> samples, bool intercept = false) where T : struct, IEquatable<T>, IFormattable
         {
-            var xy = samples.UnpackSinglePass();
-            return NormalEquations(xy.Item1, xy.Item2, intercept);
+            var (u, v) = samples.UnpackSinglePass();
+            return NormalEquations(u, v, intercept);
+        }
+
+        /// <summary>
+        /// Find the model parameters β such that their linear combination with all predictor-arrays in X become as close to their response in Y as possible, with least squares residuals.
+        /// Uses the cholesky decomposition of the normal equations.
+        /// </summary>
+        /// <param name="samples">Sequence of predictor-arrays and their response.</param>
+        /// <param name="intercept">True if an intercept should be added as first artificial predictor value. Default = false.</param>
+        /// <returns>Best fitting list of model parameters β for each element in the predictor-arrays.</returns>
+        public static T[] NormalEquations<T>(IEnumerable<(T[], T)> samples, bool intercept = false) where T : struct, IEquatable<T>, IFormattable
+        {
+            var (u, v) = samples.UnpackSinglePass();
+            return NormalEquations(u, v, intercept);
         }
 
         /// <summary>
@@ -224,12 +236,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.RowCount != y.Count)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.RowCount, y.Count));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.RowCount} and {y.Count} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.ColumnCount > y.Count)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, x.ColumnCount, y.Count));
+                throw new ArgumentException($"A regression of the requested order requires at least {x.ColumnCount} samples. Only {y.Count} samples have been provided.");
             }
 
             return x.QR().Solve(y);
@@ -246,12 +258,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.RowCount != y.RowCount)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.RowCount, y.RowCount));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.RowCount} and {y.RowCount} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.ColumnCount > y.RowCount)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, x.ColumnCount, y.RowCount));
+                throw new ArgumentException($"A regression of the requested order requires at least {x.ColumnCount} samples. Only {y.RowCount} samples have been provided.");
             }
 
             return x.QR().Solve(y);
@@ -275,12 +287,12 @@ namespace MathNet.Numerics.LinearRegression
 
             if (predictor.RowCount != y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, predictor.RowCount, y.Length));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {predictor.RowCount} and {y.Length} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (predictor.ColumnCount > y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, predictor.ColumnCount, y.Length));
+                throw new ArgumentException($"A regression of the requested order requires at least {predictor.ColumnCount} samples. Only {y.Length} samples have been provided.");
             }
 
             return predictor.QR().Solve(Vector<T>.Build.Dense(y)).ToArray();
@@ -295,8 +307,21 @@ namespace MathNet.Numerics.LinearRegression
         /// <returns>Best fitting list of model parameters β for each element in the predictor-arrays.</returns>
         public static T[] QR<T>(IEnumerable<Tuple<T[], T>> samples, bool intercept = false) where T : struct, IEquatable<T>, IFormattable
         {
-            var xy = samples.UnpackSinglePass();
-            return QR(xy.Item1, xy.Item2, intercept);
+            var (u, v) = samples.UnpackSinglePass();
+            return QR(u, v, intercept);
+        }
+
+        /// <summary>
+        /// Find the model parameters β such that their linear combination with all predictor-arrays in X become as close to their response in Y as possible, with least squares residuals.
+        /// Uses an orthogonal decomposition and is therefore more numerically stable than the normal equations but also slower.
+        /// </summary>
+        /// <param name="samples">Sequence of predictor-arrays and their response.</param>
+        /// <param name="intercept">True if an intercept should be added as first artificial predictor value. Default = false.</param>
+        /// <returns>Best fitting list of model parameters β for each element in the predictor-arrays.</returns>
+        public static T[] QR<T>(IEnumerable<(T[], T)> samples, bool intercept = false) where T : struct, IEquatable<T>, IFormattable
+        {
+            var (u, v) = samples.UnpackSinglePass();
+            return QR(u, v, intercept);
         }
 
         /// <summary>
@@ -310,12 +335,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.RowCount != y.Count)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.RowCount, y.Count));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.RowCount} and {y.Count} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.ColumnCount > y.Count)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, x.ColumnCount, y.Count));
+                throw new ArgumentException($"A regression of the requested order requires at least {x.ColumnCount} samples. Only {y.Count} samples have been provided.");
             }
 
             return x.Svd().Solve(y);
@@ -332,12 +357,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.RowCount != y.RowCount)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.RowCount, y.RowCount));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.RowCount} and {y.RowCount} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.ColumnCount > y.RowCount)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, x.ColumnCount, y.RowCount));
+                throw new ArgumentException($"A regression of the requested order requires at least {x.ColumnCount} samples. Only {y.RowCount} samples have been provided.");
             }
 
             return x.Svd().Solve(y);
@@ -361,12 +386,12 @@ namespace MathNet.Numerics.LinearRegression
 
             if (predictor.RowCount != y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, predictor.RowCount, y.Length));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {predictor.RowCount} and {y.Length} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (predictor.ColumnCount > y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, predictor.ColumnCount, y.Length));
+                throw new ArgumentException($"A regression of the requested order requires at least {predictor.ColumnCount} samples. Only {y.Length} samples have been provided.");
             }
 
             return predictor.Svd().Solve(Vector<T>.Build.Dense(y)).ToArray();
@@ -381,8 +406,21 @@ namespace MathNet.Numerics.LinearRegression
         /// <returns>Best fitting list of model parameters β for each element in the predictor-arrays.</returns>
         public static T[] Svd<T>(IEnumerable<Tuple<T[], T>> samples, bool intercept = false) where T : struct, IEquatable<T>, IFormattable
         {
-            var xy = samples.UnpackSinglePass();
-            return Svd(xy.Item1, xy.Item2, intercept);
+            var (u, v) = samples.UnpackSinglePass();
+            return Svd(u, v, intercept);
+        }
+
+        /// <summary>
+        /// Find the model parameters β such that their linear combination with all predictor-arrays in X become as close to their response in Y as possible, with least squares residuals.
+        /// Uses a singular value decomposition and is therefore more numerically stable (especially if ill-conditioned) than the normal equations or QR but also slower.
+        /// </summary>
+        /// <param name="samples">Sequence of predictor-arrays and their response.</param>
+        /// <param name="intercept">True if an intercept should be added as first artificial predictor value. Default = false.</param>
+        /// <returns>Best fitting list of model parameters β for each element in the predictor-arrays.</returns>
+        public static T[] Svd<T>(IEnumerable<(T[], T)> samples, bool intercept = false) where T : struct, IEquatable<T>, IFormattable
+        {
+            var (u, v) = samples.UnpackSinglePass();
+            return Svd(u, v, intercept);
         }
     }
 }

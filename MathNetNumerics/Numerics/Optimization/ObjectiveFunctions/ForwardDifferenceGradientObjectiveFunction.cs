@@ -33,13 +33,13 @@ using MathNet.Numerics.LinearAlgebra;
 namespace MathNet.Numerics.Optimization.ObjectiveFunctions
 {
     /// <summary>
-    /// Adapts an objective function with only value implemented 
-    /// to provide a gradient as well. Gradient calculation is 
-    /// done using the finite difference method, specifically 
+    /// Adapts an objective function with only value implemented
+    /// to provide a gradient as well. Gradient calculation is
+    /// done using the finite difference method, specifically
     /// forward differences.
-    /// 
-    /// For each gradient computed, the algorithm requires an 
-    /// additional number of function evaluations equal to the 
+    ///
+    /// For each gradient computed, the algorithm requires an
+    /// additional number of function evaluations equal to the
     /// functions's number of input parameters.
     /// </summary>
     public class ForwardDifferenceGradientObjectiveFunction : IObjectiveFunction
@@ -48,9 +48,9 @@ namespace MathNet.Numerics.Optimization.ObjectiveFunctions
         protected Vector<double> LowerBound { get; set; }
         protected Vector<double> UpperBound { get; set; }
 
-        protected bool ValueEvaluated { get; set; } = false;
-        protected bool GradientEvaluated { get; set; } = false;
-        private Vector<double> _gradient;
+        protected bool ValueEvaluated { get; set; }
+        protected bool GradientEvaluated { get; set; }
+        Vector<double> _gradient;
 
         public double MinimumIncrement { get; set; }
         public double RelativeIncrement { get; set; }
@@ -104,32 +104,14 @@ namespace MathNet.Numerics.Optimization.ObjectiveFunctions
                     EvaluateGradient();
                 return _gradient;
             }
-            protected set { _gradient = value; }
+            protected set => _gradient = value;
         }
 
-        public Matrix<double> Hessian
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-        }
+        public Matrix<double> Hessian => throw new NotImplementedException();
 
-        public bool IsGradientSupported
-        {
-            get
-            {
-                return true;
-            }
-        }
+        public bool IsGradientSupported => true;
 
-        public bool IsHessianSupported
-        {
-            get
-            {
-                return false;
-            }
-        }
+        public bool IsHessianSupported => false;
 
         public Vector<double> Point { get; protected set; }
 
@@ -145,7 +127,7 @@ namespace MathNet.Numerics.Optimization.ObjectiveFunctions
 
         public IObjectiveFunction CreateNew()
         {
-            var tmp = new ForwardDifferenceGradientObjectiveFunction(this.InnerObjectiveFunction.CreateNew(), LowerBound, UpperBound, this.RelativeIncrement, this.MinimumIncrement);
+            var tmp = new ForwardDifferenceGradientObjectiveFunction(InnerObjectiveFunction.CreateNew(), LowerBound, UpperBound, this.RelativeIncrement, this.MinimumIncrement);
             return tmp;
         }
 
@@ -159,7 +141,7 @@ namespace MathNet.Numerics.Optimization.ObjectiveFunctions
 
         public IObjectiveFunction Fork()
         {
-            return new ForwardDifferenceGradientObjectiveFunction(this.InnerObjectiveFunction.Fork(), LowerBound, UpperBound, this.RelativeIncrement, this.MinimumIncrement)
+            return new ForwardDifferenceGradientObjectiveFunction(InnerObjectiveFunction.Fork(), LowerBound, UpperBound, this.RelativeIncrement, this.MinimumIncrement)
             {
                 Point = Point?.Clone(),
                 GradientEvaluated = GradientEvaluated,

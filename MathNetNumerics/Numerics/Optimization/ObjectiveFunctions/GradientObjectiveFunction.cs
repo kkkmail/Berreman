@@ -34,9 +34,9 @@ namespace MathNet.Numerics.Optimization.ObjectiveFunctions
 {
     internal class GradientObjectiveFunction : IObjectiveFunction
     {
-        readonly Func<Vector<double>, Tuple<double, Vector<double>>> _function;
+        readonly Func<Vector<double>, (double, Vector<double>)> _function;
 
-        public GradientObjectiveFunction(Func<Vector<double>, Tuple<double, Vector<double>>> function)
+        public GradientObjectiveFunction(Func<Vector<double>, (double, Vector<double>)> function)
         {
             _function = function;
         }
@@ -57,32 +57,20 @@ namespace MathNet.Numerics.Optimization.ObjectiveFunctions
             };
         }
 
-        public bool IsGradientSupported
-        {
-            get { return true; }
-        }
+        public bool IsGradientSupported => true;
 
-        public bool IsHessianSupported
-        {
-            get { return false; }
-        }
+        public bool IsHessianSupported => false;
 
         public void EvaluateAt(Vector<double> point)
         {
             Point = point;
-
-            var result = _function(point);
-            Value = result.Item1;
-            Gradient = result.Item2;
+            (Value, Gradient) = _function(point);
         }
 
         public Vector<double> Point { get; private set; }
         public double Value { get; private set; }
         public Vector<double> Gradient { get; private set; }
 
-        public Matrix<double> Hessian
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public Matrix<double> Hessian => throw new NotSupportedException();
     }
 }

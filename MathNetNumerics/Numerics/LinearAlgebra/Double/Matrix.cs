@@ -31,7 +31,6 @@ using System;
 using MathNet.Numerics.LinearAlgebra.Double.Factorization;
 using MathNet.Numerics.LinearAlgebra.Factorization;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Double
 {
@@ -470,7 +469,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         }
         protected override void DoPointwiseSign(Matrix<double> result)
         {
-            Map(x => (double)Math.Sign(x), result, Zeros.AllowSkip);
+            Map(x => Math.Sign(x), result, Zeros.AllowSkip);
         }
         protected override void DoPointwiseSin(Matrix<double> result)
         {
@@ -509,7 +508,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
             }
 
             w.SetDiagonal(s);
-            return (svd.U * w * svd.VT).Transpose();
+            return (svd.U * (w * svd.VT)).Transpose();
         }
 
         /// <summary>
@@ -521,7 +520,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         {
             if (RowCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             var sum = 0.0;
@@ -631,26 +630,26 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         {
             if (norm <= 0.0)
             {
-                throw new ArgumentOutOfRangeException("norm", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(norm), "Value must be positive.");
             }
 
             var ret = new double[RowCount];
             if (norm == 2.0)
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + x*x, (x, c) => Math.Sqrt(x), ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + x*x, (x, _) => Math.Sqrt(x), ret, Zeros.AllowSkip);
             }
             else if (norm == 1.0)
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else if (double.IsPositiveInfinity(norm))
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else
             {
                 double invnorm = 1.0/norm;
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, c) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, _) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
             }
             return Vector<double>.Build.Dense(ret);
         }
@@ -663,26 +662,26 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         {
             if (norm <= 0.0)
             {
-                throw new ArgumentOutOfRangeException("norm", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(norm), "Value must be positive.");
             }
 
             var ret = new double[ColumnCount];
             if (norm == 2.0)
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x*x, (x, c) => Math.Sqrt(x), ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x*x, (x, _) => Math.Sqrt(x), ret, Zeros.AllowSkip);
             }
             else if (norm == 1.0)
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else if (double.IsPositiveInfinity(norm))
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else
             {
                 double invnorm = 1.0/norm;
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, c) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, _) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
             }
             return Vector<double>.Build.Dense(ret);
         }
@@ -700,7 +699,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount);
-            Storage.MapIndexedTo(result.Storage, (i, j, x) => norminv[i]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
+            Storage.MapIndexedTo(result.Storage, (i, _, x) => norminv[i]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
             return result;
         }
 
@@ -717,7 +716,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount);
-            Storage.MapIndexedTo(result.Storage, (i, j, x) => norminv[j]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
+            Storage.MapIndexedTo(result.Storage, (_, j, x) => norminv[j]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
             return result;
         }
 
@@ -727,7 +726,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         public override Vector<double> RowSums()
         {
             var ret = new double[RowCount];
-            Storage.FoldByRowUnchecked(ret, (s, x) => s + x, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByRowUnchecked(ret, (s, x) => s + x, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<double>.Build.Dense(ret);
         }
 
@@ -737,7 +736,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         public override Vector<double> RowAbsoluteSums()
         {
             var ret = new double[RowCount];
-            Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<double>.Build.Dense(ret);
         }
 
@@ -747,7 +746,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         public override Vector<double> ColumnSums()
         {
             var ret = new double[ColumnCount];
-            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<double>.Build.Dense(ret);
         }
 
@@ -757,7 +756,7 @@ namespace MathNet.Numerics.LinearAlgebra.Double
         public override Vector<double> ColumnAbsoluteSums()
         {
             var ret = new double[ColumnCount];
-            Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<double>.Build.Dense(ret);
         }
 

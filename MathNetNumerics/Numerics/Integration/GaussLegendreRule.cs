@@ -28,6 +28,7 @@
 // </copyright>
 
 using System;
+using System.Numerics;
 using MathNet.Numerics.Integration.GaussRule;
 
 namespace MathNet.Numerics.Integration
@@ -37,7 +38,7 @@ namespace MathNet.Numerics.Integration
     /// </summary>
     public class GaussLegendreRule
     {
-        private readonly GaussPoint _gaussLegendrePoint;
+        readonly GaussPoint _gaussLegendrePoint;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="GaussLegendreRule"/> class.
@@ -63,13 +64,7 @@ namespace MathNet.Numerics.Integration
         /// <summary>
         /// Getter that returns a clone of the array containing the abscissas.
         /// </summary>
-        public double[] Abscissas
-        {
-            get
-            {
-                return _gaussLegendrePoint.Abscissas.Clone() as double[];
-            }
-        }
+        public double[] Abscissas => _gaussLegendrePoint.Abscissas.Clone() as double[];
 
         /// <summary>
         /// Getter for the ith weight.
@@ -84,46 +79,22 @@ namespace MathNet.Numerics.Integration
         /// <summary>
         /// Getter that returns a clone of the array containing the weights.
         /// </summary>
-        public double[] Weights
-        {
-            get
-            {
-                return _gaussLegendrePoint.Weights.Clone() as double[];
-            }
-        }
+        public double[] Weights => _gaussLegendrePoint.Weights.Clone() as double[];
 
         /// <summary>
         /// Getter for the order.
         /// </summary>
-        public int Order
-        {
-            get
-            {
-                return _gaussLegendrePoint.Order;
-            }
-        }
+        public int Order => _gaussLegendrePoint.Order;
 
         /// <summary>
         /// Getter for the InvervalBegin.
         /// </summary>
-        public double IntervalBegin
-        {
-            get
-            {
-                return _gaussLegendrePoint.IntervalBegin;
-            }
-        }
+        public double IntervalBegin => _gaussLegendrePoint.IntervalBegin;
 
         /// <summary>
         /// Getter for the InvervalEnd.
         /// </summary>
-        public double IntervalEnd
-        {
-            get
-            {
-                return _gaussLegendrePoint.IntervalEnd;
-            }
-        }
+        public double IntervalEnd => _gaussLegendrePoint.IntervalEnd;
 
         /// <summary>
         /// Approximates a definite integral using an Nth order Gauss-Legendre rule.
@@ -144,13 +115,16 @@ namespace MathNet.Numerics.Integration
             double a = 0.5*(invervalEnd - invervalBegin);
             double b = 0.5*(invervalEnd + invervalBegin);
 
+            var weights = gaussLegendrePoint.Weights;
+            var abscissas = gaussLegendrePoint.Abscissas;
+
             if (order.IsOdd())
             {
-                sum = gaussLegendrePoint.Weights[0]*f(b);
+                sum = weights[0]*f(b);
                 for (i = 1; i < m; i++)
                 {
-                    ax = a*gaussLegendrePoint.Abscissas[i];
-                    sum += gaussLegendrePoint.Weights[i]*(f(b + ax) + f(b - ax));
+                    ax = a*abscissas[i];
+                    sum += weights[i]*(f(b + ax) + f(b - ax));
                 }
             }
             else
@@ -158,12 +132,57 @@ namespace MathNet.Numerics.Integration
                 sum = 0.0;
                 for (i = 0; i < m; i++)
                 {
-                    ax = a*gaussLegendrePoint.Abscissas[i];
-                    sum += gaussLegendrePoint.Weights[i]*(f(b + ax) + f(b - ax));
+                    ax = a*abscissas[i];
+                    sum += weights[i]*(f(b + ax) + f(b - ax));
                 }
             }
 
             return a*sum;
+        }
+
+        /// <summary>
+        /// Approximates a definite integral using an Nth order Gauss-Legendre rule.
+        /// </summary>
+        /// <param name="f">The analytic smooth complex function to integrate, defined on the real domain.</param>
+        /// <param name="invervalBegin">Where the interval starts, exclusive and finite.</param>
+        /// <param name="invervalEnd">Where the interval ends, exclusive and finite.</param>
+        /// <param name="order">Defines an Nth order Gauss-Legendre rule. The order also defines the number of abscissas and weights for the rule. Precomputed Gauss-Legendre abscissas/weights for orders 2-20, 32, 64, 96, 100, 128, 256, 512, 1024 are used, otherwise they're calculated on the fly.</param>
+        /// <returns>Approximation of the finite integral in the given interval.</returns>
+        public static Complex ContourIntegrate(Func<double, Complex> f, double invervalBegin, double invervalEnd, int order)
+        {
+            GaussPoint gaussLegendrePoint = GaussLegendrePointFactory.GetGaussPoint(order);
+
+            Complex sum;
+            double ax;
+            int i;
+            int m = (order + 1) >> 1;
+
+            double a = 0.5 * (invervalEnd - invervalBegin);
+            double b = 0.5 * (invervalEnd + invervalBegin);
+
+            var weights = gaussLegendrePoint.Weights;
+            var abscissas = gaussLegendrePoint.Abscissas;
+
+            if (order.IsOdd())
+            {
+                sum = weights[0] * f(b);
+                for (i = 1; i < m; i++)
+                {
+                    ax = a * abscissas[i];
+                    sum += weights[i] * (f(b + ax) + f(b - ax));
+                }
+            }
+            else
+            {
+                sum = 0.0;
+                for (i = 0; i < m; i++)
+                {
+                    ax = a * abscissas[i];
+                    sum += weights[i] * (f(b + ax) + f(b - ax));
+                }
+            }
+
+            return a * sum;
         }
 
         /// <summary>
@@ -189,34 +208,37 @@ namespace MathNet.Numerics.Integration
             double c = 0.5*(invervalEndB - invervalBeginB);
             double d = 0.5*(invervalEndB + invervalBeginB);
 
+            var weights = gaussLegendrePoint.Weights;
+            var abscissas = gaussLegendrePoint.Abscissas;
+
             if (order.IsOdd())
             {
-                sum = gaussLegendrePoint.Weights[0]*gaussLegendrePoint.Weights[0]*f(b, d);
+                sum = weights[0]*weights[0]*f(b, d);
 
                 double t;
                 for (j = 1, t = 0.0; j < m; j++)
                 {
-                    cy = c*gaussLegendrePoint.Abscissas[j];
-                    t += gaussLegendrePoint.Weights[j]*(f(b, d + cy) + f(b, d - cy));
+                    cy = c*abscissas[j];
+                    t += weights[j]*(f(b, d + cy) + f(b, d - cy));
                 }
 
-                sum += gaussLegendrePoint.Weights[0]*t;
+                sum += weights[0]*t;
 
                 for (i = 1, t = 0.0; i < m; i++)
                 {
-                    ax = a*gaussLegendrePoint.Abscissas[i];
-                    t += gaussLegendrePoint.Weights[i]*(f(b + ax, d) + f(b - ax, d));
+                    ax = a*abscissas[i];
+                    t += weights[i]*(f(b + ax, d) + f(b - ax, d));
                 }
 
-                sum += gaussLegendrePoint.Weights[0]*t;
+                sum += weights[0]*t;
 
                 for (i = 1; i < m; i++)
                 {
-                    ax = a*gaussLegendrePoint.Abscissas[i];
+                    ax = a*abscissas[i];
                     for (j = 1; j < m; j++)
                     {
-                        cy = c*gaussLegendrePoint.Abscissas[j];
-                        sum += gaussLegendrePoint.Weights[i]*gaussLegendrePoint.Weights[j]*(f(b + ax, d + cy) + f(ax + b, d - cy) + f(b - ax, d + cy) + f(b - ax, d - cy));
+                        cy = c*abscissas[j];
+                        sum += weights[i]*weights[j]*(f(b + ax, d + cy) + f(ax + b, d - cy) + f(b - ax, d + cy) + f(b - ax, d - cy));
                     }
                 }
             }
@@ -225,11 +247,11 @@ namespace MathNet.Numerics.Integration
                 sum = 0.0;
                 for (i = 0; i < m; i++)
                 {
-                    ax = a*gaussLegendrePoint.Abscissas[i];
+                    ax = a*abscissas[i];
                     for (j = 0; j < m; j++)
                     {
-                        cy = c*gaussLegendrePoint.Abscissas[j];
-                        sum += gaussLegendrePoint.Weights[i]*gaussLegendrePoint.Weights[j]*(f(b + ax, d + cy) + f(ax + b, d - cy) + f(b - ax, d + cy) + f(b - ax, d - cy));
+                        cy = c*abscissas[j];
+                        sum += weights[i]*weights[j]*(f(b + ax, d + cy) + f(ax + b, d - cy) + f(b - ax, d + cy) + f(b - ax, d - cy));
                     }
                 }
             }

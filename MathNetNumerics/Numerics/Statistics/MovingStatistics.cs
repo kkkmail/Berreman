@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Statistics
 {
@@ -57,7 +56,7 @@ namespace MathNet.Numerics.Statistics
         {
             if (windowSize < 1)
             {
-                throw new ArgumentException(string.Format(Resources.ArgumentMustBePositive), "windowSize");
+                throw new ArgumentException("Value must be positive.", nameof(windowSize));
             }
             _windowSize = windowSize;
             _oldValues = new double[_windowSize];
@@ -69,18 +68,12 @@ namespace MathNet.Numerics.Statistics
             PushRange(values);
         }
 
-        public int WindowSize
-        {
-            get { return _windowSize; }
-        }
+        public int WindowSize => _windowSize;
 
         /// <summary>
         /// Gets the total number of samples.
         /// </summary>
-        public long Count
-        {
-            get { return _totalCountOffset + _count; }
-        }
+        public long Count => _totalCountOffset + _count;
 
         /// <summary>
         /// Returns the minimum value in the sample data.
@@ -328,7 +321,7 @@ namespace MathNet.Numerics.Statistics
             }
         }
 
-        private void DecrementTimeToLive()
+        void DecrementTimeToLive()
         {
             if (_lastNaNTimeToLive > 0)
             {
@@ -346,7 +339,7 @@ namespace MathNet.Numerics.Statistics
             }
         }
 
-        private void Reset(double min, double max)
+        void Reset(double min, double max)
         {
             _totalCountOffset += _count + 1;
             _count = 0;

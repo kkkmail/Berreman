@@ -27,10 +27,9 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 // </copyright>
 
-using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.LinearAlgebra.Double;
-using MathNet.Numerics.Optimization.LineSearch;
 using System;
+using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.Optimization.LineSearch;
 
 namespace MathNet.Numerics.Optimization
 {
@@ -50,9 +49,7 @@ namespace MathNet.Numerics.Optimization
             int iterations;
             for (iterations = 1; iterations < MaximumIterations; ++iterations)
             {
-                double startingStepSize;
-                double maxLineSearchStep;
-                lineSearchDirection = CalculateSearchDirection(ref inversePseudoHessian, out maxLineSearchStep, out startingStepSize, previousPoint, candidate, step);
+                lineSearchDirection = CalculateSearchDirection(ref inversePseudoHessian, out var maxLineSearchStep, out var startingStepSize, previousPoint, candidate, step);
 
                 try
                 {

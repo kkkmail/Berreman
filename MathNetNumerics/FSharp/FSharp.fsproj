@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <TargetFrameworks>net6.0;net5.0;net461;net48;netstandard2.0</TargetFrameworks>
+        <AssemblyName>MathNet.Numerics.FSharp</AssemblyName>
+        <RootNamespace>MathNet.Numerics</RootNamespace>
+        <IsPackable>true</IsPackable>
+        <PackageId>MathNet.Numerics.FSharp</PackageId>
+        <PackageId Condition="'$(StrongName)'=='True'">MathNet.Numerics.FSharp.Signed</PackageId>
+        <VersionPrefix>5.0.0</VersionPrefix>
+        <VersionSuffix></VersionSuffix>
+        <Title>Math.NET Numerics for F#$(TitleSuffix)</Title>
+        <Description>F# Modules for Math.NET Numerics, the numerical foundation of the Math.NET project, aiming to provide methods and algorithms for numerical computations in science, engineering and every day use. Supports .NET 5.0 or higher, .NET Standard 2.0 and .NET Framework 4.6.1 or higher, on Windows, Linux and Mac.$(DescriptionSuffix)</Description>
+        <PackageReleaseNotes>COMPATIBILITY: net5.0, net48 better supported with explicit builds
+COMPATIBILITY: netstandard1.x, net40, net45 no longer supported
+BREAKING: drop all which was marked as obsolete
+BREAKING: all native provider adapters moved out to separate NuGet packages
+BREAKING: switch many usages of tuples to value tuples (experimental)
+Linear Algebra: Fix sparse inplace pointwise multiplication and division ~jkalias
+Distributions: Logistic ~Bobby Ingram
+Distributions: Perf: Cauchy avoid duplicate evaluation ~Febin
+Random: NextBigIngegerSequence ~Silver-Fang
+Random: xoshiro256StarStar fix out of range exception ~Charlie Turndorf
+Precision: Perf: pre-compute negative powers ~Febin
+Optimizations: Remove static properties in LevenbergMarquardtMinimizer ~Jong Hyun Kim
+Root Finding: Newton-Raphson better handling of zero-evaluations
+Fit.Curve and FindMinimum extended to accept two more parameters
+Fixed an index out of bounds issue when calculating BFGS minimizer with one variable ~Shiney
+Fixed Sparse COO NormalizeDuplicates ~Mohamed Moussa
+Marcum-Q and Log1p functions ~CHUTORO
+Series: stable series summation
+Cubic Spline: Extrema and Stationary Points ~Eduardo Rojas
+Statistics: Weighted Descriptive and Running Statistics ~Richard Allen
+Providers: binary names and loading changes to follow conventions and better x-plat
+Providers: drop managed reference linear algebra provider
+Providers: native providers no longer inherit managed providers, managed now sealed
+Providers: MKL provider compilation switched to Intel oneAPI MKL
+Providers: support for provider packages with runtime folders
+Better support for System.Text.Json: Polynomial, DescriptiveStatistics ~Joseph Petersen
+Lots of internal cleanup, leveraging newer language features
+Data: now released always together with Numerics (no longer separate versioning)
+Control.Describe now includes CPU architecture and family identifier if know</PackageReleaseNotes>
+        <PackageTags>fsharp F# math numeric statistics probability integration interpolation regression solve fit linear algebra matrix fft</PackageTags>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <NoWarn>2003;NU1604</NoWarn>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\Numerics\Numerics.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <Compile Include="AssemblyInfo.fs" />
+        <Compile Include="Statistics.fs" />
+        <Compile Include="Random.fs" />
+        <Compile Include="Distributions.fs" />
+        <Compile Include="Generate.fs" />
+        <Compile Include="LinearAlgebra.Vector.fs" />
+        <Compile Include="LinearAlgebra.Matrix.fs" />
+        <Compile Include="Complex.fs" />
+        <Compile Include="BigIntegerExtensions.fs" />
+        <Compile Include="BigRational.fsi" />
+        <Compile Include="BigRational.fs" />
+        <Compile Include="Differentiate.fs" />
+        <Compile Include="Fit.fs" />
+        <Compile Include="FindRoots.fs" />
+        <Compile Include="RandomVariable.fs" />
+        <Compile Include="Quaternion.fs" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FSharp.Core" Version="5.0.2" />
+        <PackageReference Include="System.ValueTuple" Version="4.4.0" Condition="'$(TargetFramework)' == 'net461'" />
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+</Project>

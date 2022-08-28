@@ -28,7 +28,6 @@
 // </copyright>
 
 using System;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.Integration
 {
@@ -48,7 +47,7 @@ namespace MathNet.Numerics.Integration
         {
             if (f == null)
             {
-                throw new ArgumentNullException("f");
+                throw new ArgumentNullException(nameof(f));
             }
 
             double midpoint = (intervalEnd + intervalBegin)/2;
@@ -67,17 +66,17 @@ namespace MathNet.Numerics.Integration
         {
             if (f == null)
             {
-                throw new ArgumentNullException("f");
+                throw new ArgumentNullException(nameof(f));
             }
 
             if (numberOfPartitions <= 0)
             {
-                throw new ArgumentOutOfRangeException("numberOfPartitions", Resources.ArgumentPositive);
+                throw new ArgumentOutOfRangeException(nameof(numberOfPartitions), "Value must be positive (and not zero).");
             }
 
             if (numberOfPartitions.IsOdd())
             {
-                throw new ArgumentException(Resources.ArgumentEven, "numberOfPartitions");
+                throw new ArgumentException("Value must be even.", nameof(numberOfPartitions));
             }
 
             double step = (intervalEnd - intervalBegin)/numberOfPartitions;

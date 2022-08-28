@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -55,7 +54,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(a, b, location, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -77,7 +76,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(a, b, location, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -100,7 +99,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (min > max || likely > max || likely < min)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // specified to make the formulas match the literature;
@@ -136,7 +135,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>A string representation of the BetaScaled distribution.</returns>
         public override string ToString()
         {
-            return "BetaScaled(α = " + _shapeA + ", β = " + _shapeB + ", μ = " + _location + ", σ = " + _scale + ")";
+            return $"BetaScaled(α = {_shapeA}, β = {_shapeB}, μ = {_location}, σ = {_scale})";
         }
 
         /// <summary>
@@ -154,42 +153,30 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the α shape parameter of the BetaScaled distribution. Range: α > 0.
         /// </summary>
-        public double A
-        {
-            get { return _shapeA; }
-        }
+        public double A => _shapeA;
 
         /// <summary>
         /// Gets the β shape parameter of the BetaScaled distribution. Range: β > 0.
         /// </summary>
-        public double B
-        {
-            get { return _shapeB; }
-        }
+        public double B => _shapeB;
 
         /// <summary>
         /// Gets the location (μ) of the BetaScaled distribution.
         /// </summary>
-        public double Location
-        {
-            get { return _location; }
-        }
+        public double Location => _location;
 
         /// <summary>
         /// Gets the scale (σ) of the BetaScaled distribution. Range: σ > 0.
         /// </summary>
-        public double Scale
-        {
-            get { return _scale; }
-        }
+        public double Scale => _scale;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
@@ -233,18 +220,12 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the standard deviation of the BetaScaled distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt(Variance); }
-        }
+        public double StdDev => Math.Sqrt(Variance);
 
         /// <summary>
         /// Gets the entropy of the BetaScaled distribution.
         /// </summary>
-        public double Entropy
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Entropy => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the skewness of the BetaScaled distribution.
@@ -308,26 +289,17 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the median of the BetaScaled distribution.
         /// </summary>
-        public double Median
-        {
-            get { throw new NotSupportedException(); }
-        }
+        public double Median => throw new NotSupportedException();
 
         /// <summary>
         /// Gets the minimum of the BetaScaled distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return _location; }
-        }
+        public double Minimum => _location;
 
         /// <summary>
         /// Gets the maximum of the BetaScaled distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return _location + _scale; }
-        }
+        public double Maximum => _location + _scale;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -440,7 +412,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Beta.PDF(a, b, (x - location)/scale)/Math.Abs(scale);
@@ -460,7 +432,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Beta.PDFLn(a, b, (x - location)/scale) - Math.Log(Math.Abs(scale));
@@ -480,7 +452,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Beta.CDF(a, b, (x - location) / scale);
@@ -502,7 +474,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return Beta.InvCDF(a, b, p)*scale + location;
@@ -521,7 +493,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, a, b, location, scale);
@@ -540,7 +512,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, a, b, location, scale);
@@ -560,7 +532,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, a, b, location, scale);
@@ -578,7 +550,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, a, b, location, scale);
@@ -596,7 +568,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, a, b, location, scale);
@@ -615,7 +587,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!(a > 0.0 && b > 0.0 && scale > 0.0) || double.IsNaN(location))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, a, b, location, scale);

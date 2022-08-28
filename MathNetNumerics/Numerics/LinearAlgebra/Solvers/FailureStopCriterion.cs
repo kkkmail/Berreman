@@ -29,7 +29,6 @@
 
 using System;
 using System.Diagnostics;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Solvers
 {
@@ -65,12 +64,12 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         {
             if (iterationNumber < 0)
             {
-                throw new ArgumentOutOfRangeException("iterationNumber");
+                throw new ArgumentOutOfRangeException(nameof(iterationNumber));
             }
 
             if (solutionVector.Count != residualVector.Count)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength);
+                throw new ArgumentException("The array arguments must have the same length.");
             }
 
             if (_lastIteration >= iterationNumber)
@@ -96,7 +95,7 @@ namespace MathNet.Numerics.LinearAlgebra.Solvers
         public IterationStatus Status
         {
             [DebuggerStepThrough]
-            get { return _status; }
+            get => _status;
         }
 
         /// <summary>

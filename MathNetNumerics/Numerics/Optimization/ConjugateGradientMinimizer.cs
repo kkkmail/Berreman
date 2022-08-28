@@ -124,7 +124,7 @@ namespace MathNet.Numerics.Optimization
 
             if (iterations == maxIterations)
             {
-                throw new MaximumIterationsException(String.Format("Maximum iterations ({0}) reached.", maxIterations));
+                throw new MaximumIterationsException(FormattableString.Invariant($"Maximum iterations ({maxIterations}) reached."));
             }
 
             return new MinimizationWithLineSearchResult(objective, iterations, ExitCondition.AbsoluteGradient, totalLineSearchSteps, iterationsWithNontrivialLineSearch);
@@ -134,7 +134,7 @@ namespace MathNet.Numerics.Optimization
         {
             foreach (var x in objective.Gradient)
             {
-                if (Double.IsNaN(x) || Double.IsInfinity(x))
+                if (double.IsNaN(x) || double.IsInfinity(x))
                 {
                     throw new EvaluationException("Non-finite gradient returned.", objective);
                 }
@@ -143,7 +143,7 @@ namespace MathNet.Numerics.Optimization
 
         static void ValidateObjective(IObjectiveFunctionEvaluation objective)
         {
-            if (Double.IsNaN(objective.Value) || Double.IsInfinity(objective.Value))
+            if (double.IsNaN(objective.Value) || double.IsInfinity(objective.Value))
             {
                 throw new EvaluationException("Non-finite objective function returned.", objective);
             }

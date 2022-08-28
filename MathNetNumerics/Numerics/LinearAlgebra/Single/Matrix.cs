@@ -28,10 +28,9 @@
 // </copyright>
 
 using System;
-using MathNet.Numerics.LinearAlgebra.Single.Factorization;
 using MathNet.Numerics.LinearAlgebra.Factorization;
+using MathNet.Numerics.LinearAlgebra.Single.Factorization;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearAlgebra.Single
 {
@@ -426,7 +425,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
 
         protected override void DoPointwiseAbs(Matrix<float> result)
         {
-            Map(x => (float)Math.Abs(x), result, Zeros.AllowSkip);
+            Map(x => Math.Abs(x), result, Zeros.AllowSkip);
         }
         protected override void DoPointwiseAcos(Matrix<float> result)
         {
@@ -442,7 +441,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         }
         protected override void DoPointwiseAtan2(Matrix<float> other, Matrix<float> result)
         {
-            Map2((x, y) => (float)Math.Atan2((double)x, (double)y), other, result, Zeros.Include);
+            Map2((x, y) => (float)Math.Atan2(x, y), other, result, Zeros.Include);
         }
         protected override void DoPointwiseCeiling(Matrix<float> result)
         {
@@ -470,7 +469,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         }
         protected override void DoPointwiseSign(Matrix<float> result)
         {
-            Map(x => (float)Math.Sign(x), result, Zeros.AllowSkip);
+            Map(x => Math.Sign(x), result, Zeros.AllowSkip);
         }
         protected override void DoPointwiseSin(Matrix<float> result)
         {
@@ -510,7 +509,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
             }
 
             w.SetDiagonal(s);
-            return (svd.U * w * svd.VT).Transpose();
+            return (svd.U * (w * svd.VT)).Transpose();
         }
 
         /// <summary>
@@ -522,7 +521,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         {
             if (RowCount != ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSquare);
+                throw new ArgumentException("Matrix must be square.");
             }
 
             var sum = 0.0f;
@@ -632,26 +631,26 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         {
             if (norm <= 0.0)
             {
-                throw new ArgumentOutOfRangeException("norm", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(norm), "Value must be positive.");
             }
 
             var ret = new double[RowCount];
             if (norm == 2.0)
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + x*x, (x, c) => Math.Sqrt(x), ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + x*x, (x, _) => Math.Sqrt(x), ret, Zeros.AllowSkip);
             }
             else if (norm == 1.0)
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else if (double.IsPositiveInfinity(norm))
             {
-                Storage.FoldByRowUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else
             {
                 double invnorm = 1.0/norm;
-                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, c) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
+                Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, _) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
             }
             return Vector<double>.Build.Dense(ret);
         }
@@ -664,26 +663,26 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         {
             if (norm <= 0.0)
             {
-                throw new ArgumentOutOfRangeException("norm", Resources.ArgumentMustBePositive);
+                throw new ArgumentOutOfRangeException(nameof(norm), "Value must be positive.");
             }
 
             var ret = new double[ColumnCount];
             if (norm == 2.0)
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x*x, (x, c) => Math.Sqrt(x), ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + x*x, (x, _) => Math.Sqrt(x), ret, Zeros.AllowSkip);
             }
             else if (norm == 1.0)
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else if (double.IsPositiveInfinity(norm))
             {
-                Storage.FoldByColumnUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, c) => x, ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => Math.Max(s, Math.Abs(x)), (x, _) => x, ret, Zeros.AllowSkip);
             }
             else
             {
                 double invnorm = 1.0/norm;
-                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, c) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
+                Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Pow(Math.Abs(x), norm), (x, _) => Math.Pow(x, invnorm), ret, Zeros.AllowSkip);
             }
             return Vector<double>.Build.Dense(ret);
         }
@@ -701,7 +700,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount);
-            Storage.MapIndexedTo(result.Storage, (i, j, x) => (float)norminv[i]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
+            Storage.MapIndexedTo(result.Storage, (i, _, x) => (float)norminv[i]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
             return result;
         }
 
@@ -718,7 +717,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
             }
 
             var result = Build.SameAs(this, RowCount, ColumnCount);
-            Storage.MapIndexedTo(result.Storage, (i, j, x) => (float)norminv[j]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
+            Storage.MapIndexedTo(result.Storage, (_, j, x) => (float)norminv[j]*x, Zeros.AllowSkip, ExistingData.AssumeZeros);
             return result;
         }
 
@@ -728,7 +727,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         public override Vector<float> RowSums()
         {
             var ret = new float[RowCount];
-            Storage.FoldByRowUnchecked(ret, (s, x) => s + x, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByRowUnchecked(ret, (s, x) => s + x, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<float>.Build.Dense(ret);
         }
 
@@ -738,7 +737,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         public override Vector<float> RowAbsoluteSums()
         {
             var ret = new float[RowCount];
-            Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByRowUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<float>.Build.Dense(ret);
         }
 
@@ -748,7 +747,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         public override Vector<float> ColumnSums()
         {
             var ret = new float[ColumnCount];
-            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x, (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByColumnUnchecked(ret, (s, x) => s + x, (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<float>.Build.Dense(ret);
         }
 
@@ -758,7 +757,7 @@ namespace MathNet.Numerics.LinearAlgebra.Single
         public override Vector<float> ColumnAbsoluteSums()
         {
             var ret = new float[ColumnCount];
-            Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, c) => x, ret, Zeros.AllowSkip);
+            Storage.FoldByColumnUnchecked(ret, (s, x) => s + Math.Abs(x), (x, _) => x, ret, Zeros.AllowSkip);
             return Vector<float>.Build.Dense(ret);
         }
 

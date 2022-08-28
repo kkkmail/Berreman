@@ -28,18 +28,17 @@
 // </copyright>
 
 using System;
-using System.Numerics;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Storage;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Providers.FourierTransform;
+using Complex = System.Numerics.Complex;
 
 namespace MathNet.Numerics.IntegralTransforms
 {
     /// <summary>
     /// Complex Fast (FFT) Implementation of the Discrete Fourier Transform (DFT).
     /// </summary>
-    public static partial class Fourier
+    public static class Fourier
     {
         /// <summary>
         /// Applies the forward Fast Fourier Transform (FFT) to arbitrary-length sample vectors.
@@ -121,7 +120,7 @@ namespace MathNet.Numerics.IntegralTransforms
         {
             if (real.Length != imaginary.Length)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength);
+                throw new ArgumentException("The array arguments must have the same length.");
             }
 
             // TODO: consider to support this natively by the provider, without the need for copying
@@ -152,7 +151,7 @@ namespace MathNet.Numerics.IntegralTransforms
         {
             if (real.Length != imaginary.Length)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength);
+                throw new ArgumentException("The array arguments must have the same length.");
             }
 
             // TODO: consider to support this natively by the provider, without the need for copying
@@ -187,7 +186,7 @@ namespace MathNet.Numerics.IntegralTransforms
             int length = n.IsEven() ? n + 2 : n + 1;
             if (data.Length < length)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, length));
+                throw new ArgumentException($"The given array is too small. It must be at least {length} long.");
             }
 
             if ((options & FourierOptions.InverseExponent) == FourierOptions.InverseExponent)
@@ -221,7 +220,7 @@ namespace MathNet.Numerics.IntegralTransforms
             int length = n.IsEven() ? n + 2 : n + 1;
             if (data.Length < length)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, length));
+                throw new ArgumentException($"The given array is too small. It must be at least {length} long.");
             }
 
             if ((options & FourierOptions.InverseExponent) == FourierOptions.InverseExponent)
@@ -471,7 +470,7 @@ namespace MathNet.Numerics.IntegralTransforms
         {
             if (real.Length != imaginary.Length)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength);
+                throw new ArgumentException("The array arguments must have the same length.");
             }
 
             // TODO: consider to support this natively by the provider, without the need for copying
@@ -502,7 +501,7 @@ namespace MathNet.Numerics.IntegralTransforms
         {
             if (real.Length != imaginary.Length)
             {
-                throw new ArgumentException(Resources.ArgumentArraysSameLength);
+                throw new ArgumentException("The array arguments must have the same length.");
             }
 
             // TODO: consider to support this natively by the provider, without the need for copying
@@ -537,7 +536,7 @@ namespace MathNet.Numerics.IntegralTransforms
             int length = n.IsEven() ? n + 2 : n + 1;
             if (data.Length < length)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, length));
+                throw new ArgumentException($"The given array is too small. It must be at least {length} long.");
             }
 
             if ((options & FourierOptions.InverseExponent) == FourierOptions.InverseExponent)
@@ -573,7 +572,7 @@ namespace MathNet.Numerics.IntegralTransforms
             int length = n.IsEven() ? n + 2 : n + 1;
             if (data.Length < length)
             {
-                throw new ArgumentException(string.Format(Resources.ArrayTooSmall, length));
+                throw new ArgumentException($"The given array is too small. It must be at least {length} long.");
             }
 
             if ((options & FourierOptions.InverseExponent) == FourierOptions.InverseExponent)
@@ -743,158 +742,6 @@ namespace MathNet.Numerics.IntegralTransforms
             InverseMultiDim(columnMajorArray, new[] { spectrum.ColumnCount, spectrum.RowCount }, options);
             var denseStorage = new DenseColumnMajorMatrixStorage<Complex>(spectrum.RowCount, spectrum.ColumnCount, columnMajorArray);
             denseStorage.CopyToUnchecked(spectrum.Storage, ExistingData.Clear);
-        }
-
-        /// <summary>
-        /// Naive forward DFT, useful e.g. to verify faster algorithms.
-        /// </summary>
-        /// <param name="samples">Time-space sample vector.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <returns>Corresponding frequency-space vector.</returns>
-        [Obsolete("Use Forward instead. Will be dropped in version 5.0 and behave like Forward until then.")]
-        public static Complex32[] NaiveForward(Complex32[] samples, FourierOptions options = FourierOptions.Default)
-        {
-            var result = new Complex32[samples.Length];
-            samples.Copy(result);
-            Forward(result, options);
-            return result;
-        }
-
-        /// <summary>
-        /// Naive forward DFT, useful e.g. to verify faster algorithms.
-        /// </summary>
-        /// <param name="samples">Time-space sample vector.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <returns>Corresponding frequency-space vector.</returns>
-        [Obsolete("Use Forward instead. Will be dropped in version 5.0 and behave like Forward until then.")]
-        public static Complex[] NaiveForward(Complex[] samples, FourierOptions options = FourierOptions.Default)
-        {
-            var result = new Complex[samples.Length];
-            samples.Copy(result);
-            Forward(result, options);
-            return result;
-        }
-
-        /// <summary>
-        /// Naive inverse DFT, useful e.g. to verify faster algorithms.
-        /// </summary>
-        /// <param name="spectrum">Frequency-space sample vector.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <returns>Corresponding time-space vector.</returns>
-        [Obsolete("Use Inverse instead. Will be dropped in version 5.0 and behave like Inverse until then.")]
-        public static Complex32[] NaiveInverse(Complex32[] spectrum, FourierOptions options = FourierOptions.Default)
-        {
-            var result = new Complex32[spectrum.Length];
-            spectrum.Copy(result);
-            Inverse(result, options);
-            return result;
-        }
-
-        /// <summary>
-        /// Naive inverse DFT, useful e.g. to verify faster algorithms.
-        /// </summary>
-        /// <param name="spectrum">Frequency-space sample vector.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <returns>Corresponding time-space vector.</returns>
-        [Obsolete("Use Inverse instead. Will be dropped in version 5.0 and behave like Inverse until then.")]
-        public static Complex[] NaiveInverse(Complex[] spectrum, FourierOptions options = FourierOptions.Default)
-        {
-            var result = new Complex[spectrum.Length];
-            spectrum.Copy(result);
-            Inverse(result, options);
-            return result;
-        }
-
-        /// <summary>
-        /// Radix-2 forward FFT for power-of-two sized sample vectors.
-        /// </summary>
-        /// <param name="samples">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <exception cref="ArgumentException"/>
-        [Obsolete("Use Forward instead. Will be dropped in version 5.0 and behave like Forward until then.")]
-        public static void Radix2Forward(Complex32[] samples, FourierOptions options = FourierOptions.Default)
-        {
-            Forward(samples, options);
-        }
-
-        /// <summary>
-        /// Radix-2 forward FFT for power-of-two sized sample vectors.
-        /// </summary>
-        /// <param name="samples">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <exception cref="ArgumentException"/>
-        [Obsolete("Use Forward instead. Will be dropped in version 5.0 and behave like Forward until then.")]
-        public static void Radix2Forward(Complex[] samples, FourierOptions options = FourierOptions.Default)
-        {
-            Forward(samples, options);
-        }
-
-        /// <summary>
-        /// Radix-2 inverse FFT for power-of-two sized sample vectors.
-        /// </summary>
-        /// <param name="spectrum">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <exception cref="ArgumentException"/>
-        [Obsolete("Use Inverse instead. Will be dropped in version 5.0 and behave like Inverse until then.")]
-        public static void Radix2Inverse(Complex32[] spectrum, FourierOptions options = FourierOptions.Default)
-        {
-            Inverse(spectrum, options);
-        }
-
-        /// <summary>
-        /// Radix-2 inverse FFT for power-of-two sized sample vectors.
-        /// </summary>
-        /// <param name="spectrum">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        /// <exception cref="ArgumentException"/>
-        [Obsolete("Use Inverse instead. Will be dropped in version 5.0 and behave like Inverse until then.")]
-        public static void Radix2Inverse(Complex[] spectrum, FourierOptions options = FourierOptions.Default)
-        {
-            Inverse(spectrum, options);
-        }
-
-        /// <summary>
-        /// Bluestein forward FFT for arbitrary sized sample vectors.
-        /// </summary>
-        /// <param name="samples">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        [Obsolete("Use Forward instead. Will be dropped in version 5.0 and behave like Forward until then.")]
-        public static void BluesteinForward(Complex32[] samples, FourierOptions options = FourierOptions.Default)
-        {
-            Forward(samples, options);
-        }
-
-        /// <summary>
-        /// Bluestein forward FFT for arbitrary sized sample vectors.
-        /// </summary>
-        /// <param name="samples">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        [Obsolete("Use Forward instead. Will be dropped in version 5.0 and behave like Forward until then.")]
-        public static void BluesteinForward(Complex[] samples, FourierOptions options = FourierOptions.Default)
-        {
-            Forward(samples, options);
-        }
-
-        /// <summary>
-        /// Bluestein inverse FFT for arbitrary sized sample vectors.
-        /// </summary>
-        /// <param name="spectrum">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        [Obsolete("Use Inverse instead. Will be dropped in version 5.0 and behave like Inverse until then.")]
-        public static void BluesteinInverse(Complex32[] spectrum, FourierOptions options = FourierOptions.Default)
-        {
-            Inverse(spectrum, options);
-        }
-
-        /// <summary>
-        /// Bluestein inverse FFT for arbitrary sized sample vectors.
-        /// </summary>
-        /// <param name="spectrum">Sample vector, where the FFT is evaluated in place.</param>
-        /// <param name="options">Fourier Transform Convention Options.</param>
-        [Obsolete("Use Inverse instead. Will be dropped in version 5.0 and behave like Inverse until then.")]
-        public static void BluesteinInverse(Complex[] spectrum, FourierOptions options = FourierOptions.Default)
-        {
-            Inverse(spectrum, options);
         }
 
         /// <summary>

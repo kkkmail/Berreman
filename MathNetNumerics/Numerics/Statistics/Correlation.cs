@@ -30,10 +30,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using MathNet.Numerics.IntegralTransforms;
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.Properties;
+using Complex = System.Numerics.Complex;
 
 namespace MathNet.Numerics.Statistics
 {
@@ -43,23 +42,23 @@ namespace MathNet.Numerics.Statistics
     public static class Correlation
     {
         /// <summary>
-        /// Autocorrelation function (ACF) based on FFT for all possible lags k.
+        /// Auto-correlation function (ACF) based on FFT for all possible lags k.
         /// </summary>
         /// <param name="x">Data array to calculate auto correlation for.</param>
         /// <returns>An array with the ACF as a function of the lags k.</returns>
-        public static double[] Auto(IEnumerable<double> x)
+        public static double[] Auto(double[] x)
         {
-            return AutoCorrelationFft(x, 0, x.Count() - 1);
+            return AutoCorrelationFft(x, 0, x.Length - 1);
         }
 
         /// <summary>
-        /// Autocorrelation function (ACF) based on FFT for lags between kMin and kMax.
+        /// Auto-correlation function (ACF) based on FFT for lags between kMin and kMax.
         /// </summary>
         /// <param name="x">The data array to calculate auto correlation for.</param>
         /// <param name="kMax">Max lag to calculate ACF for must be positive and smaller than x.Length.</param>
         /// <param name="kMin">Min lag to calculate ACF for (0 = no shift with acf=1) must be zero or positive and smaller than x.Length.</param>
         /// <returns>An array with the ACF as a function of the lags k.</returns>
-        public static double[] Auto(IEnumerable<double> x, int kMax, int kMin = 0)
+        public static double[] Auto(double[] x, int kMax, int kMin = 0)
         {
             // assert max and min in proper order
             var kMax2 = Math.Max(kMax, kMin);
@@ -69,12 +68,12 @@ namespace MathNet.Numerics.Statistics
         }
 
         /// <summary>
-        /// Autocorrelation function based on FFT for lags k.
+        /// Auto-correlation function based on FFT for lags k.
         /// </summary>
         /// <param name="x">The data array to calculate auto correlation for.</param>
         /// <param name="k">Array with lags to calculate ACF for.</param>
         /// <returns>An array with the ACF as a function of the lags k.</returns>
-        public static double[] Auto(IEnumerable<double> x, int[] k)
+        public static double[] Auto(double[] x, int[] k)
         {
             if (k == null)
             {
@@ -86,90 +85,75 @@ namespace MathNet.Numerics.Statistics
                 throw new ArgumentException("k");
             }
 
-            var k_min = k.Min();
-            var k_max = k.Max();
+            var kMin = k.Min();
+            var kMax = k.Max();
+
             // get acf between full range
-            var acf = AutoCorrelationFft(x, k_min, k_max);
+            var acf = AutoCorrelationFft(x, kMin, kMax);
 
             // map output by indexing
             var result = new double[k.Length];
             for (int i = 0; i < result.Length; i++)
             {
-                result[i] = acf[k[i] - k_min];
+                result[i] = acf[k[i] - kMin];
             }
 
             return result;
         }
 
         /// <summary>
-        /// The internal core method for calculating the autocorrelation.
+        /// The internal method for calculating the auto-correlation.
         /// </summary>
-        /// <param name="x">The data array to calculate auto correlation for</param>
-        /// <param name="k_low">Min lag to calculate ACF for (0 = no shift with acf=1) must be zero or positive and smaller than x.Length</param>
-        /// <param name="k_high">Max lag (EXCLUSIVE) to calculate ACF for must be positive and smaller than x.Length</param>
+        /// <param name="x">The data array to calculate auto-correlation for</param>
+        /// <param name="kLow">Min lag to calculate ACF for (0 = no shift with acf=1) must be zero or positive and smaller than x.Length</param>
+        /// <param name="kHigh">Max lag (EXCLUSIVE) to calculate ACF for must be positive and smaller than x.Length</param>
         /// <returns>An array with the ACF as a function of the lags k.</returns>
-        private static double[] AutoCorrelationFft(IEnumerable<double> x, int k_low, int k_high)
+        static double[] AutoCorrelationFft(double[] x, int kLow, int kHigh)
         {
             if (x == null)
                 throw new ArgumentNullException(nameof(x));
 
-            int N = x.Count();    // Sample size
+            int N = x.Length;    // Sample size
 
-            if (k_low < 0 || k_low >= N)
-                throw new ArgumentOutOfRangeException(nameof(k_low), "kMin must be zero or positive and smaller than x.Length");
-            if (k_high < 0 || k_high >= N)
-                throw new ArgumentOutOfRangeException(nameof(k_high), "kMax must be positive and smaller than x.Length");
-
-            if (N < 1)
-                return new double[0];
+            if (kLow < 0 || kLow >= N)
+                throw new ArgumentOutOfRangeException(nameof(kLow), "kMin must be zero or positive and smaller than x.Length");
+            if (kHigh < 0 || kHigh >= N)
+                throw new ArgumentOutOfRangeException(nameof(kHigh), "kMax must be positive and smaller than x.Length");
 
             int nFFT = Euclid.CeilingToPowerOfTwo(N) * 2;
 
-            Complex[] x_fft = new Complex[nFFT];
-            Complex[] x_fft2 = new Complex[nFFT];
+            Complex[] xFFT = new Complex[nFFT];
+            Complex[] xFFT2 = new Complex[nFFT];
 
-            double x_dash = Statistics.Mean(x);
-            double xArrNow = 0.0d;
+            double xDash = ArrayStatistics.Mean(x);
 
-            using (IEnumerator<double> iex = x.GetEnumerator())
+            // copy values in range and subtract mean - all the remaining parts are padded with zero.
+            for (int i = 0; i < x.Length; i++)
             {
-                for (int ii = 0; ii < nFFT; ii++)
-                {
-
-                    if (ii < N)
-                    {
-                        if (!iex.MoveNext())
-                            throw new ArgumentOutOfRangeException(nameof(x));
-                        xArrNow = iex.Current;
-                        x_fft[ii] = new Complex(xArrNow - x_dash, 0.0);    // copy values in range and substract mean
-                    }
-                    else
-                        x_fft[ii] = new Complex(0.0, 0.0);      // pad all remaining points
-                }
-
+                xFFT[i] = new Complex(x[i] - xDash, 0.0);    // copy values in range and subtract mean
             }
 
-            Fourier.Forward(x_fft, FourierOptions.Matlab);
+            Fourier.Forward(xFFT, FourierOptions.Matlab);
 
             // maybe a Vector<Complex> implementation here would be faster
-            for (int ii = 0; ii < x_fft.Length; ii++)
+            for (int i = 0; i < xFFT.Length; i++)
             {
-                x_fft2[ii] = Complex.Multiply(x_fft[ii], Complex.Conjugate(x_fft[ii]));
+                xFFT2[i] = Complex.Multiply(xFFT[i], Complex.Conjugate(xFFT[i]));
             }
 
-            Fourier.Inverse(x_fft2, FourierOptions.Matlab);
+            Fourier.Inverse(xFFT2, FourierOptions.Matlab);
 
-            double acf_Val1 = x_fft2[0].Real;
+            double dc = xFFT2[0].Real;
 
-            double[] acf_Vec = new double[k_high - k_low + 1];
+            double[] result = new double[kHigh - kLow + 1];
 
             // normalize such that acf[0] would be 1.0
-            for (int ii = 0; ii < (k_high - k_low + 1); ii++)
+            for (int i = 0; i < (kHigh - kLow + 1); i++)
             {
-                acf_Vec[ii] = x_fft2[k_low + ii].Real / acf_Val1;
+                result[i] = xFFT2[kLow + i].Real / dc;
             }
 
-            return acf_Vec;
+            return result;
         }
 
         /// <summary>
@@ -198,7 +182,7 @@ namespace MathNet.Numerics.Statistics
                 {
                     if (!ieB.MoveNext())
                     {
-                        throw new ArgumentOutOfRangeException(nameof(dataB), Resources.ArgumentArraysSameLength);
+                        throw new ArgumentOutOfRangeException(nameof(dataB), "The array arguments must have the same length.");
                     }
 
                     double currentA = ieA.Current;
@@ -220,7 +204,7 @@ namespace MathNet.Numerics.Statistics
 
                 if (ieB.MoveNext())
                 {
-                    throw new ArgumentOutOfRangeException(nameof(dataA), Resources.ArgumentArraysSameLength);
+                    throw new ArgumentOutOfRangeException(nameof(dataA), "The array arguments must have the same length.");
                 }
             }
 
@@ -236,8 +220,6 @@ namespace MathNet.Numerics.Statistics
         /// <returns>The Weighted Pearson product-moment correlation coefficient.</returns>
         public static double WeightedPearson(IEnumerable<double> dataA, IEnumerable<double> dataB, IEnumerable<double> weights)
         {
-            int n = 0;
-
             double meanA = 0;
             double meanB = 0;
             double varA = 0;
@@ -254,13 +236,12 @@ namespace MathNet.Numerics.Statistics
                 {
                     if (!ieB.MoveNext())
                     {
-                        throw new ArgumentOutOfRangeException(nameof(dataB), Resources.ArgumentArraysSameLength);
+                        throw new ArgumentOutOfRangeException(nameof(dataB), "The array arguments must have the same length.");
                     }
                     if (!ieW.MoveNext())
                     {
-                        throw new ArgumentOutOfRangeException(nameof(weights), Resources.ArgumentArraysSameLength);
+                        throw new ArgumentOutOfRangeException(nameof(weights), "The array arguments must have the same length.");
                     }
-                    ++n;
 
                     double xi = ieA.Current;
                     double yi = ieB.Current;
@@ -283,11 +264,11 @@ namespace MathNet.Numerics.Statistics
                 }
                 if (ieB.MoveNext())
                 {
-                    throw new ArgumentOutOfRangeException(nameof(dataB), Resources.ArgumentArraysSameLength);
+                    throw new ArgumentOutOfRangeException(nameof(dataB), "The array arguments must have the same length.");
                 }
                 if (ieW.MoveNext())
                 {
-                    throw new ArgumentOutOfRangeException(nameof(weights), Resources.ArgumentArraysSameLength);
+                    throw new ArgumentOutOfRangeException(nameof(weights), "The array arguments must have the same length.");
                 }
             }
             return covariance/Math.Sqrt(varA*varB);
@@ -359,7 +340,7 @@ namespace MathNet.Numerics.Statistics
         {
             if (series == null)
             {
-                return new double[0];
+                return Array.Empty<double>();
             }
 
             // WARNING: do not try to cast series to an array and use it directly,

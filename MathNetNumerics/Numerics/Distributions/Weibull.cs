@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -69,7 +68,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(shape, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -88,7 +87,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(shape, scale))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -103,7 +102,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Weibull(k = " + _shape + ", λ = " + _scale + ")";
+            return $"Weibull(k = {_shape}, λ = {_scale})";
         }
 
         /// <summary>
@@ -119,59 +118,41 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the shape (k) of the Weibull distribution. Range: k > 0.
         /// </summary>
-        public double Shape
-        {
-            get { return _shape; }
-        }
+        public double Shape => _shape;
 
         /// <summary>
         /// Gets the scale (λ) of the Weibull distribution. Range: λ > 0.
         /// </summary>
-        public double Scale
-        {
-            get { return _scale; }
-        }
+        public double Scale => _scale;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the Weibull distribution.
         /// </summary>
-        public double Mean
-        {
-            get { return _scale*SpecialFunctions.Gamma(1.0 + (1.0/_shape)); }
-        }
+        public double Mean => _scale*SpecialFunctions.Gamma(1.0 + (1.0/_shape));
 
         /// <summary>
         /// Gets the variance of the Weibull distribution.
         /// </summary>
-        public double Variance
-        {
-            get { return (_scale*_scale*SpecialFunctions.Gamma(1.0 + (2.0/_shape))) - (Mean*Mean); }
-        }
+        public double Variance => (_scale*_scale*SpecialFunctions.Gamma(1.0 + (2.0/_shape))) - (Mean*Mean);
 
         /// <summary>
         /// Gets the standard deviation of the Weibull distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return Math.Sqrt(Variance); }
-        }
+        public double StdDev => Math.Sqrt(Variance);
 
         /// <summary>
         /// Gets the entropy of the Weibull distribution.
         /// </summary>
-        public double Entropy
-        {
-            get { return (Constants.EulerMascheroni*(1.0 - (1.0/_shape))) + Math.Log(_scale/_shape) + 1.0; }
-        }
+        public double Entropy => (Constants.EulerMascheroni*(1.0 - (1.0/_shape))) + Math.Log(_scale/_shape) + 1.0;
 
         /// <summary>
         /// Gets the skewness of the Weibull distribution.
@@ -207,26 +188,17 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the median of the Weibull distribution.
         /// </summary>
-        public double Median
-        {
-            get { return _scale*Math.Pow(Constants.Ln2, 1.0/_shape); }
-        }
+        public double Median => _scale*Math.Pow(Constants.Ln2, 1.0/_shape);
 
         /// <summary>
         /// Gets the minimum of the Weibull distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return 0.0; }
-        }
+        public double Minimum => 0.0;
 
         /// <summary>
         /// Gets the maximum of the Weibull distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return double.PositiveInfinity; }
-        }
+        public double Maximum => double.PositiveInfinity;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -280,7 +252,7 @@ namespace MathNet.Numerics.Distributions
                 return 0.0;
             }
 
-            return -SpecialFunctions.ExponentialMinusOne(-Math.Pow(x, _shape)*_scalePowShapeInv);
+            return -SpecialFunctions.Expm1(-Math.Pow(x, _shape)*_scalePowShapeInv);
         }
 
         /// <summary>
@@ -346,7 +318,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x >= 0.0)
@@ -377,7 +349,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x >= 0.0)
@@ -408,7 +380,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             if (x < 0.0)
@@ -416,11 +388,11 @@ namespace MathNet.Numerics.Distributions
                 return 0.0;
             }
 
-            return -SpecialFunctions.ExponentialMinusOne(-Math.Pow(x, shape)*Math.Pow(scale, -shape));
+            return -SpecialFunctions.Expm1(-Math.Pow(x, shape)*Math.Pow(scale, -shape));
         }
 
         /// <summary>
-        /// Implemented according to: Parameter estimation of the Weibull probability distribution, 1994, Hongzhu Qiao, Chris P. Tsokos 
+        /// Implemented according to: Parameter estimation of the Weibull probability distribution, 1994, Hongzhu Qiao, Chris P. Tsokos
         /// </summary>
         /// <param name="samples"></param>
         /// <param name="randomSource"></param>
@@ -428,7 +400,7 @@ namespace MathNet.Numerics.Distributions
         public static Weibull Estimate(IEnumerable<double> samples, System.Random randomSource = null)
         {
             var samp = samples as double[] ?? samples.ToArray();
-            double n = samp.Length, s1 = 0, s2 = 0, s3 = 0, previousC = Int32.MinValue, QofC = 0;
+            double n = samp.Length, s1, s2, s3, previousC = int.MinValue, QofC;
 
             if (n <= 1) throw new Exception("Observations not sufficient");
 
@@ -477,7 +449,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, shape, scale);
@@ -494,7 +466,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, shape, scale);
@@ -512,7 +484,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, shape, scale);
@@ -528,7 +500,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, shape, scale);
@@ -544,7 +516,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, shape, scale);
@@ -561,7 +533,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (shape <= 0.0 || scale <= 0.0)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, shape, scale);

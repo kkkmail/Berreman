@@ -29,7 +29,6 @@
 
 using System;
 using MathNet.Numerics.LinearAlgebra.Factorization;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Providers.LinearAlgebra;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex.Factorization
@@ -79,7 +78,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Factorization
         /// <param name="rowsQ">Number of rows in <see cref="Matrix{T}"/> Q.</param>
         /// <param name="columnsQ">Number of columns in <see cref="Matrix{T}"/> Q.</param>
         /// <param name="r">On exit is filled by <see cref="Matrix{T}"/> R.</param>
-        private static void Factorize(Complex[] q, int rowsQ, int columnsQ, Complex[] r)
+        static void Factorize(Complex[] q, int rowsQ, int columnsQ, Complex[] r)
         {
             for (var k = 0; k < columnsQ; k++)
             {
@@ -92,7 +91,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Factorization
                 norm = Math.Sqrt(norm);
                 if (norm == 0.0)
                 {
-                    throw new ArgumentException(Resources.ArgumentMatrixNotRankDeficient);
+                    throw new ArgumentException("Matrix must not be rank deficient.");
                 }
 
                 r[(k * columnsQ) + k] = norm;
@@ -132,34 +131,29 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Factorization
             // The solution X should have the same number of columns as B
             if (input.ColumnCount != result.ColumnCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
             // The dimension compatibility conditions for X = A\B require the two matrices A and B to have the same number of rows
             if (Q.RowCount != input.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameRowDimension);
+                throw new ArgumentException("Matrix row dimensions must agree.");
             }
 
             // The solution X row dimension is equal to the column dimension of A
             if (Q.ColumnCount != result.RowCount)
             {
-                throw new ArgumentException(Resources.ArgumentMatrixSameColumnDimension);
+                throw new ArgumentException("Matrix column dimensions must agree.");
             }
 
-            var dinput = input as DenseMatrix;
-            if (dinput == null)
+            if (input is DenseMatrix dinput && result is DenseMatrix dresult)
+            {
+                LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix) Q).Values, ((DenseMatrix) FullR).Values, Q.RowCount, FullR.ColumnCount, null, dinput.Values, input.ColumnCount, dresult.Values, QRMethod.Thin);
+            }
+            else
             {
                 throw new NotSupportedException("Can only do GramSchmidt factorization for dense matrices at the moment.");
             }
-
-            var dresult = result as DenseMatrix;
-            if (dresult == null)
-            {
-                throw new NotSupportedException("Can only do GramSchmidt factorization for dense matrices at the moment.");
-            }
-
-            LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix)Q).Values, ((DenseMatrix)FullR).Values, Q.RowCount, FullR.ColumnCount, null, dinput.Values, input.ColumnCount, dresult.Values, QRMethod.Thin);
         }
 
         /// <summary>
@@ -173,7 +167,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Factorization
             // Check that b is a column vector with m entries
             if (Q.RowCount != input.Count)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             // Check that x is a column vector with n entries
@@ -182,19 +176,14 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Factorization
                 throw Matrix.DimensionsDontMatch<ArgumentException>(Q, result);
             }
 
-            var dinput = input as DenseVector;
-            if (dinput == null)
+            if (input is DenseVector dinput && result is DenseVector dresult)
+            {
+                LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix) Q).Values, ((DenseMatrix) FullR).Values, Q.RowCount, FullR.ColumnCount, null, dinput.Values, 1, dresult.Values, QRMethod.Thin);
+            }
+            else
             {
                 throw new NotSupportedException("Can only do GramSchmidt factorization for dense vectors at the moment.");
             }
-
-            var dresult = result as DenseVector;
-            if (dresult == null)
-            {
-                throw new NotSupportedException("Can only do GramSchmidt factorization for dense vectors at the moment.");
-            }
-
-            LinearAlgebraControl.Provider.QRSolveFactored(((DenseMatrix)Q).Values, ((DenseMatrix)FullR).Values, Q.RowCount, FullR.ColumnCount, null, dinput.Values, 1, dresult.Values, QRMethod.Thin);
         }
     }
 }

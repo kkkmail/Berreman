@@ -30,7 +30,6 @@
 using System;
 using System.Collections.Generic;
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Providers.LinearAlgebra;
 using MathNet.Numerics.Statistics;
 
@@ -56,7 +55,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             double sum = 0d;
@@ -74,7 +73,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             float sum = 0f;
@@ -125,7 +124,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             var diff = new double[a.Length];
@@ -140,7 +139,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             var diff = new float[a.Length];
@@ -236,7 +235,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             double max = Math.Abs(a[0] - b[0]);
@@ -258,7 +257,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             float max = Math.Abs(a[0] - b[0]);
@@ -288,12 +287,12 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (p < 0d)
             {
-                throw new ArgumentOutOfRangeException("p");
+                throw new ArgumentOutOfRangeException(nameof(p));
             }
 
             if (p == 1d)
@@ -326,12 +325,12 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (p < 0d)
             {
-                throw new ArgumentOutOfRangeException("p");
+                throw new ArgumentOutOfRangeException(nameof(p));
             }
 
             if (p == 1d)
@@ -364,7 +363,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             double sum = 0d;
@@ -382,7 +381,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             float sum = 0f;
@@ -400,7 +399,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             var ab = LinearAlgebraControl.Provider.DotProduct(a, b);
@@ -416,7 +415,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             var ab = LinearAlgebraControl.Provider.DotProduct(a, b);
@@ -432,7 +431,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             int count = 0;
@@ -453,7 +452,7 @@ namespace MathNet.Numerics
         {
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             int count = 0;
@@ -487,17 +486,17 @@ namespace MathNet.Numerics
 
             if (a == null)
             {
-                throw new ArgumentNullException("a");
+                throw new ArgumentNullException(nameof(a));
             }
 
             if (b == null)
             {
-                throw new ArgumentNullException("b");
+                throw new ArgumentNullException(nameof(b));
             }
 
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (a.Length == 0 && b.Length == 0)
@@ -518,7 +517,7 @@ namespace MathNet.Numerics
                 }
             }
 
-            return 1.0 - ((double)intersection / (double)union);
+            return 1.0 - ((double)intersection / union);
         }
 
         /// <summary>
@@ -533,17 +532,17 @@ namespace MathNet.Numerics
 
             if (a == null)
             {
-                throw new ArgumentNullException("a");
+                throw new ArgumentNullException(nameof(a));
             }
 
             if (b == null)
             {
-                throw new ArgumentNullException("b");
+                throw new ArgumentNullException(nameof(b));
             }
 
             if (a.Length != b.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength);
+                throw new ArgumentException("All vectors must have the same dimensionality.");
             }
 
             if (a.Length == 0 && b.Length == 0)
@@ -564,7 +563,7 @@ namespace MathNet.Numerics
                 }
             }
 
-            return 1.0 - ((float)intersection / (float)union);
+            return 1.0 - ((float)intersection / union);
         }
     }
 }

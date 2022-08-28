@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 
 namespace MathNet.Numerics.LinearRegression
 {
@@ -42,16 +41,16 @@ namespace MathNet.Numerics.LinearRegression
         /// </summary>
         /// <param name="x">Predictor (independent)</param>
         /// <param name="y">Response (dependent)</param>
-        public static Tuple<double, double> Fit(double[] x, double[] y)
+        public static (double A, double B) Fit(double[] x, double[] y)
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.Length, y.Length));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.Length} and {y.Length} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.Length <= 1)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, 2, x.Length));
+                throw new ArgumentException($"A regression of the requested order requires at least {2} samples. Only {x.Length} samples have been provided.");
             }
 
             // First Pass: Mean (Less robust but faster than ArrayStatistics.Mean)
@@ -77,7 +76,7 @@ namespace MathNet.Numerics.LinearRegression
             }
 
             var b = covariance/variance;
-            return new Tuple<double, double>(my - b*mx, b);
+            return (my - b*mx, b);
         }
 
         /// <summary>
@@ -86,10 +85,22 @@ namespace MathNet.Numerics.LinearRegression
         /// where a is the intercept and b the slope.
         /// </summary>
         /// <param name="samples">Predictor-Response samples as tuples</param>
-        public static Tuple<double, double> Fit(IEnumerable<Tuple<double, double>> samples)
+        public static (double A, double B) Fit(IEnumerable<Tuple<double, double>> samples)
         {
-            var xy = samples.UnpackSinglePass();
-            return Fit(xy.Item1, xy.Item2);
+            var (u, v) = samples.UnpackSinglePass();
+            return Fit(u, v);
+        }
+
+        /// <summary>
+        /// Least-Squares fitting the points (x,y) to a line y : x -> a+b*x,
+        /// returning its best fitting parameters as (a, b) tuple,
+        /// where a is the intercept and b the slope.
+        /// </summary>
+        /// <param name="samples">Predictor-Response samples as tuples</param>
+        public static (double A, double B) Fit(IEnumerable<(double, double)> samples)
+        {
+            var (u, v) = samples.UnpackSinglePass();
+            return Fit(u, v);
         }
 
         /// <summary>
@@ -103,12 +114,12 @@ namespace MathNet.Numerics.LinearRegression
         {
             if (x.Length != y.Length)
             {
-                throw new ArgumentException(string.Format(Resources.SampleVectorsSameLength, x.Length, y.Length));
+                throw new ArgumentException($"All sample vectors must have the same length. However, vectors with disagreeing length {x.Length} and {y.Length} have been provided. A sample with index i is given by the value at index i of each provided vector.");
             }
 
             if (x.Length <= 1)
             {
-                throw new ArgumentException(string.Format(Resources.RegressionNotEnoughSamples, 2, x.Length));
+                throw new ArgumentException($"A regression of the requested order requires at least {2} samples. Only {x.Length} samples have been provided.");
             }
 
             double mxy = 0.0;

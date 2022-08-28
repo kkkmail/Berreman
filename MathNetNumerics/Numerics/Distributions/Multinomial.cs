@@ -32,7 +32,6 @@ using System.Collections.Generic;
 using System.Linq;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Statistics;
 
@@ -73,7 +72,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(p, n))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -94,7 +93,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(p, n))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -114,7 +113,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (h == null)
             {
-                throw new ArgumentNullException("h");
+                throw new ArgumentNullException(nameof(h));
             }
 
             // The probability distribution vector.
@@ -128,7 +127,7 @@ namespace MathNet.Numerics.Distributions
 
             if (Control.CheckDistributionParameters && !IsValidParameterSet(p, n))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _p = (double[])p.Clone();
@@ -142,7 +141,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "Multinomial(Dimension = " + _p.Length + ", Number of Trails = " + _trials + ")";
+            return $"Multinomial(Dimension = {_p.Length}, Number of Trails = {_trials})";
         }
 
         /// <summary>
@@ -177,35 +176,26 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the proportion of ratios.
         /// </summary>
-        public double[] P
-        {
-            get { return (double[])_p.Clone(); }
-        }
+        public double[] P => (double[])_p.Clone();
 
         /// <summary>
         /// Gets the number of trials.
         /// </summary>
-        public int N
-        {
-            get { return _trials; }
-        }
+        public int N => _trials;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
-        public Vector<double> Mean
-        {
-            get { return _trials*(DenseVector)P; }
-        }
+        public Vector<double> Mean => _trials*(DenseVector)P;
 
         /// <summary>
         /// Gets the variance of the distribution.
@@ -254,12 +244,12 @@ namespace MathNet.Numerics.Distributions
         {
             if (null == x)
             {
-                throw new ArgumentNullException("x");
+                throw new ArgumentNullException(nameof(x));
             }
 
             if (x.Length != _p.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "x");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(x));
             }
 
             if (x.Sum() == _trials)
@@ -288,12 +278,12 @@ namespace MathNet.Numerics.Distributions
         {
             if (null == x)
             {
-                throw new ArgumentNullException("x");
+                throw new ArgumentNullException(nameof(x));
             }
 
             if (x.Length != _p.Length)
             {
-                throw new ArgumentException(Resources.ArgumentVectorsSameLength, "x");
+                throw new ArgumentException("All vectors must have the same dimensionality.", nameof(x));
             }
 
             if (x.Sum() == _trials)
@@ -339,7 +329,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(p, n))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // The cumulative density of p.
@@ -368,7 +358,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (Control.CheckDistributionParameters && !IsValidParameterSet(p, n))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             // The cumulative density of p.

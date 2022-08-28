@@ -98,7 +98,6 @@ namespace MathNet.Numerics.Optimization
             var candidate = lineSearchResult.FunctionInfoAtMinimum;
             ValidateGradientAndObjective(candidate);
 
-            var gradient = candidate.Gradient;
             var step = candidate.Point - initialGuess;
             var yk = candidate.Gradient - previousPoint.Gradient;
             var ykhistory = new List<Vector<double>>() {yk};
@@ -150,12 +149,12 @@ namespace MathNet.Numerics.Optimization
             }
 
             if (iterations == MaximumIterations && currentExitCondition == ExitCondition.None)
-                throw new MaximumIterationsException(String.Format("Maximum iterations ({0}) reached.", MaximumIterations));
+                throw new MaximumIterationsException(FormattableString.Invariant($"Maximum iterations ({MaximumIterations}) reached."));
 
             return new MinimizationWithLineSearchResult(candidate, iterations, ExitCondition.AbsoluteGradient, totalLineSearchSteps, iterationsWithNontrivialLineSearch);
         }
 
-        private Vector<double> ApplyLbfgsUpdate(IObjectiveFunction previousPoint, List<Vector<double>> ykhistory, List<Vector<double>> skhistory, List<double> rhokhistory)
+        Vector<double> ApplyLbfgsUpdate(IObjectiveFunction previousPoint, List<Vector<double>> ykhistory, List<Vector<double>> skhistory, List<double> rhokhistory)
         {
             var q = previousPoint.Gradient.Clone();
             var alphas = new Stack<double>();

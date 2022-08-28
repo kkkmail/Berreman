@@ -29,7 +29,6 @@
 
 using System;
 using System.Collections.Generic;
-using MathNet.Numerics.Properties;
 using MathNet.Numerics.Random;
 using MathNet.Numerics.Threading;
 
@@ -64,7 +63,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(lower, upper))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = SystemRandomSource.Default;
@@ -83,7 +82,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (!IsValidParameterSet(lower, upper))
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             _random = randomSource ?? SystemRandomSource.Default;
@@ -97,7 +96,7 @@ namespace MathNet.Numerics.Distributions
         /// <returns>a string representation of the distribution.</returns>
         public override string ToString()
         {
-            return "ContinuousUniform(Lower = " + _lower + ", Upper = " + _upper + ")";
+            return $"ContinuousUniform(Lower = {_lower}, Upper = {_upper})";
         }
 
         /// <summary>
@@ -113,102 +112,69 @@ namespace MathNet.Numerics.Distributions
         /// <summary>
         /// Gets the lower bound of the distribution.
         /// </summary>
-        public double LowerBound
-        {
-            get { return _lower; }
-        }
+        public double LowerBound => _lower;
 
         /// <summary>
         /// Gets the upper bound of the distribution.
         /// </summary>
-        public double UpperBound
-        {
-            get { return _upper; }
-        }
+        public double UpperBound => _upper;
 
         /// <summary>
         /// Gets or sets the random number generator which is used to draw random samples.
         /// </summary>
         public System.Random RandomSource
         {
-            get { return _random; }
-            set { _random = value ?? SystemRandomSource.Default; }
+            get => _random;
+            set => _random = value ?? SystemRandomSource.Default;
         }
 
         /// <summary>
         /// Gets the mean of the distribution.
         /// </summary>
-        public double Mean
-        {
-            get { return (_lower + _upper)/2.0; }
-        }
+        public double Mean => (_lower + _upper)/2.0;
 
         /// <summary>
         /// Gets the variance of the distribution.
         /// </summary>
-        public double Variance
-        {
-            get { return (_upper - _lower)*(_upper - _lower)/12.0; }
-        }
+        public double Variance => (_upper - _lower)*(_upper - _lower)/12.0;
 
         /// <summary>
         /// Gets the standard deviation of the distribution.
         /// </summary>
-        public double StdDev
-        {
-            get { return (_upper - _lower)/Math.Sqrt(12.0); }
-        }
+        public double StdDev => (_upper - _lower)/Math.Sqrt(12.0);
 
         /// <summary>
         /// Gets the entropy of the distribution.
         /// </summary>
         /// <value></value>
-        public double Entropy
-        {
-            get { return Math.Log(_upper - _lower); }
-        }
+        public double Entropy => Math.Log(_upper - _lower);
 
         /// <summary>
         /// Gets the skewness of the distribution.
         /// </summary>
-        public double Skewness
-        {
-            get { return 0.0; }
-        }
+        public double Skewness => 0.0;
 
         /// <summary>
         /// Gets the mode of the distribution.
         /// </summary>
         /// <value></value>
-        public double Mode
-        {
-            get { return (_lower + _upper)/2.0; }
-        }
+        public double Mode => (_lower + _upper)/2.0;
 
         /// <summary>
         /// Gets the median of the distribution.
         /// </summary>
         /// <value></value>
-        public double Median
-        {
-            get { return (_lower + _upper)/2.0; }
-        }
+        public double Median => (_lower + _upper)/2.0;
 
         /// <summary>
         /// Gets the minimum of the distribution.
         /// </summary>
-        public double Minimum
-        {
-            get { return _lower; }
-        }
+        public double Minimum => _lower;
 
         /// <summary>
         /// Gets the maximum of the distribution.
         /// </summary>
-        public double Maximum
-        {
-            get { return _upper; }
-        }
+        public double Maximum => _upper;
 
         /// <summary>
         /// Computes the probability density of the distribution (PDF) at x, i.e. ∂P(X ≤ x)/∂x.
@@ -320,7 +286,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return x < lower || x > upper ? 0.0 : 1.0/(upper - lower);
@@ -338,7 +304,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return x < lower || x > upper ? double.NegativeInfinity : -Math.Log(upper - lower);
@@ -356,7 +322,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return x <= lower ? 0.0 : x >= upper ? 1.0 : (x - lower)/(upper - lower);
@@ -375,7 +341,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return p <= 0.0 ? lower : p >= 1.0 ? upper : lower*(1.0 - p) + upper*p;
@@ -392,7 +358,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(rnd, lower, upper);
@@ -409,7 +375,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(rnd, lower, upper);
@@ -427,7 +393,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(rnd, values, lower, upper);
@@ -443,7 +409,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SampleUnchecked(SystemRandomSource.Default, lower, upper);
@@ -459,7 +425,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             return SamplesUnchecked(SystemRandomSource.Default, lower, upper);
@@ -476,7 +442,7 @@ namespace MathNet.Numerics.Distributions
         {
             if (upper < lower)
             {
-                throw new ArgumentException(Resources.InvalidDistributionParameters);
+                throw new ArgumentException("Invalid parametrization for the distribution.");
             }
 
             SamplesUnchecked(SystemRandomSource.Default, values, lower, upper);

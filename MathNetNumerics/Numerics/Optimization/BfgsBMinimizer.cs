@@ -74,7 +74,7 @@ namespace MathNet.Numerics.Optimization
             ValidateGradientAndObjective(objective);
 
             // Check that we're not already done
-            ExitCondition currentExitCondition = ExitCriteriaSatisfied(objective, null, 0);
+            var currentExitCondition = ExitCriteriaSatisfied(objective, null, 0);
             if (currentExitCondition != ExitCondition.None)
                 return new MinimizationResult(objective, 0, currentExitCondition);
 
@@ -140,7 +140,13 @@ namespace MathNet.Numerics.Optimization
 
             var previousPoint = objective.Fork();
             var candidatePoint = lineSearchResult.FunctionInfoAtMinimum;
-            var gradient = candidatePoint.Gradient;
+            ValidateGradientAndObjective(candidatePoint);
+
+            // Check that we're not done
+            currentExitCondition = ExitCriteriaSatisfied(candidatePoint, previousPoint, 0);
+            if (currentExitCondition != ExitCondition.None)
+                return new MinimizationResult(candidatePoint, 0, currentExitCondition);
+
             var step = candidatePoint.Point - initialGuess;
 
             // Subsequent steps
@@ -150,7 +156,7 @@ namespace MathNet.Numerics.Optimization
             int iterations = DoBfgsUpdate(ref currentExitCondition, lineSearcher, ref pseudoHessian, ref lineSearchDirection, ref previousPoint, ref lineSearchResult, ref candidatePoint, ref step, ref totalLineSearchSteps, ref iterationsWithNontrivialLineSearch);
 
             if (iterations == MaximumIterations && currentExitCondition == ExitCondition.None)
-                throw new MaximumIterationsException(string.Format("Maximum iterations ({0}) reached.", MaximumIterations));
+                throw new MaximumIterationsException(FormattableString.Invariant($"Maximum iterations ({MaximumIterations}) reached."));
 
             return new MinimizationWithLineSearchResult(candidatePoint, iterations, currentExitCondition, totalLineSearchSteps, iterationsWithNontrivialLineSearch);
         }
@@ -168,8 +174,6 @@ namespace MathNet.Numerics.Optimization
             double sy = step * y;
             if (sy > 0.0) // only do update if it will create a positive definite matrix
             {
-                double sts = step * step;
-
                 var Hs = pseudoHessian * step;
                 var sHs = step * pseudoHessian * step;
                 pseudoHessian = pseudoHessian + y.OuterProduct(y) * (1.0 / sy) - Hs.OuterProduct(Hs) * (1.0 / sHs);
@@ -239,7 +243,7 @@ namespace MathNet.Numerics.Optimization
 
         static double FindMaxStep(Vector<double> startingPoint, Vector<double> searchDirection, Vector<double> lowerBound, Vector<double> upperBound)
         {
-            double maxStep = Double.PositiveInfinity;
+            double maxStep = double.PositiveInfinity;
             for (int ii = 0; ii < startingPoint.Count; ++ii)
             {
                 double paramMaxStep;
@@ -248,7 +252,7 @@ namespace MathNet.Numerics.Optimization
                 else if (searchDirection[ii] < 0)
                     paramMaxStep = (startingPoint[ii] - lowerBound[ii])/-searchDirection[ii];
                 else
-                    paramMaxStep = Double.PositiveInfinity;
+                    paramMaxStep = double.PositiveInfinity;
 
                 if (paramMaxStep < maxStep)
                     maxStep = paramMaxStep;
