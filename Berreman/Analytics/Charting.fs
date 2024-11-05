@@ -9,10 +9,15 @@ open Plotly.NET
 
 module Charting =
 
+    let createDescription (title : string) (subtitle : string) =
+        //ChartDescription.create(title, subtitle)
+        failwith "createDescription is not implemented yet."
+
+
     /// Plots several functions (e.g. [ R; T; I; ... ] ) on the same plot.
     let plot (f : FixedInfo) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = calculate f x
-        let description = (f.getDescription x, "") ||> ChartDescription.create
+        let description = (f.getDescription x, "") ||> createDescription
 
 
         let getFuncData (e : OpticalFunction) =
@@ -30,7 +35,7 @@ module Charting =
     let plotComparison (f : list<FixedInfo>) (fn : List<OpticalFunction>) (x : RangedVariable) =
         let data = f |> List.map (fun e -> calculate e x)
         let (d, _) = f |> List.fold (fun (acc, i) r -> (acc + "(" + i.ToString() + "): " + r.getDescription x + lineBrake, i + 1)) ("", 0)
-        let description = (d, "") ||> ChartDescription.create
+        let description = (d, "") ||> createDescription
 
         let getFuncData (d : array<float * Solution> ) (e : OpticalFunction) =
             d
@@ -57,7 +62,7 @@ module Charting =
         let xVal = x.plotPoints
         let yVal = y.plotPoints
         let data = calculate3D f x y
-        let description = (f.getDescription (x, y), "") ||> ChartDescription.create
+        let description = (f.getDescription (x, y), "") ||> createDescription
 
 
         let plotFun e =
