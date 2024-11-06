@@ -245,4 +245,3 @@ module FieldFunctions =
                 |> List.map (fun e -> e.stokesVector)
                 |> List.choose id
                 |> List.sum
-
