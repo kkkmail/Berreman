@@ -109,7 +109,7 @@ module Geometry =
                 let (RealVector4 v) = this
                 v.[i]
 
-         static member create a = RealVector.create a |> RealVector4
+        static member create a = RealVector.create a |> RealVector4
         static member (+) (RealVector4 a, RealVector4 b) = a + b |> RealVector4
         static member (-) (RealVector4 a, RealVector4 b) = a - b |> RealVector4
 

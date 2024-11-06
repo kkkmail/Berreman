@@ -111,6 +111,7 @@ module Solvers =
             | _ -> getTotalReflection()
         else getTotalReflection()
 
+
     type BaseOpticalSystemSolver private (input : InputData) =
         let i, waveLength, films, upper, lower =
             match input with
