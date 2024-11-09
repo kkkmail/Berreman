@@ -27,6 +27,7 @@ module Fields =
         member p.angle = let (IncidenceAngle a) = p in a
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
+        static member maxValue80 = IncidenceAngle.create (Angle.degree 80.0)
         member this.description = sprintf "incidence angle: %A degree(s)" (this.value / degree)
         static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
         static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle

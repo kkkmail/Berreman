@@ -15,6 +15,7 @@
     <None Include="Examples\LangasiteOnSilicon.fsx" />
     <None Include="Examples\MultilayerThinFilm.fsx" />
     <None Include="Examples\MultilayerThinFilm_02.fsx" />
+    <None Include="Examples\MultilayerThinFilm_EUV.fsx" />
     <None Include="Examples\TestChart.fsx" />
     <None Include="Examples\Glass.fsx" />
     <None Include="Examples\Glass_Dispersive.fsx" />

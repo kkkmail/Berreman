@@ -5,13 +5,20 @@ open Berreman.Geometry
 open Berreman.Media
 open Berreman.Fields
 open Berreman.MaterialProperties
+open MathNet.Numerics
+open Berreman.MathNetNumericsMath
 
 /// !!! DO NOT CHANGE ANY VALUES HERE !!!
 /// Standard optical properties without dispersion to be used in various simple calculations and tests.
 /// If some other values are desired, introduce another module and set the new values there OR add them at the end of this module.
 module Standard =
 
+    let private w10nm = 10.0
     let private w600nm = 600.0
+
+
+    /// 10 nm S-polarized light falling at normal.
+    let light10nmNormalLPs = WaveLength.nm w10nm |> IncidentLightInfo.create
 
 
     /// 600 nm S-polarized light falling at normal.
@@ -53,6 +60,18 @@ module Standard =
         // Add any custom values after this line.
         //=======================================
 
+        // !!! NOT CONFIRMED !!!
+        // EUV data, for wavelength around 10 - 13 nm.
+
+        static member euvMolybdenumDelta = 0.043
+        static member euvMolybdenumBeta = 0.016
+
+        static member euvSiliconDelta = 0.065
+        static member euvSiliconBeta = 0.005
+
+        static member euvMolybdenum = (createComplex (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+        static member euvSilicon = (createComplex  (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+
 
     type OpticalProperties
         with
@@ -68,6 +87,9 @@ module Standard =
         //=======================================
         // Add any custom values after this line.
         //=======================================
+
+        static member euvMolybdenum = Eps.euvMolybdenum |> OpticalProperties.fromEpsion
+        static member euvSilicon = Eps.euvSilicon |> OpticalProperties.fromEpsion
 
 
     type BaseOpticalSystem
