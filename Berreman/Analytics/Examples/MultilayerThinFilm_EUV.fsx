@@ -15,7 +15,7 @@ let fn = [ R; T ]
 let numberOfPoints = 1000
 //let numberOfPoints3D = 100
 
-let i = incidenceAngleRange40 numberOfPoints
+let i = incidenceAngleRange60 numberOfPoints
 //let e = ellipticityRange numberOfPoints
 //let p = polarizationRange numberOfPoints
 let w = wavelength05to20Range numberOfPoints
@@ -25,14 +25,42 @@ let w = wavelength05to20Range numberOfPoints
 //let p3D = polarizationRange numberOfPoints3D
 //let w3D = wavelength200to800Range numberOfPoints3D
 
+let h1 = 6.7
+let h2 = 6.7
 
-let thickness1 = Thickness.nm (10.6 / 4.0)
-let thickness2 = Thickness.nm (10.6 / 4.0)
-let noOfLayerPairs = 200
+//let h1 = 2.8
+//let h2 = 2.8
+
+//let h1 = 2.7
+//let h2 = 2.7
+
+//let h1 = 10.6 / 4.0
+//let h2 = 10.6 / 4.0
+
+//let h1 = 2.6
+//let h2 = 2.6
+
+//let h1 = 2.4
+//let h2 = 2.4
+
+//let h1 = 2.0
+//let h2 = 2.0
+
+//let light = light10nmNormalLPs
+let light = light13p5nmNormalLPp
+
+let thickness1 = Thickness.nm h1
+let thickness2 = Thickness.nm h2
+
+let noOfLayerPairs = 100
+
+let description =
+    $"Multilayer thin film system for EUV: {noOfLayerPairs} layer pairs, " +
+    $"h1 = {h1} nm, h2 = {h2} nm, light = {light}."
 
 let filmSystem =
     {
-        description = Some $"Multilayer thin film system for EUV ({noOfLayerPairs} layer pairs)."
+        description = Some description
         upper = OpticalProperties.vacuum
         films =
             [
@@ -45,7 +73,7 @@ let filmSystem =
         lower = OpticalProperties.vacuum
     }
 
-let f = { incidentLightInfo = light10nmNormalLPs; opticalSystem = filmSystem.fullSystem.dispersive }
+let f = { incidentLightInfo = light; opticalSystem = filmSystem.fullSystem.dispersive }
 
 #time
 plot f fn i

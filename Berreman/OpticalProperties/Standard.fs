@@ -14,11 +14,24 @@ open Berreman.MathNetNumericsMath
 module Standard =
 
     let private w10nm = 10.0
+    let private w13p5nm = 13.5
     let private w600nm = 600.0
 
 
     /// 10 nm S-polarized light falling at normal.
     let light10nmNormalLPs = WaveLength.nm w10nm |> IncidentLightInfo.create
+
+
+    /// 10 nm P-polarized light falling at normal.
+    let light10nmNormalLPp = (WaveLength.nm w10nm |> IncidentLightInfo.create).p
+
+
+    /// 13.5 nm S-polarized light falling at normal.
+    let light13p5nmNormalLPs = WaveLength.nm w13p5nm |> IncidentLightInfo.create
+
+
+    /// 13.2 nm P-polarized light falling at normal.
+    let light13p5nmNormalLPp = (WaveLength.nm w13p5nm |> IncidentLightInfo.create).p
 
 
     /// 600 nm S-polarized light falling at normal.
