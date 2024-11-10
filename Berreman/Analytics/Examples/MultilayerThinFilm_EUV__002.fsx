@@ -5,6 +5,7 @@ open Berreman.FieldFunctions
 open Berreman.MaterialProperties
 open Berreman.Media
 open Berreman.Dispersion
+open Berreman.MathNetNumericsMath
 open OpticalProperties.Standard
 open Analytics.Variables
 open Analytics.StandardLightVariables
@@ -24,6 +25,27 @@ let w = wavelength05to20Range numberOfPoints
 //let e3D = ellipticityRange numberOfPoints3D
 //let p3D = polarizationRange numberOfPoints3D
 //let w3D = wavelength200to800Range numberOfPoints3D
+
+//===========================================================
+
+let euvDelta1 = 0.100
+let euvBeta1 = 0.045
+
+let euvDelta2 = 0.006
+let euvBeta2 = 0.002
+
+//===========================================================
+
+let euv1 = (createComplex (1.0 - euvDelta1) euvBeta1) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+let euv2 = (createComplex  (1.0 - euvDelta2) euvBeta2) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
+
+let o1 = euv1 |> OpticalProperties.fromEpsion
+let o2 = euv2 |> OpticalProperties.fromEpsion
+
+//{ properties = OpticalProperties.euvMolybdenum; thickness = thickness1 }
+//{ properties = OpticalProperties.euvSilicon; thickness = thickness2 }
+
+//===========================================================
 
 //let h1 = 6.7
 //let h2 = 6.7
@@ -64,8 +86,8 @@ let filmSystem =
         upper = OpticalProperties.vacuum
         films =
             [
-                { properties = OpticalProperties.euvMolybdenum; thickness = thickness1 }
-                { properties = OpticalProperties.euvSilicon; thickness = thickness2 }
+                { properties = o1; thickness = thickness1 }
+                { properties = o2; thickness = thickness2 }
             ]
             |> List.replicate noOfLayerPairs
             |> List.concat

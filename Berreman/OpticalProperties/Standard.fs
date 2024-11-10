@@ -76,11 +76,17 @@ module Standard =
         // !!! NOT CONFIRMED !!!
         // EUV data, for wavelength around 10 - 13 nm.
 
-        static member euvMolybdenumDelta = 0.043
-        static member euvMolybdenumBeta = 0.016
+        //static member euvMolybdenumDelta = 0.043
+        //static member euvMolybdenumBeta = 0.016
 
-        static member euvSiliconDelta = 0.065
-        static member euvSiliconBeta = 0.005
+        //static member euvSiliconDelta = 0.065
+        //static member euvSiliconBeta = 0.005
+
+        static member euvMolybdenumDelta = 0.010
+        static member euvMolybdenumBeta = 0.045
+
+        static member euvSiliconDelta = 0.006
+        static member euvSiliconBeta = 0.002
 
         static member euvMolybdenum = (createComplex (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
         static member euvSilicon = (createComplex  (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta) |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
