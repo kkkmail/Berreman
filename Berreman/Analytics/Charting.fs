@@ -6,12 +6,15 @@ open Berreman.FieldFunctions
 open Berreman.Dispersion
 open Analytics.Variables
 open Plotly.NET
+open Giraffe.ViewEngine
 
 module Charting =
 
-    let createDescription (title : string) (subtitle : string) =
-        //ChartDescription.create(title, subtitle)
-        failwith "createDescription is not implemented yet."
+    let createDescription (title : string) (subtitle : string) : Giraffe.ViewEngine.HtmlElements.XmlNode list =
+        [
+            h1 [] [ str title ]
+            h2 [] [ str subtitle ]
+        ]
 
 
     /// Plots several functions (e.g. [ R; T; I; ... ] ) on the same plot.

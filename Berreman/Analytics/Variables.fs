@@ -13,7 +13,9 @@ open Berreman.Dispersion
 module Variables =
 
     /// https://stackoverflow.com/questions/35185143/how-to-create-new-line-in-plot-ly-js-title
-    let lineBrake = "<br>"
+    //let lineBrake = "<br>" // Does not work in version 5.0
+    let lineBrake = " " + System.Environment.NewLine
+
 
     type Range<'T> =
         {
