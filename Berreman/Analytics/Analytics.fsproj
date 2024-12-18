@@ -31,42 +31,42 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-  <ItemGroup>
-    <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <Compile Include="Variables.fs" />
-    <Compile Include="StandardLightVariables.fs" />
-    <Compile Include="StandardSystems.fs" />
-    <Compile Include="Charting.fs" />
-    <None Include="References.fsx" />
-    <None Include="Examples\References.fsx" />
-    <None Include="Examples\LangasiteOnSilicon.fsx" />
-    <None Include="Examples\MultilayerThinFilm.fsx" />
-    <None Include="Examples\MultilayerThinFilm_02.fsx" />
-    <None Include="Examples\MultilayerThinFilm_EUV__002.fsx" />
-    <None Include="Examples\TestChart.fsx" />
-    <None Include="Examples\Glass.fsx" />
-    <None Include="Examples\Glass_Dispersive.fsx" />
-    <None Include="Examples\Wedge_Glass.fsx" />
-    <None Include="Examples\Wedge_BiaxialCrystal.fsx" />
-    <None Include="Examples\Wedge_ActiveCrystal.fsx" />
-    <None Include="Examples\Wedge_ActiveCrystalComparison.fsx" />
-    <None Include="Examples\TotalRefl_Glass.fsx" />
-    <None Include="Examples\Glass_03_Wedge.fsx" />
-    <None Include="Examples\Work_01.fsx" />
-    <None Include="Examples\ActiveCrystal.fsx" />
-    <None Include="Examples\ActiveCrystalComparison.fsx" />
-  </ItemGroup>
+    <ItemGroup>
+        <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <Compile Include="Variables.fs"/>
+        <Compile Include="StandardLightVariables.fs"/>
+        <Compile Include="StandardSystems.fs"/>
+        <Compile Include="Charting.fs"/>
+        <None Include="References.fsx"/>
+        <None Include="Examples\References.fsx"/>
+        <None Include="Examples\LangasiteOnSilicon.fsx"/>
+        <None Include="Examples\MultilayerThinFilm.fsx"/>
+        <None Include="Examples\MultilayerThinFilm_02.fsx"/>
+        <None Include="Examples\MultilayerThinFilm_EUV__002.fsx"/>
+        <None Include="Examples\TestChart.fsx"/>
+        <None Include="Examples\Glass.fsx"/>
+        <None Include="Examples\Glass_Dispersive.fsx"/>
+        <None Include="Examples\Wedge_Glass.fsx"/>
+        <None Include="Examples\Wedge_BiaxialCrystal.fsx"/>
+        <None Include="Examples\Wedge_ActiveCrystal.fsx"/>
+        <None Include="Examples\Wedge_ActiveCrystalComparison.fsx"/>
+        <None Include="Examples\TotalRefl_Glass.fsx"/>
+        <None Include="Examples\Glass_03_Wedge.fsx"/>
+        <None Include="Examples\Work_01.fsx"/>
+        <None Include="Examples\ActiveCrystal.fsx"/>
+        <None Include="Examples\ActiveCrystalComparison.fsx"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="FSharp.Collections.ParallelSeq" Version="1.2.0" />
-    <PackageReference Include="Plotly.NET" Version="5.1.0" />
-    <PackageReference Update="FSharp.Core" Version="9.0.100" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FSharp.Collections.ParallelSeq" Version="1.2.0"/>
+        <PackageReference Include="Plotly.NET" Version="5.1.0"/>
+        <PackageReference Update="FSharp.Core" Version="9.0.100"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj"/>
+    </ItemGroup>
 
 </Project>

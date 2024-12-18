@@ -31,21 +31,21 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-  <ItemGroup>
-    <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <Compile Include="Standard.fs" />
-    <Compile Include="Active.fs" />
-    <Compile Include="Dispersive.fs" />
-  </ItemGroup>
+    <ItemGroup>
+        <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <Compile Include="Standard.fs"/>
+        <Compile Include="Active.fs"/>
+        <Compile Include="Dispersive.fs"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Update="FSharp.Core" Version="9.0.100" />
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="9.0.100"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Berreman\Berreman.fsproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\Berreman\Berreman.fsproj"/>
+    </ItemGroup>
 
 </Project>
