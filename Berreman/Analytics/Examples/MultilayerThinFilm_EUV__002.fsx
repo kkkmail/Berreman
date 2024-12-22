@@ -4,6 +4,7 @@
 open Berreman.FieldFunctions
 open Berreman.MaterialProperties
 open Berreman.Media
+open Berreman.Constants
 open Berreman.Dispersion
 open Berreman.MathNetNumericsMath
 open OpticalProperties.Standard
@@ -56,8 +57,8 @@ let o2 = euv2 |> OpticalProperties.fromEpsion
 //let h1 = 2.7
 //let h2 = 2.7
 
-let h1 = 10.6 / 4.0
-let h2 = 10.6 / 4.0
+let h1 = (10.6 / 4.0) * 1.0<nm>
+let h2 = (10.6 / 4.0) * 1.0<nm>
 
 //let h1 = 2.6
 //let h2 = 2.6

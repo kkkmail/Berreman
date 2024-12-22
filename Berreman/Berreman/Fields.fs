@@ -688,9 +688,23 @@ module Fields =
         //     with get () = JonesMatrix ComplexMatrix2x2.Zero
 
 
-    /// A Gaussian light beam: https://en.wikipedia.org/wiki/Gaussian_beam
+    /// Basic information about a Gaussian light beam: https://en.wikipedia.org/wiki/Gaussian_beam
     type GaussianLightBeamInfo =
         {
             waveLength : WaveLength
-            waist : int
+            waistX : double<meter>
+            waistY : double<meter>
+
+            /// The value means position of Y waist minus position of X waist,
+            /// where the axis goes in the direction of beam propagation:
+            ///     Zero means that waists coincide.
+            ///     Positive means that X waist is closer to the source.
+            ///     Negative means that Y waist is closer to the source.
+            waistPointYmX : double<meter>
+        }
+
+
+    type GaussianLightBeam =
+        {
+            info : GaussianLightBeamInfo
         }
