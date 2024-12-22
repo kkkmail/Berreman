@@ -28,7 +28,7 @@ module Fields =
         static member normal = IncidenceAngle.create (Angle.degree 0.0)
         static member maxValue = IncidenceAngle.create (Angle.degree 89.0)
         static member maxValue80 = IncidenceAngle.create (Angle.degree 80.0)
-        member this.description = sprintf "incidence angle: %A degree(s)" (this.value / degree)
+        member this.description = $"incidence angle: %A{this.value / degree} degree(s)"
         static member (+) (IncidenceAngle a, Angle b) = a.value + b |> Angle |> IncidenceAngle
         static member (-) (IncidenceAngle a, Angle b) = a.value - b |> Angle |> IncidenceAngle
 
@@ -277,15 +277,16 @@ module Fields =
 
 
     type WaveLength =
-        | WaveLength of double
+        | WaveLength of double<meter>
         with
         member this.value = let (WaveLength w) = this in w
-        static member nm l = l * nm |> WaveLength
-        static member mkm l = l * mkm |> WaveLength
+        static member nm (l : double<nm>) = l * nmPerMeter |> WaveLength
+        static member mkm (l : double<mkm>) = l * mkmPerMeter |> WaveLength
         member this.description =
             let (WaveLength w) = this
-            if w < mkm then sprintf "wavelength: %A nm" (w / nm)
-            else sprintf "wavelength: %A mkm" (w / mkm)
+            // if w < mkm then $"wavelength: %A{w / nm} nm"
+            // else $"wavelength: %A{w / mkm} mkm"
+            $"wavelength: %A{w}"
 
 
     type Ellipticity =
@@ -297,7 +298,7 @@ module Fields =
         static member defaultValue = Ellipticity 0.0
         static member minValue = Ellipticity -1.0
         static member maxValue = Ellipticity 1.0
-        member this.description = sprintf "ellipticity: %A" this.value
+        member this.description = $"ellipticity: %A{this.value}"
 
 
     type Polarization =
@@ -311,7 +312,7 @@ module Fields =
         static member s = Angle.degree 0.0 |> Polarization
         static member p = Angle.degree 90.0 |> Polarization
         static member minusP = Angle.degree -90.0 |> Polarization
-        member this.description = sprintf "polarization: %A degree(s)" (this.value / degree)
+        member this.description = $"polarization: %A{this.value / degree} degree(s)"
 
 
     type WedgeAngle =
@@ -319,7 +320,7 @@ module Fields =
 
         member angle.value = let (WedgeAngle a) = angle in a.value
         member angle.degrees = let (WedgeAngle a) = angle in a.degrees
-        member this.description = sprintf "wedge angle: %A degree(s)" (this.value / degree)
+        member this.description = $"wedge angle: %A{this.value / degree} degree(s)"
         static member defaultValue = 0.0 |> Angle |> WedgeAngle
 
 
@@ -637,5 +638,59 @@ module Fields =
         static member (+) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), MuellerMatrix (RealMatrix4x4 (RealMatrix b))) : MuellerMatrix =
             a + b |> RealMatrix |> RealMatrix4x4 |> MuellerMatrix
 
+        static member (*) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), MuellerMatrix (RealMatrix4x4 (RealMatrix b))) : MuellerMatrix =
+            a * b |> RealMatrix |> RealMatrix4x4 |> MuellerMatrix
+
         static member Zero
             with get () = MuellerMatrix RealMatrix4x4.Zero
+
+
+    type JonesVector =
+        | JonesVector of ComplexVector2
+
+        static member create v = v |> ComplexVector2.create |> JonesVector
+        static member (+) (JonesVector a, JonesVector b) = a + b |> JonesVector
+
+        static member Zero
+            with get () = JonesVector ComplexVector2.Zero
+
+
+    type JonesMatrix =
+        | JonesMatrix of ComplexMatrix2x2
+
+        static member create (kSS : Complex) (kSP : Complex) (kPS : Complex) (kPP : Complex) =
+            [
+                [ kSS; kPS ]
+                [ kSP; kPP ]
+            ]
+            |> ComplexMatrix2x2.create
+            |> JonesMatrix
+
+        static member fromEmFields (s : EmField) (p : EmField) =
+            let rSS = s.amplitudeS
+            let rSP = s.amplitudeP
+
+            let rPS = p.amplitudeS
+            let rPP = p.amplitudeP
+
+            JonesMatrix.create rSS rSP rPS rPP
+
+        static member (*) (JonesMatrix (ComplexMatrix2x2 (ComplexMatrix a)), JonesVector (ComplexVector2 (ComplexVector b))) : JonesVector =
+            a * b |> JonesVector.create
+
+        static member (+) (JonesMatrix (ComplexMatrix2x2 (ComplexMatrix a)), JonesMatrix (ComplexMatrix2x2 (ComplexMatrix b))) : JonesMatrix =
+            a + b |> ComplexMatrix |> ComplexMatrix2x2 |> JonesMatrix
+
+        static member (*) (JonesMatrix (ComplexMatrix2x2 (ComplexMatrix a)), JonesMatrix (ComplexMatrix2x2 (ComplexMatrix b))) : JonesMatrix =
+            a * b |> ComplexMatrix |> ComplexMatrix2x2 |> JonesMatrix
+
+        // static member Zero
+        //     with get () = JonesMatrix ComplexMatrix2x2.Zero
+
+
+    /// A Gaussian light beam: https://en.wikipedia.org/wiki/Gaussian_beam
+    type GaussianLightBeamInfo =
+        {
+            waveLength : WaveLength
+            waist : int
+        }

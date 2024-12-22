@@ -28,7 +28,7 @@ type IncidentLightTestData =
 
 type IncidentLightTests(output : ITestOutputHelper) =
 
-    let waveLength = WaveLength.nm 600.0
+    let waveLength = WaveLength.nm 600.0<nm>
     let getN1SinFita incidenceAngle = N1SinFita.create RefractionIndex.vacuum incidenceAngle
 
     let data =
@@ -163,8 +163,8 @@ type IncidentLightTests(output : ITestOutputHelper) =
         let el = i.ellipticity
         let p = i.azimuth
 
-        output.WriteLine (sprintf "d.info = \n%A" d.info)
-        output.WriteLine (sprintf "el, = %A, p = %A" el p)
+        output.WriteLine $"d.info = \n%A{d.info}"
+        output.WriteLine $"el, = %A{el}, p = %A{p}"
 
         verifyPolarizationEquality output "Polarization" (d.info.polarization) p
         verifyEllipticityEquality output "Ellipticity" (d.info.ellipticity) el

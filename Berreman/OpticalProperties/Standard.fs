@@ -13,9 +13,9 @@ open Berreman.MathNetNumericsMath
 /// If some other values are desired, introduce another module and set the new values there OR add them at the end of this module.
 module Standard =
 
-    let private w10nm = 10.0
-    let private w13p5nm = 13.5
-    let private w600nm = 600.0
+    let private w10nm = 10.0<nm>
+    let private w13p5nm = 13.5<nm>
+    let private w600nm = 600.0<nm>
 
 
     /// 10 nm S-polarized light falling at normal.
@@ -229,15 +229,15 @@ module Standard =
                 lower = OpticalProperties.vacuum
             }
 
-         static member getWedgeGlass150Thickness1mmSystem a = OpticalSystem.getWedgeGlass150System (1.0 * mm |> Thickness) a
+         static member getWedgeGlass150Thickness1mmSystem a = OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) a
 
         /// Standard transparent glass / vacuum system for testing wedge reflection.
         static member wedge40DegGlass150System =
-            OpticalSystem.getWedgeGlass150System (1.0 * mm |> Thickness) (40.0 |> Angle.degree |> WedgeAngle)
+            OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) (40.0 |> Angle.degree |> WedgeAngle)
 
         /// Standard transparent glass / vacuum system for testing wedge reflection.
         static member wedge50DegGlass150System =
-            OpticalSystem.getWedgeGlass150System (1.0 * mm |> Thickness) (50.0 |> Angle.degree |> WedgeAngle)
+            OpticalSystem.getWedgeGlass150System (1.0<mm> |> Thickness.mm) (50.0 |> Angle.degree |> WedgeAngle)
 
         /// Standard vacuum / biaxial crystal substrate / vacuum system.
         static member biaxialCrystalSubstrateSystem thickness =

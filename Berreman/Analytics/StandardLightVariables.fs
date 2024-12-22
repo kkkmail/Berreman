@@ -3,6 +3,7 @@
 open Berreman.Fields
 open Variables
 open Berreman.Geometry
+open Berreman.Constants
 
 module StandardLightVariables =
 
@@ -57,21 +58,21 @@ module StandardLightVariables =
     //===========================================================
 
     /// Wavelength variable from 200 to 800 nm.
-    let wavelength200to800 n = Range<_>.create n (WaveLength.nm 200.0) (WaveLength.nm 800.0)
+    let wavelength200to800 n = Range<_>.create n (WaveLength.nm 200.0<nm>) (WaveLength.nm 800.0<nm>)
 
     /// Wavelength variable from 200 to 800 nm.
     let wavelength200to800Range n = wavelength200to800 n |> WaveLengthRange
 
 
     /// Wavelength variable from 500 to 700 nm.
-    let wavelength500to700 n = Range<_>.create n (WaveLength.nm 500.0) (WaveLength.nm 700.0)
+    let wavelength500to700 n = Range<_>.create n (WaveLength.nm 500.0<nm>) (WaveLength.nm 700.0<nm>)
 
     /// Wavelength variable from 500 to 700 nm.
     let wavelength500to700Range n = wavelength500to700 n |> WaveLengthRange
 
 
     /// Wavelength variable from 250 to 600 nm.
-    let wavelength250to600 n = Range<_>.create n (WaveLength.nm 250.0) (WaveLength.nm 600.0)
+    let wavelength250to600 n = Range<_>.create n (WaveLength.nm 250.0<nm>) (WaveLength.nm 600.0<nm>)
 
     /// Wavelength variable from 250 to 600 nm.
     let wavelength250to600Range n = wavelength250to600 n |> WaveLengthRange
@@ -80,7 +81,7 @@ module StandardLightVariables =
     // EUV
 
     /// Wavelength variable from 200 to 800 nm.
-    let wavelength05to20 n = Range<_>.create n (WaveLength.nm 5.0) (WaveLength.nm 20.0)
+    let wavelength05to20 n = Range<_>.create n (WaveLength.nm 5.0<nm>) (WaveLength.nm 20.0<nm>)
 
     /// Wavelength variable from 200 to 800 nm.
     let wavelength05to20Range n = wavelength05to20 n |> WaveLengthRange
