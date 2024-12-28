@@ -1,5 +1,6 @@
 ﻿namespace Berreman
 
+open System
 open System.Numerics
 open MathNetNumericsMath
 
@@ -702,6 +703,46 @@ module Fields =
             ///     Negative means that Y waist is closer to the source.
             waistPointYmX : double<meter>
         }
+
+
+    /// Wave vector representation of a Gaussian light beam
+    type GaussianLightBeamWaveVectorInfo =
+        {
+            waveLength : WaveLength
+            waistKx : double<meter^-1> // Beam waist spatial frequency in x-direction
+            waistKy : double<meter^-1> // Beam waist spatial frequency in y-direction
+            waistDeltaKyKx : double<meter^-1> // Spatial frequency shift between waists in y and x directions
+        }
+
+        /// Convert wave vector representation back to spatial representation.
+        member this.toInfo() : GaussianLightBeamInfo =
+            let waistX = 2.0 * Math.PI / this.waistKx
+            let waistY = 2.0 * Math.PI / this.waistKy
+            let waistPointYmX =
+                if this.waistDeltaKyKx = 0.0<meter^-1> then 0.0<meter>
+                else 2.0 * Math.PI / this.waistDeltaKyKx
+            {
+                waveLength = this.waveLength
+                waistX = waistX
+                waistY = waistY
+                waistPointYmX = waistPointYmX
+            }
+
+
+    type GaussianLightBeamInfo
+        with
+        member info.toWaveVectorInfo =
+            let waistKx = 2.0 * Math.PI / info.waistX
+            let waistKy = 2.0 * Math.PI / info.waistY
+            let waistDeltaKyKx =
+                if info.waistPointYmX = 0.0<meter> then 0.0<meter^-1>
+                else 2.0 * Math.PI / info.waistPointYmX
+            {
+                waveLength = info.waveLength
+                waistKx = waistKx
+                waistKy = waistKy
+                waistDeltaKyKx = waistDeltaKyKx
+            }
 
 
     type GaussianLightBeam =

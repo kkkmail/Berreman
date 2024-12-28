@@ -21,22 +21,25 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="MatrixComparison.fs"/>
-        <Compile Include="BerremanMatrixTests.fs"/>
-        <Compile Include="MatrixExpTests.fs"/>
-        <Compile Include="IncidentLightTests.fs"/>
-        <Compile Include="ThinFilmTests.fs"/>
-        <Compile Include="RotationTests.fs"/>
-        <Compile Include="FieldFunctionTests.fs"/>
-        <Compile Include="SolverTests.fs"/>
-        <Compile Include="Program.fs"/>
+        <Compile Include="MatrixComparison.fs" />
+        <Compile Include="BerremanMatrixTests.fs" />
+        <Compile Include="MatrixExpTests.fs" />
+        <Compile Include="FourierTransformTests.fs" />
+        <Compile Include="IncidentLightTests.fs" />
+        <Compile Include="ThinFilmTests.fs" />
+        <Compile Include="RotationTests.fs" />
+        <Compile Include="FieldFunctionTests.fs" />
+        <Compile Include="SolverTests.fs" />
+        <Compile Include="Program.fs" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="9.0.100"/>
-        <PackageReference Include="FluentAssertions" Version="7.0.0"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0"/>
-        <PackageReference Include="xunit" Version="2.9.2"/>
+        <PackageReference Update="FSharp.Core" Version="9.0.100" />
+        <PackageReference Include="FluentAssertions" Version="7.0.0" />
+        <PackageReference Include="FsCheck" Version="2.16.6" />
+        <PackageReference Include="FsCheck.Xunit" Version="2.16.6" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+        <PackageReference Include="xunit" Version="2.9.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
@@ -45,11 +48,11 @@
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Xunit.SkippableFact" Version="1.5.23"/>
+        <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj"/>
+        <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
     </ItemGroup>
 
 </Project>
