@@ -39,7 +39,7 @@ module FourierTransformPrimitives =
         if n > 0 then
             let factor = 1.0 / sqrt (float n)
             for i in 0 .. (n - 1) do
-                arr.[i] <- arr.[i] * factor
+                arr[i] <- arr[i] * factor
         arr
 
     /// <summary>
@@ -139,9 +139,9 @@ module FourierTransform =
                 let c2 = c >>> 1
                 let struct (t, f) = loop ftd n2 (ln - 1) (s <<< 1) c2 f t
 
-                let tws = twiddles.[ln]
+                let tws = twiddles[ln]
                 for j = 0 to c2 - 1 do
-                    let w = tws.[j]
+                    let w = tws[j]
                     // Forward => sign=-1 => keep w = e^(-i ...)
                     // Backward => sign=+1 => conj => e^(+i ...)
                     let w2 =
@@ -196,7 +196,7 @@ module FourierTransform =
                 let angle = ftd.sign * float i * float j * am
                 // e^(i * angle) => if sign=-1 => e^(-i...), if +1 => e^(+i...)
                 let tw = twiddle angle
-                s <- s + vs.[j] * tw
+                s <- s + vs[j] * tw
             s)
         |> normalize
 

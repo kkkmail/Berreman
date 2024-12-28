@@ -53,7 +53,7 @@ type FftTests =
         if e.Length = a.Length then
             let rec loop s i =
                 if i < e.Length then
-                    let d = e.[i] - a.[i]
+                    let d = e[i] - a[i]
                     loop (s + d*d) (i + 1)
                 else s
             let s = loop Complex.Zero 0
@@ -83,11 +83,11 @@ type FourierTransformTests(output : ITestOutputHelper) =
 
     // time estimates the time 'action' repeated a number of times
     let time repeat action =
-        let inline cc i       = System.GC.CollectionCount i
+        let inline cc i       = GC.CollectionCount i
 
         let v                 = action ()
 
-        System.GC.Collect (2, System.GCCollectionMode.Forced, true)
+        GC.Collect (2, GCCollectionMode.Forced, true)
 
         let bcc0, bcc1, bcc2  = cc 0, cc 1, cc 2
         let b                 = now ()
@@ -118,8 +118,8 @@ type FourierTransformTests(output : ITestOutputHelper) =
             let differences =
                 [
                     for i in 0 .. arrE.Length - 1 do
-                        let e = arrE.[i]
-                        let a = arrA.[i]
+                        let e = arrE[i]
+                        let a = arrA[i]
                         let reDiff = abs(e.Real - a.Real)
                         let imDiff = abs(e.Imaginary - a.Imaginary)
                         if reDiff > tolerance || imDiff > tolerance then
@@ -133,7 +133,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
                 writeLine "---- | --------------------------- | --------------------------- | ----------- | -----------"
 
                 // Print each mismatch on one line, with padding to form columns
-                for (idx, e, a, reDiff, imDiff) in differences do
+                for idx, e, a, reDiff, imDiff in differences do
                     let idxStr     = idx.ToString().PadRight(4)
                     // Complex.ToString() is typically "(x, y)", so we can pad to e.g. 27 chars
                     let expectedStr = e.ToString().PadRight(27)
@@ -331,7 +331,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
         // Other bins ~ 0
         for i in 0 .. N-1 do
             if i <> freqIndex then
-                Assert.InRange(magnitudes.[i], 0.0, 1e-12)
+                Assert.InRange(magnitudes[i], 0.0, 1e-12)
 
     [<Fact>]
     member _.``Backward transform of e^(+i 2π freqIndex n/N) => single spike at freqIndex`` () =
@@ -353,7 +353,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
 
         for i in 0 .. N-1 do
             if i <> freqIndex then
-                Assert.InRange(magnitudes.[i], 0.0, 1e-12)
+                Assert.InRange(magnitudes[i], 0.0, 1e-12)
 
     [<Fact>]
     member _.``Forward transform of e^(+i) sinusoid => spike at bin = N - freqIndex`` () =
@@ -378,7 +378,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
         Assert.InRange(maxVal, expected - 1e-12, expected + 1e-12)
 
         // Meanwhile bin 'freqIndex' is near zero
-        Assert.InRange(magnitudes.[freqIndex], 0.0, 1e-12)
+        Assert.InRange(magnitudes[freqIndex], 0.0, 1e-12)
 
     [<Fact>]
     member _.``Backward transform of e^(-i) sinusoid => spike at bin = N - freqIndex`` () =
@@ -398,4 +398,4 @@ type FourierTransformTests(output : ITestOutputHelper) =
         let expected = sqrt (float N)
         Assert.InRange(maxVal, expected - 1e-12, expected + 1e-12)
 
-        Assert.InRange(magnitudes.[freqIndex], 0.0, 1e-12)
+        Assert.InRange(magnitudes[freqIndex], 0.0, 1e-12)
