@@ -14,12 +14,44 @@ module FourierTransformPrimitives =
         with
             member this.sign =
                 match this with
-                | ForwardTransform -> -1.
-                | BackwardTransform -> +1.
+                | ForwardTransform -> -1.0
+                | BackwardTransform -> +1.0
+
+    /// <summary>
+    /// Multiplies each element in the array by 1 / sqrt(N), where N is the length of the array,
+    /// to achieve symmetric (unitary) normalization.
+    /// This function mutates the array in-place, and also returns the same array.
+    /// In-place normalization for a Complex array, multiplying each element
+    /// by 1 / sqrt(N). Mutates the array and also returns the same reference.
+    /// </summary>
+    let normalizeInPlace (arr : Complex[]) =
+        let n = arr.Length
+        if n > 0 then
+            let factor = 1.0 / sqrt (float n)
+            for i in 0 .. (n - 1) do
+                arr.[i] <- arr.[i] * factor
+        arr
+
+    /// <summary>
+    /// Accepts any #seq&lt;Complex&gt; (e.g. list, seq, array).
+    /// If it's already a Complex[], we just do in-place.
+    /// Otherwise, we copy to a new array, normalize in-place, then return it.
+    /// </summary>
+    /// <param name="xs">A collection of Complex (e.g., array, list, seq).</param>
+    let normalize (xs : #seq<Complex>) =
+        match box xs with
+        | :? (Complex[]) as arr ->
+            // Already a Complex[], normalize in-place, return original array
+            normalizeInPlace arr
+        | _ ->
+            // It's some other seq type, convert to an array, then in-place normalize
+            let arr = Seq.toArray xs
+            normalizeInPlace arr
 
 //======================================================================
 // SimpleFourierTransform with recursive FFT.
 //======================================================================
+
 module SimpleFourierTransform =
 
     open FourierTransformPrimitives
@@ -29,14 +61,14 @@ module SimpleFourierTransform =
 
     let twiddle a = Complex.FromPolarCoordinates(1., a)
 
-    let rec fft (ftd : FourierTransformDirection) = function
+    let rec private fftImpl (ftd : FourierTransformDirection) = function
         | []  -> []
         | [x] -> [x]
         | x ->
             x
             |> List.mapi (fun i c -> i % 2 = 0, c)
             |> List.partition fst
-            |> fun (even, odd) -> fft ftd (List.map snd even), fft ftd (List.map snd odd)
+            |> fun (even, odd) -> fftImpl ftd (List.map snd even), fftImpl ftd (List.map snd odd)
             ||> List.mapi2 (fun i even odd ->
                 // Use ftd.sign for the exponent sign
                 let s = ftd.sign
@@ -45,6 +77,8 @@ module SimpleFourierTransform =
             )
             |> List.unzip
             ||> List.append
+
+    let fft ftd a = fftImpl ftd a |> normalize
 
 //======================================================================
 // Optimized FourierTransform with the same DU approach.
@@ -145,14 +179,15 @@ module FourierTransform =
     let dft (ftd : FourierTransformDirection) (vs : Complex[]) =
         let l = vs.Length
         let am = tau / float l
+
         Array.init l (fun i ->
             let mutable s = Complex.Zero
             for j = 0 to l - 1 do
                 // ftd.sign is -1 for forward, +1 for backward
                 let angle = ftd.sign * float i * float j * am
-                s <- s + vs.[j] * twiddle (-angle)
-            s
-        )
+                s <- s + vs.[j] * twiddle angle
+            s)
+        |> normalize
 
 
     let fft ftd (vs : Complex[]) =
@@ -161,4 +196,4 @@ module FourierTransform =
         let vs0 = Array.copy vs
         let vs1 = Array.zeroCreate n
         let struct (_, t) = loop ftd (n >>> 1) ln 1 n vs0 vs1
-        t
+        normalize t
