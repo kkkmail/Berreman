@@ -2,168 +2,134 @@
 open System
 open System.Numerics
 open Berreman
-//open Berreman.FourierTransform
+open Berreman.FourierTransformPrimitives
 open Xunit
 open Xunit.Abstractions
 open FsCheck
 
-
-///// See: https://gist.github.com/mrange/da57f972b3dfdfb44f28fd340841586c
-//module FourierTransformTests =
-//    let x = 1
-
-
-//module Tests =
-
-type Samples = Samples of Complex []
-
-type FftGenerators =
-    static member Complex () : Arbitrary<Complex> =
-      let f =
-        Arb.generate<float>
-        |> Gen.map (fun v ->
-          if Double.IsNaN v then
-            0.
-          elif Double.IsPositiveInfinity v then
-            1.
-          elif Double.IsNegativeInfinity v then
-            -1.
-          else
-            v % 1000.
-          )
-      let c =
-        Gen.constant (fun r i -> Complex (r, i))
-        <*> f
-        <*> f
-      Arb.fromGen c
-
-    static member Samples () : Arbitrary<Samples> =
-      let s =
-        gen {
-          let! n = Gen.choose (1, 3) |> Gen.map (fun i -> 1 <<< i)
-          let! c = Gen.arrayOfLength n Arb.generate<Complex>
-          return Samples c
-        }
-      Arb.fromGen s
-
-
-type FftTests =
-    static member ``Test ilog2`` (i : int) =
-      let e = (abs i) % 29 + 2
-      let v = 1 <<< e
-      let a = FourierTransform.Details.ilog2 v
-      e = a
-    static member ``Simple test`` (s : Samples) =
-      let (Samples vs) = s
-      let e = FourierTransform.dft vs
-      let a = FourierTransform.fft vs
-      if e.Length = a.Length then
-        let rec loop s i =
-          if i < e.Length then
-            let d = e.[i] - a.[i]
-            loop (s + d*d) (i + 1)
-          else
-            s
-        let s = loop Complex.Zero 0
-        let r = s.Magnitude / float e.Length < 1E-10
-        if not r then printfn $"E:%A{e}\nA:%A{a}"
-        r
-      else
-        false
-
-
 type FourierTransformTests(output : ITestOutputHelper) =
 
-    let writeLine s = output.WriteLine s
+    let writeLine (s : string) = output.WriteLine s
 
-    let runTests () =
-      let config =
-        { Config.Quick with
-            Arbitrary = typeof<FftGenerators> :: Config.Quick.Arbitrary
-            MaxTest   = 1000
-            MaxFail   = 1000
-        }
-      Check.All<FftTests> config
+    /// Utility function: compare two Complex arrays or lists within a tolerance,
+    /// logging all relevant info for any failed comparisons in a table-like format.
+    let areClose tolerance (expected : seq<Complex>) (actual : seq<Complex>) =
+        let arrE = Seq.toArray expected
+        let arrA = Seq.toArray actual
 
+        // First check if lengths differ.
+        if arrE.Length <> arrA.Length then
+            writeLine $"Lengths differ: expected {arrE.Length}, got {arrA.Length}"
+            false
+        else
+            // Create a list of all indices where the difference exceeds 'tolerance'
+            let differences =
+                [
+                    for i in 0 .. arrE.Length - 1 do
+                        let e = arrE.[i]
+                        let a = arrA.[i]
+                        let reDiff = abs(e.Real - a.Real)
+                        let imDiff = abs(e.Imaginary - a.Imaginary)
+                        if reDiff > tolerance || imDiff > tolerance then
+                            yield i, e, a, reDiff, imDiff
+                ]
 
-    // now () returns current time in milliseconds since start
-    let now : unit -> int64 =
-        let sw = System.Diagnostics.Stopwatch ()
-        sw.Start ()
-        fun () -> sw.ElapsedMilliseconds
+            if differences <> [] then
+                // Print a header
+                writeLine ""
+                writeLine "Idx  | Expected                    | Actual                      | reDiff      | imDiff"
+                writeLine "---- | --------------------------- | --------------------------- | ----------- | -----------"
 
-    // time estimates the time 'action' repeated a number of times
-    let time repeat action =
-        let inline cc i       = System.GC.CollectionCount i
+                // Print each mismatch on one line, with padding to form columns
+                for (idx, e, a, reDiff, imDiff) in differences do
+                    let idxStr     = idx.ToString().PadRight(4)
+                    // Complex.ToString() is typically "(x, y)", so we can pad to e.g. 27 chars
+                    let expectedStr = e.ToString().PadRight(27)
+                    let actualStr   = a.ToString().PadRight(27)
+                    let reDiffStr   = reDiff.ToString("0.###E+0").PadRight(11)
+                    let imDiffStr   = imDiff.ToString("0.###E+0").PadRight(11)
 
-        let v                 = action ()
+                    writeLine $"{idxStr} | {expectedStr} | {actualStr} | {reDiffStr} | {imDiffStr}"
+                false
+            else
+                true
 
-        System.GC.Collect (2, System.GCCollectionMode.Forced, true)
-
-        let bcc0, bcc1, bcc2  = cc 0, cc 1, cc 2
-        let b                 = now ()
-
-        for i in 1..repeat do
-          action () |> ignore
-
-        let e = now ()
-        let ecc0, ecc1, ecc2  = cc 0, cc 1, cc 2
-
-        v, (e - b), ecc0 - bcc0, ecc1 - bcc1, ecc2 - bcc2
+    // --------------------
+    // The remaining tests:
+    // --------------------
 
     [<Fact>]
-    member _.runTest() : unit =
-//[<EntryPoint>]
-//let main argv =
-        let trim (c : Complex) =
-          let trim (f : float) = if abs f < 1E-14 then 0. else f
-          Complex (trim c.Real, trim c.Imaginary)
+    member _.``SimpleFft forward->backward recovers original list`` () =
+        let input = [ Complex(1.0, 0.0)
+                      Complex(0.0, 2.0)
+                      Complex(-1.0, 1.0)
+                      Complex(3.0, -1.0) ]
+        let forward = SimpleFourierTransform.fft ForwardTransform input
+        let backward = SimpleFourierTransform.fft BackwardTransform forward
+        Assert.True(areClose 1e-12 input backward, "Forward->Backward did not recover original list")
 
-        runTests ()
+    [<Fact>]
+    member _.``SimpleFft backward->forward recovers original list`` () =
+        let input = [ Complex(2.0, 0.0)
+                      Complex(1.0, -1.0)
+                      Complex(0.0, 3.0)
+                      Complex(-2.0, 2.0) ]
+        let backward = SimpleFourierTransform.fft BackwardTransform input
+        let forward = SimpleFourierTransform.fft ForwardTransform backward
+        Assert.True(areClose 1e-12 input forward, "Backward->Forward did not recover original list")
 
-        let repeat  = 1000
-        let l       = 1024
+    [<Fact>]
+    member _.``SimpleFft delta impulse produces constant frequency domain`` () =
+        let input = [ Complex(1.0, 0.0)
+                      Complex(0.0, 0.0)
+                      Complex(0.0, 0.0)
+                      Complex(0.0, 0.0) ]
+        let output = SimpleFourierTransform.fft ForwardTransform input
+        let expected = [ Complex(1.0, 0.0)
+                         Complex(1.0, 0.0)
+                         Complex(1.0, 0.0)
+                         Complex(1.0, 0.0) ]
+        Assert.True(areClose 1e-12 expected output, "Delta impulse did not become constant")
 
-        let input   =
-          [| for x in 0..(l - 1) ->
-              let a = FourierTransform.tau*float x/float l
-              let v = cos a + cos (2.*a)
-              let c = Complex (v / (float l / 2.), 0.) |> trim
-              c
-          |]
-        let inputList = input |> List.ofArray
+    [<Fact>]
+    member _.``OptimizedFft forward->backward recovers original array`` () =
+        let input = [| Complex(1.0, 0.0)
+                       Complex(2.0, -1.0)
+                       Complex(-1.0, 4.0)
+                       Complex(3.0, 3.0) |]
+        let forward = FourierTransform.fft ForwardTransform input
+        let backward = FourierTransform.fft BackwardTransform forward
+        Assert.True(areClose 1e-12 input backward, "Forward->Backward did not recover original array")
 
-        let output1 =
-          inputList
-          |> SimpleFourierTransform.fft
-          |> List.map trim
+    [<Fact>]
+    member _.``OptimizedFft backward->forward recovers original array`` () =
+        let input = [| Complex(3.0, 2.0)
+                       Complex(1.0, 0.0)
+                       Complex(-2.0, 1.0)
+                       Complex(4.0, -3.0) |]
+        let backward = FourierTransform.fft BackwardTransform input
+        let forward = FourierTransform.fft ForwardTransform backward
+        Assert.True(areClose 1e-12 input forward, "Backward->Forward did not recover original array")
 
-        let output2 =
-          input
-          |> FourierTransform.dft
-          |> Array.map trim
+    [<Fact>]
+    member _.``OptimizedFft matches Dft for small input`` () =
+        let input = [| Complex(1.0, 0.0)
+                       Complex(0.0, 1.0)
+                       Complex(2.0, -1.0)
+                       Complex(-3.0, 5.0) |]
+        let dftResult = FourierTransform.dft ForwardTransform input
+        let fftResult = FourierTransform.fft ForwardTransform input
+        Assert.True(areClose 1e-12 dftResult fftResult, "FFT and DFT differ on small input")
 
-        let output3 =
-          input
-          |> FourierTransform.fft
-          |> Array.map trim
-
-        if l < 64 then
-          writeLine $"Input      : %A{input}"
-          writeLine $"Simple FFT : %A{output1}"
-          writeLine $"Faster DFT : %A{output2}"
-          writeLine $"Faster FFT : %A{output3}"
-
-        let testCases =
-          [|
-            "Simple FFT"  , fun () -> SimpleFourierTransform.fft inputList        |> ignore
-        //      "Faster DFT"  , fun () -> FourierTransform.dft input  |> ignore
-            "Faster FFT"  , fun () -> FourierTransform.fft input  |> ignore
-          |]
-
-        for name, action in testCases do
-          writeLine $"Running %s{name} %d{repeat} times ..."
-          let _, ms, cc0, cc1, cc2 = time repeat action
-          writeLine $"  it took %d{ms} ms and (%d{cc0}, %d{cc1}, %d{cc2}) CC"
-
-        ()
+    [<Fact>]
+    member _.``OptimizedFft delta impulse test`` () =
+        let input = [| Complex(1.0, 0.0)
+                       Complex(0.0, 0.0)
+                       Complex(0.0, 0.0)
+                       Complex(0.0, 0.0) |]
+        let output = FourierTransform.fft ForwardTransform input
+        let expected = [| Complex(1.0, 0.0)
+                          Complex(1.0, 0.0)
+                          Complex(1.0, 0.0)
+                          Complex(1.0, 0.0) |]
+        Assert.True(areClose 1e-12 expected output, "Delta impulse did not become constant")
