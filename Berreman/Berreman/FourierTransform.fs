@@ -3,6 +3,9 @@ open System
 open System.Numerics
 
 //======================================================================
+// See:      https://chatgpt.com/g/g-p-67701ade2a9c8191b305c09f2b6bc473-gaussian-beams-in-f/c/67701b6c-ad90-8009-9736-eccc1d4abf5f
+// Based on: https://fssnip.net/7Tn/title/Optimized-Fast-Fourier-Transform-FFT
+//
 // Discriminated Union to specify Forward or Backward transform.
 // 'sign' will return -1.0 for ForwardTransform and +1.0 for BackwardTransform.
 //
