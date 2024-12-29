@@ -57,30 +57,6 @@ module FourierTransformPrimitives =
             normalizeInPlace arr
 
 
-    // /// Creates a 1D Gaussian-like array of length 'numberOfPoints',
-    // /// with center 'mu' and width 'sigma' in the normalized interval [0,1].
-    // /// Because FFT is on a circle, index 0 and index N are "the same point".
-    // /// If mu = 0.5, that puts the peak at the midpoint i = N/2.
-    // /// The amplitude is just exp(-((x - mu)^2)/(2*sigma^2)).
-    // /// Imaginary part is 0; real part is that Gaussian.
-    // let createGaussian (numberOfPoints: int) (mu: float) (sigma: float) =
-    //     let arr = Array.zeroCreate<Complex> numberOfPoints
-    //
-    //     for i in 0 .. numberOfPoints-1 do
-    //         let x = float i / float numberOfPoints    // in [0, 1)
-    //         let dx = x - mu
-    //         // Because of the circular domain, one could also handle the wrap-around
-    //         // by picking the shorter distance on a circle. For instance:
-    //         //   let dx = min (abs(x - mu)) (1.0 - abs(x - mu))
-    //         // if you really wanted to interpret mu = 0.8 near the top end, etc.
-    //         // But "industry standard" for mu = 0.5 is to treat i = 0, i = N as the same,
-    //         // so we keep it as x - mu here:
-    //         let exponent = -(dx * dx) / (2.0 * sigma * sigma)
-    //         let value = exp exponent
-    //         arr[i] <- Complex(value, 0.0)
-    //     arr
-
-
     /// Creates a 1D Gaussian of length 'numberOfPoints' such that:
     ///   - index 0 maps to x = 0.0
     ///   - indices 1..(N/2) map to x in (0.0, 0.5]
