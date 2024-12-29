@@ -20,6 +20,11 @@ open System.Numerics
 //======================================================================
 module FourierTransformPrimitives =
 
+    // let maxSize = 4096
+    // let maxSize = 1 <<< 14 // 16,384
+    // let maxSize = 1 <<< 16 // 65,536
+    let maxSize = 1 <<< 20 // 1,048,576
+
     type FourierTransformDirection =
         | ForwardTransform
         | BackwardTransform
@@ -29,12 +34,10 @@ module FourierTransformPrimitives =
                 | ForwardTransform -> -1.0
                 | BackwardTransform -> +1.0
 
-    /// <summary>
     /// Multiplies each element in the array by 1 / sqrt(N), where N is the length of the array,
     /// to achieve symmetric (unitary) normalization. Mutates the array in-place,
     /// and also returns the same reference.
-    /// </summary>
-    let normalizeInPlace (arr : Complex[]) =
+    let private normalizeInPlace (arr : Complex[]) =
         let n = arr.Length
         if n > 0 then
             let factor = 1.0 / sqrt (float n)
@@ -42,11 +45,9 @@ module FourierTransformPrimitives =
                 arr[i] <- arr[i] * factor
         arr
 
-    /// <summary>
     /// Accepts any #seq&lt;Complex&gt; (e.g. list, seq, array).
     /// If it's already a Complex[], we just do in-place.
     /// Otherwise, we copy to a new array, normalize in-place, then return it.
-    /// </summary>
     let normalize (xs : #seq<Complex>) =
         match box xs with
         | :? (Complex[]) as arr ->
@@ -55,6 +56,68 @@ module FourierTransformPrimitives =
             let arr = Seq.toArray xs
             normalizeInPlace arr
 
+
+    // /// Creates a 1D Gaussian-like array of length 'numberOfPoints',
+    // /// with center 'mu' and width 'sigma' in the normalized interval [0,1].
+    // /// Because FFT is on a circle, index 0 and index N are "the same point".
+    // /// If mu = 0.5, that puts the peak at the midpoint i = N/2.
+    // /// The amplitude is just exp(-((x - mu)^2)/(2*sigma^2)).
+    // /// Imaginary part is 0; real part is that Gaussian.
+    // let createGaussian (numberOfPoints: int) (mu: float) (sigma: float) =
+    //     let arr = Array.zeroCreate<Complex> numberOfPoints
+    //
+    //     for i in 0 .. numberOfPoints-1 do
+    //         let x = float i / float numberOfPoints    // in [0, 1)
+    //         let dx = x - mu
+    //         // Because of the circular domain, one could also handle the wrap-around
+    //         // by picking the shorter distance on a circle. For instance:
+    //         //   let dx = min (abs(x - mu)) (1.0 - abs(x - mu))
+    //         // if you really wanted to interpret mu = 0.8 near the top end, etc.
+    //         // But "industry standard" for mu = 0.5 is to treat i = 0, i = N as the same,
+    //         // so we keep it as x - mu here:
+    //         let exponent = -(dx * dx) / (2.0 * sigma * sigma)
+    //         let value = exp exponent
+    //         arr[i] <- Complex(value, 0.0)
+    //     arr
+
+
+    /// Creates a 1D Gaussian of length 'numberOfPoints' such that:
+    ///   - index 0 maps to x = 0.0
+    ///   - indices 1..(N/2) map to x in (0.0, 0.5]
+    ///   - indices (N/2+1)..(N-1) map to x in (-0.5, 0.0)
+    ///
+    /// In other words, we "cut" the domain [0..1) at x=0.5, so that x=0 is at index=0
+    /// and x=0.5 is at index=N/2, then wrap around to x=-0.5 at index=(N/2+1).
+    ///
+    /// 'mu' and 'sigma' define the Gaussian center and width, so the array value at
+    /// index i is:
+    ///    arr[i] = exp( - ((x - mu)^2) / (2 * sigma^2) )
+    ///
+    /// This arrangement is sometimes used to avoid extraneous linear phase ramps
+    /// in the FFT, because the "cut" in the domain is at x=0.5 rather than x=0.0.
+    let createGaussian (numberOfPoints: int) (mu: float) (sigma: float) =
+        let arr = Array.zeroCreate<Complex> numberOfPoints
+        let half = numberOfPoints / 2
+
+        for i in 0 .. numberOfPoints - 1 do
+            // Map index i -> x in [0, 0.5) U (-0.5, 0)
+            // so that i=0 => x=0, i=half => x=0.5, i=half+1 => x~ -0.5, etc.
+            let x =
+                if i <= half then
+                    // i in [0..half], x in [0..0.5]
+                    float i / float numberOfPoints
+                else
+                    // i in [half+1..N-1], x in [-0.5..0)
+                    (float (i - numberOfPoints)) / float numberOfPoints
+
+            let dx = x - mu
+            let exponent = - (dx * dx) / (2.0 * sigma * sigma)
+            let value = exp exponent
+            arr.[i] <- Complex(value, 0.0)
+
+        arr
+
+
 //======================================================================
 // SimpleFourierTransform with recursive FFT.
 //======================================================================
@@ -62,10 +125,10 @@ module SimpleFourierTransform =
 
     open FourierTransformPrimitives
 
-    let pi  = Math.PI
-    let tau = 2. * pi
+    let private pi  = Math.PI
+    let private tau = 2. * pi
 
-    let twiddle a = Complex.FromPolarCoordinates(1., a)
+    let private twiddle a = Complex.FromPolarCoordinates(1., a)
 
     let rec private fftImpl (ftd : FourierTransformDirection) = function
         | []  -> []
@@ -86,10 +149,8 @@ module SimpleFourierTransform =
             |> List.unzip
             ||> List.append
 
-    /// <summary>
     /// Simple FFT returning a normalized list of Complex.
     /// 'ftd' picks forward or backward transform sign, each with 1/sqrt(N) factor.
-    /// </summary>
     let fft ftd a =
         fftImpl ftd a
         |> normalize
@@ -101,7 +162,6 @@ module FourierTransform =
 
     open FourierTransformPrimitives
 
-    let maxSize = 4096
     let pi      = Math.PI
     let tau     = 2. * pi
 
@@ -182,11 +242,9 @@ module FourierTransform =
 
     open Details
 
-    /// <summary>
     /// A direct DFT (O(N^2)) for reference or testing.
     /// 'ftd' determines sign => forward = -1 => e^(-i...), backward = +1 => e^(+i...).
     /// We then do a 1/sqrt(N) normalization for a "unitary" transform.
-    /// </summary>
     let dft (ftd : FourierTransformDirection) (vs : Complex[]) =
         let l = vs.Length
         let am = tau / float l
@@ -200,10 +258,8 @@ module FourierTransform =
             s)
         |> normalize
 
-    /// <summary>
     /// A Cooley-Tukey FFT using precomputed negative exponents, flipping via conjugate if needed.
     /// Then we apply a 1/sqrt(N) normalization for a "unitary" transform.
-    /// </summary>
     let fft ftd (vs : Complex[]) =
         let n = vs.Length
         let ln = ilog2 n

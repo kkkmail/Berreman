@@ -3,6 +3,7 @@ open System
 open System.Numerics
 open Berreman
 open Berreman.FourierTransformPrimitives
+open FluentAssertions
 open Xunit
 open Xunit.Abstractions
 open FsCheck
@@ -81,6 +82,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
         sw.Start ()
         fun () -> sw.ElapsedMilliseconds
 
+
     // time estimates the time 'action' repeated a number of times
     let time repeat action =
         let inline cc i       = GC.CollectionCount i
@@ -102,6 +104,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
 
 
     let writeLine (s : string) = output.WriteLine s
+
 
     /// Utility function: compare two Complex arrays or lists within a tolerance,
     /// logging all relevant info for any failed comparisons in a table-like format.
@@ -147,19 +150,43 @@ type FourierTransformTests(output : ITestOutputHelper) =
                 true
 
 
-    /// <summary>
     /// Note the (-) in "let s = - direction.sign". This is to pick up the necessary frequency.
     /// Creates a single-frequency sinusoid array of length N,
     /// x[n] = exp(i * direction.sign * 2π * freqIndex * n / N).
     /// ForwardTransform => direction.sign = -1.0 => negative exponent
     /// BackwardTransform => direction.sign = +1.0 => positive exponent
-    /// </summary>
     let makeSinusoid (direction: FourierTransformDirection) freqIndex N =
         let s = - direction.sign  // -1.0 if forward, +1.0 if backward
         [| for n in 0 .. N-1 do
              let theta = s * 2.0 * Math.PI * float freqIndex * float n / float N
              yield Complex(cos theta, sin theta)
         |]
+
+
+    /// Utility function to measure normalized sum of squares of magnitudes.
+    let sumOfSquares (arr: Complex[]) =
+        let scale = 1.0 / (float arr.Length)
+        (arr |> Array.sumBy (fun c -> c.Magnitude * c.Magnitude)) * scale
+
+
+    /// Generate a large array of maxSize length, with average power = 1.
+    /// sum( |x[i]|^2 ) / N = 1
+    let createLargeArray () =
+        let n = maxSize
+        // 1) Create an initial array. For instance, arr[i] = (i, -i).
+        let arr = Array.init n (fun i -> Complex(float i, - float i))
+
+        // 2) Compute sum of squared magnitudes.
+        let sumOfSquares = arr |> Array.sumBy (fun c -> c.Magnitude * c.Magnitude)
+
+        // 3) Compute scaling factor so that average power becomes 1.
+        //    sumOfSquares * scale^2 => N
+        //    scale^2 => N / sumOfSquares
+        let scale = sqrt(float n / sumOfSquares)
+
+        // 4) Scale each element in-place.
+        for i in 0 .. n-1 do arr[i] <- arr[i] * scale
+        arr
 
 
     [<Fact>]
@@ -220,7 +247,7 @@ type FourierTransformTests(output : ITestOutputHelper) =
 
 
     // --------------------
-    // The tests:
+    // The tests.
     // --------------------
 
     [<Fact>]
@@ -399,3 +426,81 @@ type FourierTransformTests(output : ITestOutputHelper) =
         Assert.InRange(maxVal, expected - 1e-12, expected + 1e-12)
 
         Assert.InRange(magnitudes[freqIndex], 0.0, 1e-12)
+
+
+    [<Fact>]
+    member _.``Forward -> Backward on maxSize array recovers original`` () =
+        // 1) Create big array
+        let input = createLargeArray()
+        writeLine $"input.Length: {input.Length}."
+
+        // 2) Forward transform
+        let forward = FourierTransform.fft ForwardTransform input
+
+        // 3) Backward transform
+        let backward = FourierTransform.fft BackwardTransform forward
+
+        // 4) Compare with original
+        // Because we do unitary normalization, forward + backward => factor ~ 1.
+        // areClose tolerance = e.g. 1e-12 might be good, but for large N we could be more lenient.
+        let pass = areClose 1e-12 input backward
+        Assert.True(pass, $"Forward -> Backward did not recover original array of size {maxSize}.")
+
+
+    [<Fact>]
+    member _.``Backward -> Forward on maxSize array recovers original`` () =
+        let input = createLargeArray()
+        writeLine $"input.Length: {input.Length}."
+
+        // 1) Backward transform
+        let backward = FourierTransform.fft BackwardTransform input
+
+        // 2) Forward transform
+        let forward = FourierTransform.fft ForwardTransform backward
+
+        // 3) Compare with original
+        let pass = areClose 1e-12 input forward
+        Assert.True(pass, $"Backward -> Forward did not recover original array of size {maxSize}.")
+
+    [<Fact>]
+    member _.``Forward FFT preserves total intensity for large Gaussian`` () : unit =
+        // Let’s define a “large” array with your current maxSize:
+        let n = maxSize
+        let mu = 0.0
+        let sigma = 0.1
+
+        writeLine $"Using array of length: {n}."
+        // Create the Gaussian-like shape
+        let input = createGaussian n mu sigma
+
+        // Sum of squares in time domain
+        let sTime = sumOfSquares input
+
+        // Forward transform
+        let freq = FourierTransform.fft ForwardTransform input
+
+        // Sum of squares in frequency domain
+        let sFreq = sumOfSquares freq
+
+        // Because we have a "symmetric" normalization, sTime ~ sFreq
+        let ratio = sFreq / sTime
+        let absErr = abs (ratio - 1.0)
+        absErr.Should().BeLessThan(1e-13) |> ignore
+
+
+    [<Fact>]
+    member _.``Gaussian is self-Fourier in magnitude for large size`` () =
+        let n = maxSize
+        // let n = 1024
+
+        let mu = 0.0
+        let sigma = 1.0 / sqrt(2.0 * Math.PI * (double n))
+        writeLine $"n = {n}, mu = {mu}, sigma = {sigma}."
+
+        let input = createGaussian n mu sigma
+        let output = FourierTransform.fft ForwardTransform input
+        let magInput = input |> Array.map (fun c -> Complex(c.Magnitude, 0.0))
+        let magOutput = output |> Array.map (fun c -> Complex(c.Magnitude, 0.0))
+
+        let pass = areClose 1e-15 magInput magOutput
+        Assert.True(pass, "Discrete Gaussian was not self-Fourier in magnitude.")
