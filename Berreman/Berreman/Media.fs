@@ -1,6 +1,7 @@
 ﻿namespace Berreman
 
 open Berreman.Fields
+open Berreman.Constants
 
 module Media =
 
@@ -9,15 +10,15 @@ module Media =
 
 
     type Thickness =
-        | Thickness of double
+        | Thickness of double<meter>
         | Infinity
         with
-        static member nm t = t * Constants.nm |> Thickness
-        static member mkm t = t * Constants.mkm |> Thickness
-        static member mm t = t * Constants.mm |> Thickness
+        static member nm (t : double<nm>) = t * nmPerMeter |> Thickness
+        static member mkm (t : double<mkm>) = t * mkmPerMeter |> Thickness
+        static member mm (t : double<mm>) = t * mmPerMeter |> Thickness
         member _.toInfinity () = Thickness.Infinity
-        static member oneMilliMeter = Thickness.mm 1.0
-        static member oneCentiMeter = Thickness.mm 10.0
+        static member oneMilliMeter = Thickness.mm 1.0<mm>
+        static member oneCentiMeter = Thickness.mm 10.0<mm>
 
 
     type Layer =

@@ -90,8 +90,8 @@ module FieldFunctions =
                 let a = asin v
                 a |> Angle |> Polarization
 
-        member em.muellerMatrix : MuellerMatrix =
-            failwith ""
+        // member em.muellerMatrix : MuellerMatrix =
+        //     failwith ""
 
 
     type FunctionDescription =

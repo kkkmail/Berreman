@@ -8,6 +8,7 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Solvers
 open Berreman.FieldFunctions
+open Berreman.Constants
 
 open MatrixComparison
 open Berreman.Media
@@ -69,21 +70,21 @@ type SolverTests(output : ITestOutputHelper) =
     let stdGlassLayer =
         {
             properties = OpticalProperties.transparentGlass
-            thickness = Thickness.nm 100.0
+            thickness = Thickness.nm 100.0<nm>
         }
 
 
     let vacuumLayer =
         {
             properties = OpticalProperties.vacuum
-            thickness = Thickness.nm 150.0
+            thickness = Thickness.nm 150.0<nm>
         }
 
 
     let createStdGlassLightAt7Degrees description =
         let opticalProperties = OpticalProperties.transparentGlass
         let incidenceAngle = Angle.degree 7.0 |> IncidenceAngle
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create RefractionIndex.vacuum incidenceAngle
 
         {
@@ -161,7 +162,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.transparentGlass150
         let opticalSystem = OpticalSystem.totalReflGlass150System
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -231,7 +232,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.transparentGlass150
         let opticalSystem = OpticalSystem.totalReflGlass150System
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -301,7 +302,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.transparentGlass150
         let opticalSystem = OpticalSystem.totalReflGlass150System
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -370,7 +371,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.vacuum
         let opticalSystem = OpticalSystem.getWedgeGlass150Thickness1mmSystem WedgeAngle.defaultValue
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -439,7 +440,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.vacuum
         let opticalSystem = OpticalSystem.getWedgeGlass150Thickness1mmSystem (7.0 |> Angle.degree |> WedgeAngle)
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -508,7 +509,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.vacuum
         let opticalSystem = OpticalSystem.wedge40DegGlass150System
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -577,7 +578,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.vacuum
         let opticalSystem = OpticalSystem.wedge40DegGlass150System
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -646,7 +647,7 @@ type SolverTests(output : ITestOutputHelper) =
         let refractionIndex = RefractionIndex.vacuum
         let opticalSystem = OpticalSystem.wedge50DegGlass150System
 
-        let waveLength = WaveLength.nm 600.0
+        let waveLength = WaveLength.nm 600.0<nm>
         let n1SinFita = N1SinFita.create refractionIndex incidenceAngle
 
         {
@@ -729,7 +730,7 @@ type SolverTests(output : ITestOutputHelper) =
     let randomData =
         let opticalProperties = OpticalProperties.transparentGlass
         let incidenceAngle = Angle.degree 50.0 |> IncidenceAngle
-        let waveLength = WaveLength.nm 394.0
+        let waveLength = WaveLength.nm 394.0<nm>
         let n1SinFita = N1SinFita.create RefractionIndex.vacuum incidenceAngle
         let beta = Angle.degree 28.0
         let ellipticity = Ellipticity 0.41378575406900664
@@ -766,7 +767,7 @@ type SolverTests(output : ITestOutputHelper) =
                                             ]
                                             |> Rho.fromIm
                                     }
-                                thickness = Thickness.nm 86.0
+                                thickness = Thickness.nm 86.0<nm>
                             }
                         ]
                     lower = opticalProperties
@@ -905,8 +906,8 @@ type SolverTests(output : ITestOutputHelper) =
 
         match solver.solution with
         | Single s ->
-            output.WriteLine(sprintf "incident.complexBasis = %A" (s.emSys.incident.complexBasis))
-            output.WriteLine(sprintf "reflected.complexBasis = %A" (s.emSys.reflected.complexBasis))
+            output.WriteLine $"incident.complexBasis = %A{s.emSys.incident.complexBasis}"
+            output.WriteLine $"reflected.complexBasis = %A{s.emSys.reflected.complexBasis}"
         | Multiple _ -> output.WriteLine "Multiple solution is not supported yet."
 
         verifyVectorEqualityStokes output "[Stokes vector R] vs mR * [Stokes vector I]" r r1
@@ -989,7 +990,7 @@ type SolverTests(output : ITestOutputHelper) =
     member _.muellerMatrixR_TransparentGlassFilmSystem () =
         let descr = "Transparent glass 100 nm thin film, inclined 19 degrees incident light."
         let info = light600nmInclinedDegreeLPs 19.0
-        runTestMuellerMatrixR descr info (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 100.)).fullSystem
+        runTestMuellerMatrixR descr info (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 100.0<nm>)).fullSystem
 
     [<Fact>]
     member _.muellerMatrixR_TransparentGlassSystem_Polarized () =
@@ -1007,7 +1008,7 @@ type SolverTests(output : ITestOutputHelper) =
     member _.muellerMatrixR_TransparentGlassFilmSystem_Polarized () =
         let descr = "Transparent glass 100 nm thin film, inclined 19 degrees incident light, 27 degrees polarization plane angle."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization }
-        runTestMuellerMatrixR descr info (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 100.)).fullSystem
+        runTestMuellerMatrixR descr info (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 100.0<nm>)).fullSystem
 
     [<Fact>]
     member _.muellerMatrixR_TransparentGlassSystem_Polarized_WithEllipticity () =
@@ -1027,9 +1028,9 @@ type SolverTests(output : ITestOutputHelper) =
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
         let eps = (BaseOpticalSystem.biaxialCrystalSystem.lower.rotateX (Angle.degree 30.0)).eps
-        let sys = { BaseOpticalSystem.biaxialCrystalSystem with lower = { BaseOpticalSystem.biaxialCrystalSystem.lower with eps = eps }}
-        output.WriteLine(sprintf "eps = %A" eps)
-        output.WriteLine(sprintf "sys = %A" sys)
+        let sys = { BaseOpticalSystem.biaxialCrystalSystem with lower.eps = eps}
+        output.WriteLine $"eps = %A{eps}"
+        output.WriteLine $"sys = %A{sys}"
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
@@ -1038,9 +1039,9 @@ type SolverTests(output : ITestOutputHelper) =
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
         let eps = (BaseOpticalSystem.biaxialCrystalSystem.lower.rotateY (Angle.degree 30.0)).eps
-        let sys = { BaseOpticalSystem.biaxialCrystalSystem with lower = { BaseOpticalSystem.biaxialCrystalSystem.lower with eps = eps }}
-        output.WriteLine(sprintf "eps = %A" eps)
-        output.WriteLine(sprintf "sys = %A" sys)
+        let sys = { BaseOpticalSystem.biaxialCrystalSystem with lower.eps = eps}
+        output.WriteLine $"eps = %A{eps}"
+        output.WriteLine $"sys = %A{sys}"
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
@@ -1049,23 +1050,23 @@ type SolverTests(output : ITestOutputHelper) =
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
         let eps = (BaseOpticalSystem.biaxialCrystalSystem.lower.rotateZ (Angle.degree 30.0)).eps
-        let sys = { BaseOpticalSystem.biaxialCrystalSystem with lower = { BaseOpticalSystem.biaxialCrystalSystem.lower with eps = eps }}
-        output.WriteLine(sprintf "eps = %A" eps)
-        output.WriteLine(sprintf "sys = %A" sys)
+        let sys = { BaseOpticalSystem.biaxialCrystalSystem with lower.eps = eps}
+        output.WriteLine $"eps = %A{eps}"
+        output.WriteLine $"sys = %A{sys}"
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
     member _.muellerMatrixR_BiaxialCrystalFilmSystem_Polarized_WithEllipticity () =
         let descr = "Biaxial Crystal 100 nm, inclined 19 degrees incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
-        runTestMuellerMatrixR descr info (BaseOpticalSystem.biaxialCrystalFilmSystem (Thickness.nm 100.)).fullSystem
+        runTestMuellerMatrixR descr info (BaseOpticalSystem.biaxialCrystalFilmSystem (Thickness.nm 100.0<nm>)).fullSystem
 
     [<Fact>]
     member _.muellerMatrixR_RandomAbsorbingSystem_Polarized_WithEllipticity () =
         let descr = "Random absorbing system, inclined 19 degrees incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
-        let sys = { BaseOpticalSystem.transparentGlassSystem with lower = { BaseOpticalSystem.transparentGlassSystem.lower with eps = randomProperties.eps }}
+        let sys = { BaseOpticalSystem.transparentGlassSystem with lower.eps = randomProperties.eps}
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
@@ -1074,9 +1075,9 @@ type SolverTests(output : ITestOutputHelper) =
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
         let eps = randomProperties.eps.re
-        let sys = { BaseOpticalSystem.transparentGlassSystem with lower = { BaseOpticalSystem.transparentGlassSystem.lower with eps = eps }}
-        output.WriteLine(sprintf "eps = %A" eps)
-        output.WriteLine(sprintf "sys = %A" sys)
+        let sys = { BaseOpticalSystem.transparentGlassSystem with lower.eps = eps}
+        output.WriteLine $"eps = %A{eps}"
+        output.WriteLine $"sys = %A{sys}"
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
@@ -1084,7 +1085,7 @@ type SolverTests(output : ITestOutputHelper) =
         let descr = "Random magnetic system, inclined 19 degrees incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
-        let sys = { BaseOpticalSystem.transparentGlassSystem with lower = { BaseOpticalSystem.transparentGlassSystem.lower with mu = randomProperties.mu }}
+        let sys = { BaseOpticalSystem.transparentGlassSystem with lower.mu = randomProperties.mu}
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
@@ -1092,32 +1093,32 @@ type SolverTests(output : ITestOutputHelper) =
         let descr = "Random optically active system, inclined 19 degrees incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
 
-        let sys = { BaseOpticalSystem.transparentGlassSystem with lower = { BaseOpticalSystem.transparentGlassSystem.lower with rho = randomProperties.rho }}
+        let sys = { BaseOpticalSystem.transparentGlassSystem with lower.rho = randomProperties.rho}
         runTestMuellerMatrixR descr info sys.fullSystem
 
     [<Fact>]
     member _.muellerMatrixR_BiaxialCrystalSubstrateSystem_Polarized_WithEllipticity () =
         let descr = "Biaxial Crystal 1000 nm, inclined 19 degrees incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
-        runTestMuellerMatrixR descr info (OpticalSystem.biaxialCrystalSubstrateSystem (Thickness.nm 1000.0))
+        runTestMuellerMatrixR descr info (OpticalSystem.biaxialCrystalSubstrateSystem (Thickness.nm 1000.0<nm>))
 
     [<Fact>]
     member _.muellerMatrixT_BiaxialCrystalSubstrateSystem_Polarized_WithEllipticity () =
         let descr = "Biaxial Crystal 1000 nm, inclined 19 degrees incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmInclinedDegreeLPs 19.0 with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
-        runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalSubstrateSystem (Thickness.nm 1000.0))
+        runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalSubstrateSystem (Thickness.nm 1000.0<nm>))
 
     [<Fact (Skip = "Cannot work.")>]
     member _.muellerMatrixT_BiaxialCrystalWedgeSystem_Polarized_WithEllipticity () =
         let descr = "Biaxial Crystal 1000 nm, NORMAL incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmNormalLPs with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
-        runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalWedgeSystem (Thickness.nm 1000.0) (Angle.degree 10.0 |> WedgeAngle))
+        runTestMuellerMatrixT descr info (OpticalSystem.biaxialCrystalWedgeSystem (Thickness.nm 1000.0<nm>) (Angle.degree 10.0 |> WedgeAngle))
 
     [<Fact>]
     member _.muellerMatrixT_TransparentGlassWedgeSystem_Polarized_WithEllipticity () =
         let descr = "Transparent glass 1000 nm, NORMAL incident light, 27 degrees polarization plane angle, with ellipticity 0.58."
         let info = { light600nmNormalLPs with polarization = Angle.degree 27.0 |> Polarization; ellipticity = Ellipticity 0.58 }
-        runTestMuellerMatrixT descr info (OpticalSystem.getWedgeGlass150System (Thickness.nm 1000.0) (Angle.degree 10.0 |> WedgeAngle))
+        runTestMuellerMatrixT descr info (OpticalSystem.getWedgeGlass150System (Thickness.nm 1000.0<nm>) (Angle.degree 10.0 |> WedgeAngle))
 
     [<Fact>]
     member _.totalReflectionAt40DegreesTest () = runTest totalReflectionAt40Degrees Field
@@ -1170,4 +1171,3 @@ type SolverTests(output : ITestOutputHelper) =
         tp.Should().BeLessOrEqualTo(1.0, "tp") |> ignore
         rs.Should().BeLessOrEqualTo(1.0, "rs") |> ignore
         rp.Should().BeLessOrEqualTo(1.0, "rp") |> ignore
-

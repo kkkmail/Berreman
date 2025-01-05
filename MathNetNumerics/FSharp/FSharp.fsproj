@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Library</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net9.0</TargetFramework>
+        <Platforms>x64</Platforms>
         <AssemblyName>MathNet.Numerics.FSharp</AssemblyName>
         <RootNamespace>MathNet.Numerics</RootNamespace>
         <IsPackable>true</IsPackable>
@@ -12,37 +12,52 @@
         <VersionSuffix></VersionSuffix>
         <Title>Math.NET Numerics for F#$(TitleSuffix)</Title>
         <Description>F# Modules for Math.NET Numerics, the numerical foundation of the Math.NET project, aiming to provide methods and algorithms for numerical computations in science, engineering and every day use. Supports .NET 5.0 or higher, .NET Standard 2.0 and .NET Framework 4.6.1 or higher, on Windows, Linux and Mac.$(DescriptionSuffix)</Description>
-        <PackageReleaseNotes>COMPATIBILITY: net8.0 </PackageReleaseNotes>
+        <PackageReleaseNotes>COMPATIBILITY: net8.0</PackageReleaseNotes>
         <PackageTags>fsharp F# math numeric statistics probability integration interpolation regression solve fit linear algebra matrix fft</PackageTags>
-        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
         <NoWarn>2003;NU1604</NoWarn>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
     <ItemGroup>
-        <ProjectReference Include="..\Numerics\Numerics.csproj" />
-    </ItemGroup>
-	
-    <ItemGroup>
-        <Compile Include="AssemblyInfo.fs" />
-        <Compile Include="Statistics.fs" />
-        <Compile Include="Random.fs" />
-        <Compile Include="Distributions.fs" />
-        <Compile Include="Generate.fs" />
-        <Compile Include="LinearAlgebra.Vector.fs" />
-        <Compile Include="LinearAlgebra.Matrix.fs" />
-        <Compile Include="Complex.fs" />
-        <Compile Include="BigIntegerExtensions.fs" />
-        <Compile Include="BigRational.fsi" />
-        <Compile Include="BigRational.fs" />
-        <Compile Include="Differentiate.fs" />
-        <Compile Include="Fit.fs" />
-        <Compile Include="FindRoots.fs" />
-        <Compile Include="RandomVariable.fs" />
-        <Compile Include="Quaternion.fs" />
+        <ProjectReference Include="..\Numerics\Numerics.csproj"/>
     </ItemGroup>
 
-  <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="8.0.401" />
+    <ItemGroup>
+        <Compile Include="AssemblyInfo.fs"/>
+        <Compile Include="Statistics.fs"/>
+        <Compile Include="Random.fs"/>
+        <Compile Include="Distributions.fs"/>
+        <Compile Include="Generate.fs"/>
+        <Compile Include="LinearAlgebra.Vector.fs"/>
+        <Compile Include="LinearAlgebra.Matrix.fs"/>
+        <Compile Include="Complex.fs"/>
+        <Compile Include="BigIntegerExtensions.fs"/>
+        <Compile Include="BigRational.fsi"/>
+        <Compile Include="BigRational.fs"/>
+        <Compile Include="Differentiate.fs"/>
+        <Compile Include="Fit.fs"/>
+        <Compile Include="FindRoots.fs"/>
+        <Compile Include="RandomVariable.fs"/>
+        <Compile Include="Quaternion.fs"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="9.0.100"/>
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

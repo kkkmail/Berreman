@@ -46,6 +46,29 @@ module Geometry =
         static member (~-) (Angle a) = -a |> Angle
 
 
+    type RealVector2 =
+        | RealVector2 of RealVector
+        member this.Item
+            with get i =
+                let (RealVector2 v) = this
+                v.[i]
+
+        member this.x = this.[0]
+        member this.y = this.[1]
+
+        member this.norm =
+            let (RealVector2 v) = this
+            v.norm
+
+        static member (*) (RealVector2 a, RealVector2 b) : double = a * b
+        static member (*) (a : double, RealVector2 b) = a * b |> RealVector2
+        static member (*) (RealVector2 a, b : double) = b * a
+        static member (/) (RealVector2 a, b : double) = a / b |> RealVector2
+        static member create a = RealVector.create a |> RealVector2
+
+        static member zeroVector = [ 0.; 0. ] |> RealVector2.create
+
+
     type RealVector3 =
         | RealVector3 of RealVector
         member this.Item
@@ -128,6 +151,11 @@ module Geometry =
         member this.y = this.[1]
 
         static member create a = ComplexVector.create a |> ComplexVector2
+        static member (+) (ComplexVector2 a, ComplexVector2 b) = a + b |> ComplexVector2
+        static member (-) (ComplexVector2 a, ComplexVector2 b) = a - b |> ComplexVector2
+
+        static member Zero
+            with get () = [ 0.0; 0.0 ] |> ComplexVector.fromRe |> ComplexVector2
 
 
     type ComplexVector3 =
@@ -223,6 +251,41 @@ module Geometry =
         member this.norm =  let (ComplexVector4 v) = this in v.norm
 
 
+    type RealMatrix2x2 =
+        | RealMatrix2x2 of RealMatrix
+        member this.Item
+            with get(i, j) =
+                let (RealMatrix2x2 v) = this
+                v.[i, j]
+
+        member this.Item
+            with get(i : Index, j : Index) =
+                let (RealMatrix2x2 v) = this
+                v.[i.numeric, j.numeric]
+
+        static member create a = a |> RealMatrix.create |> RealMatrix2x2
+        static member identity = realIdentityMatrix 2 |> RealMatrix2x2
+
+        static member (*) (RealMatrix2x2 a, RealMatrix2x2 b) : RealMatrix2x2 =
+            a * b |> RealMatrix2x2
+
+        static member (*) (a : double, RealMatrix2x2 b) : RealMatrix2x2 =
+            a * b |> RealMatrix2x2
+
+        static member (*) (RealMatrix2x2 a, b : double) : RealMatrix2x2 =
+            a * b |> RealMatrix2x2
+
+        static member (*) (RealVector2 a, RealMatrix2x2 b) : RealVector2 =
+            a * b |> RealVector2
+
+        static member (*) (RealMatrix2x2 a, RealVector2 b) : RealVector2 =
+            a * b |> RealVector2
+
+        member this.inverse =
+            let (RealMatrix2x2 m) = this
+            m.inverse |> RealMatrix2x2
+
+
     type RealMatrix3x3 =
         | RealMatrix3x3 of RealMatrix
         member this.Item
@@ -276,6 +339,68 @@ module Geometry =
                     [ 0.0; 0.0; 0.0; 0.0 ]
                 ]
                 |> RealMatrix4x4.create
+
+
+    type ComplexMatrix2x2 =
+        | ComplexMatrix2x2 of ComplexMatrix
+        member this.Item
+            with get(i, j) =
+                let (ComplexMatrix2x2 v) = this
+                v[i, j]
+
+        member this.Item
+            with get(i : Index, j : Index) =
+                let (ComplexMatrix2x2 v) = this
+                v[i.numeric, j.numeric]
+
+        static member (*) (ComplexMatrix2x2 a, ComplexMatrix2x2 b) : ComplexMatrix2x2 =
+            a * b |> ComplexMatrix2x2
+
+        static member (*) (a : Complex, ComplexMatrix2x2 b) : ComplexMatrix2x2 =
+            a * b |> ComplexMatrix2x2
+
+        static member (*) (ComplexMatrix2x2 a, b : Complex) : ComplexMatrix2x2 =
+            a * b |> ComplexMatrix2x2
+
+        static member (*) (ComplexVector2 a, ComplexMatrix2x2 b) : ComplexVector2 =
+            a * b |> ComplexVector2
+
+        static member (*) (ComplexMatrix2x2 a, ComplexVector2 b) : ComplexVector2 =
+            a * b |> ComplexVector2
+
+        static member identity = complexIdentityMatrix 2 |> ComplexMatrix2x2
+        static member zero = complexZeroMatrix 2 |> ComplexMatrix2x2
+        static member create a = a |> ComplexMatrix.create |> ComplexMatrix2x2
+        static member fromRe a = a |> ComplexMatrix.fromRe |> ComplexMatrix2x2
+        static member fromIm a = a |> ComplexMatrix.fromIm |> ComplexMatrix2x2
+
+        member this.inverse =
+            let (ComplexMatrix2x2 m) = this
+            m.inverse |> ComplexMatrix2x2
+
+        member this.re =
+            let (ComplexMatrix2x2 m) = this
+            m.re |> RealMatrix2x2
+
+        member this.im =
+            let (ComplexMatrix2x2 m) = this
+            m.im |> RealMatrix2x2
+
+        // static member Zero
+        //     with get () =
+        //         [
+        //             [ 0.0; 0.0 ]
+        //             [ 0.0; 0.0 ]
+        //         ]
+        //         |> ComplexMatrix2x2.create
+
+
+    type RealMatrix2x2
+        with
+        member this.toComplex () =
+            let (RealMatrix2x2 (RealMatrix m)) = this
+            let len = m.RowCount
+            [| for i in 0..(len-1) -> [| for j in 0..(len-1) -> cplx m.[i, j] |] |] |> ComplexMatrix2x2.create
 
 
     type ComplexMatrix3x3 =

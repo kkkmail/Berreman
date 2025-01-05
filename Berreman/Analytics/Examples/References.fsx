@@ -3,12 +3,12 @@
 #r "System.dll"
 #r "System.Numerics.dll"
 //===========================================================
-#r "../bin/Debug/net8.0/MathNet.Numerics.dll"
-#r "../bin/Debug/net8.0/MathNet.Numerics.FSharp.dll"
+#r "../bin/x64/Release/net9.0/MathNet.Numerics.dll"
+#r "../bin/x64/Release/net9.0/MathNet.Numerics.FSharp.dll"
 //===========================================================
-#r "../bin/Debug/net8.0/Berreman.dll"
-#r "../bin/Debug/net8.0/Analytics.dll"
-#r "../bin/Debug/net8.0/OpticalProperties.dll"
+#r "../bin/x64/Release/net9.0/Softellect.Berreman.Core.dll"
+#r "../bin/x64/Release/net9.0/Softellect.Berreman.Analytics.dll"
+#r "../bin/x64/Release/net9.0/Softellect.Berreman.OpticalProperties.dll"
 //===========================================================
 #r "nuget: Plotly.NET"
 //===========================================================

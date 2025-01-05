@@ -16,6 +16,8 @@ module Variables =
     //let lineBrake = "<br>" // Does not work in version 5.0
     let lineBrake = " " + System.Environment.NewLine
 
+    let private toNanometers w = w / 1.0e-09
+
 
     type Range<'T> =
         {
@@ -80,7 +82,7 @@ module Variables =
             | WaveLengthRange r ->
                 let (WaveLength s) = r.startValue
                 let (WaveLength e) = r.endValue
-                s + (e - s) * (double i) / (double r.numberOfPoints)
+                s + (e - s) * (double i) / (double r.numberOfPoints) |> double
             | WedgeAngleRange r ->
                 let (WedgeAngle (Angle s)) = r.startValue
                 let (WedgeAngle (Angle e)) = r.endValue
@@ -104,7 +106,7 @@ module Variables =
             | IncidenceAngleRange r -> r.startValue.value |> toDegree
             | PolarizationRange r -> r.startValue.value |> toDegree
             | EllipticityRange r -> r.startValue.value
-            | WaveLengthRange r -> r.startValue.value |> toNanometers
+            | WaveLengthRange r -> r.startValue.value / 1.0<meter> |> toNanometers
             | WedgeAngleRange r -> r.startValue.value |> toDegree
             | ArbitraryVariableRange v -> v.range.startValue * v.scale
 
@@ -113,7 +115,7 @@ module Variables =
             | IncidenceAngleRange r -> r.endValue.value |> toDegree
             | PolarizationRange r -> r.endValue.value |> toDegree
             | EllipticityRange r -> r.endValue.value
-            | WaveLengthRange r -> r.endValue.value |> toNanometers
+            | WaveLengthRange r -> r.endValue.value / 1.0<meter> |> toNanometers
             | WedgeAngleRange r -> r.endValue.value |> toDegree
             | ArbitraryVariableRange v -> v.range.endValue * v.scale
 
@@ -121,7 +123,7 @@ module Variables =
 
 
     let getWaveLengthValue (v : Range<WaveLength>) i =
-        (WaveLengthRange v).value i |> WaveLength
+        ((WaveLengthRange v).value i) * 1.0<meter> |> WaveLength
 
 
     let waveLengthPlotMinValue (v : Range<WaveLength>) =

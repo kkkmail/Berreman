@@ -6,6 +6,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Dispersion
+open Berreman.Constants
 
 module Dispersive =
 
@@ -23,23 +24,27 @@ module Dispersive =
 
         /// La3Ga5SiO14, extraordinary referaction index,
         /// 0.4 mkm < lambda < 1.0 mkm.
-        let refrIndexLa3Ga5SiO14Ordinary (WaveLength lambda) =
+        let refrIndexLa3Ga5SiO14Ordinary (WaveLength w) =
+            let lambda = w / 1.0<meter>
             ((cplx 0.00005) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.4981088 * lambda**2.0) / (-1.6845031370328092e-14 + lambda**2.0)) |> cplx)
 
 
         /// La3Ga5SiO14, ordinary refreaction index,
         /// 0.4 mkm < lambda < 1.0 mkm.
-        let refrIndexLa3Ga5SiO14ExtraOrdinary (WaveLength lambda) = 
+        let refrIndexLa3Ga5SiO14ExtraOrdinary (WaveLength w) =
+            let lambda = w / 1.0<meter>
             ((cplx 0.0001) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.5408145 * lambda**2.0) / (-1.6679115500522497e-14 + lambda**2.0)) |> cplx)
 
 
         /// La3Ga5SiO14, g11.
-        let g11La3Ga5SiO14 (WaveLength lambda) = 
+        let g11La3Ga5SiO14 (WaveLength w) =
+            let lambda = w / 1.0<meter>
             (lambda * ((6.278e-12 * lambda**2.0) / (-2.4335999999999998e-14 + lambda**2.0)**2.0 + 6.106e-12 / (-2.4335999999999998e-14 + lambda**2.0)) * (re(((cplx 0.00005) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.4981088 * lambda**2.0) / (-1.6845031370328092e-14 + lambda**2.0)) |> cplx)) + re(((cplx 0.0001) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.5408145 * lambda**2.0) / (-1.6679115500522497e-14 + lambda**2.0)) |> cplx)))) / 2.0
 
 
         /// La3Ga5SiO14, g33.
-        let g33La3Ga5SiO14 (WaveLength lambda) =
+        let g33La3Ga5SiO14 (WaveLength w) =
+            let lambda = w / 1.0<meter>
             (3.0359999999999996e-12 * lambda * (re(((cplx 0.00005) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.4981088 * lambda**2.0) / (-1.6845031370328092e-14 + lambda**2.0)) |> cplx)) + re(((cplx 0.0001) * complexI) / (numberE**(1.2011325347955075e15 * (-2.8e-7 + lambda)**2.0) |> cplx) + (sqrt(1.0 + (2.5408145 * lambda**2.0) / (-1.6679115500522497e-14 + lambda**2.0)) |> cplx)))) / (-3.9204e-14 + lambda**2.0)
 
 
@@ -70,10 +75,14 @@ module Dispersive =
         inherit DispersiveMaterial()
 
         /// Refraction index.
-        let nSi (WaveLength lmb) = 3.41696 - 2.09e7 * lmb ** 2.0 + 1.48e17 * lmb ** 4.0 + 0.013924/(-0.028 + 1.e12 * lmb ** 2.0) ** 2.0 + 0.138497/(-0.028 + 1.e12 * lmb ** 2.0)
+        let nSi (WaveLength w) =
+            let lambda = w / 1.0<meter>
+            3.41696 - 2.09e7 * lambda ** 2.0 + 1.48e17 * lambda ** 4.0 + 0.013924/(-0.028 + 1.e12 * lambda ** 2.0) ** 2.0 + 0.138497/(-0.028 + 1.e12 * lambda ** 2.0)
 
         /// Absorption Coefficient.
-        let xiSiFinal (WaveLength lmb) = (4.402681698765214e9 * lmb ** 2.0)/(0.0001 + (-0.12189462353667012 + 1.0e12 * lmb ** 2.0) ** 2.0)
+        let xiSiFinal (WaveLength w) =
+            let lambda = w / 1.0<meter>
+            (4.402681698765214e9 * lambda ** 2.0)/(0.0001 + (-0.12189462353667012 + 1.0e12 * lambda ** 2.0) ** 2.0)
 
         let refrIndexSi lambda = createComplex (nSi lambda) (xiSiFinal lambda) |> ComplexRefractionIndex
         let epsSi lambda = refrIndexSi lambda |> Eps.fromComplexRefractionIndex
