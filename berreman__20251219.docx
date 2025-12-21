@@ -1,0 +1,331 @@
+
+        <html xmlns:o='urn:schemas-microsoft-com:office:office'
+              xmlns:w='urn:schemas-microsoft-com:office:word'
+              xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+            <meta charset="utf-8">
+            <title>Exported Document</title>
+            <style>
+                body { font-family: Arial, sans-serif; }
+            </style>
+        </head>
+        <body>
+            <h1 id="berreman">Berreman</h1>
+<p>F# implementation of the Berreman matrix method for analyzing electromagnetic wave propagation through stratified (layered) optical media.</p>
+<h2 id="overview">Overview</h2>
+<p>The Berreman matrix is a 4x4 transfer matrix method used in computational electromagnetics to calculate reflection and transmission coefficients in multilayer thin films and anisotropic crystals. This library provides a comprehensive, type-safe implementation suitable for research and engineering applications in thin film optics, crystal optics, polarization analysis, and related fields.</p>
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>Full Berreman 4x4 matrix implementation</strong> for anisotropic and magneto-optically active media</li>
+<li><strong>Support for arbitrary optical properties</strong>: electric permittivity (epsilon), magnetic permeability (mu), and magneto-electric coupling (rho)</li>
+<li><strong>Multilayer thin film calculations</strong> with arbitrary number of layers</li>
+<li><strong>Thick plate and wedge substrate handling</strong> with multiple internal reflections</li>
+<li><strong>Dispersive materials</strong> with wavelength-dependent optical properties</li>
+<li><strong>Complete polarization analysis</strong>: Stokes parameters, Jones vectors, Mueller matrices, ellipticity, azimuth</li>
+<li><strong>Active (magneto-optic) crystals</strong>: planar, cubic (point group 23), type 3/4/6, and type 32/42/62 crystals</li>
+<li><strong>Gaussian beam support</strong> via FFT-based propagation</li>
+<li><strong>Type-safe units of measure</strong> (nm, um, mm, meter)</li>
+<li><strong>Interactive visualization</strong> with Plotly.NET charts</li>
+<li><strong>Comprehensive test suite</strong> with property-based testing</li>
+</ul>
+<h2 id="installation">Installation</h2>
+<h3 id="requirements">Requirements</h3>
+<ul>
+<li>.NET 9.0 SDK</li>
+<li>x64 platform</li>
+</ul>
+<h3 id="building">Building</h3>
+<pre><code class="bash language-bash">dotnet build Berreman.sln -c Release
+</code></pre>
+<h2 id="projectstructure">Project Structure</h2>
+<pre><code>Berreman/
+├── Berreman/                    # Core library (Softellect.Berreman.Core)
+│   └── Berreman/
+│       ├── MathNetNumericsMath.fs   # Math abstractions and wrappers
+│       ├── FourierTransform.fs      # FFT for Gaussian beams
+│       ├── MatrixExp.fs             # Matrix exponential (Pade approximation)
+│       ├── Constants.fs             # Physical constants and units
+│       ├── Geometry.fs              # Vector/matrix types, rotations
+│       ├── MaterialProperties.fs    # Optical properties (eps, mu, rho)
+│       ├── Fields.fs                # Electromagnetic field definitions
+│       ├── Media.fs                 # Optical media and systems
+│       ├── BerremanMatrix.fs        # Core 4x4 matrix implementation
+│       ├── Solvers.fs               # Reflection/transmission solvers
+│       ├── Dispersion.fs            # Wavelength-dependent properties
+│       └── FieldFunctions.fs        # Field analysis functions
+├── OpticalProperties/           # Material definitions (Softellect.Berreman.OpticalProperties)
+│   ├── Standard.fs                  # Standard materials (glass, crystals)
+│   ├── Active.fs                    # Magneto-optic active crystals
+│   └── Dispersive.fs                # Dispersive materials (Langasite, Silicon)
+├── Analytics/                   # Visualization and analysis (Softellect.Berreman.Analytics)
+│   ├── Variables.fs                 # Ranged variables for parametric studies
+│   ├── StandardLightVariables.fs    # Common light configurations
+│   ├── StandardSystems.fs           # Pre-defined optical systems
+│   ├── Charting.fs                  # Plotly.NET integration
+│   └── Examples/                    # Example scripts (see below)
+├── BerremanTests/               # Test suite (xUnit, FsCheck)
+├── BerremanRunner/              # Console application
+└── BerremanModelGenerator/      # Model generation utility
+</code></pre>
+<h2 id="coreconcepts">Core Concepts</h2>
+<h3 id="opticalproperties">Optical Properties</h3>
+<p>Materials are defined by three 3x3 complex tensors:</p>
+<ul>
+<li><strong>Eps (epsilon)</strong>: Electric permittivity tensor</li>
+<li><strong>Mu</strong>: Magnetic permeability tensor</li>
+<li><strong>Rho</strong>: Magneto-electric coupling tensor (for active crystals)</li>
+</ul>
+<pre><code class="fsharp language-fsharp">// Isotropic glass with refractive index 1.52
+let glass = OpticalProperties.fromRefractionIndex (RefractionIndex 1.52)
+
+// Uniaxial crystal
+let uniaxial = OpticalProperties.uniaxialCrystal e11 e33
+
+// Active planar crystal with magneto-electric effect
+let active = OpticalProperties.planarCrystal e11 e33 g12
+</code></pre>
+<h3 id="opticalsystems">Optical Systems</h3>
+<p>An optical system consists of:</p>
+<ul>
+<li><strong>Upper medium</strong>: Semi-infinite medium where light originates</li>
+<li><strong>Films</strong>: List of thin film layers with thickness</li>
+<li><strong>Substrate</strong>: Optional thick plate or wedge</li>
+<li><strong>Lower medium</strong>: Semi-infinite exit medium</li>
+</ul>
+<pre><code class="fsharp language-fsharp">let system = {
+    description = Some "Multilayer coating"
+    upper = OpticalProperties.vacuum
+    films = [
+        { properties = glass; thickness = Thickness.nm 100.0 }
+        { properties = vacuum; thickness = Thickness.nm 150.0 }
+    ]
+    lower = OpticalProperties.vacuum
+}
+</code></pre>
+<h3 id="incidentlight">Incident Light</h3>
+<p>Light is characterized by:</p>
+<ul>
+<li><strong>Wavelength</strong>: With unit safety (nm, um, mm)</li>
+<li><strong>Incidence angle</strong>: From normal (0 degrees) to grazing</li>
+<li><strong>Polarization</strong>: s, p, or arbitrary angle</li>
+<li><strong>Ellipticity</strong>: For elliptically polarized light</li>
+</ul>
+<pre><code class="fsharp language-fsharp">let light = {
+    wavelength = WaveLength.nm 600.0
+    incidenceAngle = IncidenceAngle.normal
+    polarization = Polarization.s
+    ellipticity = Ellipticity.zero
+}
+</code></pre>
+<h3 id="outputfunctions">Output Functions</h3>
+<p>Available output quantities:</p>
+<ul>
+<li><code>R</code>, <code>T</code>: Total reflectance and transmittance</li>
+<li><code>Rs</code>, <code>Rp</code>, <code>Ts</code>, <code>Tp</code>: s- and p-polarized components</li>
+<li><code>Is</code>, <code>Ip</code>: Incident intensity components</li>
+<li><code>AzimuthR</code>, <code>AzimuthT</code>: Polarization azimuth angles</li>
+<li><code>EllipticityR</code>, <code>EllipticityT</code>: Polarization ellipticity</li>
+</ul>
+<h2 id="examples">Examples</h2>
+<p>The <code>Analytics/Examples/</code> folder contains F# script files demonstrating various optical scenarios. To run an example:</p>
+<ol>
+<li>Build the solution in Release mode</li>
+<li>Open the <code>.fsx</code> file in an F# interactive environment (FSI)</li>
+<li>Execute the script</li>
+</ol>
+<h3 id="glassfsx">Glass.fsx</h3>
+<p><strong>Simple glass substrate and film analysis</strong></p>
+<p>Demonstrates the difference between treating glass as a thin film vs. a thick substrate. Compares reflectance and transmittance as functions of incidence angle for a glass layer (n=1.78) at 600nm wavelength.</p>
+<p>Key features:</p>
+<ul>
+<li>Thin film interference effects vs. incoherent thick plate behavior</li>
+<li>Incidence angle dependence (0 to 90 degrees)</li>
+<li>Wavelength dependence (300-700nm)</li>
+</ul>
+<h3 id="glass_dispersivefsx">Glass_Dispersive.fsx</h3>
+<p><strong>Dispersive glass with wavelength-dependent refractive index</strong></p>
+<p>Uses a Sellmeier-type dispersion formula for the ordinary refractive index:</p>
+<pre><code>n^2 = 1 + 1.43*lambda^2/(lambda^2 - 0.073^2) + 0.65*lambda^2/(lambda^2 - 0.12^2)
+</code></pre>
+<p>Demonstrates how to define custom dispersive materials and plot refractive index vs. wavelength.</p>
+<h3 id="multilayerthinfilmfsx">MultilayerThinFilm.fsx</h3>
+<p><strong>Multilayer dielectric coating (anti-reflection)</strong></p>
+<p>A 40-layer alternating glass/vacuum quarter-wave stack designed for 600nm. Each layer is lambda/(4n) thick for its material:</p>
+<ul>
+<li>Glass layers (n=1.52): 98.7nm</li>
+<li>Vacuum layers (n=1.0): 150nm</li>
+</ul>
+<p>Shows characteristic interference patterns in reflectance vs. wavelength and incidence angle.</p>
+<h3 id="multilayerthinfilm_02fsx">MultilayerThinFilm_02.fsx</h3>
+<p><strong>High-reflectance multilayer mirror</strong></p>
+<p>100 layer pairs of alternating high/low index materials (n=1.75/1.50) on glass substrate. Demonstrates:</p>
+<ul>
+<li>High reflectance at design wavelength</li>
+<li>Spectral bandwidth engineering</li>
+<li>Angular dependence of multilayer mirrors</li>
+</ul>
+<h3 id="multilayerthinfilm_euvfsx">MultilayerThinFilm_EUV.fsx</h3>
+<p><strong>EUV (Extreme Ultraviolet) multilayer mirror</strong></p>
+<p>100 Mo/Si layer pairs for 10.6nm (EUV) wavelength using complex refractive indices:</p>
+<ul>
+<li>Molybdenum: absorption and phase shift at EUV</li>
+<li>Silicon: spacer layers</li>
+</ul>
+<p>Used in EUV lithography mirrors and X-ray optics.</p>
+<h3 id="multilayerthinfilm_euv__002fsx">MultilayerThinFilm_EUV__002.fsx</h3>
+<p><strong>Custom EUV mirror parameters</strong></p>
+<p>Similar to above but with user-defined delta and beta values for the complex refractive index:</p>
+<pre><code>n = (1 - delta) + i*beta
+</code></pre>
+<h3 id="langasiteonsiliconfsx">LangasiteOnSilicon.fsx</h3>
+<p><strong>Dispersive active crystal (Langasite) on Silicon substrate</strong></p>
+<p>Langasite (La3Ga5SiO14) is an optically active piezoelectric crystal used in sensors. This example:</p>
+<ul>
+<li>Uses full dispersive optical properties from literature</li>
+<li>Shows thin film vs. thick substrate comparison</li>
+<li>Demonstrates wavelength-dependent behavior (250-600nm)</li>
+</ul>
+<h3 id="activecrystalfsx">ActiveCrystal.fsx</h3>
+<p><strong>Magneto-optically active planar crystal plate</strong></p>
+<p>Demonstrates optical activity (polarization rotation) in crystals with non-zero rho tensor:</p>
+<ul>
+<li>Uniaxial crystal (n11=2.315, n33=2.226)</li>
+<li>Variable gyration coefficient g12</li>
+<li>Plots s- and p-polarized transmission vs. g12</li>
+</ul>
+<h3 id="activecrystalcomparisonfsx">ActiveCrystalComparison.fsx</h3>
+<p><strong>Comparison of different active crystal types</strong></p>
+<p>Compares three crystal symmetry classes:</p>
+<ul>
+<li><strong>Planar crystal</strong>: rho has only g12 component</li>
+<li><strong>Type 3,4,6 crystal</strong>: rho has g11 and g33 components</li>
+<li><strong>Type 32,42,62 crystal</strong>: rho has g11, g12, and g33 components</li>
+</ul>
+<p>Shows transmitted azimuth and ellipticity as functions of incidence angle.</p>
+<h3 id="totalrefl_glassfsx">TotalRefl_Glass.fsx</h3>
+<p><strong>Total internal reflection at glass/vacuum interface</strong></p>
+<p>Light traveling from glass (n=1.50) to vacuum demonstrates:</p>
+<ul>
+<li>Critical angle calculation</li>
+<li>Brewster angle identification</li>
+<li>s- and p-polarized reflectance behavior</li>
+</ul>
+<h3 id="wedge_glassfsx">Wedge_Glass.fsx</h3>
+<p><strong>Glass wedge prism</strong></p>
+<p>Analyzes a glass prism with 40-degree wedge angle:</p>
+<ul>
+<li>Reflectance and transmittance vs. wedge angle (0-85 degrees)</li>
+<li>Handles multiple internal reflections</li>
+</ul>
+<h3 id="wedge_biaxialcrystalfsx">Wedge_BiaxialCrystal.fsx</h3>
+<p><strong>Biaxial crystal wedge</strong></p>
+<p>Similar to glass wedge but with anisotropic biaxial crystal (nx=1.5, ny=1.65, nz=1.75):</p>
+<ul>
+<li>Demonstrates birefringence effects in wedge geometry</li>
+<li>45-degree polarized input to excite both eigenmodes</li>
+</ul>
+<h3 id="wedge_activecrystalfsx">Wedge_ActiveCrystal.fsx</h3>
+<p><strong>Active planar crystal wedge</strong></p>
+<p>Combines wedge geometry with optical activity:</p>
+<ul>
+<li>23-degree wedge of planar active crystal</li>
+<li>Variable gyration coefficient analysis</li>
+<li>Useful for polarimetric device design</li>
+</ul>
+<h3 id="wedge_activecrystalcomparisonfsx">Wedge_ActiveCrystalComparison.fsx</h3>
+<p><strong>Comparison of active crystal wedges</strong></p>
+<p>Compares wedge behavior for three crystal symmetry classes:</p>
+<ul>
+<li>Transmitted intensity and polarization state</li>
+<li>Azimuth and ellipticity of transmitted light</li>
+<li>23-degree wedge geometry</li>
+</ul>
+<h2 id="apireference">API Reference</h2>
+<h3 id="keytypes">Key Types</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WaveLength</code></td>
+<td>Wavelength with units (nm, um, mm)</td>
+</tr>
+<tr>
+<td><code>Thickness</code></td>
+<td>Layer thickness with units</td>
+</tr>
+<tr>
+<td><code>IncidenceAngle</code></td>
+<td>Angle of incidence</td>
+</tr>
+<tr>
+<td><code>Polarization</code></td>
+<td>Linear polarization angle</td>
+</tr>
+<tr>
+<td><code>Ellipticity</code></td>
+<td>Elliptical polarization parameter</td>
+</tr>
+<tr>
+<td><code>OpticalProperties</code></td>
+<td>Material properties (eps, mu, rho)</td>
+</tr>
+<tr>
+<td><code>Film</code></td>
+<td>Thin film layer</td>
+</tr>
+<tr>
+<td><code>OpticalSystem</code></td>
+<td>Complete optical system</td>
+</tr>
+<tr>
+<td><code>IncidentLightInfo</code></td>
+<td>Light source specification</td>
+</tr>
+</tbody>
+</table>
+<h3 id="keyfunctions">Key Functions</h3>
+<pre><code class="fsharp language-fsharp">// Create optical system info
+let info = { incidentLightInfo = light; opticalSystem = system.dispersive }
+
+// Plot results
+plot info [ R; T ] incidenceAngleRange
+plot info [ Rs; Rp; Ts; Tp ] wavelengthRange
+plotComparison [ system1; system2 ] [ R; T ] variable
+plot3D info [ R ] xRange yRange
+</code></pre>
+<h2 id="dependencies">Dependencies</h2>
+<ul>
+<li><strong>MathNet.Numerics</strong>: Linear algebra and numerical methods (customized version included)</li>
+<li><strong>Plotly.NET</strong>: Interactive charting</li>
+<li><strong>FSharp.Collections.ParallelSeq</strong>: Parallel processing</li>
+<li><strong>xUnit</strong>: Testing framework</li>
+<li><strong>FsCheck</strong>: Property-based testing</li>
+<li><strong>FluentAssertions</strong>: Test assertions</li>
+</ul>
+<h2 id="license">License</h2>
+<p>This project is licensed under the GNU General Public License v3.0. See the <a href="LICENSE">LICENSE</a> file for details.</p>
+<p>Individual components may have different licenses:</p>
+<ul>
+<li>MatrixExp.fs: LGPL (ported from C code)</li>
+<li>Core library packages: MIT license</li>
+</ul>
+<h2 id="author">Author</h2>
+<p><strong>Konstantin Konstantinov</strong>
+Softellect Systems, Inc.</p>
+<h2 id="repository">Repository</h2>
+<p><a href="https://github.com/kkkmail/Berreman">https://github.com/kkkmail/Berreman</a></p>
+<h2 id="references">References</h2>
+<p>The Berreman matrix method is described in:</p>
+<ul>
+<li>D. W. Berreman, "Optics in Stratified and Anisotropic Media: 4x4-Matrix Formulation," J. Opt. Soc. Am. 62, 502-510 (1972)</li>
+</ul>
+<h2 id="version">Version</h2>
+<p>Current version: 9.0.100.5 (targeting .NET 9.0)</p>
+        </body>
+        </html>
+      
