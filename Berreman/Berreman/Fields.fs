@@ -278,16 +278,25 @@ module Fields =
 
 
     type WaveLength =
-        | WaveLength of double<meter>
-        with
-        member this.value = let (WaveLength w) = this in w
-        static member nm (l : double<nm>) = l * nmPerMeter |> WaveLength
-        static member mkm (l : double<mkm>) = l * mkmPerMeter |> WaveLength
-        member this.description =
-            let (WaveLength w) = this
-            // if w < mkm then $"wavelength: %A{w / nm} nm"
-            // else $"wavelength: %A{w / mkm} mkm"
-            $"wavelength: %A{w}"
+        | Mkm of double<mkm>
+        | Nm of double<nm>
+
+        member w.value =
+            match w with
+            | Mkm mkm -> mkm * mkmToMeter
+            | Nm nm ->  nm * nmToMeter
+
+        member w.create =
+            match w with
+            | Mkm _ -> fun e -> WaveLength.Mkm (e * 1.0<mkm>)
+            | Nm _ ->  fun e -> WaveLength.Nm (e * 1.0<nm>)
+
+        static member nm (nm : double<nm>) = Nm nm
+        static member mkm (mkm : double<mkm>) = Mkm mkm
+        member w.description =
+            match w with
+            | Mkm mkm -> $"wavelength: %A{mkm} mkm"
+            | Nm nm ->  $"wavelength: %A{nm} nm"
 
 
     type Ellipticity =

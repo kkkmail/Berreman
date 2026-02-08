@@ -7,7 +7,7 @@ open OpticalProperties.Standard
 open Analytics.StandardLightVariables
 open Analytics.StandardSystems
 open Analytics.Charting
-
+open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
 
@@ -19,7 +19,7 @@ let e = ellipticityRange numberOfPoints
 let p = polarizationRange numberOfPoints
 let w = wavelength250to600Range numberOfPoints
 
-let thickness = Thickness.mm 0.01
+let thickness = Thickness.mm 0.01<mm>
 
 //let ww = wavelength250to600 numberOfPoints
 

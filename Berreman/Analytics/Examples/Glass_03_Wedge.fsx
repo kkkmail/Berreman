@@ -10,7 +10,7 @@ open Berreman.MaterialProperties
 open OpticalProperties.Standard
 open Analytics.Charting
 open Analytics.Variables
-
+open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
 
@@ -22,15 +22,15 @@ type RefractionIndexThickness =
     | RefractionIndexThickness of RefractionIndex * Thickness
 
 
-//let nh1 = RefractionIndexThickness (RefractionIndex 1.50, Thickness.mm (0.001))
-let nh1 = RefractionIndexThickness (RefractionIndex 1.78052, Thickness.mm (0.001))
-let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00)
+//let nh1 = RefractionIndexThickness (RefractionIndex 1.50, Thickness.mm (0.001<mm>))
+let nh1 = RefractionIndexThickness (RefractionIndex 1.78052, Thickness.mm (0.001<mm>))
+let nh2 = RefractionIndexThickness (RefractionIndex 2.25, Thickness.mm 1.00<mm>)
 
 
 let incidentLight = light600nmInclinedDegreeLPs incidenceAngleDegree
 
 let wavelengthRange =
-    Range<_>.create numberOfPoints (WaveLength.nm 300.0) (WaveLength.nm 700.0)
+    Range<_>.create numberOfPoints (WaveLength.nm 300.0<nm>) (WaveLength.nm 700.0<nm>)
     |> WaveLengthRange
 
 

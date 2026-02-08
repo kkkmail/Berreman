@@ -9,6 +9,7 @@ open OpticalProperties.Standard
 open Analytics.Variables
 open Analytics.StandardLightVariables
 open Analytics.Charting
+open Berreman.Constants
 //===========================================================
 let fn = [ R; T; ]
 //EllipticityR
@@ -27,8 +28,8 @@ let p3D = polarizationRange numberOfPoints3D
 let w3D = wavelength200to800Range numberOfPoints3D
 
 
-let thickness1 = Thickness.nm (600.0 / 1.52 / 4.0)
-let thickness2 = Thickness.nm (600.0 / 1.00 / 4.0)
+let thickness1 = Thickness.nm ((600.0 / 1.52 / 4.0) * 1.0<nm>)
+let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * 1.0<nm>)
 
 let filmSystem =
     {

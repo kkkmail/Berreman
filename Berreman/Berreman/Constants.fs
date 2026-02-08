@@ -23,9 +23,14 @@ module Constants =
     let oneMillimeter = 1.0<mm>
 
 
-    let nmPerMeter : double<meter/nm> = 1.0e9<meter/nm>
-    let mkmPerMeter : double<meter/mkm> = 1.0e6<meter/mkm>
-    let mmPerMeter : double<meter/mm> = 1.0e3<meter/mm>
+    /// Multiplicative constant to convert from nm to meter.
+    let nmToMeter: double<meter/nm> = 1.0e-9<meter/nm>
+
+    /// Multiplicative constant to convert from mkm to meter.
+    let mkmToMeter: double<meter/mkm> = 1.0e-6<meter/mkm>
+
+    /// Multiplicative constant to convert from mm to meter.
+    let mmToMeter: double<meter/mm> = 1.0e-3<meter/mm>
 
 
     // let toNanometers w = w / nm
