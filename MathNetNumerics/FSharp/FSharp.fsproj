@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Library</OutputType>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>MathNet.Numerics.FSharp</AssemblyName>
         <RootNamespace>MathNet.Numerics</RootNamespace>
@@ -34,30 +34,30 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Numerics\Numerics.csproj"/>
+        <ProjectReference Include="..\Numerics\Numerics.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="AssemblyInfo.fs"/>
-        <Compile Include="Statistics.fs"/>
-        <Compile Include="Random.fs"/>
-        <Compile Include="Distributions.fs"/>
-        <Compile Include="Generate.fs"/>
-        <Compile Include="LinearAlgebra.Vector.fs"/>
-        <Compile Include="LinearAlgebra.Matrix.fs"/>
-        <Compile Include="Complex.fs"/>
-        <Compile Include="BigIntegerExtensions.fs"/>
-        <Compile Include="BigRational.fsi"/>
-        <Compile Include="BigRational.fs"/>
-        <Compile Include="Differentiate.fs"/>
-        <Compile Include="Fit.fs"/>
-        <Compile Include="FindRoots.fs"/>
-        <Compile Include="RandomVariable.fs"/>
-        <Compile Include="Quaternion.fs"/>
+        <Compile Include="AssemblyInfo.fs" />
+        <Compile Include="Statistics.fs" />
+        <Compile Include="Random.fs" />
+        <Compile Include="Distributions.fs" />
+        <Compile Include="Generate.fs" />
+        <Compile Include="LinearAlgebra.Vector.fs" />
+        <Compile Include="LinearAlgebra.Matrix.fs" />
+        <Compile Include="Complex.fs" />
+        <Compile Include="BigIntegerExtensions.fs" />
+        <Compile Include="BigRational.fsi" />
+        <Compile Include="BigRational.fs" />
+        <Compile Include="Differentiate.fs" />
+        <Compile Include="Fit.fs" />
+        <Compile Include="FindRoots.fs" />
+        <Compile Include="RandomVariable.fs" />
+        <Compile Include="Quaternion.fs" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="9.0.100"/>
+        <PackageReference Update="FSharp.Core" Version="10.0.102" />
         <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

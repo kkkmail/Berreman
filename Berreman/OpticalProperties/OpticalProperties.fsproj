@@ -1,15 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>Softellect.Berreman.OpticalProperties</AssemblyName>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <Authors>Konstantin Konstantinov</Authors>
         <Company>Softellect Systems, Inc.</Company>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>9.0.100.5</Version>
-        <PackageVersion>9.0.100.5</PackageVersion>
+        <Version>10.0.100.6</Version>
+        <PackageVersion>10.0.100.6</PackageVersion>
         <Description>Softellect.Berreman.OpticalProperties Library</Description>
         <PackageTags>framework</PackageTags>
         <RepositoryUrl>https://github.com/kkkmail/Berreman</RepositoryUrl>
@@ -35,17 +35,17 @@
         <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
-        <Compile Include="Standard.fs"/>
-        <Compile Include="Active.fs"/>
-        <Compile Include="Dispersive.fs"/>
+        <Compile Include="Standard.fs" />
+        <Compile Include="Active.fs" />
+        <Compile Include="Dispersive.fs" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="9.0.100"/>
+        <PackageReference Update="FSharp.Core" Version="10.0.102" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Berreman\Berreman.fsproj"/>
+        <ProjectReference Include="..\Berreman\Berreman.fsproj" />
     </ItemGroup>
 
 </Project>

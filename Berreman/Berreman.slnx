@@ -1,0 +1,29 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="../MathNetNumerics/FSharp/FSharp.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="../MathNetNumerics/Numerics/Numerics.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="Analytics/Analytics.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="Berreman/Berreman.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="BerremanRunner/BerremanRunner.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="BerremanTests/BerremanTests.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalModel/OpticalModel.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalProperties/OpticalProperties.fsproj">
+    <Platform Project="x64" />
+  </Project>
+</Solution>
