@@ -9,14 +9,11 @@ open Berreman.MaterialProperties
 open Berreman.Solvers
 open Berreman.FieldFunctions
 open Berreman.Constants
-
 open MatrixComparison
 open Berreman.Media
 open OpticalProperties.Standard
 open OpticalProperties.Active
-
 open Xunit
-open Xunit.Abstractions
 open FluentAssertions
 open FluentAssertions.Execution
 
@@ -55,7 +52,8 @@ type BaseOpticalSystemTestData =
         }
 
 
-type SolverTests(output : ITestOutputHelper) =
+type SolverTests() =
+    let output = TestContext.Current.TestOutputHelper
 
     let addLayer (l : Layer) (d : OpticalSystemTestData) =
         { d with opticalSystem = { d.opticalSystem with films = l :: d.opticalSystem.films } }

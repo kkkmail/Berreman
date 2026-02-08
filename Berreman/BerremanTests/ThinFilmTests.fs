@@ -6,10 +6,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.BerremanMatrix
-
 open Xunit
-open Xunit.Abstractions
-
 open MatrixComparison
 open Berreman.Media
 
@@ -21,7 +18,8 @@ type ThinFilmTestData =
         expected : ComplexMatrix
     }
 
-type ThinFilmTests(output : ITestOutputHelper) =
+type ThinFilmTests() =
+    let output = TestContext.Current.TestOutputHelper
 
     let data =
         [

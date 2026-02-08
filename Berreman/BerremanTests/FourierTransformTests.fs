@@ -5,7 +5,6 @@ open Berreman
 open Berreman.FourierTransformPrimitives
 open FluentAssertions
 open Xunit
-open Xunit.Abstractions
 open FsCheck
 open FsCheck.FSharp
 
@@ -61,7 +60,8 @@ type FftTests =
             r
         else false
 
-type FourierTransformTests(output : ITestOutputHelper) =
+type FourierTransformTests() =
+    let output = TestContext.Current.TestOutputHelper
 
     let runTests () =
         let config =
