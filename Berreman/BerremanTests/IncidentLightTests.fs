@@ -8,10 +8,7 @@ open Berreman.MaterialProperties
 open Berreman.BerremanMatrix
 open Berreman.Solvers
 open Berreman.FieldFunctions
-
 open Xunit
-open Xunit.Abstractions
-
 open MatrixComparison
 open Berreman.Media
 open OpticalProperties.Standard
@@ -26,7 +23,8 @@ type IncidentLightTestData =
     }
 
 
-type IncidentLightTests(output : ITestOutputHelper) =
+type IncidentLightTests() =
+    let output = TestContext.Current.TestOutputHelper
 
     let waveLength = WaveLength.nm 600.0<nm>
     let getN1SinFita incidenceAngle = N1SinFita.create RefractionIndex.vacuum incidenceAngle

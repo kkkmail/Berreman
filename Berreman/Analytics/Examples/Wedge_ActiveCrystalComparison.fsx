@@ -11,7 +11,7 @@ open OpticalProperties.Standard
 open OpticalProperties.Active
 open Analytics.Charting
 open Analytics.Variables
-
+open Berreman.Constants
 //===========================================================
 let fn0 = [ Is; Ip; Rs; Rp; Ts; Tp ]
 let fn1 = [ Ts; Tp ]

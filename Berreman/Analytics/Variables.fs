@@ -80,8 +80,8 @@ module Variables =
                 let (Ellipticity e) = r.endValue
                 s + (e - s) * (double i) / (double r.numberOfPoints)
             | WaveLengthRange r ->
-                let (WaveLength s) = r.startValue
-                let (WaveLength e) = r.endValue
+                let s = r.startValue.value
+                let e = r.endValue.value
                 s + (e - s) * (double i) / (double r.numberOfPoints) |> double
             | WedgeAngleRange r ->
                 let (WedgeAngle (Angle s)) = r.startValue
@@ -123,7 +123,8 @@ module Variables =
 
 
     let getWaveLengthValue (v : Range<WaveLength>) i =
-        ((WaveLengthRange v).value i) * 1.0<meter> |> WaveLength
+        let create = v.startValue.create
+        ((WaveLengthRange v).value i) * 1.0 |> create
 
 
     let waveLengthPlotMinValue (v : Range<WaveLength>) =
@@ -179,7 +180,7 @@ module Variables =
 
 
     let removeLightVariable x d =
-        let (w, _, i, p, e) = incidentLightLabels
+        let w, _, i, p, e = incidentLightLabels
 
         match x with
         | IncidenceAngleRange _ -> d |> List.choose (fun (k, v) -> if k = i then None else Some (k, v))
@@ -198,7 +199,7 @@ module Variables =
         }
 
         member private this.descriptionInfo =
-            let (w, _, i, p, e) = incidentLightLabels
+            let w, _, i, p, e = incidentLightLabels
 
             [
                 (i, this.incidentLightInfo.incidenceAngle.description)
@@ -308,7 +309,7 @@ module Variables =
         (r : Range<WaveLength>) =
 
         let f w =
-            let p =((o.getProperties w).opticalComponent c).[i, j] |> t.transform
+            let p =((o.getProperties w).opticalComponent c)[i, j] |> t.transform
             match u with
             | UseRe -> p.Real
             | UseIm -> p.Imaginary

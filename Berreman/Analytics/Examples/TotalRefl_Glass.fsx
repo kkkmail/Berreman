@@ -11,7 +11,7 @@ open OpticalProperties.Standard
 open Analytics.Charting
 open Analytics.Variables
 open Berreman.MaterialProperties
-
+open Berreman.Constants
 //===========================================================
 //let fn = [ R; T ]
 //let fn = [ Rp; Rs; Tp; Ts]

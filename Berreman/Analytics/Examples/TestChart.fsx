@@ -12,6 +12,7 @@ open Analytics.Charting
 open Berreman.Media
 open Berreman.Dispersion
 open OpticalProperties.Dispersive
+open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
 let numberOfPoints = 2000
@@ -31,9 +32,9 @@ plot (transparentGlass (light600nmInclinedDegreeLPs 59.0)) fn e
 plot3D (transparentGlass light600nmNormalLPs) fn e3D i3D
 #time
 
-let thickness = Thickness.nm 200.
-let thickness1 = Thickness.nm (600.0 / 1.52 / 4.0)
-let thickness2 = Thickness.nm (600.0 / 1.00 / 4.0)
+let thickness = Thickness.nm 200.0<nm>
+let thickness1 = Thickness.nm ((600.0 / 1.52 / 4.0) * 1.0<nm>)
+let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * 1.0<nm>)
 
 #time
 plot (biaxialCrystalFilm thickness light600nmNormalLPs) fn i
@@ -110,13 +111,13 @@ let filmSystem =
 
 let vacuumSubstrate =
     {
-        thickness = Thickness.nm 500.0
+        thickness = Thickness.nm 500.0<nm>
         properties = OpticalProperties.vacuum
     }
 
 let transparentGlassSubstrate =
     {
-        thickness = Thickness.nm 0.0
+        thickness = Thickness.nm 0.0<nm>
         properties = OpticalProperties.transparentGlass
     }
 
@@ -159,7 +160,7 @@ plotRho33 langasiteOpticalProperties w
 
 /////////////////////////////////////
 
-let thickness3 = Thickness.mm 0.001
+let thickness3 = Thickness.mm 0.001<mm>
 let f3 = langasiteFilmOnSilicon thickness3 light600nmNormalLPs
 let f4 = langasiteSubstrateOnSilicon thickness light600nmNormalLPs
 

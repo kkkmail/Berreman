@@ -5,8 +5,8 @@ open Berreman
 open Berreman.FourierTransformPrimitives
 open FluentAssertions
 open Xunit
-open Xunit.Abstractions
 open FsCheck
+open FsCheck.FSharp
 
 type Samples = Samples of Complex []
 
@@ -14,7 +14,7 @@ type Samples = Samples of Complex []
 type FftGenerators =
     static member Complex () : Arbitrary<Complex> =
         let f =
-            Arb.generate<float>
+            ArbMap.defaults |> ArbMap.generate<float>
             |> Gen.map (fun v ->
                 if Double.IsNaN v then
                     0.
@@ -25,17 +25,14 @@ type FftGenerators =
                 else
                 v % 1000.
             )
-        let c =
-            Gen.constant (fun r i -> Complex (r, i))
-            <*> f
-            <*> f
+        let c = Gen.map2 (fun r i -> Complex (r, i)) f f
         Arb.fromGen c
 
     static member Samples () : Arbitrary<Samples> =
         let s =
             gen {
                 let! n = Gen.choose (1, 3) |> Gen.map (fun i -> 1 <<< i)
-                let! c = Gen.arrayOfLength n Arb.generate<Complex>
+                let! c = Gen.arrayOfLength n (ArbMap.defaults |> ArbMap.generate<Complex>)
                 return Samples c
             }
         Arb.fromGen s
@@ -63,15 +60,15 @@ type FftTests =
             r
         else false
 
-type FourierTransformTests(output : ITestOutputHelper) =
+type FourierTransformTests() =
+    let output = TestContext.Current.TestOutputHelper
 
     let runTests () =
         let config =
-            { Config.Quick with
-                Arbitrary = typeof<FftGenerators> :: Config.Quick.Arbitrary
-                MaxTest   = 1000
-                MaxFail   = 1000
-            }
+            Config.Quick
+                .WithArbitrary([typeof<FftGenerators>])
+                .WithMaxTest(1000)
+                .WithMaxRejected(1000)
 
         Check.All<FftTests> config
 

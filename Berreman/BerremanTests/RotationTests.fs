@@ -1,11 +1,9 @@
 ﻿namespace BerremanTests
 
-
 open Berreman.MaterialProperties
 open Berreman.Geometry
 open BerremanTests.MatrixComparison
 open Xunit
-open Xunit.Abstractions
 
     type RotationTestData =
         {
@@ -15,7 +13,8 @@ open Xunit.Abstractions
         }
 
 
-type RotationTests(output : ITestOutputHelper) =
+type RotationTests() =
+    let output = TestContext.Current.TestOutputHelper
 
     let data =
         [|

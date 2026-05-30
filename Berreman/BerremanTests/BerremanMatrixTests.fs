@@ -5,10 +5,7 @@ open Berreman.Geometry
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.BerremanMatrix
-
 open Xunit
-open Xunit.Abstractions
-
 open MatrixComparison
 
 
@@ -21,7 +18,9 @@ type BerremanMatrixTestData =
     }
 
 
-type BerremanMatrixTests(output : ITestOutputHelper) =
+type BerremanMatrixTests() =
+    let output = TestContext.Current.TestOutputHelper
+
     let data =
         [|
             {
@@ -119,4 +118,3 @@ type BerremanMatrixTests(output : ITestOutputHelper) =
 
     [<Fact>]
     member this.berremanMatrixTest2 () = this.runTest (data.[2])
-

@@ -13,9 +13,9 @@ module Media =
         | Thickness of double<meter>
         | Infinity
         with
-        static member nm (t : double<nm>) = t * nmPerMeter |> Thickness
-        static member mkm (t : double<mkm>) = t * mkmPerMeter |> Thickness
-        static member mm (t : double<mm>) = t * mmPerMeter |> Thickness
+        static member nm (t : double<nm>) = t * nmToMeter |> Thickness
+        static member mkm (t : double<mkm>) = t * mkmToMeter |> Thickness
+        static member mm (t : double<mm>) = t * mmToMeter |> Thickness
         member _.toInfinity () = Thickness.Infinity
         static member oneMilliMeter = Thickness.mm 1.0<mm>
         static member oneCentiMeter = Thickness.mm 10.0<mm>

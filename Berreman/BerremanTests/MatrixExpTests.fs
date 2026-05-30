@@ -2,10 +2,7 @@
 
 open Berreman.MatrixExp
 open Berreman.MathNetNumericsMath
-
 open Xunit
-open Xunit.Abstractions
-
 open MatrixComparison
 
 
@@ -16,7 +13,9 @@ type MatrixExpTestData =
     }
 
 
-type MatrixExpTests(output : ITestOutputHelper) =
+type MatrixExpTests() =
+    let output = TestContext.Current.TestOutputHelper
+
     let data =
         [|
             {
@@ -119,16 +118,16 @@ type MatrixExpTests(output : ITestOutputHelper) =
     member _.runTest (d : MatrixExpTestData) = verifyMatrixEquality output (d.matrix.matrixExp()) d.exp
 
     [<Fact>]
-    member this.matrixExpTest0 () = this.runTest (data.[0])
+    member this.matrixExpTest0 () = this.runTest data[0]
 
     [<Fact>]
-    member this.matrixExpTest1 () = this.runTest (data.[1])
+    member this.matrixExpTest1 () = this.runTest data[1]
 
     [<Fact>]
-    member this.matrixExpTest2 () = this.runTest (data.[2])
+    member this.matrixExpTest2 () = this.runTest data[2]
 
     [<Fact>]
-    member this.matrixExpTest3 () = this.runTest (data.[3])
+    member this.matrixExpTest3 () = this.runTest data[3]
 
     [<Fact>]
-    member this.matrixExpTest4 () = this.runTest (data.[4])
+    member this.matrixExpTest4 () = this.runTest data[4]

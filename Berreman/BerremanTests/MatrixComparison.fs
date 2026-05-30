@@ -6,7 +6,6 @@ open Berreman.Geometry
 open Berreman.MaterialProperties
 open Berreman.Fields
 open Xunit
-open Xunit.Abstractions
 open FluentAssertions
 
 module MatrixComparison =
@@ -14,7 +13,7 @@ module MatrixComparison =
     let allowedDiff = 1.0e-05
 
 
-    let outputData (output : ITestOutputHelper) msg result expected = 
+    let outputData (output : ITestOutputHelper) msg result expected =
         output.WriteLine $"{msg}"
         output.WriteLine $"result = {result}"
         output.WriteLine $"expected = {expected}"
@@ -30,7 +29,7 @@ module MatrixComparison =
         output.WriteLine $"diff = {diff}"
         output.WriteLine $"norm = {norm}"
         output.WriteLine $"diffValue = {diffNorm}"
-        
+
         if diffNorm <> 0.0 && norm <> 0.0
         then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
@@ -47,7 +46,7 @@ module MatrixComparison =
         output.WriteLine $"diff = {diff}"
         output.WriteLine $"norm = {norm}"
         output.WriteLine $"diffValue = {diffNorm}"
-        
+
         if diffNorm <> 0.0 && norm <> 0.0
         then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
@@ -62,7 +61,7 @@ module MatrixComparison =
         output.WriteLine $"diff = {diff}"
         output.WriteLine $"norm = {norm}"
         output.WriteLine $"diffValue = {diffNorm}"
-        
+
         if diffNorm <> 0.0 && norm <> 0.0
         then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
@@ -88,7 +87,7 @@ module MatrixComparison =
     // Compares two pairs of complex basis (value + vector) for equality.
     let eigenBasisEquality (output : ITestOutputHelper) (msg : string) (result : EigenBasis) (expected : EigenBasis) =
         outputData output msg result expected
-        
+
         let diff00 = evdDiff output result.v0 expected.v0 result.e0 expected.e0
         let diff11 = evdDiff output result.v1 expected.v1 result.e1 expected.e1
         let diff = diff00 + diff11
@@ -100,12 +99,12 @@ module MatrixComparison =
         let diffMin = min diff diffAlt
         diffMin.Should().BeLessThan(allowedDiff, $"%A{diffMin} exceeds allowed value") |> ignore
 
-    let verifyPolarizationEquality (output : ITestOutputHelper) (msg : string) (Polarization (Angle result)) (Polarization (Angle expected)) = 
+    let verifyPolarizationEquality (output : ITestOutputHelper) (msg : string) (Polarization (Angle result)) (Polarization (Angle expected)) =
         outputData output msg result expected
         let diff = abs (result - expected)
         Assert.True(diff < allowedDiff)
 
-    let verifyEllipticityEquality (output : ITestOutputHelper) (msg : string) (Ellipticity result) (Ellipticity expected) = 
+    let verifyEllipticityEquality (output : ITestOutputHelper) (msg : string) (Ellipticity result) (Ellipticity expected) =
         outputData output msg result expected
         let diff = abs (result - expected)
         diff.Should().BeLessThan(allowedDiff, $"%A{diff} exceeds allowed value") |> ignore

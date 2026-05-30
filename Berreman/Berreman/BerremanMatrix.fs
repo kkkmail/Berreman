@@ -115,12 +115,12 @@ module BerremanMatrix =
     type BerremanMatrixPropagated =
         | BerremanMatrixPropagated of ComplexMatrix4x4
 
-        static member propagateLayer (l : Layer) (emc : EmComponent) (WaveLength w) : BerremanMatrixPropagated =
+        static member propagateLayer (l : Layer) (emc : EmComponent) (w : WaveLength) : BerremanMatrixPropagated =
             let m = BerremanMatrix.create l.properties emc.n1SinFita
 
             match l.thickness with
             | Thickness x ->
-                let a = m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * x / w))) |> BerremanMatrixPropagated
+                let a = m.berremanMatrix.matrixExp (Complex(0.0, (2.0 * pi * x / w.value))) |> BerremanMatrixPropagated
                 a
             | Infinity -> failwith "TODO: Implement infinite thickness by making this layer the output media."
 
