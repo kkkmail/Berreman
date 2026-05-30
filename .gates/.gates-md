@@ -1,0 +1,53 @@
+# Gating system
+
+## Purpose
+
+This `.gates/` folder holds every quality gate the spec-writer +
+arc-runner workflow can require for a slice in this repo. A gate
+is a YAML descriptor (`*.gates`) that names a command, a pass
+condition, and the file globs it applies to. The arc-runner
+executes the gates a slice has selected; the spec-writer's
+gate-keeper agent proposes which gates each spec should include.
+
+## Layout
+
+Two-level structure:
+
+- **Root-level gates** (this folder, `.gates/*.gates`) -- universal
+  checks that apply to every slice regardless of project. Today:
+  `impl-log-structure.gates`, `state-of-world-structure.gates`.
+  Each enforces a documentation shape the spec-writer relies on,
+  so excluding them would break the workflow itself.
+- **Per-group gates** (`.gates/<group>/`) -- project-specific or
+  subsystem-specific checks. Each group folder carries its own
+  `.gates-md` describing the group's purpose and naming
+  conventions. Today: `.gates/Berreman/` (F# numerical optics
+  solver build / test gates).
+
+## When to add a new gate
+
+1. **Root vs group.** If the gate applies to every slice in every
+   project, place it at root. If it targets a specific project
+   (Berreman, a future side project under this repo), place it
+   under the matching `<group>/` subfolder.
+2. **New group?** If no existing group fits, create
+   `.gates/<new-group>/` with its own `.gates-md` (see the
+   gate-keeper system prompt for the required shape). Pick the
+   group name after the project / subsystem, not after a
+   technology stack.
+3. **Agent vs operator.** The gate-keeper agent authors descriptor
+   drafts into `<spec-folder>/.proposed-gates/<group>/`. The
+   operator reviews each draft in the spec-writer composer's
+   gates panel and promotes it -- promotion moves the file into
+   the matching `.gates/<group>/`. The agent never writes here
+   directly.
+
+## Naming
+
+Descriptor files use the gate name as the file stem
+(`<name>.gates`). Gate names are unique across the whole `.gates/`
+tree -- the bundle's `gates:` array references gates by name only,
+so two descriptors sharing a name would create an ambiguity the
+scanner rejects. Within a group, use a shared prefix when several
+gates target the same sub-area so the ordering in any arc-runner
+manifest stays readable.

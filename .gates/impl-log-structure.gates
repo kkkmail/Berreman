@@ -1,0 +1,6 @@
+name: impl-log-structure
+description: Built-in structural check for the slice impl-log MD (required ATX section headings)
+kind: check
+built_in: impl-log-structure
+tags: [lint, structural, fast]
+qualifier: source

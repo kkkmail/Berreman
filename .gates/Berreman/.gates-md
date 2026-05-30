@@ -1,0 +1,22 @@
+# Berreman
+
+## Purpose
+
+Gates that exercise the Berreman F# numerical optics solver
+under `Berreman/`. They cover the `Berreman.slnx` solution build
+and the `BerremanTests` F# unit-test project (`BerremanTests.fsproj`).
+Build runs via `dotnet build`; tests via `dotnet test`. No
+Android, no UI smoke harness, no A/V flow -- the project is pure
+numerical / analytics code with `xunit`-style F# tests.
+
+## When to add a gate here
+
+Add a gate here when the new check exercises Berreman or one of
+its sibling projects under `Berreman/` (`BerremanModelGenerator`,
+`BerremanRunner`, `OpticalModel`, `OpticalProperties`,
+`Analytics`). Use a descriptive single-word stem (`build`,
+`unit-tests`, `integration-tests`, ...) -- the project does not
+have multiple long-lived sub-areas that warrant a prefix yet.
+Gates that target a different sub-project unrelated to the
+optics solver belong in their own `<group>/` subfolder with its
+own `.gates-md`.

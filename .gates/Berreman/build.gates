@@ -1,0 +1,13 @@
+name: build
+description: dotnet build Berreman.slnx Release (F# numerical optics solver)
+kind: command
+command: dotnet build Berreman.slnx -c Release -nologo -v:m
+cwd: Berreman
+pass_when:
+  exit_code: 0
+  stdout_match: "(?s)^(?!.*error).*$"
+runtime_estimate_seconds: 120
+tags: [build]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Berreman/Directory.Build.props"]
+qualifier: build

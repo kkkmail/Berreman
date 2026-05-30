@@ -1,0 +1,58 @@
+{
+  "agent": "openai-codex",
+  "agents": {
+    "claude-code": {
+      "path": "%USERPROFILE%/.local/bin/claude.exe"
+    },
+    "openai-codex": {
+      "path": "C:/OpenAI/Codex/npm-prefix/codex.cmd"
+    }
+  },
+  "tool_agents": {
+    "spec_writer": {
+      "console": false,
+      "spec_author": "default",
+      "claim_checker": "default",
+      "gate_keeper": "default",
+      "handoff_verifier": "default"
+    },
+    "multistep": {
+      "console": true,
+      "splitter": "default",
+      "fidelity_judge": "default",
+      "verifier": "default",
+      "splitter_claim_checker": "default",
+      "reconciler": "default",
+      "arc_runner_worker": "default",
+      "code_judge": "default",
+      "architecture_critic": "default",
+      "reuse_critic": "default",
+      "resolver": "default",
+      "postmortem": "default"
+    }
+  },
+  "specs_root": "specs/",
+  "spec_naming": {
+    "regex": "^\\d{3,5}(-\\d{2})?(-\\d{2})?$"
+  },
+  "ticket_policy": {
+    "required": false,
+    "format_regex": null
+  },
+  "escalation": {
+    "max_files_changed": 200,
+    "max_bytes_changed": 20971520
+  },
+  "user_files": {
+    "splitter": ".user-md/Berreman/splitter.user-md",
+    "arc-runner": ".user-md/Berreman/arc-runner.user-md"
+  },
+  "gate_policy": {
+    "retry_budget": 1,
+    "baseline_source": "state_of_the_world"
+  },
+  "gate_keeper": {
+    "confidence_threshold": "default"
+  },
+  "data_version": 4
+}

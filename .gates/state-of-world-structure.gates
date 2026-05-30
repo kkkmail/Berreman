@@ -1,0 +1,6 @@
+name: state-of-world-structure
+description: Built-in structural check for the slice state-of-the-world MD (required ATX section headings)
+kind: check
+built_in: state-of-world-structure
+tags: [lint, structural, fast]
+qualifier: source
