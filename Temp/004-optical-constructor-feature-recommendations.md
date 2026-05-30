@@ -15,8 +15,10 @@ Where useful, items note whether the capability **already exists in the engine**
 > critical for EUV, which is extremely angle-sensitive); making **combining elements
 > into an end-to-end optical system** a first-class Core feature; adding **persistent
 > UI customization** to Core; expanding **optimization & inverse fitting** with web
-> research (to port the user's existing partial Wolfram implementation to F#); and
-> several tier moves (see §1, §3, §4, §7).
+> research (to port the user's existing partial Wolfram implementation to F#);
+> elevating **human-convenient units of measure with automatic conversion** (mm, mkm,
+> nm, Å, eV, …; mixed units across a system; a default unit per element) to a Core
+> feature (see §1, §2); and several tier moves (see §1, §3, §4, §7).
 
 ---
 
@@ -79,6 +81,10 @@ suites (LightTools, TracePro, Speos).
   coded by material, with thickness labels and the incident-light ray/angle drawn.
 - **[Core]** **Substrate type switch**: thin film vs. thick **plate** vs. **wedge**
   (with wedge angle), exposing the existing multi-reflection handling.
+- **[Core]** **Per-element default unit of measure** — each layer/element/source
+  remembers and displays the unit natural to it (a plate in mm, a film in nm, a source
+  in nm/µm/eV) while the system mixes units freely; see the units-of-measure item in
+  §2 for the full conversion behaviour.
 - **[Core]** **Persistent UI customization** — remember the user's working
   environment between sessions: a **board / palette of commonly used elements**
   (pin/favorite frequently used layers, materials, sources, and whole sub-assemblies,
@@ -121,8 +127,26 @@ suites (LightTools, TracePro, Speos).
   matching existing `Eps`/`Mu`/`Rho` support.
 - **[Standard]** **Material preview plot** of n(λ) and k(λ) (and ρ, ε components) over
   a chosen range — already prototyped as `plotN11`, `plotXi11`, `plotRho11`, etc.
-- **[Standard]** **Units management** with the existing units-of-measure (nm/µm/mm/m,
-  eV↔nm conversion for the spectroscopy crowd).
+- **[Core]** **Human-convenient units of measure with automatic conversion.** The
+  system must let every quantity be entered and displayed in whatever unit is natural
+  for it, and **different parts of the same system may use different units**:
+  - **Length / thickness**: m, mm, **mkm (µm)**, nm, **Å** — e.g. a thick plate in
+    **mm**, a thin film in **nm**.
+  - **Wavelength / photon energy**: nm (e.g. a **green laser** ≈ 532 nm), **mkm** (an
+    **IR laser**, e.g. 10.6 µm), **Å**, and **eV** (e.g. a **free-electron laser**,
+    EUV/X-ray) — with the energy↔wavelength conversion **E[eV] = 1239.84 / λ[nm]**
+    (hc) handled transparently, plus the spectroscopy wavenumber cm⁻¹ as a bonus.
+  - **Each element/parameter carries its own *default* unit of measure** (the unit it
+    was created in / is most natural for it), so a project naturally mixes mm plates,
+    nm films, and eV sources without the user converting anything by hand.
+  - **Conversions are automatic and lossless internally** (store one canonical SI base
+    — e.g. meters — and convert only at the UI/IO boundary), so charts, sweeps, and
+    fits can be requested in any unit. This **extends the existing units-of-measure**
+    support (`Constants.fs` already has nm/mkm/mm/m); the net-new work is the **eV (and
+    cm⁻¹) photon-energy conversions** and the **per-element default-unit** plumbing.
+- **[Standard]** **Unit presets & display formatting** — quick unit switching on any
+  axis/field, sensible significant figures, and "show in eV / nm / µm" toggles on
+  spectral plots.
 - **[Standard]** **Temperature/composition dependence** (thermo-optic dn/dT) as
   optional model parameters.
 - **[Niche]** **Kramers–Kronig consistency check / enforcement** for entered data.
@@ -297,7 +321,9 @@ suites (LightTools, TracePro, Speos).
    elements**, source editor, materials library (Sellmeier/Cauchy/tabulated +
    refractiveindex.info import), spectral/angular R/T/A scan, interactive plot,
    save/open project, CSV/PNG export, target/merit editor + local (LM) optimization,
-   and **persistent UI customization** (favorites board, recent folders/files).
+   **human-convenient units with automatic conversion** (mm/mkm/nm/Å/eV, mixed units,
+   per-element default unit), and **persistent UI customization** (favorites board,
+   recent folders/files).
 2. **v2 (Standard)**: anisotropy/orientation UI, GRIN layers, templates/wizards,
    2D/3D rendered view, ellipsometric Ψ/Δ + Mueller/Stokes, field/EFI profiles, color
    calc, comparison & 3D plots, **inverse fitting to measured data + fit-quality
