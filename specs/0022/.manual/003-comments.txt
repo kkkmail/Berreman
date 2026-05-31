@@ -1,0 +1,32 @@
+Here are the comments. The updated version must be written into C:\GitHub\Berreman\Temp\004-<description>.md. Make absolutely no other changes.
+
+We agree that [Niche] is what we do not do now but keep as nice to have. We will do [Core] and [Standard].
+
+We need lenses / non-flat mirrors as otherwise we cannot convert planewave into anything else. This is critical, for example, 
+for EUV, which is very sensitive to small angles.
+Optimization and inverse fitting are clearly very important features. I have Wolfram code that partially does that, but it 
+was never ported to F#. Research this functionality on the web and add to the document.
+
+`1. Optical-system construction & UI`
+The very important part is to combine optical elements to make an optical system, e.g. light source => polarizer => sample => analyzer => detector.
+Keep only `Roughness/interface layers` in [Niche], move the rest into [Standard].
+Add to Core: Persistent UI customization, like placing commonly used elements on some kind of board, remembering working folder or 
+folders / files and so on. Perform additional web research in regards to that.
+
+`2. Optical substances / materials management`
+No changes.
+
+`3. Light sources & illumination`
+Move all niche to standard.
+
+`4. Calculations / analysis`
+Move Convergence controls to standard.
+
+`5. Design synthesis, optimization & fitting`
+No changes.
+
+`6. Charts & visualization`
+No changes.
+
+`7. Project management, persistence & I/O`
+Move Version control / design history & diff to standard.

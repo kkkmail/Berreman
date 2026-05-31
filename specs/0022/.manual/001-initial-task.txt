@@ -1,0 +1,7 @@
+I want to extend the code in this repo to be a full scale optical constructor app where the user can easily combine optical 
+elements using the UI, work with optical substances and light sources, calculate whatever they want for a chosen optical 
+system, draw and manipulate the optical charts, save the results, customize the environment and so on. I am sure that 
+a number of such apps is already well known and over the years they’ve accumulated of what is the core feature list 
+for such an app and what are the rarely used niche features. Your task is to look up this repo, including the working 
+examples in the FSX files, perform a web research of similar apps and write me a bullet point feature list of recommended 
+features into C:\GitHub\Berreman\Temp\002-<description>.md. Make absolutely no other changes.

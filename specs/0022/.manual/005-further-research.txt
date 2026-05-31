@@ -1,0 +1,13 @@
+While I am reading the document, let’s talk about high level storage formats and UI design decisions. Look up the web, 
+think about which formats are easier for the LLM to maintain and make suggestions. DO NOT actually design anything. 
+We are talking about formats. The same goes with the UI. We are talking about Windows only app. Evaluate what options 
+are available and based on the needs propose a tech stack or several. Do not forget about the necessary open-source libraries.
+
+Now, let’s talk about one of the most difficult questions: optimization library. The primary reason why optimization part 
+was not migrated from Wolfram to F# is the lack of a decent F# numerical optimization library. Many people tried to 
+rewrite a lot of old FOTRAN or C math libraries into C# and all attempts came out badly. So, perhaps the solution is 
+NOT to look for a NET library but take a C / C++ or even FORTRAN library (the source code is in the public domain for many years) 
+and do an interpop. This is a straightforward exercise and I have that for ODE solvers. Look up the web, evaluate what’s 
+available (perhaps there are NET libraries now), and provide recommendations.
+
+Write the report into C:\GitHub\Berreman\Temp\006-<description>.md. Make absolutely no other changes.
