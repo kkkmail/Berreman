@@ -1,5 +1,5 @@
 {
-  "agent": "openai-codex",
+  "agent": "claude-code",
   "agents": {
     "claude-code": {
       "path": "%USERPROFILE%/.local/bin/claude.exe"

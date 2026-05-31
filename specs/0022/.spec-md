@@ -1,0 +1,252 @@
+# Spec 0022 — Declarative optical-system constructor (computation expression)
+
+## 0. Binding constraints
+
+This spec adds a declarative F# constructor for the existing
+`BaseOpticalSystem` value (`Berreman/Berreman/Media.fs:63`) so that
+experiments under `Berreman/Analytics/Examples/` stop hand-building
+deep record literals. All work lands in the F# core library
+(`Berreman/Berreman/`), one example script under
+`Berreman/Analytics/Examples/`, and the existing test project
+(`Berreman/BerremanTests/`).
+
+The constructor MUST produce values structurally equal (F#
+structural equality `=`) to today's hand-built records, so the
+existing pipeline consumes them unchanged. The solver core
+(`Berreman/Berreman/BerremanMatrix.fs`) and the solver entry
+point — the `OpticalSystemSolver` type
+(`Berreman/Berreman/Solvers.fs:199`, constructor
+`OpticalSystemSolver (info : IncidentLightInfo, system :
+OpticalSystem, parameters : SolverParameters)`) — MUST NOT be
+modified by this spec.
+
+This spec supersedes the prior "wedge depolarization" placeholder
+that occupied `0022`. Wedge depolarization is NOT in scope here.
+
+> Authoring note: an earlier draft of this spec (see the prior
+> `.history` rows) cited several wrong pointers produced by an
+> unstable tool environment (e.g. `OpticalSystem` at line 303, a
+> `Solvers.solve` function, a `Berreman/Tests/` project). This
+> revision re-grounds every pointer against the live tree.
+
+## 1. Problem statement
+
+Examples under `Berreman/Analytics/Examples/` assemble their
+optical systems by hand as nested record literals.
+`MultilayerThinFilm.fsx:33` is representative: `let filmSystem = {
+description = Some "Multilayer thin film system."; upper =
+OpticalProperties.vacuum; films = [ ... ]; lower =
+OpticalProperties.vacuum }` (the record spans
+`MultilayerThinFilm.fsx:35`–`81`), which it then lifts and makes
+dispersive via `.fullSystem.dispersive` (`MultilayerThinFilm.fsx:84`).
+The outer `{ description; upper; films; lower }` wrapper plus the
+`films` list is deep, easy to mis-order, and recopied per
+experiment.
+
+The relevant core types already exist in
+`Berreman/Berreman/Media.fs`:
+
+- `BaseOpticalSystem` (`Media.fs:63`) = `{ description : string
+  option; upper : OpticalProperties; films : List<Layer>; lower :
+  OpticalProperties }`, the four-field "incident / films / exit"
+  shape this constructor targets. It exposes `member this.fullSystem`
+  (`Media.fs:71`) which lifts it to a full `OpticalSystem`.
+- `OpticalSystem` (`Media.fs:94`, declared `and OpticalSystem =`) =
+  `{ description; upper; films; substrate : Substrate option; lower }`
+  — produced from a `BaseOpticalSystem` via `.fullSystem`; this
+  spec does NOT build `OpticalSystem` directly.
+- `Layer` is the element type of `films : List<Layer>`
+  (`Media.fs`, type `Layer`); the example `films` lists at
+  `MultilayerThinFilm.fsx:37` show how a `Layer` is constructed.
+
+The goal is a thin, declarative surface that emits exactly the
+`BaseOpticalSystem` record above — no new solver behaviour, no new
+optical model.
+
+## 2. Constructor surface — the `baseOpticalSystem` computation expression
+
+The implementation MUST provide a single F# **computation
+expression** named `baseOpticalSystem`. A fluent builder MUST NOT
+be added in addition; pick the computation expression and only
+that.
+
+The CE MUST support exactly these custom operations, and no
+others:
+
+- `description (d : string)` — sets `description = Some d`.
+- `incident (p : OpticalProperties)` — sets `upper = p` (the
+  incident medium).
+- `exit (p : OpticalProperties)` — sets `lower = p` (the exit /
+  transmitted medium).
+- `layer (l : Layer)` — appends one pre-built `Layer` to `films`.
+  This operation MUST be repeatable, and the resulting `films`
+  list MUST preserve the order the `layer` operations appear in
+  the expression (first `layer` = `films` head). The CE MUST NOT
+  introduce a new `Layer` constructor; callers build each `Layer`
+  exactly as the existing `films` lists do (reference:
+  `MultilayerThinFilm.fsx:37`).
+
+Default state when an operation is omitted:
+
+- `description` defaults to `None`.
+- `upper` and `lower` default to `OpticalProperties.vacuum` (the
+  value `MultilayerThinFilm.fsx:36` and `MultilayerThinFilm.fsx:81`
+  use).
+- `films` defaults to `[]`.
+
+The expression MUST evaluate to a `BaseOpticalSystem`
+(`Media.fs:63`). For any inputs, `baseOpticalSystem { incident u;
+layer l; exit x }` MUST equal `{ description = None; upper = u;
+films = [ l ]; lower = x }` under F# `=`.
+
+Implementation MUST use conventional F# CE machinery —
+`[<CustomOperation>]`-attributed builder members plus
+`Yield`/`Zero` to seed the default state. It MUST NOT use
+reflection, quotations, or runtime code generation.
+
+## 3. Placement and project wiring
+
+Add the constructor as a NEW file
+`Berreman/Berreman/OpticalSystemBuilder.fs`, in the same namespace
+as `Berreman/Berreman/Media.fs`, exposing an `[<AutoOpen>]` module
+that makes the types in `Media.fs` visible and binds the
+`baseOpticalSystem` builder value. Placing it in the core library
+(next to the types it builds) keeps every consumer — Analytics,
+Examples, Tests — able to reach it.
+
+Register the file in `Berreman/Berreman/Berreman.fsproj`
+immediately after the `Media.fs` entry (`Berreman.fsproj:45`;
+current order around it is `Media.fs` (45) → `BerremanMatrix.fs`
+(46) → `Solvers.fs` (47)). The new `<Compile
+Include="OpticalSystemBuilder.fs" />` MUST sit after `Media.fs`
+(it depends on `BaseOpticalSystem`/`Layer`) and before
+`BerremanMatrix.fs`.
+
+## 4. Reuse — build on existing primitives
+
+The CE is a constructor only; it MUST reach for what already
+exists rather than inventing parallels:
+
+- `BaseOpticalSystem` (`Media.fs:63`) — the exact output record;
+  do not define a new system record.
+- `BaseOpticalSystem.fullSystem` (`Media.fs:71`) — the existing
+  lift to `OpticalSystem`; callers that need a full system or a
+  dispersive one continue to chain `.fullSystem` / `.dispersive`
+  as today (`MultilayerThinFilm.fsx:84`). The CE itself does NOT
+  add lifting or dispersion operations.
+- `OpticalProperties.vacuum` (used at `MultilayerThinFilm.fsx:36`)
+  — the value callers pass to `incident` / `exit`. The CE MUST NOT
+  introduce new `OpticalProperties` constructors; it consumes
+  whatever `OpticalProperties` value the caller supplies.
+
+## 5. Example migration (proof)
+
+Migrate exactly one example to prove the constructor against a real
+hand-built literal:
+
+- `Berreman/Analytics/Examples/MultilayerThinFilm.fsx` — replace
+  the `let filmSystem = { ... }` record literal
+  (`MultilayerThinFilm.fsx:33`, body `:35`–`81`) with
+  `let filmSystem = baseOpticalSystem { ... }`. The downstream
+  `.fullSystem.dispersive` usage (`MultilayerThinFilm.fsx:84`)
+  MUST remain unchanged.
+
+The migrated `filmSystem` MUST be structurally equal to its
+pre-migration value. The dispersive `Glass.fsx` /
+`Glass_Dispersive.fsx` builders (which assemble a different,
+`*WithDisp` record shape at `Glass.fsx:80` and
+`Glass_Dispersive.fsx:106`) are NOT migrated here; extending the
+constructor to the dispersive variant is a follow-up cycle. No
+other `Examples/*.fsx` script is modified.
+
+## 6. Tests
+
+Add a NEW test file `Berreman/BerremanTests/ConstructorTests.fs`
+and register it in `Berreman/BerremanTests/BerremanTests.fsproj`'s
+`Compile` list. Use the same test framework the sibling tests in
+that project use — read `Berreman/BerremanTests/SolverTests.fs`
+for the framework and module conventions, and follow them.
+
+The tests MUST assert structural equality (`=`) between
+CE-constructed `BaseOpticalSystem` values and the equivalent
+hand-built records for: a single-layer system, a multi-layer
+system (order-preserving), and the default/empty case.
+
+## 7. Out of scope — do not expand
+
+To bound the change against plausible additive hallucination:
+
+- No change to `Berreman/Berreman/BerremanMatrix.fs` or to the
+  `OpticalSystemSolver` type (`Berreman/Berreman/Solvers.fs:199`).
+- No constructor for `OpticalSystem` (`Media.fs:94`) or
+  `ShortOpticalSystem` (`Media.fs:56`); this slice builds only
+  `BaseOpticalSystem`. Lifting stays with the existing
+  `.fullSystem` member.
+- No refactor of `Berreman/Analytics/StandardSystems.fs`;
+  re-expressing its helpers via the new CE is a follow-up.
+- No second construction surface (no fluent builder alongside the
+  CE), no dispersive-variant builder, no caching, no
+  validation/erroring framework, no configuration knobs, no
+  versioning, and no backwards-compatibility shims. The CE is a
+  pure constructor.
+- No new `OpticalProperties`, `Layer`, `Thickness`, `Substrate`,
+  or material / dispersion constructors.
+- No wedge / depolarization modelling (the superseded placeholder
+  subject).
+
+## Acceptance criteria
+
+- AC-A1: `baseOpticalSystem { incident u; layer l; exit x }`
+  returns a value equal under F# `=` to `{ description = None;
+  upper = u; films = [ l ]; lower = x }` (`Media.fs:63`).
+- AC-A2: Multiple `layer` operations preserve order —
+  `baseOpticalSystem { layer l1; layer l2 }` yields `films =
+  [ l1; l2 ]`.
+- AC-A3: With no `incident`/`exit`/`layer`/`description` supplied,
+  the CE yields `description = None`, `upper = OpticalProperties.vacuum`,
+  `lower = OpticalProperties.vacuum`, `films = []`.
+- AC-A4: After migration, `MultilayerThinFilm.fsx`'s `filmSystem`
+  is structurally equal to its pre-migration value, and
+  `.fullSystem.dispersive` (`MultilayerThinFilm.fsx:84`) still
+  type-checks and runs unchanged.
+- AC-A5: `Berreman/Berreman/BerremanMatrix.fs` and the
+  `OpticalSystemSolver` type (`Berreman/Berreman/Solvers.fs:199`)
+  are unchanged by this spec; a system built via the CE and lifted
+  with `.fullSystem` solves identically to the hand-built
+  equivalent.
+- AC-A6: `Berreman/BerremanTests/ConstructorTests.fs` exists, is
+  registered in `BerremanTests.fsproj`, contains tests covering
+  AC-A1 through AC-A3, and they pass under the `unit-tests` gate.
+- AC-A7: The solution builds (the `build` gate) with
+  `OpticalSystemBuilder.fs` registered in `Berreman.fsproj` after
+  `Media.fs`, and no `Examples/*.fsx` other than
+  `MultilayerThinFilm.fsx` is modified.
+
+## Files in scope
+
+- `Berreman/Berreman/OpticalSystemBuilder.fs` (new) — the
+  `baseOpticalSystem` computation expression.
+- `Berreman/Berreman/Berreman.fsproj` (edit) — register the new
+  file after `Media.fs`.
+- `Berreman/Analytics/Examples/MultilayerThinFilm.fsx` (edit) —
+  migrate the `filmSystem` literal to the CE.
+- `Berreman/BerremanTests/ConstructorTests.fs` (new) — equality
+  tests.
+- `Berreman/BerremanTests/BerremanTests.fsproj` (edit) — register
+  the new test file.
+
+## Test artifacts
+
+- `Berreman/BerremanTests/ConstructorTests.fs` — tests (using the
+  framework of `Berreman/BerremanTests/SolverTests.fs`) asserting
+  structural equality between CE-built and hand-built
+  `BaseOpticalSystem` values for the single-layer, multi-layer
+  (ordered), and default cases. The `unit-tests` gate runs the
+  `BerremanTests` project.
+
+## References
+
+- F# computation expressions (Microsoft Learn):
+  https://learn.microsoft.com/en-us/dotnet/fsharp/language-reference/computation-expressions
+- F# computation expressions intro (fsharpforfunandprofit):
+  https://fsharpforfunandprofit.com/posts/computation-expressions-intro/
