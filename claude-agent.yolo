@@ -1,0 +1,134 @@
+{
+  "account": {
+    "name": "claude-agent",
+    "description": "Restricted account for Claude Code YOLO mode"
+  },
+
+  "writable_folders": [
+    {
+      "path": "C:\\GitHub\\AI-Strategy-Generator",
+      "comment": "Repo path"
+    },
+    {
+      "path": "C:\\GitHub\\AI-Strategy-Generator-UPGRADE",
+      "comment": "Repo path"
+    },
+    {
+      "path": "C:\\GitHub\\Softellect",
+      "comment": "Repo path"
+    },
+    {
+      "path": "C:\\GitHub\\Berreman",
+      "comment": "Repo path"
+    },
+    {
+      "path": "C:\\GitHub\\Avalonia.FuncUI.Clone",
+      "comment": "Repo path"
+    },
+    {
+      "path": "C:\\Temp",
+      "comment": "Scratch space — no git here"
+    }
+  ],
+
+  "readable_folders": [
+    {
+      "path": "{{USERPROFILE}}\\AppData\\Local\\Android\\Sdk",
+      "comment": "Android SDK — read-only access for build tooling"
+    },
+    {
+      "path": "{{USERPROFILE}}\\.android",
+      "comment": "Android SDK — read-only access for build tooling"
+    },
+    {
+      "path": "C:\\OpenAI\\Codex\\",
+      "comment": "Codex global folder"
+    }
+  ],
+
+  "user_profile": {
+    "permissions": "inherit",
+    "exclude_folders": [],
+    "comment": "'inherit' applies ACL to top folder only (children inherit). 'recursive' walks all children explicitly."
+  },
+
+  "filesystem": {
+    "parent_listing": false,
+    "comment": "If true, account can 'dir' parent directories (sees folder names). If false, can only traverse (cd through). Set true if tools break."
+  },
+
+  "tools": {
+    "unrestricted": true,
+    "comment": "If true (default), account keeps Users group read+execute on Program Files, Windows, etc. If false, only allowed_paths below are accessible — you MUST list everything the agent needs.",
+    "allowed_paths": [
+      {
+        "path": "C:\\Program Files\\nodejs",
+        "comment": "Node.js runtime"
+      },
+      {
+        "path": "C:\\Program Files\\Git",
+        "comment": "Git CLI (read-only ops only — .git write is ALWAYS denied)"
+      },
+      {
+        "path": "C:\\Python312",
+        "comment": "Python 3.12 — adjust version to match your install"
+      },
+      {
+        "path": "C:\\Program Files\\PowerShell",
+        "comment": "PowerShell 7+"
+      },
+      {
+        "path": "C:\\Windows\\System32\\cmd.exe",
+        "comment": "Command prompt"
+      },
+      {
+        "path": "C:\\Windows\\System32\\WindowsPowerShell",
+        "comment": "Built-in PowerShell 5.1"
+      }
+    ]
+  },
+
+  "mcp_servers": [
+    {
+      "name":    "tool-server",
+      "port":    7351,
+      "command": "python",
+      "args": [
+        "C:\\GitHub\\AI-Strategy-Generator\\yolo\\tools\\tool-server\\server.py"
+      ]
+    }
+  ],
+
+  "databases": {
+    "servers": [
+      {
+        "server": "localhost",
+        "instance": "",
+        "comment": "Default instance. Use 'instance': 'SQL2019' for named instances.",
+        "databases": [
+          {
+            "name": "msg901_04",
+            "access": "read_write",
+            "execute": true,
+            "view_definition": true,
+            "comment": "Messaging DataAccess — type provider needs EXECUTE + VIEW DEFINITION for stored procedures and views"
+          },
+          {
+            "name": "prt901_04",
+            "access": "read_write",
+            "execute": true,
+            "view_definition": true,
+            "comment": "DistributedProcessing PARTITIONER — type provider needs EXECUTE + VIEW DEFINITION"
+          },
+          {
+            "name": "wns901_04",
+            "access": "read_write",
+            "execute": true,
+            "view_definition": true,
+            "comment": "DistributedProcessing WORKER_NODE — same schema as prt901_04"
+          }
+        ]
+      }
+    ]
+  }
+}
