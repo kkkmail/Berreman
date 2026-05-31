@@ -1,0 +1,370 @@
+# Spec 0022 — Optical Constructor foundation: beam-tree domain model, canonical JSON persistence, and photon-energy units
+
+## 0. Binding constraints (apply to every part)
+
+- **0.1 — Language and platform.** All new code in this spec MUST be F# targeting
+  `net10.0`, matching every project already in the solution
+  (`Berreman/Berreman.slnx`; e.g. `Berreman/OpticalModel/OpticalModel.fsproj:4`
+  pins `<TargetFramework>net10.0</TargetFramework>`). No new language or runtime
+  is introduced.
+- **0.2 — Reuse the engine, do not fork it.** The new domain model MUST wrap the
+  existing engine value types by reference, not re-declare them. The three the
+  implementer reaches for first:
+  - `IncidentLightInfo` (`Berreman/Berreman/Fields.fs:338`) — the source's
+    wavelength / refraction index / incidence angle / polarization / ellipticity.
+  - `OpticalSystem` (`Berreman/Berreman/Media.fs:94`) — a sample's full
+    upper / films / substrate / lower stack.
+  - `Polarization` (`Berreman/Berreman/Fields.fs:314`) — a polarizer's /
+    analyzer's transmission axis.
+- **0.3 — Scope of THIS spec is the foundation only.** This spec delivers three
+  things and nothing else: (A) the beam-tree topology domain model, (B) its
+  canonical JSON persistence, (C) the photon-energy unit conversions. The
+  following are committed product scope (per
+  `specs/0022/.manual/010-optical-constructor-spec-and-tech-stack.md`) but are
+  **explicitly deferred to later cycles** and MUST NOT be implemented here:
+  the Avalonia.FuncUI desktop UI; the materials / dispersion-model library;
+  design-synthesis / optimization / inverse-fitting (ALGLIB); the chart layer
+  (ScottPlot / Plotly.NET); per-branch field *evaluation / solving*; lens and
+  curved-mirror *physics*; the `.binz` bulk-results format.
+- **0.4 — Plausible-expansion exclusions.** A downstream implementer is prone to
+  adding the following; none are in scope and each MUST be omitted:
+  - **No solver invocation.** This spec models and persists topology and
+    parameters only. It MUST NOT call `OpticalSystemSolver`
+    (`Berreman/Berreman/Solvers.fs:199`) or compute any reflected / transmitted
+    field. Wiring evaluation onto the tree is a future cycle.
+  - **No change to engine types.** `OpticalSystem`, `IncidentLightInfo`,
+    `WaveLength` (`Berreman/Berreman/Fields.fs:280`), and the `Eps`/`Mu`/`Rho`
+    tensors MUST NOT be edited. In particular the `WaveLength` DU MUST NOT be
+    extended with an eV case — photon-energy conversion lives in `Constants.fs`
+    (Part C) and is applied at the domain/IO boundary.
+  - **No caching, retry, async, configuration knobs, versioning shims, or
+    backwards-compatibility migration code.** Every persisted document this
+    cycle produces is written by this cycle's writer; there is no prior on-disk
+    format to migrate from, so the loader starts from a blank slate.
+  - **No new optimization / linear-algebra backend.** The math seam stays as it
+    is (`Berreman/Berreman/MathNetNumericsMath.fs:3-4`); ALGLIB is a forward
+    decision recorded for the deferred optimization cycle, not wired here.
+
+---
+
+## Part A — Beam-tree domain model (CRITICAL — land first)
+
+### A.0 Problem statement
+
+The repository is a strong 1-D Berreman 4×4 transfer-matrix engine: given one
+`IncidentLightInfo` and one `OpticalSystem`, `BaseOpticalSystemSolver` already
+produces an `EmFieldSystem` holding the **incident, reflected, and transmitted**
+fields (`Berreman/Berreman/Solvers.fs:140-147`; `EmFieldSystem` at
+`Berreman/Berreman/Fields.fs:550`). What the engine has no notion of is a
+*system of elements*: the central act of an optical-constructor app is to chain
+elements (source → polarizer → sample → analyzer → detector) and, because almost
+every element emits **both** a reflected and a transmitted beam, to attach
+further elements to **either** output. The system is therefore a **tree of
+beams**, not a linear chain, and mirrors are the deliberate exception that carry
+a reflected branch only.
+
+This part introduces that orchestration/topology layer as a pure F# domain model:
+element identity and classification, the branching tree, and the invariants that
+make the tree well-formed. It is the foundation every later feature (UI,
+evaluation, optimization, persistence of whole projects) hangs off. Per §0.3 it
+models structure and parameters only; it performs no solving.
+
+**Interpretation recorded (no question raised).** The preliminary research lists
+a broad element palette and many features. The most defensible first deliverable
+under this project's minimum-implementation discipline is the topology layer plus
+its persistence and units, with evaluation and the UI deferred. Element kinds
+whose physics the engine does not yet evaluate (lens, curved mirror) are modelled
+as **parameter-carrying nodes** so the palette and the tree are expressible and
+serialisable now; their physics is a named later cycle.
+
+**Home project.** The new model lands in the existing, currently-stub
+`OpticalModel` project (namespace `Softellect.Berreman.OpticalModel`,
+`Berreman/OpticalModel/Primitives.fs:1`, whose body is the placeholder
+`let x = 1`). That project today declares no reference to the engine
+(`Berreman/OpticalModel/OpticalModel.fsproj` compiles only `Primitives.fs` and
+references no other project); A.6 adds the engine reference. Reusing this project
+rather than creating a new one honours reuse-before-invention.
+
+### A.1 Define element identity and classification
+
+Add `Berreman/OpticalModel/OpticalElement.fs` declaring, in namespace
+`Softellect.Berreman.OpticalModel`:
+
+- An **element id** type `ElementId` wrapping a `System.Guid` (single-case DU),
+  with a `create` that takes an explicit `Guid` argument. The constructor MUST
+  NOT call `Guid.NewGuid()` internally — id minting is the caller's concern, so
+  that construction is deterministic and unit-testable.
+- A **mirror classification** DU `ElementClass` with exactly two cases,
+  `Mirror` and `NonMirror`. This is the single source of truth for the branching
+  rule in A.3.
+
+### A.2 Define the element-kind catalogue
+
+In the same file, declare an `ElementKind` DU enumerating the palette, each case
+carrying the minimum parameters needed to describe (not evaluate) the element:
+
+- `LightSource of IncidentLightInfo` — reuse `Berreman/Berreman/Fields.fs:338`.
+- `Polarizer of Polarization` — reuse `Berreman/Berreman/Fields.fs:314`.
+- `Sample of OpticalSystem` — reuse `Berreman/Berreman/Media.fs:94`; this is the
+  film / plate / wedge stack the engine already understands.
+- `Analyzer of Polarization`.
+- `Detector`.
+- `Lens of LensParameters` — a net-new record holding front/back radius of
+  curvature, clear aperture, a substrate-material reference, and optional
+  surface-coating references, all as plain scalars / ids. No optical evaluation.
+- `CurvedMirror of CurvedMirrorParameters` — a net-new record holding radius of
+  curvature, aperture, and an optional coating reference.
+
+`LensParameters` and `CurvedMirrorParameters` MUST be flat records of primitives
+(floats, ids, options); they MUST NOT embed solver state or `OpticalProperties`
+tensors. Each new record MUST trace only to the palette named here — no extra
+fields beyond curvature/aperture/coating/substrate.
+
+### A.3 Define the optical element and the mirror invariant source
+
+In the same file, declare the `OpticalElement` record:
+
+- `id : ElementId`
+- `name : string`
+- `kind : ElementKind`
+- `elementClass : ElementClass`
+- `defaultLengthUnit : LengthUnit` (A.4)
+- `defaultSpectralUnit : SpectralUnit option` — `Some` only for a `LightSource`,
+  `None` otherwise.
+
+Provide a helper `OpticalElement.isMirror` returning `true` iff
+`elementClass = Mirror`. `elementClass` — not the `ElementKind` case — is the
+authority for branching, so the operator MAY classify a highly-reflective
+`Sample` as a mirror; `CurvedMirror` SHOULD default to `Mirror` at construction.
+
+### A.4 Define per-element units
+
+In `Berreman/OpticalModel/OpticalElement.fs` declare two DUs used as the
+per-element default unit (the conversion arithmetic itself is Part C):
+
+- `LengthUnit` with cases `Meter | Millimeter | Micrometer | Nanometer |
+  Angstrom`.
+- `SpectralUnit` with cases `Nanometer | Micrometer | Angstrom | ElectronVolt |
+  Wavenumber` (Wavenumber = cm⁻¹).
+
+These DUs carry no behaviour beyond identifying the unit; they exist so an
+element remembers the unit it was authored in (a plate in mm, a film in nm, an
+EUV source in eV) while the canonical internal representation stays SI meters as
+the engine already requires (`Berreman/Berreman/Constants.fs:27-33`). Conversion
+to/from canonical units happens through the Part C functions at the IO boundary.
+
+### A.5 Define the beam tree and enforce the mirror invariant
+
+Add `Berreman/OpticalModel/BeamTree.fs` (namespace
+`Softellect.Berreman.OpticalModel`) declaring:
+
+- A recursive `BeamTree` modelling a node and its branches, e.g.
+  `BeamTree of OpticalElement * BeamBranches`, where `BeamBranches` is a record
+  `{ reflected : BeamTree option; transmitted : BeamTree option }`. A `None`
+  branch is an open / terminated beam; a `Some` branch continues with a downstream
+  sub-tree.
+- A smart constructor (e.g. `BeamTree.create : OpticalElement -> BeamBranches ->
+  Result<BeamTree, string>`) that enforces the invariant: **when the element is a
+  mirror (`OpticalElement.isMirror`), `transmitted` MUST be `None`**; a mirror
+  node with a non-`None` transmitted branch MUST yield `Error` naming the
+  violation. A non-mirror element MAY carry either, both, or neither branch.
+- A `leaf : OpticalElement -> BeamTree` convenience that builds a node with both
+  branches `None` (valid for mirrors and non-mirrors alike).
+- An `attach` helper (e.g.
+  `attach : RT -> BeamTree -> BeamTree -> Result<BeamTree, string>`) that places a
+  sub-tree on the reflected or transmitted branch of a parent and re-checks the
+  invariant, reusing the engine's existing `RT` discriminator
+  (`Reflected | Transmitted`, `Berreman/Berreman/Fields.fs:61`) rather than
+  introducing a new branch-selector DU.
+
+The model MUST be plain data and total functions only — no reflection, dynamic
+dispatch, mutable global state, or runtime metaprogramming. Branch routing MUST
+be traceable by reading these two files.
+
+### A.6 Wire the project
+
+Edit `Berreman/OpticalModel/OpticalModel.fsproj` to:
+
+- add a `<ProjectReference Include="..\Berreman\Berreman.fsproj" />` so the
+  engine types in §0.2 are in scope;
+- add `OpticalElement.fs` and `BeamTree.fs` to the `<Compile>` item group, before
+  `Serialization.fs` (Part B), in dependency order.
+
+`Primitives.fs` MUST be left unchanged.
+
+---
+
+## Part B — Canonical JSON persistence
+
+### B.0 Problem statement
+
+A domain model that cannot be saved and reloaded is not usable. The agreed
+storage decision is canonical JSON with a published JSON Schema validated on load
+(preliminary research Part III §2). This part serialises the Part A `BeamTree` to
+canonical JSON and back with round-trip fidelity, and validates documents against
+a shipped schema on load. Bulk numeric results (`.binz`) are out of scope (§0.3):
+this cycle produces no bulk results to store.
+
+### B.1 Serialization library and converters
+
+Add `Berreman/OpticalModel/Serialization.fs`. The implementer reaches for these
+primitives first:
+
+- **`System.Text.Json`** — the serializer core.
+- **`FSharp.SystemTextJson`** (Tarmil) — idiomatic F# DU / record / option / list
+  serialization; register its `JsonFSharpConverter` on a single shared
+  `JsonSerializerOptions`.
+- A **`System.Numerics.Complex` converter** — the only leaf type the F# converter
+  does not cover, because `Sample of OpticalSystem` reaches `Eps`/`Mu`/`Rho`
+  tensors built on `ComplexMatrix3x3` (`Berreman/Berreman/MaterialProperties.fs:59`),
+  whose elements are `System.Numerics.Complex`. Serialise each `Complex` as a
+  two-field object `{ "re": <number>, "im": <number> }`. F# units-of-measure on
+  fields such as `double<nm>` are erased at runtime and serialise as plain
+  numbers, so they need no converter.
+
+Expose one shared `options` value and the save / load entry points; do not create
+a per-call options instance.
+
+### B.2 Save and load entry points
+
+In `Serialization.fs` provide:
+
+- `BeamTreeDocument.save : string -> BeamTree -> unit` — serialise a tree to the
+  canonical document at the given path.
+- `BeamTreeDocument.load : string -> Result<BeamTree, string>` — read a document,
+  validate it against the schema (B.3), and deserialise; a schema-invalid or
+  structurally-invalid document MUST yield `Error` with a message naming the
+  offending JSON path, never a partially-constructed tree.
+
+### B.3 Schema and validate-on-load
+
+- Ship a JSON Schema at `Berreman/OpticalModel/schemas/optical-system.schema.json`
+  describing the canonical document (the `BeamTree` shape and its element-kind
+  union).
+- Validate every document against that schema during `load` using
+  **`JsonSchema.Net`** before deserialising. The schema file MUST be loaded
+  relative to the assembly location (a path resolved from
+  `System.Reflection.Assembly` location), not from a hard-coded absolute path.
+
+### B.4 On-disk naming and committable-state check
+
+- The canonical document extension is **`.ocsys.json`** ("optical-constructor
+  system"). It was cross-checked against the repository root `.gitignore`: the
+  only global content patterns there are `*.[Cc]ache` (`.gitignore:209`), `*.log`
+  (`.gitignore:80`), `*.tmp` (`.gitignore:78`), and `/data` (`.gitignore:331`);
+  `*.json` and `*.ocsys.json` collide with none of them, so example documents and
+  the schema are committable with no `!`-override dance required.
+- Ship at least one example document
+  `Berreman/OpticalModel/examples/source-sample-detector.ocsys.json` representing a
+  source → sample → detector tree, used by the round-trip test (Test artifacts).
+
+---
+
+## Part C — Photon-energy and Ångström units
+
+### C.0 Problem statement
+
+The engine's `Constants.fs` defines the `meter` / `mm` / `mkm` / `nm` measures and
+their meter conversions (`Berreman/Berreman/Constants.fs:5-33`) but has no
+Ångström, electron-volt, or wavenumber support. EUV / free-electron-laser work is
+specified in eV and spectroscopy in cm⁻¹, so the per-element `SpectralUnit`
+(A.4) needs these conversions to map to/from the engine's canonical
+wavelength-in-meters representation.
+
+### C.1 Add the conversions to `Constants.fs`
+
+Edit `Berreman/Berreman/Constants.fs` (additive only — existing declarations
+unchanged) to add:
+
+- An `[<Measure>] type angstrom` and `angstromToMeter : double<meter/angstrom> =
+  1.0e-10<meter/angstrom>`, mirroring the existing `nmToMeter` /`mkmToMeter`
+  /`mmToMeter` form.
+- A photon-energy conversion pair between electron-volts and wavelength in
+  nanometres using `E[eV] = 1239.841984 / λ[nm]` (the hc value; the research's
+  `1239.84` is the rounded form): `evFromNm : double<nm> -> double` and
+  `nmFromEv : double -> double<nm>`.
+- A wavenumber conversion pair using `ν̃[cm⁻¹] = 1.0e7 / λ[nm]`:
+  `wavenumberFromNm : double<nm> -> double` and `nmFromWavenumber : double ->
+  double<nm>`.
+
+These are pure functions / constants. They MUST NOT alter the `WaveLength` DU
+(`Berreman/Berreman/Fields.fs:280`) or any solver path (§0.4).
+
+---
+
+## Acceptance criteria
+
+### Part A acceptance
+- **AC-A1:** After calling the `BeamTree` smart constructor with a mirror element
+  (`elementClass = Mirror`) and a non-`None` `transmitted` branch, the call MUST
+  return `Error` naming the mirror-transmitted-branch violation, and MUST NOT
+  return a `BeamTree`.
+- **AC-A2:** After calling the smart constructor with a non-mirror element, the
+  call MUST return `Ok` for every combination of `reflected`/`transmitted` being
+  `None` or `Some`.
+- **AC-A3:** For any constructed `OpticalElement`, `defaultSpectralUnit` MUST be
+  `Some` when `kind` is `LightSource` and `None` for every other kind, and
+  `defaultLengthUnit` MUST be present (a `LengthUnit` case) on every element.
+- **AC-A4:** The `ElementKind` DU MUST expose the seven cases of A.2;
+  `LightSource` MUST wrap `IncidentLightInfo` and `Sample` MUST wrap
+  `OpticalSystem` by reference (constructible from the engine values without
+  copying their fields).
+
+### Part B acceptance
+- **AC-B1:** For any `BeamTree` built via the Part A constructors, `load (save t)`
+  MUST return `Ok t'` where `t'` is structurally equal to `t` (round-trip
+  identity), including a `Sample of OpticalSystem` node whose `Eps`/`Mu`/`Rho`
+  complex entries survive the round trip.
+- **AC-B2:** `load` of a document that violates
+  `schemas/optical-system.schema.json` MUST return `Error` with a message naming
+  the offending JSON path; `load` of the shipped example document MUST return
+  `Ok`.
+- **AC-B3:** The canonical extension `.ocsys.json` MUST NOT match any global
+  content pattern in the root `.gitignore`, so a committed `*.ocsys.json` file is
+  tracked by `git` without an override.
+
+### Part C acceptance
+- **AC-C1:** `evFromNm` and `nmFromEv` MUST satisfy `E·λ ≈ 1239.841984`
+  (eV·nm) and be mutual inverses within a 1e-9 relative tolerance;
+  `wavenumberFromNm 500.0<nm>` MUST equal `2.0e4` cm⁻¹ within the same tolerance;
+  `angstromToMeter` MUST convert `1.0<angstrom>` to `1.0e-10` m exactly.
+
+## Files in scope
+- `Berreman/OpticalModel/OpticalElement.fs` (new) — `ElementId`, `ElementClass`,
+  `ElementKind`, `LensParameters`, `CurvedMirrorParameters`, `OpticalElement`,
+  `LengthUnit`, `SpectralUnit`.
+- `Berreman/OpticalModel/BeamTree.fs` (new) — `BeamTree`, `BeamBranches`, smart
+  constructor, `leaf`, `attach`.
+- `Berreman/OpticalModel/Serialization.fs` (new) — shared `JsonSerializerOptions`,
+  `Complex` converter, `BeamTreeDocument.save` / `.load`, schema validation.
+- `Berreman/OpticalModel/schemas/optical-system.schema.json` (new) — canonical
+  document schema.
+- `Berreman/OpticalModel/examples/source-sample-detector.ocsys.json` (new) —
+  example document for the round-trip test.
+- `Berreman/OpticalModel/OpticalModel.fsproj` (edit) — add engine
+  `ProjectReference`, the three new `Compile` items in dependency order, and the
+  `FSharp.SystemTextJson` and `JsonSchema.Net` package references; copy the
+  `schemas/` and `examples/` content to output.
+- `Berreman/Berreman/Constants.fs` (edit) — add `angstrom` measure and the eV /
+  cm⁻¹ / Ångström conversions.
+- `Berreman/BerremanTests/BeamTreeTests.fs` (new) — Part A + Part B tests.
+- `Berreman/BerremanTests/UnitConversionTests.fs` (new) — Part C tests.
+- `Berreman/BerremanTests/BerremanTests.fsproj` (edit) — add a
+  `ProjectReference` to `OpticalModel.fsproj` and the two new `Compile` items.
+
+## Test artifacts
+- `Berreman/BerremanTests/BeamTreeTests.fs` — xUnit v3 facts plus FsCheck
+  properties (both already referenced in
+  `Berreman/BerremanTests/BerremanTests.fsproj:39-51`) covering AC-A1..AC-A4 and
+  AC-B1..AC-B2; FluentAssertions for structural-equality assertions on the
+  round-tripped tree.
+- `Berreman/BerremanTests/UnitConversionTests.fs` — xUnit facts covering AC-C1.
+- `Berreman/OpticalModel/examples/source-sample-detector.ocsys.json` — the fixture
+  document loaded by the AC-B2 success case.
+
+## References
+- Preliminary research and agreed tech stack:
+  `specs/0022/.manual/010-optical-constructor-spec-and-tech-stack.md`
+- [FSharp.SystemTextJson](https://github.com/Tarmil/FSharp.SystemTextJson)
+- [JsonSchema.Net](https://docs.json-everything.net/schema/basics/)
+- [Sequential vs. non-sequential (ray-splitting) optical modes — Edmund Optics](https://www.edmundoptics.com/knowledge-center/application-notes/optics/sequential-and-non-sequential-modes/)

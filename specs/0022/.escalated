@@ -1,0 +1,7 @@
+{
+  "reason": "out-of-scope: Temp/0022-spec-author-output.txt (allowed: .spec-md, .history, .manual, .manual/*, .artifacts, .artifacts/*)",
+  "trigger": "out-of-scope",
+  "intent": "spec",
+  "at": "2026-05-31T04:51:34Z",
+  "operator_action": "review the reason; either add an operator-reply hint via the composer or edit the spec to relax the failing structural rule, then re-submit the cycle"
+}
