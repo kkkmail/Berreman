@@ -63,6 +63,26 @@ suites (LightTools, TracePro, Speos).
   detector**. This is the central act of an optical constructor: pick elements from a
   palette, order them, connect them, and run the whole train. (Net-new orchestration
   layer above the existing single-system solver.)
+- **[Core]** **Branching beam paths (reflected & transmitted) — a system tree, not just
+  a chain.** A real system can be large and is generally **not a single linear chain**:
+  almost every element produces **both a reflected and a transmitted beam**, and the user
+  can place further elements in front of **either** output. The system is therefore a
+  **tree of beams** — each non-mirror element is a node that splits incident light into a
+  transmitted branch and a reflected branch, and downstream sub-systems can be attached to
+  each branch independently (the standard "ray-splitting" / branching model used by
+  non-sequential optical design). The Berreman solver already yields the reflected and
+  transmitted fields at each element, so this is an **orchestration/topology layer** that
+  routes those two outputs onward and propagates energy and polarization (Jones/Stokes)
+  along every branch. Specifics:
+  - **Mirrors are a deliberate special case:** an element classified as a *mirror*
+    supports the **reflected branch only** — by design we ignore its transmitted light
+    even if some physically leaks through. Only the reflected output can carry downstream
+    elements.
+  - Every **non-mirror** element exposes **two attachment points** (reflected,
+    transmitted); a branch may be left open (terminated by a detector or by nothing) or
+    continued with another element or sub-assembly.
+  - Each branch carries its own beam state (direction, energy, polarization), so detectors
+    on different branches report independent results.
 - **[Core]** **Lenses and non-flat (curved) mirrors as elements** — without focusing
   elements a plane wave can never be converted into a converging/diverging beam or an
   image. Support spherical/aspheric lenses and concave/convex mirrors, each with
@@ -427,6 +447,12 @@ ALGLIB is used for **optimization only**, not for linear algebra.
   [TracePro](https://lambdares.com/tracepro) ·
   [Ansys Speos](https://www.ansys.com/products/optics/ansys-speos) ·
   [Photopia](https://www.ltioptics.com/en/)
+
+**Branching beam paths (reflected & transmitted / ray splitting)**
+- [Sequential vs. non-sequential modes (Edmund Optics)](https://www.edmundoptics.com/knowledge-center/application-notes/optics/sequential-and-non-sequential-modes/) ·
+  [Sequential vs non-sequential ray tracing (Zemax/Ansys)](https://support.zemax.com/hc/en-us/articles/1500005489061-What-is-the-difference-between-sequential-and-non-sequential-ray-tracing) ·
+  [Splitting rays into many directions (OpticStudio non-sequential)](https://support.zemax.com/hc/en-us/articles/30802376332435-Splitting-Rays-into-Many-Directions-in-OpticStudio-Non-Sequential-Mode) ·
+  [Tracing rays sequentially and non-sequentially (Synopsys)](https://www.synopsys.com/optical-solutions/learn/sequential-vs-nonsequential.html)
 
 **Storage formats & libraries**
 - [FSharp.SystemTextJson](https://github.com/Tarmil/FSharp.SystemTextJson) ·
