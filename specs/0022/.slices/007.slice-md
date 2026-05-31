@@ -1,0 +1,211 @@
+# 007 — Design synthesis, optimization & fitting (Part G)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part G**.
+- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A §A.8) fixed the numerical-library boundary (ALGLIB-for-optimization-only) and created `OpticalConstructor.Optimization`.
+- `C:\GitHub\Berreman\specs\0022\.slices\006.slice-md` — slice 006 (Part F §F.5) authored `psiDelta`, which §G.6 reuses for ellipsometric residuals and MUST NOT fork.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-G1: After `optimize` is called with an `OptimizationRequest` whose `method` is `LevenbergMarquardt`, the ALGLIB adapter MUST return an `OptimizationResult` (or `Result.Error`) without any ALGLIB type or exception crossing the G.1 interface boundary, within the request's `maxIterations`.
+- AC-G2: After a `DesignParameter list` and a `float[]` solution vector are folded over a base `OpticalSystem`, the produced system MUST reflect each parameter (e.g. layer `Thickness` in canonical meters) with no value stored in a non-SI unit.
+- AC-G3: After a [Core] local-refinement run on a target/merit set with a lower-bounded thickness of 0, the returned refined `OpticalSystem` MUST contain no negative `Thickness` and MUST satisfy each `Inequality` target's hinge to zero within tolerance.
+- AC-G4: After loading measured R/T or Ψ,Δ CSV data and running inverse fitting, the resulting `FitTarget` sample points MUST be stored in meters via `WaveLength.value`, and the fit MUST reduce χ² below its initial value.
+- AC-G5: After a fit completes, the `FitReport` MUST expose χ²/MSE, a parameter correlation matrix, confidence intervals, and per-sample residuals, and MUST be writable as a `.binz` sidecar (never inside the canonical JSON project).
+- AC-G6: After needle optimization inserts a layer, the films list MUST grow by exactly one `Layer` and the post-insertion merit value MUST be no greater than the pre-insertion value.
+- AC-G7: After clicking Cancel on a running optimizer, the G.5/G.9 loop MUST stop cooperatively and the page MUST be able to Revert to the pre-fit working `OpticalSystem`; Cancel MUST be a distinct control from Start.
+- AC-G8: After a fit completes, the result charts MUST refresh through `plotComparison` showing fit-vs-measured overlay without a manual reload.
+- AC-G9: After running `LocalRefinement` with `LevenbergMarquardt` on the Wolfram reference R/T and Ψ/Δ cases, the converged parameters and final χ² MUST match the recorded Wolfram values within the stated test tolerance.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/OptimizationInterface.fs` (new) — library-agnostic optimization interface (Residual/Jacobian/bounds/method/result, `optimize`) (G.1)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs` (new) — sole ALGLIB-referencing file; maps methods to the 010 §III.4 routines minlm/minbleic/minnlc/minlbfgs; `NelderMead` simplex backend deferred (G.2), not bound to a spec-invented routine
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/DesignParameters.fs` (new) — float[]⇄OpticalSystem mapping reusing `ArbitraryVariable.getSys` seam (G.3)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/MeritFunction.fs` (new) — [Core] target/merit editor model; weighted LSQ residual via `Solution.func` (G.4)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/LocalRefinement.fs` (new) — [Core] LM/quasi-Newton/simplex refinement entry point (G.5)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/Ellipsometry.fs` (new) — [Standard] Ψ/Δ from reflected r_p/r_s amplitudes; net-new `EllipsometricFunction` DU (shares §F.5 derivation) (G.6)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs` (new) — [Standard] measured R/T + Ψ,Δ import (FSharp.Data) to FitTargets (G.7)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/FitQuality.fs` (new) — [Standard] χ²/MSE, CI, correlation, residuals; covariance via math seam; FitReport (G.8)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/Synthesis.fs` (new) — [Standard] needle/tunnelling + simulated annealing / GA (G.9)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/SynthesisFitPage.fs` (new) — FuncUI MVU Synthesis/Fit operator page (G.10 checklist)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` (edit) — register the new files in compile order; add the ALGLIB `PackageReference`; ensure Domain (and the Berreman/Analytics solver seam) are referenced.
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (edit) — register `SynthesisFitPage.fs`.
+- `C:/GitHub/Berreman/Berreman/BerremanTests/OptimizationTests.fs` (new) — Wolfram minlm validation + bounded-fit tests; added to `BerremanTests.fsproj` (`Berreman.slnx:20`) (G.11)
+- `C:/GitHub/Berreman/Berreman/BerremanTests/BerremanTests.fsproj` (edit) — register `OptimizationTests.fs`.
+
+Test artifacts owned by this slice (G.11): `BerremanTests/OptimizationTests.fs` — recorded-Wolfram fixtures (converged params + final χ² for one thin-film R/T case and one Ψ/Δ ellipsometric case): `LocalRefinement` + `LevenbergMarquardt` reproduce them within tolerance over the full DesignParameters→MeritFunction→optimize→AlglibAdapter→OpticalSystemSolver path (no stub) (AC-G9); bounded-fit test: a thickness started outside its range terminates inside the G.3 bounds with no negative `Thickness` (AC-G3); needle-insertion test: films list grows by one `Layer` and post-insertion merit ≤ pre-insertion (AC-G6); plus the Mueller-equivalence, energy-balance, ellipsometry round-trip, and colorimetry-sanity re-checks of Part F (AC-F3/AC-F5/AC-F7/AC-F8) the parent test-artifacts list assigns to this file.
+
+### File:line references owned by this slice
+
+All file:line references in the verbatim G.0–G.11 directives reproduced under **Requirements** are owned by this slice (notably: `Solvers.fs:199`, `Solvers.fs:74`, `Media.fs:94`, `Media.fs:12`, `Media.fs:24`, `Media.fs:34`, `Fields.fs:338`, `Fields.fs:550`, `Fields.fs:284`, `FieldFunctions.fs:109`, `FieldFunctions.fs:130,133,157,165`, `FieldFunctions.fs:192`, `Dispersion.fs:53`, `Variables.fs:37`, `Variables.fs:42`, `Variables.fs:263`, `MathNetNumericsMath.fs:5`, `ExtremeNumericsMath.fs:5`, `Charting.fs:38`, `Core.fs:257`, `Berreman.slnx:20`; the 010 §III.4 routine list `minlm`/`minbleic`/`minnlc`/`minlbfgs`/`mincg`/`lsfit`).
+
+## Scope
+
+This slice owns the inverse and synthesis half of the application: a library-agnostic optimization interface; the sole ALGLIB adapter behind it; the parameter⇄system design-variable mapping reusing `ArbitraryVariable.getSys`; the [Core] target/merit-function editor and local refinement (LM/quasi-Newton/Nelder–Mead); [Standard] Ψ/Δ ellipsometric residuals (sharing §F.5), inverse fitting from measured R/T and Ψ,Δ, fit-quality reporting, needle/tunnelling synthesis and global optimization; the Synthesis/Fit operator page with its UX checklist; and the Wolfram reference-fit validation tests. ALGLIB is used for optimization ONLY and never touches engine linear algebra (which stays on the Part A math seam). All canonical-units, JSON-canonical, `.binz`-derived, and tier-fidelity rules apply.
+
+## Requirements
+
+The following are the parent's Part G directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+
+### R-1 (G.1) Library-agnostic optimization interface
+
+This part MUST define the optimization abstraction in our own terms in a new file `OpticalConstructor.Optimization/OptimizationInterface.fs` inside the `OpticalConstructor.Optimization.fsproj` project named in the Part A assembly map. The interface MUST be expressed as F# records and discriminated unions (§0 constraint 1) and MUST NOT reference any ALGLIB type in its public surface, so the physics/fitting code compiles without the library, per §A.8 ("the physics/fitting code never depends on ALGLIB directly").
+
+The interface MUST consist of exactly:
+- `Residual = float[] -> float[]` — the vectorized residual function (one entry per target sample), matching §A.8's `(float[] -> float[])`.
+- `Jacobian = (float[] -> float[][]) option` — optional analytic Jacobian; when `None` the adapter MUST request numerical differentiation.
+- `ParameterBounds` (record: `lower : float[]`, `upper : float[]`) — per-parameter box bounds in canonical SI units (§0 constraint 3); an unbounded side MUST be encoded as `infinity`/`-infinity`.
+- `InequalityTarget` (DU: `LessOrEqual | GreaterOrEqual` carrying the bound) — the one-sided target from 010 §II.5 ("R ≤ 0.5%").
+- `OptimizationMethod` (DU: `LevenbergMarquardt | QuasiNewtonLbfgs | NelderMead | BoundedLinearConstrained | NonlinearConstrained`) — the method selector mapping onto the ALGLIB routines named in §A.8/010 §III.4: `LevenbergMarquardt → minlm`, `QuasiNewtonLbfgs → minlbfgs`, `BoundedLinearConstrained → minbleic`, `NonlinearConstrained → minnlc`. `NelderMead` is the 010-required simplex method (010 line 219) whose concrete backend 010 leaves unnamed; its routine binding is deferred per G.2 and MUST NOT be resolved to a spec-invented routine here.
+- `OptimizationRequest` (record: residual, optional jacobian, initial `float[]`, bounds, inequality targets, method, `maxIterations : int`, `epsX : float`) — the single call payload.
+- `OptimizationResult` (record: `solution : float[]`, `finalResiduals : float[]`, `iterations : int`, `terminationReason : TerminationReason`, `success : bool`) where `TerminationReason` is a DU (`Converged | MaxIterationsReached | StepTooSmall | Failed of string`).
+
+The interface MUST expose a single entry point `optimize : OptimizationRequest -> Result<OptimizationResult, string>` (§0 error-handling rule: `Result`, not exceptions). No caching, retry, or progress-callback registry is admitted in this file; progress reporting is wired in G.10 via a separate channel.
+
+### R-2 (G.2) ALGLIB adapter behind the interface
+
+This part MUST implement the interface from G.1 in a new file `OpticalConstructor.Optimization/AlglibAdapter.fs`, the ONLY file in the solution permitted to `open`/reference ALGLIB. ALGLIB MUST be added as a NuGet `PackageReference` to `OpticalConstructor.Optimization.fsproj` (no new C# project — §0 constraint 1); the GPL free edition is the licensed edition per §A.8.
+
+The adapter MUST map each `OptimizationMethod` to the ALGLIB routine named in §A.8: `LevenbergMarquardt → minlm` (`minlmcreatev`/`minlmcreatevj` when a Jacobian is supplied, with `minlmsetbc` for bounds), `QuasiNewtonLbfgs → minlbfgs`, `BoundedLinearConstrained → minbleic`, `NonlinearConstrained → minnlc`. `NelderMead` is the [Standard] Nelder–Mead simplex method 010 §II.5 requires (010 line 219), but 010 §III.4 names NO ALGLIB routine for a simplex solver — its list is exactly `minlm`/`minbleic`/`minnlc`/`minlbfgs`/`mincg`/`lsfit` (010 lines 380-382). This part MUST NOT invent an ALGLIB routine name for the simplex case; the following deferred decision is carried forward VERBATIM as a directive: **the concrete simplex backend for `NelderMead` — an ALGLIB routine if one is later confirmed to exist, OR an explicit in-file F# Nelder–Mead loop over the G.1 `Residual` closure — is deliberately undecided here and MUST remain undecided until that decision is taken, traceable to the 010-required simplex feature; this part MUST NOT resolve it by binding `NelderMead` to a spec-invented ALGLIB routine.** Until that decision is taken the adapter MUST surface `NelderMead` as `Failed "simplex backend unresolved"` rather than silently dispatching to a guessed routine. The adapter MUST translate `ParameterBounds` into the routine's box-constraint call and `InequalityTarget`s into either residual penalty rows (for `minlm`) or nonlinear constraints (for `minnlc`); it MUST convert ALGLIB's completion codes into `TerminationReason` and MUST NOT leak an ALGLIB exception past the `Result` boundary. Linear algebra inside the adapter (normal-equation/QR solves for the LM step) is ALGLIB's own; this part MUST NOT route any matrix operation through `MathNetNumericsMath.fs:5`, and conversely MUST NOT use ALGLIB for any engine linear algebra (§A.8: "ALGLIB is used for optimization only, not for linear algebra"). Extreme Optimization MUST NOT be referenced from this adapter; `ExtremeNumericsMath.fs:5` remains a legacy math-seam reference only, per §A.8.
+
+### R-3 (G.3) Parameter ⇄ system mapping (design variables)
+
+This part MUST define the bridge from a flat `float[]` parameter vector to a concrete `OpticalSystem` in a new file `OpticalConstructor.Optimization/DesignParameters.fs`, reusing the existing scalar parametrization seam `ArbitraryVariable.getSys : OpticalSystem -> double -> OpticalSystem` (`Variables.fs:37`) that `calculate` already calls at `Variables.fs:263`. A `DesignParameter` (new record) MUST carry a `name : string`, a `getSys : OpticalSystem -> double -> OpticalSystem` closure (the same signature as `ArbitraryVariable.getSys`), and the per-parameter SI bound pair; an ordered `DesignParameter list` MUST fold left over a base `OpticalSystem` to apply the whole `float[]` vector, in vector order.
+
+The supported design variables MUST be: **layer thickness** — the closure MUST rebuild the target `Layer` with `Thickness (v * 1.0<meter>)` (`Media.fs:12`), v already in canonical meters (§0 constraint 3); **dispersion coefficient** — the closure MUST substitute into the relevant `OpticalPropertiesWithDisp` (`Dispersion.fs:53`) field; **wedge angle** — the closure MUST set the `WedgeLayer.angle` (`Media.fs:34`). Negative-thickness prohibition and physical n-range bounding (010 §II.5) MUST be expressed as the `ParameterBounds` of G.1 (lower bound 0 for thickness), NOT as a separate validator. This file MUST NOT introduce reflection-based field setting; every mapping is an explicit F# closure the reader can follow (§0 locality rule).
+
+### R-4 (G.4) Target / merit-function editor [Core]
+
+This part MUST define the merit/target model in a new file `OpticalConstructor.Optimization/MeritFunction.fs` and surface it in the UI per G.10, carrying the **[Core]** tier from 010 §II.5. A `FitTarget` (new record) MUST carry: the `OpticalFunction` to evaluate (reuse `FieldFunctions.fs:109`: `R | Rp | Rs | T | Tp | Ts | EllipticityR | …`, extended for Ψ/Δ per G.6), the independent-variable sample point (a `RangedVariable` index or explicit `WaveLength`/`IncidenceAngle`, reusing `Variables.fs:42`), the desired value, a `weight : float`, a `tolerance : float`, and a `kind : TargetKind` DU (`Equality | Inequality of InequalityTarget`) — covering 010 §II.5's "weights, tolerances, and one-sided/inequality targets".
+
+The merit function MUST be assembled as a weighted least-squares residual vector: for each `FitTarget`, residual = weight × (modelValue − desiredValue) / max(tolerance, ε) for `Equality`, and a one-sided hinge (zero when satisfied) for `Inequality`. `modelValue` MUST be obtained by running `OpticalSystemSolver` (`Solvers.fs:199`) on the system produced by the G.3 mapping at the target's sample point and reading `Solution.func` (`FieldFunctions.fs:192`) — the SAME evaluator the charts use, so fit and chart never diverge. The assembled residual closure MUST satisfy the `Residual` signature of G.1 directly. Stored `desiredValue`/sample points MUST be canonical SI (meters for wavelength via `WaveLength.value`, `Fields.fs:284`); unit conversion happens only at the editor boundary (§0 constraint 3). No merit-evaluation cache is admitted here.
+
+### R-5 (G.5) Local refinement optimization [Core]
+
+This part MUST implement local refinement in a new file `OpticalConstructor.Optimization/LocalRefinement.fs`, carrying the **[Core]** tier from 010 §II.5. The entry point MUST take a base `OpticalSystem`, a `DesignParameter list` (G.3), a `FitTarget list` (G.4), and an `OptimizationMethod` (G.1), build the residual closure, and call `optimize` (G.1). Levenberg–Marquardt (`LevenbergMarquardt`) MUST be the default method ("the workhorse", 010 §II.5); quasi-Newton (`QuasiNewtonLbfgs`) and Nelder–Mead simplex (`NelderMead`) MUST be selectable. Bounded parameters MUST be honoured by passing the G.3 bounds as `ParameterBounds`, and inequality targets MUST flow through as G.1 `InequalityTarget`s — satisfying 010 §II.5's "bounded parameters and inequality targets (forbid negative thickness, bound n to physical ranges)".
+
+On success the optimizer's `solution` vector MUST be folded back through the G.3 mapping to produce the refined `OpticalSystem`, which becomes the new working system. Robust normal-equation handling (QR / Gauss–Jordan, 010 §II.5) is delegated to ALGLIB's `minlm` internals via G.2 and MUST NOT be re-implemented on the math seam. This file MUST NOT spawn its own thread; long-running execution and cancellation are owned by G.10.
+
+### R-6 (G.6) Ψ, Δ derivation for ellipsometric residuals [Standard]
+
+This part MUST add the ellipsometric quantities Ψ and Δ as evaluable optimization targets in a new file `OpticalConstructor.Optimization/Ellipsometry.fs`, carrying the **[Standard]** tier from 010 §II.4 ("Ψ, Δ … derivable from existing field amplitudes"). The derivation MUST reuse the complex reflected `EmComponent` amplitudes already solved by `getRT` (`Solvers.fs:74`) and exposed on `EmFieldSystem.reflected` (`Fields.fs:550`): the complex ratio ρ = r_p / r_s yields tan(Ψ)·e^{iΔ}, so Ψ = atan(|ρ|) and Δ = arg(ρ). This file MUST NOT fork `Solvers.fs` or `FieldFunctions.fs` (§0 constraint 2); it consumes their outputs and MUST share the Ψ/Δ definition of Part F §F.5 (`psiDelta`) rather than re-deriving an independent one.
+
+The two new functions MUST be surfaced as additional cases reachable by `FitTarget` (G.4) so ellipsometric targets compose identically to photometric ones. Because `FieldFunctions.fs:109` `OpticalFunction` is closed and §0 constraint 2 forbids forking it, this part MUST add `Psi` and `Delta` as a small net-new `EllipsometricFunction` DU local to `Ellipsometry.fs` with its own evaluator over `EmFieldSystem`, NOT by editing the engine's `OpticalFunction`. The completion of the Mueller path (`FieldFunctions.fs:93`) is owned by Part F §F.3 and MUST NOT be revived by this part — it is outside the fitting scope named in 010 §II.5.
+
+### R-7 (G.7) Inverse fitting from measured R/T and Ψ,Δ [Standard]
+
+This part MUST implement inverse fitting from measured data in a new file `OpticalConstructor.Optimization/InverseFit.fs`, carrying the **[Standard]** tier from 010 §II.5. Measured photometric (R/T) and ellipsometric (Ψ, Δ) spectra MUST be loaded via FSharp.Data (the import library named in the Part A storage seam and 010 §III.2) from CSV/tab sources and converted to canonical SI sample points (wavelength in meters via `WaveLength.value`, `Fields.fs:284`) at the import boundary only.
+
+Each measured spectral point MUST be turned into a `FitTarget` (G.4) whose `OpticalFunction`/`EllipsometricFunction` matches the measured quantity and whose desiredValue is the measured datum; the resulting `FitTarget list` MUST be handed to the G.5 local-refinement entry point. The regressable model parameters MUST be the G.3 design variables — thicknesses, dispersion coefficients (optical constants), and geometry — matching 010 §II.5 ("regress model parameters (thicknesses, optical constants, nonuniformity, roughness)"). Nonuniformity and roughness MUST be expressed, when in scope, as additional `DesignParameter` closures over the base system, NOT as new engine primitives; this part adds no roughness physics beyond what such a closure expresses. This file MUST NOT introduce a measurement-format registry or autodetection beyond the explicit CSV/tab path named here.
+
+### R-8 (G.8) Fit-quality reporting [Standard]
+
+This part MUST compute and expose fit-quality metrics in a new file `OpticalConstructor.Optimization/FitQuality.fs`, carrying the **[Standard]** tier from 010 §II.5. From the `OptimizationResult.finalResiduals` (G.1) and the residual Jacobian at the solution, this part MUST compute χ²/MSE, parameter confidence intervals, and the parameter correlation matrix, and MUST retain the per-sample residuals for residual plots and fit-vs-measured overlay (010 §II.5).
+
+The confidence intervals and correlation matrix MUST be derived from the covariance estimate (inverse of JᵀJ scaled by reduced χ²). The required real-matrix inverse/factorization MUST go through the Part A math seam `MathNetNumericsMath.fs:5` (this is engine-side linear algebra, NOT optimization, so ALGLIB MUST NOT be used here per §A.8); the cloned Math.NET routines reached via that seam are the primitive to call. The residual-plot and overlay data MUST be returned as plain arrays for the G.10 UI and the charting path (`plotComparison`, `Charting.fs:38`); this part MUST NOT render charts itself. A `FitReport` (new record) MUST aggregate χ²/MSE, the interval/correlation tables, and the residual arrays, and MUST be persistable as a `.binz` fit-history sidecar (§0 constraint 4; `serialize … BinaryZippedFormat`, `Core.fs:257`), NOT inside the canonical JSON project.
+
+### R-9 (G.9) Needle/tunnelling synthesis and global optimization [Standard]
+
+This part MUST implement synthesis methods in a new file `OpticalConstructor.Optimization/Synthesis.fs`, carrying the **[Standard]** tier from 010 §II.5. **Needle optimization** MUST, at each iteration, evaluate the merit-function gradient with respect to inserting a vanishingly thin layer at each candidate depth in the films list of the base `OpticalSystem` (`Media.fs:94`), insert one `Layer` (`Media.fs:24`) of small thickness at the position that most decreases the merit function, then re-run local refinement (G.5) on the grown design — growing the layer count without bounding the parameter space (010 §II.5). **Tunnelling / gradual evolution** MUST perturb a converged design to escape local minima and re-refine, combined with needle insertion per 010 §II.5.
+
+**Global optimization** MUST provide simulated annealing and a genetic/evolutionary algorithm for multimodal merit landscapes where refinement stalls (010 §II.5). These MUST be driven through the same G.1 `Residual` closure and MUST select the appropriate `OptimizationMethod`/ALGLIB routine through G.2 where one exists; the annealing/GA outer loop that ALGLIB does not provide MAY be implemented in this file as an explicit F# loop over the `Residual` closure, with each candidate evaluated by the G.4 merit assembly. This part MUST NOT add parallel-evaluation infrastructure, distributed execution, or a plugin system for synthesis strategies — only the two synthesis families and two global methods named in 010 §II.5.
+
+### R-10 (G.10) Synthesis/Fit operator page, jobs, and result refresh
+
+This part MUST add a top-level Synthesis/Fit page to the FuncUI MVU surface (`OpticalConstructor.Ui.fsproj`, Part A assembly map) hosting the G.4 target editor, the G.3 parameter/bound table, the method selector (G.1 `OptimizationMethod`), and the G.8 fit report. Because this introduces an operator page and long-running cancellable jobs, this part MUST commit explicitly on the operator-facing UX checklist:
+
+1. **Discoverability/nav entry** — the page MUST be reachable from the main navigation as a named "Synthesis / Fit" entry alongside the existing stack/chart pages.
+2. **Progress granularity** — every optimizer run MUST report progress as iteration count and current χ²/MSE via a progress channel distinct from the G.1 interface (G.1 stays callback-free); the channel MUST update at each optimizer iteration. The shared background-job runner of Part J §J.10 hosts this run; this part supplies the per-iteration progress payload.
+3. **Pre-confirmation gate vs one-click** — starting a fit MUST be one-click (non-destructive: it produces a candidate system, it does not overwrite saved files); ACCEPTING a fit result that replaces the working `OpticalSystem` MUST require an explicit confirm.
+4. **Completion → results refresh** — on optimizer completion the refined system MUST be folded back via G.3 and the result charts MUST refresh through the existing `plotComparison` path (`Charting.fs:38`) showing fit-vs-measured overlay (G.8) without a manual reload.
+5. **Opposing-action button UX + undo** — the page MUST provide a Cancel button that cooperatively stops the running optimizer (the G.5/G.9 loops MUST observe a cancellation flag) and a Revert action restoring the pre-fit working system; Cancel and Start MUST NOT be the same control.
+6. **Committable file vs root .gitignore collisions** — `.binz` fit-history sidecars (G.8) and any exported fit reports MUST be written under the project's working folder and MUST be added to the repository root `.gitignore`, NOT committed; the canonical JSON project (which references them as sidecars, §0 constraint 4) is the committable artefact.
+
+Long-running execution MUST run off the UI thread so the MVU `update` stays responsive; this part MUST NOT add a job-queue, retry, or scheduling abstraction beyond a single cancellable run at a time.
+
+### R-11 (G.11) Validation against the Wolfram reference fits
+
+This part MUST validate the ALGLIB `minlm` path against the Wolfram reference fits, per §A.8 ("Validate ALGLIB's `minlm` against the Wolfram reference fits"), in a new test file `Berreman/BerremanTests/OptimizationTests.fs` added to `BerremanTests.fsproj` (`Berreman.slnx:20`). The tests MUST encode, as fixed expected values, the converged parameters and final χ² from the ported Wolfram `FindMinimum`/`NonlinearModelFit` runs for at least one thin-film R/T refinement case and one ellipsometric Ψ/Δ case, and MUST assert that `LocalRefinement` (G.5) driving `LevenbergMarquardt` (G.2) reproduces them to a stated tolerance.
+
+The tests MUST exercise the full path — `DesignParameter` mapping (G.3) → merit residual (G.4) → `optimize` (G.1) → ALGLIB adapter (G.2) — using the real `OpticalSystemSolver` (`Solvers.fs:199`), NOT a stubbed forward model, so the validation covers the engine/optimizer seam end to end. A bounded-parameter case MUST assert that a fit started outside the physical range terminates inside the G.3 bounds (no negative thickness). These tests MUST NOT depend on the UI project.
+
+## Non-requirements
+
+- The engine solver, field model, and math seam are reused unchanged (binding constraint 2); ALGLIB is used for optimization ONLY and MUST NOT route engine linear algebra (G.2; §A.8).
+- The Ψ/Δ derivation is shared with Part F §F.5 `psiDelta` (slice 006) and MUST NOT be forked (G.6); the Mueller-path completion (`FieldFunctions.fs:93`) is owned by Part F and MUST NOT be revived here.
+- No new C# project; ALGLIB is a NuGet `PackageReference` (G.2; §0 constraint 1).
+- The simplex (`NelderMead`) backend choice is deliberately undecided and MUST surface as `Failed "simplex backend unresolved"` until decided (G.2).
+- The shared background-job runner (progress/cancel/timing harness) is owned by Part J §J.10 (slice 010); this part supplies the per-iteration progress payload only. The chart rendering path (`plotComparison` surfaced through ScottPlot) is owned by Part H (slice 008).
+- Caching of forward evaluations, retry/backoff, optimizer-plugin discovery, config-knob proliferation, schema versioning of fit payloads, error-wrapping shims, parallel/distributed evaluation (§0 constraint 6; G.0/G.9).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/OptimizationInterface.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/DesignParameters.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/MeritFunction.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/LocalRefinement.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/Ellipsometry.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/FitQuality.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/Synthesis.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/SynthesisFitPage.fs`
+- `Berreman/BerremanTests/OptimizationTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` — register the new files in compile order; add the ALGLIB `PackageReference`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `SynthesisFitPage.fs`.
+- `Berreman/BerremanTests/BerremanTests.fsproj` — register `OptimizationTests.fs`.
+
+## Testing plan
+
+Gates that apply: `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `build`: solution builds with the nine new Optimization files registered, the ALGLIB `PackageReference` resolving, and `SynthesisFitPage.fs` compiling against the FuncUI DSL surface WITHOUT the clone dependency (§0 constraint 5; `update` contains no Avalonia type).
+- `unit-tests`: `BerremanTests` runs `OptimizationTests.fs` (G.11). This slice ADDS passing tests to `BerremanTests`, so the `count_at_least` baseline rises; record the new `berreman_unit_tests` count in the state-of-the-world. The Wolfram R/T and Ψ/Δ cases (AC-G9), the bounded-fit case (AC-G3), and the needle-insertion case (AC-G6) run over the real solver path (no stub).
+- `constructor-unit-tests`: the `OpticalConstructor.Tests` project still builds and passes; add (if desired) interface-boundary tests asserting no ALGLIB type crosses the G.1 boundary (AC-G1) and the `DesignParameter` fold round-trip (AC-G2). The gate MUST stay green.
+- Emit the state-of-the-world file with the `gates:` YAML baseline block (record the NEW `berreman_unit_tests` count).
+
+## Risks
+
+- **High:** the ALGLIB NuGet `PackageReference` must resolve and link under .NET 10 / `x64` for the `build` and `unit-tests` gates to pass; the Wolfram-reference tests (AC-G9) require the real `minlm` path. If ALGLIB cannot be resolved in the environment, the round escalates rather than stubbing the forward model. Verify the package restores before relying on the end-to-end tests.
+- **Medium:** `NelderMead` MUST NOT be bound to a spec-invented ALGLIB routine; it surfaces `Failed "simplex backend unresolved"` (G.2). A test asserting that behavior guards against accidental resolution.
+- **Medium:** confidence-interval/correlation covariance (G.8) must route through `MathNetNumericsMath.fs:5`, NOT ALGLIB (§A.8); mixing the two violates the numerics boundary.
+
+## Hand-off
+
+State carried to later slices:
+- The full `OpticalConstructor.Optimization` assembly exists: interface (`OptimizationInterface.fs`), sole ALGLIB adapter (`AlglibAdapter.fs`), design-variable mapping (`DesignParameters.fs`), merit editor (`MeritFunction.fs`), local refinement (`LocalRefinement.fs`), ellipsometry (`Ellipsometry.fs`), inverse fit (`InverseFit.fs`), fit-quality/`FitReport` (`FitQuality.fs`), synthesis (`Synthesis.fs`).
+- `SynthesisFitPage.fs` exists; Part J §J.10 (slice 010) supplies the shared `JobRunner` that hosts the optimizer run with progress/cancel, and Part H (slice 008) supplies the `plotComparison`-backed overlay refresh.
+- `FitReport` persists as a `.binz` fit-history sidecar via the Part A `Softellect.Sys.Core.serialize` seam; Part I (slice 009) provides `writeSidecar`/`readSidecar` and the `.gitignore` entry for `*.binz`.
+- The `berreman_unit_tests` baseline rose this slice (new `OptimizationTests.fs`).
+
+Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
+
+```yaml
+gates:
+  berreman_unit_tests: <int>
+```

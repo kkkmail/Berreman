@@ -1,0 +1,157 @@
+# 005 — Light sources & illumination (Part E)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part E**.
+- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A §A.4) defined the `ConstructorElement.Source` case, the `BeamTree` head node, and the project `sources` field.
+- `C:\GitHub\Berreman\specs\0022\.slices\002.slice-md` — slice 002 (Part D) authored `UnitOfMeasure` and the `toWaveLength`/conversion seam this part's wavelength entry consumes.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-E1: After the operator enters wavelength, incidence angle, polarization, and ellipticity in the Source editor and commits, `SourceSpec.toIncidentLight` MUST return an `IncidentLightInfo` (Fields.fs:338) whose `waveLength.value` equals the entered wavelength converted to meters and whose polarization/ellipticity/angle match the inputs, within one recompute cycle.
+- AC-E2: After choosing a non-nm/µm display unit (Å, mm, eV, or cm⁻¹) for wavelength, the produced `WaveLength` (Fields.fs:280) MUST carry the value converted via the §A.10 boundary conversions and the domain model MUST store no non-SI unit, verified on save of the project JSON.
+- AC-E3: After toggling a wavelength or angle input to Ranged, the Source editor MUST produce a `RangedVariable` (Variables.fs:42) of the matching case (WaveLengthRange/IncidenceAngleRange) handed unchanged to the sweep layer, with no new range type introduced.
+- AC-E4: After selecting the RCP, LCP, or unpolarized preset in the Poincaré/ellipse picker, the source MUST set Ellipticity ±1.0 (clamped via Ellipticity.create, Fields.fs:306) for RCP/LCP or Coherence.Unpolarized for unpolarized, and the live Stokes readout MUST be computed via EmField.stokesVector (FieldFunctions.fs:44).
+- AC-E5: After attaching a SpectralProfile (Blackbody/D65/A/LaserLine/Imported) and a wavelength range, `SpectralProfile.sample` MUST return a list of (WaveLength, weight) pairs in canonical meters, one `IncidentLightInfo` per sample, with imported spectra read from a sidecar via FSharp.Data and not from a project `.binz`.
+- AC-E6: After setting a ConeAcceptance with N samples, `ConeAcceptance.sample` MUST fan the base incidence angle into N weighted sub-angles and the combined result MUST be averaged on Stokes/intensity outputs (FieldFunctions.fs:44,69), not on field amplitudes; a collimated source MUST be represented by `cone = None`.
+- AC-E7: After setting coherence to Incoherent, the source MUST be solved through the existing substrate-driven Multiple/MultipleEmFieldSystem path (Solvers.fs:152, Fields.fs:571) with no separate incoherent solver added; Unpolarized MUST be evaluated as the incoherent average of Polarization.s and Polarization.p (Fields.fs:322,323).
+- AC-E8: After defining multiple SourceSpec values in `project.sources`, the combined illumination MUST be a weighted incoherent StokesVector sum (Fields.fs:584,586) of every expanded `IncidentLightInfo`, with no field-level summation across sources and no cached expansion list.
+- AC-E9: After enabling a GaussianBeamSpec, `GaussianBeamSpec.angularSpectrum` MUST decompose the beam into weighted plane-wave incidence angles using the existing createGaussian (FourierTransform.fs:74) and FourierTransform (FourierTransform.fs:137), introducing no new FFT or Gaussian generator.
+- AC-E10: After opening the element palette, the operator MUST be able to add a `ConstructorElement.Source` and open its editor in one click with no confirmation gate, and the Source panel MUST be reachable from the palette navigation.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/SourceSpec.fs` (new) — net-new `SourceSpec` record, `SourceAxis`/`SpectralProfile`/`ConeAcceptance`/`Coherence`/`GaussianBeamSpec` DUs, and the pure expand/sample/angularSpectrum functions over the canonical `IncidentLightInfo`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/SourceCombination.fs` (new) — weighted incoherent `StokesVector` reducer combining multiple expanded sources
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Sources/SourceEditorView.fs` (new) — FuncUI [Core] source editor projecting `SourceSpec` to/from `IncidentLightInfo`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Sources/PolarizationPicker.fs` (new) — polarization presets + Poincaré/ellipse bidirectional picker
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (edit) — register `SourceSpec.fs`, `SourceCombination.fs` in compile order.
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (edit) — register `Sources/SourceEditorView.fs`, `Sources/PolarizationPicker.fs`.
+
+Test artifacts owned by this slice:
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceProjectionTests.fs` (new) — `SourceSpec.toIncidentLight` round-trips: `waveLength.value` in meters, polarization/ellipticity/angle equal inputs, Å/mm/eV/cm⁻¹ land on `WaveLength.Nm`/`Mkm` (AC-E1/AC-E2)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceExpansionTests.fs` (new) — `SpectralProfile.sample`, `ConeAcceptance.sample`, `Unpolarized`, and `GaussianBeamSpec.angularSpectrum` expand into expected weighted `IncidentLightInfo` lists; `SourceCombination` sums `StokesVector` via Fields.fs:584/586 with no field-level summation (AC-E5..AC-E9)
+
+### File:line references owned by this slice
+
+All file:line references in the verbatim E.1–E.10 directives reproduced under **Requirements** are owned by this slice (notably: `Fields.fs:338`, `Fields.fs:375`, `Fields.fs:384`, `Fields.fs:280`, `Fields.fs:280-282`, `Fields.fs:284`, `Fields.fs:294,295`, `Fields.fs:302`, `Fields.fs:306`, `Fields.fs:314`, `Fields.fs:319`, `Fields.fs:322`, `Fields.fs:322-324`, `Fields.fs:323`, `Fields.fs:580`, `Fields.fs:584,586`, `Fields.fs:571`, `FieldFunctions.fs:44`, `FieldFunctions.fs:69`, `MaterialProperties.fs:35`, `Solvers.fs:199`, `Solvers.fs:152`, `Solvers.fs:176`, `Variables.fs:42`, `Variables.fs:43`, `Variables.fs:46`, `StandardLightVariables.fs:40,48,56,64`, `FourierTransform.fs:74`, `FourierTransform.fs:137`).
+
+## Scope
+
+This slice owns the light-source layer: the net-new `SourceSpec` orchestration record wrapping the canonical `IncidentLightInfo`, the [Core] source editor that projects every editor field one-to-one onto `IncidentLightInfo` (with wavelength stored in canonical meters and converted only at the UI boundary), single-value-or-range wavelength/angle via the existing `RangedVariable`, and the [Standard] extensions — polarization presets and the Poincaré/ellipse picker, spectral source profiles, cone/acceptance averaging, coherent/incoherent/unpolarized flags, multiple simultaneous sources with weighted incoherent combination, and the Gaussian-beam angular-spectrum source. It treats `IncidentLightInfo` as the single canonical source value and MUST NOT fork it. The sweep machinery, photometric/CIE conversion, and project-file persistence are owned by Parts F/I and are out of scope. The only operator-UX trigger is Source-panel discoverability (E.10).
+
+## Requirements
+
+The following are the parent's Part E directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+
+### R-1 (E.1) Source domain record (MUST, net-new, reuses `IncidentLightInfo`)
+
+MUST add a new file `OpticalConstructor.Domain/SourceSpec.fs` to `OpticalConstructor.Domain.fsproj` (Part A assembly layout) defining the net-new orchestration record `SourceSpec` that wraps the canonical `IncidentLightInfo` (`Fields.fs:338`) and carries ONLY the orchestration fields that have no engine equivalent: a stable `sourceId`, an optional `name : string`, the per-source default unit of measure `displayUnit : UnitOfMeasure` (the `unitOfMeasure` `$def` owned by §A.7, projected to the `sourceSpec` `$def`), an optional `spectralProfile : SpectralProfile option` (E.4), an optional `cone : ConeAcceptance option` (E.5), an optional `gaussianBeam : GaussianBeamSpec option` (E.6), and `coherence : Coherence` (E.7). `SourceSpec` MUST store the base monochromatic state as one `IncidentLightInfo` value and MUST NOT duplicate its five fields. The record MUST be an immutable F# record (Part A constraint 1; CLAUDE.md). It MUST NOT carry any non-SI unit: wavelength lives inside `IncidentLightInfo.waveLength` whose `.value` is meters (`Fields.fs:284`), and `displayUnit` is a presentation-only tag.
+
+### R-2 (E.2) [Core] Source editor → `IncidentLightInfo` projection (MUST)
+
+MUST add `OpticalConstructor.Ui/Sources/SourceEditorView.fs` to `OpticalConstructor.Ui.fsproj` rendering the [Core] editor with one control per `IncidentLightInfo` field: wavelength (single value, with range deferred to E.3), incidence angle, polarization, ellipticity, and intensity. The view MUST be a pure FuncUI view function of the `SourceSpec` model and MUST emit messages that rebuild the underlying `IncidentLightInfo` via a single constructor function `SourceSpec.toIncidentLight : SourceSpec -> IncidentLightInfo`, which MUST be built on `IncidentLightInfo.create` (`Fields.fs:375`) for the normal-incidence case and `IncidentLightInfo.createInclined` (`Fields.fs:384`) for a non-zero angle, then set `polarization`/`ellipticity`/`refractionIndex` via record copy. The view MUST NOT call the 4×4 solver; producing fields is owned by Part F. Wavelength entry MUST accept the display unit chosen in `displayUnit` and convert to a `WaveLength` case (`Fields.fs:280`) at the boundary; nm and µm map directly to `WaveLength.Nm`/`WaveLength.Mkm` (`Fields.fs:294,295`), while Å, mm, eV, and cm⁻¹ MUST be converted to nm or µm via the §A.10 boundary conversions (Part D `Units.fs` `toWaveLength`, §D.2) before constructing `WaveLength` (the engine has no `WaveLength` case for those units — confirmed: only `Mkm | Nm` at `Fields.fs:280-282`). Intensity MUST be stored as a unit scalar `1.0` baseline on `SourceSpec`; the engine's relative R/T outputs (`FieldFunctions.fs` `intensity`, `:69`) are already normalized to incident, so intensity MUST act only as a per-source weight in multi-source averaging (E.8) and MUST NOT be threaded into `IncidentLightInfo`, which has no intensity field (`Fields.fs:338-345`).
+
+### R-3 (E.3) [Core] Single-value-or-range wavelength and angle (MUST, reuses range primitives)
+
+MUST express the "wavelength (single or range)" and angle inputs of the [Core] editor as a discriminated union `SourceAxis = Fixed of <value> | Ranged of RangedVariable` inside `SourceSpec.fs`, reusing `RangedVariable` (`Variables.fs:42`) for the ranged case rather than defining a new range type. For wavelength the ranged case MUST use `RangedVariable.WaveLengthRange` (`Variables.fs:46`) and for angle `RangedVariable.IncidenceAngleRange` (`Variables.fs:43`); preset spans MUST reuse the helpers in `StandardLightVariables.fs` (`wavelength200to800Range` `:64`, `incidenceAngleRange` `:40`, `polarizationRange` `:56`, `ellipticityRange` `:48`) instead of constructing fresh `Range<_>` values. The editor MUST surface a Fixed/Ranged toggle; when `Ranged` is chosen the produced `RangedVariable` MUST be handed to the sweep layer (Part F) unchanged. This part MUST NOT implement the sweep execution, charting, or `calculate`/`calculate3D` wiring (`Variables.fs`) — only the construction of the `RangedVariable` from operator input.
+
+### R-4 (E.4) [Standard] Polarization presets + Poincaré/ellipse picker (MUST)
+
+MUST add `OpticalConstructor.Ui/Sources/PolarizationPicker.fs` exposing the [Standard] presets s, p, 45°, RCP, LCP, and unpolarized as a preset list that sets `IncidentLightInfo.polarization`/`ellipticity` (and the `unpolarized` flag of E.7), reusing `Polarization.s` (`Fields.fs:322`), `Polarization.p` (`Fields.fs:323`), and `Polarization.create (Angle.degree 45.0)` (`Fields.fs:319`); RCP/LCP MUST set `Ellipticity.create 1.0`/`Ellipticity.create -1.0` (`Fields.fs:306`, which clamps to ±1). The picker MUST render the polarization ellipse and a Poincaré-sphere marker as a bidirectional control: dragging azimuth/ellipticity MUST write back `Polarization`/`Ellipticity`, and the live `StokesVector` readout MUST be computed from the produced incident `EmField` via `EmField.stokesVector` (`FieldFunctions.fs:44`) — the picker MUST NOT re-derive Stokes parameters by hand. `unpolarized` MUST be represented as the E.7 `Coherence.Unpolarized` flag, not as a sentinel `Polarization`/`Ellipticity` value. The 3D Poincaré rendering MUST reuse the OpenTK viewport stack named in Part A's `OpticalConstructor.Ui.fsproj` row; this part MUST NOT add a second 3D renderer.
+
+### R-5 (E.5) [Standard] Spectral source profiles (MUST, net-new)
+
+MUST define a net-new DU `SpectralProfile = Flat | Blackbody of double<K> | Illuminant of StandardIlluminant | LaserLine of WaveLength | ImportedSpectrum of string` in `SourceSpec.fs`, where `StandardIlluminant = D65 | A`, the `LaserLine` payload reuses `WaveLength` (`Fields.fs:280`), and `ImportedSpectrum` carries a sidecar path to a tabulated λ→weight spectrum. A `SpectralProfile` MUST be expanded — at the UI/IO boundary by a pure function `SpectralProfile.sample : SpectralProfile -> RangedVariable -> (WaveLength * float) list` in `SourceSpec.fs` — into a list of (wavelength, spectral weight) pairs over the wavelength range of E.3, each pair producing one `IncidentLightInfo` for the solver and a weight for E.8 averaging. The blackbody, D65, and A weight tables MUST be computed/stored in canonical SI (wavelength in meters via `WaveLength.value`, `Fields.fs:284`); temperature MUST be stored in kelvin. `ImportedSpectrum` MUST reference a sidecar by relative path under the JSON-canonical project (Part A constraint 4) and MUST be parsed with FSharp.Data (Part A storage seam); it MUST NOT be embedded as a `.binz` pickle of the project model. Photometric/CIE conversion of the resulting spectra is owned by the analysis part (Part F §F.8), not here.
+
+### R-6 (E.6) [Standard] Cone / acceptance averaging (MUST, net-new)
+
+MUST define a net-new record `ConeAcceptance = { halfAngle : Angle; samples : int }` in `SourceSpec.fs` (`Angle` is the engine geometry type already wrapped by `IncidenceAngle`, `Fields.fs:22`). A `ConeAcceptance` MUST be expanded by a pure function `ConeAcceptance.sample : ConeAcceptance -> IncidenceAngle -> IncidenceAngle list` that fans the base incidence angle into `samples` sub-angles across ±`halfAngle`, each producing one `IncidentLightInfo` via record copy on `incidenceAngle`. The expanded angles MUST be averaged on the OUTPUT side — over the solver's `StokesVector`/intensity results (`FieldFunctions.fs:44,69`) — and MUST NOT be averaged on the field amplitudes. Collimated illumination MUST be represented by the absence of a `ConeAcceptance` (`cone = None`), not by a zero-angle cone. Detector-acceptance averaging that belongs to a detector element is out of scope for this part; only the source-side cone is defined here.
+
+### R-7 (E.7) [Standard] Coherent / incoherent and unpolarized flags (MUST, net-new)
+
+MUST define a net-new DU `Coherence = Coherent | Incoherent | Unpolarized` in `SourceSpec.fs` carried on `SourceSpec.coherence`. `Coherent` is the default and MUST map directly to the engine's existing coherent solve (`OpticalSystemSolver`, `Solvers.fs:199`) with no change. `Incoherent` MUST be honored by routing the source through the engine's existing thick-substrate multi-reflection path — the substrate-driven `Multiple` solution branch (`Solvers.fs:152`, `Solution.create` at `:176`) that already sums intensities incoherently over internal reflections via `MultipleEmFieldSystem` (`Fields.fs:571`); this part MUST NOT add a separate incoherent solver. The per-layer coherent/incoherent split (thick substrate incoherent while films stay coherent) is a property of the stack/substrate (`Substrate = Plate | Wedge`, Part A §A.4 / `Media.fs:40`) owned by Part B — this directive owns ONLY the source-level flag that selects the path. `Unpolarized` MUST be expanded into the incoherent average of two orthogonal polarizations built from `Polarization.s`/`Polarization.p` (`Fields.fs:322,323`), averaged on `StokesVector`/intensity output (E.8), and MUST NOT be modeled by mutating `Ellipticity`.
+
+### R-8 (E.8) [Standard] Multiple sources and averaging (MUST, net-new, reuses `MultipleEmFieldSystem`)
+
+MUST allow a project to hold a list `sources : SourceSpec list` on the `OpticalConstructorProject` aggregate (the `sources` field declared in Part A §A.7); this part owns the `sourceSpec` `$def` shape and the list semantics. Each `SourceSpec` MUST expand — via a single pure function `SourceSpec.expand : SourceSpec -> (IncidentLightInfo * float) list` composing E.4/E.5/E.6/E.7 — into a list of weighted `IncidentLightInfo` values. The combined illumination MUST be evaluated by solving each expanded `IncidentLightInfo` with the existing single-system solver and combining the resulting `StokesVector`/intensity outputs as a weighted incoherent sum, reusing `StokesVector.(+)` and `StokesVector.Zero` (`Fields.fs:584,586`) for the accumulation; field-level (`EmField`) values MUST NOT be summed across sources. The weighted-sum reducer MUST live in `OpticalConstructor.Domain/SourceCombination.fs`. This part MUST NOT add caching of expanded source lists, retry logic, or a parallel scheduler; expansion is recomputed from the immutable `SourceSpec` on demand (Part A constraint 6).
+
+### R-9 (E.9) [Standard] Gaussian-beam source (MUST, reuses FFT scaffolding)
+
+MUST define a net-new record `GaussianBeamSpec = { waist : double<meter>; divergence : Angle }` in `SourceSpec.fs`, storing the beam waist in canonical meters (Part A constraint 3). The angular spectrum of the Gaussian beam MUST be generated by reusing the engine's existing scaffolding — `createGaussian` (`FourierTransform.fs:74`) for the Gaussian profile and the `FourierTransform` module (`FourierTransform.fs:137`) for the transform — inside a pure function `GaussianBeamSpec.angularSpectrum : GaussianBeamSpec -> WaveLength -> (IncidenceAngle * float) list` in `SourceSpec.fs`. This function MUST NOT introduce a new FFT, a new Gaussian generator, or a separate beam-propagation engine; it MUST produce a weighted set of plane-wave incidence angles that feed the same `expand`/averaging path as E.6/E.8. Beam propagation between curved elements (focusing) is owned by the curved-optics part (Part C), not here; this directive owns ONLY the source-side decomposition of the beam into weighted plane waves.
+
+### R-10 (E.10) Operator UX — Source panel discoverability (MUST)
+
+MUST register the Source editor (E.2) as a named entry in the constructor's element-palette/navigation so the operator can add a `Source` element (the `ConstructorElement.Source` case, Part A §A.4) and open its editor; the panel MUST be reachable from the palette without a hidden command. Because this part introduces no long-running background job and no destructive action, the remaining Operator-facing UX checklist items (progress granularity, pre-confirmation gate, completion→results refresh, opposing-action/undo, committable-file vs .gitignore) are NOT triggered here and MUST NOT be implemented in this part; sweep progress and results refresh are owned by Part F, and project-file persistence/undo by Part I. Adding a source MUST be a one-click palette action with no confirmation gate (a source is non-destructive and freely removable from the `sources` list of E.8).
+
+## Non-requirements
+
+- The `ConstructorElement.Source` case, the `BeamTree` head node, and the project `sources` field are owned by Part A (slice 001); this slice fills the `SourceSpec` record and expansion functions.
+- The `UnitOfMeasure` DU and `toWaveLength`/conversion functions are owned by Part D (slice 002); the editor calls them at the boundary and MUST NOT re-implement conversions.
+- Sweep execution, charting, `calculate`/`calculate3D` wiring, and photometric/CIE conversion are owned by Part F (slice 006).
+- Project-file persistence, undo/redo, and recent files are owned by Part I (slice 009).
+- Caching of expanded source lists, retry/error-wrapping shims, schema versioning, config knobs beyond the named per-source default unit, and migration code (§0 constraint 6).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/SourceSpec.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/SourceCombination.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Sources/SourceEditorView.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Sources/PolarizationPicker.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceProjectionTests.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/SourceExpansionTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` — register `SourceSpec.fs`, `SourceCombination.fs`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `Sources/SourceEditorView.fs`, `Sources/PolarizationPicker.fs`.
+
+## Testing plan
+
+Gates that apply: `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `build`: solution builds with the new Domain files registered and the two UI source files compiling against the FuncUI DSL surface WITHOUT the clone dependency (§0 constraint 5).
+- `unit-tests`: existing `BerremanTests` stays green (`count_at_least` baseline from the prior slice's state-of-the-world).
+- `constructor-unit-tests`: `SourceProjectionTests.fs` (AC-E1/AC-E2 — `toIncidentLight` round-trips, non-nm/µm units land on `WaveLength.Nm`/`Mkm` with no non-SI storage); `SourceExpansionTests.fs` (AC-E5..AC-E9 — `SpectralProfile.sample`, `ConeAcceptance.sample`, `Unpolarized`, `GaussianBeamSpec.angularSpectrum`, and `SourceCombination` weighted incoherent `StokesVector` sum with no field-level summation).
+- Emit the state-of-the-world file with the `gates:` YAML baseline block.
+
+## Risks
+
+- **Medium:** `toIncidentLight` must build on `IncidentLightInfo.create`/`createInclined` and convert non-nm/µm units through Part D `Units.fs` `toWaveLength` before constructing `WaveLength` (the engine has only `Mkm | Nm`); a hand-rolled conversion violates the single-seam rule (AC-E2).
+- **Medium:** all `[Standard]` averaging (cone, unpolarized, multiple sources) must be on `StokesVector`/intensity outputs, never on field amplitudes (AC-E6/E7/E8); summing `EmField` values is a correctness failure.
+- **Medium:** the two UI source files must compile against the FuncUI DSL surface WITHOUT the clone dependency (§0 constraint 5; A.6/A.9); keep them buildable skeletons whose state contains no Avalonia type.
+- **Low:** `Incoherent` reuses the existing substrate-driven `Multiple` path; do not add a separate incoherent solver (AC-E7).
+
+## Hand-off
+
+State carried to later slices:
+- `SourceSpec.fs` provides `SourceSpec` and the `SourceAxis`/`SpectralProfile`/`ConeAcceptance`/`Coherence`/`GaussianBeamSpec` DUs plus the pure `toIncidentLight`/`expand`/`sample`/`angularSpectrum` functions; `SourceCombination.fs` provides the weighted incoherent `StokesVector` reducer.
+- The `sourceSpec` `$def` shape and the `sources` list semantics are fixed; Part I (slice 009) validates and round-trips them, and Part F (slice 006) sweeps/analyzes the expanded `IncidentLightInfo` lists.
+- The Source editor and Poincaré/ellipse picker exist as the source surface; the per-element default-unit hook from Part B (slice 003) is mirrored on `SourceSpec.displayUnit`.
+
+Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
+
+```yaml
+gates:
+  berreman_unit_tests: <int>
+```

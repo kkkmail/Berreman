@@ -1,0 +1,146 @@
+# 004 — Lenses & non-flat (curved) mirror elements (Part C)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part C**.
+- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A §A.4/§A.5) defined `BeamTree`/`BeamNode`/`BeamBranch`/`ConstructorElement` and the local-interface extension contract this slice details.
+- `C:\GitHub\Berreman\specs\0022\.slices\003.slice-md` — slice 003 (Part B) built the flat-element beam-tree construction this slice extends with curved elements.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-C1: After a `CurvedSurface` is constructed with radius/aperture entered in nm, µm, and mm, its stored `radiusOfCurvature` and `semiAperture` MUST be in `double<meter>` (Constants.fs:6) with values matching the `nmToMeter`/`mkmToMeter`/`mmToMeter` conversions (Constants.fs:27,30,33), with no non-SI value left in the domain record.
+- AC-C2: After `sampleZones surface n` is called for any `n >= 1`, it MUST return exactly `n` `LocalZone`s uniformly spaced in aperture radius from 0 to `semiAperture`, the axis zone (radialPosition = 0) having `localAoiShift = Angle.zero`.
+- AC-C3: After `solveZone info zone parameters` runs, the local incident angle fed to `OpticalSystemSolver` (Solvers.fs:199) MUST equal `info.incidenceAngle` shifted by `zone.localAoiShift` via `IncidentLightInfo.rotateY` (Fields.fs:411), and the result MUST be a `Solution` carrying the engine reflected/transmitted split (Solvers.fs:156).
+- AC-C4: After `attachCurvedElement` is applied to a `ConstructorElement.CurvedMirror`, every zone `BeamNode` MUST expose a `BeamBranch.Reflected` child and MUST NOT expose a `BeamBranch.Transmitted` child; for a `ConstructorElement.Lens`, every zone node MUST expose both branches.
+- AC-C5: After a concave surface is built, its `radiusOfCurvature` MUST be negative and a convex surface positive, with no override flag present; the same surface evaluated through `sag` (C.2) MUST return the correct signed height.
+- AC-C6: After `gradeCoating surface zone` runs on a depth-graded EUV mirror, each finite `Thickness.Thickness d` (Media.fs:12) in the returned coating MUST be the original scaled by the zone factor (per the ~5% center-to-edge default) while every `Thickness.Infinity` is unchanged, all values remaining `double<meter>`.
+- AC-C7: After a beam crosses an inter-element gap, propagation MUST be performed by `EmField.propagate` (BerremanMatrix.fs:224) over a `Layer` (Media.fs:24) whose thickness is the axial separation in meters, with no second propagation routine introduced.
+- AC-C8: After a curved element with grading disabled is sampled into N zones, all N zones MUST share one immutable `OpticalSystem` coating instance (Media.fs:94) with no thickness rescale applied.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/CurvedElements.fs` (new) — curved-element domain: `CurvedSurface`, `SurfaceFigure`, `LocalZone`, `sag`, `sampleZones`, `solveZone`, `attachCurvedElement`, `gradeCoating`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (edit) — register `CurvedElements.fs` in compile order after `BeamTree.fs`.
+
+Test artifacts owned by this slice:
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/CurvedElementsTests.fs` (new) — nm/µm/mm radius→meters round-trip (AC-C1); `sampleZones surface n` returns n uniform zones with axis shift = `Angle.zero` (AC-C2); `solveZone` axis zone reproduces the flat solver and off-axis shifts `incidenceAngle` via `rotateY` (AC-C3); sign convention concave→negative/convex→positive (AC-C5); `gradeCoating` scales finite `Thickness` and leaves `Infinity` untouched within ~5% default (AC-C6); grading-disabled element shares one immutable coating (AC-C8)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/BeamTreeTests.fs` (shared) — this slice authors the curved-fan cases: Reflected-only for `CurvedMirror`, both branches for `Lens` (AC-C4). *(The flat-element cases of this file are owned by slice 003 / Part B.)*
+
+### File:line references owned by this slice
+
+All file:line references in the verbatim C.1–C.10 directives reproduced under **Requirements** are owned by this slice (notably: `Solvers.fs:199`, `Solvers.fs:156`, `Solvers.fs:15`, `Fields.fs:22`, `Fields.fs:284`, `Fields.fs:411`, `BerremanMatrix.fs:224`, `Media.fs:12`, `Media.fs:24`, `Media.fs:40`, `Media.fs:94`, `Media.fs:98`, `MaterialProperties.fs:165`, `Constants.fs:6`, `Constants.fs:27,30,33`, `FourierTransform.fs:74`, `FourierTransform.fs:137`, `Core.fs:257`).
+
+## Scope
+
+This slice owns the curved-element domain model and the local-interface evaluation that turns one curved surface into many solver runs: the `CurvedSurface`/`SurfaceFigure`/`LocalZone` records, the `sag` profile, the aperture-zone decomposition (`sampleZones`), the per-zone local-AOI solver fan (`solveZone`), the beam-fan attachment onto the Part A `BeamTree` honoring the mirror special case (`attachCurvedElement`), inter-element axial propagation through the engine propagator, coating attachment as an ordinary `OpticalSystem`, and the [Core] EUV depth-graded multilayer per-zone thickness rescale (`gradeCoating`). It is confined to `OpticalConstructor.Domain.fsproj` and consumes the engine solver, `IncidentLightInfo.rotateY`, and `EmField.propagate` unchanged. Wavefront diffraction, full Gaussian-beam physics, aberration ray tracing, image formation, adaptive aperture refinement, zone-solve caching, retries, and background-job UX are OUT OF SCOPE. This part introduces no top-level operator page, no long-running background job, and no destructive action, so the operator-facing UX checklist does not apply.
+
+## Requirements
+
+The following are the parent's Part C directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+
+### R-1 (C.1) Define the curved-surface geometry record in the Domain project
+
+This part MUST add a `CurvedSurface` record to a new file `OpticalConstructor/Domain/CurvedElements.fs` inside `OpticalConstructor.Domain.fsproj` (Part A assembly list). The record MUST carry: `radiusOfCurvature : double<meter>` (signed — negative concave, positive convex, by the sign convention fixed in C.4), `semiAperture : double<meter>` (the clear half-aperture radius), `figure : SurfaceFigure`, and `coating : OpticalSystem` (`Media.fs:94`). All lengths MUST be stored in meters via the engine measure `[<Measure>] meter` (`Constants.fs:6`), satisfying the Part A canonical-units rule; nm/µm/mm entry MUST be converted at the UI boundary only, using `nmToMeter`/`mkmToMeter`/`mmToMeter` (`Constants.fs:27,30,33`). The record MUST NOT introduce its own thickness or wavelength representation — thickness lives on the coating's `Layer`s (`Media.fs:12`), wavelength on the source via `WaveLength.value` (`Fields.fs:284`).
+
+### R-2 (C.2) Define the `SurfaceFigure` discriminated union for spherical and aspheric profiles
+
+This part MUST add a `SurfaceFigure` DU to `OpticalConstructor/Domain/CurvedElements.fs` with exactly two cases for the committed scope: `Spherical` (curvature fully described by `CurvedSurface.radiusOfCurvature`) and `Aspheric of conic : double * evenPolynomial : double<meter> list` (conic constant plus even asphere polynomial coefficients), matching 010's "spherical/aspheric lenses" ([Core], 010 line 88). The sag function `z(r)` MUST be implemented as a pure F# function `sag : SurfaceFigure -> double<meter> -> double<meter> -> double<meter>` (figure, radius-of-curvature, radial position) returning the surface height; for `Spherical` it MUST be the exact spherical sag, for `Aspheric` the conic-plus-polynomial sag. No further figure cases (toroidal, freeform, diffractive) MAY be added — they are absent from 010 and excluded here.
+
+### R-3 (C.3) Decompose a curved surface into local flat interfaces sampled across the aperture
+
+This part MUST add `sampleZones : CurvedSurface -> int -> LocalZone list` to `OpticalConstructor/Domain/CurvedElements.fs`, where the `int` is the zone count supplied by the caller and `LocalZone` is a record carrying the zone's radial position `radialPosition : double<meter>`, its `localAoiShift : Angle` (the angle between the chord normal at that radius and the optical axis, derived from `SurfaceFigure.sag` per C.2), and its `coating : OpticalSystem`. Sampling MUST be uniform in aperture radius from axis (`radialPosition = 0`) to `semiAperture`. The function MUST NOT perform adaptive refinement, MUST NOT cache, and MUST NOT default the zone count — the count is a required argument owned by the orchestration caller (Part F/G consumers of `BeamTree`). `Angle` MUST be the engine type used by `IncidenceAngle` (`Fields.fs:22`, via `Geometry.Angle`), so that C.5 can feed the shift straight into `IncidentLightInfo.rotateY` (`Fields.fs:411`).
+
+### R-4 (C.4) Fix the signed radius-of-curvature convention for concave vs. convex elements
+
+This part MUST document and enforce, in `OpticalConstructor/Domain/CurvedElements.fs` as an XML-doc comment on `CurvedSurface.radiusOfCurvature` and as the body of `sag` (C.2), the single sign convention: a surface whose center of curvature lies on the *incoming-light* side (concave toward the source) MUST have negative `radiusOfCurvature`, and convex MUST be positive. This is the only convention; there is NO per-element override flag and NO "convention selector" config knob. A concave mirror (`ConstructorElement.CurvedMirror`, Part A §A.4) and a convex mirror are distinguished solely by this sign. Both lens-surface curvatures of a biconvex/meniscus lens MUST be represented as two `CurvedSurface` records (one per physical surface), not as a single two-radius record, so that each surface is one local-interface evaluation.
+
+### R-5 (C.5) Evaluate each zone through the engine 4×4 solver at its local angle of incidence
+
+This part MUST add `solveZone : IncidentLightInfo -> LocalZone -> SolverParameters -> Solution` to `OpticalConstructor/Domain/CurvedElements.fs`. For each `LocalZone` (C.3) it MUST: (1) form the local incident light by applying the zone's `localAoiShift` to the incoming `IncidentLightInfo` via `IncidentLightInfo.rotateY` (`Fields.fs:411`, which adds the angle onto `incidenceAngle`); (2) run the engine's per-system solver `OpticalSystemSolver(localInfo, zone.coating, parameters)` (`Solvers.fs:199`) to obtain the reflected and transmitted fields. The `SolverParameters` (`Solvers.fs:15`) MUST be passed through unchanged — the curved-element path MUST NOT invent its own reflection-count or thresholds. This part MUST NOT re-implement reflectance/transmittance; the `Solution.emSys` reflected/transmitted split (`Solvers.fs:156`) is the output, consumed downstream exactly as a flat element's output is.
+
+### R-6 (C.6) Build the per-zone beam fan onto the Part A `BeamTree`, honoring the mirror special case
+
+This part MUST add `attachCurvedElement : ConstructorElement -> BeamNode -> BeamNode` to `OpticalConstructor/Domain/CurvedElements.fs`, producing, for a `Lens` or `CurvedMirror`, the fan of child `BeamNode`s (Part A §A.4) — one node per `LocalZone` solve from C.5. For `ConstructorElement.Lens` each zone node MUST expose both `BeamBranch.Reflected` and `BeamBranch.Transmitted` attachments (Part A §A.4). For `ConstructorElement.CurvedMirror` each zone node MUST expose the `BeamBranch.Reflected` attachment ONLY and MUST drop the transmitted field, matching the deliberate mirror special case (010 lines 78-80; Part A §A.4 "a mirror `BeamNode` carries the `Reflected` child ONLY"). This part MUST NOT redefine `BeamTree`, `BeamNode`, `BeamBranch`, or `ConstructorElement` — they are owned by Part A §A.4 and imported here.
+
+### R-7 (C.7) Propagate the beam between curved elements using the engine propagator
+
+This part MUST carry the beam from one curved element's zone output to the next element using the engine inter-element propagator `EmField.propagate (s : Layer)` (`BerremanMatrix.fs:224`, the seam Part A names under "Beam / field types"), wrapping the inter-element gap as a `Layer` (`Media.fs:24`) whose `thickness` (`Media.fs:12`) is the axial separation in meters and whose `properties` are the gap medium's `OpticalProperties` (`MaterialProperties.fs:165`). This part MUST NOT add a second propagation routine or a ray-transfer (ABCD) matrix module; the focusing geometry needed for the committed [Core] scope is the per-zone local-AOI fan (C.3, C.5) plus this axial propagation. Full Gaussian-beam waist/divergence propagation remains the existing FFT scaffolding `createGaussian`/`FourierTransform` (`FourierTransform.fs:74,137`) and is OUT OF SCOPE for this part.
+
+### R-8 (C.8) Attach coatings on curved surfaces as ordinary engine optical systems
+
+This part MUST represent a coating on a curved surface as the `OpticalSystem` stored in `CurvedSurface.coating` (C.1), reusing `OpticalSystem` (`Media.fs:94`), its `films : Layer list` (`Media.fs:98`), and `Substrate` (`Plate | Wedge`, `Media.fs:40`) verbatim — the substrate material of the lens/mirror IS the coating system's `lower`/`substrate`. This part MUST NOT define a curved-specific layer or coating type. The same coating `OpticalSystem` MUST be shared by every `LocalZone` (C.3) except where C.9 rescales its layer thicknesses for grading; sharing MUST be by value (immutable record reuse), consistent with the Part A immutability commitment and CLAUDE.md immutable-structures rule.
+
+### R-9 (C.9) Apply EUV depth-graded multilayer spacing as a per-zone thickness rescale [Core]
+
+This part MUST add `gradeCoating : CurvedSurface -> LocalZone -> OpticalSystem` to `OpticalConstructor/Domain/CurvedElements.fs`, which, for a depth-graded EUV multilayer mirror, returns the zone's coating with every `Layer.thickness` (`Media.fs:12`) of the bilayer stack scaled by a factor that varies with the zone's `radialPosition` (C.3) so the multilayer period changes across the aperture (~5% center-to-edge, 010 line 92, [Core]). The scaling factor MUST be computed from the zone's `localAoiShift` and applied only to `Thickness.Thickness d` cases (`Media.fs:12`), leaving `Thickness.Infinity` untouched. All scaled thicknesses MUST remain in `double<meter>` (`Constants.fs:6`); the ~5% figure is a default that MUST be expressed as a meter-valued scale, never stored in a non-SI unit (Part A canonical-units rule). Grading MUST be opt-in per element (a flag on the `ConstructorElement.CurvedMirror`/`Lens` payload, Part A §A.4); a non-graded element MUST reuse the single shared coating from C.8 with no rescale. This part MUST NOT add a new graded-layer type, a period-versus-radius config table, or schema versioning for grading.
+
+### R-10 (C.10) Convert and validate curved-element units only at the IO/UI boundary
+
+This part MUST keep all `CurvedSurface`/`LocalZone` fields in canonical SI (meters, engine `Angle`) inside the domain, and MUST place radius/aperture/sag unit conversion (nm/µm/mm/Å ↔ meter) in the UI/Storage layer using `nmToMeter`/`mkmToMeter`/`mmToMeter` (`Constants.fs:27,30,33`), satisfying the Part A JSON-canonical rule. The curved-element fields added by this part MUST serialize through the JSON-canonical project model under the Part A `constructorElement` schema `$def` (Part A §A.7); they MUST NOT be FsPickler-serialized into the canonical project (Part A `.binz`-derived rule). Per-zone solver outputs, being derived bulk results, MAY be written to a `.binz` sidecar via `Softellect.Sys.Core.serialize` with `BinaryZippedFormat` (`Core.fs:257`) when a sweep persists them, but this part adds no such sidecar itself.
+
+## Non-requirements
+
+- The `BeamTree`/`BeamNode`/`BeamBranch`/`ConstructorElement` type definitions are owned by Part A (slice 001); this slice imports them and adds the curved-element fan logic only.
+- The flat-element beam-tree construction, mirror reflected-only enforcement on flat mirrors, and the stack editor are owned by Part B (slice 003).
+- Full Gaussian-beam waist/divergence propagation, wavefront diffraction, aberration ray tracing, image formation, and ABCD ray-transfer matrices are OUT OF SCOPE.
+- Unit conversion at the UI/Storage boundary is owned by Part D (`Units.fs`, slice 002) and the storage layer; this slice keeps domain values in canonical SI.
+- Adaptive aperture-sampling refinement, zone-solve caching, retries, and background-job UX (§0 constraint 6).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/CurvedElements.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/CurvedElementsTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` — register `CurvedElements.fs` after `BeamTree.fs`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/BeamTreeTests.fs` — add the curved-fan cases (AC-C4) alongside the slice-003 flat-element cases.
+
+## Testing plan
+
+Gates that apply: `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `build`: solution builds with `CurvedElements.fs` registered in the Domain project in compile order after `BeamTree.fs`.
+- `unit-tests`: existing `BerremanTests` stays green (`count_at_least` baseline from the prior slice's state-of-the-world).
+- `constructor-unit-tests`: `CurvedElementsTests.fs` covers AC-C1 (nm/µm/mm radius→meters round-trip), AC-C2 (`sampleZones` returns n uniform zones, axis shift `Angle.zero`), AC-C3 (`solveZone` axis reproduces the flat solver; off-axis shifts `incidenceAngle` via `rotateY`), AC-C5 (sign convention), AC-C6 (`gradeCoating` scales finite `Thickness`, leaves `Infinity`), AC-C8 (grading-disabled shares one immutable coating); `BeamTreeTests.fs` adds AC-C4 (curved fan Reflected-only for `CurvedMirror`, both branches for `Lens`).
+- Emit the state-of-the-world file with the `gates:` YAML baseline block.
+
+## Risks
+
+- **Medium:** `solveZone` must feed the local angle through `IncidentLightInfo.rotateY` (`Fields.fs:411`) exactly and pass `SolverParameters` unchanged; a mismatch fails AC-C3. Verify `rotateY` adds onto `incidenceAngle` before wiring.
+- **Medium:** `gradeCoating` must scale only `Thickness.Thickness d` and leave `Thickness.Infinity` untouched, keeping all values `double<meter>` (AC-C6); an accidental rescale of the substrate or a non-SI scale violates the canonical-units rule.
+- **Low:** the curved-fan cases share `BeamTreeTests.fs` with slice 003 — append the AC-C4 cases without disturbing the flat-element cases.
+
+## Hand-off
+
+State carried to later slices:
+- `CurvedElements.fs` provides `CurvedSurface`/`SurfaceFigure`/`LocalZone`/`sag`/`sampleZones`/`solveZone`/`attachCurvedElement`/`gradeCoating`; the curved-element fan attaches onto the Part A `BeamTree` and is rendered by Part J §J.12 (slice 010).
+- The `constructorElement` `$def` carries the curved-element fields (Part A §A.7); Part I (slice 009) validates and round-trips them.
+- Per-zone solver outputs feed Part F (slice 006) sweeps/analysis and the `.binz` sidecar path unchanged.
+
+Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
+
+```yaml
+gates:
+  berreman_unit_tests: <int>
+```

@@ -1,0 +1,176 @@
+# 008 — Charts & visualization (Part H)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part H**.
+- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A §A.6) fixed the chart-technology split (ScottPlot + WebView2/Plotly.NET + OpenTK) and the `chartSettings` slot.
+- `C:\GitHub\Berreman\specs\0022\.slices\006.slice-md` — slice 006 (Part F) provides the analysis functions (`fieldDepthProfile`, colorimetry) and the sweep data this part renders.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-H1: After a user requests an R/T/Ψ/Δ-vs-λ (or angle) plot, the embedded ScottPlot 1D view MUST display one zoom/pan-enabled trace per visible `OpticalFunction` with engine `fullName` legend labels, without opening any browser tab.
+- AC-H2: After two or more systems are selected for overlay, the comparison view MUST draw the chosen function from every system on one plot, each trace named `fullName (index)`, reusing `plotComparison`'s data layout and never calling `Chart.show`.
+- AC-H3: After a user requests a R-vs-λ×angle surface, the WebView2-hosted Plotly.NET surface MUST render with contours enabled and the engine's documented X/Y axis-swap applied, sourced from `calculate3D`/`mapFun`.
+- AC-H4: After a user changes axis range, scale (linear/log10), title, color, line style, gridlines, or per-trace visibility, the only mutated state MUST be the `ChartSettings` record, and the change MUST appear on the chart via the H.1 projection functions within one MVU update cycle.
+- AC-H5: After a user switches an axis unit (e.g. nm→eV), displayed tick values MUST convert via the §A.10 boundary functions while the stored series and `ChartSettings` remain canonical SI.
+- AC-H6: After a user hovers the 1D plot, the readout MUST report the nearest series point; after invoking peak/min/FWHM/two-cursor-delta, it MUST return the correct extremum, FWHM, or ΔX/ΔY computed purely from the `SeriesData` array without re-solving.
+- AC-H7: After a solution is available, the polarization-ellipse plot MUST draw the parametric ellipse from the engine `Ellipticity`/azimuth members, and the Poincaré sphere MUST plot the normalized Stokes point from `Solution.stokesR`/`stokesT`.
+- AC-H8: After a field-depth plot is requested for a layer, the depth profile MUST be sourced from Part F §F.6 `fieldDepthProfile` (sampled via `EmField.propagate`), with depth shown in the layer's display unit.
+- AC-H9: After the color calculation supplies an (x,y,rgb) chromaticity, the CIE view MUST draw the 1931 horseshoe and plot the point with its sRGB swatch, without Part H computing any color-matching integration.
+- AC-H10: After a dispersive material and wavelength range are chosen, the n,k/ρ/ε dispersion plot MUST render from the engine `plotDispersion`/`plotN11`…`plotRho33` series bodies adapted to renderer-neutral arrays, with no `Chart.show` call and no re-derivation of the dispersion formulas.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/ChartSettings.fs` (new) — `ChartSettings`/`AxisScale`/`LineStyle` record+DUs and the pure `applyToScottPlot`/`applyToPlotly` projections; the chart-settings slot shape for §A.7 (H.1)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/SeriesData.fs` (new) — renderer-neutral 1D/surface series adapter over `calculate`/`calculate3D`/`mapFun`/`plotDispersion`; no solver re-implementation (H.2)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Plot1DView.fs` (new) — ScottPlot 1D interactive plot, overlay/comparison, field-depth and dispersion traces (H.3/H.4/H.9/H.11)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Plot3DView.fs` (new) — Plotly.NET-in-WebView2 surface & contour view reusing `plot3D` conventions (H.5)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Readout.fs` (new) — hover readout, peak/min finder, FWHM, two-cursor delta as pure functions over series (H.7)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/PolarizationPlots.fs` (new) — polarization-ellipse (ScottPlot) and Poincaré-sphere (Plotly.NET) from engine `Ellipticity`/azimuth/`StokesVector` (H.8)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/CieView.fs` (new) — CIE 1931 horseshoe + supplied (x,y,rgb) point; static spectral-locus boundary table only (H.10)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (edit) — register the `Charts/` files in compile order.
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` (edit) — fill the `chartSettings` slot shape under the project root for the §A.7 family (H.1).
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` (edit) — serialize the `ChartSettings` record into the project's chart-settings slot (H.1).
+
+Test artifacts owned by this slice:
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/SeriesDataTests.fs` (new) — 1D adapter over `calculate` reproduces the `(x,y)` pairs `Charting.plot` would choose; surface adapter Z grid equals `mapFun` output for a fixed `calculate3D` run (AC-H1/AC-H3)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/ReadoutTests.fs` (new) — synthetic single-peak series: peak finder returns apex, min finder the trough, FWHM the half-max width, two-cursor delta exact ΔX/ΔY (AC-H6)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/ChartSettingsTests.fs` (new) — `applyToScottPlot`/`applyToPlotly` omit `visible=false` traces, apply `Log10` scale; unit switch routes through the §A.10 boundary conversion (nm→eV round-trips to canonical meters) (AC-H4/AC-H5)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/PolarizationPlotTests.fs` (new) — for a known reflected `EmFieldSystem`, ellipse curve parameters match `ellipticityR`/`azimuthR` and the Poincaré point equals normalized `Solution.stokesR` (AC-H7)
+
+### File:line references owned by this slice
+
+All file:line references in the verbatim H.0–H.11 directives reproduced under **Requirements** are owned by this slice (notably: `FieldFunctions.fs:192`, `FieldFunctions.fs:109`, `FieldFunctions.fs:157,161,165,169`, `FieldFunctions.fs:227,238`, `Charting.fs:21`, `Charting.fs:26-30`, `Charting.fs:31`, `Charting.fs:32`, `Charting.fs:34,52,92`, `Charting.fs:38`, `Charting.fs:49`, `Charting.fs:57`, `Charting.fs:64`, `Charting.fs:64-82`, `Charting.fs:74-77`, `Charting.fs:75`, `Charting.fs:85`, `Charting.fs:95,96,105`, `Charting.fs:95-107`, `Variables.fs:237`, `Variables.fs:270`, `Fields.fs:302`, `Fields.fs:314`, `Fields.fs:580`, `Dispersion.fs:53`, `BerremanMatrix.fs:224`).
+
+## Scope
+
+This slice owns the chart presentation layer of `OpticalConstructor.Ui`: it binds ScottPlot (fast native interactive 2D/contour) and Plotly.NET-in-WebView2 (publication/export) to the engine's series data, delivering the [Core] interactive 1D plot and overlay/comparison, the [Standard] 2D/3D surface & contour, chart customization, cursor/readout & markers, and the specialized plots (polarization ellipse, Poincaré sphere, field-depth profile, CIE chromaticity, n,k dispersion). It reuses the engine's authoritative data extraction (`calculate`/`calculate3D`/`mapFun`/`plotDispersion` series bodies) rather than the engine's terminal `Chart.show` wrappers, and renders CIE/field-depth data it is handed. It does NOT own sweep computation, color/CIE numeric conversion (Part F), or chart export (Part I).
+
+## Requirements
+
+The following are the parent's Part H directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+
+### R-1 (H.1) Chart-settings record and per-renderer projection [Standard]
+
+Part H MUST define one immutable F# record `ChartSettings` in a new file `OpticalConstructor.Ui/Charts/ChartSettings.fs`, holding axis ranges (X and Y min/max as `float option`), per-axis scale (a `AxisScale = Linear | Log10` DU), title, legend visibility, gridline visibility, and a per-trace list of `{ functionId : OpticalFunction; name : string; color : string; lineStyle : LineStyle; visible : bool }`. `OpticalFunction` MUST be the engine DU at `FieldFunctions.fs:109` — Part H MUST NOT redefine the set of plottable quantities. `ChartSettings` MUST be the field type used by the `OpticalConstructorProject` chart-settings slot defined in §A.7; this part fills that slot's shape and MUST NOT create a parallel settings container. Two pure functions `applyToScottPlot : ChartSettings -> ScottPlot.Plot -> unit` and `applyToPlotly : ChartSettings -> GenericChart -> GenericChart` MUST live in `ChartSettings.fs` and be the ONLY place axis/legend/grid/trace-visibility settings are pushed to a renderer. Schema versioning, per-chart mutable config objects, and a settings-migration path are OUT OF SCOPE.
+
+### R-2 (H.2) Series adapter over the engine charting data [Core]
+
+Part H MUST add a new module `OpticalConstructor.Ui/Charts/SeriesData.fs` that converts engine output into renderer-neutral series, reusing the engine's own data extraction rather than the engine's `Chart.show` wrappers. For 1D, it MUST call `Analytics.Variables.calculate` (`Variables.fs:237`) to obtain the `(float * Solution) []` array and project each requested `OpticalFunction` through `Solution.func` (`FieldFunctions.fs:192`), matching the choose-on-`Some` pattern the engine already uses inside `plot` (`Charting.fs:26-30`). For 3D it MUST call `calculate3D` (`Variables.fs:270`) and `Charting.mapFun` (`Charting.fs:57`) to obtain the Z grid. The adapter MUST return `{ name : string; points : (float * float) [] }` for 1D and `{ z : float [] []; xValues : float []; yValues : float [] }` for surfaces. Part H MUST NOT re-implement the solver call or the sweep loop — those are the Part A sweeps seam. Caching of computed series is OUT OF SCOPE unless put in scope by the live-recalculation directive in the construction part; Part H consumes whatever series array it is handed.
+
+### R-3 (H.3) Interactive 1D plot [Core]
+
+Part H MUST render the [Core] interactive 1D plot (R/T/Ψ/Δ vs. λ or angle, multiple traces, legend, zoom/pan) onto a hosted ScottPlot control in a new file `OpticalConstructor.Ui/Charts/Plot1DView.fs`. Each visible trace from `ChartSettings` (H.1) MUST be drawn from a `SeriesData` 1D series (H.2) via `Plot.Add.Scatter`, named with the engine's `OpticalFunction.info.fullName` so legend labels match the engine convention used at `Charting.fs:31`. Zoom and pan MUST use ScottPlot's built-in interaction (no custom pan/zoom math). The X axis label and its plotted range MUST come from the sweep variable, mirroring `Charting.fs:32` which reads `x.name`, `x.plotMinValue`, `x.plotMaxValue`; where `ChartSettings` overrides the range, the override wins. The view MUST be a pure function of `ChartSettings` plus the series array and MUST hold no mutable chart state of its own.
+
+### R-4 (H.4) Overlay & comparison of multiple systems [Core]
+
+Part H MUST render the [Core] overlay/comparison view in `Plot1DView.fs` by drawing the same `OpticalFunction` from several systems on one ScottPlot plot, reusing the per-system data layout of `Analytics.Charting.plotComparison` (`Charting.fs:38`) — one `calculate` (`Variables.fs:237`) per system, then one trace per (system, function) pair named `fullName + " (" + index + ")"` exactly as `Charting.fs:49`. The set of systems to overlay MUST come from the multi-system workspace owned by Part J (§J.5); Part H MUST NOT introduce its own system-collection store. A new browser tab MUST NOT be opened — `plotComparison`'s terminal `Chart.show` (`Charting.fs:52`) MUST NOT be called from the app; only its series-assembly logic is reused.
+
+### R-5 (H.5) 2D/3D surface & contour plots [Standard]
+
+Part H MUST render the [Standard] 2D/3D surface and contour plot (e.g. R vs. λ × angle) in a new file `OpticalConstructor.Ui/Charts/Plot3DView.fs`. Surface and contour MUST be produced by Plotly.NET hosted in the WebView2 control (Part A chart split), reusing the `Chart.Surface` construction and the axis-swap convention documented in `Analytics.Charting.plot3D` (`Charting.fs:64-82`, including the `kk:20180922` swap of X with Y at `Charting.fs:74-77`) and the contour toggle `Contours.initXyz(Show = true)` at `Charting.fs:75`. The Z grid MUST come from the `SeriesData` surface adapter (H.2) over `calculate3D`/`mapFun`; Part H MUST NOT call the solver directly. Custom OpenTK 3D rendering is reserved by Part A for the system/beam viewport and MUST NOT be used here.
+
+### R-6 (H.6) Chart customization [Standard]
+
+Part H MUST wire the [Standard] customization controls — axis ranges, linear/log scale, titles, colors, line styles, units, gridlines, annotations, and per-trace show/hide — to mutate ONLY the `ChartSettings` record (H.1) through the MVU `update`, never the renderer directly. Log scale MUST be the `AxisScale.Log10` case applied through `applyToScottPlot`/`applyToPlotly` (H.1); Part H MUST NOT add a separate log-transform of the data. Unit selection on an axis MUST convert display values at the chart boundary using the boundary-only conversions defined in §A.10 (eV↔nm, cm⁻¹, nm/µm/Å/mm) — the Part D `Units.fs` conversion seam (§D.2); Part H MUST NOT store a non-SI value in `ChartSettings` and MUST NOT re-implement the conversions — it calls the §A.10 functions. Per-trace show/hide MUST flip the `visible` flag on the trace entry, with the projection functions in H.1 omitting hidden traces. Config-file knobs beyond `ChartSettings` and any settings-migration code are OUT OF SCOPE.
+
+### R-7 (H.7) Cursor/readout & markers [Standard]
+
+Part H MUST add the [Standard] cursor/readout and marker tools in a new file `OpticalConstructor.Ui/Charts/Readout.fs`, operating on the ScottPlot 1D plot (H.3). It MUST provide: hover readout of the nearest series point (ScottPlot `GetNearest`), a peak finder and a min finder over a chosen trace's `(float * float) []` series (pure array scan, returning the extremum point), an FWHM measurement (half-maximum crossing interpolation on one trace), and a two-cursor delta reporting ΔX and ΔY between two placed markers. These MUST be pure functions over the `SeriesData` 1D array plus the cursor positions; Part H MUST NOT recompute physics or re-solve to find peaks. No marker state may live outside the MVU model — marker positions MUST be fields in the chart page model, not renderer-held state.
+
+### R-8 (H.8) Polarization ellipse and Poincaré sphere [Standard]
+
+Part H MUST render the [Standard] polarization-ellipse and Poincaré-sphere plots in a new file `OpticalConstructor.Ui/Charts/PolarizationPlots.fs`, consuming existing engine outputs only. The polarization ellipse MUST be a parametric curve built from the reflected/transmitted `Ellipticity` (`Fields.fs:302`) and azimuth `Polarization` (`Fields.fs:314`) exposed on `EmFieldSystem` as `ellipticityR`/`ellipticityT`/`azimuthR`/`azimuthT` (`FieldFunctions.fs:157,161,165,169`), drawn on a ScottPlot plot. The Poincaré sphere MUST be a Plotly.NET 3D sphere (hosted in WebView2) onto which the normalized Stokes vector `(S1,S2,S3)/S0` is plotted as a point, the Stokes vector taken from `Solution.stokesR`/`stokesT` (`FieldFunctions.fs:227,238`) and `StokesVector` (`Fields.fs:580` per §A). Part H MUST NOT recompute Stokes parameters from raw E/H fields and MUST NOT redefine `StokesVector`.
+
+### R-9 (H.9) Field-depth profile plot [Standard]
+
+Part H MUST render the [Standard] in-layer field-depth profile (|E|², Poynting, or absorption vs. depth) in `Plot1DView.fs` as a standard 1D ScottPlot trace, with depth (in meters, converted to the layer's display unit at the boundary per §A.10) on the X axis. The per-depth field samples MUST come from the field-depth profile owned by Part F §F.6 (`fieldDepthProfile`, `Analytics/FieldProfile.fs`), which itself samples the engine field-propagation seam `EmField.propagate (s : Layer)` (`BerremanMatrix.fs:224`, the inter-element propagation seam named in §A); Part H MUST NOT add a new in-layer field solver and MUST NOT re-sample the layer independently of §F.6. Part H consumes the `(double<meter> * float) list` profile and renders it; the discretization (samples-per-layer count) is the argument §F.6 already takes.
+
+### R-10 (H.10) CIE chromaticity diagram [Standard]
+
+Part H MUST render the [Standard] CIE chromaticity diagram in a new file `OpticalConstructor.Ui/Charts/CieView.fs`, drawing the CIE 1931 horseshoe boundary and plotting a supplied chromaticity point (x,y) plus its sRGB swatch. The XYZ→xy and XYZ→sRGB numbers, and the spectra→XYZ integration, are the net-new color calculation owned by Part F §F.8 (`spectrumToXyz`/`xyzToLab`/`xyzToSrgb`, `Analytics/Colorimetry.fs`); Part H MUST consume the resulting `{ x : float; y : float; rgb : byte * byte * byte }` and MUST NOT implement the color-matching-function integration or the gamma/sRGB transform itself. The horseshoe boundary spectral-locus coordinates are static reference data and MUST live as a literal array in `CieView.fs`; this is the only static numeric table Part H introduces.
+
+### R-11 (H.11) n,k dispersion plot [Standard]
+
+Part H MUST render the [Standard] n,k (and ρ, ε-component) dispersion plot in `Plot1DView.fs` by reusing the engine dispersion helpers as the data source: the `plotDispersion` series builder (`Charting.fs:85`) and the named accessors `plotN11`/`plotXi11`/`plotN22`/`plotXi22`/`plotN33`/`plotXi33`/`plotRho11`/`plotRho22`/`plotRho33` (`Charting.fs:95-107`), which compute series from an `OpticalPropertiesWithDisp` over a `Range<WaveLength>`. Part H MUST extract those helpers' series-building bodies into the `SeriesData` adapter (H.2) so they end in renderer-neutral `(float * float) []` instead of the engine's terminal `Chart.show` (`Charting.fs:92`); Part H MUST NOT call `Chart.show` and MUST NOT re-derive the n/k/ρ formulas, which are owned by `OpticalPropertiesWithDisp` (`Dispersion.fs:53` per §A).
+
+## Non-requirements
+
+- Sweep computation (`calculate`/`calculate3D`) is the Part A sweeps seam reused by Part F; this part consumes series arrays and MUST NOT re-implement the solver/sweep loop.
+- Color/CIE numeric conversion (`spectrumToXyz`/`xyzToLab`/`xyzToSrgb`) is owned by Part F §F.8 (slice 006); Part H consumes the `(x,y,rgb)` it is handed (H.10).
+- The field-depth profile sampling (`fieldDepthProfile`) is owned by Part F §F.6 (slice 006); Part H renders the returned list (H.9).
+- Chart-data CSV/image export is owned by Part I (slice 009); this part renders, it does not export.
+- The OpenTK 3D system/beam viewport is reserved by Part A for §J.12 (slice 010) and MUST NOT be used here for surfaces (H.5).
+- The `Chart.show` terminal wrappers MUST NOT be called (H.4/H.11); only the engine's series-assembly bodies are reused.
+- The multi-system collection store is owned by Part J §J.5 (slice 010); Part H consumes the system set.
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/ChartSettings.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/SeriesData.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Plot1DView.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Plot3DView.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Readout.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/PolarizationPlots.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/CieView.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/SeriesDataTests.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/ReadoutTests.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/ChartSettingsTests.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/PolarizationPlotTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register the `Charts/` files.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` — fill the `chartSettings` slot shape.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` — serialize the `ChartSettings` slot.
+
+## Testing plan
+
+Gates that apply: `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `build`: solution builds with the `Charts/` files registered, compiling against the FuncUI DSL surface and the ScottPlot/Plotly.NET/WebView2 package surfaces WITHOUT the FuncUI clone dependency (§0 constraint 5). The chart-page model/`update` MUST contain no Avalonia type (P3).
+- `unit-tests`: existing `BerremanTests` stays green (`count_at_least` baseline from the prior slice's state-of-the-world).
+- `constructor-unit-tests`: `SeriesDataTests.fs` (AC-H1/AC-H3 — 1D adapter reproduces `Charting.plot`'s chosen `(x,y)` pairs; surface Z grid equals `mapFun`); `ReadoutTests.fs` (AC-H6 — peak/min/FWHM/two-cursor on a synthetic series); `ChartSettingsTests.fs` (AC-H4/AC-H5 — projections omit hidden traces, apply `Log10`, unit switch via §A.10 boundary); `PolarizationPlotTests.fs` (AC-H7 — ellipse from `ellipticityR`/`azimuthR`, Poincaré point from normalized `stokesR`). These are headless pure-function/data tests, not renderer-driven.
+- Emit the state-of-the-world file with the `gates:` YAML baseline block.
+
+## Risks
+
+- **Medium:** the `SeriesData` adapter must reproduce the exact choose-on-`Some` projection `Charting.plot` uses (`Charting.fs:26-30`) and the `plot3D` axis-swap (`Charting.fs:74-77`); a divergence makes the chart disagree with the engine's own plots (AC-H1/AC-H3). Extract the series-building bodies, not re-derived logic.
+- **Medium:** the n,k dispersion helpers (`Charting.fs:85,95-107`) end in `Chart.show`; this slice must lift only their series-building bodies into `SeriesData` and MUST NOT call `Chart.show` (AC-H10).
+- **Low:** the `chartSettings` slot must stay anchored under the project root as Part A reserved it.
+
+## Hand-off
+
+State carried to later slices:
+- `Charts/ChartSettings.fs` (the `ChartSettings` slot type + `applyToScottPlot`/`applyToPlotly`), `Charts/SeriesData.fs` (renderer-neutral series adapter), `Charts/Plot1DView.fs`, `Charts/Plot3DView.fs`, `Charts/Readout.fs`, `Charts/PolarizationPlots.fs`, `Charts/CieView.fs` exist.
+- Part G (slice 007) result overlay refreshes through the same ScottPlot overlay path (`plotComparison` series layout) this slice provides.
+- Part J §J.5 (slice 010) supplies the multi-system workspace store the overlay (H.4) reads; Part J §J.8 supplies the chart color palettes surfaced to these renderers.
+- Part I (slice 009 §I.7) exports the rendered charts via the chart libraries' own writers; this slice provides the `ChartHandle`-shaped renderer objects.
+- The `chartSettings` slot is filled; Part I round-trips it.
+
+Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
+
+```yaml
+gates:
+  berreman_unit_tests: <int>
+```
