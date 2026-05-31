@@ -1,0 +1,310 @@
+# Spec 0022 - Optical Constructor Foundation
+
+## 0. Binding constraints
+
+The implementation MUST establish the first usable optical-constructor application slice for the Berreman repository: a Windows desktop app, a serializable project model, a stack/source editor, a calculation surface, project persistence, and the FuncUI clone audit gate.
+
+The implementation MUST target `.NET 10` and keep application code F#-first. `Berreman/Berreman/Berreman.fsproj:4` already targets `net10.0`; new projects MUST use the same target framework.
+
+The implementation MUST use the existing Berreman engine for optical calculations. The first primitives to reuse are:
+
+- `Berreman/Berreman/Media.fs:24` `Layer` and `Berreman/Berreman/Media.fs:94` `OpticalSystem` - canonical flat stack, substrate, and half-space engine shapes.
+- `Berreman/Berreman/Fields.fs:337` `IncidentLightInfo` - canonical wavelength, incidence angle, polarization, and ellipticity input.
+- `Berreman/Analytics/Variables.fs:237` `calculate` and `Berreman/Analytics/Variables.fs:270` `calculate3D` - sweep calculation entry points.
+
+The implementation MUST NOT replace the Berreman solver, matrix exponential, eigenvalue path, or analytics charting scripts. `Berreman/Berreman/MatrixExp.fs:31` contains the matrix exponential implementation used by the engine, `Berreman/Berreman/MatrixEvd.fs:13` adapts `m.Evd()` into the engine's EVD shape, and `Berreman/Analytics/Charting.fs:20` is the script-facing 1D plotting entry point.
+
+The implementation MUST keep linear algebra and optimization separate. ALGLIB MAY be referenced only behind the optimization abstraction named in Part E, and MUST NOT be used to replace the engine's linear algebra in this spec.
+
+The implementation MUST keep the minimum satisfying build small: new app, domain, and test projects plus explicit project-model and UI modules. Additional plugins, code generation, reflection dispatch, migration systems, runtime metaprogramming, telemetry, caching layers, retry frameworks, and configuration knobs MUST NOT be added unless named below.
+
+---
+
+## Part A - Project Model And Persistence (CRITICAL - land first)
+
+### A.0 Problem statement
+
+The repository contains a working Berreman engine, but no operator-facing project document format for an optical-constructor workspace. `Berreman/Berreman/Media.fs:63` defines `BaseOpticalSystem`, `Berreman/Berreman/Media.fs:94` defines `OpticalSystem`, and `Berreman/Berreman/Fields.fs:337` defines `IncidentLightInfo`; the new app needs a stable, hand-editable document model above those engine records.
+
+The document model is the contract between the UI, tests, and future LLM edits. It represents one workspace containing materials, sources, optical systems, sweeps, chart settings, and user-facing descriptions. Every saved project starts from JSON and validates against JSON Schema before any engine conversion.
+
+### A.1 Project model files
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` as an F# class library targeting `net10.0`.
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/ProjectModel.fs` containing F# records and discriminated unions for:
+
+- `ProjectDocument` with `schemaVersion`, `description`, `materials`, `sources`, `systems`, `activeSystemId`, `sweeps`, and `chartSettings`.
+- `MaterialDocument` with isotropic constant `n`/`k` support, tabulated `n`/`k`, and a placeholder case for anisotropic tensor data.
+- `SourceDocument` with wavelength or photon energy input, incidence angle, polarization preset or angle, ellipticity, and intensity.
+- `OpticalSystemDocument` with upper medium, ordered layer list, substrate mode, lower medium, and user-visible name.
+- `LayerDocument` with material reference, thickness value, default thickness unit, optional orientation, and enabled flag.
+- `SubstrateDocument` with `FilmOnly`, `Plate`, and `Wedge` cases.
+
+The implementation MUST use records and discriminated unions directly. It MUST NOT encode model variants as untyped string dictionaries.
+
+### A.2 Units
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/Units.fs` with explicit units for `M`, `Mm`, `Mkm`, `Nm`, `Angstrom`, `ElectronVolt`, and `WavenumberCm`.
+
+The implementation MUST convert all length-like values to meters at the engine boundary, matching `Berreman/Berreman/Constants.fs:26`, `Berreman/Berreman/Constants.fs:29`, and `Berreman/Berreman/Constants.fs:32`.
+
+The implementation MUST add photon-energy conversion using `E[eV] = 1239.84 / lambda[nm]`. Conversion functions MUST be pure and covered by tests.
+
+The implementation MUST preserve each project's chosen display unit in the JSON document. It MUST NOT normalize display units away during save/load round trips.
+
+### A.3 JSON persistence and schema
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/ProjectJson.fs` using `System.Text.Json` plus `FSharp.SystemTextJson` converters for F# records, options, lists, and discriminated unions.
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/Schemas/optical-constructor-project.schema.json` and validate project JSON on load before returning a `ProjectDocument`.
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/Samples/minimal-project.bmproj.json` containing one source, one simple film stack, and one wavelength sweep.
+
+The canonical project extension MUST be `.bmproj.json`. Derived bulk numeric data MAY use `.binz` later, but this spec MUST NOT implement `.binz` sidecars or result caches.
+
+### A.4 Engine conversion
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/EngineMapping.fs` with total conversion functions from valid project records into `IncidentLightInfo` and `OpticalSystem`.
+
+The mapping MUST use `Thickness.nm`, `Thickness.mkm`, and `Thickness.mm` from `Berreman/Berreman/Media.fs:16`, `Berreman/Berreman/Media.fs:17`, and `Berreman/Berreman/Media.fs:18` when converting thickness inputs.
+
+The first implementation MUST support constant isotropic materials and named built-in vacuum/glass examples. It MUST surface unsupported material variants as validation errors before solver dispatch. It MUST NOT silently substitute vacuum or glass for an unsupported material.
+
+---
+
+## Part B - Desktop Shell And Core Operator Workflow
+
+### B.0 Problem statement
+
+The first desktop app lets an operator open a project, edit a flat stack, edit a source, run a sweep, and inspect R/T curves without writing scripts. `Berreman/Analytics/Charting.fs:20` plots 1D optical functions today and `Berreman/Analytics/Charting.fs:37` plots comparisons, but those functions open charts from scripts rather than exposing a project-oriented workspace.
+
+This spec chooses a single UI direction: Avalonia plus Avalonia.FuncUI in F# MVU. The audited local clone at `C:/GitHub/Avalonia.FuncUI.Clone/` exists and MUST be audited before linking.
+
+### B.1 App project
+
+The implementation MUST create `Berreman/OpticalConstructor.App/OpticalConstructor.App.fsproj` as a Windows desktop F# project targeting `net10.0`.
+
+The app MUST reference `OpticalConstructor.Domain`, `Berreman/Berreman/Berreman.fsproj`, and `Berreman/Analytics/Analytics.fsproj`.
+
+The app MUST use Avalonia, Avalonia.FuncUI, and ScottPlot for the primary interactive 2D chart. Plotly.NET MAY be used only for export or a secondary preview because `Berreman/Analytics/Analytics.fsproj:64` already references Plotly.NET and `Berreman/Analytics/Charting.fs:8` opens it.
+
+### B.2 MVU shell
+
+The implementation MUST create:
+
+- `Berreman/OpticalConstructor.App/Program.fs` - app entry point.
+- `Berreman/OpticalConstructor.App/App.fs` - Avalonia app setup.
+- `Berreman/OpticalConstructor.App/MainWindow.fs` - top-level window and layout.
+- `Berreman/OpticalConstructor.App/Model.fs` - complete UI state.
+- `Berreman/OpticalConstructor.App/Update.fs` - pure message update function plus command construction.
+- `Berreman/OpticalConstructor.App/View.fs` - FuncUI view projection.
+
+The UI state MUST include loaded project, selected system, selected layer, selected source, dirty flag, active sweep status, last error, and recent action text.
+
+The implementation MUST keep business rules out of view functions. View functions MAY dispatch messages and render state; conversion, validation, persistence, and solver dispatch MUST live in domain or update modules.
+
+### B.3 Top-level workspace UX
+
+The app's first viewport MUST be the actual workspace, not a landing page. It MUST contain a top menu/toolbar, a left project panel, a center stack editor, a right source/sweep panel, and a bottom or right chart/results panel.
+
+Discoverability: the top menu MUST expose `File > New`, `File > Open`, `File > Save`, `File > Save As`, `Run > Calculate Sweep`, and `Help > About`.
+
+Progress granularity: sweep progress MUST be per-sample for 1D sweeps. The UI MUST show a determinate progress bar and the completed/total sample count.
+
+Pre-confirmation gate: a single 1D sweep from the active project MAY run from one click. Any future multi-system batch, fitting, global optimization, or LLM-driven operation MUST use identify -> confirm -> process and is outside this implementation.
+
+Completion refresh: when a sweep completes, the chart panel MUST update from the in-memory result in the same UI session without requiring manual reload.
+
+Action-button UX: layer `Add`, `Duplicate`, `Move Up`, `Move Down`, and `Delete` MUST appear in the same editor toolbar. `Delete` MUST require selection and MUST record a recent-action entry that allows one-step undo for the deleted layer.
+
+Committable-state-under-dot-folder: this implementation MUST NOT create committable project files under a dot folder. Runtime preferences MAY use the user's application-data directory, but repository sample projects MUST live under `Berreman/OpticalConstructor.Domain/Samples/` because root `.gitignore:16` through `.gitignore:25` ignore common build folders, `.gitignore:263` ignores `node_modules/`, and `.gitignore:331` ignores `/data`.
+
+Spec-writer hidden controls: the desktop page MUST NOT include LLM-profile select, web-search-provider select, session token counters, `.specrc.agent` dropdowns, or `spec_writer.set_agent` wiring. Those controls are unrelated to this desktop product.
+
+### B.4 Stack and source editing
+
+The stack editor MUST allow add, delete, duplicate, reorder, enable/disable, material selection, thickness value edit, thickness unit edit, and optional orientation edit for each layer.
+
+The source editor MUST allow wavelength in nm/mkm/Angstrom/eV, incidence angle in degrees, s/p/linear-angle polarization, ellipticity, and intensity.
+
+The substrate selector MUST expose `FilmOnly`, `Plate`, and `Wedge`. Wedge mode MUST expose wedge angle because `Berreman/Berreman/Fields.fs:328` defines `WedgeAngle` and `Berreman/Berreman/Media.fs:40` distinguishes `Plate` and `Wedge`.
+
+Input validation MUST run before solver dispatch and before save. Invalid numeric inputs MUST remain editable and MUST display field-level error text.
+
+---
+
+## Part C - Calculation And Results
+
+### C.0 Problem statement
+
+The engine already returns reflected and transmitted fields. `Berreman/Berreman/FieldFunctions.fs:109` defines optical output functions including `R`, `Rp`, `Rs`, `T`, `Tp`, and `Ts`; `Berreman/Berreman/FieldFunctions.fs:157` through `Berreman/Berreman/FieldFunctions.fs:170` expose reflected/transmitted ellipticity and azimuth; `Berreman/Berreman/Solvers.fs:315` and `Berreman/Berreman/Solvers.fs:316` expose reflected/transmitted Mueller matrices.
+
+The first app slice needs a reliable 1D sweep path and a chartable result model. It does not need fitting, synthesis, non-sequential ray tracing, or curved optical elements yet.
+
+### C.1 Sweep runner
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/SweepRunner.fs` with a cancellable 1D sweep runner over wavelength or incidence angle.
+
+The runner MUST compute `R`, `T`, `Rp`, `Rs`, `Tp`, and `Ts` for each sample using the solver output functions cited in `Berreman/Berreman/FieldFunctions.fs:109`. It MAY also compute ellipticity and azimuth when the active chart requests them.
+
+The runner MUST accept a progress callback after each completed sample and a cancellation token checked between samples.
+
+The runner MUST NOT introduce result caching, retry loops, background service frameworks, or parallel execution in this spec. A sequential implementation satisfies the requirement.
+
+### C.2 Chart results
+
+The implementation MUST create `Berreman/OpticalConstructor.App/ChartPanel.fs`.
+
+The chart panel MUST render the latest 1D sweep with selectable visible traces, legend, axis labels including display units, mouse hover coordinates, and zoom/pan.
+
+The app MUST keep chart data in typed records in UI state. It MUST NOT parse chart data back out of Plotly, ScottPlot, or rendered UI controls.
+
+### C.3 Export
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/Export.fs` with CSV export for the active sweep result.
+
+The CSV export MUST include a header row naming the x-axis unit and every exported trace. It MUST NOT export chart images in this spec.
+
+---
+
+## Part D - FuncUI Clone Audit Gate
+
+### D.0 Problem statement
+
+The chosen UI stack depends on a local Avalonia.FuncUI clone. The local path `C:/GitHub/Avalonia.FuncUI.Clone/` is present in the development machine, but the application MUST NOT link it until the repository has a committed audit artifact. The research explicitly requires removal, not disabling, of political statements and any behavior tied to such statements.
+
+### D.1 Audit script and artifact
+
+The implementation MUST create `Berreman/OpticalConstructor.App/Audit/AuditFuncUIClone.fs` or `Berreman/OpticalConstructor.App/Audit/AuditFuncUIClone.fsx`.
+
+The audit MUST scan `C:/GitHub/Avalonia.FuncUI.Clone/` for source, docs, build scripts, workflow files, templates, embedded resources, and URLs.
+
+The audit MUST produce `Berreman/OpticalConstructor.App/Audit/funcui-clone-audit.md` with:
+
+- clone path checked;
+- commit SHA checked;
+- scanned path categories;
+- findings removed by path;
+- remaining findings, if any;
+- final pass/fail status.
+
+The app project MUST NOT reference the local clone directly until the audit artifact says pass. Before that point, the app MAY reference the public NuGet package to keep the shell compiling, but the final project state for this spec MUST either use the audited clone or keep a clearly marked package-reference placeholder plus a failing audit test that blocks release.
+
+### D.2 No hidden behavior
+
+The audit gate MUST reject code, assets, comments, documentation, templates, URLs, build steps, or runtime behavior that disables, degrades, nags, geofences, date-gates, phones home, or changes behavior based on political, regional, locale, name, or IP criteria.
+
+The implementation MUST NOT add a bypass flag for this audit. The minimum satisfying behavior is an explicit pass/fail artifact and a test that fails when the artifact is absent or failed.
+
+---
+
+## Part E - Optimization Boundary
+
+### E.0 Problem statement
+
+Design synthesis and inverse fitting are in the product direction, but adding optimizers before the project model and UI workflow are stable would create non-local complexity. The repository contains old ALGLIB experiments under `!Temp/`, but those are not product modules and MUST NOT be imported directly.
+
+External ALGLIB documentation confirms its optimization suite includes L-BFGS/CG, Levenberg-Marquardt, box/linear constraints, and nonlinear constraints. ALGLIB's Levenberg-Marquardt documentation also describes C# support, box/linear constraints, `minlmcreatev`, `minlmcreatevj`, and `minlmrequesttermination`.
+
+### E.1 Interface-only optimization seam
+
+The implementation MUST create `Berreman/OpticalConstructor.Domain/Optimization.fs` with library-agnostic types only:
+
+- `OptimizationParameter`;
+- `ParameterBounds`;
+- `ResidualVector`;
+- `OptimizationProblem`;
+- `OptimizationResult`;
+- `IOptimizer`.
+
+The implementation MUST NOT implement ALGLIB calls, fitting UI, needle optimization, global optimization, or Wolfram-reference validation in this spec.
+
+The interface MUST be sufficient for a later ALGLIB adapter to represent residual functions, optional Jacobian, bounds, cancellation, and solver status.
+
+---
+
+## Acceptance criteria
+
+### Part A acceptance
+
+- AC-A1: After loading `Berreman/OpticalConstructor.Domain/Samples/minimal-project.bmproj.json`, `ProjectJson.load` MUST validate it against `optical-constructor-project.schema.json` and return a `ProjectDocument` without throwing within one second.
+- AC-A2: After saving and reloading the sample project, each layer/source display unit MUST match the original JSON value exactly.
+- AC-A3: After converting a valid constant-isotropic sample project, `EngineMapping` MUST produce an `IncidentLightInfo` and `OpticalSystem` accepted by `OpticalSystemSolver` without substituting fallback materials.
+- AC-A4: After converting `2.0 eV` to wavelength, `Units` MUST return `619.92 nm` within `0.01 nm`.
+
+### Part B acceptance
+
+- AC-B1: After launching the app, the first window MUST show the workspace with project, stack, source/sweep, and chart/results regions without navigating through a landing page.
+- AC-B2: After the operator adds, duplicates, moves, and deletes a layer, the stack editor MUST update the visible order and the delete action MUST be undoable once.
+- AC-B3: After entering invalid thickness or wavelength text, the app MUST keep the field editable, show a field-level validation error, and prevent solver dispatch.
+- AC-B4: After opening the sample project, editing a layer thickness, and choosing Save, the file MUST contain the edited value and remain schema-valid.
+
+### Part C acceptance
+
+- AC-C1: After running a 1D wavelength sweep from the sample project, the app MUST update progress once per sample and show completed progress at the final sample.
+- AC-C2: After the sweep completes, the chart panel MUST display R/T traces in the same UI session without manual reload.
+- AC-C3: After exporting the active sweep, the CSV file MUST contain a header naming the x-axis unit plus exported trace names and one data row per sample.
+- AC-C4: After cancellation during a sweep, no further samples MUST be calculated after the in-flight sample completes, and the UI MUST show cancelled status.
+
+### Part D acceptance
+
+- AC-D1: After running the FuncUI clone audit, `funcui-clone-audit.md` MUST name the clone path, commit SHA, scanned categories, findings, and pass/fail status.
+- AC-D2: After deleting or marking the audit artifact failed, the app release/audit test MUST fail before packaging.
+
+### Part E acceptance
+
+- AC-E1: After building `OpticalConstructor.Domain`, `Optimization.fs` MUST expose the interface types without referencing ALGLIB assemblies.
+- AC-E2: After compiling the solution, no product source file MUST import modules from `!Temp/`.
+
+## Files in scope
+
+- `Berreman/Berreman.slnx` (edit) - add new projects.
+- `Berreman/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (new) - project model/domain library.
+- `Berreman/OpticalConstructor.Domain/Units.fs` (new) - display units and canonical conversions.
+- `Berreman/OpticalConstructor.Domain/ProjectModel.fs` (new) - serializable project records and unions.
+- `Berreman/OpticalConstructor.Domain/ProjectJson.fs` (new) - JSON load/save and schema validation.
+- `Berreman/OpticalConstructor.Domain/EngineMapping.fs` (new) - project-to-engine conversion.
+- `Berreman/OpticalConstructor.Domain/SweepRunner.fs` (new) - cancellable sequential 1D sweeps.
+- `Berreman/OpticalConstructor.Domain/Export.fs` (new) - CSV export.
+- `Berreman/OpticalConstructor.Domain/Optimization.fs` (new) - interface-only optimization seam.
+- `Berreman/OpticalConstructor.Domain/Schemas/optical-constructor-project.schema.json` (new) - project schema.
+- `Berreman/OpticalConstructor.Domain/Samples/minimal-project.bmproj.json` (new) - minimal sample project.
+- `Berreman/OpticalConstructor.App/OpticalConstructor.App.fsproj` (new) - desktop app project.
+- `Berreman/OpticalConstructor.App/Program.fs` (new) - app entry point.
+- `Berreman/OpticalConstructor.App/App.fs` (new) - Avalonia application setup.
+- `Berreman/OpticalConstructor.App/MainWindow.fs` (new) - main window.
+- `Berreman/OpticalConstructor.App/Model.fs` (new) - UI state and messages.
+- `Berreman/OpticalConstructor.App/Update.fs` (new) - update function and commands.
+- `Berreman/OpticalConstructor.App/View.fs` (new) - workspace view.
+- `Berreman/OpticalConstructor.App/StackEditor.fs` (new) - layer stack editor.
+- `Berreman/OpticalConstructor.App/SourcePanel.fs` (new) - source and sweep editor.
+- `Berreman/OpticalConstructor.App/ChartPanel.fs` (new) - chart/results panel.
+- `Berreman/OpticalConstructor.App/Audit/AuditFuncUIClone.fsx` (new) - clone audit runner.
+- `Berreman/OpticalConstructor.App/Audit/funcui-clone-audit.md` (new) - committed audit result.
+- `Berreman/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` (new) - tests for domain and app seams.
+- `Berreman/OpticalConstructor.Tests/UnitTests.fs` (new) - unit conversion tests.
+- `Berreman/OpticalConstructor.Tests/ProjectJsonTests.fs` (new) - schema and round-trip tests.
+- `Berreman/OpticalConstructor.Tests/EngineMappingTests.fs` (new) - conversion and solver smoke tests.
+- `Berreman/OpticalConstructor.Tests/SweepRunnerTests.fs` (new) - sweep, progress, and cancellation tests.
+- `Berreman/OpticalConstructor.Tests/AuditTests.fs` (new) - FuncUI audit gate tests.
+
+## Test artifacts
+
+- `dotnet test Berreman/Berreman.slnx`
+- `dotnet run --project Berreman/OpticalConstructor.App/OpticalConstructor.App.fsproj`
+- `dotnet fsi Berreman/OpticalConstructor.App/Audit/AuditFuncUIClone.fsx`
+- `Berreman/OpticalConstructor.Domain/Samples/minimal-project.bmproj.json`
+- `Berreman/OpticalConstructor.Domain/Schemas/optical-constructor-project.schema.json`
+
+## References
+
+- Avalonia.FuncUI repository and MIT license: https://github.com/fsprojects/Avalonia.FuncUI
+- ScottPlot: https://scottplot.net/
+- Plotly.NET: https://plotly.net/
+- FSharp.SystemTextJson: https://github.com/Tarmil/FSharp.SystemTextJson
+- System.Text.Json: https://learn.microsoft.com/en-us/dotnet/api/system.text.json
+- ALGLIB optimization suite: https://www.alglib.net/optimization/
+- ALGLIB Levenberg-Marquardt: https://www.alglib.net/optimization/levenbergmarquardt.php
+- RP Photonics Encyclopedia, article on "Sellmeier Formula", Dr. Ruediger Paschotta, https://www.rp-photonics.com/sellmeier_formula.html
+
