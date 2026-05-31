@@ -1,0 +1,9 @@
+Claim-check chunk 23 of 25 (.spec-md lines 896-972: Part J acceptance criteria AC-J5/J11/J12 + the §J "Files in scope" list). Audited spec-md SHA-256 145998d627f8117ce384573dda7ea7d73c6a6814f3fe33095b7fea2271f45054 (verified via spec_md_sha_cli; matches expected).
+
+16 assumption-shape claims audited; 15 CONFIRMED, 1 REFUTED-POINTER-DRIFT.
+
+CONFIRMED: AC-J5 plotComparison at Analytics/Charting.fs:38; AC-J11 existing Analytics/Examples/*.fsx (18 files present); AC-J12 already-solved EmFieldSystem.reflected/.transmitted at Fields.fs:553-554. The (no change - cited) bullets for Solvers.fs, Fields.fs, Media.fs, MaterialProperties.fs, BerremanMatrix.fs, Constants.fs, Dispersion.fs, Variables.fs, Charting.fs all resolve to real symbols at cited lines. Inferred reuse claims: "no fork of Berreman/Berreman.fsproj (:14)" -> Berreman.slnx:14, and "added to BerremanTests.fsproj (Berreman.slnx:20)" -> Berreman.slnx:20; both CONFIRMED. FieldFunctions.fs:93 commented-out member em.muellerMatrix CONFIRMED.
+
+REFUTED-POINTER-DRIFT: row 13, Softellect/Sys/Core.fs (no change - cited). serialize is correct at :254 but deserialize is at C:/GitHub/Softellect/Sys/Core.fs:262, not the cited :257 (line 257 is the BinaryZippedFormat branch inside serialize). Operator fix: bump deserialize pointer :257 -> :262.
+
+Note: Dispersion.fs EpsWithDisp:11 is a 2-line cosmetic offset from the type header at :9 but lands inside the EpsWithDisp type body, so CONFIRMED rather than drift.

@@ -1,0 +1,16 @@
+Claim-check chunk 19 of 25 (.spec-md lines 723-759, sections J.5-J.11).
+Spec SHA-256 verified equal to expected (145998d6...f45054) before audit.
+Verdict: all-resolved for this chunk. 6 CONFIRMED, 0 REFUTED, 0 NOT-CHECKED.
+Existing-artefact pointers verified live: plotComparison/list<FixedInfo> at
+Berreman/Analytics/Charting.fs:38; SolverParameters.numberOfReflections at
+Berreman/Berreman/Solvers.fs:15; Thickness DU (Thickness of double<meter>) at
+Berreman/Berreman/Media.fs:12; calculate at Berreman/Analytics/Variables.fs:237
+and calculate3D at :270; RangedVariable at :42; and all six gallery .fsx scripts
+(MultilayerThinFilm, MultilayerThinFilm_EUV, ActiveCrystal, Wedge_Glass,
+Wedge_BiaxialCrystal, Glass_Dispersive) under Berreman/Analytics/Examples/.
+Rows 2 (J.7 "the engine's own SolverParameters") and 3 (J.9 bare Media.fs:12
+pointer) were matched on inferred existing-artefact phrasing rather than a
+literal configured trigger word, and noted as such. Spec-internal forward refs
+(JsonSchema.Net per A.7, serializeProject/JsonSerializerOptions per I.1,
+openProject per I.3, conversions per A.10) point outside the chunk range and
+were left out of scope.
