@@ -1,6 +1,7 @@
 name: constructor-unit-tests
 description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate
 kind: command
+# TODO(agent-uncertain): test project name/location not named in spec; inferred from the BerremanTests convention (Berreman/<Project>/<Project>.fsproj added to Berreman.slnx).
 command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release
 pass_when:
   exit_code: 0
