@@ -21,10 +21,15 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-    <!-- Slice 001 ships an empty placeholder; later (Part H) slices fill in the
-         library-agnostic optimization interface with ALGLIB behind it. -->
+    <!-- Slice 001 shipped the empty Optimization.fs placeholder. Slice 009
+         (Part G §G.1-G.3) fills in the library-agnostic optimization interface,
+         the single ALGLIB adapter behind it, and the design-variable mapping, in
+         compile order: interface before adapter before mapping. -->
     <ItemGroup>
         <Compile Include="Optimization.fs" />
+        <Compile Include="OptimizationInterface.fs" />
+        <Compile Include="AlglibAdapter.fs" />
+        <Compile Include="DesignParameters.fs" />
     </ItemGroup>
 
     <ItemGroup>

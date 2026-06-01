@@ -37,6 +37,7 @@
         <Compile Include="StackEditTests.fs" />
         <Compile Include="SourceProjectionTests.fs" />
         <Compile Include="SourceExpansionTests.fs" />
+        <Compile Include="OptimizationInterfaceTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
