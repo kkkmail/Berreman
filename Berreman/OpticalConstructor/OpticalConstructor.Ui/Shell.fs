@@ -257,6 +257,7 @@ let private panelContent (model : RootModel) (dispatch : RootMsg -> unit) (panel
             model.materials model.materialsFilter model.construction
             (RootMsg.Materials >> dispatch) (RootMsg.Construction >> dispatch)
     | "sources" -> SourceView.sourcePanel model.source (RootMsg.Source >> dispatch)
+    | "results" -> ResultsView.resultsPanel model.workspace model.source (RootMsg.Workspace >> dispatch)
     | other -> placeholder (panelTitle other)
 
 let private panelView (model : RootModel) (dispatch : RootMsg -> unit) (p : PanelState) : IView =

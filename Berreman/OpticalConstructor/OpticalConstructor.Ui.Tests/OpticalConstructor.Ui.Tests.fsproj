@@ -31,6 +31,7 @@
         <Compile Include="ConstructionEditTests.fs" />
         <Compile Include="MaterialsPanelTests.fs" />
         <Compile Include="SourcePanelTests.fs" />
+        <Compile Include="ResultsPanelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

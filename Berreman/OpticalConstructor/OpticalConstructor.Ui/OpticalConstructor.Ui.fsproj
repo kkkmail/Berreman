@@ -78,6 +78,12 @@
              PolarizationPicker / PolarizationPlots seams. Public MIT FuncUI DSL only;
              clone UNREFERENCED. -->
         <Compile Include="SourceView.fs" />
+        <!-- spec 0024 Part U6 (slice 006): the results panel view (schematic +
+             ray overlay + multi-system comparison). Reuses the slice-002 ChartHosts
+             Canvas adapter for the schematic/ray and the AvaPlot adapter for the
+             comparison overlay, plus the frozen Schematic / Workspace seams. Public
+             MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="ResultsView.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->
