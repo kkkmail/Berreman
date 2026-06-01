@@ -35,6 +35,8 @@
         <Compile Include="MaterialImportTests.fs" />
         <Compile Include="MaterialPreviewTests.fs" />
         <Compile Include="StackEditTests.fs" />
+        <Compile Include="SourceProjectionTests.fs" />
+        <Compile Include="SourceExpansionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

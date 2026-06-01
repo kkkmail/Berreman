@@ -27,6 +27,11 @@ module Project =
         {
             beamTree : BeamTree.BeamTree
             systems : OpticalSystem list
+            /// The source / illumination specifications (§A.7 / §E.8). This slice
+            /// (007) owns the `sources` list semantics and the `sourceSpec` `$def`
+            /// shape; each `SourceSpec` expands into weighted `IncidentLightInfo`
+            /// values combined incoherently on `StokesVector` output (Part E).
+            sources : SourceSpec.SourceSpec list
         }
 
     /// The nine JSON-Schema `$defs` anchor names reserved by §A.7. Parts B–J

@@ -1,0 +1,58 @@
+# Arc-runner worker task -- 007.slice-md
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+round and lists them below. Do not compute or guess these
+paths: the canonical layout block describes the shape, this
+section pins the concrete values for the slice you are about
+to implement.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0022`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0022\.slices\007.slice-md`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0022\.artifacts`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0022\.slices\007-impl-log.md`
+- **impl_plan_path:** `C:\GitHub\Berreman\specs\0022\.slices\007-impl-plan.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0022\.slices\007-state-of-the-world.md`
+- **spec_id:** `0022`
+- **slice_id:** `007`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Slice spec
+
+Implement this slice end-to-end:
+
+- C:\GitHub\Berreman\specs\0022\.slices\007.slice-md
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your state-of-the-world markdown to**
+`C:\GitHub\Berreman\specs\0022\.slices\007-state-of-the-world.md`. **Do not write the SoW anywhere else.**
+
+**Save your impl-log markdown to**
+`C:\GitHub\Berreman\specs\0022\.slices\007-impl-log.md`. **Do not write the impl-log anywhere else.**
+
+## Artifacts folder
+
+Use `C:\GitHub\Berreman\specs\0022\.artifacts` for any persistent run artifacts
+(captured logs, screenshots, traces, dumps). The folder is
+pre-created; this path is the arc-runner's authoritative
+value and supersedes any path the project prompt computes
+from convention.
+
+## Retry hint
+
+Fix only the cone-fan weighting in SourceSpec.expand: the no-Gaussian cone branch assigns each angle weight 1.0, but AC-E6 requires the cone result be averaged, not summed -- normalise the cone-sample weights to sum 1 (divide by the sample count), matching the sibling Gaussian path that already normalises and the unpolarized 0.5/0.5 split. Then add a weight assertion to the AC-E6 cone test in SourceExpansionTests.fs so the per-sample weights are exercised (today only list length and angles are checked). The reuse F1/F2/F3 duplications and the inert Coherent/Incoherent flag are spec-compliant follow-ups, not part of this re-spawn -- leave them. While you are in expand, optionally align the numberOfPoints=0 guard the reuse critic flagged (max 1) in SpectralProfile.sample, but the cone weight is the blocking issue.
+

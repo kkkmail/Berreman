@@ -32,6 +32,7 @@
         <Compile Include="ProjectFile.fs" />
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />
+        <Compile Include="SpectralImport.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 

@@ -26,10 +26,10 @@
     <ItemGroup>
         <Compile Include="Units.fs" />
         <Compile Include="BeamTree.fs" />
-        <Compile Include="Project.fs" />
-        <Compile Include="CurvedElements.fs" />
         <Compile Include="SourceSpec.fs" />
         <Compile Include="SourceCombination.fs" />
+        <Compile Include="Project.fs" />
+        <Compile Include="CurvedElements.fs" />
         <Compile Include="DispersionModels.fs" />
         <Compile Include="MaterialLibrary.fs" />
     </ItemGroup>

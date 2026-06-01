@@ -27,6 +27,8 @@
         <Compile Include="Ui.fs" />
         <Compile Include="MaterialPreview.fs" />
         <Compile Include="StackEditor.fs" />
+        <Compile Include="Sources\SourceEditorView.fs" />
+        <Compile Include="Sources\PolarizationPicker.fs" />
         <Compile Include="ConstructionPage.fs" />
     </ItemGroup>
 
