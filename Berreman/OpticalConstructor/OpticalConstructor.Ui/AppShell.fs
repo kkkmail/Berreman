@@ -76,48 +76,20 @@ let visiblePanels (layout : PanelLayout) : PanelState list =
     layout.panels |> List.filter (fun p -> p.visible)
 
 // ---------------------------------------------------------------------------
-// The FuncUI-DSL dockable shell (J.8). Authored against the PUBLIC FuncUI DSL
-// surface so the build gate compiles it; the audit-gated clone stays unreferenced
-// and its linking mechanism unresolved (AC-J8).
+// Dock-edge mapping seam (J.8). The shell view itself is supplied by the spec-0024
+// MVU root (`Shell.view`, slice 001), which reuses this seam plus the layout
+// reducers above; the placeholder `shellView`/`panelView` the slice-001 scaffold
+// carried here are superseded and removed. Authored against the public FuncUI DSL
+// surface so the build gate compiles it; the audit-gated clone stays unreferenced.
 // ---------------------------------------------------------------------------
 
 /// Map a saved `DockSide` onto Avalonia's `Dock`. `Center` is the fill region — a
 /// `DockPanel` lets its LAST child fill, so center panels carry no dock attribute.
-let private toDock (side : DockSide) : Dock option =
+/// Public so `Shell.view` renders dock edges through this single seam (spec 0024 R-4).
+let toDock (side : DockSide) : Dock option =
     match side with
     | Left -> Some Dock.Left
     | Right -> Some Dock.Right
     | Top -> Some Dock.Top
     | Bottom -> Some Dock.Bottom
     | Center -> None
-
-/// One panel rendered as a titled, bordered region (J.8). The minimal DSL surface
-/// — a `Border` wrapping a header `TextBlock` — is enough to prove the public
-/// FuncUI DSL compiles without the clone; the clone supplies the richer docking
-/// chrome once cleared.
-let private panelView (p : PanelState) : IView =
-    let dockAttr : IAttr<Border> list =
-        match toDock p.dock with
-        | Some d -> [ Border.dock d ]
-        | None -> []
-    Border.create (
-        dockAttr
-        @ [
-            Border.borderThickness 1.0
-            Border.padding 6.0
-            Border.child (
-                TextBlock.create [
-                    TextBlock.text p.panel
-                ]
-            )
-          ])
-
-/// The dockable shell view (J.8): the saved, visible panels laid out by their dock
-/// edges via a public-Avalonia `DockPanel`. Reads the layout straight out of
-/// `EnvironmentSettings` (the theme/layout round-trip is owned by `UserEnvironment`).
-let shellView (settings : EnvironmentSettings) : IView =
-    DockPanel.create [
-        DockPanel.children [
-            for p in visiblePanels settings.layout -> panelView p
-        ]
-    ]

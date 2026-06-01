@@ -1,0 +1,76 @@
+Slice 001 — local gate run (spec 0024, Berreman)
+=================================================
+
+build (dotnet build Berreman.slnx -c Release)
+  -> Build succeeded. 0 Error(s).
+
+unit-tests (BerremanTests, dotnet test --no-build -c Release)
+  -> Passed! Failed: 0, Passed: 84, Skipped: 5, Total: 89
+
+constructor-unit-tests (OpticalConstructor.Tests, dotnet test -c Release)
+  -> Passed! Failed: 0, Passed: 204, Skipped: 0, Total: 204
+  (stays Avalonia-free: the headless dependency lives only in the new
+   OpticalConstructor.Ui.Tests project.)
+
+ui-smoke (OpticalConstructor.Ui.Tests --filter Category=ui-smoke)
+  -> Passed! Failed: 0, Passed: 1, Skipped: 0, Total: 1
+
+ui-tests (OpticalConstructor.Ui.Tests --filter Category!=ui-smoke)
+  -> Passed! Failed: 0, Passed: 1, Skipped: 0, Total: 1
+
+impl-log-structure / state-of-world-structure: built-in structural checks,
+  satisfied by 001-impl-log.md and 001-state-of-the-world.md (required ATX
+  headings present).
+
+Baseline for next slice: berreman_unit_tests = 84.
+
+-------------------------------------------------------------------------------
+Attempt 02 (retry) — re-run after replacing the inline seed-project triple in
+Shell.fs with Templates.bandpassFilter () (reuse cleanup + 600->550 nm
+incident-light fix via Templates.defaultLight; removed the now-dead opens).
+-------------------------------------------------------------------------------
+
+build (dotnet build Berreman.slnx -c Release)
+  -> Build succeeded. 0 Error(s).
+
+unit-tests (BerremanTests, dotnet test --no-build -c Release)
+  -> Passed! Failed: 0, Passed: 84, Skipped: 5, Total: 89
+
+constructor-unit-tests (OpticalConstructor.Tests, dotnet test -c Release)
+  -> Passed! Failed: 0, Passed: 204, Skipped: 0, Total: 204
+
+ui-smoke (OpticalConstructor.Ui.Tests --filter Category=ui-smoke)
+  -> Passed! Failed: 0, Passed: 1, Skipped: 0, Total: 1
+
+ui-tests (OpticalConstructor.Ui.Tests --filter Category!=ui-smoke)
+  -> Passed! Failed: 0, Passed: 1, Skipped: 0, Total: 1
+
+Baseline unchanged: berreman_unit_tests = 84.
+
+-------------------------------------------------------------------------------
+Attempt 03 (retry) — reworked the ui-smoke test to drive the REAL App lifetime
+headlessly (TestApp.BuildAvaloniaApp -> OpticalConstructor.App.App so the session
+runs App.Initialize's theme seam; SmokeTests asserts that seam via
+Application.Current.RequestedThemeVariant and invokes App.OnFrameworkInitializationCompleted
+on a fresh App carrying a ClassicDesktopStyleApplicationLifetime, asserting its
+MainWindow is set + visible). Edited SmokeTests.fs + TestApp.fs only.
+-------------------------------------------------------------------------------
+
+build (dotnet build Berreman.slnx -c Release)
+  -> Build succeeded. 0 Error(s).
+
+unit-tests (BerremanTests, dotnet test --no-build -c Release)
+  -> Passed! Failed: 0, Passed: 84, Skipped: 5, Total: 89
+
+constructor-unit-tests (OpticalConstructor.Tests, dotnet test -c Release)
+  -> Passed! Failed: 0, Passed: 204, Skipped: 0, Total: 204
+
+ui-smoke (OpticalConstructor.Ui.Tests --filter Category=ui-smoke)
+  -> Passed! Failed: 0, Passed: 1, Skipped: 0, Total: 1
+  (real App.Initialize theme seam + App.OnFrameworkInitializationCompleted run;
+   desktop lifetime's MainWindow set + visible; every panel/page renders one frame.)
+
+ui-tests (OpticalConstructor.Ui.Tests --filter Category!=ui-smoke)
+  -> Passed! Failed: 0, Passed: 1, Skipped: 0, Total: 1
+
+Baseline unchanged: berreman_unit_tests = 84.

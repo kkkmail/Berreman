@@ -61,6 +61,11 @@
         <Compile Include="JobRunner.fs" />
         <Compile Include="Help.fs" />
         <Compile Include="SystemView3D.fs" />
+        <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
+             root MVU surface, composed LAST over every sibling module above. Authored
+             against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->
+        <Compile Include="ConstructionView.fs" />
+        <Compile Include="Shell.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
@@ -82,6 +87,10 @@
         <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
         <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
+        <!-- spec 0024 §U1.1 / R-1: the Elmish host packages, version-aligned with
+             the pinned FuncUI 1.6.0 / Avalonia 11.3.4. Public MIT NuGet only. -->
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.6.0" />
+        <PackageReference Include="Elmish" Version="4.3.0" />
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.58" />
         <PackageReference Include="Plotly.NET" Version="5.1.0" />
         <PackageReference Include="OpenTK" Version="4.9.4" />

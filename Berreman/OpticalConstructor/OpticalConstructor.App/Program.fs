@@ -17,8 +17,9 @@ open System
 open Avalonia
 open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Themes.Fluent
-open Avalonia.FuncUI
 open Avalonia.FuncUI.Hosts
+open Avalonia.FuncUI.Elmish
+open Elmish
 
 open OpticalConstructor.Ui
 
@@ -28,15 +29,20 @@ open OpticalConstructor.Ui
 module private Startup =
     let settings = UserEnvironment.load (UserEnvironment.settingsPath ())
 
-/// The main application window: a FuncUI `HostWindow` whose content is the dockable
-/// shell view (§J.8) rendered over the loaded environment settings.
+/// The main application window: a FuncUI `HostWindow` hosting the spec-0024 root MVU
+/// loop. The static `Component` mount the slice-001 scaffold carried is replaced by
+/// an `Avalonia.FuncUI.Elmish` program (spec 0024 §U1.3 / R-3): `Shell.init`/`update`/
+/// `view` are mounted on this host, seeded from the already-loaded `Startup.settings`
+/// so the persisted theme/layout still drive the first frame.
 type MainWindow() as this =
     inherit HostWindow()
     do
         this.Title <- "Optical Constructor"
         this.Width <- 1200.0
         this.Height <- 800.0
-        this.Content <- Component(fun _ctx -> AppShell.shellView Startup.settings)
+        Program.mkProgram (fun () -> Shell.initFrom Startup.settings) Shell.update Shell.view
+        |> Program.withHost this
+        |> Program.run
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).
