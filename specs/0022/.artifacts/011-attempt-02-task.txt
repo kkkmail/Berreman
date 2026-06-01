@@ -1,0 +1,58 @@
+# Arc-runner worker task -- 011.slice-md
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+round and lists them below. Do not compute or guess these
+paths: the canonical layout block describes the shape, this
+section pins the concrete values for the slice you are about
+to implement.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0022`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0022\.slices\011.slice-md`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0022\.artifacts`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0022\.slices\011-impl-log.md`
+- **impl_plan_path:** `C:\GitHub\Berreman\specs\0022\.slices\011-impl-plan.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0022\.slices\011-state-of-the-world.md`
+- **spec_id:** `0022`
+- **slice_id:** `011`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Slice spec
+
+Implement this slice end-to-end:
+
+- C:\GitHub\Berreman\specs\0022\.slices\011.slice-md
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your state-of-the-world markdown to**
+`C:\GitHub\Berreman\specs\0022\.slices\011-state-of-the-world.md`. **Do not write the SoW anywhere else.**
+
+**Save your impl-log markdown to**
+`C:\GitHub\Berreman\specs\0022\.slices\011-impl-log.md`. **Do not write the impl-log anywhere else.**
+
+## Artifacts folder
+
+Use `C:\GitHub\Berreman\specs\0022\.artifacts` for any persistent run artifacts
+(captured logs, screenshots, traces, dumps). The folder is
+pre-created; this path is the arc-runner's authoritative
+value and supersedes any path the project prompt computes
+from convention.
+
+## Retry hint
+
+Fix the forward-difference step in FitQuality.residualJacobian (FitQuality.fs:72): the `1.0e-7 * (max 1.0 (abs x.[p]))` step floors at 1e-7 m and perturbs canonical meter-scale parameters by ~40%, so the covariance/CI/correlation it reports are unreliable at the project's canonical scale. Scale the step per parameter relative to its own magnitude (e.g. sqrt(machine-eps) * max(|x|, a per-parameter typical scale), no absolute `1.0` floor), and add a test that would actually catch a mis-scaled Jacobian — e.g. assert a sane standard error / non-degenerate covariance for a meter-scale thickness fit, not just that the CI brackets the estimate. While there, you may consolidate the triplicated private `sumSq` (AlglibAdapter/FitQuality/Synthesis, reuse-critic F1) into one internal helper and record the needle 'lowest post-insertion merit' choice as the §G.9 gradient interpretation; both are optional. Leave F2/F3 and the singular-matrix guard as Deferred notes.
+

@@ -28,7 +28,11 @@
          (Part G §G.4-G.7) adds the fitting core after the slice-009 trio:
          Ellipsometry before MeritFunction (FitTarget references
          EllipsometricFunction), MeritFunction before LocalRefinement, and
-         InverseFit last (it consumes the refinement entry point). -->
+         InverseFit last (it consumes the refinement entry point). Slice 011
+         (Part G §G.8-G.11) appends FitQuality (fit-quality report over the G.1
+         result, via the MathNetNumericsMath seam) and Synthesis (needle/tunnelling
+         + simulated annealing / GA over the G.4 residual, re-refining through
+         §G.5) after the slice-010 files. -->
     <ItemGroup>
         <Compile Include="Optimization.fs" />
         <Compile Include="OptimizationInterface.fs" />
@@ -38,12 +42,17 @@
         <Compile Include="MeritFunction.fs" />
         <Compile Include="LocalRefinement.fs" />
         <Compile Include="InverseFit.fs" />
+        <Compile Include="FitQuality.fs" />
+        <Compile Include="Synthesis.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.300" />
         <PackageReference Include="alglib.net" Version="3.19.0" />
         <PackageReference Include="FSharp.Data" Version="8.1.14" />
+        <!-- Slice 011 §G.8: the FitReport .binz fit-history sidecar serializer
+             (`Softellect.Sys.Core.serialize … BinaryZippedFormat`, Core.fs:257). -->
+        <PackageReference Include="Softellect.Sys" Version="10.0.101.41" />
     </ItemGroup>
 
     <ItemGroup>

@@ -19,8 +19,8 @@ open OpticalConstructor.Optimization.OptimizationInterface
 /// referenced here.
 module AlglibAdapter =
 
-    /// Sum of squared residuals — the scalar objective for the scalar minimizers.
-    let private sumSq (r : float[]) = Array.fold (fun acc v -> acc + v * v) 0.0 r
+    // The scalar objective for the scalar minimizers is the shared `sumSq`
+    // (Σ residualᵢ²) from `OptimizationInterface` (reuse-critic F1).
 
     /// Map an ALGLIB completion code to our `TerminationReason`. Positive codes
     /// are successful stops; code 5 is the iteration cap, code 7 is "further

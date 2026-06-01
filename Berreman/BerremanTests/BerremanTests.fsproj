@@ -33,6 +33,7 @@
         <Compile Include="SolverTests.fs" />
         <Compile Include="MuellerMatrixTests.fs" />
         <Compile Include="AnalysisFunctionsTests.fs" />
+        <Compile Include="OptimizationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -60,6 +61,12 @@
     <ItemGroup>
         <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
         <ProjectReference Include="..\Analytics\Analytics.fsproj" />
+        <!-- Slice 011 (§G.11 / AC-G9, AC-G3, AC-G6): OptimizationTests.fs drives the
+             full DesignParameters→MeritFunction→optimize→AlglibAdapter→OpticalSystemSolver
+             path with the real solver, so it needs the OpticalConstructor.Optimization
+             layer. This reference is the enabling edit for that file (no UI dependency,
+             per R-4). -->
+        <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
     </ItemGroup>
 
 </Project>

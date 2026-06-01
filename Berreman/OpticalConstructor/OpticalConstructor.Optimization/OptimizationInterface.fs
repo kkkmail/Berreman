@@ -17,6 +17,14 @@ module OptimizationInterface =
     /// The vectorized residual: one entry per target sample (§A.8 `float[] -> float[]`).
     type Residual = float[] -> float[]
 
+    /// Sum of squared residuals — the single least-squares definition Σ residualᵢ²
+    /// shared by the §G.2 adapter's scalar objective, the §G.9 synthesis merit, and
+    /// the §G.8 fit-quality χ² (reuse-critic F1: defined ONCE here so the load-bearing
+    /// merit/χ² definition cannot drift between the optimizer, the synthesis loops,
+    /// and the report). `internal` so the sibling Optimization modules call it without
+    /// widening the public surface.
+    let internal sumSq (r : float[]) : float = Array.fold (fun acc v -> acc + v * v) 0.0 r
+
     /// Optional analytic Jacobian (rows = residual entries, cols = parameters).
     /// `None` requests numerical differentiation from the adapter.
     type Jacobian = (float[] -> float[][]) option

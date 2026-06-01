@@ -30,6 +30,7 @@
         <Compile Include="Sources\SourceEditorView.fs" />
         <Compile Include="Sources\PolarizationPicker.fs" />
         <Compile Include="ConstructionPage.fs" />
+        <Compile Include="SynthesisFitPage.fs" />
     </ItemGroup>
 
     <!-- Public, MIT-licensed Avalonia + FuncUI NuGet (the buildable interpretation

@@ -39,6 +39,7 @@
         <Compile Include="SourceExpansionTests.fs" />
         <Compile Include="OptimizationInterfaceTests.fs" />
         <Compile Include="LocalRefinementTests.fs" />
+        <Compile Include="SynthesisFitPageTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
