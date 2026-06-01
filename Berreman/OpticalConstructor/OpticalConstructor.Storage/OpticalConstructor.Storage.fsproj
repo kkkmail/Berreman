@@ -33,6 +33,13 @@
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />
         <Compile Include="SpectralImport.fs" />
+        <!-- Persistence II (§I.5-I.8, slice 013): recent-files/autosave, undo/redo,
+             export, and the report/material-library/design-history module. Export
+             before Report (Report consumes ChartHandle/exportChartImage). -->
+        <Compile Include="RecentFiles.fs" />
+        <Compile Include="History.fs" />
+        <Compile Include="Export.fs" />
+        <Compile Include="Report.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 
@@ -51,6 +58,10 @@
         <PackageReference Include="FSharp.Data" Version="8.1.14" />
         <PackageReference Include="JsonSchema.Net" Version="9.2.1" />
         <PackageReference Include="ClosedXML" Version="0.105.0" />
+        <!-- The report HTML reuses the engine's own HTML-builder library (the same
+             Giraffe.ViewEngine Charting.fs uses via Plotly.NET), not a second builder
+             (§I.8). Plotly.NET pins the StrongName repackage; match it here. -->
+        <PackageReference Include="Giraffe.ViewEngine.StrongName" Version="2.0.0-alpha1" />
         <PackageReference Include="Softellect.Sys" Version="10.0.101.41" />
     </ItemGroup>
 

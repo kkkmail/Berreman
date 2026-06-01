@@ -334,3 +334,7 @@ ASALocalRun/
 # (sweep tables, field maps, fit histories) are regenerable and excluded from
 # version control. Canonical `.ocproj` project files remain committable.
 *.binz
+
+# Optical Constructor (Spec 0022, Part I §I.5): autosave sidewrite files are
+# transient recovery copies kept distinct from the committed `.ocproj` document.
+*.autosave

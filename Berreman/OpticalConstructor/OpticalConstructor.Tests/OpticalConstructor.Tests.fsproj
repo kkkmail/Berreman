@@ -45,6 +45,9 @@
         <Compile Include="ReadoutTests.fs" />
         <Compile Include="ChartSettingsTests.fs" />
         <Compile Include="PolarizationPlotTests.fs" />
+        <!-- Persistence II (§I.5-I.8, slice 013). -->
+        <Compile Include="HistoryTests.fs" />
+        <Compile Include="ExportImportTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
