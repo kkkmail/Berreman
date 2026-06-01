@@ -27,6 +27,9 @@
         <Compile Include="GradientDiscretizeTests.fs" />
         <Compile Include="BeamTreeTests.fs" />
         <Compile Include="BeamRoutingTests.fs" />
+        <Compile Include="ProjectJsonRoundtripTests.fs" />
+        <Compile Include="RoundTripTests.fs" />
+        <Compile Include="SidecarTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

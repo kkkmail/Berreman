@@ -21,10 +21,26 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-    <!-- Slice 001 ships an empty placeholder module; slice 003 fills in the
-         JSON-canonical IO, JSON-Schema validation, and .binz sidecar IO. -->
+    <!-- Compile order (§I, slice 003): Errors first; SchemaValidation before
+         ProjectJson (deserializeProject calls validate-on-load); then ProjectFile
+         and Sidecar. The legacy placeholder `Storage.fs` is retained as a
+         namespace anchor. -->
     <ItemGroup>
+        <Compile Include="Errors.fs" />
+        <Compile Include="SchemaValidation.fs" />
+        <Compile Include="ProjectJson.fs" />
+        <Compile Include="ProjectFile.fs" />
+        <Compile Include="Sidecar.fs" />
         <Compile Include="Storage.fs" />
+    </ItemGroup>
+
+    <!-- The published JSON Schema is a build-copied content item; the relative
+         `schema/` path is preserved into the output (and flows to consumers) so
+         `SchemaValidation` can load it beside the assembly at runtime (§I.2). -->
+    <ItemGroup>
+        <Content Include="schema\optical-constructor-project.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>
@@ -37,6 +53,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Math.NET (`Matrix<Complex>`, used by the JSON converter) flows in
+             transitively: Storage -> OpticalConstructor.Domain -> Berreman ->
+             Numerics.csproj. No direct reference is needed (binding rule 1:
+             no new C# project reference invented here). -->
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
     </ItemGroup>
 

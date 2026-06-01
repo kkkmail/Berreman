@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/optical-constructor-project.json",
+  "title": "OpticalConstructorProject",
+  "description": "Canonical, hand/LLM-editable project envelope for the Berreman Optical Constructor (Spec 0022, Part I). This slice (003) authors the top-level envelope and the storage-owned $defs (materialEntry, sourceSpec, unitOfMeasure, project root). The physics-shaped $defs (opticalSystem, layer, opticalProperties, beamNode, beamBranch, constructorElement) are reserved anchors filled by Parts B-G and are intentionally permissive here.",
+  "type": "object",
+  "required": ["schemaVersion", "beamTree", "systems"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "The single shipped schema version. A differing value is a validation error, not a migration trigger (Part I, out-of-scope migration)."
+    },
+    "beamTree": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": { "$ref": "#/$defs/beamNode" }
+      },
+      "description": "The beam-tree orchestration aggregate, rooted at a single beamNode (Part A, A.4)."
+    },
+    "systems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/opticalSystem" },
+      "description": "Per-element optical stacks reused as-is from the engine."
+    },
+    "materials": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/materialEntry" },
+      "description": "Material library entries (added by slice 004)."
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceSpec" },
+      "description": "Source specifications (added by slice 007)."
+    },
+    "sweeps": {
+      "type": "array",
+      "description": "Parametric-sweep descriptors (later slices)."
+    },
+    "chartSettings": {
+      "description": "Chart settings (added by slice 012)."
+    },
+    "sidecars": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^/\\\\][^:]*\\.binz$",
+        "description": "A derived/bulk artefact reference. MUST be a relative path ending in .binz so a moved project folder keeps its sidecars (Part I, I.4)."
+      },
+      "description": "Optional references to derived/bulk .binz sidecars by relative path only."
+    }
+  },
+  "$defs": {
+    "unitOfMeasure": {
+      "type": "string",
+      "enum": [
+        "Meter",
+        "Millimeter",
+        "Micrometer",
+        "Nanometer",
+        "Angstrom",
+        "ElectronVolt",
+        "Wavenumber"
+      ],
+      "description": "Boundary unit-of-measure vocabulary (Part D, D.1). A display/IO label only; the stored magnitude is always canonical SI."
+    },
+    "materialEntry": {
+      "type": "object",
+      "description": "Reserved storage-owned anchor for a material-library entry; the dispersion sub-object is filled by slice 004."
+    },
+    "sourceSpec": {
+      "type": "object",
+      "description": "Reserved storage-owned anchor for a source specification; filled by slice 007."
+    },
+    "opticalSystem": true,
+    "layer": true,
+    "opticalProperties": true,
+    "beamNode": true,
+    "beamBranch": true,
+    "constructorElement": true
+  }
+}
