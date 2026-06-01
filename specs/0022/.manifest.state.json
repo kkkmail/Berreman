@@ -2,7 +2,7 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0022\\.manifest",
   "branch": "0022",
   "started_utc": "2026-06-01T00:47:23Z",
-  "last_updated_utc": "2026-06-01T10:40:27Z",
+  "last_updated_utc": "2026-06-01T11:07:29Z",
   "completed_slices": [
     {
       "index": 0,
@@ -94,22 +94,26 @@
       "commit": "c56dde7960b7d1e7d74b924ae26b6243f114475d",
       "manual": false,
       "utc": "2026-06-01T10:40:27Z"
+    },
+    {
+      "index": 13,
+      "path": "specs\\0022\\.slices\\014.slice-md",
+      "commit": "56328e08058b40c3131b7e8cf7ad131210d68d1b",
+      "manual": false,
+      "utc": "2026-06-01T11:07:29Z"
     }
   ],
   "current_slice": {
-    "index": 13,
-    "path": "specs\\0022\\.slices\\014.slice-md",
-    "status": "running",
-    "reason": "",
-    "worker_logs": "",
-    "conversation_seq": 0,
+    "index": 14,
+    "path": "specs\\0022\\.slices\\015.slice-md",
+    "status": "escalated",
+    "reason": "max-wall-time-exceeded (37205s > 36000s)",
+    "worker_logs": "C:\\GitHub\\Berreman\\specs\\0022\\.manifest-arc-runner.log",
+    "escalation_md": "",
+    "conversation_seq": 1,
     "operator_reply": "",
     "total_route_backs": 0,
-    "resolver_runs": 0,
-    "consumed_reply_shas": []
+    "resolver_runs": 0
   },
-  "remaining_slices": [
-    "specs\\0022\\.slices\\015.slice-md",
-    "specs\\0022\\.slices\\016.slice-md"
-  ]
+  "remaining_slices": []
 }
