@@ -40,6 +40,10 @@ type MainWindow() as this =
         this.Title <- "Optical Constructor"
         this.Width <- 1200.0
         this.Height <- 800.0
+        // spec 0024 Part U8 / R-1 (§0.5): register this window's storage provider with the
+        // shell host layer once it is available (on open), so the Open/Save file pickers
+        // have an `IStorageProvider` — held OUTSIDE the root model.
+        this.Opened.Add(fun _ -> Shell.setStorageProvider this.StorageProvider)
         Program.mkProgram (fun () -> Shell.initFrom Startup.settings) Shell.update Shell.view
         |> Program.withHost this
         |> Program.run

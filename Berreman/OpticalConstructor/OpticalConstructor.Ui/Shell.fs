@@ -15,9 +15,11 @@
 /// existing pure reducers in `AppShell` (§0.3 public-Avalonia layout only).
 module OpticalConstructor.Ui.Shell
 
+open System.IO
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.Platform.Storage
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Elmish
@@ -25,6 +27,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
+open OpticalConstructor.Storage
 open OpticalConstructor.Ui.Charts
 open OpticalConstructor.Ui.Sources
 open OpticalConstructor.Ui.UserEnvironment
@@ -39,6 +42,28 @@ module WS = OpticalConstructor.Ui.Workspace
 /// model — `SynthesisFitPage.Model.running`/`progress` is the single source of truth
 /// for run state; this cell only carries the non-serializable cancellation handle.
 let mutable private fitCts : System.Threading.CancellationTokenSource option = None
+
+/// Host-layer holder for the Avalonia `IStorageProvider` the Open/Save pickers use
+/// (§0.5): it is the non-serializable Avalonia handle the spec mandates live OUTSIDE
+/// the root model. The composition root (`Program.fs`) registers the window's provider
+/// on open; headless tests leave it `None` so the IO `Cmd`s take their deterministic
+/// fallback path (the project's working folder).
+let mutable private storageProvider : IStorageProvider option = None
+
+/// Register the live window storage provider (called by the composition root, §0.5).
+let setStorageProvider (provider : IStorageProvider) : unit = storageProvider <- Some provider
+
+/// Test seam: force the picker-less fallback path regardless of any provider a prior
+/// in-process headless App boot may have registered.
+let clearStorageProviderForTests () : unit = storageProvider <- None
+
+/// The destination the environment-persist `Cmd` writes to (R-3). Defaults to the
+/// per-user settings path; a test seam overrides it so the round-trip is verified
+/// without clobbering real per-user state.
+let mutable private environmentPath : string = UserEnvironment.settingsPath ()
+
+/// Test seam: redirect environment persistence to a scratch path (R-3 round-trip).
+let setEnvironmentPathForTests (path : string) : unit = environmentPath <- path
 
 // ---------------------------------------------------------------------------
 // Root model, message, and the shell-level sub-message (R-2).
@@ -85,6 +110,9 @@ type RootModel =
         /// The source the `sources` panel edits (Part U4). Pure/serializable (§0.5): a
         /// `SourceSpec` carries only plain engine values, never a renderer handle.
         source : SourceSpec.SourceSpec
+        /// The last lifecycle/IO status or error surfaced to the toolbar (Part U8 / R-1).
+        /// Pure: a plain string, never a renderer handle.
+        status : string option
     }
 
 /// The root message, wrapping each wired sub-`Msg` plus the shell-level case (R-2).
@@ -99,6 +127,9 @@ type RootMsg =
     | Source of SourceView.SourceViewMsg
     /// Part U7: the synthesis/fit page sub-message, routed through `SynthesisFitPage.update`.
     | Fit of SynthesisFitPage.Msg
+    /// Part U8: lifecycle / IO (open / save / new / template / gallery), routed through
+    /// `updateIo` with §0.4-marshaled file-picker / reader / writer `Cmd`s.
+    | Io of LifecycleView.IoMsg
 
 // ---------------------------------------------------------------------------
 // Initial project + model (R-2 / R-3 seed). Built through the existing
@@ -138,6 +169,7 @@ let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
             materials = MaterialLibrary.standard
             materialsFilter = MaterialsView.Filter.empty
             source = SourceEditorView.defaultSource "source-1"
+            status = None
         }
     model, Cmd.none
 
@@ -281,6 +313,134 @@ let private fitCmd (msg : SynthesisFitPage.Msg) (fit : SynthesisFitPage.Model) :
     | SynthesisFitPage.CancelFit -> cancelFitCmd ()
     | _ -> Cmd.none
 
+// ---------------------------------------------------------------------------
+// Part U8 — lifecycle (open / save / new / templates / gallery, R-1/R-2) and
+// environment persistence (R-3). The `IStorageProvider` lives in the host-layer
+// `storageProvider` field (§0.5); every background continuation marshals back onto
+// the UI thread via `Dispatcher.UIThread.Post` (§0.4). The picker is only a path
+// source — the read/write logic is in `OpenPath` / `SaveRequested`, so it is fully
+// exercised headlessly with the picker absent.
+// ---------------------------------------------------------------------------
+
+/// §0.4 — marshal a lifecycle sub-message dispatched from a background worker onto the
+/// UI thread, so no IO continuation ever dispatches cross-thread.
+let private marshalIo (dispatch : RootMsg -> unit) (msg : LifecycleView.IoMsg) : unit =
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> dispatch (RootMsg.Io msg))
+
+/// Read + schema-validate a project at `path` OFF the UI thread through the existing
+/// `ProjectFile.openProject` seam (validate-on-load, §A.7), then marshal `Io (Loaded …)`
+/// (or an `Io (IoError …)` surface) back onto the UI thread (§0.4). No private deserialize.
+let private openPathCmd (path : string) : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        System.Threading.Tasks.Task.Run(fun () ->
+            match ProjectFile.openProject path with
+            | Ok project -> marshalIo dispatch (LifecycleView.Loaded (project, path))
+            | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "%A" e)))
+        |> ignore ]
+
+/// Raise the `IStorageProvider` open picker (R-1, host layer §0.5). The picker is only
+/// a path source: its continuation marshals `Io (OpenPath …)` onto the UI thread (§0.4),
+/// and the actual read happens in `openPathCmd`. When no host provider is registered
+/// (headless), this is a no-op — the load path is driven directly via `Io (OpenPath …)`.
+let private openCmd () : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        match storageProvider with
+        | None -> ()
+        | Some provider ->
+            let opts = FilePickerOpenOptions(AllowMultiple = false)
+            (provider.OpenFilePickerAsync opts).ContinueWith(fun (t : System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<IStorageFile>>) ->
+                if t.IsCompletedSuccessfully then
+                    match Seq.tryHead t.Result with
+                    | Some file -> marshalIo dispatch (LifecycleView.OpenPath file.Path.LocalPath)
+                    | None -> ())
+            |> ignore ]
+
+/// Save the project to `<name>.ocproj.json` (R-1 / AC-U8.1) via the frozen
+/// `ConstructionPage.saveProject` serializer; the write is OFF the UI thread and its
+/// `Io (Saved …)` / `Io (IoError …)` result marshals back (§0.4). When a host provider
+/// is registered the save picker chooses the destination; otherwise the project's
+/// working-folder default path is used (the headless fallback).
+let private saveCmd (construction : ConstructionPage.Model) : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        match ConstructionPage.saveProject construction with
+        | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "%A" e))
+        | Ok (defaultPath, json) ->
+            let writeTo (path : string) =
+                System.Threading.Tasks.Task.Run(fun () ->
+                    try
+                        Directory.CreateDirectory(Path.GetDirectoryName path) |> ignore
+                        File.WriteAllText(path, json)
+                        marshalIo dispatch (LifecycleView.Saved path)
+                    with e -> marshalIo dispatch (LifecycleView.IoError e.Message))
+                |> ignore
+            match storageProvider with
+            | Some provider ->
+                let opts = FilePickerSaveOptions(SuggestedFileName = Path.GetFileName defaultPath)
+                (provider.SaveFilePickerAsync opts).ContinueWith(fun (t : System.Threading.Tasks.Task<IStorageFile>) ->
+                    if t.IsCompletedSuccessfully then
+                        match t.Result with
+                        | null -> ()
+                        | file -> writeTo file.Path.LocalPath)
+                |> ignore
+            | None -> writeTo defaultPath ]
+
+/// Fire-and-forget environment persistence (R-3): write the updated `env` through the
+/// frozen `UserEnvironment.save` OFF the UI thread. It dispatches nothing, so §0.4 is
+/// moot; a write failure is swallowed (persistence is best-effort, AC-J6).
+let private persistEnvCmd (env : EnvironmentSettings) : Cmd<RootMsg> =
+    [ fun (_dispatch : RootMsg -> unit) ->
+        System.Threading.Tasks.Task.Run(fun () ->
+            UserEnvironment.save environmentPath env |> ignore)
+        |> ignore ]
+
+/// Strip the committable `<name>.ocproj.json` suffix back to the bare project name.
+let private projectNameOfPath (path : string) : string =
+    let stem = Path.GetFileNameWithoutExtension path   // "<name>.ocproj"
+    if stem.EndsWith ".ocproj" then stem.Substring(0, stem.Length - ".ocproj".Length) else stem
+
+/// Load a freshly-opened/templated project into the root model: re-seed the
+/// construction page (which solves the tree once) and the workspace, drop any open fit
+/// page, and land on the Construction page (R-1 / R-2).
+let private loadProjectInto
+    (project : OpticalConstructorProject)
+    (folder : string)
+    (name : string)
+    (statusMsg : string)
+    (model : RootModel)
+    : RootModel =
+    { model with
+        construction = ConstructionPage.init project folder name
+        workspace = WS.init project
+        fit = None
+        page = Page.Construction
+        status = Some statusMsg }
+
+let private updateIo (im : LifecycleView.IoMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
+    match im with
+    | LifecycleView.NewProject ->
+        loadProjectInto initialProject defaultWorkingFolder "untitled" "New project" model, Cmd.none
+    | LifecycleView.OpenRequested -> model, openCmd ()
+    | LifecycleView.OpenPath path -> model, openPathCmd path
+    | LifecycleView.Loaded (project, path) ->
+        loadProjectInto project (Path.GetDirectoryName path) (projectNameOfPath path)
+            (sprintf "Opened %s" (Path.GetFileName path)) model, Cmd.none
+    | LifecycleView.SaveRequested -> model, saveCmd model.construction
+    | LifecycleView.Saved path ->
+        // Subsequent saves follow the just-written destination.
+        { model with
+            construction = { model.construction with workingFolder = Path.GetDirectoryName path; projectName = projectNameOfPath path }
+            status = Some (sprintf "Saved %s" (Path.GetFileName path)) }, Cmd.none
+    | LifecycleView.IoError e -> { model with status = Some (sprintf "Error: %s" e) }, Cmd.none
+    | LifecycleView.LoadTemplate entry ->
+        // R-2: load through the existing schema-validated factory (no private deserialize).
+        match Templates.loadTemplate entry.build with
+        | Ok project -> loadProjectInto project defaultWorkingFolder entry.title (sprintf "Loaded template %s" entry.title) model, Cmd.none
+        | Error e -> { model with status = Some (sprintf "Template error: %A" e) }, Cmd.none
+    | LifecycleView.LoadGallery entry ->
+        match Help.openEntry entry with
+        | Ok project -> loadProjectInto project defaultWorkingFolder entry.title (sprintf "Loaded sample %s" entry.title) model, Cmd.none
+        | Error e -> { model with status = Some (sprintf "Gallery error: %A" e) }, Cmd.none
+
 let private updateShell (msg : ShellMsg) (model : RootModel) : RootModel =
     match msg with
     | Navigate page ->
@@ -305,7 +465,16 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         let cmd = constructionCmd cm model.construction.pendingDeletion construction.project.beamTree.root
         { model with construction = construction }, cmd
     | RootMsg.Workspace wm -> { model with workspace = WS.update wm model.workspace }, Cmd.none
-    | RootMsg.Shell sm -> updateShell sm model, Cmd.none
+    | RootMsg.Shell sm ->
+        // R-3: a theme / panel-visibility / panel-dock change attaches a fire-and-forget
+        // `UserEnvironment.save` persist `Cmd` so the layout/theme round-trips live; plain
+        // navigation does not touch `env` and so persists nothing.
+        let model' = updateShell sm model
+        let cmd =
+            match sm with
+            | ToggleTheme | SetPanelVisible _ | SetPanelDock _ -> persistEnvCmd model'.env
+            | Navigate _ -> Cmd.none
+        model', cmd
     | RootMsg.Chart cm ->
         let chart, markers = ChartView.update cm (model.chart, model.markers)
         { model with chart = chart; markers = markers }, Cmd.none
@@ -319,6 +488,7 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         match model.fit with
         | Some fit -> { model with fit = Some (SynthesisFitPage.update fm fit) }, fitCmd fm fit
         | None -> model, Cmd.none
+    | RootMsg.Io im -> updateIo im model
 
 // ---------------------------------------------------------------------------
 // view (R-4) — a top-level navigation control over a DockPanel of the visible
@@ -371,7 +541,17 @@ let private panelContent (model : RootModel) (dispatch : RootMsg -> unit) (panel
             model.materials model.materialsFilter model.construction
             (RootMsg.Materials >> dispatch) (RootMsg.Construction >> dispatch)
     | "sources" -> SourceView.sourcePanel model.source (RootMsg.Source >> dispatch)
-    | "results" -> ResultsView.resultsPanel model.workspace model.source (RootMsg.Workspace >> dispatch)
+    | "results" ->
+        // Part U6 results surface + the Part U8 (R-4) 2-D-orthographic 3-D system view,
+        // fed by the construction page's already-solved per-node results.
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.spacing 6.0
+            StackPanel.children [
+                ResultsView.resultsPanel model.workspace model.source (RootMsg.Workspace >> dispatch)
+                SystemView3DView.systemPanel model.construction
+            ]
+        ] :> IView
     | other -> placeholder (panelTitle other)
 
 let private panelView (model : RootModel) (dispatch : RootMsg -> unit) (p : PanelState) : IView =
@@ -409,6 +589,9 @@ let view (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             navBar model dispatch
+            // Part U8 (R-1/R-2): the lifecycle toolbar (New/Open/Save + templates + gallery),
+            // docked top below the nav bar; dispatches `IoMsg` wrapped as `RootMsg.Io`.
+            LifecycleView.lifecycleBar model.status (RootMsg.Io >> dispatch)
             pageBody model dispatch
         ]
     ] :> IView

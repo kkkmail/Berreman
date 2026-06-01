@@ -33,6 +33,8 @@
         <Compile Include="SourcePanelTests.fs" />
         <Compile Include="ResultsPanelTests.fs" />
         <Compile Include="FitPanelTests.fs" />
+        <Compile Include="LifecycleTests.fs" />
+        <Compile Include="SystemView3DTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

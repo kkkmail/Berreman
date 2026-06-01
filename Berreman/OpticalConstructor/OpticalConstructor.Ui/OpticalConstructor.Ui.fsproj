@@ -90,6 +90,13 @@
              background run is wired in Shell.fs (§0.4/§0.5). Public MIT FuncUI DSL
              only; clone UNREFERENCED. -->
         <Compile Include="FitView.fs" />
+        <!-- spec 0024 Part U8 (slice 008): the lifecycle toolbar (+ IoMsg) and the
+             2-D-orthographic 3-D system view, composed before the root surface.
+             LifecycleView owns the open/save/new/template/gallery sub-message Shell
+             wraps; SystemView3DView renders the frozen SystemView3D geometry on the
+             slice-002 Canvas host. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="LifecycleView.fs" />
+        <Compile Include="SystemView3DView.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->
