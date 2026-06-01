@@ -1,0 +1,90 @@
+# Claim-check of .spec-md
+
+**Audited spec-md SHA-256:** `d97ecc4894fa7957e5151d6a9cbbe59a0a632329d6f5702c6af01a6d839ed482`
+
+## Summary
+
+- chunk 1: CONFIRMED: 12, REFUTED-NO-POINTER: 0, REFUTED-COUNT-STALE: 0, REFUTED-POINTER-DRIFT: 0, REFUTED-POINTER-HALLUCINATED: 0, NOT-CHECKED (ambiguous): 0.
+- chunk 2: CONFIRMED: 35, REFUTED-NO-POINTER: 0, REFUTED-COUNT-STALE: 0, REFUTED-POINTER-DRIFT: 0, REFUTED-POINTER-HALLUCINATED: 0, NOT-CHECKED (ambiguous): 0.
+- chunk 3: CONFIRMED: 16, REFUTED-NO-POINTER: 1, REFUTED-COUNT-STALE: 0, REFUTED-POINTER-DRIFT: 0, REFUTED-POINTER-HALLUCINATED: 0, NOT-CHECKED (ambiguous): 0.
+- chunk 4: CONFIRMED: 6, REFUTED-NO-POINTER: 0, REFUTED-COUNT-STALE: 0, REFUTED-POINTER-DRIFT: 0, REFUTED-POINTER-HALLUCINATED: 0, NOT-CHECKED (ambiguous): 0.
+
+## Verdicts
+
+| spec_line | pointer_text | verdict | rationale |
+| --- | --- | --- | --- |
+| # | Phrase / claim (verbatim or <= 120 chars) | Spec location | Verifier evidence |
+| 1 | "The core (...) already exists ... The only FuncUI view in the tree today is `AppShell.shellView` ... placeholder bordered frames (`AppShell.fs:98` `panelView`, `AppShell.fs:118` `shellView`)" | Preamble | `Read AppShell.fs:98` → `let private panelView (p : PanelState)`; `Read AppShell.fs:118` → `let shellView (settings : EnvironmentSettings)` |
+| 1 | "The editor reducer, presets, and live projections exist." → `SourceEditorView.SourceMsg`/`update`/`defaultSource` | §U4.0/U4.1 | `Read SourceEditorView.fs` → `type SourceMsg` :45 (all six cases), `let update` :59, `let defaultSource` :107 |
+| 1 | "model assertions reuse the existing `OpticalConstructor.Tests` helpers" | § Test artifacts (per-panel headless view tests) | `Glob OpticalConstructor.Tests/*.fs` → project + helper sources exist (`StackEditTests.fs`, `ReadoutTests.fs`, `RoundTripTests.fs`, … 30 files) |
+| 1 | "version-aligned with the pinned `Avalonia.FuncUI` 1.6.0 / `Avalonia` 11.3.4 already present" | §U1.1 | `Read` Ui.fsproj:81/:84 + App.fsproj:36/:39 → `Avalonia` 11.3.4 and `Avalonia.FuncUI` 1.6.0 present in both projects |
+| 10 | "MUST replace the static mount at `Program.fs:39`" | §U1.3 | `Read` App/Program.fs:39 → `this.Content <- Component(fun _ctx -> AppShell.shellView Startup.settings)` |
+| 10 | "per-node busy state via `ConstructionPage.isNodeBusy` (`ConstructionPage.fs:261`) ... per-iteration progress via `SynthesisFitPage.progressText` (`SynthesisFitPage.fs:207`)" | UX §2 | `Read` ConstructionPage.fs:261 → `let isNodeBusy`; SynthesisFitPage.fs:207 → `let progressText` |
+| 10 | background-dispatch primitive `JobRunner.startBackground`, signature `run`/`onDone` only (`JobRunner.fs:127`–134) | §U7.2 | `Read JobRunner.fs:127` → `startBackground (run …) (onDone …) : unit`, body spans :127–134 (no progress param) |
+| 11 | "mounted from the existing `MainWindow` (`Program.fs:33`)" | §U1.3 | `Read` App/Program.fs:33 → `type MainWindow() as this =` |
+| 11 | "the existing confirmation prompt `ConstructionPage.confirmationPrompt` (`ConstructionPage.fs:265`) ... `SynthesisFitPage.acceptConfirmationPrompt` (`SynthesisFitPage.fs:202`)" | UX §3 | `Read` ConstructionPage.fs:265 → `let confirmationPrompt`; SynthesisFitPage.fs:202 → `let acceptConfirmationPrompt` |
+| 11 | per-iteration progress from `SynthesisFitPage.progressText` (`SynthesisFitPage.fs:207`) | §U7.3 | `Read SynthesisFitPage.fs:207` → `let progressText` |
+| 12 | "`SynthesisFitPage.canAccept`/`canRevert`/`canCancel` (`:197`/`:194`/`:191`) ... `JobRunner.JobMsg.StartRequested`/`CancelRequested` (`JobRunner.fs:173`) ... existing single-level undo (`ConstructionPage.canUndo`, `:270`); ... existing pre-fit Revert (`SynthesisFitPage.canRevert`)" | UX §5 | `Read` SynthesisFitPage.fs:197/194/191 → `canAccept`/`canRevert`/`canCancel`; JobRunner.fs:173 → `type JobMsg<'r>` with `StartRequested`/`CancelRequested` (l.174/175); ConstructionPage.fs:270 → `let canUndo` |
+| 12 | "seed `RootModel.env` from the already-loaded `Startup.settings` (`Program.fs:29`, `UserEnvironment.load`)" | §U1.3 | `Read` App/Program.fs:29 → `let settings = UserEnvironment.load (UserEnvironment.settingsPath ())` |
+| 12 | Accept/Revert gating `canAccept`/`canRevert`/`canCancel` :197/:194/:191, `acceptConfirmationPrompt` :202, `comparisonOverlay` :225 | §U7.4 | `Read SynthesisFitPage.fs` → `canCancel` :191, `canRevert` :194, `canAccept` :197, `acceptConfirmationPrompt` :202, `comparisonOverlay` :225 |
+| 13 | "STAThread is already set, `Program.fs:58`" + `ConstructionPage.saveProject` (`ConstructionPage.fs:229`, writes `<name>.ocproj.json`) | §U8.1 | `Read Program.fs:58` → `[<EntryPoint; STAThread>]`; `Read ConstructionPage.fs:229` → `let saveProject` → `<name>.ocproj.json` |
+| 13 | "The theme→Avalonia seam in `Initialize` (`Program.fs:48`, `AppShell.themeVariant`) MUST be left in place" | §U1.3 | `Read` App/Program.fs:48 → `this.RequestedThemeVariant <- AppShell.themeVariant Startup.settings.theme`; `Grep` → `themeVariant` at AppShell.fs:35 |
+| 14 | "`AppShell.shellView`/`panelView` (`AppShell.fs:118`/`:98`) MUST be rewritten" | §U1.4 | `Read AppShell.fs:118` → `let shellView`; `:98` → `let private panelView` |
+| 14 | "open MUST parse through the existing schema-validated Storage path" | §U8.1 | open side names no `<file>:<symbol>` (save side cites `ConstructionPage.fs:229`); mechanism exists as `ProjectFile.openProject` (`ProjectFile.fs:31`) → `ProjectJson.deserializeProject`, but the spec sentence names neither |
+| 15 | "Both go through the existing schema-validated factories" → `Templates.all`/`loadTemplate`, `Help.gallery`/`openEntry` | §U8.2 | `Read Templates.fs` → `all` :144, `loadTemplate` :164; `Read Help.fs` → `gallery` :166, `openEntry` :180 |
+| 15 | "MUST keep coming from the existing pure reducers `AppShell.visiblePanels` (`:75`), `setPanelVisible` (`:60`), and `dockPanel` (`:68`)" | §U1.4 | `Read AppShell.fs` → `visiblePanels` :75, `setPanelVisible` :60, `dockPanel` :68 |
+| 16 | "dock edges keep mapping through the existing `toDock` (`AppShell.fs:86`)" | §U1.4 | `Read AppShell.fs:86` → `let private toDock (side : DockSide) : Dock option =` |
+| 16 | "through the existing pure reducers (`AppShell.toggleTheme`/`setPanelVisible`/`dockPanel`)" + `UserEnvironment.save` | §U8.3 | `Read AppShell.fs` → `toggleTheme` :42, `setPanelVisible` :60, `dockPanel` :68; `Grep UserEnvironment.fs` → `let save` :302 (unique) |
+| 17 | "the existing presentation helper `StackEditor.layerRowLabels` (`StackEditor.fs:217`)" | §U1.5 | `Read StackEditor.fs:217` → `let layerRowLabels …` |
+| 17 | 3-D view `SystemView3D.placeElements` (`SystemView3D.fs:96`) and `beamSegments` (`SystemView3D.fs:149`) | §U8.4 | `Read SystemView3D.fs` → `placeElements` :96, `beamSegments` :149 |
+| 18 | "thickness strings from `StackEditor.displayThickness` (`StackEditor.fs:210`)" | §U1.5 | `Read StackEditor.fs:210` → `let displayThickness …` |
+| 19 | "It MUST follow the existing gate schema (`name`, `description`, `kind: command`, `command`, `pass_when.exit_code: 0`, `runtime_estimate_seconds`, `tags`, `applies_to`, `qualifier`)" | §U1.6 | `Read .gates/OpticalConstructor/constructor-unit-tests.gates` → all nine cited keys present |
+| 2 | "The App bootstrap added by slice 017 mounts that placeholder statically (`Program.fs:39` `this.Content <- Component(fun _ctx -> AppShell.shellView Startup.settings)`)" | Preamble | `Read Program.fs:39` → exact line `this.Content <- Component(fun _ctx -> AppShell.shellView Startup.settings)` |
+| 2 | "aggregating the existing sub-models … `ConstructionPage.Model` (`ConstructionPage.fs:106`)" | §U1.2 | `Read ConstructionPage.fs:106` → `type Model =` |
+| 2 | "the two new command gates … modelled on `.gates/OpticalConstructor/constructor-unit-tests.gates`" | § Test artifacts (`ui-smoke`/`ui-tests` gates) | `Glob .gates/OpticalConstructor/constructor-unit-tests.gates` → file present ("modelled on" inferred as existing-artefact pointer) |
+| 2 | presets + live readout via `PolarizationPicker.applyPreset`/`liveStokes`/`poincareMarker`/`ellipseParameters` | §U4.2 | `Read PolarizationPicker.fs` → :46 `applyPreset`, :82 `liveStokes`, :98 `poincareMarker`, :109 `ellipseParameters` |
+| 20 | "matching the existing `OpticalConstructor.Tests` framework `xunit.v3`" | §U1.7 | `Read OpticalConstructor.Tests.fsproj:77` → `<PackageReference Include="xunit.v3" Version="3.2.2" />` |
+| 21 | "so `constructor-unit-tests` stays Avalonia-free" | §U1.7 | `Glob` → `.gates/OpticalConstructor/constructor-unit-tests.gates` exists; targets the Avalonia-free Tests project |
+| 22 | "assert … `OnFrameworkInitializationCompleted` ran (`Program.fs:50`)" | §U1.7 | `Read` App/Program.fs:50 → `override this.OnFrameworkInitializationCompleted() =` |
+| 23 | "every `StackEditor.StackMsg` (`StackEditor.fs:161`: add/delete/duplicate/reorder/group/rotate …)" | §U2.1 | `Read StackEditor.fs:161` → `type StackMsg =` with the enumerated cases |
+| 24 | "routed through the existing `ConstructionPage.update` (`ConstructionPage.fs:173`)" | §U2.1 | `Read ConstructionPage.fs:173` → `let update (msg : Msg) (model : Model) : Model =` |
+| 25 | "runs `ConstructionPage.solveSubtree path root` (`ConstructionPage.fs:84`)" | §U2.2 | `Read ConstructionPage.fs:84` → `let solveSubtree (path : NodePath) (root : BeamNode) …` |
+| 26 | "dispatches the result back as `Construction (NodeSolved map)` (`ConstructionPage.Msg.NodeSolved`, `ConstructionPage.fs:135`)" | §U2.2 | `Read ConstructionPage.fs:135` → ` |
+| 27 | "The busy indicator MUST be driven by `ConstructionPage.isNodeBusy` (`ConstructionPage.fs:261`)" | §U2.2 | `Read ConstructionPage.fs:261` → `let isNodeBusy (path : NodePath) (model : Model) : bool …` |
+| 28 | "using `ConstructionPage.confirmationPrompt` (`ConstructionPage.fs:265`)" | §U2.3 | `Read ConstructionPage.fs:265` → `let confirmationPrompt (model : Model) : string option =` |
+| 29 | "single-level undo gated by `ConstructionPage.canUndo` (`ConstructionPage.fs:270`)" | §U2.3 | `Read ConstructionPage.fs:270` → `let canUndo (model : Model) : bool = Option.isSome model.undo` |
+| 3 | "These modules are Avalonia-free by mandate and carry the existing passing suite" (ConstructionPage/StackEditor/Workspace/SynthesisFitPage/JobRunner/Schematic/SystemView3D/UserEnvironment + Charts/Sources + Domain/Storage/Optimization) | §0.1 | `Glob` resolved all 8 named `*.fs` modules, both `Charts/` and `Sources/` builder dirs, and the three `OpticalConstructor.{Domain,Storage,Optimization}.fsproj` projects |
+| 3 | "`Workspace.Model` (`Workspace.fs:32`)" | §U1.2 | `Read Workspace.fs:32` → `type Model =` |
+| 3 | "the verified codebase … materials previews are Plotly/WebView2 not ScottPlot" | § References | `MaterialPreview.fs` routes into `Analytics.Charting` (`plotN11`/`plotXi11`/…); `Grep Charting.fs` → Plotly.NET, no ScottPlot (inferred existing-codebase claim) |
+| 3 | ellipse `renderEllipse` returns `ScottPlot.Plot`; `poincareSphere` returns `Plotly.NET.GenericChart` | §U4.2 | `Read PolarizationPlots.fs` → :39 `renderEllipse … : ScottPlot.Plot`, :57 `poincareSphere … : Plotly.NET.GenericChart` |
+| 30 | "list `MaterialLibrary` entries (`MaterialLibrary.fs:47`, seeded from `MaterialLibrary.standard`)" | §U3.1 | `Read MaterialLibrary.fs:47` → `type MaterialLibrary`; `let standard` at :140 |
+| 31 | "filtering via the existing `MaterialLibrary.byCategory` (`:53`) and `byNameContains` (`:57`)" | §U3.1 | `Read MaterialLibrary.fs:53` `let byCategory …`; `:57` `let byNameContains …` |
+| 32 | "the charts returned by `MaterialPreview.show*` (`…/MaterialPreview.fs:57` onward)" | §U3.2 | `Read MaterialPreview.fs:57` → `let showN11 …` (first of the `show*` family) |
+| 33 | "they delegate to `Analytics.Charting.plotN11`/… whose `plotDispersion` ends in `Chart.Line` (`Analytics/Charting.fs:85`)" | §U3.2 | `Read Charting.fs:85` → `let plotDispersion …`; body builds `Chart.Line(data, Name = name)` at :90; `plotN11` at :95 |
+| 34 | "build the edit via the existing `StackEditor.layerMaterialDrop` (`StackEditor.fs:195`)" | §U3.3 | `Read StackEditor.fs:195` → `let layerMaterialDrop …` |
+| 35 | "the single resolution seam is `MaterialLibrary.resolveMaterial`, `MaterialLibrary.fs:69`, which `layerMaterialDrop` already calls" | §U3.3 | `Read MaterialLibrary.fs:69` → `let resolveMaterial …`; `layerMaterialDrop` :196 → `mediumFromMaterial` :113 → `resolveMaterial` (call chain confirmed) |
+| 4 | "optional `SynthesisFitPage.Model` (`SynthesisFitPage.fs:46`)" | §U1.2 | `Read SynthesisFitPage.fs:46` → `type Model =` |
+| 4 | "the public MIT `Avalonia.FuncUI` 1.6.0 DSL surface already referenced by both projects ... `Avalonia.FuncUI` 1.6.0 / `Avalonia` 11.3.4 already present" | §0.2 / U1.1 | `Grep` Ui.fsproj:84 + App.fsproj:39 → `Avalonia.FuncUI" Version="1.6.0"`; both → `Avalonia" Version="11.3.4"` |
+| 4 | "the verified codebase … project files are `.ocproj.json`" | § References | `Grep` → `ConstructionPage.fs:225` builds `model.projectName + ".ocproj.json"` (inferred existing-codebase claim) |
+| 4 | 1-D charts `Plot1DView.renderSweep`/`renderComparison`/`renderFieldDepth`/`renderDispersion` (all `ScottPlot.Plot`) | §U5.2 | `Read Plot1DView.fs` → :55 `renderSweep`, :62 `renderComparison`, :68 `renderFieldDepth`, :74 `renderDispersion`, all `: ScottPlot.Plot` |
+| 5 | "Committable project files ... written ... by `ConstructionPage.saveProject` (`ConstructionPage.fs:229`, path built at `ConstructionPage.fs:225`)" | §0.6 | `Read ConstructionPage.fs:229` → `let saveProject`; `fs:225` → `Path.Combine(model.workingFolder, model.projectName + ".ocproj.json")` |
+| 5 | "`ChartSettings.ChartSettings` (`…/Charts/ChartSettings.fs:50`)" | §U1.2 | `Read ChartSettings.fs:50` → `type ChartSettings =` |
+| 5 | "the existing `ChartSettings.applyToScottPlot`/`applyToPlotly` seams (the chart builders already call these)" + `Readout.Markers` | §U5.3 | `Read ChartSettings.fs` → `type ChartSettings` :50, `applyToScottPlot` :138, `applyToPlotly` :179; `Read Readout.fs` → `type Markers` :15 |
+| 5 | "the verified codebase … `startBackground` takes `run`/`onDone` only" | § References | `Read JobRunner.fs:127` → `let startBackground (run : unit -> JobOutcome<'a>) (onDone : Result<…, string> -> unit) : unit` (inferred existing-codebase claim) |
+| 6 | "Derived `.binz` sidecars ... via the single shared seam `Storage.Sidecar.derivedArtefactPath` (`Sidecar.fs:36`, directory at `Sidecar.fs:30`)" | §0.6 | `Read Sidecar.fs:36` → `let derivedArtefactPath`; `fs:30` → `let sidecarDirectory ... Path.Combine(projectDir, ".sidecars")` |
+| 6 | "Operator-plan source: `specs/0022/.manual/018-ui-wiring-plan.md` (this spec supersedes the plan …)" | § References | `Glob specs/0022/.manual/018-ui-wiring-plan.md` → file present ("supersedes the plan" inferred as existing-artefact pointer) |
+| 6 | "`Readout.Markers` (`…/Charts/Readout.fs:15`)" | §U1.2 | `Read Readout.fs:15` → `type Markers =` |
+| 6 | 3-D surface `Plot3DView.render` returns `Plotly.NET.GenericChart` | §U5.4 | `Read Plot3DView.fs:29` → `let render … : Plotly.NET.GenericChart` |
+| 7 | "The layout geometry and overlay builders exist" → `Schematic.layout`, `Schematic.rayGeometry` | §U6.0/U6.1 | `Read Schematic.fs` → `let layout` :198, `let rayGeometry` :165 |
+| 7 | "`*.binz` and `*.autosave` are already ignored in the repository root `.gitignore` (`.gitignore:336`, `.gitignore:340`)" | §0.6 | `Read .gitignore:336` → `*.binz`; `:340` → `*.autosave` |
+| 7 | "the `MaterialLibrary` (`…/MaterialLibrary.fs:47`, seeded from `MaterialLibrary.standard`)" | §U1.2 | `Read MaterialLibrary.fs:47` → `type MaterialLibrary =`; `Grep` → `let standard` at MaterialLibrary.fs:140 |
+| 8 | "`RootMsg` … wraps each existing sub-`Msg` (`ConstructionPage.Msg`, `Workspace.Msg`, `SynthesisFitPage.Msg`, `SourceEditorView.SourceMsg`)" | §U1.2 | `ConstructionPage.fs:129` `type Msg`; `Workspace.fs:41` `type Msg`; `SynthesisFitPage.fs:107` `update (msg : Msg)`; `SourceEditorView.fs:59` `update (msg : SourceMsg)` |
+| 8 | "modelled on the existing command-gate format (`.gates/OpticalConstructor/constructor-unit-tests.gates`, `.gates/Berreman/build.gates`)" | §0.7 | `Glob .gates/**/*.gates` → both `constructor-unit-tests.gates` and `Berreman/build.gates` present |
+| 8 | workspace `Workspace.Msg`/`update`/`renderOverlay` (`renderOverlay` returns `ScottPlot.Plot`) | §U6.2 | `Read Workspace.fs` → `type Msg` :41 (`ToggleVisible`/`SetActive`), `update` :52, `renderOverlay` :107 → `: ScottPlot.Plot` :113 |
+| 9 | "Construction (... `ConstructionPage.navEntry` `isDefaultLanding = true`, `ConstructionPage.fs:100`) and Synthesis / Fit (`SynthesisFitPage.navEntry`, `SynthesisFitPage.fs:40`) ... from `UserEnvironment.defaultPanels` (`UserEnvironment.fs:161`)" | UX §1 | `Read` ConstructionPage.fs:100 → `navEntry = { ...; isDefaultLanding = true }`; SynthesisFitPage.fs:40 → `let navEntry`; UserEnvironment.fs:161 → `let defaultPanels` |
+| 9 | "The page model, helpers … exist" → `SynthesisFitPage.Model`/`Msg`/`update` | §U7.0/U7.1 | `Read SynthesisFitPage.fs` → `type Model` :46, `type Msg` :79, `let update` :107 |
+| 9 | "each case calls the matching existing sub-`update` (`ConstructionPage.update` `:173`, `Workspace.update` `:52`, `SynthesisFitPage.update` `:107`, `SourceEditorView.update` `:59`)" | §U1.2 | `Read` each line → `let update …` present at every cited line |
+
+## Bottom line
+
+CONFIRMED
