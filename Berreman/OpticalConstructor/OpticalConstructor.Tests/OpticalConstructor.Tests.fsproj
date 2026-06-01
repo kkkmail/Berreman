@@ -38,6 +38,7 @@
         <Compile Include="SourceProjectionTests.fs" />
         <Compile Include="SourceExpansionTests.fs" />
         <Compile Include="OptimizationInterfaceTests.fs" />
+        <Compile Include="LocalRefinementTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

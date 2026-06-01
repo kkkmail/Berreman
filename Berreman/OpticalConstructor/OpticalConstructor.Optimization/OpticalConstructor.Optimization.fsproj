@@ -24,17 +24,26 @@
     <!-- Slice 001 shipped the empty Optimization.fs placeholder. Slice 009
          (Part G §G.1-G.3) fills in the library-agnostic optimization interface,
          the single ALGLIB adapter behind it, and the design-variable mapping, in
-         compile order: interface before adapter before mapping. -->
+         compile order: interface before adapter before mapping. Slice 010
+         (Part G §G.4-G.7) adds the fitting core after the slice-009 trio:
+         Ellipsometry before MeritFunction (FitTarget references
+         EllipsometricFunction), MeritFunction before LocalRefinement, and
+         InverseFit last (it consumes the refinement entry point). -->
     <ItemGroup>
         <Compile Include="Optimization.fs" />
         <Compile Include="OptimizationInterface.fs" />
         <Compile Include="AlglibAdapter.fs" />
         <Compile Include="DesignParameters.fs" />
+        <Compile Include="Ellipsometry.fs" />
+        <Compile Include="MeritFunction.fs" />
+        <Compile Include="LocalRefinement.fs" />
+        <Compile Include="InverseFit.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.300" />
         <PackageReference Include="alglib.net" Version="3.19.0" />
+        <PackageReference Include="FSharp.Data" Version="8.1.14" />
     </ItemGroup>
 
     <ItemGroup>
