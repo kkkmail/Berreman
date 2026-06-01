@@ -1,0 +1,95 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="ScaffoldTests.fs" />
+        <Compile Include="UnitsTests.fs" />
+        <Compile Include="GradientDiscretizeTests.fs" />
+        <Compile Include="BeamTreeTests.fs" />
+        <Compile Include="CurvedElementsTests.fs" />
+        <Compile Include="BeamRoutingTests.fs" />
+        <Compile Include="ProjectJsonRoundtripTests.fs" />
+        <Compile Include="RoundTripTests.fs" />
+        <Compile Include="SidecarTests.fs" />
+        <Compile Include="DispersionModelsTests.fs" />
+        <Compile Include="MaterialImportTests.fs" />
+        <Compile Include="MaterialPreviewTests.fs" />
+        <Compile Include="StackEditTests.fs" />
+        <Compile Include="SourceProjectionTests.fs" />
+        <Compile Include="SourceExpansionTests.fs" />
+        <Compile Include="OptimizationInterfaceTests.fs" />
+        <Compile Include="LocalRefinementTests.fs" />
+        <Compile Include="SynthesisFitPageTests.fs" />
+        <!-- Part H charts (slice 012). -->
+        <Compile Include="SeriesDataTests.fs" />
+        <Compile Include="ReadoutTests.fs" />
+        <Compile Include="ChartSettingsTests.fs" />
+        <Compile Include="PolarizationPlotTests.fs" />
+        <!-- Persistence II (§I.5-I.8, slice 013). -->
+        <Compile Include="HistoryTests.fs" />
+        <Compile Include="ExportImportTests.fs" />
+        <!-- Part J UX shell I (§J.1-J.5, slice 014). -->
+        <Compile Include="RepeatBuilderTests.fs" />
+        <Compile Include="TemplatesTests.fs" />
+        <Compile Include="SchematicGeometryTests.fs" />
+        <!-- Part J UX shell II (§J.6-J.9, slice 015). -->
+        <Compile Include="ValidationTests.fs" />
+        <Compile Include="EnvironmentRoundTripTests.fs" />
+        <!-- Part J UX shell III (§J.10-J.12, slice 016, LAST). The AC-J12
+             SystemView3D geometry portion is added to SchematicGeometryTests.fs
+             (registered above) per the slice's files-in-scope. -->
+        <Compile Include="JobRunnerCancelTests.fs" />
+        <Compile Include="HelpGalleryTests.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="fixtures\Si.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\sample-nk.csv">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.300" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+        <PackageReference Include="xunit.v3" Version="3.2.2" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="coverlet.collector" Version="10.0.1">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
+    </ItemGroup>
+
+</Project>

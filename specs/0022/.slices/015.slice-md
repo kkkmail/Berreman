@@ -1,0 +1,121 @@
+# 015 — UX shell II: persistent environment/favorites, preferences, theme/dockable panels & validation (Part J §J.6–J.9)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract).
+- Slice 001 (`.slices/001.slice-md`) — scaffold + the buildable FuncUI interpretation (public MIT `Avalonia.FuncUI` NuGet ≠ the audit-gated clone) every UI-touching slice relies on.
+- Slice 003 (`.slices/003.slice-md`) — storage core: the Part I `serializeProject` shared `JsonSerializerOptions` (§I.1) this slice reuses for `EnvironmentSettings`.
+- Slice 014 (`.slices/014.slice-md`) — Part J §J.1–J.5; J.2 calls the J.9 validator this slice implements.
+- Slice 012 (`.slices/012.slice-md`) — Part H charting (the chart color palettes J.8 surfaces to it).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-J6: After the app restarts, the favorites board, recent-files list, last working folder, panel layout, and preferences MUST be restored from the JSON `EnvironmentSettings` file (schema-validated, not `.binz`); on validation failure the app MUST fall back to built-in defaults without attempting migration.
+- AC-J7: After a user edits a default-unit or wavelength-range preference, the change MUST affect only display/boundary formatting and MUST NOT alter any stored `double<meter>` domain value; solver defaults MUST be expressed as the engine's `SolverParameters`.
+- AC-J8: After the user switches theme or rearranges dockable panels, the new theme and panel layout MUST round-trip through `EnvironmentSettings` JSON; and the FuncUI clone MUST NOT be linked/built until the §A.6/§A.9 audit passes, with its linking mechanism left unresolved by Part J.
+- AC-J9: After a user enters a non-positive finite thickness, a repeat count < 1, or an empty/invalid wavelength range, the corresponding `Validation` validator MUST return `Result.Error` and surface the message inline, blocking commit, without throwing or coercing.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (new) — `EnvironmentSettings`/`Preferences` records (favorites board, recent files, layout, prefs)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs` (new) — dockable panels, theme, shared job-status area (gated on FuncUI audit)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Validation.fs` (new) — boundary validators returning `Result<'T, ValidationError list>`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (new) — JSON Schema for `EnvironmentSettings` (added to the §A.7 schema family)
+
+### File:line references owned by this slice
+
+- `Solvers.fs:15` `SolverParameters` (whose `numberOfReflections` is the convergence control); Part J MUST NOT define a parallel solver-config record (§J.7).
+- `Media.fs:12` `Thickness` — the validator rejects `Thickness.Thickness d` with `d <= 0.0<meter>` (§J.9).
+- §A.7 schema family — `EnvironmentSettings` is added as `optical-constructor-environment.schema.json`, validated with `JsonSchema.Net`; favorites store §A.7 shapes (`Layer`, `materialEntry` id, `sourceSpec` id, `opticalSystem` fragments).
+- §I.1 `serializeProject` shared `JsonSerializerOptions` — reused for `EnvironmentSettings` serialization (§J.6 item 1).
+
+## Scope
+
+This slice delivers the second Part J tranche: the [Core] persistent UI-customization & favorites board (J.6) plus the [Standard] preferences (J.7), theme & dockable panels (J.8), and input validation & physical-sanity warnings (J.9). The favorites board and the `EnvironmentSettings`/`Preferences` records are the net-new persistent customization from 010 Part II §1; preferences and panel layout/theme persist as fields of `EnvironmentSettings`. The `Validation` module is the J.9 seam that J.2 (slice 014) already calls to reject a repeat count < 1, and that the rest of the editor uses for every boundary field.
+
+UI-touching. `EnvironmentSettings` persists as JSON validated against `optical-constructor-environment.schema.json` (NOT `.binz`), reusing the Part I `serializeProject` shared `JsonSerializerOptions` (slice 003) — not a second JSON stack. This slice relies on the slice-001 buildable FuncUI interpretation: the public MIT `Avalonia.FuncUI` NuGet supplies the DSL for compilation.
+
+**FuncUI-clone gate for `AppShell` (J.8 / constraint 5 / §A.6 / §A.9 / AC-J8).** §J.8 states the dockable-panel mechanism MUST use Avalonia's docking facilities *through the FuncUI clone* — and therefore that the clone MUST NOT be referenced, linked, or built until the mandatory audit passes and the clone is cleared, and that the clone's linking mechanism MUST remain undecided here. `AppShell` MUST therefore be authored against the FuncUI DSL surface as SOURCE but MUST NOT add the clone as a dependency, and MUST NOT resolve the linking mechanism. The public MIT `Avalonia.FuncUI` NuGet (slice 001) supplies the DSL so `AppShell` compiles under the `build` gate; the audit-gated clone at `C:\GitHub\Avalonia.FuncUI.Clone\` stays unreferenced and its linking choice stays unresolved.
+
+## Requirements
+
+### R-1. §J.6 Persistent UI-customization & favorites board [Core]
+
+The Ui project MUST provide a `UserEnvironment` module (new file `OpticalConstructor.Ui/UserEnvironment.fs`) defining an `EnvironmentSettings` record that persists the user's working environment between sessions and serves as defaults for new projects. It MUST hold: a **favorites board** (named, grouped pins of frequently used `Layer`s, `materialEntry` ids, `sourceSpec` ids, and whole sub-assemblies expressed as `OpticalSystem` fragments, all referencing §A.7 shapes), the **last working folder(s)** and an ordered **recent files/projects** list, the **window/panel layout** (J.8), the **toolbar contents**, and the **preferences** (J.7). This is the net-new persistent customization from 010 Part II §1.
+
+1. `EnvironmentSettings` MUST be persisted as JSON validated on load against a new schema `optical-constructor-environment.schema.json` (added to the §A.7 schema family, same validation library `JsonSchema.Net` named in §A.7) — NOT as FsPickler/`.binz`, because it is hand/LLM-inspectable user config (§A.7). The serialization MUST reuse the Part I `serializeProject` shared `JsonSerializerOptions` (§I.1) rather than a second JSON stack.
+2. The file MUST live at a single fixed per-user path under the OS application-data directory; the resolved path MUST be a committable-vs-gitignore non-issue because it is outside the repository working tree (J.10 checklist item 6). Sub-assemblies pinned on the favorites board MUST be stored by value as `opticalSystem` JSON fragments (§A.7), so a pinned favorite survives even if the project it came from is deleted.
+3. Sweep/field-map and other bulk artefacts MUST NOT be embedded in `EnvironmentSettings`; only references (paths/ids) MAY appear, consistent with the `.binz`-sidecar rule (§A.7). Schema versioning and migration of this file are OUT OF SCOPE (§0 constraint 6); on a schema-validation failure the app MUST fall back to built-in defaults rather than attempt migration.
+
+### R-2. §J.7 Preferences [Standard]
+
+The Ui project MUST provide a `Preferences` record (in `OpticalConstructor.Ui/UserEnvironment.fs`, J.6) carrying: default units (a per-quantity `unitOfMeasure`, §A.7), default wavelength range, default number of sweep points, decimal display precision, and solver defaults. Solver defaults MUST be expressed as the engine's own `SolverParameters` (`Solvers.fs:15`, whose `numberOfReflections` is the convergence control named in 010 Part II §4/§8) — Part J MUST NOT define a parallel solver-config record. Default-unit and wavelength-range preferences are display/boundary concerns and MUST be applied only at the UI/IO boundary (§A.3); they MUST NOT change how any value is stored. Preferences persist as part of `EnvironmentSettings` (J.6) and are therefore JSON, not `.binz`.
+
+### R-3. §J.8 Theme & dockable panels [Standard]
+
+The Ui project MUST provide an `AppShell` module (new file `OpticalConstructor.Ui/AppShell.fs`) hosting dockable/resizable panels (stack, materials, sources, chart, results) with saved layouts, and a light/dark theme plus configurable chart color palettes. The theme selection and the serialized panel layout MUST be fields of `EnvironmentSettings` (J.6) and MUST round-trip through its JSON. Chart color palettes MUST be surfaced to Part H but MUST NOT be re-implemented as a charting engine here. The dockable-panel mechanism MUST use Avalonia's docking facilities through the FuncUI clone — and therefore MUST NOT be referenced, linked, or built until the mandatory FuncUI-clone audit (§A.6/§A.9 / 010 Part III §3) has passed and the clone is cleared. **The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided here; Part J MUST NOT resolve it.** Until the audit passes, `AppShell` MUST be authored against the FuncUI DSL surface as source but MUST NOT add the clone as a dependency.
+
+### R-4. §J.9 Input validation & physical-sanity warnings [Standard]
+
+The Ui project MUST provide a `Validation` module (new file `OpticalConstructor.Ui/Validation.fs`) exposing pure validators returning `Result<'T, ValidationError list>` (§0 error-handling rule — `Result`, not exceptions) for every editable boundary field. It MUST enforce at minimum: thickness `> 0` for finite films (rejecting `Thickness.Thickness d` with `d <= 0.0<meter>`, `Media.fs:12`), repeat count `>= 1` (J.2), a non-empty wavelength range with positive endpoints, and the physical-sanity warnings named in 010 Part II §8 (e.g. an absorbing region flagged where the imaginary index implies gain, non-causal tabulated data). Validation MUST run at the UI boundary before a value is committed to the model and MUST surface failures inline next to the field; it MUST NOT throw, and it MUST NOT silently coerce out-of-range input. Validators MUST operate on already-parsed values and MUST NOT duplicate unit conversion — they receive canonical `double<meter>` etc. after the §A.3 boundary conversion.
+
+## Non-requirements
+
+- Schematic / repeat builder / templates / drag-drop / comparison workspace are Part J §J.1–J.5, owned by slice 014. J.2 calls this slice's J.9 validator; the repeat builder itself is slice 014.
+- The long-running job runner, in-app help/glossary/gallery, and the 3D system/beam view are Part J §J.10–J.12, owned by slice 016. The shared job-status area in `AppShell` (J.8 item) only hosts the runner that slice 016 supplies.
+- The chart color-palette IMPLEMENTATION is Part H (slice 012); J.8 only surfaces palettes to it and MUST NOT re-implement a charting engine.
+- The FuncUI clone MUST NOT be referenced, linked, or built, and its linking mechanism MUST NOT be resolved (constraint 5 / §A.6 / §A.9 / AC-J8). `AppShell` is authored against the FuncUI DSL surface (public MIT NuGet, slice 001) as source only.
+- Schema versioning / migration of `EnvironmentSettings` is OUT OF SCOPE; validation failure falls back to built-in defaults, never migrates (§J.6 item 3).
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (`EnvironmentSettings` + `Preferences` records)
+- `OpticalConstructor/OpticalConstructor.Ui/AppShell.fs` (dockable panels, theme, shared job-status area; FuncUI DSL surface only, clone unreferenced)
+- `OpticalConstructor/OpticalConstructor.Ui/Validation.fs` (`Result<'T, ValidationError list>` boundary validators)
+- `OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (JSON Schema, §A.7 family)
+- `OpticalConstructor/OpticalConstructor.Tests/ValidationTests.fs` — non-positive thickness, R<1, empty/invalid wavelength range each return `Result.Error` without throwing; valid inputs return `Ok` (AC-J9)
+- `OpticalConstructor/OpticalConstructor.Tests/EnvironmentRoundTripTests.fs` — `EnvironmentSettings` serializes to JSON, validates against `optical-constructor-environment.schema.json`, round-trips, falls back to defaults on a deliberately invalid file (AC-J6)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `UserEnvironment.fs`, `Validation.fs`, `AppShell.fs` in compile order and embed/copy `optical-constructor-environment.schema.json`. MUST NOT add the FuncUI clone dependency.
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register the new test files.
+
+## Testing plan
+
+Gates (always all three): `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `constructor-unit-tests` gate runs the new `OpticalConstructor.Tests` files; must pass and increase the count over the prior slice's baseline.
+- AC-J6 (`EnvironmentRoundTripTests.fs`): `EnvironmentSettings` serializes to JSON, validates against `optical-constructor-environment.schema.json`, round-trips (favorites board, recent files, last folder, panel layout, preferences preserved); a deliberately invalid file falls back to built-in defaults without migration; never `.binz`.
+- AC-J7: editing a default-unit or wavelength-range preference affects only display/boundary formatting and leaves stored `double<meter>` values byte-identical; solver defaults are the engine's `SolverParameters` (`Solvers.fs:15`), no parallel solver-config record.
+- AC-J8: theme + panel layout round-trip through `EnvironmentSettings` JSON; confirm `OpticalConstructor.Ui.fsproj` contains no reference to `C:\GitHub\Avalonia.FuncUI.Clone\` and the linking mechanism is unresolved (the `build` gate compiles `AppShell` against the public MIT FuncUI DSL).
+- AC-J9 (`ValidationTests.fs`): non-positive finite thickness (`Thickness.Thickness d`, `d <= 0.0<meter>`), repeat count < 1, and empty/invalid wavelength range each return `Result.Error` without throwing or coercing; valid inputs return `Ok`.
+- `build` gate green at Release/x64; `unit-tests` gate (BerremanTests) stays green (not touched here).
+
+## Risks
+
+- **Medium.** Two load-bearing disciplines: (1) `EnvironmentSettings` must persist as schema-validated JSON reusing the slice-003 shared `JsonSerializerOptions` — never `.binz`, never a second JSON stack — with fall-back-to-defaults (not migration) on validation failure; (2) `AppShell` must compile against the public MIT FuncUI DSL while keeping the audit-gated clone unreferenced and its linking mechanism unresolved (the spec-0110-class failure mode). Mitigation: prove the round-trip and the defaults-fallback by test; grep the UI fsproj for any clone path before exit; keep `Validation` validators pure (`Result`, no exceptions, no unit conversion).
+
+## Hand-off
+
+The persistent environment exists: `EnvironmentSettings`/`Preferences` (`UserEnvironment.fs`) with the favorites board, recent files, panel layout, theme, and preferences round-tripping through schema-validated JSON; the `AppShell` dockable shell authored against the FuncUI DSL surface (clone unreferenced, linking unresolved); and the J.9 `Validation` module that slice 014's J.2 already calls. AC-J6/AC-J7/AC-J8/AC-J9 tests green. Slice 016 (LAST) adds the `JobRunner` (whose active job appears in this slice's `AppShell` shared status area), the `Help` gallery, and the `SystemView3D` viewport. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

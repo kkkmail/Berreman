@@ -1,0 +1,15 @@
+# Default -- start the loop / continue normally.
+Launch the loop on C:/GitHub/Berreman/specs/0022/.manifest using
+C:/GitHub/AI-Strategy-Generator/arc-runner.launcher-md
+
+# Variant -- accept-current-slice
+# Use to clear escalated state and advance.
+Launch the loop on C:/GitHub/Berreman/specs/0022/.manifest using
+C:/GitHub/AI-Strategy-Generator/arc-runner.launcher-md
+accept-current-slice
+
+# Variant -- operator-reply
+# Replace <reply-file-path>.
+Launch the loop on C:/GitHub/Berreman/specs/0022/.manifest using
+C:/GitHub/AI-Strategy-Generator/arc-runner.launcher-md
+with operator-reply <reply-file-path>

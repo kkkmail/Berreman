@@ -1,0 +1,196 @@
+# arc-runner.user-md -- project rules for multi-step workers (Berreman)
+
+This is the Berreman project prompt piece that pairs with the
+cross-repo `arc-runner.system-md`. The arc-runner passes both
+paths to each worker session; the worker reads this file *second*
+(after the system prompt) for project-specific rules.
+
+This file lives at `./.user-md/Berreman/arc-runner.user-md`
+(repo-root relative).
+
+**Usage (arc-runner-driven, never user-typed):**
+
+```
+Do the task <slice-spec-path> using
+<this-tool-repo>/src/ai_strategy_generator/multistep/arc-runner.system-md
+and ./.user-md/Berreman/arc-runner.user-md.
+```
+
+**Example:**
+
+```
+Do the task ./specs/001-01-scratch-one.md using
+<this-tool-repo>/src/ai_strategy_generator/multistep/arc-runner.system-md
+and ./.user-md/Berreman/arc-runner.user-md.
+```
+
+`<this-tool-repo>` resolves to the AI-Strategy-Generator clone
+location on the host machine.
+
+---
+
+## Project shape
+
+Berreman is a pure F# numerical optics solver. The solution
+file is `Berreman/Berreman.slnx`; the test project is
+`Berreman/BerremanTests/BerremanTests.fsproj`. Related projects
+under `Berreman/`:
+
+- `Berreman/Berreman/` -- the core solver (matrix math, eigen
+  decomposition, Fourier transforms, field functions).
+- `Berreman/OpticalModel/`, `Berreman/OpticalProperties/` --
+  data types for optical stacks and materials.
+- `Berreman/BerremanRunner/` -- the CLI / batch runner.
+- `Berreman/BerremanModelGenerator/` -- generates model
+  parameter sets.
+- `Berreman/Analytics/` -- analytics helpers.
+- `Berreman/BerremanTests/` -- F# unit tests covering the core
+  solver and adjacent modules.
+
+There is no UI, no Android, no A/V harness, no emulator. Worker
+sessions only need `dotnet` on PATH (which is the case on this
+machine).
+
+---
+
+## Build tool
+
+```
+dotnet build Berreman.slnx -c Release
+```
+
+Run from the `Berreman/` subdirectory (the `build` gate's `cwd`
+is set there). The same `dotnet build` invocation is what the
+`build` gate runs -- if your local build is green, that gate
+will be green too (modulo environment drift).
+
+There is no MSBuild requirement for this project -- `dotnet
+build` resolves and builds the `.slnx` directly.
+
+---
+
+## Testing procedure
+
+```
+dotnet test --no-build -c Release
+```
+
+Run from the `Berreman/BerremanTests/` subdirectory (the
+`unit-tests` gate's `cwd` is set there). The tests are pure F#
+unit tests across numerical kernels (matrix ops, eigenvectors,
+Fourier transforms, rotation matrices, advanced solver, etc.).
+Run them after every code change to the core solver or its
+adjacent projects.
+
+There is no separate integration-test or smoke-test suite for
+this project yet. If a slice introduces one, propose a new
+`.gates/Berreman/<name>.gates` descriptor first.
+
+---
+
+## Gates
+
+The arc-runner reads each slice's gate set from the manifest's
+`slice_gates:` block. For Berreman, the default set is:
+
+- `impl-log-structure` (root) -- structural check on the impl-log MD.
+- `state-of-world-structure` (root) -- structural check on the SoW MD.
+- `build` (`Berreman/`) -- `dotnet build` of the solution.
+- `unit-tests` (`Berreman/`) -- `dotnet test` against `BerremanTests`.
+
+What you need to know while implementing:
+
+- **Every slice runs every gate in its set**, in the order
+  declared. First failure short-circuits.
+- **`count_at_least` gates** (unit tests) pass when the captured
+  count is at least the baseline from the prior slice's
+  state-of-the-world YAML block. For the first slice of an arc,
+  the baseline is 0, so any passing count works.
+- **The `state-of-world-structure` gate** is an arc-runner-side
+  check that your state-of-the-world file exists and contains
+  the required ATX section headings: `Where we are`,
+  `What's working`, `Tests`, `Architecture`, `Deferred`,
+  `Gotchas`, `Changelog`. Omitting this file or any required
+  heading fails the gate.
+
+---
+
+## Code style
+
+This project does not yet carry a top-level `CLAUDE.MD` /
+`AGENTS.md` style guide. Default to standard F# conventions:
+PascalCase for module / function / type names, camelCase for
+locals, four-space indent, no `open` of project-internal
+namespaces unless the file uses 3+ symbols from them. Numerical
+code should preserve the existing precedent for floating-point
+tolerance (look at `MatrixComparison.fs` for the project's
+chosen comparison helpers).
+
+If the user adds a top-level style guide later, this section
+should defer to it.
+
+---
+
+Per the layout in `arc-runner.system-md`, the per-arc artifacts
+folder is `<specs_root>/<spec_id>/.artifacts/` (the supervisor
+resolves the concrete absolute path and passes it to the worker
+via the task file). Worker code MUST route persistent output to
+sub-paths of that folder; never to `%TEMP%/...` or
+`%LOCALAPPDATA%/...`.
+
+---
+
+## Commit attribution
+
+**Drop the hard-coded
+`Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`
+line**. Replace with `Co-Authored-By: <model> <noreply@<provider>>`
+derived from the resolved backend.
+
+---
+
+## Critics
+
+Per-project critic hook. The arc-runner reads the fenced YAML
+below at boot, validates each `id` against
+`src/schemas/multistep/`, and slots each project critic into the
+critic + judge sub-loop after its `run_after` dependencies.
+Berreman declares no project critics yet -- the built-in
+`architecture_critic` and `reuse_critic` cover the common cases
+for this project's numerical / analytics shape.
+
+```yaml
+critics: []
+```
+
+No project may add a second judge (the `code_judge` is the single
+decision point per cycle); the supervisor refuses to start when an
+entry's `id` is reserved.
+
+---
+
+## Don't ask the user
+
+The arc-runner is the reviewer. The user is NOT watching the
+worker session. If the slice spec is ambiguous, pick the
+interpretation most consistent with `arc-runner.system-md`, with
+this file, and with the surrounding code -- and record the
+choice you made in the impl-log's `Gotchas` section.
+
+Prompts that wait for user input will stall the whole round and
+escalate after the retry is also stalled. The arc-runner's
+workaround is "kill the stalled console and try again once" --
+not a replacement for picking a sensible default and noting it.
+
+---
+
+## Operator note
+
+This section is reserved as a stable insertion point for the
+arc-runner supervisor. The supervisor injects the operator's
+reply text from the previous escalation here on the first
+attempt of a resumed slice. When no operator reply is in flight
+this heading remains present but empty. Workers MUST read
+whatever lands under this heading before acting on the slice
+spec; an operator note may add scope constraints or override the
+spec for that attempt.

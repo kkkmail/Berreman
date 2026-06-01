@@ -1,0 +1,16 @@
+<Project>
+
+    <!-- Berreman.slnx declares x64 as its only solution platform. When a build
+         or test is invoked WITHOUT an explicit platform (notably the
+         "dotnet test (no-build) -c Release" unit-tests gate, which otherwise
+         defaults to AnyCPU and looks in bin\Release\ while the slnx build emits
+         to bin\x64\Release\), default the platform to x64 so output paths
+         resolve to the same tree the solution build produces.
+
+         Imported before the SDK's AnyCPU default, so it only fills an empty
+         platform and never overrides an explicit one. -->
+    <PropertyGroup>
+        <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    </PropertyGroup>
+
+</Project>

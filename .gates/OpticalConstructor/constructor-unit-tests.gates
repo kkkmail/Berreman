@@ -1,0 +1,15 @@
+name: constructor-unit-tests
+description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate
+kind: command
+command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release
+pass_when:
+  exit_code: 0
+runtime_estimate_seconds: 600
+tags:
+- test
+applies_to:
+- paths:
+  - 'Berreman/OpticalConstructor/**'
+qualifier: unit
+filter: none
+descriptor_version: 1

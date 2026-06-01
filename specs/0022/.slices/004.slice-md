@@ -1,0 +1,137 @@
+# 004 — Materials, dispersion models & spectral preview (Part D §D.5–D.12)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022).
+- Slice 002 (`.slices/002.slice-md`) — `Units.fs` (`UnitOfMeasure` DU + boundary conversions, D.1–D.4) this slice consumes.
+- Slice 003 (`.slices/003.slice-md`) — storage core; created the `materialEntry` `$def` envelope whose dispersion sub-object shape this slice fills.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-D3: After loading a refractiveindex.info YAML page tabulated in µm via `importRefractiveIndexInfo`, the resulting `MaterialEntry.OpticalPropertiesWithDisp.getEps` evaluated at a sampled wavelength MUST equal the engine's value for the same n,k within 1e-9, with the wavelength reduced to meters at import.
+- AC-D4: After selecting `evaluate` on a `Sellmeier` model whose coefficients match `Silicon`'s closure inputs, the returned `WaveLength -> ComplexRefractionIndex` MUST agree with `OpticalProperties/Dispersive.fs` `Silicon().opticalProperties` at three test wavelengths within 1e-9.
+- AC-D5: After building a uniaxial entry from (n_o, n_e), the constructed `Eps` MUST equal `Eps.fromComplexRefractionIndex (n_o, n_e, n_o)` (`MaterialProperties.fs:87`) element-by-element within 1e-12.
+- AC-D7: After requesting a material preview with the spectral axis toggled to eV, the plot data passed to `plotN11` MUST be the same canonical-meter `Range<WaveLength>` as the nm toggle (only axis labels/scale differ), confirming no re-storage of non-SI units.
+- AC-D8: After a `DispersionModel` carrying `Some thermoOptic` is evaluated at an operating temperature `T` differing from `referenceTemperature`, the returned `ComplexRefractionIndex` MUST equal the isothermal index plus `dndT · (T − referenceTemperature)`; with `thermoOptic = None` the evaluated index MUST be byte-identical to the isothermal result, and only `dndT`/`referenceTemperature` (in SI 1/K and K) MUST round-trip through the JSON `materialEntry` `$def` while the operating temperature MUST NOT be persisted.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs` (new) — analytic-model coefficient records + `evaluate`/`toOpticalProperties` (D.5–D.7); optional `ThermoOptic` dn/dT parameters + net-new `[<Measure>] K` (D.12)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs` (new) — `MaterialEntry`/`MaterialCategory`/`MaterialLibrary` + `byCategory`/`byNameContains` search + the by-id `resolveMaterial` resolution seam slices 005/014 delegate to (D.8)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs` (new) — refractiveindex.info YAML + CSV import/export (D.9)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialPreview.fs` (new) — routes entries into `Analytics/Charting.fs` plots + spectral-unit toggle (D.10)
+
+### File:line references owned by this slice
+
+- `OpticalProperties/Dispersive.fs:87,52` — the `Silicon`/`Langasite` hand-built closure shape `evaluate` must mirror; `:90-95` Silicon's record; `:52-55` Langasite ordinary/extraordinary; `:98,99` `siliconOpticalProperties`/`langasiteOpticalProperties` presets.
+- `OpticalProperties/Standard.fs:64-70` — the `Standard` glass/crystal presets wrapped as `MaterialEntry`.
+- `MaterialProperties.fs:43` `ComplexRefractionIndex`; `:87` `Eps.fromComplexRefractionIndex` (one- and three-arg); `:62,112,138` `Eps.create`/`Mu.create`/`Rho.create`; `:165` `OpticalProperties`.
+- `Dispersion.fs:9-10` `EpsWithDisp` case; `:11` `EpsWithoutDisp`; `:13` `OpticalPropertiesWithDisp.getEps`; `:53` `OpticalPropertiesWithDisp`; `:141` `OpticalSystemWithDisp.description`.
+- `Fields.fs:284` `WaveLength.value`; `:280` `WaveLength`. `Media.fs:30` `Layer.rotate`. `Variables.fs:22` `Range<WaveLength>`. `Analytics/Charting.fs:95-107` `plotN11`/`plotXi11`/`plotN22`/`plotXi22`/`plotN33`/`plotXi33`/`plotRho11`.
+
+## Scope
+
+This slice fills out Part D's materials half. D.1–D.4 (the `UnitOfMeasure` DU + boundary conversions + per-element default unit) already landed in slice 002; this slice adds the dispersion-model coefficient catalogue (data, not code), evaluation to the engine's `OpticalPropertiesWithDisp` closure shape, anisotropic entries through the existing three-index constructor, the searchable/categorised materials library, refractiveindex.info YAML / CSV import and CSV export, the spectral-preview routing into the engine's existing dispersion plots with a spectral-unit toggle, the non-SI-storage prohibition, and the optional thermo-optic dn/dT parameter. It depends on `Units.fs` (slice 002) for every conversion and on storage core (slice 003) for the JSON `materialEntry` `$def` envelope.
+
+`MaterialPreview.fs` is UI (FuncUI / ScottPlot / Plotly.NET) and relies on the slice-001 **buildable FuncUI interpretation**: it consumes the public, MIT-licensed `Avalonia.FuncUI` NuGet — a distinct artefact from the audit-gated clone at `C:\GitHub\Avalonia.FuncUI.Clone\` — and MUST NOT reference the clone or resolve its linking mechanism until the §A.9 audit passes. The `materialEntry` `$def` dispersion sub-object shape is filled here; its envelope was created in slice 003.
+
+## Requirements
+
+### R-1. §D.5 Define the dispersion-model coefficient catalogue as data, not code [Core]
+
+This part MUST add a module `DispersionModels.fs` in `OpticalConstructor.Domain.fsproj` defining one F# record per analytic model named in 010 §2 — `Sellmeier`, `Cauchy`, `Lorentz` (Drude–Lorentz), `Drude`, `TaucLorentz`, `GaussianOscillator`, and `ConstantNK` (constant n+ik) — each holding ONLY its coefficient scalars (e.g. Sellmeier `b` and `c` term lists; Cauchy `a`,`b`,`c`; Drude plasma/damping frequencies; constant `n`,`k`). A wrapping DU `DispersionModel` MUST enumerate these records so the editor and schema can describe a single tagged choice. Each record MUST carry an explicit `wavelengthUnit : UnitOfMeasure` (D.1) naming the unit its coefficients were tabulated in (Sellmeier `c` terms are conventionally µm²), so evaluation (D.6) can normalise to the engine's meter base. This catalogue MUST be the realisation of the schema `$def` `materialEntry` dispersion sub-object (§A.7); coefficient field shapes are owned here. Schema versioning of these coefficient records is OUT OF SCOPE.
+
+### R-2. §D.6 Evaluate each model to an `OpticalPropertiesWithDisp` reusing the engine's closure shape [Core]
+
+`DispersionModels.fs` MUST provide `evaluate : DispersionModel -> (WaveLength -> ComplexRefractionIndex)`, returning a closure of exactly the shape `Silicon`/`Langasite` build by hand (`OpticalProperties/Dispersive.fs:87,52`). The closure MUST read the canonical wavelength via `WaveLength.value` (`Fields.fs:284`), normalise it against the record's `wavelengthUnit` (D.5) using D.2, apply the analytic formula, and return a `ComplexRefractionIndex` (`MaterialProperties.fs:43`). A second function `toOpticalProperties : DispersionModel -> OpticalPropertiesWithDisp` MUST compose that closure into an `EpsWithDisp` via `Eps.fromComplexRefractionIndex` (`MaterialProperties.fs:87`) wrapped as `EpsWithDisp` (the `EpsWithDisp` case of the `EpsWithDisp` DU, `Dispersion.fs:9-10`), with `muWithDisp = Mu.vacuum.dispersive` and `rhoWithDisp = Rho.vacuum.dispersive` for isotropic entries — mirroring `Silicon`'s record (`OpticalProperties/Dispersive.fs:90-95`). This part MUST NOT re-derive the matrix-exponential or EVD math seams and MUST NOT add a parallel tensor type; it reuses `OpticalProperties` (`MaterialProperties.fs:165`) end to end. The constant-n+ik model MUST emit `EpsWithoutDisp` (`Dispersion.fs:11`) so a non-dispersive entry incurs no closure overhead.
+
+### R-3. §D.7 Support anisotropic entries through the existing three-index constructor [Standard]
+
+For uniaxial (n_o, n_e) and biaxial (n_x, n_y, n_z) material definitions, `DispersionModels.fs` MUST build the principal-axis tensor by calling the engine's existing three-argument `Eps.fromComplexRefractionIndex (n1, n2, n3)` (`MaterialProperties.fs:87`), mapping uniaxial as `(n_o, n_e, n_o)`. Each principal index MAY itself be a per-axis `DispersionModel` (D.5) so an anisotropic crystal can disperse differently along each axis, exactly as `Langasite` evaluates ordinary and extraordinary indices separately (`OpticalProperties/Dispersive.fs:52-55`). Crystal-axis orientation MUST NOT be implemented here: rotation reuses `Layer.rotate` (`Media.fs:30`) and is owned by the stack editor (Part B). Full hand-entered ε/µ/ρ tensors and gyration reuse `Eps.create`/`Mu.create`/`Rho.create` (`MaterialProperties.fs:62,112,138`) and MUST NOT be re-typed in this part.
+
+### R-4. §D.8 Define the searchable, categorised materials library aggregate [Core]
+
+This part MUST add a module `MaterialLibrary.fs` in `OpticalConstructor.Domain.fsproj` defining `MaterialEntry` — a record holding a display name, a category DU `MaterialCategory = Glass | Metal | Semiconductor | Crystal`, an optional `description : string` (reusing the description convention §A.7, mirroring the engine's `description` fields e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), and its `OpticalPropertiesWithDisp` (`Dispersion.fs:53`) produced by D.6/D.7 — and a `MaterialLibrary` record holding the entry list plus pure search/filter functions `byCategory` and `byNameContains`. Built-in entries MUST include the already-coded `siliconOpticalProperties` and `langasiteOpticalProperties` (`OpticalProperties/Dispersive.fs:98,99`) and the `Standard` glass/crystal presets (`OpticalProperties/Standard.fs:64-70`) wrapped as `MaterialEntry` values; this part MUST NOT re-derive their dispersion. The library is in-memory and additive; persistence of the library is the JSON `materialEntry` `$def` (§A.7) handled by Part A's storage seam, and a separate shareable library file format is owned by Part I (§I.8). Search indexing/caching is OUT OF SCOPE — filtering is a linear `List.filter`.
+
+`MaterialLibrary.fs` MUST ALSO expose, as a named deliverable, the **by-id material-resolution function** that Part B §B.6 (the incident/exit medium selectors, slice 005) and Part J §J.4 (drag-and-drop, slice 014) both delegate to when they "consume a resolved `OpticalProperties`" / resolve "through Part D's material-resolution function": `resolveMaterial : MaterialLibrary -> string -> WaveLength -> Result<OpticalProperties, MaterialError>`, where the `string` is the stable `materialEntry` id (§A.7). It MUST look the entry up by id in the `MaterialLibrary`, evaluate that entry's `OpticalPropertiesWithDisp` at the supplied `WaveLength` via `getEps` (`Dispersion.fs:13`) to produce the concrete tensor record `OpticalProperties` (`MaterialProperties.fs:165`) — a `WaveLength` argument is REQUIRED because a dispersive entry has no single tensor until a wavelength is chosen — and MUST return `Result.Error` (a net-new `MaterialError` DU defined in `MaterialLibrary.fs`, e.g. `UnknownMaterialId of string`) on an unknown id, never throwing (errors as values, §0 error-handling). This is the single resolution seam slices 005 and 014 call rather than rebuilding tensors or re-resolving dispersion; it reuses the engine `getEps` path and MUST NOT fork it.
+
+### R-5. §D.9 Import from refractiveindex.info YAML and CSV; export CSV [Core]
+
+This part MUST add a module `MaterialImport.fs` in `OpticalConstructor.Storage.fsproj` providing `importRefractiveIndexInfo : string -> Result<MaterialEntry, ImportError>` and `importCsv : string -> Result<MaterialEntry, ImportError>`, parsing the open refractiveindex.info YAML layout (tabulated `n`/`k` vs λ, and the `formula 1..` Sellmeier/Cauchy coefficient blocks) and tab/comma data via FSharp.Data (the import library named in §A.7). Every parsed wavelength column MUST be reduced to the engine base by D.2 according to the file's declared unit (refractiveindex.info tabulates λ in µm), producing either a tabulated `WaveLength -> ComplexRefractionIndex` closure or a `DispersionModel` (D.5) that feeds D.6. Tabulated entries MUST interpolate between sampled points so the resulting closure is total over the chart range; interpolation is linear in λ and MUST NOT introduce a caching layer. Export MUST provide `exportCsv : MaterialEntry -> Range<WaveLength> -> string` sampling n,k over the range using the entry's `OpticalPropertiesWithDisp.getEps` (`Dispersion.fs:13`). YAML export, retries, and schema-versioned import are OUT OF SCOPE; `Result<_, ImportError>` is the error channel (errors as values, not exceptions). The canonical project still serialises as JSON (§A.7) — these importers produce in-memory `MaterialEntry` values and MUST NOT pickle them with FsPickler.
+
+### R-6. §D.10 Route library entries into the existing dispersion-preview plots with a spectral-unit toggle [Standard]
+
+The material-preview surface in `OpticalConstructor.Ui.fsproj` MUST plot n(λ)/k(λ) (and ρ, ε components) by calling the engine's existing `plotN11`/`plotXi11`/`plotN22`/`plotXi22`/`plotN33`/`plotXi33`/`plotRho11` functions (`Analytics/Charting.fs:95-107`), passing the selected `MaterialEntry`'s `OpticalPropertiesWithDisp` (D.8) and a `Range<WaveLength>` (`Variables.fs:22`) built from the user's range. This part MUST NOT re-implement dispersion plotting. The spectral axis MUST expose a unit toggle covering nm / µm / Å / eV / cm⁻¹ implemented by D.2's `wavelengthToUnit` at the chart boundary ONLY; the underlying `Range<WaveLength>` and the engine data stay in canonical meters (the toggle relabels/rescales the axis, it does not re-store data). Building the `Range<WaveLength>` from user-entered endpoints MUST use D.2 `toWaveLength` so an EUV user can request the range in eV and a green-laser user in nm without manual conversion.
+
+### R-7. §D.11 Forbid non-SI storage and duplicate-conversion paths [Core]
+
+No module added by this part MAY store a value in a non-SI unit in any domain record, JSON payload, or `.binz` sidecar (§0 constraint 3). The `defaultUnit`/`wavelengthUnit` labels (D.4, D.5) are the ONLY persisted unit names and they label *display intent*, never the datum. All unit arithmetic MUST go through `Units.fs` (D.2); any other module needing a conversion MUST call those functions rather than multiplying by a literal factor. This part MUST NOT add backwards-compatibility shims for pre-existing material files, MUST NOT add a config knob to change the canonical base, and MUST NOT introduce a second wavelength type alongside the engine's `WaveLength` (`Fields.fs:280`).
+
+### R-8. §D.12 Temperature/composition dependence (thermo-optic dn/dT) as optional model parameters [Standard]
+
+`DispersionModels.fs` MUST support the [Standard] temperature/composition dependence of 010 §2 (thermo-optic dn/dT, 010 lines 164-165) as OPTIONAL parameters on a `DispersionModel`, never as a mandatory field. This part MUST add a net-new record `ThermoOptic = { dndT : float<1/K>; referenceTemperature : float<K> }` in `DispersionModels.fs` and an OPTIONAL `thermoOptic : ThermoOptic option` carried alongside the model's coefficient record; when `None`, evaluation (D.6) MUST be byte-for-byte the isothermal result with no closure overhead (mirroring the `EpsWithoutDisp` no-overhead rule of D.6). When `Some`, the `evaluate` closure (D.6) MUST apply a first-order thermo-optic correction `n(λ, T) = n(λ, referenceTemperature) + dndT · (T − referenceTemperature)` at the chosen operating temperature `T : float<K>`, returning a `ComplexRefractionIndex` (`MaterialProperties.fs:43`); the correction MUST compose with the existing closure shape (`OpticalProperties/Dispersive.fs:87`) and MUST NOT introduce a parallel tensor type. Temperature MUST be stored in kelvin (the engine has no kelvin measure today; `[<Measure>] K` is net-new and lives in `DispersionModels.fs`, not a shadow of `Constants.fs`), and `dndT` MUST be stored in canonical per-kelvin units — neither value is a length/energy, so the §0 canonical-units rule is satisfied by storing SI K and 1/K, and NO non-SI unit is admitted. The operating temperature `T` MUST be supplied by the caller at the evaluation boundary and MUST NOT be persisted into the per-material coefficient record; only `dndT`/`referenceTemperature` persist, as the `materialEntry` dispersion sub-object's optional thermo-optic fields (the `materialEntry` `$def`, §A.7). This part MUST NOT add full temperature-dependent Sellmeier tables, composition-interpolation tables, or a thermal-expansion model — only the first-order dn/dT optional parameter named in 010 §2.
+
+## Non-requirements
+
+- The `UnitOfMeasure` DU and the length/eV/cm⁻¹ boundary conversions — owned by slice 002 (§D.1–§D.4); this slice only consumes them via `Units.fs` and MUST NOT re-implement any conversion (§D.11).
+- Crystal-axis rotation — reuses `Layer.rotate` (`Media.fs:30`) and is owned by the stack editor (Part B / slice 005); not implemented here (§D.7).
+- The shareable material-library FILE format — owned by Part I §I.8 (slice 013); this slice's library is in-memory and additive (§D.8). Persistence of an entry is the JSON `materialEntry` `$def` only.
+- Search indexing/caching — OUT OF SCOPE; filtering is a linear `List.filter` (§D.8). Tabulated-import interpolation adds no caching layer (§D.9).
+- YAML export, retries, schema-versioned import — OUT OF SCOPE (§D.9); the error channel is `Result<_, ImportError>`.
+- Full temperature-dependent Sellmeier tables, composition-interpolation tables, thermal-expansion models — OUT OF SCOPE; only first-order dn/dT (§D.12). No second wavelength type, no config knob for the canonical base, no backwards-compat shims (§D.11).
+- No re-implementation of dispersion plotting — reuses `Analytics/Charting.fs:95-107` (§D.10).
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs`
+- `OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs`
+- `OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs`
+- `OpticalConstructor/OpticalConstructor.Ui/MaterialPreview.fs` (public MIT Avalonia.FuncUI / ScottPlot / Plotly.NET, NOT the clone)
+- `OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs` (model `evaluate` reproduces `Silicon`/`Langasite` closures; uniaxial maps to `Eps.fromComplexRefractionIndex (n_o,n_e,n_o)`; `Some thermoOptic` applies first-order `dndT·(T−referenceTemperature)`, `None` byte-identical, only `dndT`/`referenceTemperature` persisted — AC-D4/AC-D5/AC-D8; and `resolveMaterial lib id λ` returns the concrete `OpticalProperties` for a known `materialEntry` id evaluated at the supplied `WaveLength` and `Result.Error (UnknownMaterialId _)` for an unknown id — the §B.6/§J.4 resolution seam)
+- `OpticalConstructor/OpticalConstructor.Tests/MaterialImportTests.fs` (fixture refractiveindex.info µm YAML and a nm CSV import to entries whose `getEps` matches expected n,k after meter reduction — AC-D3)
+- `OpticalConstructor/OpticalConstructor.Tests/fixtures/Si.yml` (minimal refractiveindex.info tabulated/Sellmeier page in µm)
+- `OpticalConstructor/OpticalConstructor.Tests/fixtures/sample-nk.csv` (small refractiveindex.info-style n,k table for CSV import/library tests)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` — register `DispersionModels.fs` and `MaterialLibrary.fs` in compile order (after `Units.fs`; DispersionModels before MaterialLibrary).
+- `OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` — register `MaterialImport.fs`.
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `MaterialPreview.fs`.
+- `OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` — fill the `materialEntry` `$def` dispersion sub-object shape (coefficient records + optional thermo-optic fields), without re-shaping the storage-owned envelope authored in slice 003.
+
+## Testing plan
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` from `Berreman/` MUST pass with the new Domain/Storage/Ui modules compiling in one pass; `MaterialPreview.fs` builds against the public MIT Avalonia.FuncUI NuGet (NOT the clone).
+- `unit-tests` gate: `dotnet test --no-build -c Release` from `Berreman/BerremanTests/` stays green (this slice does not touch `BerremanTests`).
+- `constructor-unit-tests` gate runs the new `OpticalConstructor.Tests` files (all hosted in `OpticalConstructor.Tests`, reconciler round-2 §g) and MUST increase the count over slice 003's baseline:
+  - `DispersionModelsTests.fs` — `evaluate` reproduces `Silicon`/`Langasite` closures and uniaxial maps to `Eps.fromComplexRefractionIndex (n_o,n_e,n_o)` (AC-D4/AC-D5); `Some thermoOptic` applies first-order `dndT·(T−referenceTemperature)` and `None` is byte-identical to the isothermal index, only `dndT`/`referenceTemperature` persisted (AC-D8); `resolveMaterial lib id λ` returns the concrete `OpticalProperties` for a known `materialEntry` id at the supplied `WaveLength` and `Result.Error (UnknownMaterialId _)` for an unknown id (the by-id resolution seam slices 005/014 delegate to).
+  - `MaterialImportTests.fs` — fixture refractiveindex.info µm YAML and a nm CSV import to entries whose `getEps` matches expected n,k after meter reduction (AC-D3), using `fixtures/Si.yml` and `fixtures/sample-nk.csv`.
+- AC-D7 (spectral-unit toggle): the eV-toggled preview passes `plotN11` the same canonical-meter `Range<WaveLength>` as the nm toggle — only axis labels/scale differ, no re-storage of non-SI units. Exercised at the `MaterialPreview.fs` chart boundary (the underlying `wavelengthToUnit` conversion is already proven in slice 002's `UnitsTests`).
+
+## Risks
+
+- **Medium.** The dispersion catalogue must reproduce the engine's hand-built `Silicon`/`Langasite` closures bit-for-bit (within 1e-9), and the `materialEntry` `$def` must fill cleanly into the slice-003 envelope. The thermo-optic path is the easiest to get wrong: `None` MUST be byte-identical to the isothermal result (no closure overhead), `Some` MUST apply exactly `dndT·(T−referenceTemperature)`, and the operating temperature `T` MUST NOT be persisted while `dndT`/`referenceTemperature` round-trip in SI 1/K and K. The net-new `[<Measure>] K` MUST live in `DispersionModels.fs` and MUST NOT shadow `Constants.fs`. Mitigation: prove `evaluate`/uniaxial/thermo-optic by unit test against the engine presets before exit; keep all conversion arithmetic routed through `Units.fs` (no literal factors) per §D.11.
+
+## Hand-off
+
+The materials half of Part D exists and is unit-tested: the dispersion-model coefficient catalogue and `evaluate`/`toOpticalProperties` (`DispersionModels.fs`), the anisotropic three-index path, the optional `ThermoOptic` dn/dT + net-new `[<Measure>] K`, the searchable `MaterialLibrary` with built-in `Silicon`/`Langasite`/`Standard` presets plus the by-id `resolveMaterial` resolution seam (`MaterialLibrary.fs`) that slice 005 (§B.6 medium selectors) and slice 014 (§J.4 drag-drop) delegate to, refractiveindex.info YAML / CSV import and CSV export (`MaterialImport.fs`), and the spectral-preview routing into `Analytics/Charting.fs` with a nm/µm/Å/eV/cm⁻¹ toggle (`MaterialPreview.fs`). The `materialEntry` `$def` dispersion sub-object is filled in the schema. Later slices: slice 005 (Part B) adds the stack editor and crystal-axis rotation; slice 013 (Part I §I.8) adds the shareable material-library file format and material import/export over the storage seam. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

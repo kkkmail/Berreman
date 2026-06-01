@@ -1,0 +1,164 @@
+# 008 — Calculations & analysis layer (Part F)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022).
+- Slice 001 (`.slices/001.slice-md`) — fixed the engine-is-consumed-never-forked discipline and the numerical-library boundaries this slice's analysis functions stand on.
+- Slice 011 (Part G) — CREATES `BerremanTests/OptimizationTests.fs`, where the parent routes this slice's FULL AC-F3/F5/F7/F8 equivalence assertions (Mueller-equivalence, ellipsometry, energy-balance, colorimetry sanity). The AC bullets this slice implements behaviourally — AC-F1/F2/F4/F6/F9 — carry their own mandatory smokes here in `BerremanTests` (see Testing plan).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-F1: After a wavelength scan is run over a `WaveLengthRange`, the analysis layer MUST return R, T, the s/p split (Rp/Rs/Tp/Ts), and A = 1−R−T for every sweep point, with A computed by `absorptance` reusing `Solution.func` and never re-invoking the solver.
+- AC-F2: After the user defines a thickness or material-parameter sweep, the analysis layer MUST drive it through an `ArbitraryVariableRange` `RangedVariable` and `Variables.calculate`, persisting the bulk `Solution` array ONLY as a `.binz` sidecar (Softellect `BinaryZippedFormat`), never in the canonical JSON.
+- AC-F3: After a solution is computed, calling the completed `EmField.muellerMatrix` member MUST return the same matrix as `MuellerMatrix.fromEmFields`, and `stokesSystem`/`OpticalSystemSolver.muellerMatrixR()` MUST yield the incident/reflected/transmitted Stokes and reflected Mueller matrices without any re-derived 4×4 algebra.
+- AC-F4: After a solution is computed, `degreeOfPolarization` MUST return sqrt(s1²+s2²+s3²)/s0 from the existing reflected/transmitted `StokesVector`, and ellipticity/azimuth MUST be surfaced from the existing `EmFieldSystem` accessors with no new derivation.
+- AC-F5: After a reflected solution is computed, `psiDelta` MUST return (Ψ, Δ) with tan Ψ = |r_pp/r_ss| and Δ = arg(r_pp/r_ss) from `amplitudeP`/`amplitudeS` of `solutionP()`/`solutionS()`, and `ncs` MUST return (cos 2Ψ, sin 2Ψ cos Δ, sin 2Ψ sin Δ).
+- AC-F6: After a system is solved, `fieldDepthProfile` MUST return |E|² and Poynting samples versus depth (in meters) obtained by stepping the transmitted `EmField` through each `Layer` via `EmField.propagate`, without re-solving the 4×4 system per depth sample.
+- AC-F7: After a system is solved, `layerAbsorptance` MUST return a per-`Layer` absorptance from the normal Poynting-flux drop across each layer, and `totalAbsorbedPower` MUST equal the system-level A from F.1 within solver tolerance.
+- AC-F8: After a wavelength scan of an R or T channel, `spectrumToXyz`/`xyzToLab`/`xyzToSrgb` MUST return CIE XYZ, Lab, and an sRGB swatch computed from the embedded CIE 1931 colour-matching and illuminant tables, consuming the F.1 sweep output without re-running the solver.
+- AC-F9: After the user changes the convergence control, the analysis layer MUST thread the new `SolverParameters.numberOfReflections` into `OpticalSystemSolver` for thick Plate/Wedge substrates, with no other numerical threshold altered and the default remaining 3.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/Berreman/FieldFunctions.fs` (edit) — implement the commented-out `member em.muellerMatrix` at line 93 by delegating to `MuellerMatrix.fromEmFields` (F.3)
+- `C:/GitHub/Berreman/Berreman/Analytics/AnalysisFunctions.fs` (new) — pure functions `absorptance`, `stokesSystem`, `degreeOfPolarization`, `psiDelta`, `ncs` over `Solution`/`StokesVector`
+- `C:/GitHub/Berreman/Berreman/Analytics/FieldProfile.fs` (new) — `fieldDepthProfile`, `layerAbsorptance`, `totalAbsorbedPower` sampling `EmField.propagate` and `EmField.s`
+- `C:/GitHub/Berreman/Berreman/Analytics/Colorimetry.fs` (new) — `spectrumToXyz`/`xyzToLab`/`xyzToSrgb` with embedded CIE 1931 + D65/A tables, consuming `Variables.calculate` output
+- `C:/GitHub/Berreman/Berreman/Analytics/Analytics.fsproj` (edit) — add `<Compile Include>` entries for AnalysisFunctions/FieldProfile/Colorimetry in dependency order after FieldFunctions/Variables
+
+### File:line references owned by this slice
+
+- `FieldFunctions.fs:93` `member em.muellerMatrix` (commented-out, completed here); `FieldFunctions.fs:44` `EmField.stokesVector`, `:69` `intensity`, `:130-135,192` `R`/`Rp`/`Rs`/`T`/`Tp`/`Ts`, `:222,227,238` `Solution.stokesI`/`stokesR`/`stokesT`, `:157,161,165,169` `ellipticityR`/`ellipticityT`/`azimuthR`/`azimuthT`, `:119-122,184-187` `OpticalFunction` cases.
+- `Fields.fs:601` `MuellerMatrix.create`, `:636` `MuellerMatrix.fromEmFields`, `:679` `JonesMatrix.fromEmFields`, `:580` `StokesVector`, `:590` `StokesSystem`, `:520,530` `EmField.amplitudeS`/`amplitudeP`, `:434` `EmField.s` (Poynting).
+- `Solvers.fs:199` `OpticalSystemSolver`, `:115` `BaseOpticalSystemSolver`, `:152` `Solution`, `:286` `getMuellerMatrix`, `:313,314` `solutionS()`/`solutionP()`, `:315,316` `muellerMatrixR()`/`muellerMatrixT()`, `:15` `SolverParameters.numberOfReflections`, `:21` `SolverParameters.defaultValue`.
+- `Variables.fs:46` `WaveLengthRange`, `:42,43` `RangedVariable`/`IncidenceAngleRange`, `:32` `ArbitraryVariable`, `:237` `calculate`, `:266` default params, `:270` `calculate3D`; `Charting.fs:21,26-31,64` `plot`/`plot3D`.
+- `BerremanMatrix.fs:224` `EmField.propagate`, `:221` "Does not work properly yet"; `Media.fs:12` `Thickness`, `:24` `Layer`, `:40` `Substrate`; `Constants.fs:41,45` `almostZero`/`almostZeroDet`; `Softellect/Sys/Core.fs:257` `BinaryZippedFormat`.
+- `Analytics/Analytics.fsproj:39` — the `<Compile Include="...">` ordering convention the three new files follow.
+
+## Scope
+
+This slice adds the pure analysis/derivation layer that reads the engine's solver outputs and presents the §4 quantities. It is predominantly reuse: the 4×4 solver, the field model, the math seam, and the 1D/3D sweep+chart pipeline already exist and MUST NOT be forked or re-derived. The genuinely net-new work is narrow and named in 010: completing the commented-out per-`EmField` Mueller member, deriving ellipsometric Ψ/Δ and (N, C, S) from the existing s/p amplitudes, an explicit per-layer absorptance / total-absorbed-power breakdown from the Poynting flux, a CIE XYZ/Lab/sRGB conversion from an R or T spectrum, and the in-layer field/EFI depth profile assembled from the existing `EmField.propagate` seam. All new functions are pure functions of a `Solution` (or of the field amplitudes inside it), computed in canonical SI internally.
+
+These functions land in the engine's existing `Analytics` project (NOT in the `OpticalConstructor.*` projects), plus one edit to the engine `FieldFunctions.fs` completing the `member em.muellerMatrix` at line 93. This slice is foundational for later parts: Part G reuses §F.5 `psiDelta` for fit residuals, and Part H uses §F.6 `fieldDepthProfile` and §F.8 colorimetry.
+
+**Note (gates).** This slice touches the engine `Analytics`/`Berreman` tree only; the relevant runtime gate is `unit-tests` (`BerremanTests`) plus `build`. No new C# project is introduced; these are pure F# modules with no UI and no FuncUI reference, so the clone audit gate of Part A §A.9 is unaffected and remains undecided (per F.10).
+
+## Requirements
+
+### R-1. §F.1 [Core] Spectral & angular R/T/A scans (s/p split) MUST reuse the existing `OpticalFunction` outputs and the `calculate` sweep
+
+The spectral/angular scan of R, T, and the s/p split MUST be produced by `Variables.calculate` (`Variables.fs:237`) driven by a `WaveLengthRange` or `IncidenceAngleRange` `RangedVariable` (`Variables.fs:42,43,46`), reading the per-point `Solution.func` outputs `R`, `Rp`, `Rs`, `T`, `Tp`, `Ts` (`FieldFunctions.fs:130-135,192`). The absorption channel A = 1 − R − T MUST be a new pure function `absorptance (s : Solution) : float` placed in a new module file `Analytics/AnalysisFunctions.fs`, computed as `(s.func R, s.func T) |> fun (r, t) -> 1.0 - (defaultArg r 0.0) - (defaultArg t 0.0)`; it MUST reuse `Solution.func` and MUST NOT call the solver again. The s/p split is already carried by the distinct `Rp`/`Rs`/`Tp`/`Ts` cases — no new split logic is admitted. This directive adds NO new sweep engine: 1D scans go through `calculate`/`plot` (`Variables.fs:237`, `Charting.fs:21`) and the 2D R-vs-λ×angle surface goes through `calculate3D`/`plot3D` (`Variables.fs:270`, `Charting.fs:64`).
+
+### R-2. §F.2 [Core] Parameter sweeps MUST be expressed as `RangedVariable` cases, not a new sweep abstraction
+
+Sweeps over thickness, angle, polarization, ellipticity, wedge angle, or an arbitrary model parameter MUST be expressed by constructing the existing `RangedVariable` (`Variables.fs:42`): `IncidenceAngleRange`, `PolarizationRange`, `EllipticityRange`, `WaveLengthRange`, `WedgeAngleRange`, and — for thickness or any material parameter — `ArbitraryVariableRange` carrying an `ArbitraryVariable` (`Variables.fs:32`) whose `getSys : OpticalSystem -> double -> OpticalSystem` mutates the system at each sweep point. The UI/orchestration layer MUST build these values; this part MUST NOT introduce a parallel sweep descriptor type. Bulk sweep output (the `array<float * Solution>` from `calculate`, or the 2D array from `calculate3D`) MUST be persisted ONLY as a `.binz` sidecar via `Softellect.Sys.Core.serialize` with `BinaryZippedFormat` (`C:/GitHub/Softellect/Sys/Core.fs:257`) per Part A §A.7 — never inside the canonical JSON project. No retry, resume, or incremental-cache layer is added.
+
+### R-3. §F.3 [Standard] Complete the commented-out per-`EmField` Mueller path and add the Stokes/Jones/Mueller accessors
+
+The commented-out member `member em.muellerMatrix : MuellerMatrix` at `FieldFunctions.fs:93` MUST be implemented by delegating to the existing constructor `MuellerMatrix.fromEmFields` (`Fields.fs:636`), supplying the field's own s- and p-resolved components — it MUST NOT re-derive the 4×4 Mueller algebra, which already exists at `MuellerMatrix.create` (`Fields.fs:601`). The system-level Mueller matrices MUST be obtained from the already-implemented `OpticalSystemSolver.muellerMatrixR()` / `muellerMatrixT()` (`Solvers.fs:315,316`); this part MUST NOT add a second system-level Mueller routine. The Stokes vector per field is read from `EmField.stokesVector` (`FieldFunctions.fs:44`); the per-`Solution` incident/reflected/transmitted Stokes vectors are read from `Solution.stokesI`/`stokesR`/`stokesT` (`FieldFunctions.fs:222,227,238`). A new pure function `stokesSystem (s : Solution) : StokesSystem` in `Analytics/AnalysisFunctions.fs` MUST assemble the existing-but-unconstructed `StokesSystem` record (`Fields.fs:590`) from those three accessors. The Jones matrices MUST be read from `JonesMatrix.fromEmFields` (`Fields.fs:679`); no Jones algebra is re-implemented.
+
+### R-4. §F.4 [Standard] Degree of polarization MUST be derived from the existing Stokes vector
+
+The degree of polarization MUST be a new pure function `degreeOfPolarization (StokesVector v) : float` in `Analytics/AnalysisFunctions.fs`, computed as `sqrt(s1² + s2² + s3²) / s0` from the four components of the `StokesVector` (`Fields.fs:580`), reusing `Solution.stokesR`/`stokesT` (`FieldFunctions.fs:227,238`) as its inputs. Ellipticity and azimuth are NOT re-derived here — they are already exposed as `EmFieldSystem.ellipticityR`/`ellipticityT`/`azimuthR`/`azimuthT` (`FieldFunctions.fs:157,161,165,169`) and as the `EllipticityR`/`EllipticityT`/`AzimuthR`/`AzimuthT` `OpticalFunction` cases (`FieldFunctions.fs:119-122,184-187`); this part MUST surface those existing functions, not new ones.
+
+### R-5. §F.5 [Standard] Ellipsometric Ψ, Δ and (N, C, S) MUST be derived from the reflected s/p amplitudes
+
+A new module-level set of pure functions `psiDelta (s : Solution) : float * float` and `ncs (s : Solution) : float * float * float` MUST be added to `Analytics/AnalysisFunctions.fs`. They MUST form the complex ellipsometric ratio ρ = r_pp / r_ss from the reflected field's s- and p-resolved amplitudes `EmField.amplitudeS` / `EmField.amplitudeP` (`Fields.fs:520,530`) taken from the reflected solutions of `OpticalSystemSolver.solutionS()` / `solutionP()` (`Solvers.fs:313,314`) — reusing the exact s/p decomposition that `getMuellerMatrix` already relies on (`Solvers.fs:286`). Ψ and Δ MUST be `tan Ψ = |ρ|`, `Δ = arg ρ`; the (N, C, S) triple MUST be `N = cos 2Ψ`, `C = sin 2Ψ cos Δ`, `S = sin 2Ψ sin Δ`. These functions MUST NOT call into the optimizer and MUST NOT introduce a new field-amplitude extraction path; `amplitudeS`/`amplitudeP` are the single source. Part G §G.6 reuses this same s/p ellipsometric derivation for fit residuals and MUST NOT fork it. Ψ/Δ-vs-λ and Ψ/Δ-vs-angle plots reuse `calculate`/`plot` by mapping these functions over the per-point `Solution`, mirroring how `Charting.plot` maps `Solution.func` (`Charting.fs:26-31`).
+
+### R-6. §F.6 [Standard] In-layer field / EFI depth profile MUST be sampled via the existing `EmField.propagate` seam
+
+The |E|²/Poynting-vs-depth profile MUST be produced by a new pure function `fieldDepthProfile (system : OpticalSystem) (info : IncidentLightInfo) (samplesPerLayer : int) : (double<meter> * float) list` in a new file `Analytics/FieldProfile.fs`. It MUST walk the transmitted `EmField` of the base solution into each `Layer` (`Media.fs:24`) by repeatedly applying the inter-element propagation seam `EmField.propagate (s : Layer)` (`BerremanMatrix.fs:224`) at sub-layer thickness steps cut from the layer's `Thickness` (`Media.fs:12`), and at each depth read `EmField.e` for |E|² and `EmField.s` (the Poynting vector, `Fields.fs:434`) for power flow. It MUST reuse `BaseOpticalSystemSolver` (`Solvers.fs:115`) to obtain the entry field and MUST NOT re-solve the 4×4 system per depth sample. The known limitation noted in the engine (`BerremanMatrix.fs:221`, "Does not work properly yet") is carried forward as-is — this part wires the profile through that seam and MUST NOT attempt to rewrite `propagate`. The depth axis is stored in meters; nm/µm display is the UI boundary's concern (Part A §A.10).
+
+### R-7. §F.7 [Standard] Per-layer absorptance and total absorbed power MUST be derived from the Poynting flux at layer boundaries
+
+A new pure function `layerAbsorptance (system : OpticalSystem) (info : IncidentLightInfo) : (Layer * float) list` and a `totalAbsorbedPower` aggregate MUST be added to `Analytics/FieldProfile.fs`. Each layer's absorptance MUST be the drop in normal Poynting flux across that layer, computed from `EmField.s` (`Fields.fs:434`) of the propagated field at the layer's upper and lower boundaries using the same `EmField.propagate (Layer)` walk as F.6 (`BerremanMatrix.fs:224`); the per-field intensity normalisation MUST reuse `EmField.intensity` (`FieldFunctions.fs:69`) against the incident field. The total absorbed power MUST equal the system-level A from F.1 within solver tolerance, and the function MUST NOT introduce a second absorption definition divergent from `absorptance` (F.1). No new energy-balance constant is introduced.
+
+### R-8. §F.8 [Standard] Color (CIE XYZ / Lab / sRGB) MUST convert an R or T spectrum sampled over the `WaveLengthRange`
+
+A new file `Analytics/Colorimetry.fs` MUST provide pure functions `spectrumToXyz`, `xyzToLab`, and `xyzToSrgb`. `spectrumToXyz` MUST take the `(float * Solution) array` produced by `Variables.calculate` over a `WaveLengthRange` (`Variables.fs:46,237`) plus a chosen channel (`R` or `T` via the `OpticalFunction` cases, `FieldFunctions.fs:130,133`), integrate the channel against the CIE 1931 2° colour-matching functions and a chosen illuminant, and return CIE XYZ; `xyzToLab` and `xyzToSrgb` MUST apply the standard CIE Lab and sRGB transforms. The CIE colour-matching tables and the D65/A illuminant tables are embedded constants in this file (the only net-new numeric data this part introduces, traced to 010 §4 "Color calculation"). These functions MUST consume the sweep output of F.1 and MUST NOT re-run the solver. No alternate colour space beyond XYZ/Lab/sRGB is added.
+
+### R-9. §F.9 [Standard] Convergence control MUST expose ONLY the existing `SolverParameters.numberOfReflections`
+
+The convergence control surfaced to analysis MUST be the existing field `SolverParameters.numberOfReflections` (`Solvers.fs:15`), threaded into `OpticalSystemSolver(info, system, parameters)` (`Solvers.fs:199`) at the point where this part constructs a solution for a thick `Plate`/`Wedge` substrate (`Media.fs:40`). This part MUST NOT invent new numerical thresholds, MUST NOT re-tune `almostZero` or `almostZeroDet` (`Constants.fs:41,45`), and MUST NOT add a convergence-iteration cache. The default MUST remain `SolverParameters.defaultValue` (`Solvers.fs:21`, `numberOfReflections = 3`) when the caller supplies none, matching what `calculate` already passes (`Variables.fs:266`).
+
+### R-10. §F.10 All new analysis functions MUST live in the Analytics project and be reachable from the orchestration layer
+
+The new files `Analytics/AnalysisFunctions.fs` (F.1, F.3, F.4, F.5), `Analytics/FieldProfile.fs` (F.6, F.7), and `Analytics/Colorimetry.fs` (F.8) MUST be added to `Analytics/Analytics.fsproj` (`C:/GitHub/Berreman/Berreman/Analytics/Analytics.fsproj:39` shows the `<Compile Include="...">` ordering convention) in dependency order after `FieldFunctions`/`Variables`. They MUST be plain F# modules of pure functions over `Solution`/`EmField`/`OpticalSystem` with no UI, no FuncUI reference (the clone audit gate of Part A §A.9 is unaffected and remains undecided), and no hidden global state. The `OpticalConstructor.Ui` project (Part A assembly layout) consumes them by import; this part MUST NOT add a UI page itself. The completion of `em.muellerMatrix` (F.3) is an edit to the existing `FieldFunctions.fs:93`, not a new file.
+
+## Non-requirements
+
+- Alternate optimization-driven analyses are OUT OF SCOPE — owned by Part G (slices 009-011).
+- Chart rendering / a UI page is OUT OF SCOPE — owned by Part H (and the Ui charts files); this part adds no UI page itself (§F.10).
+- Caching of sweep results beyond the §A.7 `.binz` sidecar, retry/resume of long sweeps, and any incremental-cache layer are OUT OF SCOPE (§F.0 scope boundary, §F.2, constraint 6).
+- Schema-versioning of the new result records is OUT OF SCOPE (§F.0 scope boundary).
+- A new math-seam backend is OUT OF SCOPE; no `almostZero`/`almostZeroDet` re-tuning, no new numerical threshold (§F.9, §F.0).
+- No new C# project; no UI; no FuncUI reference — the clone audit gate is unaffected per §F.10 (constraints 1 / 5).
+
+## Files modified (planned)
+
+New:
+- `Analytics/AnalysisFunctions.fs` — `absorptance` (F.1), `stokesSystem` (F.3), `degreeOfPolarization` (F.4), `psiDelta`/`ncs` (F.5).
+- `Analytics/FieldProfile.fs` — `fieldDepthProfile` (F.6), `layerAbsorptance`/`totalAbsorbedPower` (F.7).
+- `Analytics/Colorimetry.fs` — `spectrumToXyz`/`xyzToLab`/`xyzToSrgb` with embedded CIE 1931 + D65/A tables (F.8).
+
+New (mandatory regression guards for the engine-tree edit + this slice's own behavioural coverage):
+- `Berreman/BerremanTests/MuellerMatrixTests.fs` — MANDATORY same-slice smoke assertion that the completed `member em.muellerMatrix` (`FieldFunctions.fs:93`) returns the same matrix as `MuellerMatrix.fromEmFields` (`Fields.fs:636`) for a computed solution, so the one engine-core edit ships with a regression guard per the arc-runner's test-first discipline (F.3).
+- `Berreman/BerremanTests/AnalysisFunctionsTests.fs` — MANDATORY same-slice smoke assertions that give the AC bullets this slice IMPLEMENTS an owned in-slice test home rather than deferring all behavioural coverage to slice 011 (reconciler round-4 §i — applied). Each is a light smoke, not the full equivalence suite (that stays in slice 011 for AC-F3/F5/F7/F8):
+  - **AC-F1** — `absorptance` returns A = 1 − R − T from `Solution.func` on a computed solution and does NOT re-invoke the solver (assert A ≈ 1 − (R) − (T) for the same `Solution`).
+  - **AC-F4** — `degreeOfPolarization` returns sqrt(s1²+s2²+s3²)/s0 from a reflected/transmitted `StokesVector` (`Fields.fs:580`) read via `Solution.stokesR`/`stokesT`, in [0, 1].
+  - **AC-F6** — `fieldDepthProfile` returns a non-empty `(double<meter> * float) list` of the expected length (`samplesPerLayer` × layer count) with depths in meters and monotonically non-decreasing, stepping the transmitted `EmField` via `EmField.propagate` with no per-sample re-solve. Shape/structure smoke only — the carried-forward `BerremanMatrix.fs:221` ("Does not work properly yet") limitation means the |E|² magnitudes are NOT asserted here.
+  - **AC-F9** — the analysis solve threads a caller-supplied `SolverParameters.numberOfReflections` (`Solvers.fs:15`) into `OpticalSystemSolver` for a thick `Plate`/`Wedge` substrate and the default remains `SolverParameters.defaultValue` = 3 (`Solvers.fs:21`) when none is supplied (assert the default value and that a non-default value is accepted without altering any other threshold).
+  - **AC-F2** — a small `ArbitraryVariableRange` sweep driven through `Variables.calculate` persists its bulk `array<float * Solution>` ONLY as a `.binz` sidecar via `Softellect.Sys.Core.serialize`/`deserialize` with `BinaryZippedFormat` (`Core.fs:257`) and round-trips equal; assert the canonical JSON path is NOT used for the bulk array. The `.binz` smoke artefact is written under the per-arc artifacts folder (the path supplied by the supervisor), never under `%TEMP%`.
+
+Edited:
+- `Berreman/FieldFunctions.fs` — implement the commented-out `member em.muellerMatrix` at line 93 by delegating to `MuellerMatrix.fromEmFields` (F.3).
+- `Analytics/Analytics.fsproj` — add `<Compile Include>` entries for `AnalysisFunctions`/`FieldProfile`/`Colorimetry` in dependency order after `FieldFunctions`/`Variables`.
+- `Berreman/BerremanTests/BerremanTests.fsproj` — register `MuellerMatrixTests.fs` and `AnalysisFunctionsTests.fs` (the `unit-tests` gate runs both).
+
+(The FULL AC-F3/F5/F7/F8 equivalence suite — Mueller-equivalence, ellipsometry, energy-balance, colorimetry sanity — still lands in slice 011's `OptimizationTests.fs`, not here. This slice now owns a mandatory smoke for each AC bullet it actually implements behaviourally — AC-F1/F2/F4/F6/F9 — so no implemented-here function is left without an owned in-slice mandatory test.)
+
+## Testing plan
+
+Gates: `build`, `unit-tests`, `constructor-unit-tests` (all three).
+
+**Test routing (important).** The parent routes the FULL dedicated Part F equivalence tests — AC-F3 (Mueller-equivalence), AC-F5 (ellipsometry), AC-F7 (energy-balance), AC-F8 (colorimetry sanity) — into `BerremanTests/OptimizationTests.fs`, which is CREATED in slice 011 (Part G); the primary AC-F3/F5/F7/F8 coverage stays there. For the AC bullets THIS slice implements behaviourally — AC-F1, AC-F2, AC-F4, AC-F6, AC-F9 — this slice owns a mandatory in-slice smoke in `BerremanTests` so no implemented-here function is left without an owned mandatory test (reconciler round-4 §i — applied). THIS slice ADDS the analysis functions, earns their compile coverage via the `build` gate, and guards each behaviourally-owned AC with its own smoke.
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` from `Berreman/` MUST pass with the three new `Analytics` files compiled in dependency order and the completed `FieldFunctions.fs:93` member; this is the compile coverage that proves the new functions type-check against the engine seams.
+- `unit-tests` gate (`BerremanTests`): MUST add **two** mandatory same-slice test files:
+  - `MuellerMatrixTests.fs` — after a solution is computed, the completed `em.muellerMatrix` (`FieldFunctions.fs:93`) returns the same matrix as `MuellerMatrix.fromEmFields` (`Fields.fs:636`), guarding the `FieldFunctions.fs:93` engine edit (AC-F3 engine-edit guard).
+  - `AnalysisFunctionsTests.fs` — mandatory smoke assertions for **AC-F1** (`absorptance` = 1 − R − T via `Solution.func`, no re-solve), **AC-F4** (`degreeOfPolarization` = sqrt(s1²+s2²+s3²)/s0 from the existing `StokesVector`, in [0, 1]), **AC-F6** (`fieldDepthProfile` returns the expected-length list of meter depths, monotonic, no per-sample re-solve — shape smoke only, |E|² magnitudes NOT asserted because the `BerremanMatrix.fs:221` limitation is carried as-is), **AC-F9** (default `numberOfReflections` remains 3 via `SolverParameters.defaultValue` and a caller value threads into `OpticalSystemSolver` for thick Plate/Wedge without altering any other threshold), and **AC-F2** (a small `ArbitraryVariableRange`+`Variables.calculate` sweep round-trips through a `.binz` sidecar via `BinaryZippedFormat` and is NOT placed in the canonical JSON).
+  The FULL AC-F3/F5/F7/F8 equivalence assertions remain in slice 011's `OptimizationTests.fs`.
+- AC-F2: thickness/material sweeps go through `ArbitraryVariableRange` + `Variables.calculate`, bulk output persisted ONLY as a `.binz` sidecar (`BinaryZippedFormat`), never in the canonical JSON — smoke-guarded here in `AnalysisFunctionsTests.fs` (round-trip + JSON-exclusion); the full Part H/slice-011 sweep-persistence wiring extends it.
+- AC-F6 (`fieldDepthProfile`): |E|²/Poynting samples vs depth in meters by stepping the transmitted `EmField` through each `Layer` via `EmField.propagate`, no per-sample re-solve — shape smoke owned here; the full physical assertions land with the slice-011 routing, and the carried-forward `BerremanMatrix.fs:221` limitation is honored as-is.
+- AC-F9: changing the convergence control threads the new `SolverParameters.numberOfReflections` into `OpticalSystemSolver` for thick Plate/Wedge substrates, no other threshold altered, default remains 3 — smoke-guarded here.
+- `constructor-unit-tests` gate: not touched by this slice; baseline carried from the prior slice's count.
+
+## Risks
+
+- **Medium.** The analysis functions must REUSE existing engine seams exactly — `MuellerMatrix.fromEmFields`/`muellerMatrixR()` for Mueller, `amplitudeS`/`amplitudeP` of `solutionS()`/`solutionP()` for ellipsometry, `EmField.s` + `EmField.propagate` for the depth/absorptance walk — and MUST NOT re-derive the 4×4 algebra, fork the s/p decomposition, or re-solve per depth sample. The `totalAbsorbedPower` energy balance must agree with the system-level A from F.1 within solver tolerance (a divergent second absorption definition is forbidden). Mitigation: keep every function pure over `Solution`/`EmField`/`OpticalSystem`, derive nothing the engine already exposes, and lean on `build` compile coverage now with the equivalence assertions arriving in slice 011.
+- **Low.** The `FieldFunctions.fs:93` edit is an engine-tree change; keep it a pure delegation to `MuellerMatrix.fromEmFields` so `BerremanTests` (the `unit-tests` gate) stays green, and ship the mandatory `MuellerMatrixTests.fs` smoke assertion this slice so the edit carries a same-slice regression guard (not deferred wholesale to slice 011). The carried-forward `propagate` limitation (`BerremanMatrix.fs:221`) must not be "fixed" here.
+- **Low.** The new `AnalysisFunctionsTests.fs` smokes (AC-F1/F2/F4/F6/F9) must stay deliberately light — value/shape/round-trip checks, not the full equivalence suite — so they do not duplicate or pre-empt slice 011's AC-F3/F5/F7/F8 assertions and do not depend on the unreliable `propagate` magnitudes. Mitigation: assert structure and reuse (e.g. `fieldDepthProfile` list length + monotonic meter depths; `.binz` round-trip equality) rather than physical |E|² values.
+
+## Hand-off
+
+The pure analysis/derivation layer exists in the engine's `Analytics` project: `absorptance`/`stokesSystem`/`degreeOfPolarization`/`psiDelta`/`ncs` (`AnalysisFunctions.fs`), `fieldDepthProfile`/`layerAbsorptance`/`totalAbsorbedPower` (`FieldProfile.fs`), and `spectrumToXyz`/`xyzToLab`/`xyzToSrgb` (`Colorimetry.fs`), plus the completed `em.muellerMatrix` member at `FieldFunctions.fs:93`. All three files are registered in `Analytics.fsproj` after `FieldFunctions`/`Variables`. **Routing reminder:** the FULL AC-F3/F5/F7/F8 equivalence assertions are deferred to slice 011's `BerremanTests/OptimizationTests.fs` (Mueller-equivalence, ellipsometry, energy-balance, colorimetry sanity); this slice earns compile coverage via `build`, ships the MANDATORY `MuellerMatrixTests.fs` smoke guard for the `FieldFunctions.fs:93` edit, AND owns mandatory `AnalysisFunctionsTests.fs` smokes for every AC bullet it implements behaviourally — AC-F1, AC-F2 (`.binz` round-trip), AC-F4, AC-F6 (shape only), AC-F9 — so nothing implemented here is left without an owned in-slice mandatory test (reconciler round-4 §i). Part G (slices 009-011) reuses §F.5 `psiDelta` for fit residuals; Part H uses §F.6 `fieldDepthProfile` and §F.8 colorimetry. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the current `bm_unit_tests` and `constructor_unit_tests` counts so the next slice's `count_at_least` gate has a baseline.

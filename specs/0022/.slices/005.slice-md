@@ -1,0 +1,155 @@
+# 005 — Optical-system construction layer: stack editor, medium/substrate selectors & construction page (Part B UI)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022), Part B (§B.1, B.5–B.7, B.9, B.10) and the Part B acceptance criteria.
+- Slice 001 (`.slices/001.slice-md`) — created the `OpticalConstructor.*` projects and the buildable FuncUI interpretation this slice relies on.
+- Slice 002 (`.slices/002.slice-md`) — created the BeamTree domain types, attach/mirror validation, routing, default-unit hook, gradient discretization, and the `OpticalConstructorProject` aggregate + `$defs` anchor names this slice builds over.
+- Slice 003 (storage core) — created the JSON serializer, schema envelope, validate-on-load, and `ProjectJsonRoundtripTests.fs` this slice extends for the beam-tree `$def` field-level round-trip.
+- Slice 004 (materials) — provides the resolved `OpticalProperties` the medium selectors consume, via the named by-id `resolveMaterial` seam (§D.8).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-B1: After a `BeamNode` is solved on the construction page, the orchestration layer MUST obtain its `reflected` and `transmitted` outputs by calling the reused `OpticalSystemSolver` (`Solvers.fs:199`) and reading `Solution.emSys` (`Solvers.fs:156`), with no forked or shadowed copy of the solver in `OpticalConstructor.Domain.fsproj`.
+- AC-B5: After add/delete/reorder/duplicate/group on a layer row, the editor MUST yield a new `OpticalSystem` whose `films : List<Layer>` (`Media.fs:98`) reflects the change with the engine `Layer`/`OpticalSystem` records unmutated.
+- AC-B6: After choosing an incident or exit medium, the edited `OpticalSystem`'s `upper`/`lower` `OpticalProperties` (`Media.fs:97,100`) MUST be set to the resolved tensor value, preserving `films` and `substrate`.
+- AC-B7: After the substrate switch is set to thin film / plate / wedge, `OpticalSystem.substrate` (`Media.fs:99`) MUST become `None` / `Some (Plate _)` / `Some (Wedge _)` respectively, and re-solving MUST route through the existing `OpticalSystemSolver` substrate branch (`Solvers.fs:201-230`) unchanged.
+- AC-B9: After saving a project, the beam tree and its systems MUST round-trip through the JSON-canonical `OpticalConstructorProject` validated against `optical-constructor-project.schema.json`, and MUST NOT be written via FsPickler/`.binz`.
+- AC-B10: After deleting a beam node that has attached children, the construction page MUST present a pre-confirmation gate stating the live-derived descendant count, and after any structural edit the dependent schematic/results views MUST refresh from the new `EmFieldSystem` without a manual reload.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/StackEditor.fs` (new) — visual stack/layer editor over `OpticalSystem.films`, medium selectors, substrate switch, default-unit display
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs` (new) — top-level construction/beam-tree page; destructive-edit UX, per-node busy, results refresh
+
+### File:line references owned by this slice
+
+- `Solvers.fs:199` `OpticalSystemSolver`, `Solvers.fs:156` `Solution.emSys`, `Solvers.fs:115` `BaseOpticalSystemSolver`, `Solvers.fs:21` `SolverParameters.defaultValue`, `Solvers.fs:15` `SolverParameters.numberOfReflections`, `Solvers.fs:201-230` substrate branch.
+- `Fields.fs:550` `EmFieldSystem`, `Fields.fs:338` `IncidentLightInfo`, `Fields.fs:284` `WaveLength.value`, `Fields.fs:328` `WedgeAngle`.
+- `Media.fs:97,100` `upper`/`lower`; `Media.fs:98` `films`; `Media.fs:99` `substrate`; `Media.fs:94` `OpticalSystem`; `Media.fs:12` `Thickness`; `Media.fs:24`/`:26` `Layer`/`properties`; `Media.fs:30`/`:120` `Layer.rotate`/`OpticalSystem.rotate`; `Media.fs:40` `Substrate`; `Media.fs:34` `WedgeLayer`/`WedgeAngle`.
+- `MaterialProperties.fs:165` `OpticalProperties` (resolved tensor consumed, not constructed here); `Constants.fs:6` `meter`; `BinaryZippedFormat`/`Softellect.Sys.Core.serialize` (`Core.fs:254,257`) — the `.binz` channel Part B MUST NOT write to.
+
+## Scope
+
+This slice builds the **UI construction layer** over the reused stack types: the visual stack/layer editor whose rows are reused `Layer` records (§B.5), the incident/exit medium selectors that set `upper`/`lower` half-spaces (§B.6), the three-state substrate switch over the reused `Substrate` DU (§B.7), and the top-level construction page that hosts these with the operator-facing UX for destructive structural edits (§B.10). It wires the beam-tree-and-systems JSON serialization into the slice-003 canonical store (§B.9) and confirms per-node solving drives the reused single-system solver, never forking it (§B.1).
+
+The BeamTree domain types, attach/mirror validation, routing, default-unit hook, and gradient discretization already landed in slice 002 (§B.2–B.4, B.8, B.11); this slice consumes them. The selectors consume a *resolved* `OpticalProperties` from the materials work in slice 004 and MUST NOT re-implement index→tensor construction. This slice is UI-touching and relies on the slice-001 buildable FuncUI interpretation: the public MIT `Avalonia.FuncUI` NuGet (a distinct artefact from the audit-gated clone at `C:\GitHub\Avalonia.FuncUI.Clone\`), with the clone remaining unreferenced and its linking mechanism unresolved.
+
+## Requirements
+
+### R-1. §B.1 Beam-tree construction MUST drive the reused single-system solver per node, never fork it
+
+`OpticalConstructor.Domain.fsproj` MUST evaluate each `BeamNode` by calling the reused engine solver `OpticalSystemSolver(info, system, parameters)` (`Solvers.fs:199`) on that node's `OpticalSystem` and incident light, then read its `Solution.emSys` (`Solvers.fs:156`) to obtain the `EmFieldSystem` whose `reflected` and `transmitted` `EmField`s feed the node's two branches (`Fields.fs:550`). The solver, its `BaseOpticalSystemSolver` (`Solvers.fs:115`), and `SolverParameters.numberOfReflections` (`Solvers.fs:15`) MUST NOT be forked, re-derived, or shadowed (Part A constraint 2). The node's solver inputs — `IncidentLightInfo` for a root node (`Fields.fs:338`) or an incident `EmField` produced by the parent (see §B.4) — are stored on the `BeamNode` per Part A §A.4.
+
+Reach-for-first primitives:
+- `OpticalSystemSolver` `Solvers.fs:199` — the only entry point for solving one element/system; returns a `Solution`.
+- `Solution.emSys` `Solvers.fs:156` — collapses `Single`/`Multiple` into one `EmFieldSystem` with `incident`/`reflected`/`transmitted`.
+- `SolverParameters.defaultValue` `Solvers.fs:21` — supplies `numberOfReflections = 3` unless a node overrides it.
+
+Scope exclusion: Part B MUST NOT add a solver cache, a memoization layer, or a retry/error-wrapping shim around the solver; live recalculation and busy/cancel ([Standard], 010 §1) are owned by the UI part, not by the domain solver loop.
+
+### R-2. §B.5 The visual stack/layer editor MUST operate on the reused `Layer`/`OpticalSystem` records [Core]
+
+`OpticalConstructor.Ui.fsproj` MUST provide a stack/layer editor whose rows are the reused `Layer` records of a node's `OpticalSystem.films : List<Layer>` (`Media.fs:98`), each row editing that layer's `thickness : Thickness` (`Media.fs:12`) and `properties : OpticalProperties` (`Media.fs:26`, the tensor record `MaterialProperties.fs:165`). The editor MUST support add, delete, reorder, duplicate, and group operations as pure transformations producing a new `films` list (immutable; Part A constraint 1), and the surrounding `OpticalSystem` MUST be rebuilt via record copy-and-update — never by mutating engine state. Layer-class/anisotropy and crystal-axis rotation controls ([Standard], 010 §1) MUST reuse the engine's `Layer.rotate` / `OpticalSystem.rotate` members (`Media.fs:30`, `Media.fs:120`) rather than re-deriving rotations.
+
+Reach-for-first primitives:
+- `OpticalSystem.films` `Media.fs:98` — the reused list the editor rows map to.
+- `Thickness` DU `Media.fs:12` — the per-row thickness value (`Thickness of double<meter> | Infinity`); thickness is stored in meters (Part A canonical-units rule).
+- `OpticalSystem.rotate` / `Layer.rotate` `Media.fs:120,30` — reuse for the [Standard] orientation controls; do not re-implement Euler rotation.
+
+This realizes 010 §1's [Core] "Visual stack/layer editor — add, delete, reorder, duplicate, and group layers … edit thickness and material per row." The [Standard] repeat/period builder (010 §1) is NOT delivered by Part B; it is owned by Part J (§J.2).
+
+### R-3. §B.6 Incident & exit medium selectors MUST set the reused `upper`/`lower` half-spaces [Core]
+
+`OpticalConstructor.Ui.fsproj` MUST provide incident- and exit-medium selectors that set, respectively, the `OpticalSystem.upper` and `OpticalSystem.lower` `OpticalProperties` half-spaces of the edited system (`Media.fs:97,100`). Each selector MUST resolve to an `OpticalProperties` value (the reused tensor record, `MaterialProperties.fs:165`) either by refractive-index entry or by reference to a materials-library entry; the materials library and dispersion resolution are owned by other parts, so Part B MUST consume a resolved `OpticalProperties` and MUST NOT re-implement index→tensor construction. Setting a selector MUST produce a new `OpticalSystem` by record update, preserving `films` and `substrate`.
+
+This realizes 010 §1's [Core] "Incident & exit medium selectors (upper/lower half-spaces) with refractive index or material reference."
+
+### R-4. §B.7 The substrate-type switch MUST toggle the reused `Substrate` DU and route into existing multi-reflection handling [Core]
+
+`OpticalConstructor.Ui.fsproj` MUST provide a substrate-type switch with exactly three states — thin film, thick plate, wedge — that sets `OpticalSystem.substrate : Substrate option` (`Media.fs:99`): thin film ⇒ `None`; plate ⇒ `Some (Plate layer)`; wedge ⇒ `Some (Wedge wedgeLayer)` exposing the `WedgeAngle` (`Media.fs:34,40`, `Fields.fs:328`). The switch MUST NOT change how multiple internal reflections are computed: that behaviour is already implemented in `OpticalSystemSolver` (`Solvers.fs:201-230`), which branches on `system.substrate` and, for `Plate`/`Wedge`, iterates the reflected/transmitted steps using `EmField.propagate` (`Solvers.fs:209,222`); Part B MUST route into that existing path unchanged and MUST NOT fork it.
+
+Reach-for-first primitives:
+- `Substrate` DU `Media.fs:40` (`Plate of Layer | Wedge of WedgeLayer`) — the reused carrier the switch toggles.
+- `OpticalSystem.substrate` `Media.fs:99` — the `option` field set by the switch.
+- `OpticalSystemSolver` substrate branch `Solvers.fs:201-230` — the existing multi-reflection driver; reuse, do not reimplement.
+
+This realizes 010 §1's [Core] "Substrate type switch: thin film vs. thick plate vs. wedge (with wedge angle), exposing the existing multi-reflection handling."
+
+### R-5. §B.9 The beam tree and constructed systems MUST serialize to the JSON-canonical project, never to `.binz`
+
+`OpticalConstructor.Storage.fsproj` MUST serialize the `BeamTree`, its `BeamNode`s, their `OpticalSystem`s, and the per-element default-unit hooks into the JSON-canonical `OpticalConstructorProject` validated against `optical-constructor-project.schema.json` (Part A §A.7), filling the field-level shapes of the `beamNode`, `beamBranch`, `opticalSystem`, `layer`, and `unitOfMeasure` `$defs` (owned by Part A). FSharp.SystemTextJson MUST be used for DU/record/option serialization (Part A storage seam). The domain project model — including the beam tree — MUST NOT be serialized with FsPickler/`.binz` (Part A constraint 4); `.binz` via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat` (`C:/GitHub/Softellect/Sys/Core.fs:254,257`) is reserved for derived/bulk sidecars and is out of scope for Part B. Thicknesses and wavelengths in the JSON MUST be the canonical SI values (meters), with human units applied only at the UI/IO boundary (Part A constraint 3).
+
+Scope exclusion: schema versioning, autosave, recent-files, and undo/redo persistence ([Standard], 010 §7) are out of scope for Part B; only the field-level shapes of the listed `$defs` are filled here.
+
+### R-6. §B.10 The construction page MUST commit the operator-facing UX for destructive structural edits
+
+`OpticalConstructor.Ui.fsproj` introduces the top-level construction/stack-and-tree page with destructive operations (delete layer, delete branch/sub-tree, detach mirror reflected child), so it MUST commit explicitly on the operator UX checklist:
+
+1. **Discoverability/nav entry.** The construction page MUST be a top-level navigation entry in the main shell, reachable without opening a dialog, and MUST be the default landing surface for a newly opened or newly created project.
+2. **Progress granularity.** Per-node solve invoked from this page (§B.1) MUST surface a busy indicator at node granularity; because a single flat-element solve is short, the page MUST NOT block the whole tree while one node recomputes. Long sweeps/optimizations are owned by other parts and are out of scope here.
+3. **Pre-confirmation gate vs one-click.** Deleting a layer row MUST be one-click with undo (item 5); deleting a beam node that has attached children (a sub-tree) MUST present a pre-confirmation gate naming the count of descendant nodes that will be removed, re-derived live from the tree (no stale count).
+4. **Completion→results refresh.** After any structural edit (add/delete/reorder/duplicate/group a layer, attach/detach a branch, toggle substrate, change a medium), the affected sub-tree MUST be re-solved and the dependent schematic/results views MUST refresh from the new `EmFieldSystem` (§B.1) without a manual reload.
+5. **Opposing-action UX + undo.** Every destructive structural action (delete, detach) MUST have an opposing add/attach action in the same toolbar, and a single-level undo MUST restore the immediately prior immutable tree/`films` snapshot (the model is immutable per §B.2/§B.5, so undo is a prior-value swap, not a mutation reversal). Multi-level undo/redo history ([Standard], 010 §7) is owned by Part I (§I.6).
+6. **Committable file vs root `.gitignore`.** The JSON project file written by §B.9 is a committable user artefact and MUST default to the project's working folder, not the repository root; Part B MUST NOT write derived `.binz` sidecars from the construction page (those are out of scope here, §B.9).
+
+## Non-requirements
+
+- The `BeamTree`/`BeamNode`/`BeamBranch`/`ConstructorElement` types, `BeamNode.attach` mirror/branch validation, propagate-driven inter-element routing, the per-element default-unit hook plumbing, and `GradientLayer`/`discretize` gradient discretization — all owned by slice 002 (Part A §A.4 / §B.2–B.4, B.8, B.11). AC-B11 was proven in slice 002's `GradientDiscretizeTests.fs` and is NOT re-owned here.
+- Curved elements (lenses / non-flat mirrors) — Part C / slice 006.
+- The [Standard] repeat/period builder — Part J §J.2 / slice 014.
+- Solver cache, memoization, retry, or error-wrapping shim around the solver — §B.1 scope exclusion.
+- Multi-level undo/redo history — Part I §I.6 / slice 013 (only single-level undo lands here).
+- Index→tensor material construction / dispersion resolution — Part D (slice 004); this slice consumes a resolved `OpticalProperties` via slice 004's named by-id `resolveMaterial` seam (§D.8) and MUST NOT re-resolve dispersion.
+- The schema envelope, JSON serializer, validate-on-load, and `.binz` sidecar IO machinery — created in slice 003; this slice fills the beam-tree field-level `$def` shapes and extends the round-trip test only.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Ui/StackEditor.fs` — stack/layer editor over `OpticalSystem.films`, medium selectors, substrate switch, default-unit display.
+- `OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs` — top-level construction/beam-tree page; destructive-edit UX, per-node busy, results refresh.
+- `OpticalConstructor/OpticalConstructor.Tests/StackEditTests.fs` — add/delete/reorder/duplicate/group produce expected `films` list with engine records unmutated; substrate switch sets `None`/`Plate`/`Wedge`; medium selectors set `upper`/`lower` (AC-B5/AC-B6/AC-B7).
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `StackEditor.fs` and `ConstructionPage.fs` in build order.
+- `OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` and `optical-constructor-project.schema.json` — fill the field-level shapes of the `beamNode`/`beamBranch`/`opticalSystem`/`layer`/`unitOfMeasure` `$defs` for the beam tree (the envelope was created in slice 003).
+- `OpticalConstructor/OpticalConstructor.Tests/ProjectJsonRoundtripTests.fs` — extend for AC-B9 (beam-tree `$def` field-level round-trip, schema-validated, no `.binz` write).
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `StackEditTests.fs`.
+
+## Testing plan
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` from `Berreman/` MUST pass with the new UI modules and storage `$def` fills compiling; the UI builds against the public MIT `Avalonia.FuncUI` NuGet, NOT the audit-gated clone.
+- `unit-tests` gate: `dotnet test --no-build -c Release` from `Berreman/BerremanTests/` stays green (this slice does not touch `BerremanTests`).
+- `constructor-unit-tests` gate (project `OpticalConstructor.Tests`, slice 001): MUST pass and increase the count over the prior baseline.
+  - `StackEditTests.fs` — add/delete/reorder/duplicate/group yield the expected `films : List<Layer>` (`Media.fs:98`) with engine `Layer`/`OpticalSystem` records unmutated (AC-B5); medium selectors set `upper`/`lower` `OpticalProperties` (`Media.fs:97,100`) preserving `films`/`substrate` (AC-B6); substrate switch sets `None`/`Some (Plate _)`/`Some (Wedge _)` (`Media.fs:99`) and re-solving routes through the existing `OpticalSystemSolver` substrate branch (`Solvers.fs:201-230`) unchanged (AC-B7).
+  - `ProjectJsonRoundtripTests.fs` (extended) — beam tree + systems round-trip through the JSON-canonical `OpticalConstructorProject` validated against `optical-constructor-project.schema.json`, with no FsPickler/`.binz` write (AC-B9).
+  - AC-B1: a construction-page `BeamNode` solve obtains `reflected`/`transmitted` via the reused `OpticalSystemSolver` (`Solvers.fs:199`) reading `Solution.emSys` (`Solvers.fs:156`), with no forked solver in `OpticalConstructor.Domain.fsproj`.
+  - AC-B10: deleting a node with children presents a pre-confirmation gate stating the live-derived descendant count, and structural edits refresh dependent views from the new `EmFieldSystem` without manual reload (model/`update` testable without Avalonia per P3).
+
+## Risks
+
+- **Medium.** The construction page is the first real MVU surface and the integration point where the slice-002 domain (beam tree, routing), the slice-003 storage (`$defs`/round-trip), and the slice-004 materials (resolved `OpticalProperties`) all meet; a missing or mismatched seam shows up only here. Mitigation: keep the model/`update` Avalonia-free (P3) so the edit transformations and the descendant-count/refresh logic are unit-tested without a UI; consume — never reconstruct — the beam-tree types and the resolved tensors; fill the `$defs` field-level shapes without renaming the Part A anchors; confirm no `.binz` write path is reachable from the construction page and no FuncUI-clone reference is introduced.
+
+## Hand-off
+
+The Part B UI construction layer exists: the stack/layer editor over `OpticalSystem.films`, the incident/exit medium selectors, the three-state substrate switch, and the top-level construction page with its destructive-edit UX, per-node busy, and results refresh — plus the beam-tree-and-systems JSON round-trip filling the `beamNode`/`beamBranch`/`opticalSystem`/`layer`/`unitOfMeasure` `$def` field-level shapes. Slice 006 (Part C) adds the curved-element domain (lenses & non-flat mirrors). Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

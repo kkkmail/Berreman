@@ -1,0 +1,136 @@
+# 003 — Storage core: canonical JSON, schema validate-on-load & `.binz` sidecars (Part I core / Part A §A.7 storage)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022).
+- Slice 001 (`.slices/001.slice-md`) — created `OpticalConstructor.Storage` (System.Text.Json + FSharp.SystemTextJson, FSharp.Data, JsonSchema.Net) and the gated `OpticalConstructor.Tests` host.
+- Slice 002 (`.slices/002.slice-md`) — defined the `OpticalConstructorProject` aggregate and the nine `$defs` anchor names this slice serializes and schematizes.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-A2: After loading any canonical project file, the storage layer MUST validate it against `optical-constructor-project.schema.json` (anchors opticalSystem/layer/opticalProperties/beamNode/beamBranch/constructorElement) and MUST reject an invalid file before the domain model is admitted, within the load call.
+- AC-A6: After a derived/bulk artefact (sweep, field map, fit history) is persisted, it MUST be written via Softellect.Sys.Core.serialize with BinaryZippedFormat to a `.binz` sidecar (Core.fs:257, Primitives.fs:267) referenced by path from the JSON, and the canonical project definition MUST NOT be FsPickler-serialized.
+- AC-D6: After serialising and reloading an `OpticalConstructorProject` element carrying a `defaultUnit`, the canonical SI datum MUST be byte-identical and the `defaultUnit` label MUST be preserved, proving the label does not alter the stored value.
+- AC-I1: After `saveProject path project` returns `Ok` and `openProject path` is called, the returned project MUST equal the original `OpticalConstructorProject` value (round-trip identity over canonical SI fields) within a single call, with no unit conversion applied to `Thickness`/`WaveLength.value`.
+- AC-I2: After `deserializeProject` is given JSON that violates `optical-constructor-project.schema.json`, it MUST return `SchemaValidationError` carrying the JsonSchema.Net messages and MUST NOT return a bound project.
+- AC-I3: After `openProject` is called on a file whose `schemaVersion` differs from the single shipped version, it MUST return `SchemaValidationError` and MUST NOT execute any migration path.
+- AC-I4: After `writeSidecar` persists a sweep table, the file on disk MUST have the `.binz` extension and MUST be readable back by `readSidecar` to the identical value; attempting `writeSidecar` of an `OpticalConstructorProject` MUST be absent from the codebase.
+- AC-I5: After the project JSON references a sidecar by relative path and the `.binz` file is missing, `openProject` plus a sidecar read MUST surface `SidecarMissing`/`BinzError` rather than throwing.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Errors.fs` (new) — `StorageError` DU; sole error channel for storage
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` (new) — `serializeProject`/`deserializeProject` over `OpticalConstructorProject`; shared `JsonSerializerOptions`; fills field-level shapes of the `beamNode`/`beamBranch`/`opticalSystem`/`layer`/`unitOfMeasure` `$defs` for the beam tree
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs` (new) — JsonSchema.Net validate-on-load wired into `deserializeProject`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` (new) — published JSON Schema, `$id` https://berreman/schema/optical-constructor-project.json; storage-owned `$defs` (materialEntry, sourceSpec, unitOfMeasure, project root); physics `$defs` filled by Parts B–G
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs` (new) — `saveProject`/`openProject`, `.ocproj` read/write (the single project-open seam)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs` (new) — `.binz` `writeSidecar`/`readSidecar` reusing `Softellect.Sys.Core.serialize` `BinaryZippedFormat`
+- `C:/GitHub/Berreman/.gitignore` (edit) — ignore `*.binz` and `*.autosave` (sweep/field-map/fit-history sidecars) under project working folders; `.ocproj` files remain committable
+
+(This slice contributes the `*.binz` entry per §I.4; the `*.autosave` entry of §I.5 is added by slice 013.)
+
+### File:line references owned by this slice
+
+- `Fields.fs:284` `WaveLength.value` — the canonical-meter datum written verbatim (no conversion).
+- `Media.fs:12` `Thickness of double<meter>` — emitted as its stored meter value.
+- `Media.fs:96` `OpticalSystem.description` — the `description`/`_comment` convention for carried comments.
+- `C:/GitHub/Softellect/Sys/Core.fs:254,257` `serialize`/`deserialize` with `BinaryZippedFormat` — the `.binz` sidecar seam.
+- `C:/GitHub/Softellect/Sys/Primitives.fs:267` — the `.binz` file extension.
+- `Variables.fs:237,270` `calculate`/`calculate3D` — the sweep-table producers whose output is a permissible sidecar payload.
+
+## Scope
+
+This slice pulls storage/JSON in EARLY — before any of the feature parts — so that every later part can fill its `$defs` and serialize against a single, already-validated envelope. It implements the four [Core] storage directives of Part I (§I.1–§I.4) over the `OpticalConstructorProject` aggregate that slice 002 defined: canonical `System.Text.Json` + FSharp.SystemTextJson round-trip, the published JSON Schema with validate-on-load via JsonSchema.Net, `.ocproj` file read/write through the single project-open seam, and `.binz` sidecars for derived/bulk artefacts only. Because `ProjectJson` is reflection-based (FSharp.SystemTextJson), new aggregate fields auto-serialize as later slices extend the record; each later slice extends the schema, not the serializer.
+
+This slice depends on slice 002 (the aggregate plus the nine `$defs` anchor names). The aggregate currently holds the beam tree + systems; later slices extend it (materials → slice 004, sources → slice 007, chart settings → slice 012). The `StorageError` DU in `Errors.fs` is the sole error channel for storage — every IO function returns a `Result<_, StorageError>`, never throwing.
+
+## Requirements
+
+### R-1. §I.1 [Core] — Canonical JSON serialization of the project root
+
+`OpticalConstructor.Storage.fsproj` MUST provide a module `OpticalConstructor.Storage.ProjectJson` exposing `serializeProject : OpticalConstructorProject -> Result<string, StorageError>` and `deserializeProject : string -> Result<OpticalConstructorProject, StorageError>` over the Part A root aggregate `OpticalConstructorProject` (§A.7). Serialization MUST use **System.Text.Json with FSharp.SystemTextJson** (the package Part A admits) configured with `JsonFSharpOptions` so that F# records, discriminated unions (`ConstructorElement`, `BeamBranch`, `Substrate`, `Thickness`, `WaveLength`), and `option` values round-trip idiomatically; it MUST NOT use Newtonsoft or FsPickler for this path (binding rule 4).
+
+Reuse before invention: do NOT hand-roll a JSON writer — the single primitive to reach for is `System.Text.Json.JsonSerializer.Serialize/Deserialize` with the `FSharp.SystemTextJson` converter registered once in a shared `JsonSerializerOptions` value. The serializer MUST write the domain model's canonical SI fields verbatim: `Thickness of double<meter>` (`Media.fs:12`) and `WaveLength.value : double<meter>` (`Fields.fs:284`) are emitted as their stored meter values; the human-facing unit travels only in the `unitOfMeasure` field (§A.7 `unitOfMeasure` `$def`). No unit conversion, rounding, or canonicalization of physical magnitudes occurs in this module.
+
+`StorageError` MUST be a net-new DU in `OpticalConstructor.Storage.Errors` with cases at minimum `JsonParseError of string`, `SchemaValidationError of string list`, `SchemaMissing`, `FileIoError of exn`, `BinzError of exn`, and `SidecarMissing of string`. It MUST NOT wrap or shadow `Softellect.Sys.Errors`; it is the sole error channel for this part and is returned, never thrown.
+
+### R-2. §I.2 [Core] — Published JSON Schema and validate-on-load
+
+`OpticalConstructor.Storage.fsproj` MUST ship the file `schema/optical-constructor-project.schema.json` as a build-copied content item, carrying `"$id": "https://berreman/schema/optical-constructor-project.json"` and the `$defs` enumerated in §A.7 (`opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`, `materialEntry`, `sourceSpec`, `unitOfMeasure`). This part authors the schema's **top-level envelope and the storage-owned `$defs`** (`materialEntry`, `sourceSpec`, `unitOfMeasure`, and the project root object: `schemaVersion` string, `systems`, `materials`, `sources`, `sweeps`, `chartSettings`, `beamTree`, plus optional `sidecars` array); the physics-shaped `$defs` (`opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`) are filled by Parts B–G and MUST NOT be re-shaped here.
+
+`deserializeProject` (I.1) MUST validate the parsed JSON document against this schema **before** binding it to `OpticalConstructorProject`, using **JsonSchema.Net** (the package Part A admits) — load the schema once into a `JsonSchema` value and call `Evaluate`. On any validation failure the function MUST return `SchemaValidationError` carrying the list of JsonSchema.Net evaluation messages and MUST NOT return a partially-bound project. If the schema content item is absent at runtime the function MUST return `SchemaMissing`. Schema **versioning and migration are out of scope**: a `schemaVersion` whose value does not equal the single shipped version MUST surface as `SchemaValidationError`, not trigger any migration code.
+
+### R-3. §I.3 [Core] — Project file read/write with `.ocproj` extension
+
+`OpticalConstructor.Storage.fsproj` MUST provide `ProjectFile` with `saveProject : string -> OpticalConstructorProject -> Result<unit, StorageError>` and `openProject : string -> Result<OpticalConstructorProject, StorageError>`. `saveProject` MUST serialize via `serializeProject` (I.1) and write the resulting UTF-8 text to the given path with the extension `.ocproj`; `openProject` MUST read the file, then call `deserializeProject` (I.2) so that schema validation always runs on load. All filesystem access MUST be wrapped so any exception becomes `FileIoError`; exceptions MUST NOT propagate out of these functions (project CLAUDE.md, `Result`-not-exceptions).
+
+The canonical project is a single self-contained JSON text file — it MUST NOT be a zip, a folder bundle, or a multi-file container. Sidecars (I.4) live beside it as separate `.binz` files referenced by relative path from the JSON's `sidecars` array. `.ocproj` files are user documents and MUST NOT be added to any `.gitignore`; autosave and sidecar artefacts are addressed in I.5 and I.4 respectively. This `openProject` path is the single project-open seam every other part routes template loads and gallery loads through (Part J §J.3, §J.11).
+
+### R-4. §I.4 [Core/Standard] — `.binz` sidecars for derived/bulk artefacts only
+
+`OpticalConstructor.Storage.fsproj` MUST provide `Sidecar` with `writeSidecar<'T> : string -> 'T -> Result<unit, StorageError>` and `readSidecar<'T> : string -> Result<'T, StorageError>`, used **only** for derived/bulk artefacts: parametric-sweep result tables (the output of `calculate`/`calculate3D`, `Variables.fs:237,270` per Part A), in-layer field maps, and fit/design histories. These functions MUST reuse `Softellect.Sys.Core.serialize`/`deserialize` with `BinaryZippedFormat` (`C:/GitHub/Softellect/Sys/Core.fs:254,257`), and the file extension MUST be `.binz` (`Softellect.Sys.Primitives.fs:267`). Reuse is mandatory: do NOT introduce a second pickler, a second zip path, or a custom binary format — the one primitive to reach for is `Softellect.Sys.Core.serialize BinaryZippedFormat`.
+
+`.binz` sidecars MUST NOT carry the canonical project definition or any hand/LLM-editable content (binding rule 4); attempting to serialize `OpticalConstructorProject` through `writeSidecar` is forbidden by directive and MUST NOT be done. Each sidecar is referenced from the project JSON only by **relative path** under the `sidecars` array (I.2); the schema MUST require those paths to be relative so a moved project folder keeps its sidecars. Sidecars are regenerable derived data and SHOULD be excluded from version control: this part's `files` list contributes a `.gitignore` entry for `*.binz` under the project working folder. Caching policies, sidecar eviction, and retention windows are OUT OF SCOPE.
+
+## Non-requirements
+
+- No recent-files list, autosave, undo/redo (`EditHistory`), CSV/Excel export, report generation, material-library import/export, or design-history — those are Part I §I.5–§I.8, owned by slice 013 (and the material import/export CSV path is slice 004).
+- No schema versioning or migration code — a mismatched `schemaVersion` surfaces as `SchemaValidationError`, never a migration (OUT OF SCOPE per §I.2 / binding rule 6).
+- No `*.autosave` `.gitignore` entry here — that is added by slice 013 (§I.5). This slice contributes only the `*.binz` entry per §I.4.
+- The physics `$defs` (`opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`) are filled by Parts B–G; this slice authors only the top-level envelope and the storage-owned `$defs` (`materialEntry`, `sourceSpec`, `unitOfMeasure`, project root) per §I.2.
+- No second pickler, second zip path, or custom binary format; no caching/eviction/retention (§I.4 scope exclusion).
+- No UI surfaces; no File ▸ Recent menu (that renders the slice-013 recent list).
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Storage/Errors.fs`
+- `OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs`
+- `OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs`
+- `OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` (build-copied content item; `$id` https://berreman/schema/optical-constructor-project.json)
+- `OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs`
+- `OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs`
+- `OpticalConstructor/OpticalConstructor.Tests/ProjectJsonRoundtripTests.fs` (here covers AC-A2/AC-A5/AC-D6; the beam-tree `$def` round-trip AC-B9 is extended in slice 005)
+- `OpticalConstructor/OpticalConstructor.Tests/RoundTripTests.fs` (redirected from the parent's `OpticalConstructor.StorageTests/` into `OpticalConstructor.Tests`, reconciler round-2 §g — AC-I1/AC-I2/AC-I3)
+- `OpticalConstructor/OpticalConstructor.Tests/SidecarTests.fs` (redirected from `OpticalConstructor.StorageTests/` into `OpticalConstructor.Tests` — AC-A6/AC-I4/AC-I5)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` — register `Errors.fs`, `ProjectJson.fs`, `SchemaValidation.fs`, `ProjectFile.fs`, `Sidecar.fs` in compile order (Errors first; ProjectJson before SchemaValidation/ProjectFile) and the schema JSON as a build-copied content item.
+- `C:/GitHub/Berreman/.gitignore` — add `*.binz` (the `*.autosave` entry is slice 013).
+
+## Testing plan
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` from `Berreman/` MUST pass with the new storage modules and the schema content item compiling/copying in one pass.
+- `unit-tests` gate: `dotnet test --no-build -c Release` from `Berreman/BerremanTests/` stays green (this slice does not touch `BerremanTests`).
+- `constructor-unit-tests` gate runs the new `OpticalConstructor.Tests` files and MUST increase the count over slice 002's baseline. All `OpticalConstructor.*` tests are hosted in `OpticalConstructor.Tests` (no separate `OpticalConstructor.StorageTests` project — reconciler round-2 §g):
+  - `ProjectJsonRoundtripTests.fs` — beam tree round-trips through the JSON-canonical project, validates against schema, default-unit hook preserved, no `.binz` write, SI values unchanged (AC-A2/AC-A5/AC-D6).
+  - `RoundTripTests.fs` — `saveProject`→`openProject` identity over a representative `OpticalConstructorProject` (AC-I1); schema-violation returns `SchemaValidationError` (AC-I2); wrong `schemaVersion` rejected without migration (AC-I3).
+  - `SidecarTests.fs` — `.binz` write/read identity for a sweep table; missing sidecar surfaces `SidecarMissing`/`BinzError` (AC-A6/AC-I4/AC-I5).
+
+## Risks
+
+- **Medium.** Storage is the early seam every later part serializes through; a wrong envelope or `$defs` shape forces re-validation downstream. The load-bearing worries are (a) the FSharp.SystemTextJson `JsonFSharpOptions` configuration round-tripping every DU/`option` idiomatically without storing a non-SI magnitude, (b) JsonSchema.Net `Evaluate` returning the message list verbatim into `SchemaValidationError`, and (c) keeping `OpticalConstructorProject` strictly off the `.binz` path (binding rule 4). Mitigation: prove round-trip identity, schema rejection, version mismatch, and sidecar miss by unit test before exit; keep the storage-owned `$defs` envelope minimal so Parts B–G can fill the physics `$defs` without re-shaping.
+
+## Hand-off
+
+Storage core exists and is unit-tested: canonical JSON serialize/deserialize (`ProjectJson.fs`), the published schema + validate-on-load (`SchemaValidation.fs`, `optical-constructor-project.schema.json`), `.ocproj` read/write (`ProjectFile.fs` — the single project-open seam), `.binz` sidecars for derived artefacts only (`Sidecar.fs`), and `StorageError` (`Errors.fs`) as the sole error channel. Later slices extend the aggregate and schema, not the reflection-based serializer: slice 004 adds the `materialEntry` dispersion sub-object, slice 007 sources, slice 012 chart settings; slice 013 adds recent files/autosave/undo-redo/export/report/material-import-export and the `*.autosave` `.gitignore` entry. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

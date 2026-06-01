@@ -1,0 +1,65 @@
+# splitter.user-md -- project rules for the splitter top-level tool (Berreman)
+
+This is the Berreman project prompt piece that pairs with the
+cross-repo `splitter.system-md`. The splitter passes both paths
+to each spawn (splitter / verifier / claim-checker / reconciler);
+each spawn reads this file *second* (after the system prompt) for
+project-specific rules.
+
+The splitter top-level tool drives the pre-loop split / verify /
+claim-check / reconcile rounds; the arc-runner consumes the
+manifest the splitter produces. Build / test / code-style rules
+that apply to the resulting slices live in
+`arc-runner.user-md` -- read that file when the splicing rubric
+needs to weigh slice realism against the build tool, the gates,
+or the code style.
+
+---
+
+## Defer for build / test / style rules
+
+For everything that is "how an implementation slice runs" --
+build commands, gate expectations, `dotnet build` / `dotnet test`,
+code style, artifacts-folder discipline, file-naming convention
+-- read:
+
+- `./.user-md/Berreman/arc-runner.user-md`
+
+That file is the single source of truth. Do not duplicate any of
+its content here.
+
+---
+
+## Slicing rubric pointers
+
+When evaluating a candidate slicing for Berreman arcs, consider:
+
+- The project keeps work slices session-sized -- typically 3-8
+  per big spec, rarely more. A 1:1 match with the spec's own
+  internal "logical pieces" is a smell that the spec
+  under-decomposed; lean toward more slices.
+- Berreman's build is fast (a clean `dotnet build` + the
+  `BerremanTests` suite usually completes in a few minutes), so
+  the default `worker_timeout_sec` is comfortable. Bump it only
+  when a slice touches the analytics path or pulls in heavy
+  numerical regression tests.
+- Slices that change the matrix / eigenvector / Fourier core
+  (under `Berreman/Berreman/`) should land before slices that
+  touch the runner (`BerremanRunner`) or the model generator
+  (`BerremanModelGenerator`), so the dependent code can be
+  re-run against the new core in the same arc.
+- The project is pure F# numerical code -- no UI, no Android,
+  no A/V harness. Slices that would introduce one of those
+  capabilities are scope-expanding and deserve operator review
+  before the splitter signs off.
+
+---
+
+## HITL gates
+
+The splitter top-level tool runs autonomously between rounds; the
+operator's only HITL points are the three sentinel files
+`.pause`, `.pending-force`, and `additional-comments.md`, and
+editing pending task files in place before the next spawn fires.
+There is no project-specific HITL gate beyond what
+`splitter.system-md` documents.

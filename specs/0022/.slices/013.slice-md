@@ -1,0 +1,133 @@
+# 013 — Persistence II: recent/autosave, undo/redo, export & report/material-library/design-history (Part I §I.5–I.8)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022).
+- Slice 003 (`.slices/003.slice-md`) — storage core: `serializeProject` with the shared `JsonSerializerOptions`, `StorageError`, schema validate-on-load, `.ocproj` read/write, `.binz` `Sidecar`.
+- Slice 004 (`.slices/004.slice-md`) — `MaterialEntry` and the Part D §D.9 dispersion-model→tensor import mapping rules.
+- Slice 012 (`.slices/012.slice-md`) — the `ChartHandle`/chart series this slice's export and report consume.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-I6: After `writeAutosave name project` returns `Ok`, the user's `<name>.ocproj` MUST be unchanged on disk and a distinct `<name>.ocproj.autosave` MUST exist.
+- AC-I7: After a destructive model edit followed by `undo`, `EditHistory.present` MUST equal the pre-edit project; a subsequent `redo` MUST restore the edited project; `undo` on empty history MUST return the input unchanged.
+- AC-I8: After `exportCsv path (headers, rows)` returns `Ok`, the file MUST contain one header line of column names followed by one comma-separated line per row, and MUST NOT have re-invoked the solver.
+- AC-I9: After `exportChartImage path Png handle` returns `Ok` for a Plotly.NET chart, the saved file MUST be produced by the chart library's own writer (no custom rasterizer in `OpticalConstructor.Storage`).
+- AC-I10: After `importMaterials` reads a refractiveindex.info-style CSV via FSharp.Data, it MUST return `MaterialEntry list`; after `exportMaterials` writes a library, the produced JSON MUST validate against the `materialEntry` `$def`.
+- AC-I11: After `appendRevision` is called twice on the same project folder, two numbered JSON snapshots MUST exist under `history/`, and `diffRevisions` over them MUST return a `ProjectDiff` with no external-VCS invocation.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs` (new) — recent-files persistence + `Autosave`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs` (new) — immutable `EditHistory` undo/redo
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Export.fs` (new) — CSV/Excel + PNG/SVG/PDF chart export delegating to chart libraries
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Report.fs` (new) — report generator (Giraffe.ViewEngine HTML + WebView2/Plotly PDF), `MaterialLibrary` import/export, `DesignHistory` append/diff
+
+(The `.gitignore` files-in-scope bullet at `.spec-md:961` — ignore `*.binz` and `*.autosave` — is owned by slice 003, which added `*.binz`; this slice adds the `*.autosave` entry to that same file per §I.5, noted under Files modified (Edited) below.)
+
+### File:line references owned by this slice
+
+- `Variables.fs:237` `calculate`, `Variables.fs:270` `calculate3D` — the already-computed sweep tuples `exportCsv`/`exportExcel` serialize, never re-run (§I.7).
+- `Charting.fs:21` `plot`, `Charting.fs:38` `plotComparison`, `Charting.fs:64` `plot3D` — the chart data path whose output CSV export serializes; `Charting.fs:34` `Chart.show` (Plotly image-export path); `Charting.fs:9` `Giraffe.ViewEngine` import, `Charting.fs:13` `createDescription` `h1`/`h2` nodes reused for HTML reports (§I.7/§I.8).
+- `Dispersion.fs:53` `OpticalPropertiesWithDisp` — the engine dispersion type imported n,k tables map onto (mapping owned by Part D §D.9); §I.8 owns only the file read + `MaterialEntry list` boundary.
+- `C:/GitHub/Softellect/Sys/Core.fs:254,257` `serialize`/`deserialize` with `BinaryZippedFormat` — reused by the §I.4 sidecar path (slice 003); not re-introduced here.
+
+## Scope
+
+This slice delivers the [Standard] I/O features layered on the storage core: recent-files + autosave (§I.5), whole-project-snapshot undo/redo (§I.6), chart-data and chart-image export (§I.7), and the report generator + material-library import/export + design-history/diff (§I.8). Every persistence path here reuses the slice-003 storage core: `serializeProject`'s shared `JsonSerializerOptions` (recent-files prefs, autosave, design-history revisions, material-library export all go through that one JSON stack), the `StorageError` `Result` channel (the sole error channel — returned, never thrown), and FSharp.Data for external CSV import.
+
+These are operator-facing actions that are destructive or long-running (autosave, undo/redo, export, report render), so the Operator-facing UX checklist applies and is discharged in the directives: the recent-files list is the discoverability surface, autosave keeps a distinct `.autosave` file off the committed document, every destructive edit has an opposing `undo`, and each `export*`/`generate` returns `Result` on completion for the UI to refresh on `Ok`. Depends on slice 003 (storage core), slice 004 (`MaterialEntry` + Part D §D.9 import mapping), and slice 012 (`ChartHandle` for export/report).
+
+## Requirements
+
+### R-1. §I.5 [Standard] — Recent files and autosave
+
+`OpticalConstructor.Storage.fsproj` MUST provide `RecentFiles` with `loadRecent : unit -> string list` and `pushRecent : string -> string list`, persisting the most-recently-used `.ocproj` paths (most-recent first, bounded list) to a single JSON preferences file in the per-user application-data folder, serialized through `serializeProject`'s shared `JsonSerializerOptions` (I.1) — no separate JSON stack. The recent-files list is the discoverability surface required by the Operator-facing UX checklist; the UI (Part J) renders it under File ▸ Recent.
+
+`OpticalConstructor.Storage.fsproj` MUST provide `Autosave` with `autosavePath : string -> string` (deriving a sibling `<name>.ocproj.autosave` path) and `writeAutosave : string -> OpticalConstructorProject -> Result<unit, StorageError>`, reusing `serializeProject` (I.1) — autosave writes the **same canonical JSON**, never `.binz`. Autosave MUST write to the `.autosave` sidewrite path and MUST NOT overwrite the user's `.ocproj` until the user explicitly Saves; this satisfies the checklist's destructive-action gate by keeping the autosave file distinct from the committed document. The autosave timer interval and trigger are owned by the UI model (Part J §J.10); this part owns only the write function and the path derivation. `*.autosave` MUST be contributed to `.gitignore`. Retry-on-failure and rolling autosave generations are OUT OF SCOPE — a failed autosave returns `FileIoError` and the UI surfaces it.
+
+### R-2. §I.6 [Standard] — Undo/redo of model edits
+
+`OpticalConstructor.Storage.fsproj` MUST provide `History` with an immutable type `EditHistory` holding `past : OpticalConstructorProject list`, `present : OpticalConstructorProject`, and `future : OpticalConstructorProject list`, plus `push : OpticalConstructorProject -> EditHistory -> EditHistory`, `undo : EditHistory -> EditHistory`, and `redo : EditHistory -> EditHistory`. The structure MUST be immutable F# (project CLAUDE.md) and MUST NOT use `.Value`/`.IsSome`; `undo`/`redo` MUST pattern-match the `past`/`future` lists and MUST be no-ops (return the input unchanged) when the respective list is empty. This satisfies the Operator-facing UX checklist's opposing-action/undo requirement: every destructive model edit in the UI pushes onto `EditHistory`, and `undo` is its inverse. This is the multi-level undo/redo history that Part B §B.10 defers here; the construction page's single-level snapshot swap is the degenerate one-deep case.
+
+Undo/redo holds **whole-project snapshots** in memory; persistent on-disk undo journals, command-pattern diff logs, and bounded-history eviction are OUT OF SCOPE for this directive (the design-history file in I.8 is the durable record). The history depth bound, if any, is owned by the UI model (Part J).
+
+### R-3. §I.7 [Standard] — Chart-data and chart-image export
+
+`OpticalConstructor.Storage.fsproj` MUST provide `Export` with `exportCsv : string -> (string list * float[][]) -> Result<unit, StorageError>` writing sweep results as comma-separated rows (header row of column names, then numeric rows) and `exportExcel : string -> (string list * float[][]) -> Result<unit, StorageError>` writing an `.xlsx` workbook. The CSV column data MUST be the same sweep tuples produced by the engine's `calculate`/`calculate3D` (`Variables.fs:237,270` per Part A) and rendered to charts by `plot`/`plotComparison`/`plot3D` (`Charting.fs:21,38,64`); this part serializes that already-computed data and MUST NOT re-run or re-implement the solver. Excel export MUST use the existing in-tree XLSX dependency if one is referenced by `Analytics.fsproj`; if none is, ClosedXML MUST be added as the single Excel package reference (no new Excel abstraction layer).
+
+Chart **image** export to PNG/SVG/PDF MUST be delegated to the chart libraries Part A names, not re-implemented: Plotly.NET charts (the engine's `Charting.fs` path, `Chart.show` at `Charting.fs:34`) export through Plotly.NET's image writer hosted in WebView2 (Part A UI stack), and ScottPlot charts export through ScottPlot's own `SavePng`/`SaveSvg`. `Export` MUST expose `exportChartImage : string -> ChartImageFormat -> ChartHandle -> Result<unit, StorageError>` where `ChartImageFormat = Png | Svg | Pdf` is a net-new DU and `ChartHandle` is the UI-supplied chart object; this function dispatches to the owning library's save call and MUST NOT rasterize or vectorize charts itself. The Operator-facing UX checklist's progress/completion contract for export: each `export*` function returns `Result` on completion, and the UI refreshes the results pane and offers "Open containing folder" on `Ok`.
+
+### R-4. §I.8 [Standard] — Report generator, material library import/export, design history & diff
+
+`OpticalConstructor.Storage.fsproj` MUST provide `Report.generate : ReportFormat -> OpticalConstructorProject -> ChartHandle list -> Result<unit, StorageError>` producing a single PDF or HTML document (`ReportFormat = Pdf | Html`, net-new DU) containing the stack schematic, the project parameters read from `OpticalConstructorProject` (§A.7), the supplied chart images (via I.7's `exportChartImage`), and any fit-result summary present on the project. HTML report assembly MUST reuse the engine's existing Giraffe.ViewEngine usage (`Charting.fs:9` imports `Giraffe.ViewEngine`; `createDescription` builds `h1`/`h2` nodes at `Charting.fs:13`) rather than introducing a second HTML builder; PDF output MUST be produced by printing that HTML through the same Plotly/WebView2 PDF path used in I.7. The report render is the long-running action in this part: `generate` returns `Result` on completion and the UI (Part J) shows determinate progress per included chart and refreshes to offer the produced file.
+
+`OpticalConstructor.Storage.fsproj` MUST provide `MaterialLibrary` with `importMaterials : string -> Result<MaterialEntry list, StorageError>` and `exportMaterials : string -> MaterialEntry list -> Result<unit, StorageError>` over the §A.7 `materialEntry` `$def`. Export MUST write the canonical JSON (validated against the `materialEntry` `$def`, I.2) so a library file is itself schema-checked. Import MUST accept that same JSON **and** refractiveindex.info-style external tabulated/CSV data via **FSharp.Data** (the package Part A admits) — FSharp.Data is the single primitive to reach for parsing external CSV/measurement data; do NOT hand-roll a CSV reader. Imported n,k tables map onto the engine's dispersion types (`OpticalPropertiesWithDisp`, `Dispersion.fs:53` per Part A) — the mapping rules are owned by Part D (§D.9) and MUST NOT be redefined here; this part owns only the file read and the `MaterialEntry list` boundary. This is the shareable material-library file format that Part D §D.8 defers here.
+
+`OpticalConstructor.Storage.fsproj` MUST provide `DesignHistory` with `appendRevision : string -> OpticalConstructorProject -> Result<unit, StorageError>` and `diffRevisions : OpticalConstructorProject -> OpticalConstructorProject -> ProjectDiff` (net-new `ProjectDiff` record listing added/removed/changed systems, layers, materials, and sources by stable identity). `appendRevision` MUST persist each revision as a numbered canonical-JSON snapshot under a `history/` folder beside the `.ocproj`, reusing `serializeProject` (I.1) — revisions are JSON, not `.binz`, because they remain hand/LLM-readable (binding rule 4). `diffRevisions` MUST be a pure F# function comparing two already-loaded project values and MUST NOT shell out to git or any external VCS. Full branching/merge version control is OUT OF SCOPE; the committed scope is append-only revision snapshots plus structural diff, matching 010 §7's "design history & diff" [Standard] bullet.
+
+## Non-requirements
+
+- The core JSON serialize/deserialize/validate/`.ocproj`/`.binz` seam (`serializeProject`/`deserializeProject`/`saveProject`/`openProject`/`writeSidecar`/`readSidecar`, schema validate-on-load, `StorageError`) is owned by slice 003 / §I.1–I.4; this slice reuses it and does NOT redefine it.
+- The dispersion-model→tensor import MAPPING rules (n,k table → `OpticalPropertiesWithDisp`) are owned by Part D §D.9 (slice 004); §I.8 owns only the file read + the `MaterialEntry list` boundary and MUST NOT redefine the mapping.
+- Persistent on-disk undo journals, command-pattern diff logs, and bounded-history eviction (§I.6); retry-on-failure and rolling autosave generations (§I.5).
+- Schema versioning/migration, backwards-compat shims, multi-format converters, encryption, cloud sync, and error-wrapping retry layers are OUT OF SCOPE (§I.0); the only error channel is the `StorageError` `Result`.
+- The autosave timer interval/trigger and the undo history depth bound are owned by the UI model (Part J §J.10).
+- The `ChartHandle` and chart series consumed by export/report are produced by Part H (slice 012); this slice consumes them and computes no chart.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs` (recent-files persistence + `Autosave`)
+- `OpticalConstructor/OpticalConstructor.Storage/History.fs` (immutable `EditHistory` undo/redo)
+- `OpticalConstructor/OpticalConstructor.Storage/Export.fs` (CSV/Excel + PNG/SVG/PDF chart export delegating to chart libraries)
+- `OpticalConstructor/OpticalConstructor.Storage/Report.fs` (report generator + `MaterialLibrary` import/export + `DesignHistory` append/diff)
+- `OpticalConstructor/OpticalConstructor.Tests/HistoryTests.fs` (undo/redo identity + empty-history no-op — AC-I7; autosave does not touch `.ocproj` — AC-I6)
+- `OpticalConstructor/OpticalConstructor.Tests/ExportImportTests.fs` (CSV header+rows shape — AC-I8; `importMaterials` from a refractiveindex.info-style CSV fixture + `exportMaterials` schema-validates — AC-I10; `appendRevision` twice + `diffRevisions` — AC-I11)
+- `OpticalConstructor/OpticalConstructor.Tests/fixtures/sample-nk.csv` (small refractiveindex.info-style n,k table for the storage import test)
+
+(All three test files are hosted in `OpticalConstructor.Tests`, the single gated `constructor-unit-tests` host — reconciler round-2 §g. Where the parent's "Test artifacts" name `OpticalConstructor.StorageTests/HistoryTests.fs`, `.../ExportImportTests.fs`, and `.../fixtures/sample-nk.csv`, that content lives in `OpticalConstructor.Tests` instead; the test descriptions and ACs are preserved. Do NOT create a separate `OpticalConstructor.StorageTests` project.)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` — register `RecentFiles.fs`, `History.fs`, `Export.fs`, `Report.fs` in compile order; add ClosedXML as the single Excel package reference if `Analytics.fsproj` references no XLSX dependency (§I.7).
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `HistoryTests.fs`, `ExportImportTests.fs`, and the `fixtures/sample-nk.csv` content item.
+- `C:/GitHub/Berreman/.gitignore` — add the `*.autosave` entry per §I.5 (the `.gitignore` files-in-scope bullet at `.spec-md:961` is owned by slice 003, which added `*.binz`; `.ocproj` files remain committable).
+
+## Testing plan
+
+All three gates run: `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `build` gate: `OpticalConstructor.Storage` compiles with the four new modules; if ClosedXML is newly added it resolves cleanly; no new C# project introduced.
+- `constructor-unit-tests` gate (hosted in `OpticalConstructor.Tests`, the single gated host — NOT a separate `OpticalConstructor.StorageTests` project): the new test files pass and increase the count over the prior baseline.
+  - AC-I7/AC-I6 (HistoryTests): a destructive edit followed by `undo` restores `EditHistory.present` to the pre-edit project, a subsequent `redo` restores the edited project, and `undo` on empty history returns the input unchanged; `writeAutosave name project` leaves `<name>.ocproj` unchanged on disk and a distinct `<name>.ocproj.autosave` exists.
+  - AC-I8/AC-I10/AC-I11 (ExportImportTests): `exportCsv` writes one header line plus one comma-separated line per row with no solver re-invocation; `importMaterials` reads the `fixtures/sample-nk.csv` refractiveindex.info-style CSV via FSharp.Data and returns `MaterialEntry list`, and `exportMaterials` produces JSON that validates against the `materialEntry` `$def`; `appendRevision` called twice yields two numbered JSON snapshots under `history/` and `diffRevisions` returns a `ProjectDiff` with no external-VCS invocation.
+- AC-I9 (export image): `exportChartImage path Png handle` for a Plotly.NET chart is produced by the chart library's own writer — verified at the dispatch boundary (no custom rasterizer in `OpticalConstructor.Storage`); the underlying image render relies on the WebView2/Plotly path and is not asserted headlessly.
+- `unit-tests` gate (BerremanTests) stays green (not touched here).
+
+## Risks
+
+- **Medium.** The load-bearing risks: (1) introducing a second JSON stack instead of reusing `serializeProject`'s shared `JsonSerializerOptions` for recent-files/autosave/revisions/material-export (forbidden by §I.5/§I.8 — one stack only); (2) hand-rolling a CSV reader instead of FSharp.Data, or redefining the §D.9 import mapping here (forbidden by §I.8 — own only the file read + `MaterialEntry list` boundary); (3) rasterizing/vectorizing charts or serializing `OpticalConstructorProject` through a sidecar/`.binz` (forbidden — delegate to the chart library's writer; revisions and autosave are JSON). Mitigation: route every persistence path through the slice-003 core, keep `EditHistory` immutable with pattern-matched no-ops (no `.Value`/`.IsSome`), and prove the autosave-distinctness, CSV-shape, import/export, and append/diff invariants by unit test. The `OpticalConstructor.Tests` hosting (not `StorageTests`) is the explicit reconciler decision — do not split out a second test project.
+
+## Hand-off
+
+The [Standard] persistence-II features exist and are unit-tested: recent-files + autosave (`RecentFiles.fs`), whole-project-snapshot undo/redo (`History.fs`), CSV/Excel/image export (`Export.fs`), and the report generator + material-library import/export + design-history/diff (`Report.fs`) — all over the slice-003 storage core, all returning `StorageError` `Result`. The `*.autosave` `.gitignore` entry is added (slice 003 owns the bullet and added `*.binz`). All tests are hosted in `OpticalConstructor.Tests`; no `StorageTests` project was created. Material import consumes the slice-004 `MaterialEntry`/§D.9 mapping boundary; export/report consume the slice-012 `ChartHandle`. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

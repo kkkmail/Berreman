@@ -1,0 +1,33 @@
+# OpticalConstructor
+
+## Purpose
+
+Gates that exercise the Optical Constructor application built on top
+of the Berreman solver — the five new F# projects spec 0022 §A.1
+adds under `Berreman/OpticalConstructor/`
+(`OpticalConstructor.Domain`, `.Storage`, `.Optimization`, `.Ui`,
+`.App`). Unlike the `Berreman` group (which is scoped to the pure
+numerical optics solver and its sibling library projects), this
+group covers the orchestration/app layer: the net-new beam-tree
+topology, the JSON-canonical storage + schema validation, the
+library-agnostic optimization interface, the units spine, and the
+Avalonia/FuncUI UI. Per spec §A.6/P3 the model/`update` logic
+contains no Avalonia type, so the Domain/Storage/Optimization
+behaviour is testable without a UI — gates here target that UI-less
+test surface first. Build runs via `dotnet build` of the whole
+`Berreman.slnx` (the root `build` gate already covers the new
+projects, since they are added to the solution); tests run via
+`dotnet test`.
+
+## When to add a gate here
+
+Add a gate here when the new check exercises one of the
+`Berreman/OpticalConstructor/**` projects rather than the pure
+solver — for example a `dotnet test` over the constructor's UI-less
+test project(s), an integration check over the beam-tree
+orchestration, or a JSON-schema validation gate. Use a descriptive
+stem; gate names are unique across the whole `.gates/` tree, so
+prefix constructor test gates (e.g. `constructor-unit-tests`) to
+avoid colliding with the `Berreman` group's `unit-tests`. Checks
+that exercise the pure Berreman solver or its sibling library
+projects belong in the `Berreman` group instead.

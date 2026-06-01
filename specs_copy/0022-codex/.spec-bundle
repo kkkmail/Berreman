@@ -1,0 +1,12 @@
+{
+  "spec_id": "0022",
+  "ticket": null,
+  "created": "2026-05-31T03:23:41Z",
+  "status": "in-authoring",
+  "gates": [],
+  "user_files": {
+    "splitter": ".user-md/Berreman/splitter.user-md",
+    "arc-runner": ".user-md/Berreman/arc-runner.user-md"
+  },
+  "description": "Add Optical Constructor"
+}

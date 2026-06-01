@@ -1,0 +1,58 @@
+repo_root:                C:/GitHub/Berreman
+branch:                   0022
+worker_timeout_sec:       14400   # 4 h default; slices are now session-sized (reconciler round-2 §c-derivative)
+worker_hangup_idle_sec:   3600    # 1 h max with no transcript activity
+worker_review_max_cycles: 3
+max_total_route_backs:    30
+---
+```yaml
+slice_gates:
+  - slice: 001
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 002
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 003
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 004
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 005
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 006
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 007
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 008
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 009
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 010
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 011
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 012
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 013
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 014
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 015
+    gates: [build, unit-tests, constructor-unit-tests]
+  - slice: 016
+    gates: [build, unit-tests, constructor-unit-tests]
+```
+.slices/001.slice-md
+.slices/002.slice-md
+.slices/003.slice-md
+.slices/004.slice-md
+.slices/005.slice-md
+.slices/006.slice-md
+.slices/007.slice-md
+.slices/008.slice-md
+.slices/009.slice-md
+.slices/010.slice-md
+.slices/011.slice-md
+.slices/012.slice-md
+.slices/013.slice-md
+.slices/014.slice-md
+.slices/015.slice-md
+.slices/016.slice-md

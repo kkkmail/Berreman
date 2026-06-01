@@ -1,0 +1,58 @@
+# Arc-runner worker task -- 007.slice-md
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+round and lists them below. Do not compute or guess these
+paths: the canonical layout block describes the shape, this
+section pins the concrete values for the slice you are about
+to implement.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0022`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0022\.slices\007.slice-md`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0022\.artifacts`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0022\.slices\007-impl-log.md`
+- **impl_plan_path:** `C:\GitHub\Berreman\specs\0022\.slices\007-impl-plan.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0022\.slices\007-state-of-the-world.md`
+- **spec_id:** `0022`
+- **slice_id:** `007`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Slice spec
+
+Implement this slice end-to-end:
+
+- C:\GitHub\Berreman\specs\0022\.slices\007.slice-md
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your state-of-the-world markdown to**
+`C:\GitHub\Berreman\specs\0022\.slices\007-state-of-the-world.md`. **Do not write the SoW anywhere else.**
+
+**Save your impl-log markdown to**
+`C:\GitHub\Berreman\specs\0022\.slices\007-impl-log.md`. **Do not write the impl-log anywhere else.**
+
+## Artifacts folder
+
+Use `C:\GitHub\Berreman\specs\0022\.artifacts` for any persistent run artifacts
+(captured logs, screenshots, traces, dumps). The folder is
+pre-created; this path is the arc-runner's authoritative
+value and supersedes any path the project prompt computes
+from convention.
+
+## Retry hint
+
+In `SourceSpec.expand` (SourceSpec.fs:287-291), the `Some beam` arm collects a unit-sum Gaussian fan over each of the N cone angles without the `1.0 / float (List.length angleInfos)` factor the `None` arm applies on line 293, so a source with both `cone={samples=N}` and `gaussianBeam=Some` sums to weight N instead of 1. Multiply each Gaussian-fan weight by that same per-cone-angle factor so the combined source totals weight 1 (i.e. the source `intensity`), matching the cone-only and unpolarized 0.5/0.5 normalisations. Add one test in SourceExpansionTests.fs that sets BOTH `cone` and `gaussianBeam` and asserts the expanded per-source weights sum to the source `intensity`, not N. Edit only those two files. Leave the reuse-critic findings F1-F4 and the inert-`Incoherent`-flag note as documented follow-ups -- do not broaden scope.
+

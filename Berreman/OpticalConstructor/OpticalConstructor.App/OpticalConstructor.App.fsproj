@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.App</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="Program.fs" />
+    </ItemGroup>
+
+    <!-- The composition root (Program.fs) directly hosts the FuncUI shell, so it
+         depends on the public MIT Avalonia + FuncUI NuGet surface explicitly. This
+         is NOT the audit-gated clone at Avalonia.FuncUI.Clone, which stays
+         unreferenced until the §A.9 audit passes (AC-A8). Versions mirror
+         OpticalConstructor.Ui. -->
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.300" />
+        <PackageReference Include="Avalonia" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
+        <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
+    </ItemGroup>
+
+</Project>

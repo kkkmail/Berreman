@@ -1,0 +1,122 @@
+# 009 — Optimization infrastructure: library-agnostic interface, ALGLIB adapter & parameter mapping (Part G §G.1–G.3)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract). Part G §G.1–G.3.
+- Slice 001 (`.slices/001.slice-md`) — created the `OpticalConstructor.Optimization.fsproj` project (and the gated `OpticalConstructor.Tests` host) this slice fills.
+- Slice 002 (`.slices/002.slice-md`) — domain foundation (units spine, beam-tree types, `OpticalConstructorProject` aggregate) this slice's mapping seam builds on.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-G1: After `optimize` is called with an `OptimizationRequest` whose `method` is `LevenbergMarquardt`, the ALGLIB adapter MUST return an `OptimizationResult` (or `Result.Error`) without any ALGLIB type or exception crossing the G.1 interface boundary, within the request's `maxIterations`.
+- AC-G2: After a `DesignParameter list` and a `float[]` solution vector are folded over a base `OpticalSystem`, the produced system MUST reflect each parameter (e.g. layer `Thickness` in canonical meters) with no value stored in a non-SI unit.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/OptimizationInterface.fs` (new) — library-agnostic optimization interface (Residual/Jacobian/bounds/method/result, `optimize`)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs` (new) — sole ALGLIB-referencing file; maps methods to the 010 §III.4 routines minlm/minbleic/minnlc/minlbfgs; `NelderMead` simplex backend deferred (G.2), not bound to a spec-invented routine
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/DesignParameters.fs` (new) — float[]⇄OpticalSystem mapping reusing `ArbitraryVariable.getSys` seam
+
+(The `OpticalConstructor.Optimization.fsproj` project bullet, parent files-in-scope line 919, is owned by slice 001 — project creation. This slice adds the ALGLIB `PackageReference` to that project per §G.2; that edit is listed under Files modified (Edited), not re-claimed as a new file here.)
+
+### File:line references owned by this slice
+
+- `Variables.fs:37` `ArbitraryVariable.getSys : OpticalSystem -> double -> OpticalSystem` — the existing scalar parametrization seam G.3 reuses; `Variables.fs:263` where `calculate` already invokes it; `Variables.fs:42` `RangedVariable`.
+- `Media.fs:12` `Thickness of double<meter>` (layer-thickness design variable); `Media.fs:34` `WedgeLayer.angle` (wedge-angle design variable); `Media.fs:94` `OpticalSystem` (the base system folded over).
+- `Dispersion.fs:53` `OpticalPropertiesWithDisp` — the dispersion-coefficient design variable substitution target.
+- `Constants.fs:6` `[<Measure>] meter` — thickness rebuilt as `Thickness (v * 1.0<meter>)`, v already in canonical meters.
+- `MathNetNumericsMath.fs:5` (math seam, MUST NOT be routed through for optimization here) and `ExtremeNumericsMath.fs:5` (legacy reference only) — the §A.8 boundary the adapter respects.
+
+## Scope
+
+This slice lands the optimization infrastructure that every later fitting/synthesis slice depends on: the library-agnostic optimization interface (§G.1), the single ALGLIB adapter behind it (§G.2), and the flat-`float[]`⇄`OpticalSystem` design-variable mapping (§G.3). It is almost wholly net-new orchestration above the existing forward solver — the interface is expressed in our own F# records and DUs with no ALGLIB type in its public surface, the adapter is the ONLY file permitted to reference ALGLIB, and the mapping reuses the existing `ArbitraryVariable.getSys` parametrization seam rather than inventing a new mechanism.
+
+No merit assembly, no refinement entry point, no ellipsometry, no inverse fit, no fit-quality, no synthesis, and no UI land here — those are slices 010 and 011. This slice's tests prove the two boundary invariants (no ALGLIB type/exception crosses the §G.1 boundary; the `DesignParameter` fold lands canonical-SI values) in the gated `OpticalConstructor.Tests` host; the full Wolfram end-to-end validation lives in `BerremanTests/OptimizationTests.fs` (slice 011).
+
+## Requirements
+
+### R-1. §G.1 Library-agnostic optimization interface
+
+This part MUST define the optimization abstraction in our own terms in a new file `OpticalConstructor.Optimization/OptimizationInterface.fs` inside the `OpticalConstructor.Optimization.fsproj` project named in the Part A assembly map. The interface MUST be expressed as F# records and discriminated unions (§0 constraint 1) and MUST NOT reference any ALGLIB type in its public surface, so the physics/fitting code compiles without the library, per §A.8 ("the physics/fitting code never depends on ALGLIB directly").
+
+The interface MUST consist of exactly:
+- `Residual = float[] -> float[]` — the vectorized residual function (one entry per target sample), matching §A.8's `(float[] -> float[])`.
+- `Jacobian = (float[] -> float[][]) option` — optional analytic Jacobian; when `None` the adapter MUST request numerical differentiation.
+- `ParameterBounds` (record: `lower : float[]`, `upper : float[]`) — per-parameter box bounds in canonical SI units (§0 constraint 3); an unbounded side MUST be encoded as `infinity`/`-infinity`.
+- `InequalityTarget` (DU: `LessOrEqual | GreaterOrEqual` carrying the bound) — the one-sided target from 010 §II.5 ("R ≤ 0.5%").
+- `OptimizationMethod` (DU: `LevenbergMarquardt | QuasiNewtonLbfgs | NelderMead | BoundedLinearConstrained | NonlinearConstrained`) — the method selector mapping onto the ALGLIB routines named in §A.8/010 §III.4: `LevenbergMarquardt → minlm`, `QuasiNewtonLbfgs → minlbfgs`, `BoundedLinearConstrained → minbleic`, `NonlinearConstrained → minnlc`. `NelderMead` is the 010-required simplex method (010 line 219) whose concrete backend 010 leaves unnamed; its routine binding is deferred per G.2 and MUST NOT be resolved to a spec-invented routine here.
+- `OptimizationRequest` (record: residual, optional jacobian, initial `float[]`, bounds, inequality targets, method, `maxIterations : int`, `epsX : float`) — the single call payload.
+- `OptimizationResult` (record: `solution : float[]`, `finalResiduals : float[]`, `iterations : int`, `terminationReason : TerminationReason`, `success : bool`) where `TerminationReason` is a DU (`Converged | MaxIterationsReached | StepTooSmall | Failed of string`).
+
+The interface MUST expose a single entry point `optimize : OptimizationRequest -> Result<OptimizationResult, string>` (§0 error-handling rule: `Result`, not exceptions). No caching, retry, or progress-callback registry is admitted in this file; progress reporting is wired in G.10 via a separate channel.
+
+### R-2. §G.2 ALGLIB adapter behind the interface
+
+This part MUST implement the interface from G.1 in a new file `OpticalConstructor.Optimization/AlglibAdapter.fs`, the ONLY file in the solution permitted to `open`/reference ALGLIB. ALGLIB MUST be added as a NuGet `PackageReference` to `OpticalConstructor.Optimization.fsproj` (no new C# project — §0 constraint 1); the GPL free edition is the licensed edition per §A.8.
+
+The adapter MUST map each `OptimizationMethod` to the ALGLIB routine named in §A.8: `LevenbergMarquardt → minlm` (`minlmcreatev`/`minlmcreatevj` when a Jacobian is supplied, with `minlmsetbc` for bounds), `QuasiNewtonLbfgs → minlbfgs`, `BoundedLinearConstrained → minbleic`, `NonlinearConstrained → minnlc`. `NelderMead` is the [Standard] Nelder–Mead simplex method 010 §II.5 requires (010 line 219), but 010 §III.4 names NO ALGLIB routine for a simplex solver — its list is exactly `minlm`/`minbleic`/`minnlc`/`minlbfgs`/`mincg`/`lsfit` (010 lines 380-382). This part MUST NOT invent an ALGLIB routine name for the simplex case; the following deferred decision is carried forward VERBATIM as a directive: **the concrete simplex backend for `NelderMead` — an ALGLIB routine if one is later confirmed to exist, OR an explicit in-file F# Nelder–Mead loop over the G.1 `Residual` closure — is deliberately undecided here and MUST remain undecided until that decision is taken, traceable to the 010-required simplex feature; this part MUST NOT resolve it by binding `NelderMead` to a spec-invented ALGLIB routine.** Until that decision is taken the adapter MUST surface `NelderMead` as `Failed "simplex backend unresolved"` rather than silently dispatching to a guessed routine. The adapter MUST translate `ParameterBounds` into the routine's box-constraint call and `InequalityTarget`s into either residual penalty rows (for `minlm`) or nonlinear constraints (for `minnlc`); it MUST convert ALGLIB's completion codes into `TerminationReason` and MUST NOT leak an ALGLIB exception past the `Result` boundary. Linear algebra inside the adapter (normal-equation/QR solves for the LM step) is ALGLIB's own; this part MUST NOT route any matrix operation through `MathNetNumericsMath.fs:5`, and conversely MUST NOT use ALGLIB for any engine linear algebra (§A.8: "ALGLIB is used for optimization only, not for linear algebra"). Extreme Optimization MUST NOT be referenced from this adapter; `ExtremeNumericsMath.fs:5` remains a legacy math-seam reference only, per §A.8.
+
+### R-3. §G.3 Parameter ⇄ system mapping (design variables)
+
+This part MUST define the bridge from a flat `float[]` parameter vector to a concrete `OpticalSystem` in a new file `OpticalConstructor.Optimization/DesignParameters.fs`, reusing the existing scalar parametrization seam `ArbitraryVariable.getSys : OpticalSystem -> double -> OpticalSystem` (`Variables.fs:37`) that `calculate` already calls at `Variables.fs:263`. A `DesignParameter` (new record) MUST carry a `name : string`, a `getSys : OpticalSystem -> double -> OpticalSystem` closure (the same signature as `ArbitraryVariable.getSys`), and the per-parameter SI bound pair; an ordered `DesignParameter list` MUST fold left over a base `OpticalSystem` to apply the whole `float[]` vector, in vector order.
+
+The supported design variables MUST be: **layer thickness** — the closure MUST rebuild the target `Layer` with `Thickness (v * 1.0<meter>)` (`Media.fs:12`), v already in canonical meters (§0 constraint 3); **dispersion coefficient** — the closure MUST substitute into the relevant `OpticalPropertiesWithDisp` (`Dispersion.fs:53`) field; **wedge angle** — the closure MUST set the `WedgeLayer.angle` (`Media.fs:34`). Negative-thickness prohibition and physical n-range bounding (010 §II.5) MUST be expressed as the `ParameterBounds` of G.1 (lower bound 0 for thickness), NOT as a separate validator. This file MUST NOT introduce reflection-based field setting; every mapping is an explicit F# closure the reader can follow (§0 locality rule).
+
+## Non-requirements
+
+- No merit/target-function editor, no local-refinement entry point, no ellipsometric Ψ/Δ derivation, no inverse fitting — those are owned by slice 010 (Part G §G.4–G.7).
+- No fit-quality reporting, no needle/tunnelling synthesis or global optimization, no Synthesis/Fit UI page, no Wolfram-reference validation tests — those are owned by slice 011 (Part G §G.8–G.11).
+- MUST NOT route any matrix operation through `MathNetNumericsMath.fs:5` from the adapter, and MUST NOT use ALGLIB for any engine linear algebra (§A.8); `ExtremeNumericsMath.fs:5` stays a legacy reference only.
+- MUST NOT add a progress-callback registry in the §G.1 interface (G.1 stays callback-free; G.10 / slice 011 wires progress through a separate channel).
+- MUST NOT resolve the `NelderMead` simplex backend or bind it to a spec-invented ALGLIB routine (§G.2 deferred decision); the adapter surfaces it as `Failed "simplex backend unresolved"`.
+- MUST NOT introduce a new C# project (constraint 1); ALGLIB enters only as a NuGet `PackageReference`.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Optimization/OptimizationInterface.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/DesignParameters.fs`
+- `OpticalConstructor/OpticalConstructor.Tests/OptimizationInterfaceTests.fs` (AC-G1: no ALGLIB type/exception crosses the §G.1 boundary; AC-G2: `DesignParameter` fold lands canonical-SI values)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` — add the ALGLIB NuGet `PackageReference` (§G.2; the GPL free edition per §A.8) and register `OptimizationInterface.fs`, `AlglibAdapter.fs`, `DesignParameters.fs` in compile order (interface before adapter before mapping). The project itself was created by slice 001.
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `OptimizationInterfaceTests.fs`.
+
+## Testing plan
+
+Gates: `build`, `unit-tests`, `constructor-unit-tests` (all three).
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` MUST pass with the ALGLIB `PackageReference` resolved and the three new Optimization files compiling, no new C# project.
+- `constructor-unit-tests` gate: runs `OpticalConstructor.Tests`; the new `OptimizationInterfaceTests.fs` MUST pass and increase the count over slice 008's baseline.
+  - AC-G1: call `optimize` with an `OptimizationRequest` whose `method` is `LevenbergMarquardt`; assert an `OptimizationResult` (or `Result.Error`) is returned within `maxIterations` with no ALGLIB type or exception crossing the §G.1 boundary. A companion assertion confirms `NelderMead` surfaces as `Failed "simplex backend unresolved"`.
+  - AC-G2: fold a `DesignParameter list` and a `float[]` solution vector over a base `OpticalSystem`; assert each parameter is reflected (layer `Thickness` in canonical meters via `Thickness (v * 1.0<meter>)`) with no value stored in a non-SI unit.
+- `unit-tests` gate: `BerremanTests` stays green (this slice does not touch `BerremanTests`; the end-to-end Wolfram test in `BerremanTests/OptimizationTests.fs` is slice 011).
+
+## Risks
+
+- **Medium.** ALGLIB NuGet resolution under the .NET 10 SDK / x64 and the GPL-free-edition package identity are the main build risk; mitigate by adding the `PackageReference` first and keeping the adapter behind the §G.1 boundary so a resolution failure is isolated to one file. The contractful invariant is that NO ALGLIB type or exception escapes the interface — exercise it explicitly. The `NelderMead`-deferred rule is easy to violate by guessing a routine; the adapter MUST surface `Failed "simplex backend unresolved"` verbatim. The §A.8 boundary (no linear algebra through ALGLIB; no optimization through the math seam) must be respected in the adapter.
+
+## Hand-off
+
+The optimization infrastructure exists and is unit-tested: the §G.1 interface (`OptimizationInterface.fs`), the single ALGLIB adapter behind it (`AlglibAdapter.fs`, the only ALGLIB-referencing file, with `NelderMead` deferred), and the `DesignParameter` fold (`DesignParameters.fs`). Slice 010 builds the merit/target editor, local-refinement entry point, ellipsometric Ψ/Δ targets, and inverse fitting over this infrastructure; slice 011 adds fit-quality, synthesis, the Synthesis/Fit page, and the Wolfram-reference validation in `BerremanTests/OptimizationTests.fs`. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline. Record the `NelderMead` simplex backend as a still-open deferred decision under `Deferred`.

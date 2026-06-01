@@ -39,6 +39,9 @@
         <Compile Include="StandardLightVariables.fs" />
         <Compile Include="StandardSystems.fs" />
         <Compile Include="Charting.fs" />
+        <Compile Include="AnalysisFunctions.fs" />
+        <Compile Include="FieldProfile.fs" />
+        <Compile Include="Colorimetry.fs" />
         <None Include="References.fsx" />
         <None Include="Examples\References.fsx" />
         <None Include="Examples\LangasiteOnSilicon.fsx" />
@@ -62,7 +65,7 @@
     <ItemGroup>
         <PackageReference Include="FSharp.Collections.ParallelSeq" Version="1.2.0" />
         <PackageReference Include="Plotly.NET" Version="5.1.0" />
-        <PackageReference Update="FSharp.Core" Version="10.0.102" />
+        <PackageReference Update="FSharp.Core" Version="10.1.300" />
     </ItemGroup>
 
     <ItemGroup>

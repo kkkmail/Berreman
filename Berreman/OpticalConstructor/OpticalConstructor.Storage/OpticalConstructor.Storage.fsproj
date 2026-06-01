@@ -1,0 +1,76 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.Storage</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <!-- Compile order (§I, slice 003): Errors first; SchemaValidation before
+         ProjectJson (deserializeProject calls validate-on-load); then ProjectFile
+         and Sidecar. The legacy placeholder `Storage.fs` is retained as a
+         namespace anchor. -->
+    <ItemGroup>
+        <Compile Include="Errors.fs" />
+        <Compile Include="SchemaValidation.fs" />
+        <Compile Include="ProjectJson.fs" />
+        <Compile Include="ProjectFile.fs" />
+        <Compile Include="Sidecar.fs" />
+        <Compile Include="MaterialImport.fs" />
+        <Compile Include="SpectralImport.fs" />
+        <!-- Persistence II (§I.5-I.8, slice 013): recent-files/autosave, undo/redo,
+             export, and the report/material-library/design-history module. Export
+             before Report (Report consumes ChartHandle/exportChartImage). -->
+        <Compile Include="RecentFiles.fs" />
+        <Compile Include="History.fs" />
+        <Compile Include="Export.fs" />
+        <Compile Include="Report.fs" />
+        <Compile Include="Storage.fs" />
+    </ItemGroup>
+
+    <!-- The published JSON Schema is a build-copied content item; the relative
+         `schema/` path is preserved into the output (and flows to consumers) so
+         `SchemaValidation` can load it beside the assembly at runtime (§I.2). -->
+    <ItemGroup>
+        <Content Include="schema\optical-constructor-project.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.300" />
+        <PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
+        <PackageReference Include="FSharp.Data" Version="8.1.14" />
+        <PackageReference Include="JsonSchema.Net" Version="9.2.1" />
+        <PackageReference Include="ClosedXML" Version="0.105.0" />
+        <!-- The report HTML reuses the engine's own HTML-builder library (the same
+             Giraffe.ViewEngine Charting.fs uses via Plotly.NET), not a second builder
+             (§I.8). Plotly.NET pins the StrongName repackage; match it here. -->
+        <PackageReference Include="Giraffe.ViewEngine.StrongName" Version="2.0.0-alpha1" />
+        <PackageReference Include="Softellect.Sys" Version="10.0.101.41" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Math.NET (`Matrix<Complex>`, used by the JSON converter) flows in
+             transitively: Storage -> OpticalConstructor.Domain -> Berreman ->
+             Numerics.csproj. No direct reference is needed (binding rule 1:
+             no new C# project reference invented here). -->
+        <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+    </ItemGroup>
+
+</Project>

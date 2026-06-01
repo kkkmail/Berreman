@@ -1,0 +1,144 @@
+# 001 — Solution scaffolding & assembly layout (Part A, land first)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract).
+- `C:\GitHub\Berreman\specs\0022\.manual\010-optical-constructor-spec-and-tech-stack.md` — source of scope (Part I §1, Part II §1-8, Part III §1-5), cited by the parent.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-A1: After the five new projects are added and `Berreman.slnx` is built with the documented MSBuild invocation at Configuration=Release Platform=x64, the solution MUST compile with all five `OpticalConstructor.*` projects and the existing Berreman/Analytics projects in one pass, with no new C# project introduced.
+- AC-A8: Before `OpticalConstructor.Ui` is linked against `C:\GitHub\Avalonia.FuncUI.Clone\`, the audit gate MUST be recorded as passed; until then the UI project MUST contain no reference to the clone and the linking-mechanism choice MUST remain unresolved.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/Berreman.slnx` (edit) — add the five OpticalConstructor projects, each Platform x64; no fork of `Berreman/Berreman.fsproj` (`:14`); `.gitignore` for derived sidecars handled below
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (new) — orchestration domain project; references `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj`; registers BeamTree/Units/CurvedElements/SourceSpec/SourceCombination/DispersionModels/MaterialLibrary in compile order
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (new) — storage assembly; references Domain, Berreman.fsproj, Analytics.fsproj, Softellect.Sys; package refs System.Text.Json + FSharp.SystemTextJson, FSharp.Data, JsonSchema.Net, ClosedXML
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` (new) — optimization assembly; references Domain (and Berreman/Analytics for the solver seam); adds the ALGLIB PackageReference
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (new) — Avalonia + FuncUI MVU UI project; references Domain, Storage, Optimization; registers all Ui modules in build order; MUST NOT add the FuncUI clone dependency until the §A.6/§A.9 audit passes
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj` (new) — runnable entry point; references `OpticalConstructor.Ui`
+
+### File:line references owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/Berreman.slnx:1-29` — solution layout, x64 platform, Numerics.csproj:8, BerremanTests:20.
+- `Berreman.slnx:2-4` — the sole `x64` configuration each new project must declare `<Platform Project="x64" />` against.
+- `OpticalModel/Primitives.fs:9` — the existing `OpticalModel.fsproj` stub that MUST be left untouched.
+- `C:/GitHub/Berreman/.gates/OpticalConstructor/constructor-unit-tests.gates` — the gate-keeper-authored descriptor (`dotnet test … OpticalConstructor.Tests.fsproj`, `exit_code: 0`) that the `constructor-unit-tests` gate id resolves to; targets the `OpticalConstructor.Tests.fsproj` host this slice creates. Read-only reference (worker MUST NOT edit `.gates/**`).
+
+## Scope
+
+This slice is the load-bearing scaffold for the whole arc: it adds the five new F# projects of §A.1 to `Berreman.slnx`, wires their project references and package references, fixes the numerical-library boundaries (§A.8) and the engine-is-consumed-never-forked discipline (§A.2), establishes the UI-architecture commitment and the **buildable interpretation** of the FuncUI dependency (§A.6/§A.9), and creates the gated `OpticalConstructor.Tests` host. After this slice the solution MUST build green at Configuration=Release Platform=x64 with placeholder modules in each new project; later slices fill those projects with real code. No domain types, no orchestration logic, and no UI surfaces beyond compilable placeholders land here.
+
+**Buildable FuncUI interpretation (reconciler round-2 §i — applied).** The audit gate of binding constraint 5 / §A.6 / §A.9 applies ONLY to the clone at `C:\GitHub\Avalonia.FuncUI.Clone\`. It does NOT forbid the public, MIT-licensed `Avalonia.FuncUI` NuGet package, which is a distinct artefact from the audit-gated clone. `OpticalConstructor.Ui.fsproj` therefore consumes Avalonia core and the FuncUI DSL through their normal MIT NuGet packages so that `view` bodies referencing the FuncUI DSL compile and the `build` gate is sound from the first UI-touching slice. The clone remains unreferenced and the linking-mechanism choice remains unresolved until the audit passes (AC-A8). This is the single buildable interpretation every UI-touching slice (this one and 004, 005, 007, 011, 012, 014–016) relies on.
+
+## Requirements
+
+### R-1. §A.1 Solution and assembly layout
+
+The solution MUST add five new F# projects to the existing solution file `C:/GitHub/Berreman/Berreman/Berreman.slnx` (current content verified at `Berreman.slnx:1-29`), each declared with `<Platform Project="x64" />` to match the sole `x64` configuration (`Berreman.slnx:2-4`). The build order (engine → orchestration → UI → tooling) MUST be:
+
+1. `OpticalConstructor.Domain.fsproj` — orchestration domain: the beam-tree types (§A.4), the project aggregate (§A.7), the units spine (§A.10). References `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj`. MUST NOT reference any UI or storage package.
+2. `OpticalConstructor.Storage.fsproj` — JSON canonical IO, JSON-Schema validation, `.binz` sidecar IO (§A.7). References `OpticalConstructor.Domain` and `Softellect.Sys`.
+3. `OpticalConstructor.Optimization.fsproj` — the library-agnostic optimization interface with ALGLIB behind it (§A.8). References `OpticalConstructor.Domain` only.
+4. `OpticalConstructor.Ui.fsproj` — Avalonia + Avalonia.FuncUI (MVU), ScottPlot, WebView2-hosted Plotly.NET, OpenTK 3D viewport (§A.6). References Domain, Storage, Optimization.
+5. `OpticalConstructor.App.fsproj` — the runnable entry point. References `OpticalConstructor.Ui`.
+
+The five projects MUST sit under a new `C:/GitHub/Berreman/Berreman/OpticalConstructor/` folder, one subfolder per project. No directive in any part MAY add a sixth top-level app project; additional code MUST land in one of these five or be justified against a named directive. The existing `OpticalModel.fsproj` (a stub, `OpticalModel/Primitives.fs:9`) MUST NOT be repurposed; it MUST be left untouched.
+
+### R-2. §A.2 The engine is consumed, never forked
+
+The new projects MUST consume the Berreman engine by project reference to `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj` and MUST NOT copy, re-derive, or shadow any of the engine's modules. Reach-for-first primitives, by concern:
+
+- Single-system solve → `OpticalSystemSolver(info, system, parameters)` (`Solvers.fs:199`), returning a `Solution` (`Solvers.fs:152`) whose `.emSys` is an `EmFieldSystem` (`Solvers.fs:156`).
+- Field/polarimetric outputs → the members on `EmFieldSystem`/`Solution` in `FieldFunctions.fs` (`stokesR`/`stokesT` `FieldFunctions.fs:227,238`; `ellipticityR` `FieldFunctions.fs:157`).
+- Sweeps → `calculate`/`calculate3D` over a `RangedVariable` (`Variables.fs:237,270,42`).
+
+No part MAY introduce a parallel solver, a parallel field model, or a parallel sweep engine.
+
+### R-3. §A.6 UI architecture: Avalonia + FuncUI (MVU) + ScottPlot + WebView2/Plotly.NET + OpenTK
+
+The UI project `OpticalConstructor.Ui` MUST be pure F# and MUST use Avalonia with Avalonia.FuncUI in the MVU/Elmish shape: a model record holding all state, a pure `update`, and a `view` that is a function of state. ScottPlot MUST provide fast native interactive 2D plots; Plotly.NET (already used by `Charting.fs:11`) MUST be retained for publication-quality/exportable charts, hosted in a WebView2 control; the 3D viewport MUST be a custom OpenTK renderer. Per P3, behaviour MUST be testable without a UI: the model/`update` MUST contain no Avalonia type.
+
+This directive carries forward two deferred decisions VERBATIM:
+
+> **Mandatory audit of the FuncUI clone (`C:\Github\Avalonia.FuncUI.Clone\`).** Before use, the clone **must be audited** for: **Any political statements** — in code, comments, README/docs, license headers, resources (strings, images, icons, sample data), commit/PR/issue templates, CI config, and embedded URLs; and **Back doors or behavioral restrictions made in support of those statements** — code that disables, degrades, nags, geofences, date-gates, or otherwise alters behavior based on locale/region/IP/name/political criteria, "protestware"-style payloads, or telephone-home/telemetry tied to any of the above. **Everything related to that must be cleared out** of the clone — removed entirely, not merely disabled — and the result re-reviewed to confirm nothing reintroduces it on update. This is a gating step: the clone is not approved for linking until the audit passes.
+
+> **Linking mechanism is deliberately undecided for now.** The audited clone will be consumed **either as a local NuGet package OR as a project reference** — that choice is made later, not now. The audit and clear-out apply identically either way. Avalonia core is consumed as the normal MIT NuGet.
+
+No part MAY add a UI reference to the clone until the audit passes; no part MAY resolve the linking-mechanism choice.
+
+### R-4. §A.8 Numerical-library boundaries
+
+The solution MUST keep linear algebra and optimization as two separate concerns, each behind its own seam.
+
+- **Linear algebra** MUST remain the cloned Math.NET behind the existing math seam `MathNetNumericsMath` (`MathNetNumericsMath.fs:5`, whose stated purpose is to abstract a switch that is "VERY painful", `MathNetNumericsMath.fs:3-4`). Complex non-Hermitian EVD MUST stay on `MatrixEvd` (`m.Evd()`, `MatrixEvd.fs:15`) and the matrix exponential on `MatrixExp` (`MatrixExp.fs:31`). No part MAY route linear algebra through ALGLIB. `ExtremeNumericsMath` (`ExtremeNumericsMath.fs:5`) MAY remain only as a legacy reference and MUST NOT be wired into the numerics path.
+- **Optimization** MUST use ALGLIB for optimization ONLY, behind a library-agnostic interface defined in `OpticalConstructor.Optimization`: a residual/objective function `(float[] -> float[])`, an optional Jacobian, parameter bounds, constraints, and a result record. ALGLIB (`minlm`, `minbleic`, `minnlc`, `minlbfgs`, `mincg`, `lsfit`) MUST sit behind that interface so physics/fitting code never depends on ALGLIB directly. The optimizer-detail (which method per workflow) belongs to Part H.
+
+### R-5. §A.9 The FuncUI clone audit is a build-gating step
+
+The solution MUST treat the §A.6 audit as a gate: the build that links `OpticalConstructor.Ui` against the clone MUST NOT be attempted until the audit has run and the clone is cleared. This directive exists so later parts cannot accidentally introduce the reference early; it adds no new audit tooling beyond the verbatim audit of §A.6.
+
+### R-6. Gated test host (scaffold) and `constructor-unit-tests` gate resolution
+
+Create `OpticalConstructor.Tests.fsproj` under `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/`, referencing Domain, Storage, Optimization, and Ui, and add it to `Berreman.slnx` with `<Platform Project="x64" />`. This is the single project the `constructor-unit-tests` gate runs; every `OpticalConstructor.*` test in later slices MUST be hosted here (reconciler round-2 §g — do NOT create a separate `OpticalConstructor.StorageTests` project). It MUST ship with at least one trivial passing test so the gate runs green (the gate's pass condition is `exit_code: 0`) from this slice's first round.
+
+**Gate descriptor resolution (reconciler round-4 §g BLOCKER — closed).** The `constructor-unit-tests` gate id referenced by every slice's roster resolves to an already-authored descriptor — it is NOT a missing/unresolvable gate. The descriptor was authored by the gate-keeper at spec handoff and lives at `C:/GitHub/Berreman/.gates/OpticalConstructor/constructor-unit-tests.gates` (and is pinned in the spec-folder snapshot `C:/GitHub/Berreman/specs/0022/.spec-gates`). It is correctly placed in the `OpticalConstructor` gate group rather than the `Berreman` group, because gate names are unique across the whole `.gates/` tree and constructor-prefixed gates belong in their own group (per `.gates/OpticalConstructor/.gates-md`). Its command is `dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release` with pass condition `exit_code: 0`, targeting exactly the `OpticalConstructor.Tests.fsproj` host this slice creates. Authoring that test host here is therefore what makes the gate resolve and pass before slice 001's roster runs; the slice owns the gate's runtime target, while the descriptor file itself is gate-keeper-owned repo infrastructure (a worker MUST NOT add or edit `.gates/**` descriptors — `arc-runner.user-md`). This file is a necessary realization of the gate roster, not a parent files-in-scope bullet.
+
+## Non-requirements
+
+- No domain types, orchestration logic, units conversions, materials, sources, charts, optimization, persistence, or UI pages — those land in later slices. Placeholder/empty compilable modules only.
+- MUST NOT add a sixth top-level app project (§A.1).
+- MUST NOT repurpose or modify `OpticalModel.fsproj` (§A.1).
+- MUST NOT reference, link, or build against the FuncUI clone (`C:\GitHub\Avalonia.FuncUI.Clone\`) or resolve its linking mechanism (constraint 5 / §A.6 / §A.9).
+- MUST NOT route any linear algebra through ALGLIB, nor wire `ExtremeNumericsMath` into the numerics path (§A.8).
+- MUST NOT introduce a new C# project (constraint 1).
+- The `.gitignore` edit for `*.binz`/`*.autosave` is owned by slice 012 (Part I sidecars), not here.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (+ one placeholder `.fs`)
+- `OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (+ placeholder)
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` (+ placeholder)
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (+ placeholder; public MIT Avalonia + Avalonia.FuncUI NuGet, NOT the clone)
+- `OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj` (+ minimal entry point)
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` (gated `constructor-unit-tests` host; ships one trivial passing test so the `exit_code: 0` gate runs green). The gate descriptor it resolves to (`.gates/OpticalConstructor/constructor-unit-tests.gates`) is pre-existing gate-keeper infrastructure and is NOT edited here.
+
+Edited:
+- `Berreman/Berreman.slnx` — register the six new projects with `<Platform Project="x64" />`.
+
+## Testing plan
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` from `Berreman/` MUST pass with all five `OpticalConstructor.*` projects + the Tests project + the existing Berreman/Analytics projects compiling in one pass, no new C# project (AC-A1).
+- `unit-tests` gate: `dotnet test --no-build -c Release` from `Berreman/BerremanTests/` stays green (this slice does not touch `BerremanTests`).
+- `constructor-unit-tests` gate: resolves to the descriptor at `.gates/OpticalConstructor/constructor-unit-tests.gates` (pass condition `exit_code: 0`) and runs `dotnet test … OpticalConstructor.Tests.fsproj -c Release`; the trivial passing test shipped in R-6's host makes it green from this slice's first round (reconciler round-4 §g — closed).
+- Record the FuncUI-clone audit as NOT-YET-RUN and confirm no clone reference exists in `OpticalConstructor.Ui.fsproj` (AC-A8).
+
+## Risks
+
+- **Low/medium.** The risk is package-resolution drift (.NET 10 SDK, Avalonia / Avalonia.FuncUI / ScottPlot / WebView2 / Plotly.NET / OpenTK / Softellect.Sys / ALGLIB / System.Text.Json + FSharp.SystemTextJson / FSharp.Data / JsonSchema.Net / ClosedXML NuGet versions). Mitigation: add packages incrementally and keep placeholder modules empty so a failed reference is isolated. The public-vs-clone FuncUI distinction (above) is the load-bearing decision; getting it wrong reintroduces the spec-0110-class build failure.
+
+## Hand-off
+
+The five projects + the gated `OpticalConstructor.Tests` host build green at Release/x64 with placeholder modules. Later slices fill them: slice 002 (Domain foundation — units, beam tree, project aggregate), slice 003 (storage core — JSON/schema/sidecar), then the feature parts. The buildable FuncUI interpretation established here (public MIT NuGet, clone stays audit-gated) is relied on by every UI-touching slice. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block (e.g. `bm_unit_tests`, `constructor_unit_tests` counts) so the next slice's `count_at_least` gate has a baseline.

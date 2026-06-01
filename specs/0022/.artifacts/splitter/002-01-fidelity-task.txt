@@ -1,0 +1,87 @@
+# Fidelity-judge task -- round 01
+
+## Role
+
+You are playing the **fidelity-judge** role of the splitter
+spec-loop. Read the parent `.spec-md` and the slice files the
+splitter just wrote and emit a structured verdict that the
+supervisor will route on. Pass advances to the verifier; fail
+routes back to a new splitter round with your verdict inlined as
+feedback.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-arc path you need this
+fidelity-judge round and lists them below. Do not compute or
+guess these paths: the canonical layout block (in the system
+prompt) describes the shape, this section pins the concrete
+values for the spawn you are about to run.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0022`
+- **spec_md_path:** `C:\GitHub\Berreman\specs\0022\.spec-md`
+- **spec_bundle_path:** `C:\GitHub\Berreman\specs\0022\.spec-bundle`
+- **manifest_path:** `C:\GitHub\Berreman\specs\0022\.manifest`
+- **slices_dir:** `C:\GitHub\Berreman\specs\0022\.slices`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0022\.artifacts`
+- **fidelity_round_trail_dir:** `C:\GitHub\Berreman\specs\0022\.artifacts\splitter`
+- **spec_id:** `0022`
+- **seq:** `2`
+- **rn:** `1`
+
+
+## System prompts (read first, in order)
+
+1. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\fidelity-judge.system-md
+   -- the fidelity-judge protocol; rubric (Axis A coverage +
+   Axis B no-invention) and verdict template live here.
+2. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+   -- the worker round protocol. Context only; you do NOT play
+   the arc-runner role.
+
+## User prompts (read second, in order)
+
+1. C:\GitHub\Berreman\.user-md\Berreman\splitter.user-md
+   -- per-project splitter / slice style notes. Treat as context
+   for what the slices SHOULD look like.
+2. C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+   -- per-project worker rules. Context only.
+
+## Inputs
+
+### Parent spec
+
+- C:\GitHub\Berreman\specs\0022\.spec-md
+
+### Manifest
+
+- C:\GitHub\Berreman\specs\0022\.manifest
+
+### Slice files (in manifest order)
+
+- C:\GitHub\Berreman\specs\0022\.slices\001.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\002.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\003.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\004.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\005.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\006.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\007.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\008.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\009.slice-md
+- C:\GitHub\Berreman\specs\0022\.slices\010.slice-md
+
+## Output you MUST write (and nowhere else)
+
+**Save your complete verdict to**
+`C:\GitHub\Berreman\specs\0022\.artifacts\splitter\002-01-fidelity.md`. **Do not write anywhere else.**
+
+Follow the verdict template documented in the fidelity-judge
+system prompt: the `**Verdict:**` line, `**Blocker count:**`,
+`**Info count:**`, the Summary section, and one Findings entry
+per finding (or `(none)` on a clean pass).
+
+The supervisor's verdict parser is strict: a `pass` verdict with
+blocker findings, or a `fail` verdict with zero blocker findings,
+causes the supervisor to abort with `EXIT_BOOT_FAILED` for
+malformed judge output. Do NOT compute or include SHA-256 digests
+of the parent spec-md or the slice files — the parser does not
+consume them.

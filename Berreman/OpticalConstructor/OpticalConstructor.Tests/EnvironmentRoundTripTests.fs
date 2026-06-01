@@ -1,0 +1,168 @@
+namespace OpticalConstructor.Tests
+
+open System
+open System.IO
+open Berreman.Constants
+open Berreman.MaterialProperties
+open Berreman.Media
+open OpticalConstructor.Domain.Units
+open OpticalConstructor.Ui.UserEnvironment
+open Xunit
+
+/// §J.6/J.7/J.8 environment persistence (AC-J6/AC-J7/AC-J8). `EnvironmentSettings`
+/// serializes to schema-validated JSON (never `.binz`) reusing the slice-003 shared
+/// options, round-trips (favorites board, recent files, last folder, panel layout,
+/// theme, preferences preserved), and falls back to built-in defaults on a
+/// deliberately invalid file WITHOUT migration. Preference edits touch only
+/// display/boundary labels and leave stored `double<meter>` magnitudes identical;
+/// solver defaults are the engine's `SolverParameters`.
+module EnvironmentRoundTripTests =
+
+    let private filmThickness : float<meter> = 1.0e-7<meter>
+
+    let private favLayer : Layer =
+        { properties = OpticalProperties.vacuum; thickness = Thickness.Thickness filmThickness }
+
+    let private favSystem : OpticalSystem =
+        {
+            description = Some "pinned sub-assembly"
+            upper = OpticalProperties.vacuum
+            films = [ favLayer ]
+            substrate = None
+            lower = OpticalProperties.vacuum
+        }
+
+    /// A representative non-default environment exercising every persisted field —
+    /// all four favorite-pin shapes (§A.7), recent files, last folders, a Dark
+    /// theme, an edited panel layout, a non-default chart palette, and edited
+    /// preferences.
+    let private sample : EnvironmentSettings =
+        { defaults with
+            favorites =
+                [
+                    {
+                        name = "optics shelf"
+                        pins =
+                            [
+                                LayerPin favLayer            // reused engine Layer, by value
+                                SystemPin favSystem          // OpticalSystem fragment, by value
+                                MaterialPin "Si"             // materialEntry id
+                                SourcePin "src-d65"          // sourceSpec id
+                            ]
+                    }
+                ]
+            lastFolders = [ @"C:\work\optics" ]
+            recentFiles = [ "a.ocproj"; "b.ocproj" ]
+            theme = Dark
+            // Edit the saved layout through the AppShell reducer (J.8): hide "results".
+            layout = OpticalConstructor.Ui.AppShell.setPanelVisible "results" false defaults.layout
+            chartPalette = [ "#112233"; "#445566" ]
+            preferences = { defaults.preferences with wavelengthUnit = Micrometer; sweepPoints = 250 } }
+
+    let private okOr (r : Result<'a, _>) : 'a =
+        match r with
+        | Ok v -> v
+        | Error e -> failwith $"unexpected storage error: {e}"
+
+    // --- AC-J6: schema-validated JSON round-trip (never .binz) ------------------
+
+    [<Fact>]
+    let ``AC-J6 EnvironmentSettings serializes to schema-validating JSON, never binz`` () =
+        let json = serialize sample |> okOr
+        // The artefact is JSON text carrying the envelope version, never a .binz pickle.
+        Assert.StartsWith("{", json.TrimStart())
+        Assert.Contains("schemaVersion", json)
+        Assert.DoesNotContain(".binz", json)
+        // Validate-on-load admits the document against the published env schema.
+        deserialize json |> okOr |> ignore
+
+    [<Fact>]
+    let ``AC-J6 a full round-trip preserves every persisted field`` () =
+        let back = serialize sample |> okOr |> deserialize |> okOr
+        // Favorites board (all four pin shapes, by-value fragments included) survives.
+        Assert.Equal(1, List.length back.favorites)
+        Assert.Equal("optics shelf", back.favorites.[0].name)
+        match back.favorites.[0].pins with
+        | [ LayerPin l; SystemPin s; MaterialPin m; SourcePin src ] ->
+            // The by-value Layer fragment's canonical SI thickness is byte-identical.
+            match l.thickness with
+            | Thickness.Thickness d -> Assert.Equal(filmThickness, d)
+            | other -> Assert.Fail(sprintf "unexpected pinned thickness: %A" other)
+            Assert.Equal(1, List.length s.films)
+            Assert.Equal("Si", m)
+            Assert.Equal("src-d65", src)
+        | other -> Assert.Fail(sprintf "unexpected pins: %A" other)
+        // Recent files, last folders, theme, palette, layout, preferences all survive.
+        Assert.Equal<string list>(sample.recentFiles, back.recentFiles)
+        Assert.Equal<string list>(sample.lastFolders, back.lastFolders)
+        Assert.Equal(Dark, back.theme)
+        Assert.Equal<string list>(sample.chartPalette, back.chartPalette)
+        Assert.False((back.layout.panels |> List.find (fun p -> p.panel = "results")).visible)
+        Assert.Equal(Micrometer, back.preferences.wavelengthUnit)
+        Assert.Equal(250, back.preferences.sweepPoints)
+        // Structural equality of the whole record (Math.NET value-equality on tensors).
+        Assert.True((sample = back), "round-tripped environment must equal the original")
+
+    // --- AC-J6: deliberately invalid file falls back to defaults, no migration --
+
+    [<Fact>]
+    let ``AC-J6 a deliberately invalid settings file falls back to built-in defaults`` () =
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-%s.json" (Guid.NewGuid().ToString("N")))
+        try
+            // A document missing required fields (and the schemaVersion const) must
+            // FAIL validation; load returns defaults rather than attempting migration.
+            File.WriteAllText(path, "{ \"theme\": \"Dark\" }")
+            Assert.Equal(defaults, load path)
+            // A malformed (non-JSON) file likewise yields defaults, never throws.
+            File.WriteAllText(path, "not json at all {{{")
+            Assert.Equal(defaults, load path)
+        finally
+            if File.Exists path then File.Delete path
+
+    [<Fact>]
+    let ``AC-J6 a missing settings file yields defaults`` () =
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-missing-%s.json" (Guid.NewGuid().ToString("N")))
+        Assert.False(File.Exists path)
+        Assert.Equal(defaults, load path)
+
+    [<Fact>]
+    let ``AC-J6 save then load round-trips through the file system`` () =
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-rt-%s.json" (Guid.NewGuid().ToString("N")))
+        try
+            save path sample |> okOr
+            Assert.True((sample = load path))
+        finally
+            if File.Exists path then File.Delete path
+
+    // --- AC-J7: preference edits are display-only; stored meters unchanged -------
+
+    [<Fact>]
+    let ``AC-J7 editing the default unit or wavelength range leaves stored meters identical`` () =
+        // Editing the wavelength UNIT label changes no stored magnitude.
+        let edited = { sample with preferences = { sample.preferences with wavelengthUnit = Angstrom } }
+        Assert.Equal(sample.preferences.wavelengthRange.min, edited.preferences.wavelengthRange.min)
+        Assert.Equal(sample.preferences.wavelengthRange.max, edited.preferences.wavelengthRange.max)
+        // A pinned Layer's canonical-SI thickness is untouched by a preference edit.
+        match (List.head sample.favorites).pins, (List.head edited.favorites).pins with
+        | LayerPin a :: _, LayerPin b :: _ -> Assert.Equal(a.thickness, b.thickness)
+        | _ -> Assert.Fail "expected a LayerPin at the head of the favorites"
+
+    [<Fact>]
+    let ``AC-J7 solver defaults are the engine SolverParameters, not a parallel record`` () =
+        Assert.Equal(Berreman.Solvers.SolverParameters.defaultValue, defaults.preferences.solver)
+
+    // --- AC-J8: theme + panel layout round-trip through EnvironmentSettings JSON -
+
+    [<Fact>]
+    let ``AC-J8 theme and panel layout round-trip through the environment JSON`` () =
+        let back = serialize sample |> okOr |> deserialize |> okOr
+        Assert.Equal(sample.theme, back.theme)
+        Assert.Equal(List.length sample.layout.panels, List.length back.layout.panels)
+        List.iter2
+            (fun (a : PanelState) (b : PanelState) ->
+                Assert.Equal(a.panel, b.panel)
+                Assert.Equal(a.dock, b.dock)
+                Assert.Equal(a.size, b.size)
+                Assert.Equal(a.visible, b.visible))
+            sample.layout.panels
+            back.layout.panels

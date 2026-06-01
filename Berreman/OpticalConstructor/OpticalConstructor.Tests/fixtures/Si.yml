@@ -1,0 +1,11 @@
+REFERENCES: "Test fixture — minimal refractiveindex.info-style tabulated page (NOT real Si data)."
+COMMENTS: "Wavelengths tabulated in micrometers (refractiveindex.info convention)."
+DATA:
+  - type: tabulated nk
+    data: |
+      0.250 1.694 3.666
+      0.300 5.020 4.220
+      0.400 5.570 0.387
+      0.500 4.293 0.045
+      0.600 3.939 0.025
+      0.700 3.785 0.013

@@ -1,0 +1,24 @@
+Here are the comments and mostly questions to C:\GitHub\Berreman\Temp\006-storage-ui-and-optimization-tech-stack.md.
+`1. Storage / high-level data formats (LLM-maintainability lens)`
+So, we stick with JSON (with comment-like entries to provide “comments”) for all except large data for which I am inclined 
+to use a zipped FsPickle binary, which showed exceptionally good performance (about 100X compression ratio vs pretty JSON / XML). 
+I have a package for that (somewhere here: C:\GitHub\Softellect\), so we will just stick it in. A subset of YAML could be convenient 
+for some simple rules. See an example here: C:\GitHub\Softellect\.gates\TheBird\
+
+`2. UI tech stack — Windows-only desktop`
+`Avalonia + Avalonia.FuncUI` - any project that starts with any political statement is a no go. So cloning and then auditing the code is 
+the only option if we go this way. What is easier from the LLM point of view: write purely in F# (that’s `Avalonia + Avalonia.FuncUI clone`) 
+OR use just Avalonia (C#) + F# as a backend? Also check if Avalonia.FuncUI is cloned, then can it be used in commercial applications?
+
+Explain to me why Avalonia OR `Avalonia + Avalonia.FuncUI` is better than WinForms? How good is LLM generation for Avalonia?
+
+I want LLMs to follow this document: `C:\GitHub\AI-Strategy-Generator\.constitution-md`. How suitable is Avalonia for that approach? 
+
+`3. Numerical optimization library — the hard question`
+ExtremeOptimization is very bad. I’ve been filing bugs with them every moment I touched it and given that it is a proprietary 
+library, fixing it at home is not possible. I would not trust it any serios numerical calculations. ALGLIB is good, but ODE 
+support is very weak, and I have not tested their optimization in detail. The SUNDIALS E0337 trap is likely solved. Check the web.
+With all of the above, I am inclined to start with ALGLIB (I already refence their package somewhere) but completely 
+abstract it away so that it could be easily swapped if not delivering. 
+
+Write me answers into C:\GitHub\Berreman\Temp\008-<description>.md. Make no other changes.

@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/optical-constructor-environment.json",
+  "title": "EnvironmentSettings",
+  "description": "Persistent UI environment for the Berreman Optical Constructor (Spec 0022, Part J §J.6-J.9). Added to the §A.7 schema family and validated on load with JsonSchema.Net. Hand/LLM-inspectable user config — JSON, never .binz (binding rule 4). The favorites board's Layer/OpticalSystem fragments are §A.7 physics shapes left intentionally permissive here (mirroring the project schema's permissive physics $defs); only the favorites structure and the J.7/J.8 preference/layout/theme shapes are constrained. Schema versioning/migration is out of scope (J.6 item 3): a differing schemaVersion fails the const and the app falls back to built-in defaults.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "favorites",
+    "lastFolders",
+    "recentFiles",
+    "layout",
+    "theme",
+    "chartPalette",
+    "toolbar",
+    "preferences"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "The single shipped env-schema version. A differing value is a validation error, not a migration trigger (J.6 item 3)."
+    },
+    "favorites": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/favoriteGroup" },
+      "description": "Named, grouped pins of frequently used Layers, materialEntry/sourceSpec ids, and OpticalSystem fragments (J.6)."
+    },
+    "lastFolders": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The last working folder(s) (J.6)."
+    },
+    "recentFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ordered recent files/projects list (J.6)."
+    },
+    "layout": {
+      "$ref": "#/$defs/panelLayout",
+      "description": "The serialized dockable-panel layout (J.8)."
+    },
+    "theme": {
+      "$ref": "#/$defs/theme",
+      "description": "Light/dark theme selection (J.8)."
+    },
+    "chartPalette": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Configurable chart color palette surfaced to Part H (J.8). The palette implementation is Part H; this carries only the configured colors."
+    },
+    "toolbar": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Toolbar contents — ordered command ids (J.6)."
+    },
+    "preferences": {
+      "$ref": "#/$defs/preferences",
+      "description": "User preferences (J.7)."
+    }
+  },
+  "$defs": {
+    "unitOfMeasure": {
+      "type": "string",
+      "enum": [
+        "Meter",
+        "Millimeter",
+        "Micrometer",
+        "Nanometer",
+        "Angstrom",
+        "ElectronVolt",
+        "Wavenumber"
+      ],
+      "description": "Boundary unit-of-measure vocabulary (Part D, D.1). A display/IO label only; the stored magnitude is always canonical SI."
+    },
+    "theme": {
+      "type": "string",
+      "enum": ["Light", "Dark"],
+      "description": "Theme selection (J.8). A fieldless DU serialized as a bare string."
+    },
+    "dockSide": {
+      "type": "string",
+      "enum": ["Left", "Right", "Top", "Bottom", "Center"],
+      "description": "A panel's dock edge (J.8). Center is the fill region."
+    },
+    "panelState": {
+      "type": "object",
+      "required": ["panel", "dock", "size", "visible"],
+      "properties": {
+        "panel": { "type": "string", "description": "Panel id (stack, materials, sources, chart, results)." },
+        "dock": { "$ref": "#/$defs/dockSide" },
+        "size": { "type": "number", "description": "Size along the dock axis (device-independent pixels)." },
+        "visible": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "panelLayout": {
+      "type": "object",
+      "required": ["panels"],
+      "properties": {
+        "panels": { "type": "array", "items": { "$ref": "#/$defs/panelState" } }
+      },
+      "additionalProperties": false
+    },
+    "wavelengthRange": {
+      "type": "object",
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number", "description": "Canonical SI minimum (meters)." },
+        "max": { "type": "number", "description": "Canonical SI maximum (meters)." }
+      },
+      "additionalProperties": false
+    },
+    "solverParameters": {
+      "type": "object",
+      "description": "The engine's own SolverParameters (Solvers.fs:15). Part J defines no parallel solver-config record (J.7).",
+      "required": ["numberOfReflections"],
+      "properties": {
+        "numberOfReflections": { "type": "integer", "description": "Convergence control: reflections used for a thick substrate plate." }
+      },
+      "additionalProperties": false
+    },
+    "preferences": {
+      "type": "object",
+      "required": [
+        "lengthUnit",
+        "wavelengthUnit",
+        "wavelengthRange",
+        "sweepPoints",
+        "decimalPrecision",
+        "solver"
+      ],
+      "properties": {
+        "lengthUnit": { "$ref": "#/$defs/unitOfMeasure" },
+        "wavelengthUnit": { "$ref": "#/$defs/unitOfMeasure" },
+        "wavelengthRange": { "$ref": "#/$defs/wavelengthRange" },
+        "sweepPoints": { "type": "integer" },
+        "decimalPrecision": { "type": "integer" },
+        "solver": { "$ref": "#/$defs/solverParameters" }
+      },
+      "additionalProperties": false
+    },
+    "favoritePin": {
+      "type": "object",
+      "description": "One pinned favorite, the FSharp.SystemTextJson adjacent-tag shape {Case, Fields}. Case selects a reused engine Layer/OpticalSystem fragment (by value) or a materialEntry/sourceSpec id (string). The Fields payload is left permissive — the §A.7 physics shapes are validated by the project schema, mirrored permissively here.",
+      "required": ["Case", "Fields"],
+      "properties": {
+        "Case": { "enum": ["LayerPin", "SystemPin", "MaterialPin", "SourcePin"] },
+        "Fields": { "type": "array", "minItems": 1, "maxItems": 1 }
+      }
+    },
+    "favoriteGroup": {
+      "type": "object",
+      "required": ["name", "pins"],
+      "properties": {
+        "name": { "type": "string" },
+        "pins": { "type": "array", "items": { "$ref": "#/$defs/favoritePin" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

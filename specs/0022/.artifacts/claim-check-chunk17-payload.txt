@@ -1,0 +1,7 @@
+Chunk 17 of 25 (.spec-md lines 648-683, §I.3 tail through §I.8 plus the §J header): audited 8 assumption-shape claims about existing artefacts, all CONFIRMED. Spec-md SHA-256 verified as 145998d627f8117ce384573dda7ea7d73c6a6814f3fe33095b7fea2271f45054 via spec_md_sha_cli (matches the cycle's expected value).
+
+Confirmed pointers: Softellect.Sys.Core.serialize/deserialize with BinaryZippedFormat at C:/GitHub/Softellect/Sys/Core.fs:254,257; the .binz extension on format.fileExtension at C:/GitHub/Softellect/Sys/Primitives.fs:267; calculate/calculate3D at Variables.fs:237,270; plot/plotComparison/plot3D at Charting.fs:21,38,64; Chart.show at Charting.fs:34; open Giraffe.ViewEngine at Charting.fs:9 and createDescription building h1/h2 at Charting.fs:13; OpticalPropertiesWithDisp at Dispersion.fs:53.
+
+The §I.7 "existing in-tree XLSX dependency if one is referenced by Analytics.fsproj" claim was re-derived: Analytics.fsproj references only FSharp.Collections.ParallelSeq, Plotly.NET, and FSharp.Core (no Excel/XLSX/ClosedXML package), so the spec's own conditional "if none is, ClosedXML MUST be added" branch governs — honestly hedged, not a false existence assertion; CONFIRMED.
+
+Chunk verdict: all-resolved. No REFUTED-* or NOT-CHECKED rows in this range.

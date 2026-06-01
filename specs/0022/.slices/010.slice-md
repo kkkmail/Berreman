@@ -1,0 +1,119 @@
+# 010 — Fitting core: merit/target editor, local refinement, ellipsometric residuals & inverse fit (Part G §G.4–G.7)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor). Part G §G.4–G.7.
+- Slice 008 (`.slices/008.slice-md`) — Part F analysis, incl. §F.5 `psiDelta`; §G.6 MUST share that Ψ/Δ derivation, not fork it.
+- Slice 009 (`.slices/009.slice-md`) — the §G.1 interface, §G.2 ALGLIB adapter, and §G.3 `DesignParameters` mapping this slice's residual/refinement builds on.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-G3: After a [Core] local-refinement run on a target/merit set with a lower-bounded thickness of 0, the returned refined `OpticalSystem` MUST contain no negative `Thickness` and MUST satisfy each `Inequality` target's hinge to zero within tolerance.
+- AC-G4: After loading measured R/T or Ψ,Δ CSV data and running inverse fitting, the resulting `FitTarget` sample points MUST be stored in meters via `WaveLength.value`, and the fit MUST reduce χ² below its initial value.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/MeritFunction.fs` (new) — [Core] target/merit editor model; weighted LSQ residual via `Solution.func`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/LocalRefinement.fs` (new) — [Core] LM/quasi-Newton/simplex refinement entry point
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/Ellipsometry.fs` (new) — [Standard] Ψ/Δ from reflected r_p/r_s amplitudes; net-new `EllipsometricFunction` DU (shares §F.5 derivation)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs` (new) — [Standard] measured R/T + Ψ,Δ import (FSharp.Data) to FitTargets
+
+### File:line references owned by this slice
+
+- `FieldFunctions.fs:109` `OpticalFunction` evaluators (`R | Rp | Rs | T | Tp | Ts | EllipticityR | …`); `FieldFunctions.fs:192` `Solution.func` — the SAME evaluator the charts use, reused for `modelValue`.
+- `Solvers.fs:199` `OpticalSystemSolver` (run per target sample point); `Solvers.fs:74` `getRT` (complex reflected/transmitted `EmComponent` amplitudes for Ψ/Δ).
+- `Fields.fs:550` `EmFieldSystem`; `Fields.fs:284` `WaveLength.value` (canonical-SI sample points); `Variables.fs:42` `RangedVariable` (independent-variable sample point).
+- Part F §F.5 `psiDelta` (slice 008) — the shared Ψ/Δ derivation §G.6 consumes; `FieldFunctions.fs:93` Mueller path (owned by Part F §F.3 / slice 008, MUST NOT be revived here).
+
+## Scope
+
+This slice lands the fitting core on top of the slice-009 infrastructure: the [Core] merit/target editor model that assembles a weighted least-squares residual through the SAME `Solution.func` evaluator the charts use (§G.4), the [Core] local-refinement entry point that builds the residual and calls `optimize` with Levenberg–Marquardt as the default (§G.5), the [Standard] Ψ/Δ ellipsometric targets derived from the reflected `EmComponent` amplitudes (§G.6), and [Standard] inverse fitting from measured R/T and Ψ,Δ CSV/tab data (§G.7). The residual closures satisfy the §G.1 `Residual` signature directly and the refined solution is folded back through the §G.3 mapping.
+
+This slice depends on slice 008 (Part F §F.5 `psiDelta` — §G.6 MUST share that derivation, not fork it) and slice 009 (the §G.1 interface, §G.2 adapter, and §G.3 `DesignParameters`). Tests prove AC-G3 (bounded refinement: no negative thickness, inequality hinge to zero) and AC-G4 (inverse fit reduces χ² with sample points in meters) in the gated `OpticalConstructor.Tests` host. Fit-quality, synthesis, the UI page, and the Wolfram end-to-end/needle/bounded tests over the full path are slice 011.
+
+## Requirements
+
+### R-1. §G.4 Target / merit-function editor [Core]
+
+This part MUST define the merit/target model in a new file `OpticalConstructor.Optimization/MeritFunction.fs` and surface it in the UI per G.10, carrying the **[Core]** tier from 010 §II.5. A `FitTarget` (new record) MUST carry: the `OpticalFunction` to evaluate (reuse `FieldFunctions.fs:109`: `R | Rp | Rs | T | Tp | Ts | EllipticityR | …`, extended for Ψ/Δ per G.6), the independent-variable sample point (a `RangedVariable` index or explicit `WaveLength`/`IncidenceAngle`, reusing `Variables.fs:42`), the desired value, a `weight : float`, a `tolerance : float`, and a `kind : TargetKind` DU (`Equality | Inequality of InequalityTarget`) — covering 010 §II.5's "weights, tolerances, and one-sided/inequality targets".
+
+The merit function MUST be assembled as a weighted least-squares residual vector: for each `FitTarget`, residual = weight × (modelValue − desiredValue) / max(tolerance, ε) for `Equality`, and a one-sided hinge (zero when satisfied) for `Inequality`. `modelValue` MUST be obtained by running `OpticalSystemSolver` (`Solvers.fs:199`) on the system produced by the G.3 mapping at the target's sample point and reading `Solution.func` (`FieldFunctions.fs:192`) — the SAME evaluator the charts use, so fit and chart never diverge. The assembled residual closure MUST satisfy the `Residual` signature of G.1 directly. Stored `desiredValue`/sample points MUST be canonical SI (meters for wavelength via `WaveLength.value`, `Fields.fs:284`); unit conversion happens only at the editor boundary (§0 constraint 3). No merit-evaluation cache is admitted here.
+
+### R-2. §G.5 Local refinement optimization [Core]
+
+This part MUST implement local refinement in a new file `OpticalConstructor.Optimization/LocalRefinement.fs`, carrying the **[Core]** tier from 010 §II.5. The entry point MUST take a base `OpticalSystem`, a `DesignParameter list` (G.3), a `FitTarget list` (G.4), and an `OptimizationMethod` (G.1), build the residual closure, and call `optimize` (G.1). Levenberg–Marquardt (`LevenbergMarquardt`) MUST be the default method ("the workhorse", 010 §II.5); quasi-Newton (`QuasiNewtonLbfgs`) and Nelder–Mead simplex (`NelderMead`) MUST be selectable. Bounded parameters MUST be honoured by passing the G.3 bounds as `ParameterBounds`, and inequality targets MUST flow through as G.1 `InequalityTarget`s — satisfying 010 §II.5's "bounded parameters and inequality targets (forbid negative thickness, bound n to physical ranges)".
+
+On success the optimizer's `solution` vector MUST be folded back through the G.3 mapping to produce the refined `OpticalSystem`, which becomes the new working system. Robust normal-equation handling (QR / Gauss–Jordan, 010 §II.5) is delegated to ALGLIB's `minlm` internals via G.2 and MUST NOT be re-implemented on the math seam. This file MUST NOT spawn its own thread; long-running execution and cancellation are owned by G.10.
+
+### R-3. §G.6 Ψ, Δ derivation for ellipsometric residuals [Standard]
+
+This part MUST add the ellipsometric quantities Ψ and Δ as evaluable optimization targets in a new file `OpticalConstructor.Optimization/Ellipsometry.fs`, carrying the **[Standard]** tier from 010 §II.4 ("Ψ, Δ … derivable from existing field amplitudes"). The derivation MUST reuse the complex reflected `EmComponent` amplitudes already solved by `getRT` (`Solvers.fs:74`) and exposed on `EmFieldSystem.reflected` (`Fields.fs:550`): the complex ratio ρ = r_p / r_s yields tan(Ψ)·e^{iΔ}, so Ψ = atan(|ρ|) and Δ = arg(ρ). This file MUST NOT fork `Solvers.fs` or `FieldFunctions.fs` (§0 constraint 2); it consumes their outputs and MUST share the Ψ/Δ definition of Part F §F.5 (`psiDelta`) rather than re-deriving an independent one.
+
+The two new functions MUST be surfaced as additional cases reachable by `FitTarget` (G.4) so ellipsometric targets compose identically to photometric ones. Because `FieldFunctions.fs:109` `OpticalFunction` is closed and §0 constraint 2 forbids forking it, this part MUST add `Psi` and `Delta` as a small net-new `EllipsometricFunction` DU local to `Ellipsometry.fs` with its own evaluator over `EmFieldSystem`, NOT by editing the engine's `OpticalFunction`. The completion of the Mueller path (`FieldFunctions.fs:93`) is owned by Part F §F.3 and MUST NOT be revived by this part — it is outside the fitting scope named in 010 §II.5.
+
+### R-4. §G.7 Inverse fitting from measured R/T and Ψ,Δ [Standard]
+
+This part MUST implement inverse fitting from measured data in a new file `OpticalConstructor.Optimization/InverseFit.fs`, carrying the **[Standard]** tier from 010 §II.5. Measured photometric (R/T) and ellipsometric (Ψ, Δ) spectra MUST be loaded via FSharp.Data (the import library named in the Part A storage seam and 010 §III.2) from CSV/tab sources and converted to canonical SI sample points (wavelength in meters via `WaveLength.value`, `Fields.fs:284`) at the import boundary only.
+
+Each measured spectral point MUST be turned into a `FitTarget` (G.4) whose `OpticalFunction`/`EllipsometricFunction` matches the measured quantity and whose desiredValue is the measured datum; the resulting `FitTarget list` MUST be handed to the G.5 local-refinement entry point. The regressable model parameters MUST be the G.3 design variables — thicknesses, dispersion coefficients (optical constants), and geometry — matching 010 §II.5 ("regress model parameters (thicknesses, optical constants, nonuniformity, roughness)"). Nonuniformity and roughness MUST be expressed, when in scope, as additional `DesignParameter` closures over the base system, NOT as new engine primitives; this part adds no roughness physics beyond what such a closure expresses. This file MUST NOT introduce a measurement-format registry or autodetection beyond the explicit CSV/tab path named here.
+
+## Non-requirements
+
+- No fit-quality reporting (χ²/MSE, CI, correlation, residual arrays, `FitReport`) — owned by slice 011 (§G.8).
+- No needle/tunnelling synthesis or global optimization (simulated annealing / GA) — owned by slice 011 (§G.9).
+- No Synthesis/Fit operator UI page, no progress channel, no Cancel/Revert/refresh UX — owned by slice 011 (§G.10).
+- No Wolfram-reference validation tests — owned by slice 011 (§G.11); the Wolfram end-to-end / needle / bounded tests over the full path live in `BerremanTests/OptimizationTests.fs` (slice 011).
+- §G.5 MUST NOT spawn its own thread; long-running execution and cancellation are owned by §G.10 (slice 011) and the Part J §J.10 job runner (slice 016).
+- MUST NOT revive the Mueller path `FieldFunctions.fs:93` (owned by Part F §F.3 / slice 008).
+- No merit-evaluation cache (§G.4); no re-implementation of normal-equation handling on the math seam (§G.5 delegates to ALGLIB `minlm`); no measurement-format registry/autodetection (§G.7).
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Optimization/MeritFunction.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/LocalRefinement.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/Ellipsometry.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs`
+- `OpticalConstructor/OpticalConstructor.Tests/LocalRefinementTests.fs` (AC-G3: bounded local refinement — no negative thickness, inequality hinge to zero; AC-G4: inverse fit reduces χ² with sample points stored in meters via `WaveLength.value`)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` — register `MeritFunction.fs`, `LocalRefinement.fs`, `Ellipsometry.fs`, `InverseFit.fs` in compile order (after the slice-009 interface/adapter/mapping files; `Ellipsometry`/`MeritFunction` before `LocalRefinement` before `InverseFit`).
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `LocalRefinementTests.fs`.
+
+## Testing plan
+
+Gates: `build`, `unit-tests`, `constructor-unit-tests` (all three).
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` MUST pass with the four new Optimization files compiling.
+- `constructor-unit-tests` gate: runs `OpticalConstructor.Tests`; the new `LocalRefinementTests.fs` MUST pass and increase the count over slice 009's baseline.
+  - AC-G3 (LocalRefinementTests): run a [Core] local-refinement on a target/merit set with a lower-bounded thickness of 0; assert the returned refined `OpticalSystem` contains no negative `Thickness` and satisfies each `Inequality` target's hinge to zero within tolerance.
+  - AC-G4 (LocalRefinementTests): load measured R/T or Ψ,Δ CSV data and run inverse fitting; assert the resulting `FitTarget` sample points are stored in meters via `WaveLength.value`, and the fit reduces χ² below its initial value.
+- `unit-tests` gate: `BerremanTests` stays green (this slice does not touch `BerremanTests`; the full-path Wolfram/needle/bounded tests are slice 011).
+
+## Risks
+
+- **Medium.** The merit residual MUST be assembled from the SAME `Solution.func` evaluator the charts use, so fit and chart never diverge — wiring a parallel evaluator here is the load-bearing mistake. §G.6 MUST share Part F §F.5 `psiDelta` rather than re-deriving Ψ/Δ; forking it splits two definitions of the same quantity. The [Core]/[Standard] tier labels (G.4/G.5 Core, G.6/G.7 Standard) MUST be preserved. §G.5 must not spawn a thread (cancellation is G.10/J.10). Bounded-parameter handling (lower bound 0 for thickness) MUST come from the §G.3 `ParameterBounds`, not a separate validator.
+
+## Hand-off
+
+The fitting core exists and is unit-tested: the [Core] merit/target model (`MeritFunction.fs`) assembling a weighted-LSQ residual through `Solution.func`, the [Core] local-refinement entry point (`LocalRefinement.fs`) with LM default and folding the solution back through the §G.3 mapping, the [Standard] Ψ/Δ ellipsometric targets (`Ellipsometry.fs`, sharing §F.5 `psiDelta`), and [Standard] inverse fitting from measured CSV/tab data (`InverseFit.fs`). Slice 011 adds fit-quality reporting, needle/tunnelling synthesis and global optimization, the Synthesis/Fit operator page, and the Wolfram-reference validation in `BerremanTests/OptimizationTests.fs`. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

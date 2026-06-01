@@ -1,0 +1,101 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.Ui</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <!-- Slice 001 ships an empty placeholder; later UI slices add the MVU
+         model/update (no Avalonia type in the model, per P3) and view bodies. -->
+    <ItemGroup>
+        <Compile Include="Ui.fs" />
+        <Compile Include="MaterialPreview.fs" />
+        <Compile Include="StackEditor.fs" />
+        <Compile Include="Sources\SourceEditorView.fs" />
+        <Compile Include="Sources\PolarizationPicker.fs" />
+        <Compile Include="ConstructionPage.fs" />
+        <Compile Include="SynthesisFitPage.fs" />
+        <!-- Part H charts (slice 012): ChartSettings + SeriesData first, then the
+             views that consume them. -->
+        <Compile Include="Charts\ChartSettings.fs" />
+        <Compile Include="Charts\SeriesData.fs" />
+        <Compile Include="Charts\Plot1DView.fs" />
+        <Compile Include="Charts\Plot3DView.fs" />
+        <Compile Include="Charts\Readout.fs" />
+        <Compile Include="Charts\PolarizationPlots.fs" />
+        <Compile Include="Charts\CieView.fs" />
+        <!-- Part J UX shell I (slice 014): RepeatBuilder before Templates (the
+             DBR template calls RepeatBuilder.expand); Schematic and Workspace
+             consume StackEditor / the Part H charts already compiled above. -->
+        <Compile Include="RepeatBuilder.fs" />
+        <Compile Include="Templates.fs" />
+        <Compile Include="Schematic.fs" />
+        <Compile Include="Workspace.fs" />
+        <!-- Part J UX shell II (slice 015): UserEnvironment (EnvironmentSettings/
+             Preferences) first; Validation is standalone; AppShell consumes the
+             UserEnvironment theme/layout types and is authored against the public
+             MIT FuncUI DSL (the audit-gated clone stays UNREFERENCED). -->
+        <Compile Include="UserEnvironment.fs" />
+        <Compile Include="Validation.fs" />
+        <Compile Include="AppShell.fs" />
+        <!-- Part J UX shell III (slice 016, LAST): JobRunner (the shared background
+             sweep/fit harness) is standalone; Help builds gallery samples through the
+             Templates open path compiled above; SystemView3D consumes the BeamTree.
+             No FuncUI-clone reference is added (the clone stays UNREFERENCED). -->
+        <Compile Include="JobRunner.fs" />
+        <Compile Include="Help.fs" />
+        <Compile Include="SystemView3D.fs" />
+    </ItemGroup>
+
+    <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
+         build-copied content item loaded beside the assembly at runtime by
+         UserEnvironment.validate; it flows transitively to consuming projects'
+         output (so the Tests project's validate-on-load finds it). -->
+    <ItemGroup>
+        <Content Include="optical-constructor-environment.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <!-- Public, MIT-licensed Avalonia + FuncUI NuGet (the buildable interpretation
+         of §A.6). This is NOT the audit-gated clone at Avalonia.FuncUI.Clone,
+         which stays unreferenced until the §A.9 audit passes (AC-A8). -->
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.300" />
+        <PackageReference Include="Avalonia" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
+        <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
+        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.58" />
+        <PackageReference Include="Plotly.NET" Version="5.1.0" />
+        <PackageReference Include="OpenTK" Version="4.9.4" />
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
+        <!-- Part H (slice 012) consumes the engine sweeps/charting data builders
+             (Analytics.Variables/Charting) and §F.6/§F.8 (Analytics.FieldProfile/
+             Colorimetry). No new C# project, no FuncUI-clone reference. -->
+        <ProjectReference Include="..\..\Analytics\Analytics.fsproj" />
+    </ItemGroup>
+
+</Project>

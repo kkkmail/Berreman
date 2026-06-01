@@ -1,0 +1,144 @@
+# 011 — Fit quality, synthesis/global optimization, Synthesis/Fit page & Wolfram validation (Part G §G.8–G.11)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor). Part G §G.8–G.11.
+- Slice 008 (`.slices/008.slice-md`) — Part F analysis (incl. §F.5 `psiDelta`, the Mueller/energy-balance/colorimetry quantities the §G.11 cross-checks reuse).
+- Slice 009 (`.slices/009.slice-md`) — §G.1 interface / §G.2 ALGLIB adapter / §G.3 `DesignParameters`.
+- Slice 010 (`.slices/010.slice-md`) — §G.4 merit, §G.5 local refinement, §G.6 ellipsometry, §G.7 inverse fit.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-G5: After a fit completes, the `FitReport` MUST expose χ²/MSE, a parameter correlation matrix, confidence intervals, and per-sample residuals, and MUST be writable as a `.binz` sidecar (never inside the canonical JSON project).
+- AC-G6: After needle optimization inserts a layer, the films list MUST grow by exactly one `Layer` and the post-insertion merit value MUST be no greater than the pre-insertion value.
+- AC-G7: After clicking Cancel on a running optimizer, the G.5/G.9 loop MUST stop cooperatively and the page MUST be able to Revert to the pre-fit working `OpticalSystem`; Cancel MUST be a distinct control from Start.
+- AC-G8: After a fit completes, the result charts MUST refresh through `plotComparison` showing fit-vs-measured overlay without a manual reload.
+- AC-G9: After running `LocalRefinement` with `LevenbergMarquardt` on the Wolfram reference R/T and Ψ/Δ cases, the converged parameters and final χ² MUST match the recorded Wolfram values within the stated test tolerance.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/FitQuality.fs` (new) — [Standard] χ²/MSE, CI, correlation, residuals; covariance via math seam; FitReport
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/Synthesis.fs` (new) — [Standard] needle/tunnelling + simulated annealing / GA
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/SynthesisFitPage.fs` (new) — FuncUI MVU Synthesis/Fit operator page (G.10 checklist)
+- `C:/GitHub/Berreman/Berreman/BerremanTests/OptimizationTests.fs` (new) — Wolfram minlm validation + bounded-fit tests; added to `BerremanTests.fsproj` (`Berreman.slnx:20`)
+
+### File:line references owned by this slice
+
+- `FieldFunctions.fs:192` `Solution.func`; `FieldFunctions.fs:109` `OpticalFunction` — the merit evaluator the synthesis loop reuses; `Charting.fs:38` `plotComparison` — the fit-vs-measured overlay refresh path.
+- `MathNetNumericsMath.fs:5` — the Part A math seam for the covariance real-matrix inverse/factorization (engine-side linear algebra, NOT ALGLIB, per §A.8).
+- `Media.fs:94` `OpticalSystem`, `Media.fs:24` `Layer` — base system grown by needle insertion; `Solvers.fs:199` `OpticalSystemSolver` — the real forward model the §G.11 tests exercise (no stub).
+- `Core.fs:257` `serialize … BinaryZippedFormat` — the `.binz` fit-history sidecar; `Berreman.slnx:20` `BerremanTests.fsproj` — host of `OptimizationTests.fs`.
+
+## Scope
+
+This slice closes Part G: [Standard] fit-quality reporting with the `FitReport` `.binz` sidecar (§G.8), [Standard] needle/tunnelling synthesis and global optimization (§G.9), the Synthesis/Fit operator page with the six-item operator-UX checklist (§G.10), and validation against the Wolfram reference fits (§G.11). `SynthesisFitPage.fs` is UI-touching (FuncUI) and relies on the slice-001 buildable interpretation: the public MIT `Avalonia.FuncUI` NuGet, NOT the audit-gated clone at `C:\GitHub\Avalonia.FuncUI.Clone\`; this slice MUST NOT reference the clone or resolve its linking mechanism. §G.10 is the operator-UX checklist for the page with long-running cancellable jobs; the shared background-job runner is Part J §J.10 (slice 016) and this slice supplies only the per-iteration optimizer progress payload to it. This slice depends on slices 008–010.
+
+**Re-scoping of §G.11 / AC-G9 (reconciler round-2 §a — applied).** §G.11 and AC-G9 (reproduced VERBATIM below in Requirements / the AC list, because they are contractful) require encoding the converged parameters and final χ² from the ported Wolfram `FindMinimum`/`NonlinearModelFit` runs as fixed expected values. But §G.0 states the Wolfram/Mathematica workflow "lives outside the repository entirely," and no fixture in the repo carries those recorded values. The worker MUST therefore satisfy AC-G9/§G.11 by ONE of two paths, and MUST document which it took:
+
+(a) **Recorded-Wolfram fixture path.** IF the operator supplies the recorded Wolfram converged parameters and final χ² as an explicit fixture input under the spec's `.manual/` folder, carry those values as the fixed expected values and assert `LocalRefinement` + `LevenbergMarquardt` reproduces them within the stated tolerance, over the full `DesignParameters`→`MeritFunction`→`optimize`→`AlglibAdapter`→`OpticalSystemSolver` path.
+
+(b) **Self-consistency / regression path.** OTHERWISE, implement AC-G9/§G.11 as a self-consistency / regression test: generate a synthetic target from the REAL `OpticalSystemSolver` (`Solvers.fs:199`) forward model (no stubbed forward model), perturb the parameters, and assert `LocalRefinement` driving `LevenbergMarquardt` recovers them to a stated tolerance over the full `DesignParameters`→`MeritFunction`→`optimize`→`AlglibAdapter`→`OpticalSystemSolver` path. Document the limitation (no external Wolfram ground truth available in-repo) explicitly in the impl-log and the state-of-the-world.
+
+The worker MUST NOT fabricate invented numbers and present them as Wolfram ground truth. This is the slice's interpretation note for §G.11 / AC-G9.
+
+## Requirements
+
+### R-1. §G.8 Fit-quality reporting [Standard]
+
+This part MUST compute and expose fit-quality metrics in a new file `OpticalConstructor.Optimization/FitQuality.fs`, carrying the **[Standard]** tier from 010 §II.5. From the `OptimizationResult.finalResiduals` (G.1) and the residual Jacobian at the solution, this part MUST compute χ²/MSE, parameter confidence intervals, and the parameter correlation matrix, and MUST retain the per-sample residuals for residual plots and fit-vs-measured overlay (010 §II.5).
+
+The confidence intervals and correlation matrix MUST be derived from the covariance estimate (inverse of JᵀJ scaled by reduced χ²). The required real-matrix inverse/factorization MUST go through the Part A math seam `MathNetNumericsMath.fs:5` (this is engine-side linear algebra, NOT optimization, so ALGLIB MUST NOT be used here per §A.8); the cloned Math.NET routines reached via that seam are the primitive to call. The residual-plot and overlay data MUST be returned as plain arrays for the G.10 UI and the charting path (`plotComparison`, `Charting.fs:38`); this part MUST NOT render charts itself. A `FitReport` (new record) MUST aggregate χ²/MSE, the interval/correlation tables, and the residual arrays, and MUST be persistable as a `.binz` fit-history sidecar (§0 constraint 4; `serialize … BinaryZippedFormat`, `Core.fs:257`), NOT inside the canonical JSON project.
+
+### R-2. §G.9 Needle/tunnelling synthesis and global optimization [Standard]
+
+This part MUST implement synthesis methods in a new file `OpticalConstructor.Optimization/Synthesis.fs`, carrying the **[Standard]** tier from 010 §II.5. **Needle optimization** MUST, at each iteration, evaluate the merit-function gradient with respect to inserting a vanishingly thin layer at each candidate depth in the films list of the base `OpticalSystem` (`Media.fs:94`), insert one `Layer` (`Media.fs:24`) of small thickness at the position that most decreases the merit function, then re-run local refinement (G.5) on the grown design — growing the layer count without bounding the parameter space (010 §II.5). **Tunnelling / gradual evolution** MUST perturb a converged design to escape local minima and re-refine, combined with needle insertion per 010 §II.5.
+
+**Global optimization** MUST provide simulated annealing and a genetic/evolutionary algorithm for multimodal merit landscapes where refinement stalls (010 §II.5). These MUST be driven through the same G.1 `Residual` closure and MUST select the appropriate `OptimizationMethod`/ALGLIB routine through G.2 where one exists; the annealing/GA outer loop that ALGLIB does not provide MAY be implemented in this file as an explicit F# loop over the `Residual` closure, with each candidate evaluated by the G.4 merit assembly. This part MUST NOT add parallel-evaluation infrastructure, distributed execution, or a plugin system for synthesis strategies — only the two synthesis families and two global methods named in 010 §II.5.
+
+### R-3. §G.10 Synthesis/Fit operator page, jobs, and result refresh
+
+This part MUST add a top-level Synthesis/Fit page to the FuncUI MVU surface (`OpticalConstructor.Ui.fsproj`, Part A assembly map) hosting the G.4 target editor, the G.3 parameter/bound table, the method selector (G.1 `OptimizationMethod`), and the G.8 fit report. Because this introduces an operator page and long-running cancellable jobs, this part MUST commit explicitly on the operator-facing UX checklist:
+
+1. **Discoverability/nav entry** — the page MUST be reachable from the main navigation as a named "Synthesis / Fit" entry alongside the existing stack/chart pages.
+2. **Progress granularity** — every optimizer run MUST report progress as iteration count and current χ²/MSE via a progress channel distinct from the G.1 interface (G.1 stays callback-free); the channel MUST update at each optimizer iteration. The shared background-job runner of Part J §J.10 hosts this run; this part supplies the per-iteration progress payload.
+3. **Pre-confirmation gate vs one-click** — starting a fit MUST be one-click (non-destructive: it produces a candidate system, it does not overwrite saved files); ACCEPTING a fit result that replaces the working `OpticalSystem` MUST require an explicit confirm.
+4. **Completion → results refresh** — on optimizer completion the refined system MUST be folded back via G.3 and the result charts MUST refresh through the existing `plotComparison` path (`Charting.fs:38`) showing fit-vs-measured overlay (G.8) without a manual reload.
+5. **Opposing-action button UX + undo** — the page MUST provide a Cancel button that cooperatively stops the running optimizer (the G.5/G.9 loops MUST observe a cancellation flag) and a Revert action restoring the pre-fit working system; Cancel and Start MUST NOT be the same control.
+6. **Committable file vs root .gitignore collisions** — `.binz` fit-history sidecars (G.8) and any exported fit reports MUST be written under the project's working folder and MUST be added to the repository root `.gitignore`, NOT committed; the canonical JSON project (which references them as sidecars, §0 constraint 4) is the committable artefact.
+
+Long-running execution MUST run off the UI thread so the MVU `update` stays responsive; this part MUST NOT add a job-queue, retry, or scheduling abstraction beyond a single cancellable run at a time.
+
+### R-4. §G.11 Validation against the Wolfram reference fits
+
+This part MUST validate the ALGLIB `minlm` path against the Wolfram reference fits, per §A.8 ("Validate ALGLIB's `minlm` against the Wolfram reference fits"), in a new test file `Berreman/BerremanTests/OptimizationTests.fs` added to `BerremanTests.fsproj` (`Berreman.slnx:20`). The tests MUST encode, as fixed expected values, the converged parameters and final χ² from the ported Wolfram `FindMinimum`/`NonlinearModelFit` runs for at least one thin-film R/T refinement case and one ellipsometric Ψ/Δ case, and MUST assert that `LocalRefinement` (G.5) driving `LevenbergMarquardt` (G.2) reproduces them to a stated tolerance.
+
+The tests MUST exercise the full path — `DesignParameter` mapping (G.3) → merit residual (G.4) → `optimize` (G.1) → ALGLIB adapter (G.2) — using the real `OpticalSystemSolver` (`Solvers.fs:199`), NOT a stubbed forward model, so the validation covers the engine/optimizer seam end to end. A bounded-parameter case MUST assert that a fit started outside the physical range terminates inside the G.3 bounds (no negative thickness). These tests MUST NOT depend on the UI project.
+
+(Interpretation note, applied: see Scope re-scoping above. Because §G.0 places the Wolfram workflow outside the repository and no in-repo fixture carries the recorded values, the worker satisfies the "fixed expected values" requirement either via an operator-supplied `.manual/` Wolfram fixture (path a) or via a self-consistency/regression test over the real `OpticalSystemSolver` forward model (path b), documenting the absence of external Wolfram ground truth. The worker MUST NOT fabricate numbers and present them as Wolfram ground truth.)
+
+## Non-requirements
+
+- No optimization interface, ALGLIB adapter, or `DesignParameters` mapping — owned by slice 009 (§G.1–G.3).
+- No merit/target editor model, local-refinement entry point, ellipsometry derivation, or inverse-fit import — owned by slice 010 (§G.4–G.7); this slice consumes them.
+- No parallel-evaluation infrastructure, distributed execution, or a plugin system for synthesis strategies (§G.9).
+- No job-queue, retry, or scheduling abstraction beyond a single cancellable run at a time (§G.10); the shared background-job runner harness itself is Part J §J.10 (slice 016) — this slice supplies only the per-iteration progress payload to it.
+- MUST NOT render charts in `FitQuality.fs` (§G.8 returns plain arrays for the G.10 UI / `plotComparison`); MUST NOT use ALGLIB for the covariance linear algebra (it goes through `MathNetNumericsMath.fs:5`).
+- MUST NOT reference, link, or build against the FuncUI clone (`C:\GitHub\Avalonia.FuncUI.Clone\`) or resolve its linking mechanism (constraint 5 / slice-001 buildable interpretation).
+- The §G.11 tests MUST NOT depend on the UI project; MUST NOT use a stubbed forward model; MUST NOT fabricate Wolfram ground-truth numbers.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Optimization/FitQuality.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/Synthesis.fs`
+- `OpticalConstructor/OpticalConstructor.Ui/SynthesisFitPage.fs` (FuncUI MVU; public MIT Avalonia.FuncUI NuGet, NOT the clone)
+- `Berreman/BerremanTests/OptimizationTests.fs` (recorded-Wolfram fixtures OR self-consistency regression per the applied re-scoping: `LocalRefinement` + `LevenbergMarquardt` reproduce the expected values within tolerance over the full `DesignParameters`→`MeritFunction`→`optimize`→`AlglibAdapter`→`OpticalSystemSolver` path, no stub (AC-G9); bounded-fit test: a thickness started outside its range terminates inside the G.3 bounds with no negative `Thickness` (AC-G3); needle-insertion test: films list grows by one `Layer` and post-insertion merit ≤ pre-insertion (AC-G6); Mueller-equivalence test: completed `EmField.muellerMatrix` equals `MuellerMatrix.fromEmFields` (AC-F3); energy-balance test: `totalAbsorbedPower` equals `absorptance` (1−R−T) within tolerance (AC-F7); ellipsometry round-trip: `psiDelta` reproduces analytic Ψ,Δ and `ncs` satisfies N²+C²+S²=1 (AC-F5); colorimetry sanity: flat R=1 under D65 maps via `xyzToSrgb` to near-white (AC-F8))
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` — register `FitQuality.fs`, `Synthesis.fs` in compile order (after the slice-010 files).
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `SynthesisFitPage.fs` (public MIT Avalonia.FuncUI NuGet; no clone reference).
+- `Berreman/BerremanTests/BerremanTests.fsproj` — add `<Compile Include>` for `OptimizationTests.fs` (`Berreman.slnx:20`).
+- `C:/GitHub/Berreman/.gitignore` — ensure `*.binz` fit-history sidecars are ignored (§G.10 item 6; the `.gitignore` edit for `*.binz`/`*.autosave` is owned by slice 012 / Part I — coordinate so the fit-history sidecar path is covered, do NOT duplicate the rule).
+
+## Testing plan
+
+Gates: `build`, `unit-tests`, `constructor-unit-tests` (all three).
+
+- `build` gate: `dotnet build Berreman.slnx -c Release` MUST pass with `FitQuality.fs`, `Synthesis.fs`, the UI `SynthesisFitPage.fs` (public Avalonia.FuncUI NuGet, no clone), and `BerremanTests/OptimizationTests.fs` compiling.
+- `unit-tests` gate: runs `BerremanTests` (`dotnet test --no-build -c Release` from `Berreman/BerremanTests/`); the new `OptimizationTests.fs` MUST pass over the full `DesignParameters`→`MeritFunction`→`optimize`→`AlglibAdapter`→`OpticalSystemSolver` path with the real solver (no stub) and MUST NOT depend on the UI project.
+  - AC-G9: `LocalRefinement` + `LevenbergMarquardt` reproduces the expected converged parameters and final χ² within the stated tolerance (recorded-Wolfram fixture path a, OR self-consistency/regression path b per the applied re-scoping).
+  - AC-G3 (bounded-fit): a thickness started outside its range terminates inside the G.3 bounds with no negative `Thickness`.
+  - AC-G6 (needle-insertion): the films list grows by exactly one `Layer` and post-insertion merit ≤ pre-insertion.
+  - AC-F3/AC-F7/AC-F5/AC-F8 cross-checks (Mueller equivalence, energy balance, ellipsometry round-trip, colorimetry sanity) per the line-1002 test description.
+- `constructor-unit-tests` gate: runs `OpticalConstructor.Tests`; stays green (this slice's optimization additions are exercised end-to-end in `BerremanTests`, AC-G5/AC-G7/AC-G8 covered as below).
+  - AC-G5: a `FitReport` exposes χ²/MSE, correlation matrix, confidence intervals, per-sample residuals, and is writable as a `.binz` sidecar (never inside canonical JSON).
+  - AC-G7: clicking Cancel stops the G.5/G.9 loop cooperatively and the page can Revert to the pre-fit working `OpticalSystem`; Cancel is a distinct control from Start (tested at the model/`update` level, no Avalonia type — per P3).
+  - AC-G8: on completion the result charts refresh through `plotComparison` showing fit-vs-measured overlay without a manual reload (model/`update`-level assertion).
+
+## Risks
+
+- **Medium/high.** The §G.11 / AC-G9 contract assumes recorded Wolfram ground-truth values that §G.0 places outside the repository; the applied re-scoping (fixture path a vs self-consistency path b) is the load-bearing decision — the worker MUST NOT fabricate numbers and present them as Wolfram ground truth, and MUST document the chosen path and the no-external-ground-truth limitation in the impl-log and state-of-the-world. The §G.8 covariance linear algebra MUST go through `MathNetNumericsMath.fs:5`, NOT ALGLIB (§A.8). The UI page MUST use the public MIT Avalonia.FuncUI NuGet, not the audit-gated clone, and the model/`update` MUST contain no Avalonia type so AC-G7/AC-G8 are testable headlessly (P3). §G.10 long-running execution defers to the Part J §J.10 job runner (slice 016) — this slice supplies only the progress payload and a single cancellable run; do not build a job-queue here. The needle/global loops MUST observe the cancellation flag (AC-G7).
+
+## Hand-off
+
+Part G is complete: [Standard] fit-quality reporting with the `FitReport` `.binz` sidecar (`FitQuality.fs`), [Standard] needle/tunnelling synthesis and global optimization (`Synthesis.fs`), the Synthesis/Fit operator page over the six-item UX checklist (`SynthesisFitPage.fs`, public Avalonia.FuncUI NuGet), and the Wolfram-reference validation in `BerremanTests/OptimizationTests.fs` over the real-solver full path. Slice 012 (Part H — charts) and later slices build on this. Under `Deferred`, record explicitly: (1) the chosen §G.11 / AC-G9 path (operator-supplied `.manual/` Wolfram fixture vs self-consistency/regression) and the no-external-Wolfram-ground-truth limitation; (2) the §G.10 long-running job runner is the Part J §J.10 harness (slice 016), to which this slice supplies only the per-iteration progress payload; (3) the still-open `NelderMead` simplex-backend decision from slice 009. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `unit-tests` (BerremanTests) and `constructor-unit-tests` counts so the next slice's `count_at_least` gate has a baseline.

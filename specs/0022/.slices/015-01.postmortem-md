@@ -1,0 +1,110 @@
+# Post-mortem -- slice 015, attempt 01
+
+## Summary
+
+Slice 015 never ran: the arc-runner hit its global wall-clock cap at slice
+entry, escalating with `max-wall-time-exceeded (37205s > 36000s)` immediately
+after committing slice 014. No worker, gates, critics, or judge ever fired for
+this slice, so the failure is an arc-level budget exhaustion, not a defect in
+slice 015.
+
+## Root cause
+
+The single load-bearing cause is **arc-global wall-clock exhaustion at the
+slice-015 entry boundary**, not anything specific to the slice. `.manifest.state.json`
+records `current_slice` (index 14, `015.slice-md`) with
+`"status": "escalated"` and `"reason": "max-wall-time-exceeded (37205s > 36000s)"`,
+`"escalation_md": ""`, `conversation_seq` 1, `total_route_backs` 0,
+`resolver_runs` 0. The arc `started_utc` is `2026-06-01T00:47:23Z` and
+`last_updated_utc` is `2026-06-01T11:07:29Z`; the gap is 37205s ≈ 10h20m05s,
+just past the 36000s (10h) supervisor wall-clock budget.
+
+The arc-runner log confirms the escalation fired *before* slice 015 was ever
+dispatched. The last substantive events are slice 014's `done-green` verdict
+(`014-03-code-judge.md`) and `COMMIT_OK {slice_index: 13, sha:
+56328e08...}` at `11:07:29Z`, followed directly by
+`POSTMORTEM-SPAWN slice=015 attempt=01` at the same second. There is **no**
+`SLICE-START idx=14`, no `BUDGET idx=14`, no worker `SPAWN` for `015.slice-md`,
+no `GATE-START`/`GATE_RESULT`, no critic spawn, and no `JUDGE_VERDICT` for slice
+015 anywhere in the log. Consistent with that, the worker artefacts the task
+file lists as inputs — `.slices/015-impl-log.md` and
+`.slices/015-state-of-the-world.md` — do not exist on disk, and the judge,
+critic, resolver, gate-results, and escalation-MD inputs are all `(none)`.
+
+Slice 015 itself is healthy and not implicated. Its gate roster
+(`.slices/015.gates`) is the hand-repaired full-descriptor form (`name: build`
+/ `unit-tests` / `constructor-unit-tests`), byte-identical to `014.gates`,
+which parsed cleanly all run; the per-slice gate snapshot reader had no quarrel
+with it. The lone `ESCALATE` in the log (line 1, `2026-06-01T00:34:20Z`,
+"per-slice gate snapshot does not parse … gate descriptor 'name' must be a
+non-empty string" across `001.gates`–`016.gates`) predates this arc's
+`started_utc` of `00:47:23Z`; it came from the bare-list short form the
+splitter emitted, was fixed by the `2026-05-31` hand-repair noted in the
+`.gates` headers, and is stale with respect to slice 015.
+
+Why the budget was spent: the 10h+ was consumed by fourteen successful slice
+commits (`001`–`014`), several of which took multiple review cycles and a
+resolver rescue — slice 010 (two route-backs then a `failures-cap` resolver
+rescue, `done-green` at `07:39:18Z`), slice 011 (one route-back), slice 012
+(two route-backs plus a resolver rescue, `done-green` at `09:59:51Z`), and
+slice 013 (one route-back). The cumulative wall time crossed 36000s during
+slice 014's review, so the supervisor escalated the next slice (015) at entry
+rather than starting a worker it could not finish within budget. Note the
+`.manifest` carries only `worker_timeout_sec` (14400), `worker_hangup_idle_sec`
+(3600), `worker_review_max_cycles` (3), and `max_total_route_backs` (30) — it
+has **no** arc-global wall-time key, so the 36000s ceiling is a supervisor
+default rather than a value tuned for this 16-slice arc.
+
+## Evidence
+
+- Escalation record: `.manifest.state.json` `current_slice` → `{"index": 14,
+  "path": "specs\\0022\\.slices\\015.slice-md", "status": "escalated",
+  "reason": "max-wall-time-exceeded (37205s > 36000s)", "escalation_md": "",
+  "conversation_seq": 1, "total_route_backs": 0, "resolver_runs": 0}`.
+- Timing: `started_utc 2026-06-01T00:47:23Z`, `last_updated_utc
+  2026-06-01T11:07:29Z` → 37205s elapsed vs 36000s cap.
+- No slice-015 execution: arc-runner log shows `COMMIT_OK {slice_index: 13,
+  sha: 56328e08...}` at `11:07:29Z` immediately followed by `POSTMORTEM-SPAWN
+  slice=015 attempt=01` — no `SLICE-START`, `BUDGET`, worker `SPAWN`,
+  `GATE-START`, or `JUDGE_VERDICT` bearing `015` exists.
+- Missing worker outputs: `.slices/015-impl-log.md` and
+  `.slices/015-state-of-the-world.md` do not exist (task inputs unreadable);
+  judge/critic/resolver/gate/escalation-MD inputs all `(none)`.
+- Slice 015 is well-formed: `.slices/015.gates` is the hand-repaired
+  full-descriptor roster, identical to `014.gates`; prior slices logged
+  `GATE-SNAPSHOT … gates=3` without error.
+- Stale prior escalation: log line 1 `ESCALATE` at `00:34:20Z` (gate-descriptor
+  parse) predates `started_utc 00:47:23Z` and was resolved by the `2026-05-31`
+  `.gates` hand-repair — unrelated to slice 015.
+- Budget consumers: resolver rescues on slices 010 and 012
+  (`RESOLVER-RESCUE category=failures-cap`), route-backs on 010/011/012/013
+  (`REVIEW-ROUTE-BACK`, `SLICE-FAILURE`), all `done-green` before 015's entry.
+- Cap is a default, not manifest-set: `.manifest` declares
+  `worker_timeout_sec: 14400`, `worker_hangup_idle_sec: 3600`,
+  `worker_review_max_cycles: 3`, `max_total_route_backs: 30` — no
+  arc-wall-time key.
+
+## Proposed solutions
+
+1. Re-launch the arc-runner to resume from slice 015. The repository is intact
+   and consistent — `001`–`014` are committed (`HEAD = 56328e08`,
+   `completed_slices` indices 0–13), and slice 015 produced nothing to undo
+   because no worker ran. Relaunching the arc resets the wall-clock counter, so
+   slice 015 (and the final slice 016) get a fresh budget with no code or spec
+   change required. This is the lowest-risk path back to green.
+
+2. OR, before relaunching, raise the arc-global wall-time ceiling so the
+   resumed run does not re-trip it. Because `.manifest` has no wall-time key
+   (only `worker_timeout_sec` / `worker_hangup_idle_sec` /
+   `max_total_route_backs`), the 36000s cap lives in the supervisor launch
+   config / `.specrc` default; add an explicit override sized to comfortably
+   cover the two remaining slices (015 + 016) plus review-cycle headroom, then
+   relaunch.
+
+3. OR, as a longer-term fix for full 16-slice runs in one budget, reduce the
+   per-slice wall cost that pushed this arc past 10h — slices 010 and 012 each
+   spent two review cycles plus a `failures-cap` resolver rescue. Either accept
+   that this arc must be run in segments (resume points at slice boundaries, as
+   here) or revisit splitter granularity for the heaviest UX-shell slices so
+   each fits the cap with margin. This is optional and not required to unblock
+   015.

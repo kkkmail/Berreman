@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/optical-constructor-project.json",
+  "title": "OpticalConstructorProject",
+  "description": "Canonical, hand/LLM-editable project envelope for the Berreman Optical Constructor (Spec 0022, Part I). This slice (003) authors the top-level envelope and the storage-owned $defs (materialEntry, sourceSpec, unitOfMeasure, project root). The physics-shaped $defs (opticalSystem, layer, opticalProperties, beamNode, beamBranch, constructorElement) are reserved anchors filled by Parts B-G and are intentionally permissive here.",
+  "type": "object",
+  "required": ["schemaVersion", "beamTree", "systems"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "The single shipped schema version. A differing value is a validation error, not a migration trigger (Part I, out-of-scope migration)."
+    },
+    "beamTree": {
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": { "$ref": "#/$defs/beamNode" }
+      },
+      "description": "The beam-tree orchestration aggregate, rooted at a single beamNode (Part A, A.4)."
+    },
+    "systems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/opticalSystem" },
+      "description": "Per-element optical stacks reused as-is from the engine."
+    },
+    "materials": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/materialEntry" },
+      "description": "Material library entries (added by slice 004)."
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceSpec" },
+      "description": "Source specifications (added by slice 007)."
+    },
+    "sweeps": {
+      "type": "array",
+      "description": "Parametric-sweep descriptors (later slices)."
+    },
+    "chartSettings": {
+      "description": "Chart settings (added by slice 012)."
+    },
+    "sidecars": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^/\\\\][^:]*\\.binz$",
+        "description": "A derived/bulk artefact reference. MUST be a relative path ending in .binz so a moved project folder keeps its sidecars (Part I, I.4)."
+      },
+      "description": "Optional references to derived/bulk .binz sidecars by relative path only."
+    }
+  },
+  "$defs": {
+    "unitOfMeasure": {
+      "type": "string",
+      "enum": [
+        "Meter",
+        "Millimeter",
+        "Micrometer",
+        "Nanometer",
+        "Angstrom",
+        "ElectronVolt",
+        "Wavenumber"
+      ],
+      "description": "Boundary unit-of-measure vocabulary (Part D, D.1). A display/IO label only; the stored magnitude is always canonical SI."
+    },
+    "materialEntry": {
+      "type": "object",
+      "description": "A material-library entry (Part D, D.8). Display metadata plus the dispersion sub-object (D.5-D.7) realised by slice 004. Persisted magnitudes are canonical SI; the wavelengthUnit/thermoOptic labels carry display/SI-unit intent only, never a non-SI datum (D.11).",
+      "required": ["id", "name", "category"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable entry id; the resolveMaterial lookup key (D.8)." },
+        "name": { "type": "string", "description": "Display name." },
+        "category": {
+          "type": "string",
+          "enum": ["Glass", "Metal", "Semiconductor", "Crystal"],
+          "description": "Material category for filtering (D.8)."
+        },
+        "description": { "type": "string", "description": "Optional human-readable description (A.7)." },
+        "dispersion": { "$ref": "#/$defs/dispersionModel" }
+      }
+    },
+    "dispersionModel": {
+      "type": "object",
+      "description": "Tagged analytic dispersion model (Part D, D.5). 'kind' selects the coefficient record; the coefficient scalars (e.g. Sellmeier b/c term lists, Cauchy a/b/c, Drude plasma/damping frequencies, constant n/k) plus the wavelengthUnit label and the optional thermoOptic are the only persisted data. Coefficient scalars are admitted as additional properties keyed by the owning record's field names. Schema versioning of these coefficient records is out of scope (D.5).",
+      "required": ["kind", "wavelengthUnit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["Sellmeier", "Cauchy", "Lorentz", "Drude", "TaucLorentz", "GaussianOscillator", "ConstantNK"]
+        },
+        "wavelengthUnit": { "$ref": "#/$defs/unitOfMeasure" },
+        "thermoOptic": { "$ref": "#/$defs/thermoOptic" }
+      }
+    },
+    "thermoOptic": {
+      "type": "object",
+      "description": "Optional first-order thermo-optic parameters (Part D, D.12). Only dndT/referenceTemperature persist; the operating temperature is supplied at evaluation and is NEVER persisted.",
+      "required": ["dndT", "referenceTemperature"],
+      "properties": {
+        "dndT": { "type": "number", "description": "dn/dT in SI 1/K." },
+        "referenceTemperature": { "type": "number", "description": "Reference temperature in SI K." }
+      },
+      "additionalProperties": false
+    },
+    "sourceSpec": {
+      "type": "object",
+      "description": "Reserved storage-owned anchor for a source specification; filled by slice 007."
+    },
+    "beamBranch": {
+      "type": "string",
+      "enum": ["Reflected", "Transmitted"],
+      "description": "The two attachment points of a non-mirror element (Part B, B.2/B.3). A fieldless DU serialized as a bare string; also the key half of each children pair (B.5/B.9)."
+    },
+    "layer": {
+      "type": "object",
+      "description": "A reused engine Layer (Media.fs:24): a tensor and a thickness. Filled by slice 005 (Part B, B.5). The thickness is the canonical SI value in meters (Part A constraint 3) carried by the Thickness DU — either a finite {Case:'Thickness',Fields:[<meters>]} or the bare string 'Infinity'.",
+      "required": ["properties", "thickness"],
+      "properties": {
+        "properties": { "$ref": "#/$defs/opticalProperties" },
+        "thickness": {
+          "oneOf": [
+            { "type": "string", "const": "Infinity" },
+            {
+              "type": "object",
+              "required": ["Case", "Fields"],
+              "properties": {
+                "Case": { "const": "Thickness" },
+                "Fields": { "type": "array", "items": { "type": "number" }, "minItems": 1, "maxItems": 1 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "opticalSystem": {
+      "type": "object",
+      "description": "A reused engine OpticalSystem (Media.fs:94): upper/lower half-space tensors, the films layer stack, and an optional substrate. Filled by slice 005 (Part B, B.5-B.7). The substrate option is null (thin film), {Case:'Plate',Fields:[layer]} (thick plate), or {Case:'Wedge',Fields:[wedgeLayer]} (wedge); all magnitudes are canonical SI (Part A constraint 3).",
+      "required": ["upper", "films", "lower"],
+      "properties": {
+        "description": { "type": ["string", "null"] },
+        "upper": { "$ref": "#/$defs/opticalProperties" },
+        "films": { "type": "array", "items": { "$ref": "#/$defs/layer" } },
+        "substrate": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["Case", "Fields"],
+              "properties": {
+                "Case": { "enum": ["Plate", "Wedge"] },
+                "Fields": { "type": "array", "minItems": 1, "maxItems": 1 }
+              }
+            }
+          ]
+        },
+        "lower": { "$ref": "#/$defs/opticalProperties" }
+      }
+    },
+    "beamNode": {
+      "type": "object",
+      "description": "A node of the beam-tree orchestration aggregate (Part A, A.4; Part B, B.9). Filled by slice 005. children is the Map<beamBranch,beamNode> serialized by FSharp.SystemTextJson as an array of [branch, node] pairs (a DU map key cannot be an object property name). All physical magnitudes reachable from here are canonical SI; defaultUnit is a display/IO label only (Part D, D.4 / B.8).",
+      "required": ["element", "system", "incident", "children", "defaultUnit"],
+      "properties": {
+        "element": { "$ref": "#/$defs/constructorElement" },
+        "system": { "$ref": "#/$defs/opticalSystem" },
+        "incident": {
+          "type": "object",
+          "description": "The engine IncidentLightInfo (Fields.fs:338) driving this node's solve. waveLength is the WaveLength DU as {Case:'Nm'|'Mkm',Fields:[<value>]}; its .value reduction to meters is the canonical SI datum.",
+          "required": ["waveLength", "refractionIndex", "incidenceAngle", "polarization", "ellipticity"],
+          "properties": {
+            "waveLength": {
+              "type": "object",
+              "required": ["Case", "Fields"],
+              "properties": {
+                "Case": { "enum": ["Nm", "Mkm"] },
+                "Fields": { "type": "array", "items": { "type": "number" }, "minItems": 1, "maxItems": 1 }
+              }
+            },
+            "refractionIndex": { "type": "number" },
+            "incidenceAngle": { "type": "number" },
+            "polarization": { "type": "number" },
+            "ellipticity": { "type": "number" }
+          }
+        },
+        "children": {
+          "type": "array",
+          "description": "Map<beamBranch,beamNode> as an array of [branch, node] pairs. A mirror node carries at most a single Reflected pair (Part B, B.3).",
+          "items": {
+            "type": "array",
+            "prefixItems": [ { "$ref": "#/$defs/beamBranch" }, { "$ref": "#/$defs/beamNode" } ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "defaultUnit": { "$ref": "#/$defs/unitOfMeasure" }
+      }
+    },
+    "opticalProperties": true,
+    "constructorElement": true
+  }
+}

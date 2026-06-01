@@ -1,0 +1,73 @@
+# Reuse critic task -- 002.slice-md cycle 1
+
+## Role
+
+You are playing the **reuse critic** role of the arc-runner
+critic + judge sub-loop. Suggestions only -- no gate authority.
+Read-only against the worktree.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+reuse-critic cycle and lists them below. Do not compute or
+guess these paths: the canonical layout block describes the
+shape, this section pins the concrete values for the spawn you
+are about to run.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0022`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0022\.slices\002.slice-md`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0022\.slices\002-impl-log.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0022\.slices\002-state-of-the-world.md`
+- **reuse_critic_round_trail_dir:** `C:\GitHub\Berreman\specs\0022\.artifacts\reuse_critic`
+- **spec_id:** `0022`
+- **slice_id:** `002`
+- **review_cycle:** `1`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\reuse-critic.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Inputs
+
+### Slice spec just implemented
+
+- C:\GitHub\Berreman\specs\0022\.slices\002.slice-md
+
+### Worker state-of-the-world
+
+- C:\GitHub\Berreman\specs\0022\.slices\002-state-of-the-world.md
+
+### Repo root
+
+- C:\GitHub\Berreman
+
+### Helper roots (walk these directly via your normal read access)
+
+- C:\GitHub\Berreman
+
+### Walk bounds
+
+- max_files: 200
+- extensions: .py,.md,.json
+- head_lines per file: 80
+
+## Output you MUST write (and nowhere else)
+
+**Save your reuse critique to**
+`C:\GitHub\Berreman\specs\0022\.artifacts\reuse_critic\002-02-reuse-critic.md`. **Do not write the critique anywhere else.**
+
+Follow the reuse-critique structure documented in the reuse critic
+system prompt: per-finding diagnosis citing the existing helper that
+should have been reused, plus a Bottom-line paragraph. Suggestions
+only; the code judge decides routing.
+
+(Stub template: full content lands in slice 004-08.)
