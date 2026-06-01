@@ -1,3 +1,40 @@
 # Slice 012 gate roster -- Berreman spec 0022
-# Mirrors the manifest slice_gates: entry for this slice (reconciler round-2 §g snapshot-file contract).
-gates: [build, unit-tests, constructor-unit-tests]
+# Full gate descriptors snapshotted from .spec-gates (build, unit-tests, constructor-unit-tests).
+# Hand-repaired 2026-05-31: the splitter had emitted the bare-list short form
+# (`gates: [build, unit-tests, constructor-unit-tests]`), which the arc-runner's
+# gate-descriptor reader rejects ("gate descriptor 'name' must be a non-empty string").
+name: build
+description: dotnet build Berreman.slnx Release (F# numerical optics solver)
+kind: command
+command: "dotnet build Berreman.slnx -c Release -nologo -v:m"
+cwd: Berreman
+pass_when:
+  exit_code: 0
+  stdout_match: (?s)^(?!.*error).*$
+runtime_estimate_seconds: 120
+tags: [build]
+applies_to:
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Berreman/Directory.Build.props"]
+qualifier: build
+---
+name: unit-tests
+description: BerremanTests (F# unit tests for the optics solver)
+kind: command
+command: dotnet test --no-build -c Release
+cwd: Berreman/BerremanTests
+pass_when:
+  exit_code: 0
+  count_at_least:
+    capture: "Passed:\\s*(\\d+)"
+    baseline_key: berreman_unit_tests
+runtime_estimate_seconds: 180
+tags: [test]
+applies_to:
+  - paths: ["Berreman/BerremanTests/**", "Berreman/Berreman/**", "Berreman/OpticalModel/**", "Berreman/OpticalProperties/**", "Berreman/**/*.fs", "Berreman/**/*.fsproj"]
+qualifier: unit
+---
+name: constructor-unit-tests
+description: dotnet test over the OpticalConstructor UI-less projects (Domain beam-tree orchestration, Storage JSON round-trip + schema validation, Optimization interface, units spine) — spec 0022 §A.6/P3 testability mandate
+kind: command
+command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release
+runtime_estimate_seconds: 600
