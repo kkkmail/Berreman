@@ -67,6 +67,11 @@
              Charts builders above. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
         <Compile Include="ChartHosts.fs" />
         <Compile Include="ChartView.fs" />
+        <!-- spec 0024 Part U3 (slice 004): the materials panel view. Reuses the
+             slice-002 ChartHosts WebView2 adapter for the Plotly dispersion preview,
+             the frozen MaterialPreview / MaterialLibrary / StackEditor seams, and the
+             ConstructionPage edit route. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="MaterialsView.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->

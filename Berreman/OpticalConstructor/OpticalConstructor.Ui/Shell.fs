@@ -69,6 +69,9 @@ type RootModel =
         chart : ChartSettings.ChartSettings
         markers : Readout.Markers
         materials : MaterialLibrary.MaterialLibrary
+        /// The materials panel's browse filter + selection (Part U3). Pure/serializable
+        /// (§0.5): plain values, never a renderer handle.
+        materialsFilter : MaterialsView.Filter
     }
 
 /// The root message, wrapping each wired sub-`Msg` plus the shell-level case (R-2).
@@ -79,6 +82,7 @@ type RootMsg =
     | Workspace of WS.Msg
     | Shell of ShellMsg
     | Chart of ChartView.ChartMsg
+    | Materials of MaterialsView.MaterialsMsg
 
 // ---------------------------------------------------------------------------
 // Initial project + model (R-2 / R-3 seed). Built through the existing
@@ -116,6 +120,7 @@ let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
             chart = ChartSettings.ChartSettings.defaultValue
             markers = Readout.Markers.empty
             materials = MaterialLibrary.standard
+            materialsFilter = MaterialsView.Filter.empty
         }
     model, Cmd.none
 
@@ -192,6 +197,7 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
     | RootMsg.Chart cm ->
         let chart, markers = ChartView.update cm (model.chart, model.markers)
         { model with chart = chart; markers = markers }, Cmd.none
+    | RootMsg.Materials mm -> { model with materialsFilter = MaterialsView.update mm model.materialsFilter }, Cmd.none
 
 // ---------------------------------------------------------------------------
 // view (R-4) — a top-level navigation control over a DockPanel of the visible
@@ -239,6 +245,10 @@ let private panelContent (model : RootModel) (dispatch : RootMsg -> unit) (panel
     match panel with
     | "stack" -> ConstructionView.stackPanel model.construction (RootMsg.Construction >> dispatch)
     | "chart" -> ChartView.chartPanel model.chart model.markers (RootMsg.Chart >> dispatch)
+    | "materials" ->
+        MaterialsView.materialsPanel
+            model.materials model.materialsFilter model.construction
+            (RootMsg.Materials >> dispatch) (RootMsg.Construction >> dispatch)
     | other -> placeholder (panelTitle other)
 
 let private panelView (model : RootModel) (dispatch : RootMsg -> unit) (p : PanelState) : IView =
