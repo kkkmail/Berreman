@@ -54,6 +54,13 @@
         <Compile Include="UserEnvironment.fs" />
         <Compile Include="Validation.fs" />
         <Compile Include="AppShell.fs" />
+        <!-- Part J UX shell III (slice 016, LAST): JobRunner (the shared background
+             sweep/fit harness) is standalone; Help builds gallery samples through the
+             Templates open path compiled above; SystemView3D consumes the BeamTree.
+             No FuncUI-clone reference is added (the clone stays UNREFERENCED). -->
+        <Compile Include="JobRunner.fs" />
+        <Compile Include="Help.fs" />
+        <Compile Include="SystemView3D.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a

@@ -31,11 +31,17 @@ open OpticalConstructor.Storage.Errors
 // Shared building blocks. Real reused engine values only — no parallel material
 // model, no re-derived dispersion (a template is a starting set of ordinary
 // Layer/OpticalSystem records the editors then operate on).
+//
+// These are the canonical "wrap an OpticalSystem as a starting project" scaffold
+// (§A.7). They are NON-private so the §J.11 onboarding gallery (`Help.fs`) builds
+// its shipped samples through the SAME factories rather than forking them — the
+// scaffold (and its single `defaultLight`) lives in exactly one place (§0
+// constraint 2; reuse finding F1 of the cycle-1 review).
 // ---------------------------------------------------------------------------
 
 /// Incident (air) and a common glass exit/substrate medium, from the engine presets.
-let private air : OpticalProperties = OpticalProperties.vacuum
-let private glass : OpticalProperties = OpticalProperties.transparentGlass
+let air : OpticalProperties = OpticalProperties.vacuum
+let glass : OpticalProperties = OpticalProperties.transparentGlass
 
 /// A high / low index coating material (TiO2-like / MgF2-like) built through the
 /// engine's own `OpticalProperties.fromRefractionIndex` constructor — index→tensor
@@ -45,20 +51,22 @@ let private lowIndex  : OpticalProperties = OpticalProperties.fromRefractionInde
 
 /// A film of `nm` nanometres of `props`; the thickness is stored canonical-SI
 /// through the engine `Thickness.nm` constructor (`Media.fs:16`).
-let private film (props : OpticalProperties) (nm : float) : Layer =
+let film (props : OpticalProperties) (nm : float) : Layer =
     { properties = props; thickness = Thickness.nm (nm * 1.0<nm>) }
 
 /// A 1 mm glass plate substrate (a real `Substrate.Plate`, `Media.fs:40`).
-let private glassPlate : Substrate =
+let glassPlate : Substrate =
     Plate { properties = glass; thickness = Thickness.mm 1.0<mm> }
 
-/// The default source for a template: a 550 nm normal-incidence vacuum source
-/// (`IncidentLightInfo.create`); editors then refine it.
-let private defaultLight : IncidentLightInfo = IncidentLightInfo.create (WaveLength.nm 550.0<nm>)
+/// The single default source for a starting project: a 550 nm normal-incidence
+/// vacuum source (`IncidentLightInfo.create`); editors then refine it. Shared by
+/// the template wizard AND the onboarding gallery so there is ONE default
+/// wavelength, not the 600/550 drift the cycle-1 review flagged (F1).
+let defaultLight : IncidentLightInfo = IncidentLightInfo.create (WaveLength.nm 550.0<nm>)
 
 /// Wrap a single `OpticalSystem` as a one-`Sample`-node project (§A.7): the beam
 /// tree's root is the sample over `sys`; `systems` holds it; no sources yet.
-let private projectOf (sys : OpticalSystem) : OpticalConstructorProject =
+let projectOf (sys : OpticalSystem) : OpticalConstructorProject =
     let root =
         {
             element = Sample sys
@@ -71,7 +79,7 @@ let private projectOf (sys : OpticalSystem) : OpticalConstructorProject =
 
 /// Assemble an `OpticalSystem` from films + optional substrate, air-incident over
 /// a glass exit medium (`Media.fs:94`).
-let private systemOf (description : string) (films : Layer list) (substrate : Substrate option) : OpticalSystem =
+let systemOf (description : string) (films : Layer list) (substrate : Substrate option) : OpticalSystem =
     {
         description = Some description
         upper = air

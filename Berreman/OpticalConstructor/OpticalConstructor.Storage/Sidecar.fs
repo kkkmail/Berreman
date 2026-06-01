@@ -20,6 +20,22 @@ module Sidecar =
         let (FileExtension e) = BinaryZippedFormat.fileExtension
         e
 
+    /// The single sidecar-location seam (§I.4 / §J.10-item-6 / §G.10-item-6): the
+    /// `.sidecars` subfolder beside a project's own directory where ALL derived/bulk
+    /// `.binz` artefacts live — sweep/field-map results AND fit/design histories —
+    /// NEVER the repository root. Every derived-artefact writer routes through here so
+    /// the flat-vs-subfolder choice is decided once (reuse finding F2 of the cycle-1
+    /// review): `JobRunner.derivedArtefactPath` (sweeps/fits) and
+    /// `SynthesisFitPage.fitHistorySidecarPath` (Part G fit history) both call it.
+    let sidecarDirectory (projectDir : string) : string =
+        Path.Combine(projectDir, ".sidecars")
+
+    /// A derived-artefact `.binz` path under `sidecarDirectory projectDir`, appending
+    /// the drift-proof `extension` so the `.binz` suffix is never hand-written. The
+    /// path is ALWAYS under the project's `.sidecars` folder, never the repo root.
+    let derivedArtefactPath (projectDir : string) (name : string) : string =
+        Path.Combine(sidecarDirectory projectDir, name + extension)
+
     /// Persist a derived artefact `value` as a zipped-FsPickler `.binz` sidecar.
     let writeSidecar<'T> (path : string) (value : 'T) : Result<unit, StorageError> =
         try

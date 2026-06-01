@@ -236,11 +236,17 @@ let comparisonOverlay (model : Model) : (FixedInfo list * OpticalFunction list) 
 // project working folder (never the repo root); `*.binz` is already in the root
 // .gitignore (Part I / slice 012), so the sidecar is NOT committed — the canonical
 // JSON project that references it is the committable artefact (§0 constraint 4).
+// The location/extension choice goes through the SINGLE shared sidecar seam
+// `Storage.Sidecar.derivedArtefactPath` (slice 016, reuse finding F2): the §J.10
+// `JobRunner` that hosts this fit run and this page now agree on the `.sidecars`
+// subfolder and the drift-proof `.binz` extension, decided in one place.
 // ---------------------------------------------------------------------------
 
-/// The fit-history `.binz` sidecar path under the working folder (never the repo root).
+/// The fit-history `.binz` sidecar path, under the working folder's `.sidecars`
+/// subfolder via the shared `Storage.Sidecar.derivedArtefactPath` seam (never the
+/// repo root). The `.fit-history` infix names the artefact; the seam appends `.binz`.
 let fitHistorySidecarPath (model : Model) (name : string) : string =
-    System.IO.Path.Combine(model.workingFolder, name + ".fit-history.binz")
+    OpticalConstructor.Storage.Sidecar.derivedArtefactPath model.workingFolder (name + ".fit-history")
 
 /// The `(path, bytes)` to write for the last completed run's G.8 report, via the
 /// `.binz` serializer (`FitQuality.toBinz`). `None` until a run completes.

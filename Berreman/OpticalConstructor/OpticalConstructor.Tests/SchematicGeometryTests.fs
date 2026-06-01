@@ -6,6 +6,7 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Ui
 open Xunit
 
@@ -108,3 +109,94 @@ module SchematicGeometryTests =
         // The film bands preserve the thicker-draws-taller ordering (item 1).
         let filmHeights = bands |> List.skip 1 |> List.take 2 |> List.map (fun b -> b.height)
         Assert.True(filmHeights.[0] < filmHeights.[1])
+
+    // =====================================================================
+    // §J.12 SystemView3D element/beam-path geometry — AC-J12 (slice 016).
+    // The viewport derives each beam segment direction from the ALREADY-SOLVED
+    // EmFieldSystem.reflected/.transmitted (Fields.fs:553-554) WITHOUT re-solving
+    // or re-deriving routing, and writes no non-SI viewport coordinate back to the
+    // model. Geometry verified without an OpenTK surface (pure projection).
+    // =====================================================================
+
+    let private glass = OpticalProperties.fromRefractionIndex (RefractionIndex 1.5)
+
+    let private sampleSystem : OpticalSystem =
+        {
+            description = None
+            upper = OpticalProperties.vacuum
+            films = [ { properties = glass; thickness = Thickness.nm 200.0<nm> } ]
+            substrate = None
+            lower = glass
+        }
+
+    let private light = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
+
+    let private sampleNode : BeamNode =
+        {
+            element = Sample sampleSystem
+            system = sampleSystem
+            incident = light
+            children = Map.empty
+            defaultUnit = Nanometer
+        }
+
+    [<Fact>]
+    let ``AC-J12 a beam segment direction is read from the already-solved branch normal`` () =
+        // Solve ONCE (Part B's seam); the renderer then CONSUMES this EmFieldSystem.
+        let ems = solve sampleNode
+
+        // The viewport reads the segment direction straight from the solved field —
+        // SystemView3D.beamDirection takes the solved ems as input and never solves.
+        match SystemView3D.beamDirection BeamBranch.Reflected ems, ems.reflected.normal with
+        | Some dir, Some n ->
+            Assert.Equal(n.x, dir.x, 12)
+            Assert.Equal(n.y, dir.y, 12)
+            Assert.Equal(n.z, dir.z, 12)
+        | _ -> Assert.Fail("the solved reflected beam must expose a unit direction")
+
+    [<Fact>]
+    let ``AC-J12 reflected and transmitted segments carry independent solved directions`` () =
+        let ems = solve sampleNode
+        let segments = SystemView3D.beamSegments { x = 0.0; y = 0.0; z = 0.0 } ems
+        // Both branches are rendered, each tagged with its branch.
+        let branches = segments |> List.map (fun s -> s.branch)
+        Assert.Contains(BeamBranch.Reflected, branches)
+        Assert.Contains(BeamBranch.Transmitted, branches)
+        // The reflected and transmitted directions differ (the solved routing is
+        // read per branch, not a single shared ray).
+        let dirOf b = segments |> List.find (fun s -> s.branch = b) |> fun s -> s.direction
+        let r = dirOf BeamBranch.Reflected
+        let t = dirOf BeamBranch.Transmitted
+        Assert.True(abs (r.z - t.z) > 1e-9 || abs (r.x - t.x) > 1e-9 || abs (r.y - t.y) > 1e-9)
+
+    [<Fact>]
+    let ``AC-J12 computing viewport geometry writes no value back into the model`` () =
+        // The canonical thickness before and after building the placement is identical
+        // — placeElements is a pure projection; it converts at the boundary only (§A.3).
+        let before = SystemView3D.systemThicknessMeters sampleSystem
+        let tree : BeamTree = { root = sampleNode }
+        let placed = SystemView3D.placeElements SystemView3D.defaultPixelsPerMeter tree
+        let after = SystemView3D.systemThicknessMeters sampleSystem
+        Assert.Equal(before / 1.0<meter>, after / 1.0<meter>, 15)
+        // The (canonical, finite) 200 nm film maps to a positive, finite extent.
+        Assert.Single(placed) |> ignore
+        Assert.True(placed.[0].extent > 0.0)
+
+    [<Fact>]
+    let ``AC-J12 a multi-element system places its elements to scale along the beam path`` () =
+        // Source -> Sample -> Detector along the transmitted spine.
+        let detector =
+            { sampleNode with element = Detector; system = { sampleSystem with films = [] }; children = Map.empty }
+        let sampleWithDetector =
+            { sampleNode with children = Map.ofList [ BeamBranch.Transmitted, detector ] }
+        let sourceNode =
+            { sampleNode with element = Source; children = Map.ofList [ BeamBranch.Transmitted, sampleWithDetector ] }
+        let tree : BeamTree = { root = sourceNode }
+
+        let placed = SystemView3D.placeElements SystemView3D.defaultPixelsPerMeter tree
+        // Three placed elements, in beam-path order.
+        Assert.Equal(3, List.length placed)
+        Assert.Equal<ConstructorElement>(Source, placed.[0].element)
+        // Positions are monotonically advancing along the beam path (+z).
+        Assert.True(placed.[0].position.z < placed.[1].position.z)
+        Assert.True(placed.[1].position.z < placed.[2].position.z)

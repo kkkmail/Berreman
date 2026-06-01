@@ -55,6 +55,11 @@
         <!-- Part J UX shell II (§J.6-J.9, slice 015). -->
         <Compile Include="ValidationTests.fs" />
         <Compile Include="EnvironmentRoundTripTests.fs" />
+        <!-- Part J UX shell III (§J.10-J.12, slice 016, LAST). The AC-J12
+             SystemView3D geometry portion is added to SchematicGeometryTests.fs
+             (registered above) per the slice's files-in-scope. -->
+        <Compile Include="JobRunnerCancelTests.fs" />
+        <Compile Include="HelpGalleryTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
