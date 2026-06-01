@@ -13,7 +13,6 @@ applies_to:
   - 'Berreman/OpticalConstructor/OpticalConstructor.Ui/**'
   - 'Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**'
   - 'Berreman/OpticalConstructor/OpticalConstructor.App/**'
-# TODO(agent-uncertain): existing gates only attest build/unit/source qualifiers; "smoke" is a new value the operator should confirm against the repo's qualifier vocabulary
 qualifier: smoke
 filter: none
 descriptor_version: 1

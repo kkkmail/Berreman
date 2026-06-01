@@ -2,13 +2,15 @@
   "spec_id": "0024",
   "ticket": null,
   "created": "2026-06-01T15:31:57Z",
-  "status": "in-authoring",
+  "status": "handed-off",
   "gates": [
     "build",
     "unit-tests",
     "constructor-unit-tests",
     "impl-log-structure",
-    "state-of-world-structure"
+    "state-of-world-structure",
+    "ui-smoke",
+    "ui-tests"
   ],
   "user_files": {
     "splitter": ".user-md/Berreman/splitter.user-md",

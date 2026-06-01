@@ -1,7 +1,6 @@
 name: ui-tests
 description: Headless per-panel view-test gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless.XUnit per-panel/page view tests (mount each view over a known RootModel, assert key controls exist and a simulated interaction dispatches the expected RootMsg) in OpticalConstructor.Ui.Tests (spec 0024 §0.7 / Test artifacts)
 kind: command
-# TODO(agent-uncertain): spec pins the Category=ui-smoke trait only; the per-panel view tests' trait scheme is unspecified, so this excludes the smoke subset by negation — confirm the per-panel tests are untraited (or carry a non-ui-smoke Category) once authored
 command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj -c Release --filter Category!=ui-smoke
 pass_when:
   exit_code: 0
