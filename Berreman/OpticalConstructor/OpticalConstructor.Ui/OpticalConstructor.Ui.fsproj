@@ -25,6 +25,7 @@
          model/update (no Avalonia type in the model, per P3) and view bodies. -->
     <ItemGroup>
         <Compile Include="Ui.fs" />
+        <Compile Include="MaterialPreview.fs" />
     </ItemGroup>
 
     <!-- Public, MIT-licensed Avalonia + FuncUI NuGet (the buildable interpretation

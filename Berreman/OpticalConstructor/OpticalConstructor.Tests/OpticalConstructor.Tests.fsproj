@@ -30,6 +30,18 @@
         <Compile Include="ProjectJsonRoundtripTests.fs" />
         <Compile Include="RoundTripTests.fs" />
         <Compile Include="SidecarTests.fs" />
+        <Compile Include="DispersionModelsTests.fs" />
+        <Compile Include="MaterialImportTests.fs" />
+        <Compile Include="MaterialPreviewTests.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="fixtures\Si.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\sample-nk.csv">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>

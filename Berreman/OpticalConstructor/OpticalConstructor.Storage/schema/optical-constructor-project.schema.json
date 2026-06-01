@@ -67,7 +67,42 @@
     },
     "materialEntry": {
       "type": "object",
-      "description": "Reserved storage-owned anchor for a material-library entry; the dispersion sub-object is filled by slice 004."
+      "description": "A material-library entry (Part D, D.8). Display metadata plus the dispersion sub-object (D.5-D.7) realised by slice 004. Persisted magnitudes are canonical SI; the wavelengthUnit/thermoOptic labels carry display/SI-unit intent only, never a non-SI datum (D.11).",
+      "required": ["id", "name", "category"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable entry id; the resolveMaterial lookup key (D.8)." },
+        "name": { "type": "string", "description": "Display name." },
+        "category": {
+          "type": "string",
+          "enum": ["Glass", "Metal", "Semiconductor", "Crystal"],
+          "description": "Material category for filtering (D.8)."
+        },
+        "description": { "type": "string", "description": "Optional human-readable description (A.7)." },
+        "dispersion": { "$ref": "#/$defs/dispersionModel" }
+      }
+    },
+    "dispersionModel": {
+      "type": "object",
+      "description": "Tagged analytic dispersion model (Part D, D.5). 'kind' selects the coefficient record; the coefficient scalars (e.g. Sellmeier b/c term lists, Cauchy a/b/c, Drude plasma/damping frequencies, constant n/k) plus the wavelengthUnit label and the optional thermoOptic are the only persisted data. Coefficient scalars are admitted as additional properties keyed by the owning record's field names. Schema versioning of these coefficient records is out of scope (D.5).",
+      "required": ["kind", "wavelengthUnit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["Sellmeier", "Cauchy", "Lorentz", "Drude", "TaucLorentz", "GaussianOscillator", "ConstantNK"]
+        },
+        "wavelengthUnit": { "$ref": "#/$defs/unitOfMeasure" },
+        "thermoOptic": { "$ref": "#/$defs/thermoOptic" }
+      }
+    },
+    "thermoOptic": {
+      "type": "object",
+      "description": "Optional first-order thermo-optic parameters (Part D, D.12). Only dndT/referenceTemperature persist; the operating temperature is supplied at evaluation and is NEVER persisted.",
+      "required": ["dndT", "referenceTemperature"],
+      "properties": {
+        "dndT": { "type": "number", "description": "dn/dT in SI 1/K." },
+        "referenceTemperature": { "type": "number", "description": "Reference temperature in SI K." }
+      },
+      "additionalProperties": false
     },
     "sourceSpec": {
       "type": "object",
