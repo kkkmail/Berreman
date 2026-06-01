@@ -21,7 +21,7 @@ module PanelViewTests =
         HeadlessSession.run (fun () ->
             let model = fst Shell.init
             let window = Window()
-            window.Content <- Component(fun _ctx -> ConstructionView.stackPanel model.construction)
+            window.Content <- Component(fun _ctx -> ConstructionView.stackPanel model.construction ignore)
             window.Show()
             Dispatcher.UIThread.RunJobs()
 

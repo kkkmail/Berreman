@@ -124,9 +124,50 @@ let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
 let init : RootModel * Cmd<RootMsg> = initFrom UserEnvironment.defaults
 
 // ---------------------------------------------------------------------------
-// update — a pure dispatcher (R-2). Each case calls the matching sub-`update` and
-// re-wraps the result; U1 attaches `Cmd.none` to every case (no effects yet).
+// update — the root dispatcher. Each case calls the matching sub-`update` and
+// re-wraps the result. Part U2 attaches the only compute-bearing effect in the
+// construction page: the async node-solve `Cmd` (R-2). Every other case stays
+// effect-free (`Cmd.none`).
 // ---------------------------------------------------------------------------
+
+/// The parent path of a non-root node ([] for a depth-1 node); the root ([]) has no
+/// parent and maps to itself.
+let private parentPath (path : ConstructionPage.NodePath) : ConstructionPage.NodePath =
+    match List.rev path with
+    | [] -> []
+    | _ :: revParent -> List.rev revParent
+
+/// The §0.4-compliant async node-solve `Cmd` (R-2): re-solve the sub-tree rooted at
+/// `path` OFF the UI thread (`Task.Run`), then marshal `Construction (NodeSolved map)`
+/// back ONTO the UI thread via `Dispatcher.UIThread.Post` so the busy→solve→refresh
+/// cycle never dispatches cross-thread. The effect is host-layer only; no
+/// `CancellationTokenSource` or solve handle enters the root model (§0.5).
+let private nodeSolveCmd (path : ConstructionPage.NodePath) (root : BeamTree.BeamNode) : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        System.Threading.Tasks.Task.Run(fun () ->
+            let solved = ConstructionPage.solveSubtree path root
+            Avalonia.Threading.Dispatcher.UIThread.Post(fun () ->
+                dispatch (RootMsg.Construction (ConstructionPage.NodeSolved solved))))
+        |> ignore ]
+
+/// The async node-solve `Cmd` for a busy-marking construction transition (R-2):
+/// `EditStack`/`AttachChild` re-solve the edited node's sub-tree; `ConfirmDeleteNode`
+/// re-solves the removed node's parent (the removed path no longer resolves), so
+/// dependent views refresh from `NodeSolved` with no manual reload. Any other
+/// construction message is effect-free.
+let private constructionCmd
+    (msg : ConstructionPage.Msg)
+    (priorPending : (ConstructionPage.NodePath * int) option)
+    (root : BeamTree.BeamNode)
+    : Cmd<RootMsg> =
+    match msg with
+    | ConstructionPage.EditStack (p, _)
+    | ConstructionPage.AttachChild (p, _, _) -> nodeSolveCmd p root
+    | ConstructionPage.ConfirmDeleteNode ->
+        match priorPending with
+        | Some (p, _) -> nodeSolveCmd (parentPath p) root
+        | None -> Cmd.none
+    | _ -> Cmd.none
 
 let private updateShell (msg : ShellMsg) (model : RootModel) : RootModel =
     match msg with
@@ -139,7 +180,13 @@ let private updateShell (msg : ShellMsg) (model : RootModel) : RootModel =
 
 let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
     match msg with
-    | RootMsg.Construction cm -> { model with construction = ConstructionPage.update cm model.construction }, Cmd.none
+    | RootMsg.Construction cm ->
+        let construction = ConstructionPage.update cm model.construction
+        // §0.4: a busy-marking structural edit (EditStack/AttachChild/ConfirmDeleteNode)
+        // attaches the async node-solve Cmd; the pure update already set `busy` and the
+        // host re-solves off-thread, marshaling NodeSolved back onto the UI thread.
+        let cmd = constructionCmd cm model.construction.pendingDeletion construction.project.beamTree.root
+        { model with construction = construction }, cmd
     | RootMsg.Workspace wm -> { model with workspace = WS.update wm model.workspace }, Cmd.none
     | RootMsg.Shell sm -> updateShell sm model, Cmd.none
     | RootMsg.Chart cm ->
@@ -190,7 +237,7 @@ let private placeholder (title : string) : IView =
 
 let private panelContent (model : RootModel) (dispatch : RootMsg -> unit) (panel : string) : IView =
     match panel with
-    | "stack" -> ConstructionView.stackPanel model.construction
+    | "stack" -> ConstructionView.stackPanel model.construction (RootMsg.Construction >> dispatch)
     | "chart" -> ChartView.chartPanel model.chart model.markers (RootMsg.Chart >> dispatch)
     | other -> placeholder (panelTitle other)
 
