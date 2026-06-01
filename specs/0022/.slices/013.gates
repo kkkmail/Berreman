@@ -1,0 +1,3 @@
+# Slice 013 gate roster -- Berreman spec 0022
+# Mirrors the manifest slice_gates: entry for this slice (reconciler round-2 §g snapshot-file contract).
+gates: [build, unit-tests, constructor-unit-tests]

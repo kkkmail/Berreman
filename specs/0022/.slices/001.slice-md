@@ -1,10 +1,9 @@
-# 001 — Solution & domain foundation (Part A spine)
+# 001 — Solution scaffolding & assembly layout (Part A, land first)
 
 ## Spec reference
 
-- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor) this slice belongs to. This slice owns **Part A** (CRITICAL — land first).
-- 010 (preliminary spec) — the tiered feature list (`[Core]`/`[Standard]`) the parent implements.
-- Berreman engine source under `C:/GitHub/Berreman/Berreman/` — the reused primitives cited throughout.
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract).
+- `C:\GitHub\Berreman\specs\0022\.manual\010-optical-constructor-spec-and-tech-stack.md` — source of scope (Part I §1, Part II §1-8, Part III §1-5), cited by the parent.
 
 ## Inherited from parent spec
 
@@ -29,44 +28,33 @@ The following constraints are normative for EVERY part (A–J) of this specifica
 ### Acceptance criteria owned by this slice
 
 - AC-A1: After the five new projects are added and `Berreman.slnx` is built with the documented MSBuild invocation at Configuration=Release Platform=x64, the solution MUST compile with all five `OpticalConstructor.*` projects and the existing Berreman/Analytics projects in one pass, with no new C# project introduced.
-- AC-A2: After loading any canonical project file, the storage layer MUST validate it against `optical-constructor-project.schema.json` (anchors opticalSystem/layer/opticalProperties/beamNode/beamBranch/constructorElement) and MUST reject an invalid file before the domain model is admitted, within the load call.
-- AC-A3: After a non-mirror `BeamNode` is solved, the orchestration MUST expose exactly two outgoing beams sourced from `EmFieldSystem.reflected` and `.transmitted` (Fields.fs:553-554) via `OpticalSystemSolver` (Solvers.fs:199), with no parallel solver invoked.
-- AC-A4: After a child is attached to the `Transmitted` branch of a mirror `BeamNode`, the construction MUST reject the attachment, leaving the mirror with at most one child on `Reflected`.
-- AC-A5: After any physical quantity is stored in the domain model or serialized to canonical JSON, the stored value MUST be in the SI base (meters for length; wavelength reduced via WaveLength.value, Fields.fs:284), with unit conversion occurring only at the UI/IO boundary.
-- AC-A6: After a derived/bulk artefact (sweep, field map, fit history) is persisted, it MUST be written via Softellect.Sys.Core.serialize with BinaryZippedFormat to a `.binz` sidecar (Core.fs:257, Primitives.fs:267) referenced by path from the JSON, and the canonical project definition MUST NOT be FsPickler-serialized.
-- AC-A7: After an eV or cm⁻¹ value is entered at the UI/IO boundary, the boundary conversion MUST round-trip to wavelength-in-meters using E[eV]=1239.84/λ[nm] without persisting eV or cm⁻¹ in the model.
 - AC-A8: Before `OpticalConstructor.Ui` is linked against `C:\GitHub\Avalonia.FuncUI.Clone\`, the audit gate MUST be recorded as passed; until then the UI project MUST contain no reference to the clone and the linking-mechanism choice MUST remain unresolved.
 
 ### Files in scope owned by this slice
 
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (new) — project file; `<Platform Project="x64" />`; references `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj`. *(A.1, A.2)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs` (new) — `BeamBranch`, `ConstructorElement`, `BeamNode`, `BeamTree`, `BeamNode.attach` smart constructor, `BeamTreeError` (the §A.4 types; the construction/propagation logic and the stack/UI work are owned by slice 003 / Part B). *(A.4)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructorProject.fs` (new) — the root aggregate `OpticalConstructorProject` (skeleton; per-element default-unit plumbing filled by slice 002 / D.4 and slice 003 / B.8). *(A.7)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (new) — project file; references `OpticalConstructor.Domain` and `Softellect.Sys`. *(A.1, A.7)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` (new) — `serializeProject`/`deserializeProject`, shared `JsonSerializerOptions` (the §A.7 serialization seam; schema-validation machinery, file IO, sidecars, etc. are owned by slice 009 / Part I). *(A.7)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (new) — the published JSON Schema scaffold with the §A.7 `$defs` anchors (`opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`, `materialEntry`, `sourceSpec`, `unitOfMeasure`); Parts B–G fill the physics-shaped `$defs`. *(A.7)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` (new) — project file; references `OpticalConstructor.Domain`. *(A.1, A.8)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (new) — project file; references Domain, Storage, Optimization; ScottPlot, Plotly.NET, WebView2, OpenTK, FuncUI (clone gated — MUST NOT add the clone as a dependency until the §A.9 audit passes). *(A.1, A.6, A.9)*
-- `Berreman/OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj` (new) — runnable entry point; references `OpticalConstructor.Ui`. *(A.1)*
-- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (new) — app bootstrap. *(A.1)*
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` (new) — the UI-less xUnit/FsUnit test project hosting tests over Domain, Storage, and Optimization; this is the target of the `constructor-unit-tests` gate and is created here so the gate is runnable from this slice onward.
-- `Berreman/Berreman.slnx` (edit) — add the five new projects (plus `OpticalConstructor.Tests`) with `x64` platform, in dependency order; `OpticalModel.fsproj` left untouched.
+- `C:/GitHub/Berreman/Berreman/Berreman.slnx` (edit) — add the five OpticalConstructor projects, each Platform x64; no fork of `Berreman/Berreman.fsproj` (`:14`); `.gitignore` for derived sidecars handled below
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (new) — orchestration domain project; references `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj`; registers BeamTree/Units/CurvedElements/SourceSpec/SourceCombination/DispersionModels/MaterialLibrary in compile order
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (new) — storage assembly; references Domain, Berreman.fsproj, Analytics.fsproj, Softellect.Sys; package refs System.Text.Json + FSharp.SystemTextJson, FSharp.Data, JsonSchema.Net, ClosedXML
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` (new) — optimization assembly; references Domain (and Berreman/Analytics for the solver seam); adds the ALGLIB PackageReference
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (new) — Avalonia + FuncUI MVU UI project; references Domain, Storage, Optimization; registers all Ui modules in build order; MUST NOT add the FuncUI clone dependency until the §A.6/§A.9 audit passes
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj` (new) — runnable entry point; references `OpticalConstructor.Ui`
 
 ### File:line references owned by this slice
 
-All file:line references in the verbatim directives copied under **Requirements** below are owned by this slice (notably: `Berreman.slnx:1-29`, `Berreman.slnx:2-4`, `Berreman.slnx:8`, `OpticalModel/Primitives.fs:9`, `Solvers.fs:199`, `Solvers.fs:152`, `Solvers.fs:156`, `Solvers.fs:115`, `Solvers.fs:15`, `Solvers.fs:21`, `Solvers.fs:201-230`, `Fields.fs:550`, `Fields.fs:553-554`, `Fields.fs:284`, `Fields.fs:338`, `Fields.fs:411`, `FieldFunctions.fs:227,238`, `FieldFunctions.fs:157`, `MaterialProperties.fs:165`, `MaterialProperties.fs:59,107,133`, `MaterialProperties.fs:187`, `MaterialProperties.fs:43`, `MaterialProperties.fs:87`, `MaterialProperties.fs:35`, `Media.fs:24`, `Media.fs:12`, `Media.fs:40`, `Media.fs:34`, `Media.fs:94`, `Media.fs:63`, `Media.fs:56`, `Media.fs:96`, `Media.fs:97`, `Media.fs:98`, `Media.fs:100`, `Media.fs:120`, `Dispersion.fs:53,139`, `BerremanMatrix.fs:224`, `Constants.fs:6`, `Constants.fs:27,30,33`, `FourierTransform.fs:137`, `MathNetNumericsMath.fs:5`, `MathNetNumericsMath.fs:3-4`, `MatrixEvd.fs:15`, `MatrixExp.fs:31`, `ExtremeNumericsMath.fs:5`, `Variables.fs:237,270,42`, `C:/GitHub/Softellect/Sys/Core.fs:254,257`, `C:/GitHub/Softellect/Sys/Primitives.fs:267`).
+- `C:/GitHub/Berreman/Berreman/Berreman.slnx:1-29` — solution layout, x64 platform, Numerics.csproj:8, BerremanTests:20.
+- `Berreman.slnx:2-4` — the sole `x64` configuration each new project must declare `<Platform Project="x64" />` against.
+- `OpticalModel/Primitives.fs:9` — the existing `OpticalModel.fsproj` stub that MUST be left untouched.
+- `C:/GitHub/Berreman/.gates/OpticalConstructor/constructor-unit-tests.gates` — the gate-keeper-authored descriptor (`dotnet test … OpticalConstructor.Tests.fsproj`, `exit_code: 0`) that the `constructor-unit-tests` gate id resolves to; targets the `OpticalConstructor.Tests.fsproj` host this slice creates. Read-only reference (worker MUST NOT edit `.gates/**`).
 
 ## Scope
 
-This slice is the load-bearing spine (Part A). It fixes the solution/assembly layout (the five new F# projects), the orchestration domain model (the beam tree above the single-system solver), the precise engine seams every later part reuses, the storage architecture and serialization seam, the UI architecture, the numerical-library boundaries, and the units spine. It defines architecture only: which types exist, which seams are called, which invariants hold; it does NOT specify per-feature UI panels, per-dialog layout, or per-optimizer detail. It additionally creates the `OpticalConstructor.Tests` project so the `constructor-unit-tests` gate is live for every subsequent slice. Per-feature implementation lands in slices 002–010.
+This slice is the load-bearing scaffold for the whole arc: it adds the five new F# projects of §A.1 to `Berreman.slnx`, wires their project references and package references, fixes the numerical-library boundaries (§A.8) and the engine-is-consumed-never-forked discipline (§A.2), establishes the UI-architecture commitment and the **buildable interpretation** of the FuncUI dependency (§A.6/§A.9), and creates the gated `OpticalConstructor.Tests` host. After this slice the solution MUST build green at Configuration=Release Platform=x64 with placeholder modules in each new project; later slices fill those projects with real code. No domain types, no orchestration logic, and no UI surfaces beyond compilable placeholders land here.
 
-The central new abstraction is the **beam tree**: a real optical system is generally not a linear chain — almost every element produces both a reflected and a transmitted beam. The Berreman solver already yields both outputs at every element (`EmFieldSystem.reflected`/`.transmitted`, `Fields.fs:553-554`), so the net-new work is an orchestration/topology layer that routes those two outputs onward, treating a mirror as the deliberate special case that carries the reflected branch only.
+**Buildable FuncUI interpretation (reconciler round-2 §i — applied).** The audit gate of binding constraint 5 / §A.6 / §A.9 applies ONLY to the clone at `C:\GitHub\Avalonia.FuncUI.Clone\`. It does NOT forbid the public, MIT-licensed `Avalonia.FuncUI` NuGet package, which is a distinct artefact from the audit-gated clone. `OpticalConstructor.Ui.fsproj` therefore consumes Avalonia core and the FuncUI DSL through their normal MIT NuGet packages so that `view` bodies referencing the FuncUI DSL compile and the `build` gate is sound from the first UI-touching slice. The clone remains unreferenced and the linking-mechanism choice remains unresolved until the audit passes (AC-A8). This is the single buildable interpretation every UI-touching slice (this one and 004, 005, 007, 011, 012, 014–016) relies on.
 
 ## Requirements
 
-The following are the parent's Part A directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
-
-### R-1 (A.1) Solution and assembly layout
+### R-1. §A.1 Solution and assembly layout
 
 The solution MUST add five new F# projects to the existing solution file `C:/GitHub/Berreman/Berreman/Berreman.slnx` (current content verified at `Berreman.slnx:1-29`), each declared with `<Platform Project="x64" />` to match the sole `x64` configuration (`Berreman.slnx:2-4`). The build order (engine → orchestration → UI → tooling) MUST be:
 
@@ -78,7 +66,7 @@ The solution MUST add five new F# projects to the existing solution file `C:/Git
 
 The five projects MUST sit under a new `C:/GitHub/Berreman/Berreman/OpticalConstructor/` folder, one subfolder per project. No directive in any part MAY add a sixth top-level app project; additional code MUST land in one of these five or be justified against a named directive. The existing `OpticalModel.fsproj` (a stub, `OpticalModel/Primitives.fs:9`) MUST NOT be repurposed; it MUST be left untouched.
 
-### R-2 (A.2) The engine is consumed, never forked
+### R-2. §A.2 The engine is consumed, never forked
 
 The new projects MUST consume the Berreman engine by project reference to `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj` and MUST NOT copy, re-derive, or shadow any of the engine's modules. Reach-for-first primitives, by concern:
 
@@ -88,33 +76,7 @@ The new projects MUST consume the Berreman engine by project reference to `Berre
 
 No part MAY introduce a parallel solver, a parallel field model, or a parallel sweep engine.
 
-### R-3 (A.3) Domain model: optical-system and material types are reused as-is
-
-The constructor's optical-system domain MUST be the engine's existing records and DUs, used unchanged:
-
-- `OpticalProperties` (`MaterialProperties.fs:165`) with its `eps`/`mu`/`rho` tensors `Eps`/`Mu`/`Rho` (`MaterialProperties.fs:59,107,133`) — the material/anisotropy model. Per-layer crystal-axis rotation is the existing `OpticalProperties.rotate` (`MaterialProperties.fs:187`) and `OpticalSystem.rotate` (`Media.fs:120`).
-- `Layer` (`Media.fs:24`) with `Thickness` (`Media.fs:12`); substrate variants `Plate`/`Wedge` via `Substrate` (`Media.fs:40`) and `WedgeLayer` (`Media.fs:34`).
-- `OpticalSystem` (`Media.fs:94`) — description/upper/films/substrate/lower — as the per-element stack; `BaseOpticalSystem` (`Media.fs:63`) and `ShortOpticalSystem` (`Media.fs:56`) as the solver feed forms; dispersive variants `OpticalPropertiesWithDisp`/`OpticalSystemWithDisp` (`Dispersion.fs:53,139`).
-
-No part MAY define an alternate `Layer`, `OpticalSystem`, or material-tensor type. Where the UI needs a row/edit projection of a layer, that projection MUST be a view-model in `OpticalConstructor.Ui` that maps to/from `Layer` — it MUST NOT replace `Layer` in the domain or in JSON.
-
-### R-4 (A.4) The beam-tree orchestration layer (net-new; the central new abstraction) [Core]
-
-The solution MUST define, in `OpticalConstructor.Domain`, a beam-tree topology that sits ABOVE the single-system solver and routes its reflected/transmitted outputs along each branch. The types MUST be:
-
-- `BeamBranch` = `Reflected | Transmitted` — the two attachment points of a non-mirror element.
-- `ConstructorElement` — a DU classifying a placed element: `Source`, `Polarizer`, `Sample` (carrying an `OpticalSystem`, `Media.fs:94`), `Lens`, `CurvedMirror`, `FlatMirror`, `Analyzer`, `Detector`. The mirror cases (`FlatMirror`, `CurvedMirror`) are the deliberate special case: they carry the reflected branch ONLY.
-- `BeamNode` — a record carrying one `ConstructorElement`, the solver inputs needed to evaluate it (an `IncidentLightInfo`-derived local beam state: direction, energy, polarization), and its child attachments. A non-mirror node MUST expose up to two children keyed by `BeamBranch` (a branch MAY be open, terminated by a `Detector` or by nothing). A mirror node MUST expose at most one child, on `Reflected`; attaching a child on `Transmitted` to a mirror node MUST be rejected at construction time.
-
-The orchestration MUST evaluate each node by calling the existing solver `OpticalSystemSolver` (`Solvers.fs:199`) and reading `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`) as the two outgoing beams. Propagation of an outgoing beam to the next element MUST reuse `EmField.propagate` (`BerremanMatrix.fs:224`); no part MAY re-implement plane-wave propagation. Each branch MUST carry its own beam state so that detectors on different branches report independent results (`EmFieldSystem` already isolates reflected vs transmitted, `Fields.fs:550`).
-
-The beam tree is the orchestration aggregate; it MUST NOT embed solver internals (`BaseOpticalSystemSolver` `Solvers.fs:115` is called, not re-typed). Caching of per-node solutions, retry on solver failure, and incremental re-solve are OUT OF SCOPE for Part A; live-recalculation granularity is a Part F concern.
-
-### R-5 (A.5) Local-interface extension contract for curved elements [Core]
-
-The solution MUST confine the one extension beyond the 1D plane-wave model to curved elements. The contract (detailed in Part C) is: a `Lens` or `CurvedMirror` element MUST be evaluated by computing a **local angle of incidence per surface** from the element's geometry (radius/curvature, aperture) and the incoming local beam direction, then calling the existing 4×4 solver `OpticalSystemSolver` (`Solvers.fs:199`) at that local AOI, and propagating the resulting beam to the next element via `EmField.propagate` (`BerremanMatrix.fs:224`). Part A fixes that this is the ONLY admitted extension: no part MAY introduce full 3D vector wave optics, diffraction integrals beyond the existing FFT scaffolding (`FourierTransform.fs:137`), or a second physics engine. Curved-element surface coatings MUST be modelled as the element's `OpticalSystem` films (`Media.fs:98`), not as a new coating type.
-
-### R-6 (A.6) UI architecture: Avalonia + FuncUI (MVU) + ScottPlot + WebView2/Plotly.NET + OpenTK
+### R-3. §A.6 UI architecture: Avalonia + FuncUI (MVU) + ScottPlot + WebView2/Plotly.NET + OpenTK
 
 The UI project `OpticalConstructor.Ui` MUST be pure F# and MUST use Avalonia with Avalonia.FuncUI in the MVU/Elmish shape: a model record holding all state, a pure `update`, and a `view` that is a function of state. ScottPlot MUST provide fast native interactive 2D plots; Plotly.NET (already used by `Charting.fs:11`) MUST be retained for publication-quality/exportable charts, hosted in a WebView2 control; the 3D viewport MUST be a custom OpenTK renderer. Per P3, behaviour MUST be testable without a UI: the model/`update` MUST contain no Avalonia type.
 
@@ -126,90 +88,57 @@ This directive carries forward two deferred decisions VERBATIM:
 
 No part MAY add a UI reference to the clone until the audit passes; no part MAY resolve the linking-mechanism choice.
 
-### R-7 (A.7) Storage architecture: JSON canonical + schema, `.binz` derived
-
-The solution MUST persist the canonical project as JSON validated against a published JSON Schema on load. `OpticalConstructor.Storage` MUST:
-
-- Define the root aggregate `OpticalConstructorProject` (systems, materials, sources, sweeps, chart settings, the beam tree of §A.4, per-element default units of §A.10) and serialize it with `System.Text.Json` + FSharp.SystemTextJson for idiomatic DU/record/option handling. Comments MUST be carried as the existing `description` field convention (`OpticalSystem.description`, `Media.fs:96`) plus an `_comment` schema field — not as JSON comments in the canonical store.
-- Validate every loaded project and every YAML rules file against the published schema using JsonSchema.Net before the model is admitted. The schema file MUST be `optical-constructor-project.schema.json` with `$defs` named `opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`, `materialEntry`, `sourceSpec`, `unitOfMeasure`. Parts B–J fill these `$defs` shapes; they MUST NOT rename the anchors.
-- Use zipped FsPickler ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches), via `Softellect.Sys.Core.serialize`/`deserialize` with `BinaryZippedFormat` (`C:/GitHub/Softellect/Sys/Core.fs:254,257`) producing the `.binz` extension (`C:/GitHub/Softellect/Sys/Primitives.fs:267`). The `.binz` sidecar MUST be referenced by path from the JSON; it MUST NOT carry the canonical definition. (010 named this `Softellect.Sys.Serialization`; the in-tree module is `Softellect.Sys.Core` — cite the real name.)
-- Import external measurement/material data via FSharp.Data. Flat rules/declarations MAY use a small flat YAML subset, each file schema-validated.
-
-Schema versioning, migration code, and backwards-compat shims for older project files are OUT OF SCOPE; the schema is published at version 1 and validated, not migrated.
-
-### R-8 (A.8) Numerical-library boundaries
+### R-4. §A.8 Numerical-library boundaries
 
 The solution MUST keep linear algebra and optimization as two separate concerns, each behind its own seam.
 
 - **Linear algebra** MUST remain the cloned Math.NET behind the existing math seam `MathNetNumericsMath` (`MathNetNumericsMath.fs:5`, whose stated purpose is to abstract a switch that is "VERY painful", `MathNetNumericsMath.fs:3-4`). Complex non-Hermitian EVD MUST stay on `MatrixEvd` (`m.Evd()`, `MatrixEvd.fs:15`) and the matrix exponential on `MatrixExp` (`MatrixExp.fs:31`). No part MAY route linear algebra through ALGLIB. `ExtremeNumericsMath` (`ExtremeNumericsMath.fs:5`) MAY remain only as a legacy reference and MUST NOT be wired into the numerics path.
 - **Optimization** MUST use ALGLIB for optimization ONLY, behind a library-agnostic interface defined in `OpticalConstructor.Optimization`: a residual/objective function `(float[] -> float[])`, an optional Jacobian, parameter bounds, constraints, and a result record. ALGLIB (`minlm`, `minbleic`, `minnlc`, `minlbfgs`, `mincg`, `lsfit`) MUST sit behind that interface so physics/fitting code never depends on ALGLIB directly. The optimizer-detail (which method per workflow) belongs to Part H.
 
-### R-9 (A.9) The FuncUI clone audit is a build-gating step
+### R-5. §A.9 The FuncUI clone audit is a build-gating step
 
 The solution MUST treat the §A.6 audit as a gate: the build that links `OpticalConstructor.Ui` against the clone MUST NOT be attempted until the audit has run and the clone is cleared. This directive exists so later parts cannot accidentally introduce the reference early; it adds no new audit tooling beyond the verbatim audit of §A.6.
 
-### R-10 (A.10) Units spine: one canonical SI base, convert at the boundary
+### R-6. Gated test host (scaffold) and `constructor-unit-tests` gate resolution
 
-The solution MUST store every physical quantity in the canonical SI base already used by the engine and convert only at the UI/IO boundary.
+Create `OpticalConstructor.Tests.fsproj` under `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/`, referencing Domain, Storage, Optimization, and Ui, and add it to `Berreman.slnx` with `<Platform Project="x64" />`. This is the single project the `constructor-unit-tests` gate runs; every `OpticalConstructor.*` test in later slices MUST be hosted here (reconciler round-2 §g — do NOT create a separate `OpticalConstructor.StorageTests` project). It MUST ship with at least one trivial passing test so the gate runs green (the gate's pass condition is `exit_code: 0`) from this slice's first round.
 
-- Length/thickness MUST be `double<meter>` as in `Thickness` (`Media.fs:12`) using the existing constants `nmToMeter`/`mkmToMeter`/`mmToMeter` (`Constants.fs:27,30,33`) and the `[<Measure>] meter` base (`Constants.fs:6`). Wavelength MUST be reduced to meters via `WaveLength.value` (`Fields.fs:284`).
-- Each element/layer/source MUST carry its own *default* unit of measure (a `unitOfMeasure` per the schema anchor in §A.7) for display only; the stored value stays meters. This per-element default-unit plumbing is net-new and lives in `OpticalConstructor.Domain`.
-- The net-new conversions MUST be eV↔wavelength via `E[eV] = 1239.84 / λ[nm]` and the spectroscopy wavenumber cm⁻¹, both implemented as boundary-only conversion functions in `OpticalConstructor.Domain`. They MUST NOT be stored in the model, JSON, or `.binz`. Material-UI presentation of these units is a Part D concern.
+**Gate descriptor resolution (reconciler round-4 §g BLOCKER — closed).** The `constructor-unit-tests` gate id referenced by every slice's roster resolves to an already-authored descriptor — it is NOT a missing/unresolvable gate. The descriptor was authored by the gate-keeper at spec handoff and lives at `C:/GitHub/Berreman/.gates/OpticalConstructor/constructor-unit-tests.gates` (and is pinned in the spec-folder snapshot `C:/GitHub/Berreman/specs/0022/.spec-gates`). It is correctly placed in the `OpticalConstructor` gate group rather than the `Berreman` group, because gate names are unique across the whole `.gates/` tree and constructor-prefixed gates belong in their own group (per `.gates/OpticalConstructor/.gates-md`). Its command is `dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release` with pass condition `exit_code: 0`, targeting exactly the `OpticalConstructor.Tests.fsproj` host this slice creates. Authoring that test host here is therefore what makes the gate resolve and pass before slice 001's roster runs; the slice owns the gate's runtime target, while the descriptor file itself is gate-keeper-owned repo infrastructure (a worker MUST NOT add or edit `.gates/**` descriptors — `arc-runner.user-md`). This file is a necessary realization of the gate roster, not a parent files-in-scope bullet.
 
 ## Non-requirements
 
-- The `UnitOfMeasure` DU and the concrete conversion functions in `Units.fs` are owned by slice 002 (Part D §D.1/D.2/D.3); this slice states the units-spine architecture (R-10) but does NOT author `Units.fs`.
-- The beam-tree construction/solver-driving logic, smart-constructor enforcement detail, propagation routing, stack/medium/substrate editors and construction page are owned by slice 003 (Part B). This slice defines the §A.4 types and the construction-time mirror rejection only.
-- The full storage machinery (schema validation on load, `.ocproj` file IO, sidecar read/write, recent-files, autosave, history, export, report) is owned by slice 009 (Part I); this slice authors only the §A.7 serialization seam (`serializeProject`/`deserializeProject` + shared options) and the schema scaffold.
-- No caching, retries, schema versioning, migration code, config knobs, or error-wrapping shims (§0 constraint 6).
-- No FuncUI-clone reference is added; the linking mechanism is not resolved (§0 constraint 5, R-6/R-9).
+- No domain types, orchestration logic, units conversions, materials, sources, charts, optimization, persistence, or UI pages — those land in later slices. Placeholder/empty compilable modules only.
+- MUST NOT add a sixth top-level app project (§A.1).
+- MUST NOT repurpose or modify `OpticalModel.fsproj` (§A.1).
+- MUST NOT reference, link, or build against the FuncUI clone (`C:\GitHub\Avalonia.FuncUI.Clone\`) or resolve its linking mechanism (constraint 5 / §A.6 / §A.9).
+- MUST NOT route any linear algebra through ALGLIB, nor wire `ExtremeNumericsMath` into the numerics path (§A.8).
+- MUST NOT introduce a new C# project (constraint 1).
+- The `.gitignore` edit for `*.binz`/`*.autosave` is owned by slice 012 (Part I sidecars), not here.
 
 ## Files modified (planned)
 
 New:
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj`
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructorProject.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json`
-- `Berreman/OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj`
-- `Berreman/OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj`
-- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj`
+- `OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (+ one placeholder `.fs`)
+- `OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (+ placeholder)
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` (+ placeholder)
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (+ placeholder; public MIT Avalonia + Avalonia.FuncUI NuGet, NOT the clone)
+- `OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj` (+ minimal entry point)
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` (gated `constructor-unit-tests` host; ships one trivial passing test so the `exit_code: 0` gate runs green). The gate descriptor it resolves to (`.gates/OpticalConstructor/constructor-unit-tests.gates`) is pre-existing gate-keeper infrastructure and is NOT edited here.
 
 Edited:
-- `Berreman/Berreman.slnx` — add the five new projects plus `OpticalConstructor.Tests`, each `x64`, in dependency order; `OpticalModel.fsproj` untouched.
+- `Berreman/Berreman.slnx` — register the six new projects with `<Platform Project="x64" />`.
 
 ## Testing plan
 
-Gates that apply to this slice (all run by the supervisor): `build`, `unit-tests`, `constructor-unit-tests`.
-
-- `build` (`Berreman/`): `dotnet build Berreman.slnx -c Release` MUST succeed with the five new projects (plus the test project) present and the UI project building WITHOUT the FuncUI clone dependency.
-- `unit-tests` (`Berreman/BerremanTests/`): existing `BerremanTests` suite MUST stay green (count_at_least baseline 0 for the first slice of the arc).
-- `constructor-unit-tests`: `dotnet test … OpticalConstructor.Tests.fsproj -c Release` MUST run and pass. Add the Part A solution-layout test asserting the five projects exist with `x64` platform and build/compile in one pass with no new C# project, and that the engine is referenced, not copied (AC-A1; engine-reuse directives A.2/A.3). Add beam-tree construction tests for the mirror special case (a non-mirror node exposes two outgoing beams; a `Transmitted` attach to a mirror node is rejected; a `Reflected` attach is accepted) (AC-A3, AC-A4). Add a JSON round-trip / schema-validation smoke test over the skeleton aggregate (AC-A2).
-- Emit the mandatory state-of-the-world file with the `gates:` YAML baseline block (see Hand-off).
+- `build` gate: `dotnet build Berreman.slnx -c Release` from `Berreman/` MUST pass with all five `OpticalConstructor.*` projects + the Tests project + the existing Berreman/Analytics projects compiling in one pass, no new C# project (AC-A1).
+- `unit-tests` gate: `dotnet test --no-build -c Release` from `Berreman/BerremanTests/` stays green (this slice does not touch `BerremanTests`).
+- `constructor-unit-tests` gate: resolves to the descriptor at `.gates/OpticalConstructor/constructor-unit-tests.gates` (pass condition `exit_code: 0`) and runs `dotnet test … OpticalConstructor.Tests.fsproj -c Release`; the trivial passing test shipped in R-6's host makes it green from this slice's first round (reconciler round-4 §g — closed).
+- Record the FuncUI-clone audit as NOT-YET-RUN and confirm no clone reference exists in `OpticalConstructor.Ui.fsproj` (AC-A8).
 
 ## Risks
 
-- **Medium:** `Berreman.slnx` edit + five new `.fsproj` targeting .NET 10 with `x64` platform must build cleanly; mis-ordered project references or a stray UI→clone reference will fail the `build` gate. Keep the UI/App projects as minimal buildable skeletons authored against the FuncUI DSL surface as source, with NO clone dependency (R-6/R-9, §0 constraint 5).
-- **Medium:** the root aggregate has forward references to types introduced by later slices (B beam tree detail, D materials/units, E sources, H chart settings). Keep the slice-001 aggregate minimal so it compiles; later slices extend it. The reflection-based FSharp.SystemTextJson converter serializes added fields automatically, so the serialization seam keeps compiling as the aggregate grows.
+- **Low/medium.** The risk is package-resolution drift (.NET 10 SDK, Avalonia / Avalonia.FuncUI / ScottPlot / WebView2 / Plotly.NET / OpenTK / Softellect.Sys / ALGLIB / System.Text.Json + FSharp.SystemTextJson / FSharp.Data / JsonSchema.Net / ClosedXML NuGet versions). Mitigation: add packages incrementally and keep placeholder modules empty so a failed reference is isolated. The public-vs-clone FuncUI distinction (above) is the load-bearing decision; getting it wrong reintroduces the spec-0110-class build failure.
 
 ## Hand-off
 
-State carried to later slices:
-- The five projects exist under `Berreman/OpticalConstructor/`, build green, and are wired in `Berreman.slnx` with `x64`. `OpticalConstructor.Tests` exists and is the `constructor-unit-tests` target — every later slice adds its tests here.
-- `BeamBranch`, `ConstructorElement`, `BeamNode`, `BeamTree`, `BeamNode.attach`, and `BeamTreeError` live in `Domain/BeamTree.fs`. Slice 003 (Part B) adds the per-node solver-driving, propagation routing, and the default-unit hook; slice 004 (Part C) extends the tree with curved elements.
-- `OpticalConstructorProject` (skeleton) lives in `Domain/OpticalConstructorProject.fs`. Slice 002 adds materials + per-element `defaultUnit`; slice 005 adds `sources`; slice 008 adds `chartSettings`. The reflection-based serializer in `Storage/ProjectJson.fs` extends automatically.
-- The schema scaffold `optical-constructor-project.schema.json` carries the nine `$def` anchors; Parts B–G fill the physics-shaped `$defs`; slice 009 (Part I) wires validate-on-load.
-- The units-spine architecture (R-10) is fixed; slice 002 authors `Domain/Units.fs` (`UnitOfMeasure` + conversions).
-
-Per `arc-runner.system-md`, the worker MUST emit the state-of-the-world file with a fenced YAML `gates:` block carrying this round's baseline counts, e.g.:
-
-```yaml
-gates:
-  berreman_unit_tests: <int>
-```
-
-The `berreman_unit_tests` baseline is the `Passed:` count captured by the `unit-tests` gate this round; later slices' `count_at_least` gate reads it from this block.
+The five projects + the gated `OpticalConstructor.Tests` host build green at Release/x64 with placeholder modules. Later slices fill them: slice 002 (Domain foundation — units, beam tree, project aggregate), slice 003 (storage core — JSON/schema/sidecar), then the feature parts. The buildable FuncUI interpretation established here (public MIT NuGet, clone stays audit-gated) is relied on by every UI-touching slice. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block (e.g. `bm_unit_tests`, `constructor_unit_tests` counts) so the next slice's `count_at_least` gate has a baseline.

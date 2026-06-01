@@ -1,0 +1,77 @@
+# Reconciler task -- round 05 iter 01
+
+## Role
+
+You are playing the **reconciler** role of the spec-loop.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-arc path you need this
+reconciler iteration and lists them below. Do not compute or
+guess these paths: the canonical layout block describes the
+shape, this section pins the concrete values for the spawn
+you are about to run.
+
+- **spec_folder:** `(not yet resolved)`
+- **spec_md_path:** `(not yet resolved)`
+- **artifacts_folder:** `(not yet resolved)`
+- **reconciler_round_trail_dir:** `(not yet resolved)`
+- **prior_claim_check_md_path:** `C:\GitHub\Berreman\specs\0022\.artifacts\splitter\022-05-01-splitter-claim-check.md`
+- **spec_id:** `(not yet resolved)`
+- **seq:** `(not yet resolved)`
+- **rn:** `5`
+- **iter:** `1`
+
+
+## System prompts (read first, in order)
+
+1. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\reconciler.system-md
+   -- reconciler protocol + JSON envelope schema live here.
+2. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+   -- the worker round protocol. Helps you weigh whether a
+   verifier finding is substantive vs already-addressed.
+
+## User prompts (read second, in order)
+
+1. C:\GitHub\Berreman\.user-md\Berreman\splitter.user-md
+2. C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Inputs
+
+### Verifier critique
+
+- C:\GitHub\Berreman\specs\0022\.artifacts\splitter\021-05-01-verify.md
+
+### Claim-check report
+
+- C:\GitHub\Berreman\specs\0022\.artifacts\splitter\022-05-01-splitter-claim-check.md
+
+### Loop budget
+
+- splitter_max_rounds: 5
+- verifier_max_iterations: 5
+- current round: 5
+- current verifier iteration: 1
+
+### Rounds consumed so far
+
+```
+  reconcile: 3
+  split: 5
+  splitter-claim-check: 4
+  verify: 4
+```
+
+## Output you MUST write (and nowhere else)
+
+**Save your complete reconciler decision to**
+`C:\GitHub\Berreman\specs\0022\.artifacts\splitter\023-05-01-reconcile.md`. **Do not write the decision anywhere else.**
+
+Follow the reconciler output structure documented in the
+splitter system prompt: human-readable prose at the top, a
+single-line JSON envelope (with the schema given in the
+system prompt) as the LAST fenced code block of the file.
+
+The Python supervisor parses the envelope deterministically
+by splitting on `---` and locating the last fenced `json`
+block. Make sure the JSON is well-formed.

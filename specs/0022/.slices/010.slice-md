@@ -1,10 +1,10 @@
-# 010 — Environment, UX shell, schematic view, persistent customization & onboarding (Part J)
+# 010 — Fitting core: merit/target editor, local refinement, ellipsometric residuals & inverse fit (Part G §G.4–G.7)
 
 ## Spec reference
 
-- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part J** and is the **last slice** of the arc; it carries the full gate set.
-- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A) defined the domain/orchestration types, the MVU shape, and the reserved OpenTK viewport this slice consumes.
-- `C:\GitHub\Berreman\specs\0022\.slices\009.slice-md` — slice 009 (Part I) provides `openProject`, `EnvironmentSettings` JSON persistence seam, autosave, and history this shell drives.
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor). Part G §G.4–G.7.
+- Slice 008 (`.slices/008.slice-md`) — Part F analysis, incl. §F.5 `psiDelta`; §G.6 MUST share that Ψ/Δ derivation, not fork it.
+- Slice 009 (`.slices/009.slice-md`) — the §G.1 interface, §G.2 ALGLIB adapter, and §G.3 `DesignParameters` mapping this slice's residual/refinement builds on.
 
 ## Inherited from parent spec
 
@@ -28,188 +28,92 @@ The following constraints are normative for EVERY part (A–J) of this specifica
 
 ### Acceptance criteria owned by this slice
 
-- AC-J1: After a user opens an `OpticalSystem` with finite films, a wedge substrate, and a non-normal incidence angle, the schematic view MUST render each film band scaled by its `Thickness` `double<meter>`, draw the `Substrate.Wedge` band with a sloped lower edge, label each thickness in the layer's per-element default unit, and draw the incident ray at `IncidentLightInfo.incidenceAngle`, all within one MVU `view` re-evaluation.
-- AC-J2: After the user defines a unit cell of N layers and a repeat count R >= 1, `RepeatBuilder.expand` MUST yield exactly N*R ordinary `Layer` records in cell order assignable to `OpticalSystem.films`, with no new period/super-layer type in the model.
-- AC-J3: After the user selects any of the six templates (AR, bandpass, beam splitter, polarizer, waveplate, DBR), a valid `OpticalConstructorProject` MUST be produced and opened through the schema-validated project-open path, with the DBR template's periodic stack produced via `RepeatBuilder.expand`.
-- AC-J4: After a material is dragged from the library panel and dropped on a layer row, that layer's `Layer.properties` MUST be replaced by the resolved `OpticalProperties` via a single immutable MVU update while `Layer.thickness` is unchanged.
-- AC-J5: After two or more systems are marked visible in the workspace, their curves MUST be overlaid via the engine's `plotComparison` (`Charting.fs:38`) with no Part-J-local overlay implementation.
-- AC-J6: After the app restarts, the favorites board, recent-files list, last working folder, panel layout, and preferences MUST be restored from the JSON `EnvironmentSettings` file (schema-validated, not `.binz`); on validation failure the app MUST fall back to built-in defaults without attempting migration.
-- AC-J7: After a user edits a default-unit or wavelength-range preference, the change MUST affect only display/boundary formatting and MUST NOT alter any stored `double<meter>` domain value; solver defaults MUST be expressed as the engine's `SolverParameters`.
-- AC-J8: After the user switches theme or rearranges dockable panels, the new theme and panel layout MUST round-trip through `EnvironmentSettings` JSON; and the FuncUI clone MUST NOT be linked/built until the §A.6/§A.9 audit passes, with its linking mechanism left unresolved by Part J.
-- AC-J9: After a user enters a non-positive finite thickness, a repeat count < 1, or an empty/invalid wavelength range, the corresponding `Validation` validator MUST return `Result.Error` and surface the message inline, blocking commit, without throwing or coercing.
-- AC-J10: After a sweep or fit is started, `JobRunner` MUST report progress as completed-points/iterations on a background worker, expose a single Start→Cancel toggle, cancel cooperatively within one inter-point/inter-iteration check, refresh results via MVU on completion, and write any derived artefacts only to the project sidecar directory (never the repo root).
-- AC-J11: After the user opens a gallery entry, a shipped sample `OpticalConstructorProject` corresponding to an existing `Analytics/Examples/*.fsx` case MUST open through the schema-validated path, and the units glossary MUST state the §A.10 eV/cm⁻¹ conversions without re-implementing them; no `.fsx` is executed at runtime.
-- AC-J12: After the user opens a multi-element system, the `SystemView3D` OpenTK viewport MUST render the placed `ConstructorElement`s to scale along the beam path and draw the reflected/transmitted beam segments read from the already-solved `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`), without re-solving the system, without re-deriving beam routing, and without storing any non-SI viewport coordinate back into the model.
+- AC-G3: After a [Core] local-refinement run on a target/merit set with a lower-bounded thickness of 0, the returned refined `OpticalSystem` MUST contain no negative `Thickness` and MUST satisfy each `Inequality` target's hinge to zero within tolerance.
+- AC-G4: After loading measured R/T or Ψ,Δ CSV data and running inverse fitting, the resulting `FitTarget` sample points MUST be stored in meters via `WaveLength.value`, and the fit MUST reduce χ² below its initial value.
 
 ### Files in scope owned by this slice
 
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs` (new) — to-scale 2D cross-section renderer over `OpticalSystem`/`Layer`/`Substrate`/`IncidentLightInfo` (J.1, Avalonia `Canvas`)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/RepeatBuilder.fs` (new) — pure unit-cell expansion to `List<Layer>` (J.2)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Templates.fs` (new) — six code-defined starting-design `OpticalConstructorProject` factories (J.3)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Workspace.fs` (new) — multi-system comparison layout/selection state, delegating overlay to Part H §H.4 / `plotComparison` (J.5)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (new) — `EnvironmentSettings`/`Preferences` records (favorites board, recent files, layout, prefs) (J.6/J.7)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs` (new) — dockable panels, theme, shared job-status area (gated on FuncUI audit) (J.8)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Validation.fs` (new) — boundary validators returning `Result<'T, ValidationError list>` (J.9)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs` (new) — background progress/cancel/timing harness for sweeps and fits (hosts Part G fit runs) (J.10)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Help.fs` (new) — glossary, tooltips, onboarding gallery sourced from `Analytics/Examples/*.fsx` (J.11)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs` (new) — OpenTK system/beam 3D rendered view of the placed `ConstructorElement`s and reflected/transmitted beam path (J.12)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (new) — JSON Schema for `EnvironmentSettings` (added to the §A.7 schema family) (J.6)
-- Drag-and-drop wiring (J.4) lands in `OpticalConstructor.Ui/StackEditor.fs` (created in slice 003) plus a small handler in this slice's shell; the drop emits an MVU message resolving a `materialEntry` id via Part D's resolution function.
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (edit) — register all the new Ui modules in build order.
-
-Test artifacts owned by this slice:
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/RepeatBuilderTests.fs` (new) — `expand cell R` yields N*R `Layer`s in order and rejects R<1 via the J.9 validator (AC-J2)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/ValidationTests.fs` (new) — non-positive thickness, R<1, empty/invalid wavelength range each return `Result.Error` without throwing; valid inputs return `Ok` (AC-J9)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/SchematicGeometryTests.fs` (new) — pure band-height function monotonic in `Thickness` meters; `Thickness.Infinity` and `Substrate.Wedge` render as the fixed/sloped cases (geometry without an Avalonia surface) (AC-J1); `SystemView3D` element/beam-path geometry derives segment directions from the already-solved `EmFieldSystem.reflected`/`.transmitted` without re-solving or re-routing (AC-J12)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/EnvironmentRoundTripTests.fs` (new) — `EnvironmentSettings` serializes to JSON, validates against `optical-constructor-environment.schema.json`, round-trips, falls back to defaults on a deliberately invalid file (AC-J6)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/TemplatesTests.fs` (new) — each of the six templates produces an `OpticalConstructorProject` passing the §A.7 project schema; DBR template films equal `RepeatBuilder.expand` output (AC-J3)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/JobRunnerCancelTests.fs` (new) — a started job reports increasing progress and a cancellation token observed between points stops the run and leaves prior results intact (headless) (AC-J10)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/MeritFunction.fs` (new) — [Core] target/merit editor model; weighted LSQ residual via `Solution.func`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/LocalRefinement.fs` (new) — [Core] LM/quasi-Newton/simplex refinement entry point
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/Ellipsometry.fs` (new) — [Standard] Ψ/Δ from reflected r_p/r_s amplitudes; net-new `EllipsometricFunction` DU (shares §F.5 derivation)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs` (new) — [Standard] measured R/T + Ψ,Δ import (FSharp.Data) to FitTargets
 
 ### File:line references owned by this slice
 
-All file:line references in the verbatim J.0–J.12 directives reproduced under **Requirements** are owned by this slice (notably: `Media.fs:94`, `Media.fs:24`, `Media.fs:12`, `Media.fs:26`, `Media.fs:30`, `Media.fs:34`, `Media.fs:40`, `Media.fs:97`, `Media.fs:98`, `Media.fs:99`, `Media.fs:100`, `Media.fs:120`, `Fields.fs:280`, `Fields.fs:328`, `Fields.fs:342`, `Fields.fs:553-554`, `MaterialProperties.fs:165`, `Constants.fs:27,30,33`, `Solvers.fs:15`, `Solvers.fs:199`, `Charting.fs:38`, `Variables.fs:42`, `Variables.fs:237,270`, `Analytics/Examples/MultilayerThinFilm.fsx`, `MultilayerThinFilm_EUV.fsx`, `ActiveCrystal.fsx`, `Wedge_Glass.fsx`, `Wedge_BiaxialCrystal.fsx`, `Glass_Dispersive.fsx`).
+- `FieldFunctions.fs:109` `OpticalFunction` evaluators (`R | Rp | Rs | T | Tp | Ts | EllipticityR | …`); `FieldFunctions.fs:192` `Solution.func` — the SAME evaluator the charts use, reused for `modelValue`.
+- `Solvers.fs:199` `OpticalSystemSolver` (run per target sample point); `Solvers.fs:74` `getRT` (complex reflected/transmitted `EmComponent` amplitudes for Ψ/Δ).
+- `Fields.fs:550` `EmFieldSystem`; `Fields.fs:284` `WaveLength.value` (canonical-SI sample points); `Variables.fs:42` `RangedVariable` (independent-variable sample point).
+- Part F §F.5 `psiDelta` (slice 008) — the shared Ψ/Δ derivation §G.6 consumes; `FieldFunctions.fs:93` Mueller path (owned by Part F §F.3 / slice 008, MUST NOT be revived here).
 
 ## Scope
 
-This slice owns the UX shell and environment layer: the schematic cross-section drawing, the repeat/period unit-cell builder, stack templates/wizards, drag-and-drop of library items onto layers, the multi-system comparison workspace, the persistent favorites board / recent-files / panel-layout customization, preferences, theme and dockable panels, input validation and physical-sanity warnings, the long-running-job progress/cancel mechanism, the in-app help/glossary/onboarding gallery, and the OpenTK 3D system/beam view. It builds strictly on the Part A cross-cutting contract and reuses the canonical domain types, the units rule, the storage split, and the FuncUI audit gate. As the last slice of the arc, it carries the full gate set `[build, unit-tests, constructor-unit-tests]`.
+This slice lands the fitting core on top of the slice-009 infrastructure: the [Core] merit/target editor model that assembles a weighted least-squares residual through the SAME `Solution.func` evaluator the charts use (§G.4), the [Core] local-refinement entry point that builds the residual and calls `optimize` with Levenberg–Marquardt as the default (§G.5), the [Standard] Ψ/Δ ellipsometric targets derived from the reflected `EmComponent` amplitudes (§G.6), and [Standard] inverse fitting from measured R/T and Ψ,Δ CSV/tab data (§G.7). The residual closures satisfy the §G.1 `Residual` signature directly and the refined solution is folded back through the §G.3 mapping.
+
+This slice depends on slice 008 (Part F §F.5 `psiDelta` — §G.6 MUST share that derivation, not fork it) and slice 009 (the §G.1 interface, §G.2 adapter, and §G.3 `DesignParameters`). Tests prove AC-G3 (bounded refinement: no negative thickness, inequality hinge to zero) and AC-G4 (inverse fit reduces χ² with sample points in meters) in the gated `OpticalConstructor.Tests` host. Fit-quality, synthesis, the UI page, and the Wolfram end-to-end/needle/bounded tests over the full path are slice 011.
 
 ## Requirements
 
-The following are the parent's Part J directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+### R-1. §G.4 Target / merit-function editor [Core]
 
-### R-1 (J.1) Schematic cross-section view [Core]
+This part MUST define the merit/target model in a new file `OpticalConstructor.Optimization/MeritFunction.fs` and surface it in the UI per G.10, carrying the **[Core]** tier from 010 §II.5. A `FitTarget` (new record) MUST carry: the `OpticalFunction` to evaluate (reuse `FieldFunctions.fs:109`: `R | Rp | Rs | T | Tp | Ts | EllipticityR | …`, extended for Ψ/Δ per G.6), the independent-variable sample point (a `RangedVariable` index or explicit `WaveLength`/`IncidenceAngle`, reusing `Variables.fs:42`), the desired value, a `weight : float`, a `tolerance : float`, and a `kind : TargetKind` DU (`Equality | Inequality of InequalityTarget`) — covering 010 §II.5's "weights, tolerances, and one-sided/inequality targets".
 
-The Ui project MUST provide a `Schematic` module (new file `OpticalConstructor.Ui/Schematic.fs`) that renders a single `OpticalSystem` (`Media.fs:94`) as a vertical, drawn-to-scale cross-section on an Avalonia `Canvas`, color-coded by material, with per-layer thickness labels and the incident-light ray drawn at its angle. The renderer MUST read its geometry only from the canonical domain values and MUST NOT introduce a parallel geometry model:
+The merit function MUST be assembled as a weighted least-squares residual vector: for each `FitTarget`, residual = weight × (modelValue − desiredValue) / max(tolerance, ε) for `Equality`, and a one-sided hinge (zero when satisfied) for `Inequality`. `modelValue` MUST be obtained by running `OpticalSystemSolver` (`Solvers.fs:199`) on the system produced by the G.3 mapping at the target's sample point and reading `Solution.func` (`FieldFunctions.fs:192`) — the SAME evaluator the charts use, so fit and chart never diverge. The assembled residual closure MUST satisfy the `Residual` signature of G.1 directly. Stored `desiredValue`/sample points MUST be canonical SI (meters for wavelength via `WaveLength.value`, `Fields.fs:284`); unit conversion happens only at the editor boundary (§0 constraint 3). No merit-evaluation cache is admitted here.
 
-1. The film stack MUST be drawn from `OpticalSystem.films : List<Layer>` (`Media.fs:98`) top-to-bottom in list order; each band's drawn height MUST be a monotonic function of that layer's `Thickness` (`Media.fs:12`), where `Thickness.Thickness d` carries `d : double<meter>` and `Thickness.Infinity` (the half-space case) MUST be drawn as a fixed-height "semi-infinite" band, not scaled.
-2. Thickness labels MUST be formatted in the layer's per-element default unit (the `unitOfMeasure` carried by the project per §A.7), converting from the stored `double<meter>` to the display unit ONLY here at the view boundary (§A.3) using the Part D `Units.fs` conversion seam (§D.2) over the engine constants `nmToMeter`/`mkmToMeter`/`mmToMeter` (`Constants.fs:27,30,33`); Å and eV/cm⁻¹ conversions reuse the same §A.10 boundary helpers. No converted value MAY be written back into the model.
-3. The upper and lower half-spaces MUST be drawn from `OpticalSystem.upper` / `OpticalSystem.lower : OpticalProperties` (`Media.fs:97,100`) as labelled incident/exit medium bands.
-4. When `OpticalSystem.substrate` is `Some (Substrate.Plate _ | Substrate.Wedge _)` (`Media.fs:99`, `Substrate` `Media.fs:40`), the substrate MUST be drawn as a distinct band; for `Substrate.Wedge w` the band MUST be drawn with a non-parallel lower edge whose slope is taken from the wedge's `WedgeAngle` (`Fields.fs:328`, reached via `w.angle`), making the wedge visually distinct from a plate.
-5. The incident-light ray MUST be drawn as a line entering the upper medium at the angle from the active source's `IncidentLightInfo.incidenceAngle` (`Fields.fs:342`); the ray's reflected and transmitted continuations MUST be indicated at the top film interface only (full per-interface beam tracing is owned by Part B's beam tree and MUST NOT be re-derived here).
-6. Material color MUST be assigned by a deterministic, pure function of a material's stable identity key (the `materialEntry` id from §A.7), so the same material is the same color across redraws; the color table is a static map in `Schematic.fs` and MUST NOT be a config knob.
+### R-2. §G.5 Local refinement optimization [Core]
 
-Caching of rendered geometry, retained-mode scene graphs, and an abstraction over the drawing backend are OUT OF SCOPE; the view MUST be a pure `OpticalSystem -> Avalonia control` projection re-evaluated by the MVU `view` (Part A §A.6 / 010 Part III §3).
+This part MUST implement local refinement in a new file `OpticalConstructor.Optimization/LocalRefinement.fs`, carrying the **[Core]** tier from 010 §II.5. The entry point MUST take a base `OpticalSystem`, a `DesignParameter list` (G.3), a `FitTarget list` (G.4), and an `OptimizationMethod` (G.1), build the residual closure, and call `optimize` (G.1). Levenberg–Marquardt (`LevenbergMarquardt`) MUST be the default method ("the workhorse", 010 §II.5); quasi-Newton (`QuasiNewtonLbfgs`) and Nelder–Mead simplex (`NelderMead`) MUST be selectable. Bounded parameters MUST be honoured by passing the G.3 bounds as `ParameterBounds`, and inequality targets MUST flow through as G.1 `InequalityTarget`s — satisfying 010 §II.5's "bounded parameters and inequality targets (forbid negative thickness, bound n to physical ranges)".
 
-### R-2 (J.2) Repeat / period unit-cell builder [Standard]
+On success the optimizer's `solution` vector MUST be folded back through the G.3 mapping to produce the refined `OpticalSystem`, which becomes the new working system. Robust normal-equation handling (QR / Gauss–Jordan, 010 §II.5) is delegated to ALGLIB's `minlm` internals via G.2 and MUST NOT be re-implemented on the math seam. This file MUST NOT spawn its own thread; long-running execution and cancellation are owned by G.10.
 
-The Ui project MUST provide a `RepeatBuilder` module (new file `OpticalConstructor.Ui/RepeatBuilder.fs`) that lets the user define a unit cell as an ordered list of `Layer` values (`Media.fs:24`) and a positive integer repeat count, and expands it into a flat `List<Layer>` suitable for assignment to `OpticalSystem.films` (`Media.fs:98`). The expansion MUST be the pure function `expand : Layer list -> int -> Layer list` implemented as `List.replicate count cell |> List.concat`; it MUST NOT introduce a new "super-layer" or "period" domain type, and the expanded films MUST be ordinary `Layer` records indistinguishable from manually entered ones. The builder is the [Standard] DBR/Bragg/EUV-Mo–Si convenience from 010 Part II §1; it MUST reject a repeat count `< 1` through the J.9 validation seam rather than silently clamping. Storing the unfactored period as a separate serialized structure is OUT OF SCOPE — the project persists only the expanded `films` per §A.7.
+### R-3. §G.6 Ψ, Δ derivation for ellipsometric residuals [Standard]
 
-### R-3 (J.3) Stack templates & wizards [Standard]
+This part MUST add the ellipsometric quantities Ψ and Δ as evaluable optimization targets in a new file `OpticalConstructor.Optimization/Ellipsometry.fs`, carrying the **[Standard]** tier from 010 §II.4 ("Ψ, Δ … derivable from existing field amplitudes"). The derivation MUST reuse the complex reflected `EmComponent` amplitudes already solved by `getRT` (`Solvers.fs:74`) and exposed on `EmFieldSystem.reflected` (`Fields.fs:550`): the complex ratio ρ = r_p / r_s yields tan(Ψ)·e^{iΔ}, so Ψ = atan(|ρ|) and Δ = arg(ρ). This file MUST NOT fork `Solvers.fs` or `FieldFunctions.fs` (§0 constraint 2); it consumes their outputs and MUST share the Ψ/Δ definition of Part F §F.5 (`psiDelta`) rather than re-deriving an independent one.
 
-The Ui project MUST provide a `Templates` module (new file `OpticalConstructor.Ui/Templates.fs`) exposing a fixed, code-defined set of starting designs — AR coating, bandpass filter, beam splitter, polarizer, waveplate, DBR — each a pure function `unit -> OpticalConstructorProject` (the root aggregate from §A.7) that pre-populates a starting design and is then handed to the ordinary editors. Each template MUST build its stack from real `Layer`/`OpticalSystem` values (`Media.fs:24,94`) and, where it needs a periodic structure (DBR), MUST call `RepeatBuilder.expand` (J.2) rather than duplicating that logic. Templates MUST NOT read from disk, MUST NOT be user-editable template files, and MUST NOT introduce a template-definition schema — they are F# literals. Loading a template MUST go through the same project-open path as a normal project (Part I §I.3 `openProject`) so schema validation (§A.7) applies uniformly.
+The two new functions MUST be surfaced as additional cases reachable by `FitTarget` (G.4) so ellipsometric targets compose identically to photometric ones. Because `FieldFunctions.fs:109` `OpticalFunction` is closed and §0 constraint 2 forbids forking it, this part MUST add `Psi` and `Delta` as a small net-new `EllipsometricFunction` DU local to `Ellipsometry.fs` with its own evaluator over `EmFieldSystem`, NOT by editing the engine's `OpticalFunction`. The completion of the Mueller path (`FieldFunctions.fs:93`) is owned by Part F §F.3 and MUST NOT be revived by this part — it is outside the fitting scope named in 010 §II.5.
 
-### R-4 (J.4) Drag-and-drop of library items onto layers [Standard]
+### R-4. §G.7 Inverse fitting from measured R/T and Ψ,Δ [Standard]
 
-The Ui project MUST wire Avalonia drag-and-drop so a material from the materials library panel (Part D) dropped onto a layer row replaces that layer's `Layer.properties : OpticalProperties` (`Media.fs:26`) with the dragged material's resolved `OpticalProperties` (`MaterialProperties.fs:165`), leaving `Layer.thickness` unchanged. The drop payload MUST carry only the stable `materialEntry` id (§A.7), and resolution to `OpticalProperties` MUST go through Part D's material-resolution function — Part J MUST NOT re-resolve dispersion models or rebuild tensors. The drop MUST emit a single MVU message that the owning `update` applies immutably (producing a new `Layer`), consistent with the Part A MVU contract; no in-place mutation of the model is permitted (§0 constraint 1, immutable structures).
+This part MUST implement inverse fitting from measured data in a new file `OpticalConstructor.Optimization/InverseFit.fs`, carrying the **[Standard]** tier from 010 §II.5. Measured photometric (R/T) and ellipsometric (Ψ, Δ) spectra MUST be loaded via FSharp.Data (the import library named in the Part A storage seam and 010 §III.2) from CSV/tab sources and converted to canonical SI sample points (wavelength in meters via `WaveLength.value`, `Fields.fs:284`) at the import boundary only.
 
-### R-5 (J.5) Multi-system comparison workspace [Standard]
-
-The Ui project MUST provide a `Workspace` module (new file `OpticalConstructor.Ui/Workspace.fs`) that holds several `OpticalSystem` values side by side for comparison, each addressed by the project's system collection (`OpticalConstructorProject.systems`, §A.7). For overlaying their computed curves the workspace MUST call the engine's existing comparison plot `plotComparison` (`Charting.fs:38`) — surfaced through the Part H §H.4 ScottPlot overlay rather than the engine's terminal `Chart.show` — which already accepts a `list<FixedInfo>` and plots model-by-model; Part J MUST NOT implement its own multi-curve overlay. The workspace owns layout and selection state only (which systems are visible, which is active); the actual chart surface is Part H's. Holding more than the systems already present in the open `OpticalConstructorProject` — e.g. a separate comparison document format — is OUT OF SCOPE.
-
-### R-6 (J.6) Persistent UI-customization & favorites board [Core]
-
-The Ui project MUST provide a `UserEnvironment` module (new file `OpticalConstructor.Ui/UserEnvironment.fs`) defining an `EnvironmentSettings` record that persists the user's working environment between sessions and serves as defaults for new projects. It MUST hold: a **favorites board** (named, grouped pins of frequently used `Layer`s, `materialEntry` ids, `sourceSpec` ids, and whole sub-assemblies expressed as `OpticalSystem` fragments, all referencing §A.7 shapes), the **last working folder(s)** and an ordered **recent files/projects** list, the **window/panel layout** (J.8), the **toolbar contents**, and the **preferences** (J.7). This is the net-new persistent customization from 010 Part II §1.
-
-1. `EnvironmentSettings` MUST be persisted as JSON validated on load against a new schema `optical-constructor-environment.schema.json` (added to the §A.7 schema family, same validation library `JsonSchema.Net` named in §A.7) — NOT as FsPickler/`.binz`, because it is hand/LLM-inspectable user config (§A.7). The serialization MUST reuse the Part I `serializeProject` shared `JsonSerializerOptions` (§I.1) rather than a second JSON stack.
-2. The file MUST live at a single fixed per-user path under the OS application-data directory; the resolved path MUST be a committable-vs-gitignore non-issue because it is outside the repository working tree (J.10 checklist item 6). Sub-assemblies pinned on the favorites board MUST be stored by value as `opticalSystem` JSON fragments (§A.7), so a pinned favorite survives even if the project it came from is deleted.
-3. Sweep/field-map and other bulk artefacts MUST NOT be embedded in `EnvironmentSettings`; only references (paths/ids) MAY appear, consistent with the `.binz`-sidecar rule (§A.7). Schema versioning and migration of this file are OUT OF SCOPE (§0 constraint 6); on a schema-validation failure the app MUST fall back to built-in defaults rather than attempt migration.
-
-### R-7 (J.7) Preferences [Standard]
-
-The Ui project MUST provide a `Preferences` record (in `OpticalConstructor.Ui/UserEnvironment.fs`, J.6) carrying: default units (a per-quantity `unitOfMeasure`, §A.7), default wavelength range, default number of sweep points, decimal display precision, and solver defaults. Solver defaults MUST be expressed as the engine's own `SolverParameters` (`Solvers.fs:15`, whose `numberOfReflections` is the convergence control named in 010 Part II §4/§8) — Part J MUST NOT define a parallel solver-config record. Default-unit and wavelength-range preferences are display/boundary concerns and MUST be applied only at the UI/IO boundary (§A.3); they MUST NOT change how any value is stored. Preferences persist as part of `EnvironmentSettings` (J.6) and are therefore JSON, not `.binz`.
-
-### R-8 (J.8) Theme & dockable panels [Standard]
-
-The Ui project MUST provide an `AppShell` module (new file `OpticalConstructor.Ui/AppShell.fs`) hosting dockable/resizable panels (stack, materials, sources, chart, results) with saved layouts, and a light/dark theme plus configurable chart color palettes. The theme selection and the serialized panel layout MUST be fields of `EnvironmentSettings` (J.6) and MUST round-trip through its JSON. Chart color palettes MUST be surfaced to Part H but MUST NOT be re-implemented as a charting engine here. The dockable-panel mechanism MUST use Avalonia's docking facilities through the FuncUI clone — and therefore MUST NOT be referenced, linked, or built until the mandatory FuncUI-clone audit (§A.6/§A.9 / 010 Part III §3) has passed and the clone is cleared. **The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided here; Part J MUST NOT resolve it.** Until the audit passes, `AppShell` MUST be authored against the FuncUI DSL surface as source but MUST NOT add the clone as a dependency.
-
-### R-9 (J.9) Input validation & physical-sanity warnings [Standard]
-
-The Ui project MUST provide a `Validation` module (new file `OpticalConstructor.Ui/Validation.fs`) exposing pure validators returning `Result<'T, ValidationError list>` (§0 error-handling rule — `Result`, not exceptions) for every editable boundary field. It MUST enforce at minimum: thickness `> 0` for finite films (rejecting `Thickness.Thickness d` with `d <= 0.0<meter>`, `Media.fs:12`), repeat count `>= 1` (J.2), a non-empty wavelength range with positive endpoints, and the physical-sanity warnings named in 010 Part II §8 (e.g. an absorbing region flagged where the imaginary index implies gain, non-causal tabulated data). Validation MUST run at the UI boundary before a value is committed to the model and MUST surface failures inline next to the field; it MUST NOT throw, and it MUST NOT silently coerce out-of-range input. Validators MUST operate on already-parsed values and MUST NOT duplicate unit conversion — they receive canonical `double<meter>` etc. after the §A.3 boundary conversion.
-
-### R-10 (J.10) Long-running job progress, cancellation & timing [Standard]
-
-The Ui project MUST provide a `JobRunner` module (new file `OpticalConstructor.Ui/JobRunner.fs`) that runs heavy sweeps and optimizations (the engine calls `calculate`/`calculate3D` `Variables.fs:237,270` for sweeps, and Part G's ALGLIB path for fits) on a background worker with progress, cancellation, and elapsed-time reporting, surfaced as MVU messages. This is the single shared background-job harness; Part G §G.10 supplies the per-iteration optimizer progress payload to it. Because this introduces a long-running, cancellable background job, the operator-facing UX checklist is discharged here:
-
-1. **Discoverability/nav entry.** Every long job MUST be launched from a labelled control on its owning page (the sweep panel, the fit panel), and an active job MUST appear in a single shared status area in `AppShell` (J.8) so it is discoverable regardless of which panel started it.
-2. **Progress granularity.** Progress MUST be reported as completed-points-over-total for sweeps (driven by the `RangedVariable` point count, `Variables.fs:42`) and as iteration count for optimization; a job whose total is unknown MUST show an indeterminate-but-running state, never a frozen UI.
-3. **Pre-confirmation vs one-click.** Starting a sweep/fit MUST be one-click (it is non-destructive and recomputable). Cancellation, by contrast, MUST be immediate one-click with no confirmation, since the partial result is discardable.
-4. **Completion → results refresh.** On job completion the runner MUST emit a completion message that triggers the owning page's results/chart refresh through the normal MVU `update` → `view` cycle; results MUST NOT require a manual reload.
-5. **Opposing-action button + undo.** The Start control MUST become a Cancel control for the duration of the job (single button, two states) so the opposing action is unambiguous; cancelling MUST leave the prior committed results untouched (the cancelled job's partial output is dropped, which is the natural undo).
-6. **Committable file vs .gitignore.** Any derived artefact a job writes (sweep/field-map `.binz` sidecars, fit histories) MUST be written under the project's sidecar directory referenced from the project JSON (§A.7), NOT into the repository root; these are derived outputs and Part J MUST NOT add them as committable project files.
-
-Cancellation MUST be cooperative via a `System.Threading.CancellationToken` checked between sweep points / optimizer iterations; killing threads, retry-on-failure loops, and a job queue/scheduler abstraction are OUT OF SCOPE (§0 constraint 6) — one job per worker, cancel-and-restart is the model.
-
-### R-11 (J.11) In-app help, glossary & onboarding gallery [Standard]
-
-The Ui project MUST provide a `Help` module (new file `OpticalConstructor.Ui/Help.fs`) delivering: an in-app material/units glossary and field tooltips, plus a gallery of worked examples and getting-started sample projects shipped with the app. The gallery MUST be built from the engine's existing example scripts in `C:/GitHub/Berreman/Berreman/Analytics/Examples/` — at minimum the AR/multilayer, DBR/EUV Mo-Si, active-crystal, wedge, and dispersive-glass cases, which exist as `MultilayerThinFilm.fsx`, `MultilayerThinFilm_EUV.fsx`, `ActiveCrystal.fsx`, `Wedge_Glass.fsx`/`Wedge_BiaxialCrystal.fsx`, and `Glass_Dispersive.fsx` respectively. Each gallery entry MUST open as a normal `OpticalConstructorProject` through the Part I open path (§I.3 `openProject`, so schema validation applies, §A.7) — the `.fsx` files are the design reference for the equivalent shipped sample projects and MUST NOT be executed at runtime by the app. The units glossary MUST state the canonical boundary conversions from §A.10 (eV via `E[eV] = 1239.84 / λ[nm]`, cm⁻¹ via wavenumber) and MUST NOT introduce a second conversion implementation. Tooltips are static strings co-located in `Help.fs`; an authorable/markdown help-content pipeline is OUT OF SCOPE.
-
-### R-12 (J.12) 2D/3D rendered view of the element/system with the beam path [Standard]
-
-The Ui project MUST provide a `SystemView3D` module (new file `OpticalConstructor.Ui/SystemView3D.fs`) that delivers 010 §1's [Standard] "2D/3D rendered view of the element/system with the beam path" (010 line 127), rendered in the custom OpenTK 3D viewport Part A reserves for exactly this surface in the `OpticalConstructor.Ui.fsproj` row (§A.1, §A.6) — this is the part that consumes that reservation. The view MUST draw, to scale, the placed `ConstructorElement`s of the open project's `BeamTree`/`BeamNode` topology (§A.4) — sample, mirror, lens, polarizer, analyzer, detector — positioned along the beam path, and MUST draw the beam path itself as the reflected/transmitted ray segments routed by the beam tree, reading each segment's direction from the solved `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`) that Part B already produces (§B.1, §B.4). This part MUST NOT re-solve the system or re-derive beam routing: it consumes the already-solved beam tree and renders it. Geometry MUST read canonical SI (meters) from the domain values and convert to viewport coordinates only at the render boundary (§A.3); no converted value MAY be written back into the model.
-
-The OpenTK renderer here is distinct from, and MUST NOT duplicate, two existing surfaces: the [Core] 2D schematic cross-section of a single stack (§J.1, an Avalonia `Canvas`) and the Poincaré-sphere OpenTK use named for the polarization picker/charts (§E.4, §H.8). This `SystemView3D` is the system/beam viewport; §H.8's Poincaré rendering and §H.5's reservation note ("Custom OpenTK 3D rendering is reserved by Part A for the system/beam viewport and MUST NOT be used here") both refer to this same reserved viewport, now delivered here. This part MUST NOT add full 3D vector wave optics, diffraction rendering, or a second physics engine (Part A §A.5); the rendered beam segments are the straight ray/beam paths the orchestration already carries. A retained-mode scene-graph abstraction, level-of-detail, and camera-state persistence beyond the §J.6 panel-layout fields are OUT OF SCOPE.
+Each measured spectral point MUST be turned into a `FitTarget` (G.4) whose `OpticalFunction`/`EllipsometricFunction` matches the measured quantity and whose desiredValue is the measured datum; the resulting `FitTarget list` MUST be handed to the G.5 local-refinement entry point. The regressable model parameters MUST be the G.3 design variables — thicknesses, dispersion coefficients (optical constants), and geometry — matching 010 §II.5 ("regress model parameters (thicknesses, optical constants, nonuniformity, roughness)"). Nonuniformity and roughness MUST be expressed, when in scope, as additional `DesignParameter` closures over the base system, NOT as new engine primitives; this part adds no roughness physics beyond what such a closure expresses. This file MUST NOT introduce a measurement-format registry or autodetection beyond the explicit CSV/tab path named here.
 
 ## Non-requirements
 
-- The canonical domain/orchestration types, MVU shape, units rule, storage split, and FuncUI audit gate are owned by Part A (slice 001); Part J consumes them and MUST NOT redefine any name Part A owns.
-- The multi-curve overlay rendering itself is owned by Part H §H.4 (slice 008); the workspace (J.5) owns layout/selection state only and delegates to `plotComparison`.
-- Material resolution (`materialEntry` id → `OpticalProperties`) is owned by Part D (slice 002); drag-and-drop (J.4) carries the id and calls Part D's resolution function.
-- `openProject` and `EnvironmentSettings` JSON persistence/validation are owned by Part I (slice 009); templates (J.3) and gallery (J.11) route through `openProject`; `UserEnvironment` reuses the Part I `JsonSerializerOptions`.
-- Solver defaults reuse the engine's `SolverParameters` (J.7); no parallel solver-config record.
-- The FuncUI clone MUST NOT be linked/built and its linking mechanism MUST NOT be resolved (J.8; §0 constraint 5).
-- Caching of rendered geometry, retained-mode scene graphs, drawing-backend abstraction, job queue/scheduler, retry loops, schema versioning/migration, full 3D vector wave optics (§0 constraint 6; J.1/J.10/J.12).
+- No fit-quality reporting (χ²/MSE, CI, correlation, residual arrays, `FitReport`) — owned by slice 011 (§G.8).
+- No needle/tunnelling synthesis or global optimization (simulated annealing / GA) — owned by slice 011 (§G.9).
+- No Synthesis/Fit operator UI page, no progress channel, no Cancel/Revert/refresh UX — owned by slice 011 (§G.10).
+- No Wolfram-reference validation tests — owned by slice 011 (§G.11); the Wolfram end-to-end / needle / bounded tests over the full path live in `BerremanTests/OptimizationTests.fs` (slice 011).
+- §G.5 MUST NOT spawn its own thread; long-running execution and cancellation are owned by §G.10 (slice 011) and the Part J §J.10 job runner (slice 016).
+- MUST NOT revive the Mueller path `FieldFunctions.fs:93` (owned by Part F §F.3 / slice 008).
+- No merit-evaluation cache (§G.4); no re-implementation of normal-equation handling on the math seam (§G.5 delegates to ALGLIB `minlm`); no measurement-format registry/autodetection (§G.7).
 
 ## Files modified (planned)
 
 New:
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/RepeatBuilder.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Templates.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Workspace.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Validation.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Help.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/RepeatBuilderTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/ValidationTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/SchematicGeometryTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/EnvironmentRoundTripTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/TemplatesTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/JobRunnerCancelTests.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/MeritFunction.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/LocalRefinement.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/Ellipsometry.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/InverseFit.fs`
+- `OpticalConstructor/OpticalConstructor.Tests/LocalRefinementTests.fs` (AC-G3: bounded local refinement — no negative thickness, inequality hinge to zero; AC-G4: inverse fit reduces χ² with sample points stored in meters via `WaveLength.value`)
 
 Edited:
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/StackEditor.fs` — add the J.4 drag-and-drop handler (the editor file itself was created in slice 003).
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register all new Ui modules in build order.
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` — register `MeritFunction.fs`, `LocalRefinement.fs`, `Ellipsometry.fs`, `InverseFit.fs` in compile order (after the slice-009 interface/adapter/mapping files; `Ellipsometry`/`MeritFunction` before `LocalRefinement` before `InverseFit`).
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `LocalRefinementTests.fs`.
 
 ## Testing plan
 
-Gates that apply (FULL set — this is the last slice of the arc): `build`, `unit-tests`, `constructor-unit-tests`.
+Gates: `build`, `unit-tests`, `constructor-unit-tests` (all three).
 
-- `build`: solution builds with all new Ui modules registered, compiling against the FuncUI DSL surface and the OpenTK/ScottPlot/Avalonia package surfaces WITHOUT the FuncUI clone dependency (§0 constraint 5; the model/`update` contains no Avalonia type — P3).
-- `unit-tests`: existing `BerremanTests` stays green (`count_at_least` baseline carried from slice 009's state-of-the-world).
-- `constructor-unit-tests`: `RepeatBuilderTests.fs` (AC-J2 N*R `Layer`s, R<1 rejected); `ValidationTests.fs` (AC-J9 thickness/repeat/range validators return `Result.Error`, no throw); `SchematicGeometryTests.fs` (AC-J1 pure band-height monotonic in `Thickness`, `Infinity`/`Wedge` cases; AC-J12 `SystemView3D` geometry from solved `EmFieldSystem`, no re-solve); `EnvironmentRoundTripTests.fs` (AC-J6 round-trip + invalid→defaults); `TemplatesTests.fs` (AC-J3 six templates schema-valid, DBR via `RepeatBuilder.expand`); `JobRunnerCancelTests.fs` (AC-J10 progress + cooperative cancel, headless). These are headless pure-function/geometry tests, not renderer-driven.
-- Emit the state-of-the-world file with the `gates:` YAML baseline block.
+- `build` gate: `dotnet build Berreman.slnx -c Release` MUST pass with the four new Optimization files compiling.
+- `constructor-unit-tests` gate: runs `OpticalConstructor.Tests`; the new `LocalRefinementTests.fs` MUST pass and increase the count over slice 009's baseline.
+  - AC-G3 (LocalRefinementTests): run a [Core] local-refinement on a target/merit set with a lower-bounded thickness of 0; assert the returned refined `OpticalSystem` contains no negative `Thickness` and satisfies each `Inequality` target's hinge to zero within tolerance.
+  - AC-G4 (LocalRefinementTests): load measured R/T or Ψ,Δ CSV data and run inverse fitting; assert the resulting `FitTarget` sample points are stored in meters via `WaveLength.value`, and the fit reduces χ² below its initial value.
+- `unit-tests` gate: `BerremanTests` stays green (this slice does not touch `BerremanTests`; the full-path Wolfram/needle/bounded tests are slice 011).
 
 ## Risks
 
-- **Medium:** `JobRunner` cancellation must be cooperative via `CancellationToken` checked between sweep points / optimizer iterations (J.10); a headless test must drive a job and observe both progress and a clean cancel without killing threads (AC-J10).
-- **Medium:** the six templates must produce projects that pass the §A.7 schema through `openProject` (AC-J3) — they exercise the full aggregate (systems, beam tree, materials, sources, chart settings) the earlier slices defined; a missing required field fails validation. Build templates from real `Layer`/`OpticalSystem` values and route through `openProject`.
-- **Medium:** `AppShell` docking depends on Avalonia docking via the FuncUI clone, which MUST NOT be linked until the audit passes (J.8; §0 constraint 5). Author `AppShell` against the DSL surface as source with NO clone dependency so the `build` gate passes; docking is wired live only after the audit.
-- **Low:** `SystemView3D` must consume the already-solved beam tree and MUST NOT re-solve or re-route (AC-J12); the geometry test asserts the directions come from `EmFieldSystem.reflected`/`.transmitted`.
+- **Medium.** The merit residual MUST be assembled from the SAME `Solution.func` evaluator the charts use, so fit and chart never diverge — wiring a parallel evaluator here is the load-bearing mistake. §G.6 MUST share Part F §F.5 `psiDelta` rather than re-deriving Ψ/Δ; forking it splits two definitions of the same quantity. The [Core]/[Standard] tier labels (G.4/G.5 Core, G.6/G.7 Standard) MUST be preserved. §G.5 must not spawn a thread (cancellation is G.10/J.10). Bounded-parameter handling (lower bound 0 for thickness) MUST come from the §G.3 `ParameterBounds`, not a separate validator.
 
 ## Hand-off
 
-State carried beyond this arc:
-- The UX shell layer is complete: `Schematic.fs`, `RepeatBuilder.fs`, `Templates.fs`, `Workspace.fs`, `UserEnvironment.fs` (`EnvironmentSettings`/`Preferences`), `AppShell.fs`, `Validation.fs`, `JobRunner.fs`, `Help.fs`, `SystemView3D.fs`, plus the J.4 drag-and-drop handler in `StackEditor.fs` and the `optical-constructor-environment.schema.json`.
-- All five OpticalConstructor projects plus the test project(s) build green under `x64`/.NET 10; the full Part A–J feature set (every `[Core]`/`[Standard]` directive) is implemented across slices 001–010.
-- **Open follow-ups (outside this arc's scope, gated by §0 constraint 5):** the FuncUI-clone audit (§A.6/§A.9) has NOT been run and the clone is NOT linked; `AppShell` docking and any clone-dependent UI remain authored-against-DSL-only until the audit passes and the operator takes the linking-mechanism decision. The ALGLIB `NelderMead` simplex backend (G.2) remains deliberately unresolved (`Failed "simplex backend unresolved"`).
-
-Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
-
-```yaml
-gates:
-  berreman_unit_tests: <int>
-```
+The fitting core exists and is unit-tested: the [Core] merit/target model (`MeritFunction.fs`) assembling a weighted-LSQ residual through `Solution.func`, the [Core] local-refinement entry point (`LocalRefinement.fs`) with LM default and folding the solution back through the §G.3 mapping, the [Standard] Ψ/Δ ellipsometric targets (`Ellipsometry.fs`, sharing §F.5 `psiDelta`), and [Standard] inverse fitting from measured CSV/tab data (`InverseFit.fs`). Slice 011 adds fit-quality reporting, needle/tunnelling synthesis and global optimization, the Synthesis/Fit operator page, and the Wolfram-reference validation in `BerremanTests/OptimizationTests.fs`. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.

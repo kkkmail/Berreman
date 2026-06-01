@@ -1,0 +1,119 @@
+# 016 — UX shell III: long-running job runner, help/gallery & 3D system/beam view (Part J §J.10–J.12)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract).
+- Slice 001 (`.slices/001.slice-md`) — scaffold; the OpenTK 3D viewport reserved on the `OpticalConstructor.Ui.fsproj` row (§A.1/§A.6) and the buildable FuncUI interpretation this slice relies on.
+- Slice 002 (`.slices/002.slice-md`) — beam-tree topology (`BeamTree`/`BeamNode`/`ConstructorElement`) `SystemView3D` renders.
+- Slice 011 (`.slices/011.slice-md`) — Part G fit runs; §G.10 supplies the per-iteration optimizer progress payload `JobRunner` hosts.
+- Slice 015 (`.slices/015.slice-md`) — `AppShell` (J.8) shared job-status area an active job appears in.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-J10: After a sweep or fit is started, `JobRunner` MUST report progress as completed-points/iterations on a background worker, expose a single Start→Cancel toggle, cancel cooperatively within one inter-point/inter-iteration check, refresh results via MVU on completion, and write any derived artefacts only to the project sidecar directory (never the repo root).
+- AC-J11: After the user opens a gallery entry, a shipped sample `OpticalConstructorProject` corresponding to an existing `Analytics/Examples/*.fsx` case MUST open through the schema-validated path, and the units glossary MUST state the §A.10 eV/cm⁻¹ conversions without re-implementing them; no `.fsx` is executed at runtime.
+- AC-J12: After the user opens a multi-element system, the `SystemView3D` OpenTK viewport MUST render the placed `ConstructorElement`s to scale along the beam path and draw the reflected/transmitted beam segments read from the already-solved `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`), without re-solving the system, without re-deriving beam routing, and without storing any non-SI viewport coordinate back into the model.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs` (new) — background progress/cancel/timing harness for sweeps and fits (hosts Part G fit runs)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Help.fs` (new) — glossary, tooltips, onboarding gallery sourced from `Analytics/Examples/*.fsx`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs` (new) — OpenTK system/beam 3D rendered view of the placed `ConstructorElement`s and reflected/transmitted beam path (J.12; consumes the Part A §A.6 reserved viewport)
+
+### File:line references owned by this slice
+
+- `Variables.fs:237,270` `calculate`/`calculate3D` (the sweep calls `JobRunner` runs); `Variables.fs:42` `RangedVariable` point count (drives sweep progress granularity).
+- `System.Threading.CancellationToken` — cooperative cancellation checked between sweep points / optimizer iterations (§J.10).
+- `Analytics/Examples/` — `MultilayerThinFilm.fsx`, `MultilayerThinFilm_EUV.fsx`, `ActiveCrystal.fsx`, `Wedge_Glass.fsx`/`Wedge_BiaxialCrystal.fsx`, `Glass_Dispersive.fsx` (gallery design reference; not executed at runtime).
+- `Fields.fs:553-554` `EmFieldSystem.reflected`/`.transmitted` — the already-solved segment directions `SystemView3D` reads (no re-solve, no re-route).
+
+## Scope
+
+This slice delivers the final Part J tranche and is the LAST slice of the arc: the [Standard] long-running job progress/cancellation/timing harness (J.10), the [Standard] in-app help/glossary/onboarding gallery (J.11), and the [Standard] 2D/3D rendered system/beam view (J.12). As the last slice it carries the full gate set (as do all slices).
+
+§J.10 `JobRunner` is the single shared background-job harness that hosts heavy sweeps (`calculate`/`calculate3D`, `Variables.fs:237,270`) and Part G fit runs; slice 011 (§G.10) supplies the per-iteration optimizer progress payload to it, and an active job appears in the `AppShell` (J.8) shared status area from slice 015. §J.12 `SystemView3D` delivers the custom OpenTK system/beam viewport RESERVED by Part A §A.6 — it consumes that reservation and is distinct from the §J.1 Avalonia-`Canvas` schematic (slice 014) and the §E.4/§H.8 Poincaré OpenTK use; it consumes the already-solved beam tree and MUST NOT re-solve or re-route. UI-touching (FuncUI/OpenTK) — relies on the slice-001 buildable interpretation.
+
+## Requirements
+
+### R-1. §J.10 Long-running job progress, cancellation & timing [Standard]
+
+The Ui project MUST provide a `JobRunner` module (new file `OpticalConstructor.Ui/JobRunner.fs`) that runs heavy sweeps and optimizations (the engine calls `calculate`/`calculate3D` `Variables.fs:237,270` for sweeps, and Part G's ALGLIB path for fits) on a background worker with progress, cancellation, and elapsed-time reporting, surfaced as MVU messages. This is the single shared background-job harness; Part G §G.10 supplies the per-iteration optimizer progress payload to it. Because this introduces a long-running, cancellable background job, the operator-facing UX checklist is discharged here:
+
+1. **Discoverability/nav entry.** Every long job MUST be launched from a labelled control on its owning page (the sweep panel, the fit panel), and an active job MUST appear in a single shared status area in `AppShell` (J.8) so it is discoverable regardless of which panel started it.
+2. **Progress granularity.** Progress MUST be reported as completed-points-over-total for sweeps (driven by the `RangedVariable` point count, `Variables.fs:42`) and as iteration count for optimization; a job whose total is unknown MUST show an indeterminate-but-running state, never a frozen UI.
+3. **Pre-confirmation vs one-click.** Starting a sweep/fit MUST be one-click (it is non-destructive and recomputable). Cancellation, by contrast, MUST be immediate one-click with no confirmation, since the partial result is discardable.
+4. **Completion → results refresh.** On job completion the runner MUST emit a completion message that triggers the owning page's results/chart refresh through the normal MVU `update` → `view` cycle; results MUST NOT require a manual reload.
+5. **Opposing-action button + undo.** The Start control MUST become a Cancel control for the duration of the job (single button, two states) so the opposing action is unambiguous; cancelling MUST leave the prior committed results untouched (the cancelled job's partial output is dropped, which is the natural undo).
+6. **Committable file vs .gitignore.** Any derived artefact a job writes (sweep/field-map `.binz` sidecars, fit histories) MUST be written under the project's sidecar directory referenced from the project JSON (§A.7), NOT into the repository root; these are derived outputs and Part J MUST NOT add them as committable project files.
+
+Cancellation MUST be cooperative via a `System.Threading.CancellationToken` checked between sweep points / optimizer iterations; killing threads, retry-on-failure loops, and a job queue/scheduler abstraction are OUT OF SCOPE (§0 constraint 6) — one job per worker, cancel-and-restart is the model.
+
+### R-2. §J.11 In-app help, glossary & onboarding gallery [Standard]
+
+The Ui project MUST provide a `Help` module (new file `OpticalConstructor.Ui/Help.fs`) delivering: an in-app material/units glossary and field tooltips, plus a gallery of worked examples and getting-started sample projects shipped with the app. The gallery MUST be built from the engine's existing example scripts in `C:/GitHub/Berreman/Berreman/Analytics/Examples/` — at minimum the AR/multilayer, DBR/EUV Mo-Si, active-crystal, wedge, and dispersive-glass cases, which exist as `MultilayerThinFilm.fsx`, `MultilayerThinFilm_EUV.fsx`, `ActiveCrystal.fsx`, `Wedge_Glass.fsx`/`Wedge_BiaxialCrystal.fsx`, and `Glass_Dispersive.fsx` respectively. Each gallery entry MUST open as a normal `OpticalConstructorProject` through the Part I open path (§I.3 `openProject`, so schema validation applies, §A.7) — the `.fsx` files are the design reference for the equivalent shipped sample projects and MUST NOT be executed at runtime by the app. The units glossary MUST state the canonical boundary conversions from §A.10 (eV via `E[eV] = 1239.84 / λ[nm]`, cm⁻¹ via wavenumber) and MUST NOT introduce a second conversion implementation. Tooltips are static strings co-located in `Help.fs`; an authorable/markdown help-content pipeline is OUT OF SCOPE.
+
+### R-3. §J.12 2D/3D rendered view of the element/system with the beam path [Standard]
+
+The Ui project MUST provide a `SystemView3D` module (new file `OpticalConstructor.Ui/SystemView3D.fs`) that delivers 010 §1's [Standard] "2D/3D rendered view of the element/system with the beam path" (010 line 127), rendered in the custom OpenTK 3D viewport Part A reserves for exactly this surface in the `OpticalConstructor.Ui.fsproj` row (§A.1, §A.6) — this is the part that consumes that reservation. The view MUST draw, to scale, the placed `ConstructorElement`s of the open project's `BeamTree`/`BeamNode` topology (§A.4) — sample, mirror, lens, polarizer, analyzer, detector — positioned along the beam path, and MUST draw the beam path itself as the reflected/transmitted ray segments routed by the beam tree, reading each segment's direction from the solved `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`) that Part B already produces (§B.1, §B.4). This part MUST NOT re-solve the system or re-derive beam routing: it consumes the already-solved beam tree and renders it. Geometry MUST read canonical SI (meters) from the domain values and convert to viewport coordinates only at the render boundary (§A.3); no converted value MAY be written back into the model.
+
+The OpenTK renderer here is distinct from, and MUST NOT duplicate, two existing surfaces: the [Core] 2D schematic cross-section of a single stack (§J.1, an Avalonia `Canvas`) and the Poincaré-sphere OpenTK use named for the polarization picker/charts (§E.4, §H.8). This `SystemView3D` is the system/beam viewport; §H.8's Poincaré rendering and §H.5's reservation note ("Custom OpenTK 3D rendering is reserved by Part A for the system/beam viewport and MUST NOT be used here") both refer to this same reserved viewport, now delivered here. This part MUST NOT add full 3D vector wave optics, diffraction rendering, or a second physics engine (Part A §A.5); the rendered beam segments are the straight ray/beam paths the orchestration already carries. A retained-mode scene-graph abstraction, level-of-detail, and camera-state persistence beyond the §J.6 panel-layout fields are OUT OF SCOPE.
+
+## Non-requirements
+
+- Schematic / repeat builder / templates / drag-drop / comparison workspace are Part J §J.1–J.5, owned by slice 014.
+- Persistent environment/favorites, preferences, theme/dockable panels, and the J.9 validation seam are Part J §J.6–J.9, owned by slice 015; the `AppShell` shared job-status area J.10 item 1 references is supplied by slice 015.
+- Full 3D vector wave optics, diffraction rendering, or a second physics engine are OUT OF SCOPE (§J.12, Part A §A.5); the rendered beam segments are the straight ray/beam paths the orchestration already carries.
+- A retained-mode scene-graph / level-of-detail / camera-state persistence beyond the §J.6 panel-layout fields are OUT OF SCOPE (§J.12).
+- Killing threads / retry-on-failure loops / a job queue-scheduler abstraction are OUT OF SCOPE (§J.10 — one job per worker, cancel-and-restart).
+- An authorable/markdown help-content pipeline is OUT OF SCOPE (§J.11); tooltips are static strings co-located in `Help.fs`, and `.fsx` files MUST NOT be executed at runtime.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs` (background progress/cancel/timing harness; hosts Part G fit runs)
+- `OpticalConstructor/OpticalConstructor.Ui/Help.fs` (glossary, tooltips, gallery from `Analytics/Examples/*.fsx`)
+- `OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs` (OpenTK system/beam viewport; consumes the §A.6 reserved viewport)
+- `OpticalConstructor/OpticalConstructor.Tests/JobRunnerCancelTests.fs` — a started job reports increasing progress and a cancellation token observed between points stops the run and leaves prior results intact (headless) (AC-J10)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `JobRunner.fs`, `Help.fs`, `SystemView3D.fs` in compile order (after the J.6–J.9 modules of slice 015). MUST NOT add the FuncUI clone dependency.
+- `OpticalConstructor/OpticalConstructor.Tests/SchematicGeometryTests.fs` (created by slice 014 for AC-J1) — add the `SystemView3D` element/beam-path geometry portion: segment directions derived from the already-solved `EmFieldSystem.reflected`/`.transmitted` without re-solving or re-routing (AC-J12), hosted as a test in `OpticalConstructor.Tests`.
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `JobRunnerCancelTests.fs`.
+
+## Testing plan
+
+Gates (always all three): `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `constructor-unit-tests` gate runs the new/extended `OpticalConstructor.Tests` files; must pass and increase the count over the prior slice's baseline.
+- AC-J10 (`JobRunnerCancelTests.fs`): a started job reports increasing completed-points/iteration progress on a background worker; a `CancellationToken` observed between points stops the run within one inter-point check and leaves prior committed results intact; derived artefacts are written only under the project sidecar directory, never the repo root (headless).
+- AC-J11: a gallery entry opens a shipped sample `OpticalConstructorProject` (corresponding to an `Analytics/Examples/*.fsx` case) through the schema-validated `openProject` path; the units glossary states the §A.10 eV/cm⁻¹ conversions without re-implementing them; no `.fsx` executes at runtime.
+- AC-J12 (`SchematicGeometryTests.fs`, `SystemView3D` portion): for a multi-element system the viewport's element/beam-path geometry derives each segment direction from the already-solved `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`) without re-solving or re-deriving routing, and writes no non-SI viewport coordinate back to the model (geometry verified without an OpenTK surface).
+- `build` gate green at Release/x64 with the public MIT FuncUI/OpenTK stack (clone unreferenced, linking unresolved); `unit-tests` gate (BerremanTests) stays green (not touched here).
+
+## Risks
+
+- **Medium.** Two correctness disciplines: (1) `JobRunner` cancellation must be cooperative via a `CancellationToken` checked between points/iterations and must leave prior committed results intact (no thread-kill, no retry loop, no scheduler abstraction), with sidecar writes confined to the project sidecar directory; (2) `SystemView3D` must CONSUME the already-solved `EmFieldSystem.reflected`/`.transmitted` directions and MUST NOT re-solve or re-route — the easy failure is re-invoking the solver in the renderer. Mitigation: prove the cancel-leaves-results-intact and the no-re-solve invariants headless; keep `SystemView3D` a pure read of the solved beam tree converting to viewport coords only at the render boundary; verify the OpenTK viewport is distinct from the §J.1 Avalonia `Canvas` and the §E.4/§H.8 Poincaré use. As the LAST slice, this closes the arc — confirm no clone reference exists in the UI fsproj before exit.
+
+## Hand-off
+
+This is the LAST slice of the arc: the Part J UX shell is complete. `JobRunner.fs` runs sweeps/fits on a background worker with cooperative cancellation, progress, timing, and the discharged operator-UX checklist (Start→Cancel toggle, MVU results refresh, sidecar-only artefacts); `Help.fs` ships the glossary/tooltips and the `Analytics/Examples/*.fsx`-sourced gallery opened through `openProject` (no `.fsx` executed); `SystemView3D.fs` delivers the reserved OpenTK system/beam viewport consuming the already-solved beam tree. AC-J10/AC-J11/AC-J12 tests green, and `SchematicGeometryTests.fs` now covers both AC-J1 (slice 014) and AC-J12. The clone remains unreferenced and its linking mechanism unresolved. Emit the final state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the final `constructor-unit-tests` count.

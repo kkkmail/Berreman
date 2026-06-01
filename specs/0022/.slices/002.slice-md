@@ -1,10 +1,9 @@
-# 002 — Materials, dispersion models & units spine (Part D)
+# 002 — Domain foundation: units spine, beam-tree types & project aggregate (Part A / Part B-domain / Part D-units)
 
 ## Spec reference
 
-- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part D**.
-- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A), which created the five projects, the test project, and the units-spine architecture this slice fills in.
-- 010 (preliminary spec) §2 — the materials/units feature list and tiers.
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022).
+- Slice 001 (`.slices/001.slice-md`) — created the `OpticalConstructor.*` projects this slice fills.
 
 ## Inherited from parent spec
 
@@ -28,144 +27,178 @@ The following constraints are normative for EVERY part (A–J) of this specifica
 
 ### Acceptance criteria owned by this slice
 
+- AC-A3: After a non-mirror `BeamNode` is solved, the orchestration MUST expose exactly two outgoing beams sourced from `EmFieldSystem.reflected` and `.transmitted` (Fields.fs:553-554) via `OpticalSystemSolver` (Solvers.fs:199), with no parallel solver invoked.
+- AC-A4: After a child is attached to the `Transmitted` branch of a mirror `BeamNode`, the construction MUST reject the attachment, leaving the mirror with at most one child on `Reflected`.
+- AC-A5: After any physical quantity is stored in the domain model or serialized to canonical JSON, the stored value MUST be in the SI base (meters for length; wavelength reduced via WaveLength.value, Fields.fs:284), with unit conversion occurring only at the UI/IO boundary.
+- AC-A7: After an eV or cm⁻¹ value is entered at the UI/IO boundary, the boundary conversion MUST round-trip to wavelength-in-meters using E[eV]=1239.84/λ[nm] without persisting eV or cm⁻¹ in the model.
+- AC-B2: After attaching a child to a non-mirror node, the `BeamTree` MUST permit both a `Reflected` and a `Transmitted` child keyed by `BeamBranch`, and a linear chain MUST be representable as single-child-per-node within one edit action.
+- AC-B3: After attempting to attach a `Transmitted` child to a mirror node, `BeamNode.attach` MUST return a `Result.Error` (a `BeamTreeError`) and MUST NOT add the child, while a `Reflected` child attach on the same mirror MUST succeed.
+- AC-B4: After a child node is attached on branch `b`, the child MUST be solved from the parent's branch-`b` `EmField` advanced through the reused `EmField.propagate` seam (`BerremanMatrix.fs:224`) via `BaseOpticalSystemSolver(emf, system)` (`Solvers.fs:149`), with no separate Jones/Stokes accumulator introduced.
+- AC-B8: After an element/layer/source is created, it MUST carry a per-element default-unit hook (`unitOfMeasure`), and changing that hook MUST NOT alter any stored SI value (thickness in meters per `Constants.fs:6`; wavelength via `WaveLength.value`, `Fields.fs:284`).
+- AC-B11: After `discretize gradientLayer` is called with `subLayerCount = n >= 1`, it MUST return exactly `n` ordinary `Layer` records (`Media.fs:24`) whose `Thickness.Thickness` sum equals `totalThickness` in `double<meter>` and whose `OpticalProperties` are sampled from `indexProfile` at each sub-layer mid-depth, the list being assignable to `OpticalSystem.films` with no gradient-specific engine type and no profile stored in the canonical JSON.
 - AC-D1: After a user enters a wavelength as `13.5` with default unit `ElectronVolt`, `toWaveLength ElectronVolt 13.5` MUST return a `WaveLength` whose `.value` equals `(1239.84/13.5)` nm reduced through `nmToMeter` (i.e. ≈ 9.184e-8 m) within 1e-15 m.
 - AC-D2: After converting any length value to meters and back through `toMeters`/`fromMeters` for each of Meter/Millimeter/Micrometer/Nanometer/Angstrom, the round-tripped scalar MUST equal the original within 1e-12 relative error, using the `Constants.fs` factors (no re-derived literals).
-- AC-D3: After loading a refractiveindex.info YAML page tabulated in µm via `importRefractiveIndexInfo`, the resulting `MaterialEntry.OpticalPropertiesWithDisp.getEps` evaluated at a sampled wavelength MUST equal the engine's value for the same n,k within 1e-9, with the wavelength reduced to meters at import.
-- AC-D4: After selecting `evaluate` on a `Sellmeier` model whose coefficients match `Silicon`'s closure inputs, the returned `WaveLength -> ComplexRefractionIndex` MUST agree with `OpticalProperties/Dispersive.fs` `Silicon().opticalProperties` at three test wavelengths within 1e-9.
-- AC-D5: After building a uniaxial entry from (n_o, n_e), the constructed `Eps` MUST equal `Eps.fromComplexRefractionIndex (n_o, n_e, n_o)` (`MaterialProperties.fs:87`) element-by-element within 1e-12.
-- AC-D6: After serialising and reloading an `OpticalConstructorProject` element carrying a `defaultUnit`, the canonical SI datum MUST be byte-identical and the `defaultUnit` label MUST be preserved, proving the label does not alter the stored value.
-- AC-D7: After requesting a material preview with the spectral axis toggled to eV, the plot data passed to `plotN11` MUST be the same canonical-meter `Range<WaveLength>` as the nm toggle (only axis labels/scale differ), confirming no re-storage of non-SI units.
-- AC-D8: After a `DispersionModel` carrying `Some thermoOptic` is evaluated at an operating temperature `T` differing from `referenceTemperature`, the returned `ComplexRefractionIndex` MUST equal the isothermal index plus `dndT · (T − referenceTemperature)`; with `thermoOptic = None` the evaluated index MUST be byte-identical to the isothermal result, and only `dndT`/`referenceTemperature` (in SI 1/K and K) MUST round-trip through the JSON `materialEntry` `$def` while the operating temperature MUST NOT be persisted.
 
 ### Files in scope owned by this slice
 
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (new) — orchestration domain project; references `Berreman/Berreman.fsproj` and `Analytics/Analytics.fsproj`; registers BeamTree/Units/CurvedElements/SourceSpec/SourceCombination/DispersionModels/MaterialLibrary in compile order
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs` (new) — `BeamTree`/`BeamNode`/`BeamBranch`/`BeamTreeError`/`ConstructorElement`, mirror reflected-only validation, per-element default-unit hook, inter-element routing via `EmField.propagate`; `GradientLayer`/`discretize` gradient-index auto-discretization into reused `Layer` sub-layers (B.11)
 - `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs` (new) — `UnitOfMeasure` DU + boundary length/eV/cm⁻¹ conversions (D.1–D.3, §A.10)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs` (new) — analytic-model coefficient records + `evaluate`/`toOpticalProperties` (D.5–D.7); optional `ThermoOptic` dn/dT parameters + net-new `[<Measure>] K` (D.12)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs` (new) — `MaterialEntry`/`MaterialCategory`/`MaterialLibrary` + search (D.8)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs` (new) — refractiveindex.info YAML + CSV import/export (D.9)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialPreview.fs` (new) — routes entries into `Analytics/Charting.fs` plots + spectral-unit toggle (D.10)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` (edit) — register `Units.fs`, `DispersionModels.fs`, `MaterialLibrary.fs` in compile order.
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (edit) — register `MaterialImport.fs`; ensure FSharp.Data package ref present.
 
-Test artifacts owned by this slice:
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/UnitsTests.fs` (new) — eV/cm⁻¹/Å/nm/µm/mm round-trips against `Constants.fs` factors and the `1239.84` relation (AC-A7/AC-D1/AC-D2)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs` (new) — model `evaluate` reproduces `Silicon`/`Langasite` closures and uniaxial maps to `Eps.fromComplexRefractionIndex (n_o,n_e,n_o)` (AC-D4/AC-D5); `Some thermoOptic` applies first-order `dndT·(T−referenceTemperature)` and `None` is byte-identical to the isothermal index, with only `dndT`/`referenceTemperature` persisted (AC-D8)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/MaterialImportTests.fs` (new) — a fixture refractiveindex.info µm YAML and a nm CSV import to entries whose `getEps` matches expected n,k after meter reduction (AC-D3/AC-I10)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/fixtures/Si.yml` (new fixture) — minimal refractiveindex.info tabulated/Sellmeier page in µm
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Tests/fixtures/sample-nk.csv` (new fixture) — small refractiveindex.info-style n,k table for CSV import/library tests
+(The root aggregate `OpticalConstructorProject` of §A.7 is realized as a new Domain module file in this slice — a reasonable realization of §A.7, traced to that directive; its serialization seam is owned by slice 003.)
 
 ### File:line references owned by this slice
 
-All file:line references appearing in the verbatim D.0–D.12 directives reproduced under **Requirements** are owned by this slice (notably: `MaterialProperties.fs:165`, `MaterialProperties.fs:59,107,133,153`, `MaterialProperties.fs:43`, `MaterialProperties.fs:87`, `MaterialProperties.fs:62,112,138`, `Dispersion.fs:53`, `Dispersion.fs:9,24,38`, `Dispersion.fs:9-10`, `Dispersion.fs:11`, `Dispersion.fs:13`, `Dispersion.fs:141`, `OpticalProperties/Dispersive.fs:74,19`, `OpticalProperties/Dispersive.fs:88,92`, `OpticalProperties/Dispersive.fs:87,52`, `OpticalProperties/Dispersive.fs:90-95`, `OpticalProperties/Dispersive.fs:52-55`, `OpticalProperties/Dispersive.fs:98,99`, `OpticalProperties/Standard.fs:64-70`, `Fields.fs:284`, `Fields.fs:280`, `Fields.fs:280-282`, `Fields.fs:286,287`, `Fields.fs:294,295`, `Constants.fs:27,30,33`, `Constants.fs:6,10,13,17`, `Media.fs:30`, `Analytics/Charting.fs:95,96,105`, `Analytics/Charting.fs:95-107`, `Variables.fs:22`).
+- `Solvers.fs:199` `OpticalSystemSolver`, `Solvers.fs:115` `BaseOpticalSystemSolver`, `Solvers.fs:149` `BaseOpticalSystemSolver(emf, system)`, `Solvers.fs:156` `Solution.emSys`, `Solvers.fs:21` `SolverParameters.defaultValue` — reused per node.
+- `Fields.fs:338` `IncidentLightInfo`, `Fields.fs:550` `EmFieldSystem`, `Fields.fs:553-554` reflected/transmitted, `Fields.fs:427` `emComponents`, `Fields.fs:280`/`:284` `WaveLength`/`.value`, `Fields.fs:294,295` `WaveLength.nm`/`.mkm`.
+- `Media.fs:12` `Thickness`, `Media.fs:24` `Layer`, `Media.fs:56` `ShortOpticalSystem`, `Media.fs:94` `OpticalSystem`, `Media.fs:98` `films`.
+- `BerremanMatrix.fs:224` `EmField.propagate`; `MaterialProperties.fs:165` `OpticalProperties`; `Constants.fs:6` `meter`, `Constants.fs:27,30,33` `nmToMeter`/`mkmToMeter`/`mmToMeter`.
 
 ## Scope
 
-This slice owns the materials-management layer and the units spine: a boundary unit-of-measure vocabulary with net-new eV/cm⁻¹ conversions, a data-driven dispersion-model coefficient catalogue, a searchable categorised materials library, refractiveindex.info/CSV import-export, dispersion-preview plot routing with a spectral-unit toggle, and optional thermo-optic dn/dT parameters. It fills the units-spine architecture that slice 001 (Part A §A.10) fixed but did not author, so it lands before Part B/E which consume `UnitOfMeasure` and the conversion seam. No engine code is forked; no domain payload stores a non-SI unit.
+This slice establishes the **core immutable domain model** every later part consumes: the units spine (the `UnitOfMeasure` DU and its boundary conversions, §A.10 / D.1–D.3), the per-element default-unit hook (D.4 / B.8), the NET-NEW beam-tree topology and its mirror/branch validation and inter-element routing (§A.4 / B.2–B.4), gradient-index auto-discretization (B.11), the curved-element extension *contract* (§A.5, implemented later in Part C), the engine-domain reuse discipline (§A.3), and the root `OpticalConstructorProject` aggregate plus the schema `$defs` anchor names (§A.7). The actual JSON serialization/validation of the aggregate is owned by slice 003; this slice defines the types and the in-memory behaviour and proves the SI-storage and beam-tree invariants by unit test.
+
+The `OpticalConstructorProject` aggregate is introduced here with the fields whose types already exist (the beam tree, the systems list); later slices that introduce new top-level project components (materials → slice 004, sources → slice 007, chart settings → slice 012, sweeps/sidecar refs) extend this same record and the schema, tracing to their own directives.
 
 ## Requirements
 
-The following are the parent's Part D directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+### R-1. §A.3 Domain model: optical-system and material types are reused as-is
 
-### R-1 (D.1) Define the boundary unit-of-measure vocabulary as a net-new DU [Core]
+The constructor's optical-system domain MUST be the engine's existing records and DUs, used unchanged:
+
+- `OpticalProperties` (`MaterialProperties.fs:165`) with its `eps`/`mu`/`rho` tensors `Eps`/`Mu`/`Rho` (`MaterialProperties.fs:59,107,133`) — the material/anisotropy model. Per-layer crystal-axis rotation is the existing `OpticalProperties.rotate` (`MaterialProperties.fs:187`) and `OpticalSystem.rotate` (`Media.fs:120`).
+- `Layer` (`Media.fs:24`) with `Thickness` (`Media.fs:12`); substrate variants `Plate`/`Wedge` via `Substrate` (`Media.fs:40`) and `WedgeLayer` (`Media.fs:34`).
+- `OpticalSystem` (`Media.fs:94`) — description/upper/films/substrate/lower — as the per-element stack; `BaseOpticalSystem` (`Media.fs:63`) and `ShortOpticalSystem` (`Media.fs:56`) as the solver feed forms; dispersive variants `OpticalPropertiesWithDisp`/`OpticalSystemWithDisp` (`Dispersion.fs:53,139`).
+
+No part MAY define an alternate `Layer`, `OpticalSystem`, or material-tensor type. Where the UI needs a row/edit projection of a layer, that projection MUST be a view-model in `OpticalConstructor.Ui` that maps to/from `Layer` — it MUST NOT replace `Layer` in the domain or in JSON.
+
+### R-2. §A.4 The beam-tree orchestration layer (net-new; the central new abstraction) [Core]
+
+The solution MUST define, in `OpticalConstructor.Domain`, a beam-tree topology that sits ABOVE the single-system solver and routes its reflected/transmitted outputs along each branch. The types MUST be:
+
+- `BeamBranch` = `Reflected | Transmitted` — the two attachment points of a non-mirror element.
+- `ConstructorElement` — a DU classifying a placed element: `Source`, `Polarizer`, `Sample` (carrying an `OpticalSystem`, `Media.fs:94`), `Lens`, `CurvedMirror`, `FlatMirror`, `Analyzer`, `Detector`. The mirror cases (`FlatMirror`, `CurvedMirror`) are the deliberate special case: they carry the reflected branch ONLY.
+- `BeamNode` — a record carrying one `ConstructorElement`, the solver inputs needed to evaluate it (an `IncidentLightInfo`-derived local beam state: direction, energy, polarization), and its child attachments. A non-mirror node MUST expose up to two children keyed by `BeamBranch` (a branch MAY be open, terminated by a `Detector` or by nothing). A mirror node MUST expose at most one child, on `Reflected`; attaching a child on `Transmitted` to a mirror node MUST be rejected at construction time.
+
+The orchestration MUST evaluate each node by calling the existing solver `OpticalSystemSolver` (`Solvers.fs:199`) and reading `EmFieldSystem.reflected`/`.transmitted` (`Fields.fs:553-554`) as the two outgoing beams. Propagation of an outgoing beam to the next element MUST reuse `EmField.propagate` (`BerremanMatrix.fs:224`); no part MAY re-implement plane-wave propagation. Each branch MUST carry its own beam state so that detectors on different branches report independent results (`EmFieldSystem` already isolates reflected vs transmitted, `Fields.fs:550`).
+
+The beam tree is the orchestration aggregate; it MUST NOT embed solver internals (`BaseOpticalSystemSolver` `Solvers.fs:115` is called, not re-typed). Caching of per-node solutions, retry on solver failure, and incremental re-solve are OUT OF SCOPE for Part A; live-recalculation granularity is a Part F concern.
+
+### R-3. §A.5 Local-interface extension contract for curved elements [Core]
+
+The solution MUST confine the one extension beyond the 1D plane-wave model to curved elements. The contract (detailed in Part C) is: a `Lens` or `CurvedMirror` element MUST be evaluated by computing a **local angle of incidence per surface** from the element's geometry (radius/curvature, aperture) and the incoming local beam direction, then calling the existing 4×4 solver `OpticalSystemSolver` (`Solvers.fs:199`) at that local AOI, and propagating the resulting beam to the next element via `EmField.propagate` (`BerremanMatrix.fs:224`). Part A fixes that this is the ONLY admitted extension: no part MAY introduce full 3D vector wave optics, diffraction integrals beyond the existing FFT scaffolding (`FourierTransform.fs:137`), or a second physics engine. Curved-element surface coatings MUST be modelled as the element's `OpticalSystem` films (`Media.fs:98`), not as a new coating type.
+
+(This slice fixes the contract only; the curved-element implementation is owned by slice 006 / Part C.)
+
+### R-4. §A.7 Storage architecture: JSON canonical + schema, `.binz` derived (aggregate + `$defs` anchors)
+
+The solution MUST persist the canonical project as JSON validated against a published JSON Schema on load. `OpticalConstructor.Storage` MUST:
+
+- Define the root aggregate `OpticalConstructorProject` (systems, materials, sources, sweeps, chart settings, the beam tree of §A.4, per-element default units of §A.10) and serialize it with `System.Text.Json` + FSharp.SystemTextJson for idiomatic DU/record/option handling. Comments MUST be carried as the existing `description` field convention (`OpticalSystem.description`, `Media.fs:96`) plus an `_comment` schema field — not as JSON comments in the canonical store.
+- Validate every loaded project and every YAML rules file against the published schema using JsonSchema.Net before the model is admitted. The schema file MUST be `optical-constructor-project.schema.json` with `$defs` named `opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`, `materialEntry`, `sourceSpec`, `unitOfMeasure`. Parts B–J fill these `$defs` shapes; they MUST NOT rename the anchors.
+- Use zipped FsPickler ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches), via `Softellect.Sys.Core.serialize`/`deserialize` with `BinaryZippedFormat` (`C:/GitHub/Softellect/Sys/Core.fs:254,257`) producing the `.binz` extension (`C:/GitHub/Softellect/Sys/Primitives.fs:267`). The `.binz` sidecar MUST be referenced by path from the JSON; it MUST NOT carry the canonical definition. (010 named this `Softellect.Sys.Serialization`; the in-tree module is `Softellect.Sys.Core` — cite the real name.)
+- Import external measurement/material data via FSharp.Data. Flat rules/declarations MAY use a small flat YAML subset, each file schema-validated.
+
+Schema versioning, migration code, and backwards-compat shims for older project files are OUT OF SCOPE; the schema is published at version 1 and validated, not migrated.
+
+**This slice's share of §A.7:** define the `OpticalConstructorProject` aggregate record and fix the nine `$defs` anchor names. The serialization implementation (`System.Text.Json` + FSharp.SystemTextJson), validate-on-load (JsonSchema.Net), and the schema file itself are owned by slice 003 (storage core).
+
+### R-5. §A.10 Units spine: one canonical SI base, convert at the boundary
+
+The solution MUST store every physical quantity in the canonical SI base already used by the engine and convert only at the UI/IO boundary.
+
+- Length/thickness MUST be `double<meter>` as in `Thickness` (`Media.fs:12`) using the existing constants `nmToMeter`/`mkmToMeter`/`mmToMeter` (`Constants.fs:27,30,33`) and the `[<Measure>] meter` base (`Constants.fs:6`). Wavelength MUST be reduced to meters via `WaveLength.value` (`Fields.fs:284`).
+- Each element/layer/source MUST carry its own *default* unit of measure (a `unitOfMeasure` per the schema anchor in §A.7) for display only; the stored value stays meters. This per-element default-unit plumbing is net-new and lives in `OpticalConstructor.Domain`.
+- The net-new conversions MUST be eV↔wavelength via `E[eV] = 1239.84 / λ[nm]` and the spectroscopy wavenumber cm⁻¹, both implemented as boundary-only conversion functions in `OpticalConstructor.Domain`. They MUST NOT be stored in the model, JSON, or `.binz`. Material-UI presentation of these units is a Part D concern.
+
+### R-6. §D.1 Define the boundary unit-of-measure vocabulary as a net-new DU [Core]
 
 This part MUST add a new module `Units.fs` in `OpticalConstructor.Domain.fsproj` defining a discriminated union `UnitOfMeasure` enumerating exactly the human-facing units 010 §2 names: `Meter | Millimeter | Micrometer | Nanometer | Angstrom | ElectronVolt | Wavenumber`. This DU is the ONLY place a non-SI unit name appears in the solution; it is a UI/IO label, never a storage type. The module MUST NOT introduce new F# `[<Measure>]` types for Å, eV, or cm⁻¹ that shadow `Constants.fs` — length units reduce through the existing measures `nm`/`mkm`/`mm`/`meter` (`Constants.fs:6,10,13,17`); Å, eV and cm⁻¹ are handled by the scalar conversions in D.2. The DU MUST be the F# realisation of the `unitOfMeasure` `$def` Part A reserves in `optical-constructor-project.schema.json` (§A.7); this part fills that `$def` as a string `enum` of the seven member names and MUST NOT add members absent from 010 §2.
 
-### R-2 (D.2) Implement boundary length-and-energy conversions reusing engine constants [Core]
+### R-7. §D.2 Implement boundary length-and-energy conversions reusing engine constants [Core]
 
 `Units.fs` MUST provide two total functions, `toMeters : UnitOfMeasure -> float -> float<meter>` and `toWaveLength : UnitOfMeasure -> float -> WaveLength`, that convert a human-entered scalar into the engine's canonical base. For `Meter`/`Millimeter`/`Micrometer`/`Nanometer` the implementation MUST multiply by the existing constants `mmToMeter`/`mkmToMeter`/`nmToMeter` (`Constants.fs:27,30,33`) and MUST NOT re-derive those factors. For `Angstrom` the factor MUST be `1.0e-10<meter>` per Å. For `ElectronVolt` the function MUST first map energy to wavelength by `λ[nm] = 1239.84 / E[eV]` then through `nmToMeter`; for `Wavenumber` it MUST map `λ[nm] = 1.0e7 / ν̃[cm⁻¹]` then through `nmToMeter`. The literal `1239.84` MUST appear exactly once, as a named binding `let evNmProduct = 1239.84` carrying a doc-comment citing `E[eV] = 1239.84 / λ[nm]`. The inverse functions `fromMeters : UnitOfMeasure -> float<meter> -> float` and `wavelengthToUnit : UnitOfMeasure -> WaveLength -> float` MUST be provided for display, dividing by the same constants and inverting the eV/cm⁻¹ relations; `wavelengthToUnit` MUST read the canonical value via `WaveLength.value` (`Fields.fs:284`). These functions are the SOLE conversion seam — no other module in the solution MAY hand-roll a unit conversion.
 
-### R-3 (D.3) Reuse `WaveLength` at the engine boundary; do not fork it [Core]
+### R-8. §D.3 Reuse `WaveLength` at the engine boundary; do not fork it [Core]
 
 When a converted value re-enters the engine it MUST be carried as the engine's `WaveLength` DU (`Fields.fs:280`), constructed via its `Nm`/`Mkm` cases or `WaveLength.nm`/`WaveLength.mkm` (`Fields.fs:294,295`). `toWaveLength Nanometer` and `toWaveLength Micrometer` MUST return `Nm`/`Mkm` respectively so the engine's own `.value` reduction (`Fields.fs:286,287`) performs the final SI step; for `Angstrom`, `ElectronVolt` and `Wavenumber` — which `WaveLength` cannot represent natively — `toWaveLength` MUST first reduce to nm (D.2) and return `Nm`. This part MUST NOT add `Angstrom`/`Ev`/`Wavenumber` cases to the engine's `WaveLength` DU; the boundary DU `UnitOfMeasure` (D.1) is the place those live, and the engine continues to see only `Mkm`/`Nm`.
 
-### R-4 (D.4) Attach a per-element default unit to project elements via Part A's aggregate [Core]
+### R-9. §D.4 Attach a per-element default unit to project elements via Part A's aggregate [Core]
 
 This part MUST define a record `defaultUnit : UnitOfMeasure` field carried on each unit-bearing project element (layer/element/source) inside the `OpticalConstructorProject` aggregate Part A owns (§A.7). This part does NOT redefine that aggregate; it specifies that the per-element default-unit value uses the D.1 DU and is the value rendered/edited in the UI and persisted in JSON. The default-unit value is metadata about *display only*: it MUST NOT influence the stored canonical SI value, and round-tripping a project through JSON MUST preserve both the canonical SI datum and its `defaultUnit` label independently. The schema `$def` `unitOfMeasure` (§A.7) is the JSON shape; the per-element placement (which records carry a `defaultUnit`) is fixed by Part B (stack/layer) and Part E (sources) and MUST NOT be re-specified here beyond the requirement that the carried type is `UnitOfMeasure`.
 
-### R-5 (D.5) Define the dispersion-model coefficient catalogue as data, not code [Core]
+### R-10. §B.2 The `BeamTree`/`BeamNode`/`BeamBranch` topology MUST be the NET-NEW orchestration carrier defined in Part A §A.4 [Core]
 
-This part MUST add a module `DispersionModels.fs` in `OpticalConstructor.Domain.fsproj` defining one F# record per analytic model named in 010 §2 — `Sellmeier`, `Cauchy`, `Lorentz` (Drude–Lorentz), `Drude`, `TaucLorentz`, `GaussianOscillator`, and `ConstantNK` (constant n+ik) — each holding ONLY its coefficient scalars (e.g. Sellmeier `b` and `c` term lists; Cauchy `a`,`b`,`c`; Drude plasma/damping frequencies; constant `n`,`k`). A wrapping DU `DispersionModel` MUST enumerate these records so the editor and schema can describe a single tagged choice. Each record MUST carry an explicit `wavelengthUnit : UnitOfMeasure` (D.1) naming the unit its coefficients were tabulated in (Sellmeier `c` terms are conventionally µm²), so evaluation (D.6) can normalise to the engine's meter base. This catalogue MUST be the realisation of the schema `$def` `materialEntry` dispersion sub-object (§A.7); coefficient field shapes are owned here. Schema versioning of these coefficient records is OUT OF SCOPE.
+`OpticalConstructor.Domain.fsproj` MUST place the `BeamTree`, `BeamNode`, and `BeamBranch` definitions from Part A §A.4 in a new module `OpticalConstructor.Domain/BeamTree.fs` (new). Per Part A: `BeamBranch = Reflected | Transmitted`; a `BeamNode` carries its `ConstructorElement`, its `OpticalSystem`, its solver inputs, and up to two child attachments keyed by `BeamBranch`. This is a NET-NEW topology with no Berreman equivalent and MUST be expressed as F# records and discriminated unions (Part A constraint 1). The child attachment MUST be modelled as a `Map<BeamBranch, BeamNode>` (or equivalent immutable two-slot record), so that a non-mirror node MAY hold a `Reflected` child, a `Transmitted` child, both, or neither, and a mirror node holds at most the `Reflected` key (§B.3). Immutable F# structures MUST be used throughout (Part A constraint 1; CLAUDE.md code style).
 
-### R-6 (D.6) Evaluate each model to an `OpticalPropertiesWithDisp` reusing the engine's closure shape [Core]
+This realizes 010 §1's [Core] "Branching beam paths (reflected & transmitted) — a system tree, not just a chain": every non-mirror element exposes two attachment points and downstream sub-systems attach to each branch independently. A linear chain (source → polarizer → sample → analyzer → detector) is the degenerate case where each node attaches a single child on the `Transmitted` branch.
 
-`DispersionModels.fs` MUST provide `evaluate : DispersionModel -> (WaveLength -> ComplexRefractionIndex)`, returning a closure of exactly the shape `Silicon`/`Langasite` build by hand (`OpticalProperties/Dispersive.fs:87,52`). The closure MUST read the canonical wavelength via `WaveLength.value` (`Fields.fs:284`), normalise it against the record's `wavelengthUnit` (D.5) using D.2, apply the analytic formula, and return a `ComplexRefractionIndex` (`MaterialProperties.fs:43`). A second function `toOpticalProperties : DispersionModel -> OpticalPropertiesWithDisp` MUST compose that closure into an `EpsWithDisp` via `Eps.fromComplexRefractionIndex` (`MaterialProperties.fs:87`) wrapped as `EpsWithDisp` (the `EpsWithDisp` case of the `EpsWithDisp` DU, `Dispersion.fs:9-10`), with `muWithDisp = Mu.vacuum.dispersive` and `rhoWithDisp = Rho.vacuum.dispersive` for isotropic entries — mirroring `Silicon`'s record (`OpticalProperties/Dispersive.fs:90-95`). This part MUST NOT re-derive the matrix-exponential or EVD math seams and MUST NOT add a parallel tensor type; it reuses `OpticalProperties` (`MaterialProperties.fs:165`) end to end. The constant-n+ik model MUST emit `EpsWithoutDisp` (`Dispersion.fs:11`) so a non-dispersive entry incurs no closure overhead.
+Scope exclusion: no schema versioning, no migration code, and no backwards-compat shim for the tree shape; the `beamNode`/`beamBranch` `$defs` are owned by Part A §A.7 and filled field-level here (§B.9, owned by slice 005), not re-versioned.
 
-### R-7 (D.7) Support anisotropic entries through the existing three-index constructor [Standard]
+### R-11. §B.3 Mirror nodes MUST carry the `Reflected` branch ONLY [Core]
 
-For uniaxial (n_o, n_e) and biaxial (n_x, n_y, n_z) material definitions, `DispersionModels.fs` MUST build the principal-axis tensor by calling the engine's existing three-argument `Eps.fromComplexRefractionIndex (n1, n2, n3)` (`MaterialProperties.fs:87`), mapping uniaxial as `(n_o, n_e, n_o)`. Each principal index MAY itself be a per-axis `DispersionModel` (D.5) so an anisotropic crystal can disperse differently along each axis, exactly as `Langasite` evaluates ordinary and extraordinary indices separately (`OpticalProperties/Dispersive.fs:52-55`). Crystal-axis orientation MUST NOT be implemented here: rotation reuses `Layer.rotate` (`Media.fs:30`) and is owned by the stack editor (Part B). Full hand-entered ε/µ/ρ tensors and gyration reuse `Eps.create`/`Mu.create`/`Rho.create` (`MaterialProperties.fs:62,112,138`) and MUST NOT be re-typed in this part.
+`OpticalConstructor.Domain/BeamTree.fs` (new) MUST enforce that a `BeamNode` whose `ConstructorElement` is a mirror (`FlatMirror`, and — owned by Part C — `CurvedMirror`; the `ConstructorElement` DU is Part A §A.4) admits at most a `Reflected` child attachment and MUST reject (or structurally make unrepresentable) any `Transmitted` attachment, by design ignoring transmitted light even where it physically leaks. A smart constructor `BeamNode.attach (branch : BeamBranch) (child : BeamNode) (parent : BeamNode) : Result<BeamNode, BeamTreeError>` MUST return an error value when `branch = Transmitted` and the parent is a mirror; `Result<'T,'E>` MUST be used for this validation, not exceptions (CLAUDE.md code style). `BeamTreeError` is a NET-NEW DU defined in the same module, traced to this directive.
 
-### R-8 (D.8) Define the searchable, categorised materials library aggregate [Core]
+This realizes 010 §1's [Core] "Mirrors are a deliberate special case … the reflected branch only … Only the reflected output can carry downstream elements." Part B classifies `FlatMirror` only; the curved-mirror element and its local-interface physics are OUT OF SCOPE here and owned by Part C.
 
-This part MUST add a module `MaterialLibrary.fs` in `OpticalConstructor.Domain.fsproj` defining `MaterialEntry` — a record holding a display name, a category DU `MaterialCategory = Glass | Metal | Semiconductor | Crystal`, an optional `description : string` (reusing the description convention §A.7, mirroring the engine's `description` fields e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), and its `OpticalPropertiesWithDisp` (`Dispersion.fs:53`) produced by D.6/D.7 — and a `MaterialLibrary` record holding the entry list plus pure search/filter functions `byCategory` and `byNameContains`. Built-in entries MUST include the already-coded `siliconOpticalProperties` and `langasiteOpticalProperties` (`OpticalProperties/Dispersive.fs:98,99`) and the `Standard` glass/crystal presets (`OpticalProperties/Standard.fs:64-70`) wrapped as `MaterialEntry` values; this part MUST NOT re-derive their dispersion. The library is in-memory and additive; persistence of the library is the JSON `materialEntry` `$def` (§A.7) handled by Part A's storage seam, and a separate shareable library file format is owned by Part I (§I.8). Search indexing/caching is OUT OF SCOPE — filtering is a linear `List.filter`.
+### R-12. §B.4 Inter-element beam routing MUST use the reused `EmField.propagate` seam [Core]
 
-### R-9 (D.9) Import from refractiveindex.info YAML and CSV; export CSV [Core]
+When a `BeamNode` attaches a child on branch `b`, `OpticalConstructor.Domain/BeamTree.fs` (new) MUST take the corresponding `EmField` from the parent's solved `EmFieldSystem` — `reflected` for `Reflected`, `transmitted` for `Transmitted` (`Fields.fs:552-554`) — and use it as the incident field driving the child's solve, propagating it across any intervening element/gap through the reused seam `EmField.propagate (s : Layer) : EmField` (`BerremanMatrix.fs:224`). The child node MUST then be solved through the `EmField`-based path already provided by the engine: `BaseOpticalSystemSolver(emf : EmField, system : ShortOpticalSystem)` (`Solvers.fs:149`), where `ShortOpticalSystem` (`Media.fs:56`) carries the child's `films` and `lower`. The energy/polarization carried along the branch is exactly the field state inside the propagated `EmField` (its `emComponents`, `Fields.fs:427`); Part B MUST NOT introduce a separate Jones/Stokes accumulator — Stokes/ellipticity/azimuth read-outs are computed by the field-function seam owned elsewhere (Part A engine seams, `FieldFunctions.fs`).
 
-This part MUST add a module `MaterialImport.fs` in `OpticalConstructor.Storage.fsproj` providing `importRefractiveIndexInfo : string -> Result<MaterialEntry, ImportError>` and `importCsv : string -> Result<MaterialEntry, ImportError>`, parsing the open refractiveindex.info YAML layout (tabulated `n`/`k` vs λ, and the `formula 1..` Sellmeier/Cauchy coefficient blocks) and tab/comma data via FSharp.Data (the import library named in §A.7). Every parsed wavelength column MUST be reduced to the engine base by D.2 according to the file's declared unit (refractiveindex.info tabulates λ in µm), producing either a tabulated `WaveLength -> ComplexRefractionIndex` closure or a `DispersionModel` (D.5) that feeds D.6. Tabulated entries MUST interpolate between sampled points so the resulting closure is total over the chart range; interpolation is linear in λ and MUST NOT introduce a caching layer. Export MUST provide `exportCsv : MaterialEntry -> Range<WaveLength> -> string` sampling n,k over the range using the entry's `OpticalPropertiesWithDisp.getEps` (`Dispersion.fs:13`). YAML export, retries, and schema-versioned import are OUT OF SCOPE; `Result<_, ImportError>` is the error channel (errors as values, not exceptions). The canonical project still serialises as JSON (§A.7) — these importers produce in-memory `MaterialEntry` values and MUST NOT pickle them with FsPickler.
+Reach-for-first primitives:
+- `EmField.propagate` `BerremanMatrix.fs:224` — the single inter-element propagation seam; advances an `EmField` across a `Layer`.
+- `BaseOpticalSystemSolver(emf, system)` `Solvers.fs:149` — the `EmField`-driven solver overload for a downstream node.
+- `ShortOpticalSystem` `Media.fs:56` — the films-plus-lower system a downstream `EmField` is solved against.
 
-### R-10 (D.10) Route library entries into the existing dispersion-preview plots with a spectral-unit toggle [Standard]
+Scope exclusion: Part B routes flat-element beams along the boundary normal only; off-axis ray direction, focusing, and beam-waist propagation are OUT OF SCOPE (owned by Part C). No incoherent-layer averaging here ([Standard], 010 §3, owned by the sources part).
 
-The material-preview surface in `OpticalConstructor.Ui.fsproj` MUST plot n(λ)/k(λ) (and ρ, ε components) by calling the engine's existing `plotN11`/`plotXi11`/`plotN22`/`plotXi22`/`plotN33`/`plotXi33`/`plotRho11` functions (`Analytics/Charting.fs:95-107`), passing the selected `MaterialEntry`'s `OpticalPropertiesWithDisp` (D.8) and a `Range<WaveLength>` (`Variables.fs:22`) built from the user's range. This part MUST NOT re-implement dispersion plotting. The spectral axis MUST expose a unit toggle covering nm / µm / Å / eV / cm⁻¹ implemented by D.2's `wavelengthToUnit` at the chart boundary ONLY; the underlying `Range<WaveLength>` and the engine data stay in canonical meters (the toggle relabels/rescales the axis, it does not re-store data). Building the `Range<WaveLength>` from user-entered endpoints MUST use D.2 `toWaveLength` so an EUV user can request the range in eV and a green-laser user in nm without manual conversion.
+### R-13. §B.8 Each beam node, layer, and source MUST carry a per-element default-unit hook [Core]
 
-### R-11 (D.11) Forbid non-SI storage and duplicate-conversion paths [Core]
+`OpticalConstructor.Domain/BeamTree.fs` (new) and the `OpticalConstructorProject` aggregate (Part A §A.7) MUST attach a per-element default-unit field — a `UnitOfMeasure` value (the NET-NEW DU owned by Part D; schema `$def` `unitOfMeasure`, Part A §A.7) — to each `BeamNode`, each editor layer row, and each source/incident-light entry, recording the unit that element was created in / is most natural for it. Part B owns ONLY this hook: storing and surfacing the default unit so the editor can display a plate in mm, a film in nm, and a source in nm/µm/eV without the user converting by hand. The conversion behaviour itself — meters↔nm/µm/Å/mm, eV via `E[eV] = 1239.84 / λ[nm]`, cm⁻¹ — is owned by Part D and MUST NOT be implemented in Part B. Per Part A's canonical-units rule (constraint 3), the underlying physical quantities MUST remain stored in meters (`double<meter>`, `Constants.fs:6`; `WaveLength.value`, `Fields.fs:284`); the default-unit hook is display metadata only and MUST NOT change any stored SI value.
 
-No module added by this part MAY store a value in a non-SI unit in any domain record, JSON payload, or `.binz` sidecar (§0 constraint 3). The `defaultUnit`/`wavelengthUnit` labels (D.4, D.5) are the ONLY persisted unit names and they label *display intent*, never the datum. All unit arithmetic MUST go through `Units.fs` (D.2); any other module needing a conversion MUST call those functions rather than multiplying by a literal factor. This part MUST NOT add backwards-compatibility shims for pre-existing material files, MUST NOT add a config knob to change the canonical base, and MUST NOT introduce a second wavelength type alongside the engine's `WaveLength` (`Fields.fs:280`).
+This realizes 010 §1's [Core] "Per-element default unit of measure — each layer/element/source remembers and displays the unit natural to it … full unit behaviour in §2" (Part D).
 
-### R-12 (D.12) Temperature/composition dependence (thermo-optic dn/dT) as optional model parameters [Standard]
+### R-14. §B.11 Gradient-index / inhomogeneous layers MUST auto-discretize into reused `Layer` sub-layers [Standard]
 
-`DispersionModels.fs` MUST support the [Standard] temperature/composition dependence of 010 §2 (thermo-optic dn/dT, 010 lines 164-165) as OPTIONAL parameters on a `DispersionModel`, never as a mandatory field. This part MUST add a net-new record `ThermoOptic = { dndT : float<1/K>; referenceTemperature : float<K> }` in `DispersionModels.fs` and an OPTIONAL `thermoOptic : ThermoOptic option` carried alongside the model's coefficient record; when `None`, evaluation (D.6) MUST be byte-for-byte the isothermal result with no closure overhead (mirroring the `EpsWithoutDisp` no-overhead rule of D.6). When `Some`, the `evaluate` closure (D.6) MUST apply a first-order thermo-optic correction `n(λ, T) = n(λ, referenceTemperature) + dndT · (T − referenceTemperature)` at the chosen operating temperature `T : float<K>`, returning a `ComplexRefractionIndex` (`MaterialProperties.fs:43`); the correction MUST compose with the existing closure shape (`OpticalProperties/Dispersive.fs:87`) and MUST NOT introduce a parallel tensor type. Temperature MUST be stored in kelvin (the engine has no kelvin measure today; `[<Measure>] K` is net-new and lives in `DispersionModels.fs`, not a shadow of `Constants.fs`), and `dndT` MUST be stored in canonical per-kelvin units — neither value is a length/energy, so the §0 canonical-units rule is satisfied by storing SI K and 1/K, and NO non-SI unit is admitted. The operating temperature `T` MUST be supplied by the caller at the evaluation boundary and MUST NOT be persisted into the per-material coefficient record; only `dndT`/`referenceTemperature` persist, as the `materialEntry` dispersion sub-object's optional thermo-optic fields (the `materialEntry` `$def`, §A.7). This part MUST NOT add full temperature-dependent Sellmeier tables, composition-interpolation tables, or a thermal-expansion model — only the first-order dn/dT optional parameter named in 010 §2.
+`OpticalConstructor.Domain/BeamTree.fs` (new) MUST realise 010 §1's [Standard] "Gradient-index / inhomogeneous layers auto-discretized into sub-layers" (010 lines 123-124) as a pure expansion that turns one continuously-varying-index layer into an ordered list of homogeneous reused `Layer` records (`Media.fs:24`). This part MUST add a net-new record `GradientLayer = { totalThickness : double<meter>; subLayerCount : int; indexProfile : double<meter> -> OpticalProperties }` and a pure function `discretize : GradientLayer -> Layer list` that slices `totalThickness` into `subLayerCount` equal `Thickness.Thickness` sub-layers (`Media.fs:12`), each carrying the `OpticalProperties` (`MaterialProperties.fs:165`) sampled from `indexProfile` at that sub-layer's mid-depth. The produced sub-layers MUST be ordinary `Layer` records indistinguishable from manually entered ones — exactly the flat-`Layer`-list discipline `RepeatBuilder.expand` follows (Part J §J.2) — and MUST be assignable straight into `OpticalSystem.films` (`Media.fs:98`); this part MUST NOT introduce a new gradient-layer engine type, MUST NOT discretize at solve time inside the solver, and MUST NOT store the unfactored profile in the canonical JSON (only the expanded `films` persist, per §B.9). `subLayerCount` MUST be a required argument validated `>= 1` through the Part J §J.9 validation seam; thicknesses MUST remain `double<meter>` (Part A canonical-units rule). Adaptive/error-driven sub-layer refinement is OUT OF SCOPE — the count is caller-supplied, uniform slicing only.
 
 ## Non-requirements
 
-- The `OpticalConstructorProject` aggregate itself is NOT redefined here (owned by Part A / slice 001); this slice only adds the `defaultUnit : UnitOfMeasure` field requirement (D.4) and the dispersion sub-object shapes. Per-element placement is fixed by Part B (slice 003) and Part E (slice 005).
-- Crystal-axis orientation / rotation is NOT implemented here — it reuses `Layer.rotate` and is owned by Part B (slice 003).
-- The shareable material-library file format and the JSON `materialEntry` persistence wiring are owned by Part I (slice 009); this slice produces in-memory `MaterialEntry` values only.
-- Caching of evaluated dispersion curves, model-coefficient schema versioning, retry/back-off on import, migration of legacy material files (§0 constraint 6).
+- No UI surfaces, no stack/layer editor, no medium selectors, no substrate switch (those are Part B / slice 005).
+- No JSON serializer, schema file, or validate-on-load implementation — only the aggregate record + `$defs` anchor names (the implementation is slice 003).
+- No dispersion models, material library, material import, or material preview (Part D / slice 004).
+- No solver cache, memoization, retry, or error-wrapping shim around the solver (§B.1 scope exclusion); no Jones/Stokes accumulator (§B.4).
+- No new `[<Measure>]` types for Å/eV/cm⁻¹; no second wavelength type; no non-SI value stored anywhere (constraint 3).
+- Curved-element implementation is Part C (slice 006); only the §A.5 contract is fixed here.
 
 ## Files modified (planned)
 
 New:
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/DispersionModels.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/MaterialImport.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialPreview.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/UnitsTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/DispersionModelsTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/MaterialImportTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/fixtures/Si.yml`
-- `Berreman/OpticalConstructor/OpticalConstructor.Tests/fixtures/sample-nk.csv`
+- `OpticalConstructor/OpticalConstructor.Domain/Units.fs`
+- `OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs`
+- A new Domain module realizing the `OpticalConstructorProject` aggregate (§A.7) with the beam-tree + systems fields and the nine `$defs` anchor names documented.
+- `OpticalConstructor/OpticalConstructor.Tests/BeamTreeTests.fs` (mirror reject/accept, non-mirror both branches, linear chain — AC-B2/AC-B3; extended in slice 006 for AC-C4)
+- `OpticalConstructor/OpticalConstructor.Tests/BeamRoutingTests.fs` (root solve calls `OpticalSystemSolver`/reads `Solution.emSys`; child incident `EmField` equals parent branch field advanced by `EmField.propagate`; independent branch detectors — AC-A3/AC-B4)
+- `OpticalConstructor/OpticalConstructor.Tests/UnitsTests.fs` (eV/cm⁻¹/Å/nm/µm/mm round-trips against `Constants.fs` factors and the `1239.84` relation — AC-A7/AC-D1/AC-D2)
+- `OpticalConstructor/OpticalConstructor.Tests/GradientDiscretizeTests.fs` (`discretize` yields exactly n `Layer`s whose `Thickness` sum equals `totalThickness`, assignable to `films`, no gradient engine type — AC-B11)
 
 Edited:
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` — register Units/DispersionModels/MaterialLibrary in compile order.
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` — register MaterialImport; FSharp.Data ref.
-- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register MaterialPreview.
-- `Berreman/OpticalConstructor/OpticalConstructor.Domain/OpticalConstructorProject.fs` — add the `defaultUnit : UnitOfMeasure` field type requirement (D.4) where the aggregate carries unit-bearing elements.
+- `OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj` — register `Units.fs`, `BeamTree.fs`, and the aggregate module in compile order (Units before BeamTree before aggregate).
 
 ## Testing plan
 
-Gates that apply: `build`, `unit-tests`, `constructor-unit-tests` (the `OpticalConstructor.Tests` project exists from slice 001).
-
-- `build`: solution builds with the new Domain/Storage/Ui files registered. The `MaterialPreview.fs` UI file MUST compile against the FuncUI DSL surface WITHOUT adding the clone dependency (§0 constraint 5).
-- `unit-tests`: existing `BerremanTests` stays green (`count_at_least` baseline from slice 001's state-of-the-world).
-- `constructor-unit-tests`: add `UnitsTests.fs` (AC-D1/AC-D2/AC-A7 round-trips and the `1239.84` relation), `DispersionModelsTests.fs` (AC-D4/AC-D5/AC-D8), `MaterialImportTests.fs` (AC-D3) with the `Si.yml` and `sample-nk.csv` fixtures. The thermo-optic `None`-is-byte-identical and `Some`-applies-correction cases (AC-D8) MUST be asserted.
-- Emit the state-of-the-world file with the `gates:` YAML baseline block (carry `berreman_unit_tests` from the `unit-tests` capture).
+- `constructor-unit-tests` gate runs the new `OpticalConstructor.Tests` files; must pass and increase the count over slice 001's baseline.
+- AC-A3/AC-B4 (BeamRoutingTests): solve a two-node tree; assert the root solve calls `OpticalSystemSolver` and reads `Solution.emSys`; assert the child incident `EmField` equals the parent branch field advanced by `EmField.propagate`; detectors on different branches report independent `EmField` states.
+- AC-A4/AC-B2/AC-B3 (BeamTreeTests): mirror node rejects `Transmitted` attach (`Result.Error` of `BeamTreeError`) and accepts `Reflected`; non-mirror node holds both branches; linear chain is single-child-per-node.
+- AC-A5/AC-A7/AC-D1/AC-D2 (UnitsTests): SI-meter storage; eV (13.5 eV → ≈9.184e-8 m within 1e-15), cm⁻¹, Å/nm/µm/mm round-trips within 1e-12, factors from `Constants.fs` (no re-derived literals), `1239.84` appears once.
+- AC-B8: changing an element's `defaultUnit` leaves stored SI values byte-identical.
+- AC-B11 (GradientDiscretizeTests): `discretize` with `subLayerCount=n>=1` returns exactly n `Layer`s, thickness sum = `totalThickness`, no gradient engine type, assignable to `films`.
+- `build` gate green; `unit-tests` gate (BerremanTests) stays green (not touched here).
 
 ## Risks
 
-- **Medium:** matching `Silicon`/`Langasite` worked closures (`OpticalProperties/Dispersive.fs`) to within 1e-9 (AC-D4) requires the Sellmeier coefficient normalisation (µm² convention) to round-trip exactly through `Units.fs`. Reuse `WaveLength.value` and the `Constants.fs` factors verbatim; do not re-derive any factor.
-- **Low:** the `evNmProduct = 1239.84` literal must appear exactly once (D.2); a second copy in any module fails the duplicate-conversion rule (D.11).
+- **Medium.** The beam-tree type family + units spine + aggregate are the coupling core of the whole arc; a wrong shape here forces edits across every later slice. Mitigation: keep the types minimal and immutable, prove the contractful invariants (mirror reflected-only, SI storage, propagate-driven routing) by unit test before exit. The mirror-rejection must use `Result`, not exceptions. The `1239.84`-once rule and the no-shadow-`[<Measure>]` rule are easy to violate — check them explicitly.
 
 ## Hand-off
 
-State carried to later slices:
-- `Domain/Units.fs` provides the SOLE conversion seam (`toMeters`/`toWaveLength`/`fromMeters`/`wavelengthToUnit`); Part B (slice 003), Part E (slice 005), Part H (slice 008), and Part J (slice 010) MUST call it for every boundary conversion and MUST NOT hand-roll factors.
-- `UnitOfMeasure` DU exists; the `defaultUnit` field type is fixed for the per-element hooks Part B (layers) and Part E (sources) place.
-- `Domain/DispersionModels.fs` (catalogue + `evaluate`/`toOpticalProperties`, optional `ThermoOptic`, net-new `[<Measure>] K`) and `Domain/MaterialLibrary.fs` (`MaterialEntry`/`MaterialCategory`/`MaterialLibrary`) are available; Part B drag-and-drop (slice 010 J.4) and Part D preview consume `MaterialEntry`. Part I (slice 009) persists the library via the `materialEntry` `$def`.
-- `Storage/MaterialImport.fs` produces in-memory `MaterialEntry` values from refractiveindex.info YAML / CSV; Part I (slice 009 §I.8) wraps the shareable-library file format over it.
-
-Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
-
-```yaml
-gates:
-  berreman_unit_tests: <int>
-```
+The core immutable domain model exists and is unit-tested: `UnitOfMeasure` + conversions (`Units.fs`), the beam tree with mirror/branch validation, propagate-driven routing, default-unit hooks, gradient discretization (`BeamTree.fs`), and the `OpticalConstructorProject` aggregate + the nine `$defs` anchor names. Slice 003 implements the JSON serializer / schema / validate-on-load / `.binz` sidecar over this aggregate. Slice 004 adds the dispersion-model catalogue and material library. Slice 005 (Part B) adds the UI stack editor, medium selectors, substrate switch, and the beam-tree `$def` field-level shapes. Emit the state-of-the-world file with all required ATX headings and the `gates:` YAML baseline block carrying the new `constructor-unit-tests` count.

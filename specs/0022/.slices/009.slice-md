@@ -1,10 +1,10 @@
-# 009 — Project management, persistence & I/O (Part I)
+# 009 — Optimization infrastructure: library-agnostic interface, ALGLIB adapter & parameter mapping (Part G §G.1–G.3)
 
 ## Spec reference
 
-- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022). This slice owns **Part I**.
-- `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md` — slice 001 (Part A §A.7) created the storage assembly, the serialization seam (`serializeProject`/`deserializeProject` + shared options), and the schema scaffold this slice completes into full file IO/validation/export.
-- `C:\GitHub\Berreman\specs\0022\.slices\002.slice-md` — slice 002 (Part D) authored `MaterialEntry`/`MaterialImport`; §I.8's shareable material-library file format wraps it.
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract). Part G §G.1–G.3.
+- Slice 001 (`.slices/001.slice-md`) — created the `OpticalConstructor.Optimization.fsproj` project (and the gated `OpticalConstructor.Tests` host) this slice fills.
+- Slice 002 (`.slices/002.slice-md`) — domain foundation (units spine, beam-tree types, `OpticalConstructorProject` aggregate) this slice's mapping seam builds on.
 
 ## Inherited from parent spec
 
@@ -28,164 +28,95 @@ The following constraints are normative for EVERY part (A–J) of this specifica
 
 ### Acceptance criteria owned by this slice
 
-- AC-I1: After `saveProject path project` returns `Ok` and `openProject path` is called, the returned project MUST equal the original `OpticalConstructorProject` value (round-trip identity over canonical SI fields) within a single call, with no unit conversion applied to `Thickness`/`WaveLength.value`.
-- AC-I2: After `deserializeProject` is given JSON that violates `optical-constructor-project.schema.json`, it MUST return `SchemaValidationError` carrying the JsonSchema.Net messages and MUST NOT return a bound project.
-- AC-I3: After `openProject` is called on a file whose `schemaVersion` differs from the single shipped version, it MUST return `SchemaValidationError` and MUST NOT execute any migration path.
-- AC-I4: After `writeSidecar` persists a sweep table, the file on disk MUST have the `.binz` extension and MUST be readable back by `readSidecar` to the identical value; attempting `writeSidecar` of an `OpticalConstructorProject` MUST be absent from the codebase.
-- AC-I5: After the project JSON references a sidecar by relative path and the `.binz` file is missing, `openProject` plus a sidecar read MUST surface `SidecarMissing`/`BinzError` rather than throwing.
-- AC-I6: After `writeAutosave name project` returns `Ok`, the user's `<name>.ocproj` MUST be unchanged on disk and a distinct `<name>.ocproj.autosave` MUST exist.
-- AC-I7: After a destructive model edit followed by `undo`, `EditHistory.present` MUST equal the pre-edit project; a subsequent `redo` MUST restore the edited project; `undo` on empty history MUST return the input unchanged.
-- AC-I8: After `exportCsv path (headers, rows)` returns `Ok`, the file MUST contain one header line of column names followed by one comma-separated line per row, and MUST NOT have re-invoked the solver.
-- AC-I9: After `exportChartImage path Png handle` returns `Ok` for a Plotly.NET chart, the saved file MUST be produced by the chart library's own writer (no custom rasterizer in `OpticalConstructor.Storage`).
-- AC-I10: After `importMaterials` reads a refractiveindex.info-style CSV via FSharp.Data, it MUST return `MaterialEntry list`; after `exportMaterials` writes a library, the produced JSON MUST validate against the `materialEntry` `$def`.
-- AC-I11: After `appendRevision` is called twice on the same project folder, two numbered JSON snapshots MUST exist under `history/`, and `diffRevisions` over them MUST return a `ProjectDiff` with no external-VCS invocation.
+- AC-G1: After `optimize` is called with an `OptimizationRequest` whose `method` is `LevenbergMarquardt`, the ALGLIB adapter MUST return an `OptimizationResult` (or `Result.Error`) without any ALGLIB type or exception crossing the G.1 interface boundary, within the request's `maxIterations`.
+- AC-G2: After a `DesignParameter list` and a `float[]` solution vector are folded over a base `OpticalSystem`, the produced system MUST reflect each parameter (e.g. layer `Thickness` in canonical meters) with no value stored in a non-SI unit.
 
 ### Files in scope owned by this slice
 
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Errors.fs` (new) — `StorageError` DU; sole error channel for storage (I.1)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs` (new) — JsonSchema.Net validate-on-load wired into `deserializeProject` (I.2)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs` (new) — `saveProject`/`openProject`, `.ocproj` read/write (the single project-open seam) (I.3)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs` (new) — `.binz` `writeSidecar`/`readSidecar` reusing `Softellect.Sys.Core.serialize` `BinaryZippedFormat` (I.4)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs` (new) — recent-files persistence + `Autosave` (I.5)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs` (new) — immutable `EditHistory` undo/redo (I.6)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Export.fs` (new) — CSV/Excel + PNG/SVG/PDF chart export delegating to chart libraries (I.7)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/Report.fs` (new) — report generator (Giraffe.ViewEngine HTML + WebView2/Plotly PDF), `MaterialLibrary` import/export, `DesignHistory` append/diff (I.8)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` (edit) — wire `deserializeProject` to call `SchemaValidation` before binding (I.1/I.2). The serialization core was created by slice 001 and field-level `$defs` filled by slices 003/004/005/008.
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` (edit) — author the top-level envelope and storage-owned `$defs` (`materialEntry`, `sourceSpec`, `unitOfMeasure`, project root: `schemaVersion`, `systems`, `materials`, `sources`, `sweeps`, `chartSettings`, `beamTree`, optional `sidecars`) (I.2). Physics `$defs` filled by Parts B–G.
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` (edit) — register the new files in compile order; ensure package refs JsonSchema.Net, FSharp.Data, ClosedXML present.
-- `C:/GitHub/Berreman/.gitignore` (edit) — ignore `*.binz` and `*.autosave` under project working folders; `.ocproj` files remain committable (I.3/I.4/I.5)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/OptimizationInterface.fs` (new) — library-agnostic optimization interface (Residual/Jacobian/bounds/method/result, `optimize`)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs` (new) — sole ALGLIB-referencing file; maps methods to the 010 §III.4 routines minlm/minbleic/minnlc/minlbfgs; `NelderMead` simplex backend deferred (G.2), not bound to a spec-invented routine
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Optimization/DesignParameters.fs` (new) — float[]⇄OpticalSystem mapping reusing `ArbitraryVariable.getSys` seam
 
-Test artifacts owned by this slice:
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.StorageTests/RoundTripTests.fs` (new) — `saveProject`→`openProject` identity over a representative `OpticalConstructorProject` (AC-I1); schema-violation returns `SchemaValidationError` (AC-I2); wrong `schemaVersion` rejected without migration (AC-I3)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.StorageTests/SidecarTests.fs` (new) — `.binz` write/read identity for a sweep table; missing sidecar surfaces `SidecarMissing`/`BinzError` (AC-A6/AC-I4/AC-I5)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.StorageTests/HistoryTests.fs` (new) — undo/redo identity and empty-history no-op (AC-I7); autosave does not touch `.ocproj` (AC-I6)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.StorageTests/ExportImportTests.fs` (new) — CSV header+rows shape (AC-I8); `importMaterials` from a refractiveindex.info-style CSV fixture and `exportMaterials` schema-validates (AC-I10); `appendRevision` twice + `diffRevisions` (AC-I11)
-- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.StorageTests/fixtures/sample-nk.csv` (new fixture) — small refractiveindex.info-style n,k table for the storage import test
-
-*(The `OpticalConstructor.StorageTests` project is the storage-specific test project; it is created/registered here and is run by the `constructor-unit-tests` gate alongside `OpticalConstructor.Tests`. If a single test project is preferred, these files MAY instead land in `OpticalConstructor.Tests`; the gate command MUST cover whichever project hosts them.)*
+(The `OpticalConstructor.Optimization.fsproj` project bullet, parent files-in-scope line 919, is owned by slice 001 — project creation. This slice adds the ALGLIB `PackageReference` to that project per §G.2; that edit is listed under Files modified (Edited), not re-claimed as a new file here.)
 
 ### File:line references owned by this slice
 
-All file:line references in the verbatim I.0–I.8 directives reproduced under **Requirements** are owned by this slice (notably: `Fields.fs:284`, `Media.fs:12`, `Dispersion.fs:53`, `Charting.fs:9`, `Charting.fs:13`, `Charting.fs:21,38,64`, `Charting.fs:34`, `Variables.fs:237,270`, `C:/GitHub/Softellect/Sys/Core.fs:254`, `C:/GitHub/Softellect/Sys/Core.fs:254,257`, `C:/GitHub/Softellect/Sys/Primitives.fs:267`).
+- `Variables.fs:37` `ArbitraryVariable.getSys : OpticalSystem -> double -> OpticalSystem` — the existing scalar parametrization seam G.3 reuses; `Variables.fs:263` where `calculate` already invokes it; `Variables.fs:42` `RangedVariable`.
+- `Media.fs:12` `Thickness of double<meter>` (layer-thickness design variable); `Media.fs:34` `WedgeLayer.angle` (wedge-angle design variable); `Media.fs:94` `OpticalSystem` (the base system folded over).
+- `Dispersion.fs:53` `OpticalPropertiesWithDisp` — the dispersion-coefficient design variable substitution target.
+- `Constants.fs:6` `[<Measure>] meter` — thickness rebuilt as `Thickness (v * 1.0<meter>)`, v already in canonical meters.
+- `MathNetNumericsMath.fs:5` (math seam, MUST NOT be routed through for optimization here) and `ExtremeNumericsMath.fs:5` (legacy reference only) — the §A.8 boundary the adapter respects.
 
 ## Scope
 
-This slice owns the storage assembly's read/write behaviour over the Part A root aggregate: canonical JSON serialization, the published JSON Schema and validate-on-load, `.ocproj` file read/write, `.binz` sidecars for derived/bulk artefacts only, recent files and autosave, undo/redo of model edits, chart-data and chart-image export, and the report generator plus material-library import/export and design-history append/diff. The domain root and `$defs` are defined by Part A (and filled at field level by Parts B–H); this slice defines the serialization/validation/file-format/export/history/library-exchange behaviour over that root, the sole `StorageError` channel, and the destructive/long-running operator-UX commitments. Schema versioning, migration, backwards-compat shims, encryption, and cloud sync are out of scope; `Result<'T,'E>` is the only error channel.
+This slice lands the optimization infrastructure that every later fitting/synthesis slice depends on: the library-agnostic optimization interface (§G.1), the single ALGLIB adapter behind it (§G.2), and the flat-`float[]`⇄`OpticalSystem` design-variable mapping (§G.3). It is almost wholly net-new orchestration above the existing forward solver — the interface is expressed in our own F# records and DUs with no ALGLIB type in its public surface, the adapter is the ONLY file permitted to reference ALGLIB, and the mapping reuses the existing `ArbitraryVariable.getSys` parametrization seam rather than inventing a new mechanism.
+
+No merit assembly, no refinement entry point, no ellipsometry, no inverse fit, no fit-quality, no synthesis, and no UI land here — those are slices 010 and 011. This slice's tests prove the two boundary invariants (no ALGLIB type/exception crosses the §G.1 boundary; the `DesignParameter` fold lands canonical-SI values) in the gated `OpticalConstructor.Tests` host; the full Wolfram end-to-end validation lives in `BerremanTests/OptimizationTests.fs` (slice 011).
 
 ## Requirements
 
-The following are the parent's Part I directives, reproduced verbatim. Contractful identifiers and `<file>:<line>` references are preserved exactly.
+### R-1. §G.1 Library-agnostic optimization interface
 
-### R-1 (I.1) [Core] — Canonical JSON serialization of the project root
+This part MUST define the optimization abstraction in our own terms in a new file `OpticalConstructor.Optimization/OptimizationInterface.fs` inside the `OpticalConstructor.Optimization.fsproj` project named in the Part A assembly map. The interface MUST be expressed as F# records and discriminated unions (§0 constraint 1) and MUST NOT reference any ALGLIB type in its public surface, so the physics/fitting code compiles without the library, per §A.8 ("the physics/fitting code never depends on ALGLIB directly").
 
-`OpticalConstructor.Storage.fsproj` MUST provide a module `OpticalConstructor.Storage.ProjectJson` exposing `serializeProject : OpticalConstructorProject -> Result<string, StorageError>` and `deserializeProject : string -> Result<OpticalConstructorProject, StorageError>` over the Part A root aggregate `OpticalConstructorProject` (§A.7). Serialization MUST use **System.Text.Json with FSharp.SystemTextJson** (the package Part A admits) configured with `JsonFSharpOptions` so that F# records, discriminated unions (`ConstructorElement`, `BeamBranch`, `Substrate`, `Thickness`, `WaveLength`), and `option` values round-trip idiomatically; it MUST NOT use Newtonsoft or FsPickler for this path (binding rule 4).
+The interface MUST consist of exactly:
+- `Residual = float[] -> float[]` — the vectorized residual function (one entry per target sample), matching §A.8's `(float[] -> float[])`.
+- `Jacobian = (float[] -> float[][]) option` — optional analytic Jacobian; when `None` the adapter MUST request numerical differentiation.
+- `ParameterBounds` (record: `lower : float[]`, `upper : float[]`) — per-parameter box bounds in canonical SI units (§0 constraint 3); an unbounded side MUST be encoded as `infinity`/`-infinity`.
+- `InequalityTarget` (DU: `LessOrEqual | GreaterOrEqual` carrying the bound) — the one-sided target from 010 §II.5 ("R ≤ 0.5%").
+- `OptimizationMethod` (DU: `LevenbergMarquardt | QuasiNewtonLbfgs | NelderMead | BoundedLinearConstrained | NonlinearConstrained`) — the method selector mapping onto the ALGLIB routines named in §A.8/010 §III.4: `LevenbergMarquardt → minlm`, `QuasiNewtonLbfgs → minlbfgs`, `BoundedLinearConstrained → minbleic`, `NonlinearConstrained → minnlc`. `NelderMead` is the 010-required simplex method (010 line 219) whose concrete backend 010 leaves unnamed; its routine binding is deferred per G.2 and MUST NOT be resolved to a spec-invented routine here.
+- `OptimizationRequest` (record: residual, optional jacobian, initial `float[]`, bounds, inequality targets, method, `maxIterations : int`, `epsX : float`) — the single call payload.
+- `OptimizationResult` (record: `solution : float[]`, `finalResiduals : float[]`, `iterations : int`, `terminationReason : TerminationReason`, `success : bool`) where `TerminationReason` is a DU (`Converged | MaxIterationsReached | StepTooSmall | Failed of string`).
 
-Reuse before invention: do NOT hand-roll a JSON writer — the single primitive to reach for is `System.Text.Json.JsonSerializer.Serialize/Deserialize` with the `FSharp.SystemTextJson` converter registered once in a shared `JsonSerializerOptions` value. The serializer MUST write the domain model's canonical SI fields verbatim: `Thickness of double<meter>` (`Media.fs:12`) and `WaveLength.value : double<meter>` (`Fields.fs:284`) are emitted as their stored meter values; the human-facing unit travels only in the `unitOfMeasure` field (§A.7 `unitOfMeasure` `$def`). No unit conversion, rounding, or canonicalization of physical magnitudes occurs in this module.
+The interface MUST expose a single entry point `optimize : OptimizationRequest -> Result<OptimizationResult, string>` (§0 error-handling rule: `Result`, not exceptions). No caching, retry, or progress-callback registry is admitted in this file; progress reporting is wired in G.10 via a separate channel.
 
-`StorageError` MUST be a net-new DU in `OpticalConstructor.Storage.Errors` with cases at minimum `JsonParseError of string`, `SchemaValidationError of string list`, `SchemaMissing`, `FileIoError of exn`, `BinzError of exn`, and `SidecarMissing of string`. It MUST NOT wrap or shadow `Softellect.Sys.Errors`; it is the sole error channel for this part and is returned, never thrown.
+### R-2. §G.2 ALGLIB adapter behind the interface
 
-### R-2 (I.2) [Core] — Published JSON Schema and validate-on-load
+This part MUST implement the interface from G.1 in a new file `OpticalConstructor.Optimization/AlglibAdapter.fs`, the ONLY file in the solution permitted to `open`/reference ALGLIB. ALGLIB MUST be added as a NuGet `PackageReference` to `OpticalConstructor.Optimization.fsproj` (no new C# project — §0 constraint 1); the GPL free edition is the licensed edition per §A.8.
 
-`OpticalConstructor.Storage.fsproj` MUST ship the file `schema/optical-constructor-project.schema.json` as a build-copied content item, carrying `"$id": "https://berreman/schema/optical-constructor-project.json"` and the `$defs` enumerated in §A.7 (`opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`, `materialEntry`, `sourceSpec`, `unitOfMeasure`). This part authors the schema's **top-level envelope and the storage-owned `$defs`** (`materialEntry`, `sourceSpec`, `unitOfMeasure`, and the project root object: `schemaVersion` string, `systems`, `materials`, `sources`, `sweeps`, `chartSettings`, `beamTree`, plus optional `sidecars` array); the physics-shaped `$defs` (`opticalSystem`, `layer`, `opticalProperties`, `beamNode`, `beamBranch`, `constructorElement`) are filled by Parts B–G and MUST NOT be re-shaped here.
+The adapter MUST map each `OptimizationMethod` to the ALGLIB routine named in §A.8: `LevenbergMarquardt → minlm` (`minlmcreatev`/`minlmcreatevj` when a Jacobian is supplied, with `minlmsetbc` for bounds), `QuasiNewtonLbfgs → minlbfgs`, `BoundedLinearConstrained → minbleic`, `NonlinearConstrained → minnlc`. `NelderMead` is the [Standard] Nelder–Mead simplex method 010 §II.5 requires (010 line 219), but 010 §III.4 names NO ALGLIB routine for a simplex solver — its list is exactly `minlm`/`minbleic`/`minnlc`/`minlbfgs`/`mincg`/`lsfit` (010 lines 380-382). This part MUST NOT invent an ALGLIB routine name for the simplex case; the following deferred decision is carried forward VERBATIM as a directive: **the concrete simplex backend for `NelderMead` — an ALGLIB routine if one is later confirmed to exist, OR an explicit in-file F# Nelder–Mead loop over the G.1 `Residual` closure — is deliberately undecided here and MUST remain undecided until that decision is taken, traceable to the 010-required simplex feature; this part MUST NOT resolve it by binding `NelderMead` to a spec-invented ALGLIB routine.** Until that decision is taken the adapter MUST surface `NelderMead` as `Failed "simplex backend unresolved"` rather than silently dispatching to a guessed routine. The adapter MUST translate `ParameterBounds` into the routine's box-constraint call and `InequalityTarget`s into either residual penalty rows (for `minlm`) or nonlinear constraints (for `minnlc`); it MUST convert ALGLIB's completion codes into `TerminationReason` and MUST NOT leak an ALGLIB exception past the `Result` boundary. Linear algebra inside the adapter (normal-equation/QR solves for the LM step) is ALGLIB's own; this part MUST NOT route any matrix operation through `MathNetNumericsMath.fs:5`, and conversely MUST NOT use ALGLIB for any engine linear algebra (§A.8: "ALGLIB is used for optimization only, not for linear algebra"). Extreme Optimization MUST NOT be referenced from this adapter; `ExtremeNumericsMath.fs:5` remains a legacy math-seam reference only, per §A.8.
 
-`deserializeProject` (I.1) MUST validate the parsed JSON document against this schema **before** binding it to `OpticalConstructorProject`, using **JsonSchema.Net** (the package Part A admits) — load the schema once into a `JsonSchema` value and call `Evaluate`. On any validation failure the function MUST return `SchemaValidationError` carrying the list of JsonSchema.Net evaluation messages and MUST NOT return a partially-bound project. If the schema content item is absent at runtime the function MUST return `SchemaMissing`. Schema **versioning and migration are out of scope**: a `schemaVersion` whose value does not equal the single shipped version MUST surface as `SchemaValidationError`, not trigger any migration code.
+### R-3. §G.3 Parameter ⇄ system mapping (design variables)
 
-### R-3 (I.3) [Core] — Project file read/write with `.ocproj` extension
+This part MUST define the bridge from a flat `float[]` parameter vector to a concrete `OpticalSystem` in a new file `OpticalConstructor.Optimization/DesignParameters.fs`, reusing the existing scalar parametrization seam `ArbitraryVariable.getSys : OpticalSystem -> double -> OpticalSystem` (`Variables.fs:37`) that `calculate` already calls at `Variables.fs:263`. A `DesignParameter` (new record) MUST carry a `name : string`, a `getSys : OpticalSystem -> double -> OpticalSystem` closure (the same signature as `ArbitraryVariable.getSys`), and the per-parameter SI bound pair; an ordered `DesignParameter list` MUST fold left over a base `OpticalSystem` to apply the whole `float[]` vector, in vector order.
 
-`OpticalConstructor.Storage.fsproj` MUST provide `ProjectFile` with `saveProject : string -> OpticalConstructorProject -> Result<unit, StorageError>` and `openProject : string -> Result<OpticalConstructorProject, StorageError>`. `saveProject` MUST serialize via `serializeProject` (I.1) and write the resulting UTF-8 text to the given path with the extension `.ocproj`; `openProject` MUST read the file, then call `deserializeProject` (I.2) so that schema validation always runs on load. All filesystem access MUST be wrapped so any exception becomes `FileIoError`; exceptions MUST NOT propagate out of these functions (project CLAUDE.md, `Result`-not-exceptions).
-
-The canonical project is a single self-contained JSON text file — it MUST NOT be a zip, a folder bundle, or a multi-file container. Sidecars (I.4) live beside it as separate `.binz` files referenced by relative path from the JSON's `sidecars` array. `.ocproj` files are user documents and MUST NOT be added to any `.gitignore`; autosave and sidecar artefacts are addressed in I.5 and I.4 respectively. This `openProject` path is the single project-open seam every other part routes template loads and gallery loads through (Part J §J.3, §J.11).
-
-### R-4 (I.4) [Core/Standard] — `.binz` sidecars for derived/bulk artefacts only
-
-`OpticalConstructor.Storage.fsproj` MUST provide `Sidecar` with `writeSidecar<'T> : string -> 'T -> Result<unit, StorageError>` and `readSidecar<'T> : string -> Result<'T, StorageError>`, used **only** for derived/bulk artefacts: parametric-sweep result tables (the output of `calculate`/`calculate3D`, `Variables.fs:237,270` per Part A), in-layer field maps, and fit/design histories. These functions MUST reuse `Softellect.Sys.Core.serialize`/`deserialize` with `BinaryZippedFormat` (`C:/GitHub/Softellect/Sys/Core.fs:254,257`), and the file extension MUST be `.binz` (`Softellect.Sys.Primitives.fs:267`). Reuse is mandatory: do NOT introduce a second pickler, a second zip path, or a custom binary format — the one primitive to reach for is `Softellect.Sys.Core.serialize BinaryZippedFormat`.
-
-`.binz` sidecars MUST NOT carry the canonical project definition or any hand/LLM-editable content (binding rule 4); attempting to serialize `OpticalConstructorProject` through `writeSidecar` is forbidden by directive and MUST NOT be done. Each sidecar is referenced from the project JSON only by **relative path** under the `sidecars` array (I.2); the schema MUST require those paths to be relative so a moved project folder keeps its sidecars. Sidecars are regenerable derived data and SHOULD be excluded from version control: this part's `files` list contributes a `.gitignore` entry for `*.binz` under the project working folder. Caching policies, sidecar eviction, and retention windows are OUT OF SCOPE.
-
-### R-5 (I.5) [Standard] — Recent files and autosave
-
-`OpticalConstructor.Storage.fsproj` MUST provide `RecentFiles` with `loadRecent : unit -> string list` and `pushRecent : string -> string list`, persisting the most-recently-used `.ocproj` paths (most-recent first, bounded list) to a single JSON preferences file in the per-user application-data folder, serialized through `serializeProject`'s shared `JsonSerializerOptions` (I.1) — no separate JSON stack. The recent-files list is the discoverability surface required by the Operator-facing UX checklist; the UI (Part J) renders it under File ▸ Recent.
-
-`OpticalConstructor.Storage.fsproj` MUST provide `Autosave` with `autosavePath : string -> string` (deriving a sibling `<name>.ocproj.autosave` path) and `writeAutosave : string -> OpticalConstructorProject -> Result<unit, StorageError>`, reusing `serializeProject` (I.1) — autosave writes the **same canonical JSON**, never `.binz`. Autosave MUST write to the `.autosave` sidewrite path and MUST NOT overwrite the user's `.ocproj` until the user explicitly Saves; this satisfies the checklist's destructive-action gate by keeping the autosave file distinct from the committed document. The autosave timer interval and trigger are owned by the UI model (Part J §J.10); this part owns only the write function and the path derivation. `*.autosave` MUST be contributed to `.gitignore`. Retry-on-failure and rolling autosave generations are OUT OF SCOPE — a failed autosave returns `FileIoError` and the UI surfaces it.
-
-### R-6 (I.6) [Standard] — Undo/redo of model edits
-
-`OpticalConstructor.Storage.fsproj` MUST provide `History` with an immutable type `EditHistory` holding `past : OpticalConstructorProject list`, `present : OpticalConstructorProject`, and `future : OpticalConstructorProject list`, plus `push : OpticalConstructorProject -> EditHistory -> EditHistory`, `undo : EditHistory -> EditHistory`, and `redo : EditHistory -> EditHistory`. The structure MUST be immutable F# (project CLAUDE.md) and MUST NOT use `.Value`/`.IsSome`; `undo`/`redo` MUST pattern-match the `past`/`future` lists and MUST be no-ops (return the input unchanged) when the respective list is empty. This satisfies the Operator-facing UX checklist's opposing-action/undo requirement: every destructive model edit in the UI pushes onto `EditHistory`, and `undo` is its inverse. This is the multi-level undo/redo history that Part B §B.10 defers here; the construction page's single-level snapshot swap is the degenerate one-deep case.
-
-Undo/redo holds **whole-project snapshots** in memory; persistent on-disk undo journals, command-pattern diff logs, and bounded-history eviction are OUT OF SCOPE for this directive (the design-history file in I.8 is the durable record). The history depth bound, if any, is owned by the UI model (Part J).
-
-### R-7 (I.7) [Standard] — Chart-data and chart-image export
-
-`OpticalConstructor.Storage.fsproj` MUST provide `Export` with `exportCsv : string -> (string list * float[][]) -> Result<unit, StorageError>` writing sweep results as comma-separated rows (header row of column names, then numeric rows) and `exportExcel : string -> (string list * float[][]) -> Result<unit, StorageError>` writing an `.xlsx` workbook. The CSV column data MUST be the same sweep tuples produced by the engine's `calculate`/`calculate3D` (`Variables.fs:237,270` per Part A) and rendered to charts by `plot`/`plotComparison`/`plot3D` (`Charting.fs:21,38,64`); this part serializes that already-computed data and MUST NOT re-run or re-implement the solver. Excel export MUST use the existing in-tree XLSX dependency if one is referenced by `Analytics.fsproj`; if none is, ClosedXML MUST be added as the single Excel package reference (no new Excel abstraction layer).
-
-Chart **image** export to PNG/SVG/PDF MUST be delegated to the chart libraries Part A names, not re-implemented: Plotly.NET charts (the engine's `Charting.fs` path, `Chart.show` at `Charting.fs:34`) export through Plotly.NET's image writer hosted in WebView2 (Part A UI stack), and ScottPlot charts export through ScottPlot's own `SavePng`/`SaveSvg`. `Export` MUST expose `exportChartImage : string -> ChartImageFormat -> ChartHandle -> Result<unit, StorageError>` where `ChartImageFormat = Png | Svg | Pdf` is a net-new DU and `ChartHandle` is the UI-supplied chart object; this function dispatches to the owning library's save call and MUST NOT rasterize or vectorize charts itself. The Operator-facing UX checklist's progress/completion contract for export: each `export*` function returns `Result` on completion, and the UI refreshes the results pane and offers "Open containing folder" on `Ok`.
-
-### R-8 (I.8) [Standard] — Report generator, material library import/export, design history & diff
-
-`OpticalConstructor.Storage.fsproj` MUST provide `Report.generate : ReportFormat -> OpticalConstructorProject -> ChartHandle list -> Result<unit, StorageError>` producing a single PDF or HTML document (`ReportFormat = Pdf | Html`, net-new DU) containing the stack schematic, the project parameters read from `OpticalConstructorProject` (§A.7), the supplied chart images (via I.7's `exportChartImage`), and any fit-result summary present on the project. HTML report assembly MUST reuse the engine's existing Giraffe.ViewEngine usage (`Charting.fs:9` imports `Giraffe.ViewEngine`; `createDescription` builds `h1`/`h2` nodes at `Charting.fs:13`) rather than introducing a second HTML builder; PDF output MUST be produced by printing that HTML through the same Plotly/WebView2 PDF path used in I.7. The report render is the long-running action in this part: `generate` returns `Result` on completion and the UI (Part J) shows determinate progress per included chart and refreshes to offer the produced file.
-
-`OpticalConstructor.Storage.fsproj` MUST provide `MaterialLibrary` with `importMaterials : string -> Result<MaterialEntry list, StorageError>` and `exportMaterials : string -> MaterialEntry list -> Result<unit, StorageError>` over the §A.7 `materialEntry` `$def`. Export MUST write the canonical JSON (validated against the `materialEntry` `$def`, I.2) so a library file is itself schema-checked. Import MUST accept that same JSON **and** refractiveindex.info-style external tabulated/CSV data via **FSharp.Data** (the package Part A admits) — FSharp.Data is the single primitive to reach for parsing external CSV/measurement data; do NOT hand-roll a CSV reader. Imported n,k tables map onto the engine's dispersion types (`OpticalPropertiesWithDisp`, `Dispersion.fs:53` per Part A) — the mapping rules are owned by Part D (§D.9) and MUST NOT be redefined here; this part owns only the file read and the `MaterialEntry list` boundary. This is the shareable material-library file format that Part D §D.8 defers here.
-
-`OpticalConstructor.Storage.fsproj` MUST provide `DesignHistory` with `appendRevision : string -> OpticalConstructorProject -> Result<unit, StorageError>` and `diffRevisions : OpticalConstructorProject -> OpticalConstructorProject -> ProjectDiff` (net-new `ProjectDiff` record listing added/removed/changed systems, layers, materials, and sources by stable identity). `appendRevision` MUST persist each revision as a numbered canonical-JSON snapshot under a `history/` folder beside the `.ocproj`, reusing `serializeProject` (I.1) — revisions are JSON, not `.binz`, because they remain hand/LLM-readable (binding rule 4). `diffRevisions` MUST be a pure F# function comparing two already-loaded project values and MUST NOT shell out to git or any external VCS. Full branching/merge version control is OUT OF SCOPE; the committed scope is append-only revision snapshots plus structural diff, matching 010 §7's "design history & diff" [Standard] bullet.
+The supported design variables MUST be: **layer thickness** — the closure MUST rebuild the target `Layer` with `Thickness (v * 1.0<meter>)` (`Media.fs:12`), v already in canonical meters (§0 constraint 3); **dispersion coefficient** — the closure MUST substitute into the relevant `OpticalPropertiesWithDisp` (`Dispersion.fs:53`) field; **wedge angle** — the closure MUST set the `WedgeLayer.angle` (`Media.fs:34`). Negative-thickness prohibition and physical n-range bounding (010 §II.5) MUST be expressed as the `ParameterBounds` of G.1 (lower bound 0 for thickness), NOT as a separate validator. This file MUST NOT introduce reflection-based field setting; every mapping is an explicit F# closure the reader can follow (§0 locality rule).
 
 ## Non-requirements
 
-- The `OpticalConstructorProject` aggregate and the `$defs` are defined by Part A (slice 001) and filled at field level by Parts B/C/E/H (slices 003/004/005/008); this part authors the top-level envelope and storage-owned `$defs` only, and MUST NOT re-shape the physics `$defs`.
-- The material n,k→`OpticalPropertiesWithDisp` mapping rules are owned by Part D §D.9 (slice 002); §I.8's `importMaterials` owns only the file read and the `MaterialEntry list` boundary.
-- The autosave timer/trigger and the chart `ChartHandle` objects are owned by the UI (Part J slice 010 / Part H slice 008); this part owns the write functions and dispatch only.
-- Schema versioning, migration code, backwards-compat shims, multi-format converters, encryption, cloud sync, retry layers, caching/eviction (§0 constraint 6; I.0).
-- Chart rendering itself is owned by Part H (slice 008); export delegates to the chart libraries' own writers and MUST NOT rasterize/vectorize.
+- No merit/target-function editor, no local-refinement entry point, no ellipsometric Ψ/Δ derivation, no inverse fitting — those are owned by slice 010 (Part G §G.4–G.7).
+- No fit-quality reporting, no needle/tunnelling synthesis or global optimization, no Synthesis/Fit UI page, no Wolfram-reference validation tests — those are owned by slice 011 (Part G §G.8–G.11).
+- MUST NOT route any matrix operation through `MathNetNumericsMath.fs:5` from the adapter, and MUST NOT use ALGLIB for any engine linear algebra (§A.8); `ExtremeNumericsMath.fs:5` stays a legacy reference only.
+- MUST NOT add a progress-callback registry in the §G.1 interface (G.1 stays callback-free; G.10 / slice 011 wires progress through a separate channel).
+- MUST NOT resolve the `NelderMead` simplex backend or bind it to a spec-invented ALGLIB routine (§G.2 deferred decision); the adapter surfaces it as `Failed "simplex backend unresolved"`.
+- MUST NOT introduce a new C# project (constraint 1); ALGLIB enters only as a NuGet `PackageReference`.
 
 ## Files modified (planned)
 
 New:
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/Errors.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/Export.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/Report.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.StorageTests/RoundTripTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.StorageTests/SidecarTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.StorageTests/HistoryTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.StorageTests/ExportImportTests.fs`
-- `Berreman/OpticalConstructor/OpticalConstructor.StorageTests/fixtures/sample-nk.csv`
+- `OpticalConstructor/OpticalConstructor.Optimization/OptimizationInterface.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs`
+- `OpticalConstructor/OpticalConstructor.Optimization/DesignParameters.fs`
+- `OpticalConstructor/OpticalConstructor.Tests/OptimizationInterfaceTests.fs` (AC-G1: no ALGLIB type/exception crosses the §G.1 boundary; AC-G2: `DesignParameter` fold lands canonical-SI values)
 
 Edited:
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectJson.fs` — wire validate-on-load into `deserializeProject` (I.2).
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/optical-constructor-project.schema.json` — author the top-level envelope + storage-owned `$defs` (I.2).
-- `Berreman/OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj` — register the new files; package refs JsonSchema.Net/FSharp.Data/ClosedXML.
-- `Berreman/.gitignore` — ignore `*.binz` and `*.autosave`; keep `.ocproj` committable.
-- `Berreman/Berreman.slnx` — add `OpticalConstructor.StorageTests` (if created as a separate test project) with `x64`.
+- `OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj` — add the ALGLIB NuGet `PackageReference` (§G.2; the GPL free edition per §A.8) and register `OptimizationInterface.fs`, `AlglibAdapter.fs`, `DesignParameters.fs` in compile order (interface before adapter before mapping). The project itself was created by slice 001.
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register `OptimizationInterfaceTests.fs`.
 
 ## Testing plan
 
-Gates that apply: `build`, `unit-tests`, `constructor-unit-tests`.
+Gates: `build`, `unit-tests`, `constructor-unit-tests` (all three).
 
-- `build`: solution builds with the new Storage files registered and the schema content item build-copied; JsonSchema.Net/FSharp.Data/ClosedXML package refs resolve.
-- `unit-tests`: existing `BerremanTests` stays green (`count_at_least` baseline from the prior slice's state-of-the-world).
-- `constructor-unit-tests`: the gate command MUST cover the storage tests. `RoundTripTests.fs` (AC-I1 save→open identity; AC-I2 schema-violation→`SchemaValidationError`; AC-I3 wrong `schemaVersion` rejected, no migration); `SidecarTests.fs` (AC-A6/AC-I4 `.binz` write/read identity; AC-I5 missing sidecar→`SidecarMissing`/`BinzError`; project-through-`writeSidecar` absent); `HistoryTests.fs` (AC-I7 undo/redo identity + empty no-op; AC-I6 autosave leaves `.ocproj` untouched); `ExportImportTests.fs` (AC-I8 CSV shape; AC-I10 import/export materials; AC-I11 `appendRevision` ×2 + `diffRevisions`).
-- Emit the state-of-the-world file with the `gates:` YAML baseline block.
+- `build` gate: `dotnet build Berreman.slnx -c Release` MUST pass with the ALGLIB `PackageReference` resolved and the three new Optimization files compiling, no new C# project.
+- `constructor-unit-tests` gate: runs `OpticalConstructor.Tests`; the new `OptimizationInterfaceTests.fs` MUST pass and increase the count over slice 008's baseline.
+  - AC-G1: call `optimize` with an `OptimizationRequest` whose `method` is `LevenbergMarquardt`; assert an `OptimizationResult` (or `Result.Error`) is returned within `maxIterations` with no ALGLIB type or exception crossing the §G.1 boundary. A companion assertion confirms `NelderMead` surfaces as `Failed "simplex backend unresolved"`.
+  - AC-G2: fold a `DesignParameter list` and a `float[]` solution vector over a base `OpticalSystem`; assert each parameter is reflected (layer `Thickness` in canonical meters via `Thickness (v * 1.0<meter>)`) with no value stored in a non-SI unit.
+- `unit-tests` gate: `BerremanTests` stays green (this slice does not touch `BerremanTests`; the end-to-end Wolfram test in `BerremanTests/OptimizationTests.fs` is slice 011).
 
 ## Risks
 
-- **Medium:** the JSON Schema must validate every part's filled `$defs` (B/C/E/H field shapes) AND reject a wrong `schemaVersion` without migration (AC-I3); a too-loose schema lets invalid projects bind, a too-tight one rejects valid round-trips (AC-I1/AC-I2). Validate the schema against a representative project produced by the prior slices.
-- **Medium:** round-trip identity (AC-I1) requires FSharp.SystemTextJson to handle every DU/record/option the aggregate now carries (`ConstructorElement`, `BeamBranch`, `Substrate`, `Thickness`, `WaveLength`, `SourceSpec`, `ChartSettings`, curved-element fields) without lossy conversion. Test with a project exercising all of them.
-- **Low:** the `.gitignore` edit must scope `*.binz`/`*.autosave` to project working folders and keep `.ocproj` committable (I.3/I.4/I.5).
+- **Medium.** ALGLIB NuGet resolution under the .NET 10 SDK / x64 and the GPL-free-edition package identity are the main build risk; mitigate by adding the `PackageReference` first and keeping the adapter behind the §G.1 boundary so a resolution failure is isolated to one file. The contractful invariant is that NO ALGLIB type or exception escapes the interface — exercise it explicitly. The `NelderMead`-deferred rule is easy to violate by guessing a routine; the adapter MUST surface `Failed "simplex backend unresolved"` verbatim. The §A.8 boundary (no linear algebra through ALGLIB; no optimization through the math seam) must be respected in the adapter.
 
 ## Hand-off
 
-State carried to later slices:
-- The storage assembly is complete: `Errors.fs` (`StorageError`), `SchemaValidation.fs` (validate-on-load), `ProjectFile.fs` (`saveProject`/`openProject` — the single project-open seam), `Sidecar.fs` (`.binz` write/read), `RecentFiles.fs`/`Autosave`, `History.fs` (`EditHistory`), `Export.fs` (CSV/Excel/image), `Report.fs` (report + material library import/export + design history/diff).
-- Part J (slice 010) routes template loads (§J.3) and gallery loads (§J.11) through `openProject`; the autosave timer/trigger and `JobRunner` (§J.10) drive `writeAutosave` and the long-running `Report.generate`; the recent-files list renders under File ▸ Recent; `EditHistory` is the multi-level undo Part B §B.10 deferred.
-- The `.binz` sidecar wrappers serve Part F sweeps (slice 006) and Part G fit histories (slice 007); the `*.binz`/`*.autosave` `.gitignore` entries are in place.
-- The JSON Schema validate-on-load now guards every part's `$defs`.
-
-Per `arc-runner.system-md`, emit the state-of-the-world file with a fenced YAML `gates:` block:
-
-```yaml
-gates:
-  berreman_unit_tests: <int>
-```
+The optimization infrastructure exists and is unit-tested: the §G.1 interface (`OptimizationInterface.fs`), the single ALGLIB adapter behind it (`AlglibAdapter.fs`, the only ALGLIB-referencing file, with `NelderMead` deferred), and the `DesignParameter` fold (`DesignParameters.fs`). Slice 010 builds the merit/target editor, local-refinement entry point, ellipsometric Ψ/Δ targets, and inverse fitting over this infrastructure; slice 011 adds fit-quality, synthesis, the Synthesis/Fit page, and the Wolfram-reference validation in `BerremanTests/OptimizationTests.fs`. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline. Record the `NelderMead` simplex backend as a still-open deferred decision under `Deferred`.

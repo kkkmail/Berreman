@@ -1,0 +1,132 @@
+# 014 — UX shell I: schematic view, repeat builder, templates, drag-drop & comparison workspace (Part J §J.1–J.5)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0022\.spec-md` — parent spec (Spec 0022, Berreman Optical Constructor — solution architecture & cross-cutting contract).
+- Slice 001 (`.slices/001.slice-md`) — scaffold + the buildable FuncUI interpretation every UI-touching slice relies on.
+- Slice 003 (`.slices/003.slice-md`) — storage core: the single project-open seam `openProject` (§I.3) and the shared `JsonSerializerOptions`.
+- Slice 004 (`.slices/004.slice-md`) — Part D material resolution: the by-id `resolveMaterial : MaterialLibrary -> string -> WaveLength -> Result<OpticalProperties, MaterialError>` seam (§D.8) that J.4 drag-drop delegates to.
+- Slice 012 (`.slices/012.slice-md`) — Part H §H.4 ScottPlot overlay / `plotComparison` (the multi-curve surface J.5 delegates to).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+The following constraints are normative for EVERY part (A–J) of this specification. A directive in any later part that conflicts with one of these is void.
+
+1. **Platform & language commitment.** The solution MUST target **.NET 10** and MUST be **F#-first** end to end: engine, orchestration, UI, and tooling are all F#. The domain model MUST be expressed as F# records and discriminated unions. C# projects are admitted ONLY where they already exist in the Berreman tree as cloned dependencies (`../MathNetNumerics/Numerics/Numerics.csproj`, cited at `C:/GitHub/Berreman/Berreman/Berreman.slnx:8`). No part MAY introduce a new C# project.
+
+2. **Reuse before invention.** Every directive that touches an area already served by a Berreman primitive MUST name and call that primitive rather than re-implementing it, and MUST cite it as `<file>:<symbol>` or `<file>:<line>`. New modules, files, or abstractions are admitted ONLY when they trace to a named directive in this spec; a new artefact with no such trace MUST be dropped. The 4×4 solver (`Solvers.fs` `OpticalSystemSolver`), the field model (`Fields.fs` `EmFieldSystem`), the tensor model (`MaterialProperties.fs` `OpticalProperties`), and the units constants (`Constants.fs`) MUST NOT be forked, re-derived, or shadowed.
+
+3. **Canonical-units rule.** All physical quantities MUST be stored internally in the single canonical SI base already used by the engine — **meters** for length/thickness, with `WaveLength` reduced to meters via its `.value` member (`Fields.fs:284`). Conversion to and from any human-facing unit (nm, µm/mkm, Å, mm, eV, cm⁻¹) MUST happen ONLY at the UI/IO boundary. No part MAY store a non-SI unit in the domain model, a project JSON payload, or a `.binz` pickle.
+
+4. **JSON-canonical / `.binz`-derived rule.** The canonical, hand/LLM-editable project definition MUST be JSON, validated against a published JSON Schema on load. Zipped FsPickler (`.binz`, via `Softellect.Sys.Core.serialize`/`BinaryZippedFormat`, `Core.fs:257`) MUST be used ONLY for derived/bulk artefacts (sweeps, field maps, fit histories, caches) referenced as sidecars from the JSON; it MUST NOT carry the canonical project definition. No part MAY serialize the domain project model with FsPickler.
+
+5. **FuncUI audit gate.** The Avalonia.FuncUI clone at `C:\GitHub\Avalonia.FuncUI.Clone\` MUST pass the mandatory audit (defined in §A.9) and be cleared of all flagged content BEFORE it is linked. No part MAY reference, link, or build against the clone until the audit passes. The clone's linking mechanism (local NuGet package OR project reference) is deliberately undecided and MUST remain undecided until that decision is taken later — no part MAY resolve it.
+
+6. **Minimum implementation.** Each part SHALL deliver the minimum that satisfies its directives. Caching, retries, added abstraction layers, config knobs, schema versioning, error-wrapping shims, backwards-compatibility shims, and migration code are OUT OF SCOPE unless a named directive in the owning part puts them in scope.
+
+7. **Tier fidelity.** Every feature carried from 010 MUST keep its `[Core]`/`[Standard]` label. No part MAY retier, silently drop, or invent a feature absent from both 010 and the Berreman tree.
+
+### Acceptance criteria owned by this slice
+
+- AC-J1: After a user opens an `OpticalSystem` with finite films, a wedge substrate, and a non-normal incidence angle, the schematic view MUST render each film band scaled by its `Thickness` `double<meter>`, draw the `Substrate.Wedge` band with a sloped lower edge, label each thickness in the layer's per-element default unit, and draw the incident ray at `IncidentLightInfo.incidenceAngle`, all within one MVU `view` re-evaluation.
+- AC-J2: After the user defines a unit cell of N layers and a repeat count R >= 1, `RepeatBuilder.expand` MUST yield exactly N*R ordinary `Layer` records in cell order assignable to `OpticalSystem.films`, with no new period/super-layer type in the model.
+- AC-J3: After the user selects any of the six templates (AR, bandpass, beam splitter, polarizer, waveplate, DBR), a valid `OpticalConstructorProject` MUST be produced and opened through the schema-validated project-open path, with the DBR template's periodic stack produced via `RepeatBuilder.expand`.
+- AC-J4: After a material is dragged from the library panel and dropped on a layer row, that layer's `Layer.properties` MUST be replaced by the resolved `OpticalProperties` via a single immutable MVU update while `Layer.thickness` is unchanged.
+- AC-J5: After two or more systems are marked visible in the workspace, their curves MUST be overlaid via the engine's `plotComparison` (`Charting.fs:38`) with no Part-J-local overlay implementation.
+
+### Files in scope owned by this slice
+
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs` (new) — to-scale 2D cross-section renderer over `OpticalSystem`/`Layer`/`Substrate`/`IncidentLightInfo` (J.1, Avalonia `Canvas`)
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/RepeatBuilder.fs` (new) — pure unit-cell expansion to `List<Layer>`
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Templates.fs` (new) — six code-defined starting-design `OpticalConstructorProject` factories
+- `C:/GitHub/Berreman/Berreman/OpticalConstructor/OpticalConstructor.Ui/Workspace.fs` (new) — multi-system comparison layout/selection state, delegating overlay to Part H §H.4 / `plotComparison`
+
+### File:line references owned by this slice
+
+- `Media.fs:94` `OpticalSystem`, `Media.fs:98` `OpticalSystem.films`, `Media.fs:97,100` `OpticalSystem.upper`/`.lower`, `Media.fs:99` `OpticalSystem.substrate`, `Media.fs:24` `Layer`, `Media.fs:26` `Layer.properties`, `Media.fs:12` `Thickness`, `Media.fs:40` `Substrate`.
+- `Fields.fs:328` `WedgeAngle` (reached via `w.angle`), `Fields.fs:342` `IncidentLightInfo.incidenceAngle`.
+- `MaterialProperties.fs:165` `OpticalProperties` (the resolved material the drop assigns).
+- `Constants.fs:27,30,33` `nmToMeter`/`mkmToMeter`/`mmToMeter` (the §D.2 boundary conversion seam the labels use).
+- `Charting.fs:38` `plotComparison` (the engine comparison plot J.5 delegates to via Part H §H.4).
+
+## Scope
+
+This slice delivers the first tranche of the Part J UX shell — the surfaces that are mostly UI/plumbing over capabilities the engine already has: the [Core] to-scale schematic cross-section (J.1), the [Standard] repeat/period unit-cell builder (J.2), the [Standard] code-defined stack templates (J.3), [Standard] drag-and-drop of library materials onto layer rows (J.4), and the [Standard] multi-system comparison workspace (J.5). Each reads from canonical domain values and delegates real work to a seam owned elsewhere rather than reinventing it.
+
+UI-touching. J.3 templates load through the Part I `openProject` seam (slice 003) so schema validation (§A.7) applies uniformly. J.4 drag-drop resolves the dropped `materialEntry` id to `OpticalProperties` via Part D's material-resolution function (slice 004), never re-resolving dispersion. J.5 workspace owns layout/selection state only and delegates the actual multi-curve overlay to Part H §H.4 / `plotComparison` (slice 012). The schematic and repeat builder are pure projections/expansions provable headless. This slice relies on the slice-001 buildable FuncUI interpretation (public MIT `Avalonia.FuncUI` NuGet, NOT the audit-gated clone).
+
+## Requirements
+
+### R-1. §J.1 Schematic cross-section view [Core]
+
+The Ui project MUST provide a `Schematic` module (new file `OpticalConstructor.Ui/Schematic.fs`) that renders a single `OpticalSystem` (`Media.fs:94`) as a vertical, drawn-to-scale cross-section on an Avalonia `Canvas`, color-coded by material, with per-layer thickness labels and the incident-light ray drawn at its angle. The renderer MUST read its geometry only from the canonical domain values and MUST NOT introduce a parallel geometry model:
+
+1. The film stack MUST be drawn from `OpticalSystem.films : List<Layer>` (`Media.fs:98`) top-to-bottom in list order; each band's drawn height MUST be a monotonic function of that layer's `Thickness` (`Media.fs:12`), where `Thickness.Thickness d` carries `d : double<meter>` and `Thickness.Infinity` (the half-space case) MUST be drawn as a fixed-height "semi-infinite" band, not scaled.
+2. Thickness labels MUST be formatted in the layer's per-element default unit (the `unitOfMeasure` carried by the project per §A.7), converting from the stored `double<meter>` to the display unit ONLY here at the view boundary (§A.3) using the Part D `Units.fs` conversion seam (§D.2) over the engine constants `nmToMeter`/`mkmToMeter`/`mmToMeter` (`Constants.fs:27,30,33`); Å and eV/cm⁻¹ conversions reuse the same §A.10 boundary helpers. No converted value MAY be written back into the model.
+3. The upper and lower half-spaces MUST be drawn from `OpticalSystem.upper` / `OpticalSystem.lower : OpticalProperties` (`Media.fs:97,100`) as labelled incident/exit medium bands.
+4. When `OpticalSystem.substrate` is `Some (Substrate.Plate _ | Substrate.Wedge _)` (`Media.fs:99`, `Substrate` `Media.fs:40`), the substrate MUST be drawn as a distinct band; for `Substrate.Wedge w` the band MUST be drawn with a non-parallel lower edge whose slope is taken from the wedge's `WedgeAngle` (`Fields.fs:328`, reached via `w.angle`), making the wedge visually distinct from a plate.
+5. The incident-light ray MUST be drawn as a line entering the upper medium at the angle from the active source's `IncidentLightInfo.incidenceAngle` (`Fields.fs:342`); the ray's reflected and transmitted continuations MUST be indicated at the top film interface only (full per-interface beam tracing is owned by Part B's beam tree and MUST NOT be re-derived here).
+6. Material color MUST be assigned by a deterministic, pure function of a material's stable identity key (the `materialEntry` id from §A.7), so the same material is the same color across redraws; the color table is a static map in `Schematic.fs` and MUST NOT be a config knob.
+
+Caching of rendered geometry, retained-mode scene graphs, and an abstraction over the drawing backend are OUT OF SCOPE; the view MUST be a pure `OpticalSystem -> Avalonia control` projection re-evaluated by the MVU `view` (Part A §A.6 / 010 Part III §3).
+
+### R-2. §J.2 Repeat / period unit-cell builder [Standard]
+
+The Ui project MUST provide a `RepeatBuilder` module (new file `OpticalConstructor.Ui/RepeatBuilder.fs`) that lets the user define a unit cell as an ordered list of `Layer` values (`Media.fs:24`) and a positive integer repeat count, and expands it into a flat `List<Layer>` suitable for assignment to `OpticalSystem.films` (`Media.fs:98`). The expansion MUST be the pure function `expand : Layer list -> int -> Layer list` implemented as `List.replicate count cell |> List.concat`; it MUST NOT introduce a new "super-layer" or "period" domain type, and the expanded films MUST be ordinary `Layer` records indistinguishable from manually entered ones. The builder is the [Standard] DBR/Bragg/EUV-Mo–Si convenience from 010 Part II §1; it MUST reject a repeat count `< 1` through the J.9 validation seam rather than silently clamping. The J.9 validation seam (`Validation.fs`) is owned by slice 015 (§J.9); to avoid an F# forward reference that would fail the `build`/`constructor-unit-tests` gates — the arc-runner runs one round per slice, so a later-slice symbol is not yet compiled when slice 014 builds — `RepeatBuilder.expand` itself MUST remain the pure `List.replicate count cell |> List.concat` with NO dependency on `Validation.fs`. The `R < 1` rejection is enforced by the slice-015 J.9 validator at the caller boundary, and its assertion is owned and tested in slice 015's `ValidationTests.fs` (AC-J9), NOT in slice 014. Storing the unfactored period as a separate serialized structure is OUT OF SCOPE — the project persists only the expanded `films` per §A.7.
+
+### R-3. §J.3 Stack templates & wizards [Standard]
+
+The Ui project MUST provide a `Templates` module (new file `OpticalConstructor.Ui/Templates.fs`) exposing a fixed, code-defined set of starting designs — AR coating, bandpass filter, beam splitter, polarizer, waveplate, DBR — each a pure function `unit -> OpticalConstructorProject` (the root aggregate from §A.7) that pre-populates a starting design and is then handed to the ordinary editors. Each template MUST build its stack from real `Layer`/`OpticalSystem` values (`Media.fs:24,94`) and, where it needs a periodic structure (DBR), MUST call `RepeatBuilder.expand` (J.2) rather than duplicating that logic. Templates MUST NOT read from disk, MUST NOT be user-editable template files, and MUST NOT introduce a template-definition schema — they are F# literals. Loading a template MUST go through the same project-open path as a normal project (Part I §I.3 `openProject`) so schema validation (§A.7) applies uniformly.
+
+### R-4. §J.4 Drag-and-drop of library items onto layers [Standard]
+
+The Ui project MUST wire Avalonia drag-and-drop so a material from the materials library panel (Part D) dropped onto a layer row replaces that layer's `Layer.properties : OpticalProperties` (`Media.fs:26`) with the dragged material's resolved `OpticalProperties` (`MaterialProperties.fs:165`), leaving `Layer.thickness` unchanged. The drop payload MUST carry only the stable `materialEntry` id (§A.7), and resolution to `OpticalProperties` MUST go through Part D's material-resolution function — the named `resolveMaterial` by-id seam owned by slice 004 (§D.8), which evaluates the entry's dispersion at the active `WaveLength` — Part J MUST NOT re-resolve dispersion models or rebuild tensors. The drop MUST emit a single MVU message that the owning `update` applies immutably (producing a new `Layer`), consistent with the Part A MVU contract; no in-place mutation of the model is permitted (§0 constraint 1, immutable structures).
+
+### R-5. §J.5 Multi-system comparison workspace [Standard]
+
+The Ui project MUST provide a `Workspace` module (new file `OpticalConstructor.Ui/Workspace.fs`) that holds several `OpticalSystem` values side by side for comparison, each addressed by the project's system collection (`OpticalConstructorProject.systems`, §A.7). For overlaying their computed curves the workspace MUST call the engine's existing comparison plot `plotComparison` (`Charting.fs:38`) — surfaced through the Part H §H.4 ScottPlot overlay rather than the engine's terminal `Chart.show` — which already accepts a `list<FixedInfo>` and plots model-by-model; Part J MUST NOT implement its own multi-curve overlay. The workspace owns layout and selection state only (which systems are visible, which is active); the actual chart surface is Part H's. Holding more than the systems already present in the open `OpticalConstructorProject` — e.g. a separate comparison document format — is OUT OF SCOPE.
+
+## Non-requirements
+
+- The favorites board / preferences / theme & dockable panels / validation seam implementation are Part J §J.6–J.9, owned by slice 015. J.2's reject-of-`count<1` is enforced by the slice-015 J.9 validator and tested in slice 015's `ValidationTests.fs` (AC-J9); slice 014's `RepeatBuilder.fs` and `RepeatBuilderTests.fs` MUST NOT reference `Validation.fs` (no forward reference into a later slice's module, which the one-round-per-slice arc-runner could not compile).
+- The long-running job runner, in-app help/glossary/gallery, and the 3D system/beam view are Part J §J.10–J.12, owned by slice 016. The `SystemView3D`/AC-J12 portion of the `SchematicGeometryTests.fs` bullet (`.spec-md:993`) is owned by slice 016; only the schematic (AC-J1) portion of that bullet lands here.
+- The multi-curve overlay implementation itself is Part H §H.4 (slice 012); J.5 only delegates to it via `plotComparison`.
+- The Part D material-resolution function J.4 calls — the named `resolveMaterial` by-id seam — is owned by slice 004 (§D.8); J.4 only consumes it.
+- The schema-validated `openProject` seam J.3 templates load through is owned by slice 003; this slice routes through it, it does not implement it.
+
+## Files modified (planned)
+
+New:
+- `OpticalConstructor/OpticalConstructor.Ui/Schematic.fs`
+- `OpticalConstructor/OpticalConstructor.Ui/RepeatBuilder.fs`
+- `OpticalConstructor/OpticalConstructor.Ui/Templates.fs`
+- `OpticalConstructor/OpticalConstructor.Ui/Workspace.fs`
+- `OpticalConstructor/OpticalConstructor.Tests/RepeatBuilderTests.fs` — `expand cell R` yields N*R `Layer`s in cell order assignable to `OpticalSystem.films` (AC-J2); this file MUST NOT reference the slice-015 `Validation.fs`, and the `R < 1` rejection is tested in slice 015's `ValidationTests.fs` (AC-J9), not here
+- `OpticalConstructor/OpticalConstructor.Tests/TemplatesTests.fs` — each of the six templates produces an `OpticalConstructorProject` passing the §A.7 project schema; DBR template films equal `RepeatBuilder.expand` output (AC-J3)
+- `OpticalConstructor/OpticalConstructor.Tests/SchematicGeometryTests.fs` — the schematic (AC-J1) portion: pure band-height function monotonic in `Thickness` meters; `Thickness.Infinity` and `Substrate.Wedge` render as the fixed/sloped cases (geometry without an Avalonia surface). (The `SystemView3D`/AC-J12 portion of this same file is added by slice 016.)
+
+Edited:
+- `OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` — register `RepeatBuilder.fs` (before `Templates.fs`), `Templates.fs`, `Schematic.fs`, `Workspace.fs` in compile order.
+- `OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj` — register the new test files.
+
+## Testing plan
+
+Gates (always all three): `build`, `unit-tests`, `constructor-unit-tests`.
+
+- `constructor-unit-tests` gate runs the new `OpticalConstructor.Tests` files; must pass and increase the count over the prior slice's baseline.
+- AC-J1 (`SchematicGeometryTests.fs`, schematic portion): the pure band-height function is monotonic in `Thickness` meters; `Thickness.Infinity` draws as the fixed-height semi-infinite band; `Substrate.Wedge` draws with a sloped lower edge (geometry verified without an Avalonia surface).
+- AC-J2 (`RepeatBuilderTests.fs`): `expand cell R` yields exactly N*R `Layer`s in cell order assignable to `OpticalSystem.films`; no new period/super-layer type. `RepeatBuilder.expand` stays the pure `List.replicate count cell |> List.concat` with NO reference to the slice-015 `Validation.fs`; the `R < 1` rejection via the J.9 validator is owned and tested in slice 015's `ValidationTests.fs` (AC-J9), not here.
+- AC-J3 (`TemplatesTests.fs`): each of the six templates produces an `OpticalConstructorProject` passing the §A.7 project schema through the schema-validated open path; the DBR template's films equal `RepeatBuilder.expand` output.
+- AC-J4: covered by the MVU update path — a drop message replaces `Layer.properties` with the resolved `OpticalProperties` while `Layer.thickness` is unchanged, immutably.
+- AC-J5: workspace overlay delegates to `plotComparison` (`Charting.fs:38`) via Part H §H.4 with no Part-J-local overlay implementation.
+- `build` gate green at Release/x64; `unit-tests` gate (BerremanTests) stays green (not touched here).
+
+## Risks
+
+- **Medium.** Cross-slice seam discipline is the load-bearing risk: J.2's `R<1` rejection is owned by the slice-015 J.9 validator and `RepeatBuilder.expand` MUST NOT forward-reference `Validation.fs` (a later-slice symbol the one-round-per-slice arc-runner cannot compile), J.3 must route through the slice-003 `openProject` (not a private deserialize), J.4 must resolve through the slice-004 by-id material resolver (not re-resolve dispersion), and J.5 must overlay through the slice-012 `plotComparison` (not a local multi-curve plot). Mitigation: keep `RepeatBuilder.expand` a pure `List.replicate count cell |> List.concat` with no reference to the slice-015 `Validation.fs`, keep the schematic a pure `OpticalSystem -> control` projection provable headless, and assert the delegations by test. Splitting `SchematicGeometryTests.fs` with slice 016 (AC-J12) — keep this slice's additions confined to the AC-J1 cases.
+
+## Hand-off
+
+The first Part J UX tranche exists: the to-scale schematic (`Schematic.fs`), the pure repeat builder (`RepeatBuilder.fs`), the six code-defined templates (`Templates.fs`), and the comparison workspace (`Workspace.fs`), with the AC-J1/AC-J2/AC-J3 tests green. Slice 015 adds the persistent environment/favorites, preferences, theme/dockable panels, and the J.9 `Validation` module through which the repeat builder's `R < 1` rejection is enforced and tested (slice 015's `ValidationTests.fs`, AC-J9) — slice 014's `RepeatBuilder.fs`/`RepeatBuilderTests.fs` carry no reference to it. Slice 016 (LAST) adds the job runner, help/gallery, and the `SystemView3D` viewport — and extends `SchematicGeometryTests.fs` with the AC-J12 portion. Emit the state-of-the-world file with all required ATX headings (`Where we are`, `What's working`, `Tests`, `Architecture`, `Deferred`, `Gotchas`, `Changelog`) and a fenced `gates:` YAML baseline block carrying the updated `constructor-unit-tests` count so the next slice's `count_at_least` gate has a baseline.
