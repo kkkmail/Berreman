@@ -61,6 +61,12 @@
         <Compile Include="JobRunner.fs" />
         <Compile Include="Help.fs" />
         <Compile Include="SystemView3D.fs" />
+        <!-- spec 0024 Part U5 (slice 002): the shared renderer-host adapters and the
+             chart panel view, composed before the root surface. ChartHosts is the
+             single hosting seam U3/U4/U6/U8 reuse; ChartView consumes it + the frozen
+             Charts builders above. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="ChartHosts.fs" />
+        <Compile Include="ChartView.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->

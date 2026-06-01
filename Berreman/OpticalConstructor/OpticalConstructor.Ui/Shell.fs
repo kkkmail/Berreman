@@ -78,6 +78,7 @@ type RootMsg =
     | Construction of ConstructionPage.Msg
     | Workspace of WS.Msg
     | Shell of ShellMsg
+    | Chart of ChartView.ChartMsg
 
 // ---------------------------------------------------------------------------
 // Initial project + model (R-2 / R-3 seed). Built through the existing
@@ -141,6 +142,9 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
     | RootMsg.Construction cm -> { model with construction = ConstructionPage.update cm model.construction }, Cmd.none
     | RootMsg.Workspace wm -> { model with workspace = WS.update wm model.workspace }, Cmd.none
     | RootMsg.Shell sm -> updateShell sm model, Cmd.none
+    | RootMsg.Chart cm ->
+        let chart, markers = ChartView.update cm (model.chart, model.markers)
+        { model with chart = chart; markers = markers }, Cmd.none
 
 // ---------------------------------------------------------------------------
 // view (R-4) — a top-level navigation control over a DockPanel of the visible
@@ -184,12 +188,13 @@ let private panelTitle (panel : string) : string =
 let private placeholder (title : string) : IView =
     TextBlock.create [ TextBlock.text (title + " — coming soon") ] :> IView
 
-let private panelContent (model : RootModel) (panel : string) : IView =
+let private panelContent (model : RootModel) (dispatch : RootMsg -> unit) (panel : string) : IView =
     match panel with
     | "stack" -> ConstructionView.stackPanel model.construction
+    | "chart" -> ChartView.chartPanel model.chart model.markers (RootMsg.Chart >> dispatch)
     | other -> placeholder (panelTitle other)
 
-let private panelView (model : RootModel) (p : PanelState) : IView =
+let private panelView (model : RootModel) (dispatch : RootMsg -> unit) (p : PanelState) : IView =
     let dockAttrs =
         match AppShell.toDock p.dock with
         | Some d -> [ Border.dock d ]
@@ -198,22 +203,22 @@ let private panelView (model : RootModel) (p : PanelState) : IView =
         dockAttrs @ [
             Border.borderThickness 1.0
             Border.padding 6.0
-            Border.child (panelContent model p.panel)
+            Border.child (panelContent model dispatch p.panel)
         ]) :> IView
 
 /// The Construction page body: the saved, visible panels laid out by their dock
 /// edges via a public-Avalonia `DockPanel` (§0.3). Visible set + order from
 /// `AppShell.visiblePanels`; dock edges through `AppShell.toDock` (R-4).
-let private constructionBody (model : RootModel) : IView =
+let private constructionBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
-            for p in AppShell.visiblePanels model.env.layout -> panelView model p
+            for p in AppShell.visiblePanels model.env.layout -> panelView model dispatch p
         ]
     ] :> IView
 
-let private pageBody (model : RootModel) : IView =
+let private pageBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     match model.page with
-    | Page.Construction -> constructionBody model
+    | Page.Construction -> constructionBody model dispatch
     | Page.SynthesisFit -> placeholder SynthesisFitPage.navEntry.title
 
 /// The root view (R-4): navigation docked top, the active page body filling the rest.
@@ -221,6 +226,6 @@ let view (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             navBar model dispatch
-            pageBody model
+            pageBody model dispatch
         ]
     ] :> IView
