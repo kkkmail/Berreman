@@ -23,6 +23,8 @@ open Avalonia.FuncUI.Types
 open Elmish
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Project
+open OpticalConstructor.Optimization
+open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Ui.Charts
 open OpticalConstructor.Ui.Sources
 open OpticalConstructor.Ui.UserEnvironment
@@ -30,6 +32,13 @@ open OpticalConstructor.Ui.UserEnvironment
 /// `Workspace` is both an existing module and a `RootMsg` case name below; the alias
 /// keeps the module reachable unambiguously in value position.
 module WS = OpticalConstructor.Ui.Workspace
+
+/// Host-layer holder for the in-flight fit's `CancellationTokenSource` (§0.5): the
+/// fit page hosts ONE cancellable run at a time, so a single module-level cell is the
+/// "host field" the spec admits. It is NEVER a field of the pure/serializable root
+/// model — `SynthesisFitPage.Model.running`/`progress` is the single source of truth
+/// for run state; this cell only carries the non-serializable cancellation handle.
+let mutable private fitCts : System.Threading.CancellationTokenSource option = None
 
 // ---------------------------------------------------------------------------
 // Root model, message, and the shell-level sub-message (R-2).
@@ -88,6 +97,8 @@ type RootMsg =
     | Chart of ChartView.ChartMsg
     | Materials of MaterialsView.MaterialsMsg
     | Source of SourceView.SourceViewMsg
+    /// Part U7: the synthesis/fit page sub-message, routed through `SynthesisFitPage.update`.
+    | Fit of SynthesisFitPage.Msg
 
 // ---------------------------------------------------------------------------
 // Initial project + model (R-2 / R-3 seed). Built through the existing
@@ -180,9 +191,104 @@ let private constructionCmd
         | None -> Cmd.none
     | _ -> Cmd.none
 
+// ---------------------------------------------------------------------------
+// Part U7 — open the fit page on demand (R-1) and the marshaled background-run
+// `Cmd`s (R-2/R-3). The page model carries the working system, the design
+// parameters / start vector, the targets, and the method; the run is threaded
+// through the frozen `LocalRefinement.refineWith` seam (no frozen edit, §0.1).
+// ---------------------------------------------------------------------------
+
+/// The system the fit refines: the workspace's active system, else the first system.
+let private workingSystemOf (model : RootModel) =
+    let systems = model.workspace.project.systems
+    match model.workspace.active with
+    | Some i when i >= 0 && i < List.length systems -> Some systems.[i]
+    | _ -> match systems with | s :: _ -> Some s | [] -> None
+
+/// Open a fresh `SynthesisFitPage.Model` over the working system (R-1). The target /
+/// parameter editors that populate the merit set are a later concern; this slice
+/// wires the threading, so the page opens empty (the user-facing Start with no
+/// targets fails gracefully through `FitFailed`).
+let private openFit (model : RootModel) : SynthesisFitPage.Model option =
+    workingSystemOf model
+    |> Option.map (fun sys -> SynthesisFitPage.init sys [] [||] [] LevenbergMarquardt defaultWorkingFolder)
+
+/// §0.4 — marshal a fit sub-message dispatched from a background worker onto the UI
+/// thread, so no completion/progress dispatch ever crosses threads directly.
+let private marshalFit (dispatch : RootMsg -> unit) (msg : SynthesisFitPage.Msg) : unit =
+    Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> dispatch (RootMsg.Fit msg))
+
+/// The §0.4/§0.5-compliant background-fit `Cmd` (R-2): create a host-held
+/// `CancellationTokenSource` (§0.5), build a run thunk over the optimization run loop,
+/// and hand it to `JobRunner.startBackground`. The run loop advances the design vector
+/// by ONE LM iteration per cooperative `runIterations` step (resumed from the prior
+/// step's solution) so progress is genuinely per-iteration and a cancel is observed
+/// between iterations; `refineWith`/`FitQuality` are used unchanged (§0.1). The
+/// progress callback is threaded through the run loop (`step`), NOT through
+/// `startBackground` (whose signature is `run`/`onDone` only). Every progress /
+/// completion dispatch is marshaled per §0.4.
+let private startFitCmd (fit : SynthesisFitPage.Model) : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        let cts = new System.Threading.CancellationTokenSource()
+        fitCts <- Some cts
+        let baseSystem = fit.workingSystem
+        let parameters = fit.parameters
+        let targets = fit.targets
+        let method = fit.method
+        let residual = MeritFunction.buildResidual baseSystem parameters targets
+        let run () =
+            let mutable vec = Array.copy fit.initial
+            let mutable converged = false
+            let step (i : int) =
+                match LocalRefinement.refineWith method 1 LocalRefinement.defaultEpsX baseSystem parameters vec targets with
+                | Ok (sys, res) ->
+                    vec <- res.solution
+                    converged <- (res.terminationReason <> MaxIterationsReached)
+                    let chi = res.finalResiduals |> Array.sumBy (fun r -> r * r)
+                    // §0.4: the per-iteration progress dispatch is UI-thread-marshaled.
+                    marshalFit dispatch (SynthesisFitPage.ReportProgress (i + 1, chi))
+                    sys, res
+                | Error e -> raise (System.InvalidOperationException e)
+            let hasMore (i : int) : bool = i < LocalRefinement.defaultMaxIterations && not converged
+            JobRunner.runIterations cts.Token hasMore (fun _ -> ()) step
+        let onDone outcome =
+            match outcome with
+            | Ok (JobRunner.RanToCompletion results) ->
+                match List.tryLast results with
+                | Some (sys, res) ->
+                    marshalFit dispatch (SynthesisFitPage.FitCompleted (sys, FitQuality.fromResult residual res))
+                | None -> marshalFit dispatch (SynthesisFitPage.FitFailed "no iterations ran")
+            // Cooperative cancellation resolves to FitFailed "cancelled" (R-3); the
+            // partial output is dropped and the prior committed results stay intact.
+            | Ok (JobRunner.CancelledWith _) -> marshalFit dispatch (SynthesisFitPage.FitFailed "cancelled")
+            | Error e -> marshalFit dispatch (SynthesisFitPage.FitFailed e)
+        JobRunner.startBackground run onDone ]
+
+/// `Fit CancelFit` cancels the host-held token (R-3); the run loop observes it between
+/// iterations and the background `onDone` posts `FitFailed "cancelled"`.
+let private cancelFitCmd () : Cmd<RootMsg> =
+    [ fun (_dispatch : RootMsg -> unit) ->
+        match fitCts with
+        | Some cts -> cts.Cancel()
+        | None -> () ]
+
+/// The fit page's effectful `Cmd` for a given sub-message: `StartFit` (when a run is
+/// not already in flight) attaches the background-run `Cmd`; `CancelFit` cancels the
+/// host token. Every other fit message is effect-free.
+let private fitCmd (msg : SynthesisFitPage.Msg) (fit : SynthesisFitPage.Model) : Cmd<RootMsg> =
+    match msg with
+    | SynthesisFitPage.StartFit when not fit.running -> startFitCmd fit
+    | SynthesisFitPage.CancelFit -> cancelFitCmd ()
+    | _ -> Cmd.none
+
 let private updateShell (msg : ShellMsg) (model : RootModel) : RootModel =
     match msg with
-    | Navigate page -> { model with page = page }
+    | Navigate page ->
+        match page with
+        // R-1: navigating to the fit page opens a SynthesisFitPage.Model into `fit`
+        // (once — an already-open page keeps its in-flight run/progress state).
+        | Page.SynthesisFit when Option.isNone model.fit -> { model with page = page; fit = openFit model }
+        | _ -> { model with page = page }
     | ToggleTheme -> { model with env = { model.env with theme = AppShell.toggleTheme model.env.theme } }
     | SetPanelVisible (panel, visible) ->
         { model with env = { model.env with layout = AppShell.setPanelVisible panel visible model.env.layout } }
@@ -205,6 +311,14 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         { model with chart = chart; markers = markers }, Cmd.none
     | RootMsg.Materials mm -> { model with materialsFilter = MaterialsView.update mm model.materialsFilter }, Cmd.none
     | RootMsg.Source sm -> { model with source = SourceView.update sm model.source }, Cmd.none
+    | RootMsg.Fit fm ->
+        // Part U7: route through the frozen `SynthesisFitPage.update` (which flips
+        // `running` on StartFit) and attach the §0.4-marshaled background-run Cmd. The
+        // Cmd is built from the PRE-update model so the StartFit guard sees the prior
+        // `running` state and the run thunk reads the run inputs (R-2).
+        match model.fit with
+        | Some fit -> { model with fit = Some (SynthesisFitPage.update fm fit) }, fitCmd fm fit
+        | None -> model, Cmd.none
 
 // ---------------------------------------------------------------------------
 // view (R-4) — a top-level navigation control over a DockPanel of the visible
@@ -285,7 +399,10 @@ let private constructionBody (model : RootModel) (dispatch : RootMsg -> unit) : 
 let private pageBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     match model.page with
     | Page.Construction -> constructionBody model dispatch
-    | Page.SynthesisFit -> placeholder SynthesisFitPage.navEntry.title
+    | Page.SynthesisFit ->
+        match model.fit with
+        | Some fit -> FitView.fitPanel fit (RootMsg.Fit >> dispatch)
+        | None -> placeholder SynthesisFitPage.navEntry.title
 
 /// The root view (R-4): navigation docked top, the active page body filling the rest.
 let view (model : RootModel) (dispatch : RootMsg -> unit) : IView =

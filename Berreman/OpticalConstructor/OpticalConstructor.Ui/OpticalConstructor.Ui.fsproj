@@ -84,6 +84,12 @@
              comparison overlay, plus the frozen Schematic / Workspace seams. Public
              MIT FuncUI DSL only; clone UNREFERENCED. -->
         <Compile Include="ResultsView.fs" />
+        <!-- spec 0024 Part U7 (slice 007): the synthesis/fit page view. Reuses the
+             slice-002 ChartHosts AvaPlot adapter for the fit-vs-measured overlay and
+             the frozen SynthesisFitPage seam (progress / accept-gate / overlay); the
+             background run is wired in Shell.fs (§0.4/§0.5). Public MIT FuncUI DSL
+             only; clone UNREFERENCED. -->
+        <Compile Include="FitView.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->

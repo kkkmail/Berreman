@@ -69,7 +69,10 @@ module SmokeTests =
             Assert.True(desktop.MainWindow.IsVisible)
             desktop.MainWindow.Close()
 
-            // 3) Each page body renders one frame without throwing.
+            // 3) Each page body renders one frame without throwing. Navigating opens
+            //    the fit page's SynthesisFitPage.Model (R-1) so FitView renders one
+            //    frame headlessly, not merely the placeholder.
             let model = fst Shell.init
             for page in [ Shell.Page.Construction; Shell.Page.SynthesisFit ] do
-                renderInWindow (Shell.view { model with page = page } ignore))
+                let navigated = fst (Shell.update (Shell.RootMsg.Shell (Shell.Navigate page)) model)
+                renderInWindow (Shell.view navigated ignore))
