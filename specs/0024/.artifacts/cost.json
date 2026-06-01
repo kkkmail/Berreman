@@ -1,0 +1,14 @@
+{
+  "spawns": [
+    {
+      "at": "2026-06-01T15:46:44Z",
+      "phase": "spec_writer",
+      "role": "spec_author",
+      "intent": "spec",
+      "agent": "claude-code",
+      "tokens_in": null,
+      "tokens_out": null,
+      "usd": null
+    }
+  ]
+}
