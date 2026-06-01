@@ -1,0 +1,205 @@
+# 003 -- Stack editing + async node-solve
+
+> **Ordering note.** This slice carries Part **U2** of the parent spec. It is
+> sequenced after the U5 renderer-host seam (slice 002) only because that seam
+> is a shared dependency of the later panels; U2 itself depends only on the U1
+> foundation (slice 001).
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0024\.spec-md` -- parent spec this slice belongs to (Part U2).
+- Ancestor: spec 0022 (tested Avalonia-free MVU core; clone-swap deferred, §A.9 / AC-A8).
+- Operator-plan source: `specs/0022/.manual/018-ui-wiring-plan.md` (superseded; codebase wins).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+These apply to every part of this arc, including this slice.
+
+- **0.1 — Freeze the tested core.** The implementation MUST NOT edit any
+  model / `update` / projection / persistence module under
+  `OpticalConstructor.Domain`, `OpticalConstructor.Storage`,
+  `OpticalConstructor.Optimization`, or the Avalonia-free logic modules in
+  `OpticalConstructor.Ui` (e.g. `ConstructionPage.fs`, `StackEditor.fs`,
+  `Workspace.fs`, `SynthesisFitPage.fs`, `JobRunner.fs`, `Schematic.fs`,
+  `SystemView3D.fs`, `UserEnvironment.fs`, the `Charts/` and `Sources/`
+  builders). These modules are Avalonia-free by mandate and carry the existing
+  passing suite. New view code MUST live in **new sibling `*View.fs` modules**
+  and the composition root. Adding a `Compile Include` line for a new file to
+  `OpticalConstructor.Ui.fsproj` is permitted and is not an edit to a frozen
+  module.
+
+- **0.2 — Public FuncUI NuGet only; no clone reference.** All view code MUST be
+  authored against the public MIT `Avalonia.FuncUI` 1.6.0 DSL surface already
+  referenced by both projects. The implementation MUST NOT add a
+  `PackageReference` or `ProjectReference` to
+  `C:/GitHub/Avalonia.FuncUI.Clone/`, and MUST NOT depend on any clone-specific
+  API. The clone-swap decision (spec 0022 §A.9 / AC-A8) stays deferred; this arc
+  does not touch it.
+
+- **0.3 — Public-Avalonia layout primitives only for docking.** Panel
+  layout/visibility/dock MUST be rendered with public Avalonia
+  `DockPanel` / `Grid` / `GridSplitter`. The richer drag-to-redock / floating
+  chrome is the deferred clone's responsibility and MUST NOT be invented here.
+
+- **0.4 — UI-thread marshaling for every off-thread dispatch.** Any `dispatch`
+  invoked from a background callback (a `JobRunner` progress or completion
+  callback, a file-IO continuation) MUST be marshaled onto the UI thread via
+  `Avalonia.Threading.Dispatcher.UIThread.Post`. A direct cross-thread
+  `dispatch` is a defect. Every effectful `Cmd` this spec introduces MUST honour
+  this rule.
+
+- **0.5 — Non-serializable handles live outside the model.** The root MVU model
+  MUST remain pure and serializable. `CancellationTokenSource`, live renderer
+  control instances (`AvaPlot`, `WebView2`), and the Avalonia
+  `IStorageProvider` MUST be held in the view/host layer (a component
+  `ctx.useState` or a host field), never as fields of the root model.
+
+- **0.6 — Persistence facts (no new committable file types).** Committable
+  project files are written as `<projectName>.ocproj.json` under the project's
+  working folder by `ConstructionPage.saveProject`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs:229`,
+  path built at `ConstructionPage.fs:225`). Derived `.binz` sidecars are written
+  under a per-project `.sidecars/` subfolder via the single shared seam
+  `Storage.Sidecar.derivedArtefactPath`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs:36`,
+  directory at `Sidecar.fs:30`). `*.binz` and `*.autosave` are already ignored
+  in the repository root `.gitignore` (`.gitignore:336`, `.gitignore:340`) and
+  `.sidecars/` carries no committable state, so this arc introduces **no new
+  committable file type** and triggers no `.gitignore` override work. The
+  per-user environment-settings file is user-local, not committed.
+
+- **0.7 — Gate roster.** This arc adds two new gates,
+  `.gates/OpticalConstructor/ui-smoke.gates` (new) and
+  `.gates/OpticalConstructor/ui-tests.gates` (new), modelled on the existing
+  command-gate format (`.gates/OpticalConstructor/constructor-unit-tests.gates`,
+  `.gates/Berreman/build.gates`). Every slice in this arc MUST end
+  `build`-green, `constructor-unit-tests`-green, `ui-smoke`-green, and (once the
+  UI test project exists) `ui-tests`-green.
+
+### Operator-facing UX commitments inherited by this slice
+
+- **Commitment 2 (progress granularity).** The node re-solve MUST surface
+  **per-node** busy state via `ConstructionPage.isNodeBusy`
+  (`ConstructionPage.fs:261`).
+- **Commitment 3 (pre-confirmation gate).** Delete-node routes a node-with-children
+  through the existing confirmation prompt `ConstructionPage.confirmationPrompt`
+  (`ConstructionPage.fs:265`) before removal.
+- **Commitment 4 (completion → result-surface refresh).** The node-solve `Cmd`
+  MUST dispatch `Construction NodeSolved` so dependent views re-render with **no
+  manual reload** (a manual reload is explicitly NOT acceptable).
+- **Commitment 5 (action-button UX).** The delete-node Confirm / Cancel are laid
+  out same-row with a visible gap and distinct positive-CTA / negative-CTA
+  colours; the undo affordance is the existing single-level undo
+  (`ConstructionPage.canUndo`, `ConstructionPage.fs:270`).
+
+### Acceptance criteria owned by this slice
+
+- **AC-U2.1:** After an operator stack edit on a node, that node MUST show busy
+  (`isNodeBusy = true`) while the sub-tree re-solves off the UI thread, and the
+  dependent views MUST refresh from `NodeSolved` results with no manual reload.
+- **AC-U2.2:** After requesting deletion of a node with children, the confirmation
+  prompt (`confirmationPrompt`) MUST appear with Confirm/Cancel same-row, and
+  Confirm MUST remove the sub-tree; an undo MUST be available afterwards
+  (`canUndo = true`).
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionView.fs` (edit) — stack panel view, edit-dispatch path. *(File created in slice 001 for the read path; this slice adds edit dispatch + busy/confirm/undo UI.)*
+
+### File:line references owned by this slice
+
+- `StackEditor.StackMsg` (`StackEditor.fs:161`: add/delete/duplicate/reorder/group/rotate a layer, set incident/exit medium, set substrate, set layer material).
+- `ConstructionPage.update` (`ConstructionPage.fs:173`).
+- `ConstructionPage.solveSubtree path root` (`ConstructionPage.fs:84`); `ConstructionPage.Msg.NodeSolved` (`ConstructionPage.fs:135`); `ConstructionPage.isNodeBusy` (`ConstructionPage.fs:261`).
+- `ConstructionPage.confirmationPrompt` (`ConstructionPage.fs:265`); `ConstructionPage.canUndo` (`ConstructionPage.fs:270`).
+
+## Scope
+
+U1 renders the stack read-only. This slice makes it editable and wires the only
+compute-bearing interactive effect in the construction page: editing a node's
+stack marks the affected sub-tree busy and re-solves it off the UI thread, then
+refreshes dependent views from the new results. It also surfaces the
+delete-confirmation gate and single-level undo. The root `update` attaches the
+async node-solve `Cmd`, marshaled per §0.4.
+
+## Requirements
+
+### R-1. U2.1 — Wire stack edits through `ConstructionPage.EditStack`
+
+The `stack` panel view MUST dispatch every `StackEditor.StackMsg`
+(`StackEditor.fs:161`: add/delete/duplicate/reorder/group/rotate a layer, set
+incident/exit medium, set substrate, set layer material) as
+`Construction (EditStack (path, stackMsg))`, routed through the existing
+`ConstructionPage.update` (`ConstructionPage.fs:173`). The view MUST NOT
+re-implement any stack mutation.
+
+### R-2. U2.2 — Supply the async node-solve `Cmd`
+
+When the pure `ConstructionPage.update` marks a node busy (an `EditStack` /
+`AttachChild` / `ConfirmDeleteNode` transition), the root `update` MUST attach a
+`Cmd` that runs `ConstructionPage.solveSubtree path root`
+(`ConstructionPage.fs:84`) off the UI thread and dispatches the result back as
+`Construction (NodeSolved map)` (`ConstructionPage.Msg.NodeSolved`,
+`ConstructionPage.fs:135`). The completion dispatch MUST be marshaled per §0.4.
+The busy indicator MUST be driven by `ConstructionPage.isNodeBusy`
+(`ConstructionPage.fs:261`) at per-node granularity.
+
+### R-3. U2.3 — Delete-confirmation gate and undo UI
+
+The view MUST surface the pre-confirmation gate for a pending sub-tree deletion
+using `ConstructionPage.confirmationPrompt` (`ConstructionPage.fs:265`),
+dispatching `Construction ConfirmDeleteNode` / `Construction CancelDeleteNode`
+with the same-row positive/negative CTA layout from UX commitment 5, and MUST
+surface single-level undo gated by `ConstructionPage.canUndo`
+(`ConstructionPage.fs:270`) dispatching `Construction Undo`.
+
+## Non-requirements
+
+- Does NOT re-implement any stack mutation (routes every `StackMsg` through the
+  frozen `ConstructionPage.update`).
+- Does NOT touch the materials/sources/chart/results/fit panels.
+- Does NOT edit any frozen core module (§0.1); `ConstructionPage.fs`,
+  `StackEditor.fs` are called, not modified.
+- Does NOT hold a `CancellationTokenSource` or any non-serializable handle in the
+  root model (§0.5).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/*.fs` (stack edit + node-solve headless view test)
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionView.fs` (edit dispatch + busy/confirm/undo UI)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (attach the async node-solve `Cmd` in the root `update` for the `Construction` busy transitions, marshaled per §0.4)
+
+## Testing plan
+
+Gates that apply to this slice (run in order; first failure short-circuits):
+`build`, `unit-tests`, `constructor-unit-tests`, `impl-log-structure`,
+`state-of-world-structure`, `ui-smoke`, `ui-tests`.
+
+- `ui-tests`: a headless view test asserts a stack edit dispatches
+  `Construction (EditStack …)`, the node shows busy via `isNodeBusy`, the
+  `NodeSolved` result refreshes the view with no manual reload (AC-U2.1), and the
+  delete-confirm flow appears and removes the sub-tree with undo available
+  (AC-U2.2).
+- `ui-smoke`: the `stack` panel still renders one frame headlessly.
+- `build`, `constructor-unit-tests`, `unit-tests`: green; no frozen edits.
+
+## Risks
+
+- **Medium: off-UI-thread re-solve + marshaling.** The node-solve `Cmd` runs
+  `solveSubtree` off the UI thread and must marshal the `NodeSolved` completion
+  back onto the UI thread via `Dispatcher.UIThread.Post` (§0.4). A direct
+  cross-thread dispatch is a defect; getting the busy→solve→refresh cycle correct
+  at per-node granularity is the main worry.
+
+## Hand-off
+
+- The `stack` panel is now fully editable and the async node-solve `Cmd` pattern
+  (busy → off-thread solve → marshaled `NodeSolved`) is established; U7's fit
+  `Cmd` reuses the same §0.4 marshaling discipline.
+- Emit the state-of-the-world `gates:` YAML block with this round's baseline
+  counts so the next slice's `count_at_least` gates have a baseline.
