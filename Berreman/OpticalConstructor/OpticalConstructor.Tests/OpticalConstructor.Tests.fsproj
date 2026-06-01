@@ -40,6 +40,11 @@
         <Compile Include="OptimizationInterfaceTests.fs" />
         <Compile Include="LocalRefinementTests.fs" />
         <Compile Include="SynthesisFitPageTests.fs" />
+        <!-- Part H charts (slice 012). -->
+        <Compile Include="SeriesDataTests.fs" />
+        <Compile Include="ReadoutTests.fs" />
+        <Compile Include="ChartSettingsTests.fs" />
+        <Compile Include="PolarizationPlotTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

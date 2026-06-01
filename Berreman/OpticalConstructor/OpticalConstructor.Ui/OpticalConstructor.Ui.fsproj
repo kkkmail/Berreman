@@ -31,6 +31,15 @@
         <Compile Include="Sources\PolarizationPicker.fs" />
         <Compile Include="ConstructionPage.fs" />
         <Compile Include="SynthesisFitPage.fs" />
+        <!-- Part H charts (slice 012): ChartSettings + SeriesData first, then the
+             views that consume them. -->
+        <Compile Include="Charts\ChartSettings.fs" />
+        <Compile Include="Charts\SeriesData.fs" />
+        <Compile Include="Charts\Plot1DView.fs" />
+        <Compile Include="Charts\Plot3DView.fs" />
+        <Compile Include="Charts\Readout.fs" />
+        <Compile Include="Charts\PolarizationPlots.fs" />
+        <Compile Include="Charts\CieView.fs" />
     </ItemGroup>
 
     <!-- Public, MIT-licensed Avalonia + FuncUI NuGet (the buildable interpretation
@@ -52,6 +61,10 @@
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
+        <!-- Part H (slice 012) consumes the engine sweeps/charting data builders
+             (Analytics.Variables/Charting) and §F.6/§F.8 (Analytics.FieldProfile/
+             Colorimetry). No new C# project, no FuncUI-clone reference. -->
+        <ProjectReference Include="..\..\Analytics\Analytics.fsproj" />
     </ItemGroup>
 
 </Project>
