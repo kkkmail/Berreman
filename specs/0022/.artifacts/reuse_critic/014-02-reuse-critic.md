@@ -1,0 +1,29 @@
+# Reuse critique -- 014.slice-md cycle 1
+
+## Coverage
+
+- Helper roots walked: `C:\GitHub\Berreman` (focused on `Berreman/OpticalConstructor/{*.Ui,*.Domain,*.Storage,*.Tests}`, plus engine seams in `Berreman/Analytics`, `Berreman/Berreman`).
+- Files inspected: ~30/200 (targeted walk against the diff's new symbols, not an exhaustive sweep).
+- Extensions: the configured walk list (`.py,.md,.json`) does NOT cover `.fs`, which is where every Berreman helper lives; I walked `.fs` directly since the `.py/.json` set would have surfaced no F# helpers. `.md` (impl-log / SoW) read as context.
+- Diff: `git diff HEAD` (4 modified) + 4 new Ui modules and 3 new test files (untracked, read directly).
+
+## Findings
+
+### F1: `setLayerMaterial` re-inlines the guarded "replace-layer-at-index" idiom already in `rotateLayer`
+
+- **Worker added:** `StackEditor.setLayerMaterial` (`OpticalConstructor.Ui/StackEditor.fs:128-130`):
+  `if index < 0 || index >= List.length sys.films then sys else { sys with films = sys.films |> List.mapi (fun i l -> if i = index then { l with properties = props } else l) }`.
+- **Existing helper:** `StackEditor.rotateLayer` at `OpticalConstructor.Ui/StackEditor.fs:84-86` is the identical shape — same out-of-range guard, same `List.mapi (fun i l -> if i = index then <transform l> else l)` replace-one-layer body; only the per-layer transform differs (`l.rotate r` vs `{ l with properties = props }`).
+- **Why it matters:** the "guard the index, then `mapi` a single-layer transform" idiom now appears twice in the same module (and the out-of-range guard a third/fourth time in `deleteLayer`/`duplicateLayer`, `:44-53`). It is a small near-miss, but each copy is an independent place the off-by-one/`<=` vs `<` boundary can drift; a future fix to the bounds rule has to be made in N spots. The module already factored the *list-shuffle* primitives (`removeAt`/`insertAt`, `:32-37`) but not the *replace-at-index* one.
+- **Suggested action (advisory):** extract a private `updateLayerAt (index) (f : Layer -> Layer) (sys) : OpticalSystem` and express both `rotateLayer` and `setLayerMaterial` (and any future per-layer edit) through it. Equally defensible to **leave as-is**: the worker followed the *existing* `rotateLayer` precedent rather than diverging from it, so this duplication is consistent with the module's current style, and the spec scoped R-4 as "minimal wiring into the existing MVU." The judge decides whether consistency-with-precedent or de-duplication wins here.
+
+### F2: `Schematic.SchematicColor` introduces a second colour value-model alongside the charts' hex-string / `ScottPlot.Color` representation
+
+- **Worker added:** the `SchematicColor` record of `red/green/blue : byte` with a `.toHex` member and a private `rgb` constructor (`OpticalConstructor.Ui/Schematic.fs:35-46`), plus an 8-slot `palette` (`:49-53`) whose first entries (`rgb 31 119 180`, `rgb 255 127 14`, `rgb 44 160 44`, ...) are the D3/matplotlib *category10* set.
+- **Existing helper:** colour elsewhere in `OpticalConstructor.Ui` is carried as a hex string and parsed once through `Plot1DView.scottPlotColor (hex : string) : ScottPlot.Color` (`OpticalConstructor.Ui/Charts/Plot1DView.fs:99-100` / `ChartSettings.fs:30`), and the trace default is the *same* category10 head colour `"#1f77b4"` (`ChartSettingsTests.fs:18`).
+- **Why it matters:** the repo now has two colour spellings — the charts' `"#rrggbb"` string + `ScottPlot.Color`, and the schematic's `{r;g;b}` bytes — and the category10 palette is hand-transcribed in two notations (`#1f77b4` vs `rgb 31 119 180`). If the project ever standardises a palette, both copies must move together.
+- **Suggested action (advisory):** most likely **leave as-is and keep the note**. The divergence is *deliberate and well-justified*: Schematic is intentionally Avalonia/ScottPlot-free (provable headless, per the §0/P3 testability mandate the SoW records), and the charts' only neutral colour value is a `string` while `scottPlotColor` returns a `ScottPlot.Color` the schematic must not depend on. There is no existing renderer-neutral RGB value to reuse, so this is a new-type-because-none-exists case, not reinvention of an available helper. Worth surfacing only so the judge can confirm the duplicated category10 literal is acceptable.
+
+## Bottom line
+
+The diff is a clean reuse story: thickness labels reuse `StackEditor.displayThickness` → `Units.fromMeters` (the sole boundary seam, no second formatter); the J.4 drop resolves through the slice-004 `resolveMaterial`/`mediumFromMaterial` seam with no re-resolved dispersion; `Templates.loadTemplate` reuses `ProjectJson.deserializeProject` (the exact validate-on-load core `ProjectFile.openProject` runs, `ProjectFile.fs:31-38`) instead of a private deserialize; the DBR template's films are `RepeatBuilder.expand`; and the workspace delegates to `SeriesData.seriesComparison` / `Plot1DView.renderComparison` with no Part-J-local overlay. The only two findings are minor near-misses (F1 an idiom-level duplication the worker inherited from existing `rotateLayer`, F2 a deliberately-justified second colour model), neither pointing at an obviously-missed first-class helper. I read these as *not* substantive enough to compel a re-spawn — both are "leave-as-is is defensible" — but the judge owns that call. One adjacent observation, not a formal finding (no first-class helper exists to cite): the hand-built `BeamNode`+project literal in `Templates.projectOf` (`Templates.fs:61-70`) repeats an idiom already recurring as private test helpers (`HistoryTests.node`, `ExportImportTests`, `RoundTripTests`, `ProjectJsonRoundtripTests`); a future shared `Project.ofSystem` / root-node smart constructor in the domain could absorb all of them, but that is new-helper design, out of this critic's scope.

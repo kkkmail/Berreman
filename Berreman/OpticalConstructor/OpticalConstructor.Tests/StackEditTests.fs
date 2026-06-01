@@ -263,6 +263,42 @@ module StackEditTests =
         Assert.True(ConstructionPage.navEntry.isDefaultLanding)
         Assert.False(System.String.IsNullOrWhiteSpace ConstructionPage.navEntry.title)
 
+    // ---------------------------------------------------------------- AC-J4
+    // §J.4 drag-drop of a library material onto a layer row (slice 014): a drop
+    // emits a single MVU message the owning update applies immutably, replacing
+    // the layer's properties with the RESOLVED OpticalProperties while leaving
+    // thickness unchanged; resolution goes through the slice-004 resolveMaterial.
+
+    [<Fact>]
+    let ``AC-J4 a material dropped on a layer row replaces its properties via the slice-004 resolver`` () =
+        let w = WaveLength.nm 600.0<nm>
+        // The drop payload carries only the materialEntry id; resolution is the
+        // slice-004 by-id seam producing the StackMsg the owning update applies.
+        let resolved = StackEditor.mediumFromMaterial standard "silicon" w |> function Ok p -> p | Error e -> failwith $"{e}"
+        match StackEditor.layerMaterialDrop standard w 1 "silicon" with
+        | Ok (StackEditor.SetLayerMaterial (idx, props)) ->
+            Assert.Equal(1, idx)
+            // The message carries the resolveMaterial-resolved OpticalProperties (no re-resolution).
+            Assert.Equal(resolved, props)
+            // The owning update applies it immutably: a NEW system, layer 1's
+            // properties replaced, its thickness and the other layers unchanged.
+            let r = StackEditor.applyStackMsg (StackEditor.SetLayerMaterial (idx, props)) baseSystem
+            Assert.Equal(resolved, r.films.[1].properties)
+            Assert.Equal(l1.thickness, r.films.[1].thickness)
+            Assert.True(refEq r.films.[0] l0 && refEq r.films.[2] l2)
+            Assert.False(refEq r baseSystem)
+            Assert.Equal(3, List.length baseSystem.films)   // source untouched
+        | other -> failwith $"expected Ok (SetLayerMaterial _), got {other}"
+
+    [<Fact>]
+    let ``AC-J4 dropping an unknown material id is a no-op error, never throwing`` () =
+        match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) 0 "no-such-id" with
+        | Error (UnknownMaterialId "no-such-id") -> ()
+        | other -> failwith $"expected UnknownMaterialId, got {other}"
+        // setLayerMaterial on an out-of-range index leaves the system unchanged.
+        let r = StackEditor.setLayerMaterial 99 glass baseSystem
+        Assert.True(refEq r.films baseSystem.films)
+
     [<Fact>]
     let ``B10-6 the committable project file defaults to the working folder as JSON, never .binz`` () =
         let path = ConstructionPage.projectFilePath model0

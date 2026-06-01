@@ -48,6 +48,10 @@
         <!-- Persistence II (§I.5-I.8, slice 013). -->
         <Compile Include="HistoryTests.fs" />
         <Compile Include="ExportImportTests.fs" />
+        <!-- Part J UX shell I (§J.1-J.5, slice 014). -->
+        <Compile Include="RepeatBuilderTests.fs" />
+        <Compile Include="TemplatesTests.fs" />
+        <Compile Include="SchematicGeometryTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

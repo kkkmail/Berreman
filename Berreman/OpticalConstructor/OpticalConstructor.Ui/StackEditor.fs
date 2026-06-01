@@ -114,6 +114,22 @@ let mediumFromMaterial (lib : MaterialLibrary) (id : string) (w : WaveLength) : 
     resolveMaterial lib id w
 
 // ---------------------------------------------------------------------------
+// §J.4 drag-and-drop of a library material onto a layer row (slice 014). A
+// material dragged from the library panel and dropped on a layer row replaces
+// that layer's `Layer.properties` (Media.fs:26) with the dragged material's
+// RESOLVED OpticalProperties, leaving `Layer.thickness` unchanged. The drop is a
+// single MVU message the owning ConstructionPage `update` applies immutably (a
+// NEW Layer; no in-place mutation, §0 constraint 1).
+// ---------------------------------------------------------------------------
+
+/// Replace the material of the layer at `index` with `props`, leaving every other
+/// layer (and `thickness`) unchanged (§J.4 / AC-J4). Out-of-range index is a
+/// no-op. Pure & immutable: a NEW OpticalSystem with a NEW Layer at `index`.
+let setLayerMaterial (index : int) (props : OpticalProperties) (sys : OpticalSystem) : OpticalSystem =
+    if index < 0 || index >= List.length sys.films then sys
+    else { sys with films = sys.films |> List.mapi (fun i l -> if i = index then { l with properties = props } else l) }
+
+// ---------------------------------------------------------------------------
 // Three-state substrate switch (§B.7). Toggles the reused Substrate DU
 // (Media.fs:40); re-solving routes UNCHANGED through OpticalSystemSolver's
 // substrate branch (Solvers.fs:201-230) — this module does not touch the solver.
@@ -152,6 +168,9 @@ type StackMsg =
     | SetIncidentMedium of OpticalProperties
     | SetExitMedium of OpticalProperties
     | SetSubstrate of SubstrateChoice
+    /// §J.4 drag-drop: replace the material of the layer at `index` with the
+    /// dragged material's RESOLVED `OpticalProperties` (thickness unchanged).
+    | SetLayerMaterial of index : int * properties : OpticalProperties
 
 /// Pure editor update: apply a `StackMsg` to a system, yielding a NEW system.
 let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem =
@@ -165,6 +184,17 @@ let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem =
     | SetIncidentMedium p -> setIncidentMedium p sys
     | SetExitMedium p -> setExitMedium p sys
     | SetSubstrate c -> applySubstrate c sys
+    | SetLayerMaterial (i, p) -> setLayerMaterial i p sys
+
+/// §J.4 — turn a material dropped on the layer row at `index` into the `StackMsg`
+/// the owning `update` applies. The drop payload carries ONLY the stable
+/// `materialEntry` id (§A.7); resolution to `OpticalProperties` goes through
+/// slice 004's by-id `resolveMaterial` seam (§D.8) at the active wavelength `w`
+/// (REUSING `mediumFromMaterial`) — Part J re-resolves no dispersion. An unknown
+/// id returns `Error (UnknownMaterialId _)` (the drop is a no-op), never throwing.
+let layerMaterialDrop (lib : MaterialLibrary) (w : WaveLength) (index : int) (materialId : string) : Result<StackMsg, MaterialError> =
+    mediumFromMaterial lib materialId w
+    |> Result.map (fun props -> SetLayerMaterial (index, props))
 
 // ---------------------------------------------------------------------------
 // Default-unit display (§B.8). Renders a stored canonical-SI thickness in a

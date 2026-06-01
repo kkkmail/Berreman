@@ -40,6 +40,13 @@
         <Compile Include="Charts\Readout.fs" />
         <Compile Include="Charts\PolarizationPlots.fs" />
         <Compile Include="Charts\CieView.fs" />
+        <!-- Part J UX shell I (slice 014): RepeatBuilder before Templates (the
+             DBR template calls RepeatBuilder.expand); Schematic and Workspace
+             consume StackEditor / the Part H charts already compiled above. -->
+        <Compile Include="RepeatBuilder.fs" />
+        <Compile Include="Templates.fs" />
+        <Compile Include="Schematic.fs" />
+        <Compile Include="Workspace.fs" />
     </ItemGroup>
 
     <!-- Public, MIT-licensed Avalonia + FuncUI NuGet (the buildable interpretation
