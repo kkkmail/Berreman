@@ -90,8 +90,13 @@ module FieldFunctions =
                 let a = asin v
                 a |> Angle |> Polarization
 
-        // member em.muellerMatrix : MuellerMatrix =
-        //     failwith ""
+        /// Per-field Mueller matrix (F.3). Pure delegation to the existing
+        /// `MuellerMatrix.fromEmFields` constructor (Fields.fs:636), supplying the
+        /// field's own s- and p-resolved components (`amplitudeS`/`amplitudeP`).
+        /// The 4×4 Mueller algebra already lives in `MuellerMatrix.create`
+        /// (Fields.fs:601) and MUST NOT be re-derived here.
+        member em.muellerMatrix : MuellerMatrix =
+            MuellerMatrix.fromEmFields em em
 
 
     type FunctionDescription =

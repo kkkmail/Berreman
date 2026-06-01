@@ -31,6 +31,8 @@
         <Compile Include="RotationTests.fs" />
         <Compile Include="FieldFunctionTests.fs" />
         <Compile Include="SolverTests.fs" />
+        <Compile Include="MuellerMatrixTests.fs" />
+        <Compile Include="AnalysisFunctionsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -52,7 +54,12 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="Softellect.Sys" Version="10.0.101.41" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
+        <ProjectReference Include="..\Analytics\Analytics.fsproj" />
     </ItemGroup>
 
 </Project>

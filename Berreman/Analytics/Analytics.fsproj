@@ -39,6 +39,9 @@
         <Compile Include="StandardLightVariables.fs" />
         <Compile Include="StandardSystems.fs" />
         <Compile Include="Charting.fs" />
+        <Compile Include="AnalysisFunctions.fs" />
+        <Compile Include="FieldProfile.fs" />
+        <Compile Include="Colorimetry.fs" />
         <None Include="References.fsx" />
         <None Include="Examples\References.fsx" />
         <None Include="Examples\LangasiteOnSilicon.fsx" />
