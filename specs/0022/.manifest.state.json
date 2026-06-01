@@ -2,7 +2,7 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0022\\.manifest",
   "branch": "0022",
   "started_utc": "2026-06-01T00:47:23Z",
-  "last_updated_utc": "2026-06-01T11:07:29Z",
+  "last_updated_utc": "2026-06-01T12:12:12Z",
   "completed_slices": [
     {
       "index": 0,
@@ -106,14 +106,16 @@
   "current_slice": {
     "index": 14,
     "path": "specs\\0022\\.slices\\015.slice-md",
-    "status": "escalated",
-    "reason": "max-wall-time-exceeded (37205s > 36000s)",
-    "worker_logs": "C:\\GitHub\\Berreman\\specs\\0022\\.manifest-arc-runner.log",
-    "escalation_md": "",
+    "status": "running",
+    "reason": "",
+    "worker_logs": "",
     "conversation_seq": 1,
     "operator_reply": "",
     "total_route_backs": 0,
-    "resolver_runs": 0
+    "resolver_runs": 0,
+    "consumed_reply_shas": []
   },
-  "remaining_slices": []
+  "remaining_slices": [
+    "specs\\0022\\.slices\\016.slice-md"
+  ]
 }

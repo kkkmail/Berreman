@@ -52,6 +52,9 @@
         <Compile Include="RepeatBuilderTests.fs" />
         <Compile Include="TemplatesTests.fs" />
         <Compile Include="SchematicGeometryTests.fs" />
+        <!-- Part J UX shell II (§J.6-J.9, slice 015). -->
+        <Compile Include="ValidationTests.fs" />
+        <Compile Include="EnvironmentRoundTripTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

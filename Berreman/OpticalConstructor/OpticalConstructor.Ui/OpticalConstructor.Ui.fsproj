@@ -47,6 +47,23 @@
         <Compile Include="Templates.fs" />
         <Compile Include="Schematic.fs" />
         <Compile Include="Workspace.fs" />
+        <!-- Part J UX shell II (slice 015): UserEnvironment (EnvironmentSettings/
+             Preferences) first; Validation is standalone; AppShell consumes the
+             UserEnvironment theme/layout types and is authored against the public
+             MIT FuncUI DSL (the audit-gated clone stays UNREFERENCED). -->
+        <Compile Include="UserEnvironment.fs" />
+        <Compile Include="Validation.fs" />
+        <Compile Include="AppShell.fs" />
+    </ItemGroup>
+
+    <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
+         build-copied content item loaded beside the assembly at runtime by
+         UserEnvironment.validate; it flows transitively to consuming projects'
+         output (so the Tests project's validate-on-load finds it). -->
+    <ItemGroup>
+        <Content Include="optical-constructor-environment.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <!-- Public, MIT-licensed Avalonia + FuncUI NuGet (the buildable interpretation
