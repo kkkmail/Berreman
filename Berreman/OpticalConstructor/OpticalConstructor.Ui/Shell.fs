@@ -24,6 +24,7 @@ open Elmish
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Ui.Charts
+open OpticalConstructor.Ui.Sources
 open OpticalConstructor.Ui.UserEnvironment
 
 /// `Workspace` is both an existing module and a `RootMsg` case name below; the alias
@@ -72,6 +73,9 @@ type RootModel =
         /// The materials panel's browse filter + selection (Part U3). Pure/serializable
         /// (§0.5): plain values, never a renderer handle.
         materialsFilter : MaterialsView.Filter
+        /// The source the `sources` panel edits (Part U4). Pure/serializable (§0.5): a
+        /// `SourceSpec` carries only plain engine values, never a renderer handle.
+        source : SourceSpec.SourceSpec
     }
 
 /// The root message, wrapping each wired sub-`Msg` plus the shell-level case (R-2).
@@ -83,6 +87,7 @@ type RootMsg =
     | Shell of ShellMsg
     | Chart of ChartView.ChartMsg
     | Materials of MaterialsView.MaterialsMsg
+    | Source of SourceView.SourceViewMsg
 
 // ---------------------------------------------------------------------------
 // Initial project + model (R-2 / R-3 seed). Built through the existing
@@ -121,6 +126,7 @@ let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
             markers = Readout.Markers.empty
             materials = MaterialLibrary.standard
             materialsFilter = MaterialsView.Filter.empty
+            source = SourceEditorView.defaultSource "source-1"
         }
     model, Cmd.none
 
@@ -198,6 +204,7 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         let chart, markers = ChartView.update cm (model.chart, model.markers)
         { model with chart = chart; markers = markers }, Cmd.none
     | RootMsg.Materials mm -> { model with materialsFilter = MaterialsView.update mm model.materialsFilter }, Cmd.none
+    | RootMsg.Source sm -> { model with source = SourceView.update sm model.source }, Cmd.none
 
 // ---------------------------------------------------------------------------
 // view (R-4) — a top-level navigation control over a DockPanel of the visible
@@ -249,6 +256,7 @@ let private panelContent (model : RootModel) (dispatch : RootMsg -> unit) (panel
         MaterialsView.materialsPanel
             model.materials model.materialsFilter model.construction
             (RootMsg.Materials >> dispatch) (RootMsg.Construction >> dispatch)
+    | "sources" -> SourceView.sourcePanel model.source (RootMsg.Source >> dispatch)
     | other -> placeholder (panelTitle other)
 
 let private panelView (model : RootModel) (dispatch : RootMsg -> unit) (p : PanelState) : IView =

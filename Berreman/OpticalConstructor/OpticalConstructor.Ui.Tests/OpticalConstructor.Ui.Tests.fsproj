@@ -30,6 +30,7 @@
         <Compile Include="ChartPanelTests.fs" />
         <Compile Include="ConstructionEditTests.fs" />
         <Compile Include="MaterialsPanelTests.fs" />
+        <Compile Include="SourcePanelTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
