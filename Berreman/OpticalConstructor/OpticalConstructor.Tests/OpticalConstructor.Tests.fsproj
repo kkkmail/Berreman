@@ -33,6 +33,7 @@
         <Compile Include="DispersionModelsTests.fs" />
         <Compile Include="MaterialImportTests.fs" />
         <Compile Include="MaterialPreviewTests.fs" />
+        <Compile Include="StackEditTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

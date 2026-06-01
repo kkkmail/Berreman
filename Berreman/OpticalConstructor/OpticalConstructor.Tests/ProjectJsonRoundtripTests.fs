@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Tests
 
 open Berreman.Constants
+open Berreman.Geometry
 open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
@@ -8,6 +9,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Storage
+open OpticalConstructor.Storage.Errors
 open Xunit
 
 /// Canonical-JSON round-trip + validate-on-load over the project aggregate
@@ -86,3 +88,57 @@ module ProjectJsonRoundtripTests =
         Assert.Equal(light.waveLength.value, back.beamTree.root.incident.waveLength.value)
         // The transmitted detector child survived the Map round-trip.
         Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.Transmitted)
+
+    // --- AC-B9 (slice 005): the beam tree and its constructed systems round-trip
+    // through the JSON-canonical project, schema-validated on load, exercising the
+    // field-level shapes of the filled beamNode/beamBranch/opticalSystem/layer
+    // `$defs` — the mirror Reflected child, a Plate substrate, and a Wedge system.
+    let private plateSystem : OpticalSystem =
+        { vacuumSystem with substrate = Some (Plate { properties = OpticalProperties.vacuum; thickness = Thickness.Infinity }) }
+    let private wedgeAngle = WedgeAngle (Angle.degree 2.0)
+    let private wedgeSystem : OpticalSystem =
+        { vacuumSystem with substrate = Some (Wedge { layer = { properties = OpticalProperties.vacuum; thickness = Thickness.mm 1.0<mm> }; angle = wedgeAngle }) }
+
+    /// A beam tree exercising every filled `$def` branch: a Sample root over a
+    /// Plate-substrate system, a mirror Reflected child, a detector Transmitted
+    /// child, plus a Plate and a Wedge entry in `systems`.
+    let private richProject : OpticalConstructorProject =
+        let mirror = { (node FlatMirror Map.empty Nanometer) with system = plateSystem }
+        let detector = node Detector Map.empty Nanometer
+        let root = { (node (Sample plateSystem) (Map.ofList [ BeamBranch.Reflected, mirror; BeamBranch.Transmitted, detector ]) Micrometer) with system = plateSystem }
+        { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ] }
+
+    [<Fact>]
+    let ``AC-B9 beam tree and systems round-trip through the schema-validated canonical project`` () =
+        let json = richProject |> ProjectJson.serializeProject |> okOr
+        // The canonical artefact is JSON text and is NEVER a .binz pickle (Part A constraint 4).
+        Assert.StartsWith("{", json.TrimStart())
+        Assert.DoesNotContain(".binz", json)
+        // Validate-on-load admits the document against the published schema and binds it.
+        let back = json |> ProjectJson.deserializeProject |> okOr
+        // The Sample root, its Plate substrate, and both branch children survived.
+        match back.beamTree.root.element with
+        | Sample _ -> ()
+        | other -> failwith $"unexpected root element: {other}"
+        match back.beamTree.root.system.substrate with
+        | Some (Plate _) -> ()
+        | other -> failwith $"unexpected root substrate: {other}"
+        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.Reflected)
+        Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.Transmitted)
+        Assert.Equal(FlatMirror, back.beamTree.root.children.[BeamBranch.Reflected].element)
+        // The systems list (Plate + Wedge) round-trips with the wedge angle preserved.
+        Assert.Equal(2, List.length back.systems)
+        match back.systems.[1].substrate with
+        | Some (Wedge w) -> Assert.Equal(wedgeAngle, w.angle)
+        | other -> failwith $"unexpected wedge substrate: {other}"
+
+    [<Fact>]
+    let ``AC-B9 the filled beamNode $def rejects a malformed incident shape on load`` () =
+        // A real serialized document with the incident refractionIndex corrupted to a
+        // non-number; the filled beamNode `$def` MUST reject it on validate-on-load.
+        let bad =
+            (richProject |> ProjectJson.serializeProject |> okOr)
+                .Replace("\"refractionIndex\": 1", "\"refractionIndex\": \"not-a-number\"")
+        match ProjectJson.deserializeProject bad with
+        | Error (SchemaValidationError _) -> ()
+        | other -> failwith $"expected SchemaValidationError, got: {other}"

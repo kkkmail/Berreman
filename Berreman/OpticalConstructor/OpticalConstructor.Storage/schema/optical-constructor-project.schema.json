@@ -108,11 +108,96 @@
       "type": "object",
       "description": "Reserved storage-owned anchor for a source specification; filled by slice 007."
     },
-    "opticalSystem": true,
-    "layer": true,
+    "beamBranch": {
+      "type": "string",
+      "enum": ["Reflected", "Transmitted"],
+      "description": "The two attachment points of a non-mirror element (Part B, B.2/B.3). A fieldless DU serialized as a bare string; also the key half of each children pair (B.5/B.9)."
+    },
+    "layer": {
+      "type": "object",
+      "description": "A reused engine Layer (Media.fs:24): a tensor and a thickness. Filled by slice 005 (Part B, B.5). The thickness is the canonical SI value in meters (Part A constraint 3) carried by the Thickness DU — either a finite {Case:'Thickness',Fields:[<meters>]} or the bare string 'Infinity'.",
+      "required": ["properties", "thickness"],
+      "properties": {
+        "properties": { "$ref": "#/$defs/opticalProperties" },
+        "thickness": {
+          "oneOf": [
+            { "type": "string", "const": "Infinity" },
+            {
+              "type": "object",
+              "required": ["Case", "Fields"],
+              "properties": {
+                "Case": { "const": "Thickness" },
+                "Fields": { "type": "array", "items": { "type": "number" }, "minItems": 1, "maxItems": 1 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "opticalSystem": {
+      "type": "object",
+      "description": "A reused engine OpticalSystem (Media.fs:94): upper/lower half-space tensors, the films layer stack, and an optional substrate. Filled by slice 005 (Part B, B.5-B.7). The substrate option is null (thin film), {Case:'Plate',Fields:[layer]} (thick plate), or {Case:'Wedge',Fields:[wedgeLayer]} (wedge); all magnitudes are canonical SI (Part A constraint 3).",
+      "required": ["upper", "films", "lower"],
+      "properties": {
+        "description": { "type": ["string", "null"] },
+        "upper": { "$ref": "#/$defs/opticalProperties" },
+        "films": { "type": "array", "items": { "$ref": "#/$defs/layer" } },
+        "substrate": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["Case", "Fields"],
+              "properties": {
+                "Case": { "enum": ["Plate", "Wedge"] },
+                "Fields": { "type": "array", "minItems": 1, "maxItems": 1 }
+              }
+            }
+          ]
+        },
+        "lower": { "$ref": "#/$defs/opticalProperties" }
+      }
+    },
+    "beamNode": {
+      "type": "object",
+      "description": "A node of the beam-tree orchestration aggregate (Part A, A.4; Part B, B.9). Filled by slice 005. children is the Map<beamBranch,beamNode> serialized by FSharp.SystemTextJson as an array of [branch, node] pairs (a DU map key cannot be an object property name). All physical magnitudes reachable from here are canonical SI; defaultUnit is a display/IO label only (Part D, D.4 / B.8).",
+      "required": ["element", "system", "incident", "children", "defaultUnit"],
+      "properties": {
+        "element": { "$ref": "#/$defs/constructorElement" },
+        "system": { "$ref": "#/$defs/opticalSystem" },
+        "incident": {
+          "type": "object",
+          "description": "The engine IncidentLightInfo (Fields.fs:338) driving this node's solve. waveLength is the WaveLength DU as {Case:'Nm'|'Mkm',Fields:[<value>]}; its .value reduction to meters is the canonical SI datum.",
+          "required": ["waveLength", "refractionIndex", "incidenceAngle", "polarization", "ellipticity"],
+          "properties": {
+            "waveLength": {
+              "type": "object",
+              "required": ["Case", "Fields"],
+              "properties": {
+                "Case": { "enum": ["Nm", "Mkm"] },
+                "Fields": { "type": "array", "items": { "type": "number" }, "minItems": 1, "maxItems": 1 }
+              }
+            },
+            "refractionIndex": { "type": "number" },
+            "incidenceAngle": { "type": "number" },
+            "polarization": { "type": "number" },
+            "ellipticity": { "type": "number" }
+          }
+        },
+        "children": {
+          "type": "array",
+          "description": "Map<beamBranch,beamNode> as an array of [branch, node] pairs. A mirror node carries at most a single Reflected pair (Part B, B.3).",
+          "items": {
+            "type": "array",
+            "prefixItems": [ { "$ref": "#/$defs/beamBranch" }, { "$ref": "#/$defs/beamNode" } ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "defaultUnit": { "$ref": "#/$defs/unitOfMeasure" }
+      }
+    },
     "opticalProperties": true,
-    "beamNode": true,
-    "beamBranch": true,
     "constructorElement": true
   }
 }
