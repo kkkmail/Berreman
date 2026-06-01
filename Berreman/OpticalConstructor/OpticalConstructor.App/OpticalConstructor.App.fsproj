@@ -26,8 +26,17 @@
         <Compile Include="Program.fs" />
     </ItemGroup>
 
+    <!-- The composition root (Program.fs) directly hosts the FuncUI shell, so it
+         depends on the public MIT Avalonia + FuncUI NuGet surface explicitly. This
+         is NOT the audit-gated clone at Avalonia.FuncUI.Clone, which stays
+         unreferenced until the §A.9 audit passes (AC-A8). Versions mirror
+         OpticalConstructor.Ui. -->
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.300" />
+        <PackageReference Include="Avalonia" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
+        <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
     </ItemGroup>
 
     <ItemGroup>
