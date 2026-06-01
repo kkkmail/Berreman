@@ -6,6 +6,7 @@ open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
+open OpticalConstructor.Domain.CurvedElements
 open Xunit
 
 /// Beam-tree topology & mirror/branch validation — AC-A4, AC-B2, AC-B3.
@@ -84,6 +85,21 @@ module BeamTreeTests =
             | None -> depth
         let depth = walk source 0
         Assert.Equal(4, depth)
+
+    [<Fact>]
+    let ``AC-C4 curved fan: CurvedMirror is Reflected-only, Lens has both branches`` () =
+        // The mirror special case (§C.6): a CurvedMirror zone node exposes the
+        // Reflected branch ONLY and drops the transmitted field.
+        let mirrorZone = attachCurvedElement CurvedMirror (node CurvedMirror)
+        Assert.True(mirrorZone.children.ContainsKey BeamBranch.Reflected)
+        Assert.False(mirrorZone.children.ContainsKey BeamBranch.Transmitted)
+        Assert.Equal(1, mirrorZone.children.Count)
+
+        // A Lens zone node exposes BOTH branches.
+        let lensZone = attachCurvedElement Lens (node Lens)
+        Assert.True(lensZone.children.ContainsKey BeamBranch.Reflected)
+        Assert.True(lensZone.children.ContainsKey BeamBranch.Transmitted)
+        Assert.Equal(2, lensZone.children.Count)
 
     [<Fact>]
     let ``AC-B8 changing defaultUnit leaves the stored SI system untouched`` () =

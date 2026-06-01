@@ -26,6 +26,7 @@
         <Compile Include="UnitsTests.fs" />
         <Compile Include="GradientDiscretizeTests.fs" />
         <Compile Include="BeamTreeTests.fs" />
+        <Compile Include="CurvedElementsTests.fs" />
         <Compile Include="BeamRoutingTests.fs" />
         <Compile Include="ProjectJsonRoundtripTests.fs" />
         <Compile Include="RoundTripTests.fs" />
