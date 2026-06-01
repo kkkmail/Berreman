@@ -1,0 +1,36 @@
+{
+  "manifest": "C:\\GitHub\\Berreman\\specs\\0022\\.manifest",
+  "branch": "0022",
+  "started_utc": "2026-06-01T00:47:23Z",
+  "last_updated_utc": "2026-06-01T00:47:23Z",
+  "completed_slices": [],
+  "current_slice": {
+    "index": 0,
+    "path": "specs\\0022\\.slices\\001.slice-md",
+    "status": "running",
+    "reason": "",
+    "worker_logs": "",
+    "conversation_seq": 0,
+    "operator_reply": "",
+    "total_route_backs": 0,
+    "resolver_runs": 0,
+    "consumed_reply_shas": []
+  },
+  "remaining_slices": [
+    "specs\\0022\\.slices\\002.slice-md",
+    "specs\\0022\\.slices\\003.slice-md",
+    "specs\\0022\\.slices\\004.slice-md",
+    "specs\\0022\\.slices\\005.slice-md",
+    "specs\\0022\\.slices\\006.slice-md",
+    "specs\\0022\\.slices\\007.slice-md",
+    "specs\\0022\\.slices\\008.slice-md",
+    "specs\\0022\\.slices\\009.slice-md",
+    "specs\\0022\\.slices\\010.slice-md",
+    "specs\\0022\\.slices\\011.slice-md",
+    "specs\\0022\\.slices\\012.slice-md",
+    "specs\\0022\\.slices\\013.slice-md",
+    "specs\\0022\\.slices\\014.slice-md",
+    "specs\\0022\\.slices\\015.slice-md",
+    "specs\\0022\\.slices\\016.slice-md"
+  ]
+}

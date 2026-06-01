@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.Domain</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <!-- Compile order: units spine -> beam tree -> sources -> dispersion -> materials.
+         Slice 001 ships these as empty placeholder modules; later slices fill them. -->
+    <ItemGroup>
+        <Compile Include="Units.fs" />
+        <Compile Include="BeamTree.fs" />
+        <Compile Include="CurvedElements.fs" />
+        <Compile Include="SourceSpec.fs" />
+        <Compile Include="SourceCombination.fs" />
+        <Compile Include="DispersionModels.fs" />
+        <Compile Include="MaterialLibrary.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.300" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\Berreman\Berreman.fsproj" />
+        <ProjectReference Include="..\..\Analytics\Analytics.fsproj" />
+    </ItemGroup>
+
+</Project>

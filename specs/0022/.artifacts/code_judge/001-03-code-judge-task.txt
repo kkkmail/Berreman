@@ -1,0 +1,87 @@
+# Code judge task -- 001.slice-md cycle 1
+
+## Role
+
+You are playing the **code judge** role of the arc-runner
+critic + judge sub-loop. Binary decision: `done-green`,
+`route-back-to-worker`, or `escalate-to-human`. Read-only.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+code-judge cycle and lists them below. Do not compute or guess
+these paths: the canonical layout block describes the shape,
+this section pins the concrete values for the spawn you are
+about to run.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0022`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0022\.slices\001.slice-md`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0022\.slices\001-impl-log.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0022\.slices\001-state-of-the-world.md`
+- **code_judge_round_trail_dir:** `C:\GitHub\Berreman\specs\0022\.artifacts\code_judge`
+- **architecture_critic_md_path:** `C:\GitHub\Berreman\specs\0022\.artifacts\architecture_critic\001-01-architecture-critic.md`
+- **reuse_critic_md_path:** `C:\GitHub\Berreman\specs\0022\.artifacts\reuse_critic\001-02-reuse-critic.md`
+- **spec_id:** `0022`
+- **slice_id:** `001`
+- **review_cycle:** `1`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\code-judge.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Inputs
+
+### Slice spec just implemented
+
+- C:\GitHub\Berreman\specs\0022\.slices\001.slice-md
+
+### Worker state-of-the-world
+
+- C:\GitHub\Berreman\specs\0022\.slices\001-state-of-the-world.md
+
+### Worker impl-log
+
+- C:\GitHub\Berreman\specs\0022\.slices\001-impl-log.md
+
+### Deterministic gate results
+
+```
+build: pass
+unit-tests: pass
+constructor-unit-tests: pass
+```
+
+### Critic critiques (in run_after order)
+
+- architecture_critic: C:\GitHub\Berreman\specs\0022\.artifacts\architecture_critic\001-01-architecture-critic.md
+- reuse_critic: C:\GitHub\Berreman\specs\0022\.artifacts\reuse_critic\001-02-reuse-critic.md
+
+### Retry budget
+
+- worker_review_max_cycles: 3
+- current cycle: 1
+- cycles remaining: 2
+
+## Output you MUST write (and nowhere else)
+
+**Save your judge decision to**
+`C:\GitHub\Berreman\specs\0022\.artifacts\code_judge\001-03-code-judge.md`. **Do not write the decision anywhere else.**
+
+Follow the judge output structure documented in the code judge system
+prompt: human-readable rationale at the top, a single-line JSON
+envelope with the schema given in the system prompt as the LAST fenced
+code block of the file.
+
+When `cycles_remaining` is 0 you MUST pick `done-green` or
+`escalate-to-human`. `route-back-to-worker` is no longer permitted.
+
+(Stub template: full content lands in slice 004-08.)

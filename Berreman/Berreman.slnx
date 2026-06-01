@@ -20,6 +20,24 @@
   <Project Path="BerremanTests/BerremanTests.fsproj">
     <Platform Project="x64" />
   </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="OpticalModel/OpticalModel.fsproj">
     <Platform Project="x64" />
   </Project>
