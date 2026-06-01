@@ -1,0 +1,19 @@
+name: ui-smoke
+description: Headless launch/render smoke gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless smoke test (trait Category=ui-smoke) that opens the host, asserts OnFrameworkInitializationCompleted ran, and renders one frame for every panel/page view without throwing (spec 0024 §U1.6 / §U1.7 / AC-U1.3)
+kind: command
+command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj -c Release --filter Category=ui-smoke
+pass_when:
+  exit_code: 0
+runtime_estimate_seconds: 600
+tags:
+- test
+- smoke
+applies_to:
+- paths:
+  - 'Berreman/OpticalConstructor/OpticalConstructor.Ui/**'
+  - 'Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**'
+  - 'Berreman/OpticalConstructor/OpticalConstructor.App/**'
+# TODO(agent-uncertain): existing gates only attest build/unit/source qualifiers; "smoke" is a new value the operator should confirm against the repo's qualifier vocabulary
+qualifier: smoke
+filter: none
+descriptor_version: 1
