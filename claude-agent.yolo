@@ -6,43 +6,47 @@
 
   "writable_folders": [
     {
-      "path": "C:\\GitHub\\AI-Strategy-Generator",
+      "path": "C:/GitHub/AI-Strategy-Generator",
       "comment": "Repo path"
     },
     {
-      "path": "C:\\GitHub\\AI-Strategy-Generator-UPGRADE",
+      "path": "C:/GitHub/AI-Strategy-Generator-UPGRADE",
       "comment": "Repo path"
     },
     {
-      "path": "C:\\GitHub\\Softellect",
+      "path": "C:/GitHub/Softellect",
       "comment": "Repo path"
     },
     {
-      "path": "C:\\GitHub\\Berreman",
+      "path": "C:/GitHub/Berreman",
       "comment": "Repo path"
     },
     {
-      "path": "C:\\GitHub\\Avalonia.FuncUI.Clone",
+      "path": "C:/GitHub/Avalonia.FuncUI.Clone",
       "comment": "Repo path"
     },
     {
-      "path": "C:\\Temp",
+      "path": "C:/Temp",
       "comment": "Scratch space — no git here"
+    },
+    {
+      "path": "C:/OpenAI/Codex/",
+      "comment": "Codex global folder"
+    },
+    {
+      "path": "C:/Android/Sdk",
+      "comment": "Android SDK — for build tooling"
     }
   ],
 
   "readable_folders": [
     {
-      "path": "{{USERPROFILE}}\\AppData\\Local\\Android\\Sdk",
+      "path": "{{USERPROFILE}}/AppData/Local/Android/Sdk",
       "comment": "Android SDK — read-only access for build tooling"
     },
     {
-      "path": "{{USERPROFILE}}\\.android",
+      "path": "{{USERPROFILE}}/.android",
       "comment": "Android SDK — read-only access for build tooling"
-    },
-    {
-      "path": "C:\\OpenAI\\Codex\\",
-      "comment": "Codex global folder"
     }
   ],
 
@@ -62,27 +66,27 @@
     "comment": "If true (default), account keeps Users group read+execute on Program Files, Windows, etc. If false, only allowed_paths below are accessible — you MUST list everything the agent needs.",
     "allowed_paths": [
       {
-        "path": "C:\\Program Files\\nodejs",
+        "path": "C:/Program Files/nodejs",
         "comment": "Node.js runtime"
       },
       {
-        "path": "C:\\Program Files\\Git",
+        "path": "C:/Program Files/Git",
         "comment": "Git CLI (read-only ops only — .git write is ALWAYS denied)"
       },
       {
-        "path": "C:\\Python312",
+        "path": "C:/Python312",
         "comment": "Python 3.12 — adjust version to match your install"
       },
       {
-        "path": "C:\\Program Files\\PowerShell",
+        "path": "C:/Program Files/PowerShell",
         "comment": "PowerShell 7+"
       },
       {
-        "path": "C:\\Windows\\System32\\cmd.exe",
+        "path": "C:/Windows/System32/cmd.exe",
         "comment": "Command prompt"
       },
       {
-        "path": "C:\\Windows\\System32\\WindowsPowerShell",
+        "path": "C:/Windows/System32/WindowsPowerShell",
         "comment": "Built-in PowerShell 5.1"
       }
     ]
@@ -94,7 +98,7 @@
       "port":    7351,
       "command": "python",
       "args": [
-        "C:\\GitHub\\AI-Strategy-Generator\\yolo\\tools\\tool-server\\server.py"
+        "C:/GitHub/AI-Strategy-Generator-UPGRADE/.yolo/.tool-server/server.py"
       ]
     }
   ],
