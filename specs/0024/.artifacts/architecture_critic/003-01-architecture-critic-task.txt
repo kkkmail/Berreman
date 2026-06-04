@@ -1,0 +1,62 @@
+# Architecture critic task -- 003.slice-md cycle 1
+
+## Role
+
+You are playing the **architecture critic** role of the
+arc-runner critic + judge sub-loop. Suggestions only -- no
+gate authority. Read-only against the worktree.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+architecture-critic cycle and lists them below. Do not compute
+or guess these paths: the canonical layout block describes the
+shape, this section pins the concrete values for the spawn you
+are about to run.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0024`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0024\.slices\003.slice-md`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0024\.slices\003-impl-log.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0024\.slices\003-state-of-the-world.md`
+- **architecture_critic_round_trail_dir:** `C:\GitHub\Berreman\specs\0024\.artifacts\architecture_critic`
+- **spec_id:** `0024`
+- **slice_id:** `003`
+- **review_cycle:** `1`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\architecture-critic.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Inputs
+
+### Slice spec just implemented
+
+- C:\GitHub\Berreman\specs\0024\.slices\003.slice-md
+
+### Worker state-of-the-world
+
+- C:\GitHub\Berreman\specs\0024\.slices\003-state-of-the-world.md
+
+### Repo root
+
+- C:\GitHub\Berreman
+
+## Output you MUST write (and nowhere else)
+
+**Save your architecture critique to**
+`C:\GitHub\Berreman\specs\0024\.artifacts\architecture_critic\003-01-architecture-critic.md`. **Do not write the critique anywhere else.**
+
+Follow the critique structure documented in the architecture critic
+system prompt. Suggestions only; the code judge weighs your input
+against gate results and the other critics' critiques.
+
+(Stub template: full content lands in slice 004-08.)

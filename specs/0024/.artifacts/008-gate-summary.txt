@@ -1,0 +1,20 @@
+008 Part U8 — local gate run summary (final slice of arc 0024)
+
+Run order (first failure short-circuits): build, unit-tests, constructor-unit-tests,
+impl-log-structure, state-of-world-structure, ui-smoke, ui-tests.
+
+build                    : PASS  (dotnet build Berreman.slnx -c Release) — 0 Error(s)
+                                  (inherited-only warnings: MSB3277 WindowsBase/WebView2,
+                                   FS1125 SeriesDataTests — not introduced this slice)
+unit-tests               : PASS  BerremanTests — Passed: 84, Skipped: 5, Total: 89
+constructor-unit-tests   : PASS  OpticalConstructor.Tests — Passed: 204
+impl-log-structure       : PASS  (008-impl-log.md present with required headings)
+state-of-world-structure : PASS  (008-state-of-the-world.md present with required headings)
+ui-smoke                 : PASS  OpticalConstructor.Ui.Tests --filter Category=ui-smoke — Passed: 1
+ui-tests                 : PASS  OpticalConstructor.Ui.Tests --filter Category!=ui-smoke — Passed: 25
+
+Baselines (state-of-the-world gates: YAML):
+  berreman_unit_tests:  84
+  constructor_unit_tests: 204
+  ui_smoke:              1
+  ui_tests:             25   (prior 19 + 6 new U8 tests)

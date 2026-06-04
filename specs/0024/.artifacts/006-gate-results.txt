@@ -1,0 +1,16 @@
+Slice 006 — Results + schematic + workspace (Part U6) — local gate run
+Date: 2026-06-01
+
+build                    PASS  Build succeeded, 0 Error(s) (pre-existing MSB3277/NU1902/NU1701 warnings only)
+unit-tests               PASS  Failed: 0, Passed: 84, Skipped: 5, Total: 89   (BerremanTests)
+constructor-unit-tests   PASS  Failed: 0, Passed: 204, Skipped: 0, Total: 204 (OpticalConstructor.Tests)
+impl-log-structure       PASS  (built-in structural check — required ATX headings present)
+state-of-world-structure PASS  (built-in structural check — required ATX headings present)
+ui-smoke                 PASS  Failed: 0, Passed: 1, Total: 1   (Category=ui-smoke)
+ui-tests                 PASS  Failed: 0, Passed: 15, Total: 15 (Category!=ui-smoke; 13 prior + 2 new)
+
+Baselines emitted in 006-state-of-the-world.md gates: block:
+  berreman_unit_tests: 84
+  constructor_unit_tests: 204
+  ui_smoke: 1
+  ui_tests: 15

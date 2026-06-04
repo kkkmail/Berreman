@@ -61,6 +61,47 @@
         <Compile Include="JobRunner.fs" />
         <Compile Include="Help.fs" />
         <Compile Include="SystemView3D.fs" />
+        <!-- spec 0024 Part U5 (slice 002): the shared renderer-host adapters and the
+             chart panel view, composed before the root surface. ChartHosts is the
+             single hosting seam U3/U4/U6/U8 reuse; ChartView consumes it + the frozen
+             Charts builders above. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="ChartHosts.fs" />
+        <Compile Include="ChartView.fs" />
+        <!-- spec 0024 Part U3 (slice 004): the materials panel view. Reuses the
+             slice-002 ChartHosts WebView2 adapter for the Plotly dispersion preview,
+             the frozen MaterialPreview / MaterialLibrary / StackEditor seams, and the
+             ConstructionPage edit route. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="MaterialsView.fs" />
+        <!-- spec 0024 Part U4 (slice 005): the sources panel view. Reuses the slice-002
+             ChartHosts AvaPlot adapter for the polarization ellipse and the WebView2
+             adapter for the Poincaré sphere, plus the frozen SourceEditorView /
+             PolarizationPicker / PolarizationPlots seams. Public MIT FuncUI DSL only;
+             clone UNREFERENCED. -->
+        <Compile Include="SourceView.fs" />
+        <!-- spec 0024 Part U6 (slice 006): the results panel view (schematic +
+             ray overlay + multi-system comparison). Reuses the slice-002 ChartHosts
+             Canvas adapter for the schematic/ray and the AvaPlot adapter for the
+             comparison overlay, plus the frozen Schematic / Workspace seams. Public
+             MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="ResultsView.fs" />
+        <!-- spec 0024 Part U7 (slice 007): the synthesis/fit page view. Reuses the
+             slice-002 ChartHosts AvaPlot adapter for the fit-vs-measured overlay and
+             the frozen SynthesisFitPage seam (progress / accept-gate / overlay); the
+             background run is wired in Shell.fs (§0.4/§0.5). Public MIT FuncUI DSL
+             only; clone UNREFERENCED. -->
+        <Compile Include="FitView.fs" />
+        <!-- spec 0024 Part U8 (slice 008): the lifecycle toolbar (+ IoMsg) and the
+             2-D-orthographic 3-D system view, composed before the root surface.
+             LifecycleView owns the open/save/new/template/gallery sub-message Shell
+             wraps; SystemView3DView renders the frozen SystemView3D geometry on the
+             slice-002 Canvas host. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
+        <Compile Include="LifecycleView.fs" />
+        <Compile Include="SystemView3DView.fs" />
+        <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
+             root MVU surface, composed LAST over every sibling module above. Authored
+             against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->
+        <Compile Include="ConstructionView.fs" />
+        <Compile Include="Shell.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
@@ -82,6 +123,10 @@
         <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
         <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
+        <!-- spec 0024 §U1.1 / R-1: the Elmish host packages, version-aligned with
+             the pinned FuncUI 1.6.0 / Avalonia 11.3.4. Public MIT NuGet only. -->
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.6.0" />
+        <PackageReference Include="Elmish" Version="4.3.0" />
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.58" />
         <PackageReference Include="Plotly.NET" Version="5.1.0" />
         <PackageReference Include="OpenTK" Version="4.9.4" />

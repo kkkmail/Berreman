@@ -1,0 +1,654 @@
+# Spec 0024 — Wire the Optical Constructor MVU core into a live FuncUI app (root host, panel/page views, background jobs, lifecycle, and a launch/render smoke gate)
+
+This spec turns the tested Avalonia-free MVU core delivered by spec 0022 into a
+running, interactive window. The core (models, `update` reducers, pure
+projections, persistence, chart/source/geometry builders) already exists and is
+unit-tested; the view tier was never authored. The only FuncUI view in the tree
+today is `AppShell.shellView`, which renders placeholder bordered frames
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:98` `panelView`,
+`AppShell.fs:118` `shellView`). The App bootstrap added by slice 017 mounts that
+placeholder statically
+(`Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs:39`
+`this.Content <- Component(fun _ctx -> AppShell.shellView Startup.settings)`).
+
+This is a multi-slice arc. It is ordered U1 → U8; U1 is gating and MUST land
+first. The splitter SHOULD treat each `## Part U…` heading as a slice boundary.
+
+---
+
+## 0. Binding constraints (apply to every part)
+
+- **0.1 — Freeze the tested core.** The implementation MUST NOT edit any
+  model / `update` / projection / persistence module under
+  `OpticalConstructor.Domain`, `OpticalConstructor.Storage`,
+  `OpticalConstructor.Optimization`, or the Avalonia-free logic modules in
+  `OpticalConstructor.Ui` (e.g. `ConstructionPage.fs`, `StackEditor.fs`,
+  `Workspace.fs`, `SynthesisFitPage.fs`, `JobRunner.fs`, `Schematic.fs`,
+  `SystemView3D.fs`, `UserEnvironment.fs`, the `Charts/` and `Sources/`
+  builders). These modules are Avalonia-free by mandate and carry the existing
+  passing suite. New view code MUST live in **new sibling `*View.fs` modules**
+  and the composition root. Adding a `Compile Include` line for a new file to
+  `OpticalConstructor.Ui.fsproj` is permitted and is not an edit to a frozen
+  module.
+
+- **0.2 — Public FuncUI NuGet only; no clone reference.** All view code MUST be
+  authored against the public MIT `Avalonia.FuncUI` 1.6.0 DSL surface already
+  referenced by both projects. The implementation MUST NOT add a
+  `PackageReference` or `ProjectReference` to
+  `C:/GitHub/Avalonia.FuncUI.Clone/`, and MUST NOT depend on any clone-specific
+  API. The clone-swap decision (spec 0022 §A.9 / AC-A8) stays deferred; this arc
+  does not touch it.
+
+- **0.3 — Public-Avalonia layout primitives only for docking.** Panel
+  layout/visibility/dock MUST be rendered with public Avalonia
+  `DockPanel` / `Grid` / `GridSplitter`. The richer drag-to-redock / floating
+  chrome is the deferred clone's responsibility and MUST NOT be invented here.
+
+- **0.4 — UI-thread marshaling for every off-thread dispatch.** Any `dispatch`
+  invoked from a background callback (a `JobRunner` progress or completion
+  callback, a file-IO continuation) MUST be marshaled onto the UI thread via
+  `Avalonia.Threading.Dispatcher.UIThread.Post`. A direct cross-thread
+  `dispatch` is a defect. Every effectful `Cmd` this spec introduces MUST honour
+  this rule.
+
+- **0.5 — Non-serializable handles live outside the model.** The root MVU model
+  MUST remain pure and serializable. `CancellationTokenSource`, live renderer
+  control instances (`AvaPlot`, `WebView2`), and the Avalonia
+  `IStorageProvider` MUST be held in the view/host layer (a component
+  `ctx.useState` or a host field), never as fields of the root model.
+
+- **0.6 — Persistence facts (no new committable file types).** Committable
+  project files are written as `<projectName>.ocproj.json` under the project's
+  working folder by `ConstructionPage.saveProject`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs:229`,
+  path built at `ConstructionPage.fs:225`). Derived `.binz` sidecars are written
+  under a per-project `.sidecars/` subfolder via the single shared seam
+  `Storage.Sidecar.derivedArtefactPath`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs:36`,
+  directory at `Sidecar.fs:30`). `*.binz` and `*.autosave` are already ignored
+  in the repository root `.gitignore` (`.gitignore:336`, `.gitignore:340`) and
+  `.sidecars/` carries no committable state, so this arc introduces **no new
+  committable file type** and triggers no `.gitignore` override work. The
+  per-user environment-settings file is user-local, not committed.
+
+- **0.7 — Gate roster.** This arc adds two new gates,
+  `.gates/OpticalConstructor/ui-smoke.gates` (new) and
+  `.gates/OpticalConstructor/ui-tests.gates` (new), modelled on the existing
+  command-gate format (`.gates/OpticalConstructor/constructor-unit-tests.gates`,
+  `.gates/Berreman/build.gates`). Every slice in this arc MUST end
+  `build`-green, `constructor-unit-tests`-green, `ui-smoke`-green, and (once the
+  UI test project exists) `ui-tests`-green.
+
+---
+
+## Operator-facing UX commitments (whole arc)
+
+This arc introduces top-level operator surfaces, a long-running background job
+(the fit), and destructive operator actions (delete-node, accept-fit). The six
+operator-UX points are committed here once for the shared window; each part
+inherits the relevant commitment.
+
+1. **Discoverability.** Navigation is a desktop in-window switcher, not a web
+   nav bar. The root view MUST render a top-level navigation control listing the
+   two pages — Construction (default landing,
+   `ConstructionPage.navEntry` `isDefaultLanding = true`,
+   `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs:100`)
+   and Synthesis / Fit (`SynthesisFitPage.navEntry`,
+   `Berreman/OpticalConstructor/OpticalConstructor.Ui/SynthesisFitPage.fs:40`) —
+   and MUST mark the active page distinctly (a selected/active visual state).
+   The five default panels are switched on by their fixed ids `stack`,
+   `materials`, `sources`, `chart`, `results` from `UserEnvironment.defaultPanels`
+   (`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:161`).
+
+2. **Progress granularity.** The node re-solve (Part U2) MUST surface
+   **per-node** busy state via `ConstructionPage.isNodeBusy`
+   (`ConstructionPage.fs:261`). The fit (Part U7) MUST surface **per-iteration**
+   progress via `SynthesisFitPage.progressText` (`SynthesisFitPage.fs:207`).
+
+3. **Pre-confirmation gate.** Delete-node and accept-fit are the two flows that
+   mutate user-visible state and therefore use identify → confirm: delete-node
+   routes a node-with-children through the existing confirmation prompt
+   `ConstructionPage.confirmationPrompt` (`ConstructionPage.fs:265`) before
+   removal; accept-fit routes through `SynthesisFitPage.acceptConfirmationPrompt`
+   (`SynthesisFitPage.fs:202`) before replacing the working system. Starting a
+   fit is one-click (non-destructive); it does not require a scope-confirm gate.
+
+4. **Completion → result-surface refresh.** This is a desktop MVU app, not an
+   htmx page; the result surface refreshes through the normal MVU
+   `update → view` cycle when the effect's result message updates the model.
+   Each effectful `Cmd` MUST dispatch its result message (node-solve →
+   `Construction NodeSolved`; fit → `Fit FitCompleted`/`Fit FitFailed`) so the
+   dependent views re-render with **no manual reload**. A manual reload is
+   explicitly NOT acceptable.
+
+5. **Action-button UX.** Opposing actions MUST be laid out same-row with a
+   visible gap and distinct positive-CTA / negative-CTA colours: the fit
+   page's Accept / Revert / Cancel
+   (`SynthesisFitPage.canAccept`/`canRevert`/`canCancel`,
+   `SynthesisFitPage.fs:197`/`:194`/`:191`) and the delete-node Confirm / Cancel.
+   The Start↔Cancel control for a run is a single button with two states
+   (`JobRunner.JobMsg.StartRequested`/`CancelRequested`,
+   `Berreman/OpticalConstructor/OpticalConstructor.Ui/JobRunner.fs:173`). The
+   delete-node action's undo affordance is the existing single-level undo
+   (`ConstructionPage.canUndo`, `ConstructionPage.fs:270`); the cancel-fit
+   action's undo is the existing pre-fit Revert (`SynthesisFitPage.canRevert`).
+
+6. **Committable-state-under-dot-folder.** Covered by §0.6: the only dot-folder
+   this arc renders into is `.sidecars/`, whose contents (`*.binz`) are
+   intentionally ignored; the committable `<projectName>.ocproj.json` is not
+   under a dot folder. No override is required.
+
+The web-app hidden-controls treatment named in the authoring checklist
+(LLM-profile select, web-search-provider select, session token counters, the
+`.specrc.agent` dropdown wired to `spec_writer.set_agent`, `nav.html`) is
+specific to the spec-writer's own web UI and has **no analogue** in this desktop
+optics application. None of those controls exist here, and this arc MUST NOT
+introduce them.
+
+---
+
+## Part U1 — Root MVU host + shell skeleton + ui-smoke gate (CRITICAL — land first)
+
+### U1.0 Problem statement
+
+There is no root MVU loop and no live host: the window mounts a static
+placeholder (`Program.fs:39`). Until a root `init`/`update`/`view` runs over a
+FuncUI host, no panel can be wired and no smoke gate can exist. U1 establishes
+the loop end-to-end with one read-only panel and the smoke gate, so U2–U8 extend
+a proven pattern rather than inventing one. U1 is a prerequisite for every other
+part.
+
+### U1.1 — Add the Elmish host packages
+
+The implementation MUST add `Avalonia.FuncUI.Elmish` and `Elmish`
+`PackageReference` entries to **both** `OpticalConstructor.Ui.fsproj` and
+`OpticalConstructor.App.fsproj`, version-aligned with the pinned
+`Avalonia.FuncUI` 1.6.0 / `Avalonia` 11.3.4 already present. No other package
+may be added in U1.
+
+### U1.2 — Author the root model, message, and dispatcher in a new `Shell.fs`
+
+The implementation MUST add a new module
+`OpticalConstructor.Ui/Shell.fs` (new) holding the root MVU surface. `Shell.fs`
+MUST live in the `OpticalConstructor.Ui` project (not the App project) so the
+headless UI test project can mount it without launching the desktop App. It MUST
+define:
+
+- A `Page` discriminated union with exactly the two cases `Construction` and
+  `SynthesisFit`, matching the two `navEntry` modules.
+- A `RootModel` record aggregating the existing sub-models. The minimal field
+  set required by this arc is: the loaded `UserEnvironment.EnvironmentSettings`
+  (theme + panel layout); the current `Page`; `ConstructionPage.Model`
+  (`ConstructionPage.fs:106`); `Workspace.Model` (`Workspace.fs:32`); an
+  optional `SynthesisFitPage.Model` (`SynthesisFitPage.fs:46`, opened on demand);
+  `ChartSettings.ChartSettings`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/ChartSettings.fs:50`);
+  `Readout.Markers`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Readout.fs:15`); and
+  the `MaterialLibrary`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:47`,
+  seeded from `MaterialLibrary.standard`). The model MUST NOT hold any field
+  forbidden by §0.5.
+- A `RootMsg` discriminated union that wraps each existing sub-`Msg`
+  (`Construction of ConstructionPage.Msg`, `Workspace of Workspace.Msg`,
+  `Fit of SynthesisFitPage.Msg`, `Source of SourceEditorView.SourceMsg`) plus
+  the new shell-level cases this arc adds incrementally (`Shell` for
+  navigation/theme/panel-show/dock, `Chart` for chart-settings/cursor edits,
+  `Io` for open/save/new/template/gallery). A part MUST add only the `RootMsg`
+  cases it wires; U1 MUST add at minimum the `Construction`, `Workspace`, and
+  `Shell` cases.
+- A root `init : RootModel * Cmd<RootMsg>` and a root
+  `update : RootMsg -> RootModel -> RootModel * Cmd<RootMsg>`. `update` MUST be a
+  dispatcher: each case calls the matching existing sub-`update`
+  (e.g. `ConstructionPage.update` `ConstructionPage.fs:173`, `Workspace.update`
+  `Workspace.fs:52`, `SynthesisFitPage.update` `SynthesisFitPage.fs:107`,
+  `SourceEditorView.update` `SourceEditorView.fs:59`) and re-wraps the result,
+  attaching a `Cmd` only for the effectful transitions enumerated in Part U2 /
+  U7 / U8. U1's `update` attaches `Cmd.none` to every case (no effects yet).
+
+### U1.3 — Mount the Elmish program from `MainWindow`
+
+The implementation MUST replace the static mount at `Program.fs:39` with an
+`Avalonia.FuncUI.Elmish` program:
+`Program.mkProgram Shell.init Shell.update Shell.view |> Program.withHost <hostControl> |> Program.run`,
+mounted from the existing `MainWindow` (`Program.fs:33`). `Shell.init` MUST seed
+`RootModel.env` from the already-loaded `Startup.settings` (`Program.fs:29`,
+`UserEnvironment.load`) so the persisted theme/layout still drive the first
+frame. The theme→Avalonia seam in `Initialize` (`Program.fs:48`,
+`AppShell.themeVariant`) MUST be left in place.
+
+### U1.4 — Rewrite the shell view to switch on panel id and render real panels
+
+`AppShell.shellView`/`panelView` (`AppShell.fs:118`/`:98`) MUST be rewritten (or
+superseded by a `Shell.view` that calls into a panel-dispatching helper) to take
+the `RootModel` and the `dispatch : RootMsg -> unit`, switch on the panel id
+string, and render the corresponding panel view. The visible/ordered panel set
+MUST keep coming from the existing pure reducers `AppShell.visiblePanels`
+(`AppShell.fs:75`), `setPanelVisible` (`AppShell.fs:60`), and `dockPanel`
+(`AppShell.fs:68`); dock edges keep mapping through the existing `toDock`
+(`AppShell.fs:86`). For U1 only the `stack` panel renders real content; the
+other four ids render a titled placeholder until their part lands.
+
+### U1.5 — Render the stack panel read-only to prove the loop
+
+The `stack` panel view MUST render the selected node's layer rows from the
+existing presentation helper `StackEditor.layerRowLabels`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/StackEditor.fs:217`), with
+thickness strings from `StackEditor.displayThickness` (`StackEditor.fs:210`),
+fed from `RootModel.construction`. U1 wires no edit dispatch; it proves the
+read path end-to-end.
+
+### U1.6 — Add the `ui-smoke` gate
+
+The implementation MUST add `.gates/OpticalConstructor/ui-smoke.gates` (new), a
+command gate that launches the app on the **Avalonia headless platform**
+(`Avalonia.Headless`) and asserts the smoke test in U1.7 passes. It MUST follow
+the existing gate schema (`name`, `description`, `kind: command`, `command`,
+`pass_when.exit_code: 0`, `runtime_estimate_seconds`, `tags`, `applies_to`,
+`qualifier`). The `command` MUST run the headless smoke test in the new UI test
+project (U1.7) filtered to the smoke trait, e.g.
+`dotnet test <UI.Tests.fsproj> -c Release --filter Category=ui-smoke`.
+
+### U1.7 — Create the headless UI test project and the smoke test
+
+The implementation MUST add a new test project
+`OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj`
+(new), referencing `OpticalConstructor.Ui` and using `Avalonia.Headless` +
+`Avalonia.Headless.XUnit` (xUnit, matching the existing
+`OpticalConstructor.Tests` framework `xunit.v3`). The headless Avalonia
+dependency MUST stay out of the pure `OpticalConstructor.Tests` project so
+`constructor-unit-tests` stays Avalonia-free. The new project MUST be registered
+in `Berreman/Berreman.slnx` (edit). The **smoke test** (trait `Category=ui-smoke`)
+MUST: start the app/host on the headless platform, assert the window opens and
+`OnFrameworkInitializationCompleted` ran (`Program.fs:50`), assert each
+panel/page view **instantiates and renders one frame without throwing**, then
+shut the host down.
+
+### U1.8 — Native-host adapters MUST degrade gracefully under headless
+
+Because the headless platform (and a machine without the WebView2 Evergreen
+runtime) cannot host `WebView2` or an OpenTK GL surface, every native-host
+adapter (Part U3/U4/U5/U8) MUST render a placeholder "unavailable" surface
+rather than throw when its runtime is absent, so the `ui-smoke` gate renders a
+frame for every panel headlessly. This is a hard requirement of the smoke gate,
+not a stretch goal.
+
+---
+
+## Part U2 — Stack editing + async node-solve
+
+### U2.0 Problem statement
+
+U1 renders the stack read-only. U2 makes it editable and wires the only
+compute-bearing interactive effect in the construction page: editing a node's
+stack marks the affected sub-tree busy and MUST re-solve it off the UI thread,
+then refresh dependent views from the new results.
+
+### U2.1 — Wire stack edits through `ConstructionPage.EditStack`
+
+The `stack` panel view MUST dispatch every `StackEditor.StackMsg`
+(`StackEditor.fs:161`: add/delete/duplicate/reorder/group/rotate a layer, set
+incident/exit medium, set substrate, set layer material) as
+`Construction (EditStack (path, stackMsg))`, routed through the existing
+`ConstructionPage.update` (`ConstructionPage.fs:173`). The view MUST NOT
+re-implement any stack mutation.
+
+### U2.2 — Supply the async node-solve `Cmd`
+
+When the pure `ConstructionPage.update` marks a node busy (an `EditStack` /
+`AttachChild` / `ConfirmDeleteNode` transition), the root `update` MUST attach a
+`Cmd` that runs `ConstructionPage.solveSubtree path root`
+(`ConstructionPage.fs:84`) off the UI thread and dispatches the result back as
+`Construction (NodeSolved map)` (`ConstructionPage.Msg.NodeSolved`,
+`ConstructionPage.fs:135`). The completion dispatch MUST be marshaled per §0.4.
+The busy indicator MUST be driven by `ConstructionPage.isNodeBusy`
+(`ConstructionPage.fs:261`) at per-node granularity.
+
+### U2.3 — Delete-confirmation gate and undo UI
+
+The view MUST surface the pre-confirmation gate for a pending sub-tree deletion
+using `ConstructionPage.confirmationPrompt` (`ConstructionPage.fs:265`),
+dispatching `Construction ConfirmDeleteNode` / `Construction CancelDeleteNode`
+with the same-row positive/negative CTA layout from UX commitment 5, and MUST
+surface single-level undo gated by `ConstructionPage.canUndo`
+(`ConstructionPage.fs:270`) dispatching `Construction Undo`.
+
+---
+
+## Part U3 — Materials panel
+
+### U3.0 Problem statement
+
+The materials panel browses the material library, previews a material's
+dispersion, and lets the operator assign a material to a layer by drag-drop. All
+data and plot builders exist; U3 renders and wires them.
+
+### U3.1 — Browse the library
+
+The `materials` panel view MUST list `MaterialLibrary` entries
+(`MaterialLibrary.fs:47`, seeded from `MaterialLibrary.standard`) with filtering
+via the existing `MaterialLibrary.byCategory` (`MaterialLibrary.fs:53`) and
+`byNameContains` (`MaterialLibrary.fs:57`). It MUST NOT build a new search index.
+
+### U3.2 — Dispersion preview hosted in WebView2 (Plotly), not ScottPlot
+
+The dispersion preview MUST render the charts returned by `MaterialPreview.show*`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialPreview.fs:57`
+onward). These functions return **`Plotly.NET.GenericChart`** (they delegate to
+`Analytics.Charting.plotN11`/… whose `plotDispersion` ends in `Chart.Line`,
+`Berreman/Analytics/Charting.fs:85`), so they MUST be hosted in the WebView2
+adapter (Part U5 / U1.8), **not** an `AvaPlot`. (This corrects the 018 plan,
+which listed materials previews as ScottPlot.)
+
+### U3.3 — Drag-drop material onto a layer
+
+Dropping a material onto a layer row MUST build the edit via the existing
+`StackEditor.layerMaterialDrop` (`StackEditor.fs:195`), which resolves the
+dragged material id to `OpticalProperties` and returns a `StackMsg`; the view
+MUST dispatch the resulting `Construction (EditStack …)` and MUST NOT resolve the
+material itself (the single resolution seam is `MaterialLibrary.resolveMaterial`,
+`MaterialLibrary.fs:69`, which `layerMaterialDrop` already calls).
+
+---
+
+## Part U4 — Sources panel
+
+### U4.0 Problem statement
+
+The sources panel edits the light source and its polarization, with a live
+Stokes / Poincaré / ellipse readout. The editor reducer, presets, and live
+projections exist.
+
+### U4.1 — Source editor fields
+
+The `sources` panel view MUST render fields that dispatch
+`SourceEditorView.SourceMsg` (`Sources/SourceEditorView.fs:45`:
+`SetWaveLength`/`SetIncidenceAngleDegrees`/`SetPolarization`/`SetEllipticity`/
+`SetIntensity`/`SetDisplayUnit`) as `Source …`, routed through
+`SourceEditorView.update` (`SourceEditorView.fs:59`), seeded from
+`SourceEditorView.defaultSource` (`SourceEditorView.fs:107`) for a new source.
+
+### U4.2 — Polarization presets and live readout
+
+The view MUST offer the polarization presets via `PolarizationPicker.applyPreset`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Sources/PolarizationPicker.fs:46`)
+and render the live readout from `PolarizationPicker.liveStokes`
+(`PolarizationPicker.fs:82`), `poincareMarker` (`PolarizationPicker.fs:98`), and
+`ellipseParameters` (`PolarizationPicker.fs:109`). The polarization ellipse
+(`PolarizationPlots.renderEllipse`, `Charts/PolarizationPlots.fs:39`, returns
+`ScottPlot.Plot`) MUST be hosted in an `AvaPlot`; the Poincaré sphere
+(`PolarizationPlots.poincareSphere`, `Charts/PolarizationPlots.fs:57`, returns
+`Plotly.NET.GenericChart`) MUST be hosted in the WebView2 adapter.
+
+---
+
+## Part U5 — Chart panel + renderer-host adapters
+
+### U5.0 Problem statement
+
+The chart panel is the primary results surface: 1-D sweeps/overlays/dispersion
+as ScottPlot, 3-D surfaces as Plotly, with chart-settings controls and on-plot
+cursor readouts. This part also delivers the shared renderer-host adapters every
+other panel reuses.
+
+### U5.1 — Renderer-host adapters (the reusable seam)
+
+The implementation MUST add a new module
+`OpticalConstructor.Ui/ChartHosts.fs` (new) with three small adapter views,
+authored against the public FuncUI DSL: (a) an `AvaPlot` host for a
+`ScottPlot.Plot`, (b) a `WebView2` host for a `Plotly.NET.GenericChart`
+(`GenericChart.toEmbeddedHTML` → `NavigateToString`; Windows-only is acceptable —
+the app targets win-x64), and (c) a `Canvas` host for 2-D geometry (used by
+U6/U8). Each adapter MUST host its control via `ContentControl.create`
+(or `View.createWithOutlet` to retain a handle for `Refresh()`), and MUST honour
+§0.5 (the control instance lives in the host layer) and §U1.8 (graceful
+"unavailable" placeholder when the runtime is absent). U3/U4/U6/U8 MUST reuse
+these adapters rather than embed their own hosting.
+
+### U5.2 — 1-D charts
+
+The `chart` panel view MUST render `Plot1DView.renderSweep`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/Plot1DView.fs:55`),
+`renderComparison` (`Plot1DView.fs:62`), `renderFieldDepth` (`Plot1DView.fs:68`),
+and `renderDispersion` (`Plot1DView.fs:74`) — all return `ScottPlot.Plot` — in
+the U5.1 `AvaPlot` host, calling `Refresh()` on model change.
+
+### U5.3 — Chart settings and cursor readouts
+
+Chart-settings controls MUST edit `ChartSettings.ChartSettings`
+(`Charts/ChartSettings.fs:50`) and dispatch `Chart …`; the applied settings MUST
+reach the plot through the existing `ChartSettings.applyToScottPlot`
+(`Charts/ChartSettings.fs:138`) / `applyToPlotly` (`Charts/ChartSettings.fs:179`)
+seams (the chart builders already call these — the view MUST NOT re-apply axis
+styling itself). On-plot cursors MUST edit `Readout.Markers`
+(`Charts/Readout.fs:15`) held in the model and dispatch `Chart …`.
+
+### U5.4 — 3-D surface chart
+
+The 3-D surface (`Plot3DView.render`, `Charts/Plot3DView.fs:29`, returns
+`Plotly.NET.GenericChart`) MUST be hosted in the U5.1 WebView2 adapter.
+
+---
+
+## Part U6 — Results + schematic + workspace
+
+### U6.0 Problem statement
+
+The results panel shows the schematic cross-section and supports multi-system
+comparison. The layout geometry and overlay builders exist; U6 renders them on a
+Canvas and wires the workspace visibility/active selection.
+
+### U6.1 — Schematic on a Canvas
+
+The `results` panel view MUST render the band layout from `Schematic.layout`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:198`) and the
+ray overlay from `Schematic.rayGeometry` (`Schematic.fs:165`) using the U5.1
+Canvas host. It MUST NOT recompute geometry.
+
+### U6.2 — Workspace multi-system comparison
+
+The view MUST wire `Workspace.Msg` (`Workspace.fs:41`:
+`ToggleVisible`/`SetActive`) through `Workspace.update` (`Workspace.fs:52`),
+dispatched as `Workspace …`, and render the multi-system overlay from
+`Workspace.renderOverlay` (`Workspace.fs:107`, returns `ScottPlot.Plot`) in the
+U5.1 `AvaPlot` host.
+
+---
+
+## Part U7 — Synthesis / Fit page + background jobs
+
+### U7.0 Problem statement
+
+The fit page runs a long-duration optimization that MUST NOT freeze the UI, MUST
+report per-iteration progress, MUST be cancellable, and MUST gate accept of a
+result. This is the threading-sensitive part. The page model, helpers, and the
+background-dispatch primitive exist.
+
+### U7.1 — Open the page on demand and render it
+
+Navigating to `SynthesisFit` MUST open a `SynthesisFitPage.Model`
+(`SynthesisFitPage.fs:46`) into the root model's `fit` field and render a new
+`OpticalConstructor.Ui/FitView.fs` (new) wired to `SynthesisFitPage.Msg`
+(`SynthesisFitPage.fs:79`) via `SynthesisFitPage.update` (`SynthesisFitPage.fs:107`),
+dispatched as `Fit …`.
+
+### U7.2 — Background run with marshaled progress and completion
+
+`Fit StartFit` (which the pure update flips to `running`) MUST attach a `Cmd`
+that: creates a `CancellationTokenSource` held in the host layer (§0.5); builds a
+run thunk over the optimization run loop whose `onProgress` callback dispatches
+`Fit (ReportProgress …)` marshaled per §0.4; and hands the thunk to
+`JobRunner.startBackground` (`JobRunner.fs:127`) with an `onDone` that dispatches
+`Fit (FitCompleted …)` on success or `Fit (FitFailed …)` on error, also
+marshaled per §0.4. (The progress callback is threaded through the run loop, not
+through `startBackground`, whose signature is `run`/`onDone` only —
+`JobRunner.fs:127`–134.) The root model MUST NOT hold a second copy of
+run/progress state; `SynthesisFitPage.Model.running`/`progress` is the single
+source of truth.
+
+### U7.3 — Cancel and progress UI
+
+`Fit CancelFit` MUST call `cts.Cancel()` on the host-held token (cooperative
+cancellation resolves to `Fit (FitFailed "cancelled")`). The view MUST render
+per-iteration progress from `SynthesisFitPage.progressText`
+(`SynthesisFitPage.fs:207`) and a single Start↔Cancel control.
+
+### U7.4 — Accept / Revert with the confirmation gate
+
+The view MUST render Accept / Revert / Cancel same-row (UX commitment 5), gated
+by `SynthesisFitPage.canAccept`/`canRevert`/`canCancel`
+(`SynthesisFitPage.fs:197`/`:194`/`:191`). Accept MUST route through the
+confirmation prompt `SynthesisFitPage.acceptConfirmationPrompt`
+(`SynthesisFitPage.fs:202`) before dispatching `Fit ConfirmAccept`. The
+fit-vs-measured overlay MUST render from `SynthesisFitPage.comparisonOverlay`
+(`SynthesisFitPage.fs:225`) in the U5.1 `AvaPlot` host.
+
+---
+
+## Part U8 — Lifecycle (open/save/new/templates/gallery) + environment persistence + 3-D view
+
+### U8.0 Problem statement
+
+U8 makes the app a usable tool: project open/save/new, the template wizard and
+onboarding gallery, live environment persistence, and a first 3-D system view.
+All IO/persistence/geometry seams exist; U8 supplies the dialogs and the host.
+
+### U8.1 — Open / Save / New
+
+Open/Save/New MUST use the Avalonia `TopLevel.StorageProvider` file pickers
+(STAThread is already set, `Program.fs:58`), held in the host layer (§0.5),
+dispatched as `Io …`. Save MUST use `ConstructionPage.saveProject`
+(`ConstructionPage.fs:229`, writes `<name>.ocproj.json`); open MUST parse through
+the existing schema-validated Storage path. The `Cmd` continuations MUST
+dispatch `Io (Loaded …)` / `Io (Saved …)` / an error surface, marshaled per §0.4.
+
+### U8.2 — Templates and gallery
+
+The template wizard MUST list `Templates.all`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Templates.fs:144`) and load a
+choice via `Templates.loadTemplate` (`Templates.fs:164`). The onboarding gallery
+MUST list `Help.gallery`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Help.fs:166`) and open a
+choice via `Help.openEntry` (`Help.fs:180`). Both go through the existing
+schema-validated factories; the view MUST NOT invent a private deserialize.
+
+### U8.3 — Environment persistence round-trip
+
+Theme toggle, panel show/hide, and panel dock changes MUST update the root
+model's `env` through the existing pure reducers (`AppShell.toggleTheme`
+`AppShell.fs:42`, `AppShell.setPanelVisible` `AppShell.fs:60`, `AppShell.dockPanel`
+`AppShell.fs:68`) and MUST attach a fire-and-forget persist `Cmd` calling
+`UserEnvironment.save`, so the theme/layout round-trip is exercised live.
+
+### U8.4 — 3-D system view (2-D Canvas projection first)
+
+The 3-D view MUST render the geometry from `SystemView3D.placeElements`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs:96`) and
+`beamSegments` (`SystemView3D.fs:149`). The implementation MUST deliver a 2-D
+orthographic projection on the U5.1 Canvas host first; a real OpenTK GL viewport
+is an OPTIONAL follow-up and MUST NOT block U8. This keeps U8 within the
+headless smoke gate (a GL surface cannot render headlessly).
+
+---
+
+## Acceptance criteria
+
+### Part U1 acceptance
+- AC-U1.1: After launching the app, the main window MUST open and render the
+  Construction page as the default landing within one frame, with the navigation
+  control showing Construction active.
+- AC-U1.2: After launch, the `stack` panel MUST display the selected node's
+  layer rows (text from `StackEditor.layerRowLabels`) without throwing.
+- AC-U1.3: Running the `ui-smoke` gate MUST exit 0: the headless host opens,
+  `OnFrameworkInitializationCompleted` runs, and every panel/page view renders
+  one frame without throwing.
+- AC-U1.4: After `dotnet build Berreman.slnx -c Release`, the build MUST succeed
+  with the two new package refs resolved and `OpticalConstructor.Ui.Tests`
+  present in the solution.
+
+### Part U2 acceptance
+- AC-U2.1: After an operator stack edit on a node, that node MUST show busy
+  (`isNodeBusy = true`) while the sub-tree re-solves off the UI thread, and the
+  dependent views MUST refresh from `NodeSolved` results with no manual reload.
+- AC-U2.2: After requesting deletion of a node with children, the confirmation
+  prompt (`confirmationPrompt`) MUST appear with Confirm/Cancel same-row, and
+  Confirm MUST remove the sub-tree; an undo MUST be available afterwards
+  (`canUndo = true`).
+
+### Part U3 acceptance
+- AC-U3.1: After selecting a material, its dispersion preview MUST render in the
+  WebView2 host (or a graceful "unavailable" placeholder when WebView2 is
+  absent), never an `AvaPlot`.
+- AC-U3.2: After dropping a material onto a layer row, the layer's material MUST
+  change via a `Construction (EditStack …)` built by `layerMaterialDrop`, with
+  thickness unchanged.
+
+### Part U4 acceptance
+- AC-U4.1: After editing a source field, the source model MUST update via
+  `SourceEditorView.update` and the live Stokes/ellipse readout MUST refresh.
+- AC-U4.2: After choosing a polarization preset, the ellipse (`AvaPlot`) and
+  Poincaré (`WebView2`) views MUST refresh from `liveStokes`/`poincareMarker`.
+
+### Part U5 acceptance
+- AC-U5.1: After a sweep, the `chart` panel MUST render the `Plot1DView` result
+  in an `AvaPlot` and `Refresh()` on subsequent model changes.
+- AC-U5.2: After editing chart settings, the applied axis/scale/legend changes
+  MUST reach the plot via `applyToScottPlot`/`applyToPlotly` (not a re-applied
+  copy), and cursor placement MUST update `Readout.Markers`.
+
+### Part U6 acceptance
+- AC-U6.1: After opening a project, the `results` panel MUST render the
+  schematic bands (`Schematic.layout`) and ray overlay (`rayGeometry`) on a
+  Canvas.
+- AC-U6.2: After toggling a system's visibility, the comparison overlay
+  (`Workspace.renderOverlay`) MUST refresh in the `AvaPlot` host.
+
+### Part U7 acceptance
+- AC-U7.1: After Start Fit, the UI MUST stay responsive (the run is off-thread),
+  per-iteration progress (`progressText`) MUST update via UI-thread-marshaled
+  `ReportProgress`, and completion MUST refresh the result charts via
+  `FitCompleted` with no manual reload.
+- AC-U7.2: After Cancel during a run, the run MUST stop cooperatively and the
+  prior committed results MUST remain (Revert available).
+- AC-U7.3: After Accept, the working system MUST be replaced only after the
+  `acceptConfirmationPrompt` gate is confirmed; Accept/Revert/Cancel render
+  same-row with distinct CTA colours.
+
+### Part U8 acceptance
+- AC-U8.1: After Save, a `<name>.ocproj.json` MUST be written under the working
+  folder; after Open of that file, the project MUST round-trip through the
+  schema-validated path.
+- AC-U8.2: After choosing a template or gallery entry, the project MUST load via
+  `Templates.loadTemplate` / `Help.openEntry`.
+- AC-U8.3: After toggling theme or changing a panel's visibility/dock, the change
+  MUST persist via `UserEnvironment.save` and survive an app restart.
+- AC-U8.4: After opening a multi-element system, the 3-D view MUST render a 2-D
+  orthographic projection of `placeElements`/`beamSegments` on the Canvas host
+  without requiring GL.
+
+## Files in scope
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (new) — root MVU model/msg/init/update dispatcher and root view.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ChartHosts.fs` (new) — AvaPlot / WebView2 / Canvas renderer-host adapters.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionView.fs` (new) — stack panel view (read + edit).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/MaterialsView.fs` (new) — materials panel view.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/SourceView.fs` (new) — sources panel view.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ChartView.fs` (new) — chart panel view.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ResultsView.fs` (new) — results/schematic/workspace view.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/FitView.fs` (new) — synthesis/fit page view.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs` (edit) — `shellView`/`panelView` rewritten to take `RootModel` + `dispatch` and switch on panel id (or superseded by `Shell.view`).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (edit) — add `Avalonia.FuncUI.Elmish` + `Elmish`; register the new `.fs` files.
+- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (edit) — replace the static `Component` mount with the Elmish `Program.mkProgram … |> Program.withHost |> Program.run`.
+- `Berreman/OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj` (edit) — add `Avalonia.FuncUI.Elmish` + `Elmish`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj` (new) — headless UI test project (`Avalonia.Headless` + `Avalonia.Headless.XUnit`).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/*.fs` (new) — the smoke test and per-panel headless view tests.
+- `Berreman/Berreman.slnx` (edit) — register `OpticalConstructor.Ui.Tests`.
+- `.gates/OpticalConstructor/ui-smoke.gates` (new) — headless launch/render smoke gate.
+- `.gates/OpticalConstructor/ui-tests.gates` (new) — headless per-panel view-test gate.
+
+## Test artifacts
+- **`ui-smoke` test** (`OpticalConstructor.Ui.Tests`, trait `Category=ui-smoke`): headless launch → assert window opens, `OnFrameworkInitializationCompleted` ran, every panel/page view renders one frame → shut down.
+- **Per-panel headless view tests** (`Avalonia.Headless.XUnit`): one per panel/page — mount the view over a known `RootModel`, assert key controls exist, and assert a simulated interaction dispatches the expected `RootMsg`; model assertions reuse the existing `OpticalConstructor.Tests` helpers.
+- **`.gates/OpticalConstructor/ui-smoke.gates`** and **`.gates/OpticalConstructor/ui-tests.gates`**: the two new command gates (see §0.7), modelled on `.gates/OpticalConstructor/constructor-unit-tests.gates`.
+
+## References
+- Operator-plan source: `specs/0022/.manual/018-ui-wiring-plan.md` (this spec supersedes the plan; where the plan and the verified codebase disagree — materials previews are Plotly/WebView2 not ScottPlot; project files are `.ocproj.json`; `startBackground` takes `run`/`onDone` only — the codebase wins).

@@ -1,0 +1,18 @@
+name: ui-tests
+description: Headless per-panel view-test gate for the Optical Constructor FuncUI app — runs the Avalonia.Headless.XUnit per-panel/page view tests (mount each view over a known RootModel, assert key controls exist and a simulated interaction dispatches the expected RootMsg) in OpticalConstructor.Ui.Tests (spec 0024 §0.7 / Test artifacts)
+kind: command
+command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj -c Release --filter Category!=ui-smoke
+pass_when:
+  exit_code: 0
+runtime_estimate_seconds: 600
+tags:
+- test
+- ui
+applies_to:
+- paths:
+  - 'Berreman/OpticalConstructor/OpticalConstructor.Ui/**'
+  - 'Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**'
+  - 'Berreman/OpticalConstructor/OpticalConstructor.App/**'
+qualifier: unit
+filter: none
+descriptor_version: 1

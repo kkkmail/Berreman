@@ -1,0 +1,214 @@
+# 008 -- Lifecycle (open/save/new/templates/gallery) + environment persistence + 3-D view
+
+> **Ordering note.** This slice carries Part **U8** of the parent spec — the
+> final slice of the arc. It is sequenced after slice 002 (Part U5) because U8.4
+> renders the 2-D orthographic 3-D view on the Canvas host delivered by U5.1
+> (`ChartHosts.fs`). As the last slice it carries the full bundle gate set.
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0024\.spec-md` -- parent spec this slice belongs to (Part U8).
+- Ancestor: spec 0022 (tested Avalonia-free MVU core; clone-swap deferred, §A.9 / AC-A8).
+- Operator-plan source: `specs/0022/.manual/018-ui-wiring-plan.md` (superseded; codebase wins — note project files are `.ocproj.json`).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+These apply to every part of this arc, including this slice.
+
+- **0.1 — Freeze the tested core.** The implementation MUST NOT edit any
+  model / `update` / projection / persistence module under
+  `OpticalConstructor.Domain`, `OpticalConstructor.Storage`,
+  `OpticalConstructor.Optimization`, or the Avalonia-free logic modules in
+  `OpticalConstructor.Ui` (e.g. `ConstructionPage.fs`, `StackEditor.fs`,
+  `Workspace.fs`, `SynthesisFitPage.fs`, `JobRunner.fs`, `Schematic.fs`,
+  `SystemView3D.fs`, `UserEnvironment.fs`, the `Charts/` and `Sources/`
+  builders). These modules are Avalonia-free by mandate and carry the existing
+  passing suite. New view code MUST live in **new sibling `*View.fs` modules**
+  and the composition root. Adding a `Compile Include` line for a new file to
+  `OpticalConstructor.Ui.fsproj` is permitted and is not an edit to a frozen
+  module.
+
+- **0.2 — Public FuncUI NuGet only; no clone reference.** All view code MUST be
+  authored against the public MIT `Avalonia.FuncUI` 1.6.0 DSL surface already
+  referenced by both projects. The implementation MUST NOT add a
+  `PackageReference` or `ProjectReference` to
+  `C:/GitHub/Avalonia.FuncUI.Clone/`, and MUST NOT depend on any clone-specific
+  API. The clone-swap decision (spec 0022 §A.9 / AC-A8) stays deferred; this arc
+  does not touch it.
+
+- **0.3 — Public-Avalonia layout primitives only for docking.** Panel
+  layout/visibility/dock MUST be rendered with public Avalonia
+  `DockPanel` / `Grid` / `GridSplitter`. The richer drag-to-redock / floating
+  chrome is the deferred clone's responsibility and MUST NOT be invented here.
+
+- **0.4 — UI-thread marshaling for every off-thread dispatch.** Any `dispatch`
+  invoked from a background callback (a `JobRunner` progress or completion
+  callback, a file-IO continuation) MUST be marshaled onto the UI thread via
+  `Avalonia.Threading.Dispatcher.UIThread.Post`. A direct cross-thread
+  `dispatch` is a defect. Every effectful `Cmd` this spec introduces MUST honour
+  this rule.
+
+- **0.5 — Non-serializable handles live outside the model.** The root MVU model
+  MUST remain pure and serializable. `CancellationTokenSource`, live renderer
+  control instances (`AvaPlot`, `WebView2`), and the Avalonia
+  `IStorageProvider` MUST be held in the view/host layer (a component
+  `ctx.useState` or a host field), never as fields of the root model.
+
+- **0.6 — Persistence facts (no new committable file types).** Committable
+  project files are written as `<projectName>.ocproj.json` under the project's
+  working folder by `ConstructionPage.saveProject`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs:229`,
+  path built at `ConstructionPage.fs:225`). Derived `.binz` sidecars are written
+  under a per-project `.sidecars/` subfolder via the single shared seam
+  `Storage.Sidecar.derivedArtefactPath`
+  (`Berreman/OpticalConstructor/OpticalConstructor.Storage/Sidecar.fs:36`,
+  directory at `Sidecar.fs:30`). `*.binz` and `*.autosave` are already ignored
+  in the repository root `.gitignore` (`.gitignore:336`, `.gitignore:340`) and
+  `.sidecars/` carries no committable state, so this arc introduces **no new
+  committable file type** and triggers no `.gitignore` override work. The
+  per-user environment-settings file is user-local, not committed.
+
+- **0.7 — Gate roster.** This arc adds two new gates,
+  `.gates/OpticalConstructor/ui-smoke.gates` (new) and
+  `.gates/OpticalConstructor/ui-tests.gates` (new), modelled on the existing
+  command-gate format (`.gates/OpticalConstructor/constructor-unit-tests.gates`,
+  `.gates/Berreman/build.gates`). Every slice in this arc MUST end
+  `build`-green, `constructor-unit-tests`-green, `ui-smoke`-green, and (once the
+  UI test project exists) `ui-tests`-green.
+
+### Operator-facing UX commitments inherited by this slice
+
+- **Commitment 6 (committable-state-under-dot-folder).** Covered by §0.6: the only
+  dot-folder this arc renders into is `.sidecars/`, whose `*.binz` contents are
+  intentionally ignored; the committable `<projectName>.ocproj.json` is not under
+  a dot folder. No override is required.
+
+### Acceptance criteria owned by this slice
+
+- **AC-U8.1:** After Save, a `<name>.ocproj.json` MUST be written under the working
+  folder; after Open of that file, the project MUST round-trip through the
+  schema-validated path.
+- **AC-U8.2:** After choosing a template or gallery entry, the project MUST load via
+  `Templates.loadTemplate` / `Help.openEntry`.
+- **AC-U8.3:** After toggling theme or changing a panel's visibility/dock, the change
+  MUST persist via `UserEnvironment.save` and survive an app restart.
+- **AC-U8.4:** After opening a multi-element system, the 3-D view MUST render a 2-D
+  orthographic projection of `placeElements`/`beamSegments` on the Canvas host
+  without requiring GL.
+
+### Files in scope owned by this slice
+
+- (No new `*View.fs` module is uniquely owned by U8; the lifecycle dialogs, environment-persistence wiring, and the 2-D-orthographic 3-D view are wired into the shell / results surface using the existing seams and the slice-002 Canvas host. See "Files modified (planned)".)
+
+### File:line references owned by this slice
+
+- `TopLevel.StorageProvider` file pickers; STAThread set at `Program.fs:58`; `ConstructionPage.saveProject` (`ConstructionPage.fs:229`, writes `<name>.ocproj.json`).
+- `Templates.all` (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Templates.fs:144`); `Templates.loadTemplate` (`Templates.fs:164`); `Help.gallery` (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Help.fs:166`); `Help.openEntry` (`Help.fs:180`).
+- `AppShell.toggleTheme` (`AppShell.fs:42`); `AppShell.setPanelVisible` (`AppShell.fs:60`); `AppShell.dockPanel` (`AppShell.fs:68`); `UserEnvironment.save`.
+- `SystemView3D.placeElements` (`Berreman/OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs:96`); `SystemView3D.beamSegments` (`SystemView3D.fs:149`).
+
+## Scope
+
+This slice makes the app a usable tool: project open/save/new, the template
+wizard and onboarding gallery, live environment persistence, and a first 3-D
+system view. All IO/persistence/geometry seams exist; this slice supplies the
+dialogs (Avalonia `TopLevel.StorageProvider`, held in the host layer per §0.5),
+wires environment persistence through the existing pure reducers, and renders a
+2-D orthographic projection of the system geometry on the slice-002 Canvas host
+(a real OpenTK GL viewport is an OPTIONAL follow-up that MUST NOT block U8).
+
+## Requirements
+
+### R-1. U8.1 — Open / Save / New
+
+Open/Save/New MUST use the Avalonia `TopLevel.StorageProvider` file pickers
+(STAThread is already set, `Program.fs:58`), held in the host layer (§0.5),
+dispatched as `Io …`. Save MUST use `ConstructionPage.saveProject`
+(`ConstructionPage.fs:229`, writes `<name>.ocproj.json`); open MUST parse through
+the existing schema-validated Storage path. The `Cmd` continuations MUST
+dispatch `Io (Loaded …)` / `Io (Saved …)` / an error surface, marshaled per §0.4.
+
+### R-2. U8.2 — Templates and gallery
+
+The template wizard MUST list `Templates.all`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Templates.fs:144`) and load a
+choice via `Templates.loadTemplate` (`Templates.fs:164`). The onboarding gallery
+MUST list `Help.gallery`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Help.fs:166`) and open a
+choice via `Help.openEntry` (`Help.fs:180`). Both go through the existing
+schema-validated factories; the view MUST NOT invent a private deserialize.
+
+### R-3. U8.3 — Environment persistence round-trip
+
+Theme toggle, panel show/hide, and panel dock changes MUST update the root
+model's `env` through the existing pure reducers (`AppShell.toggleTheme`
+`AppShell.fs:42`, `AppShell.setPanelVisible` `AppShell.fs:60`, `AppShell.dockPanel`
+`AppShell.fs:68`) and MUST attach a fire-and-forget persist `Cmd` calling
+`UserEnvironment.save`, so the theme/layout round-trip is exercised live.
+
+### R-4. U8.4 — 3-D system view (2-D Canvas projection first)
+
+The 3-D view MUST render the geometry from `SystemView3D.placeElements`
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/SystemView3D.fs:96`) and
+`beamSegments` (`SystemView3D.fs:149`). The implementation MUST deliver a 2-D
+orthographic projection on the U5.1 Canvas host first; a real OpenTK GL viewport
+is an OPTIONAL follow-up and MUST NOT block U8. This keeps U8 within the
+headless smoke gate (a GL surface cannot render headlessly).
+
+## Non-requirements
+
+- Does NOT introduce a real OpenTK GL viewport (OPTIONAL follow-up; MUST NOT block U8).
+- Does NOT invent a private deserialize; templates/gallery go through the existing
+  schema-validated factories.
+- Does NOT introduce any new committable file type (§0.6); Save writes the
+  existing `<name>.ocproj.json` and `.binz` sidecars stay ignored.
+- Does NOT hold the `IStorageProvider` in the root model (§0.5).
+- Does NOT edit any frozen core module (§0.1).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/*.fs` (lifecycle / environment-persistence / 3-D-view headless view tests)
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (add the `Io` `RootMsg` case + open/save/new/template/gallery `Cmd`s marshaled per §0.4; attach the fire-and-forget `UserEnvironment.save` persist `Cmd` for theme/panel/dock changes; open `SynthesisFit`/3-D-view geometry seams as needed)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ResultsView.fs` and/or a 3-D sub-view in the `results` surface (render the 2-D orthographic projection of `placeElements`/`beamSegments` on the slice-002 Canvas host)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj` (register any new `.fs` files)
+
+## Testing plan
+
+This is the LAST slice of the arc and carries the **full bundle gate set**
+(run in order; first failure short-circuits): `build`, `unit-tests`,
+`constructor-unit-tests`, `impl-log-structure`, `state-of-world-structure`,
+`ui-smoke`, `ui-tests`.
+
+- `ui-tests`: headless view tests assert Save writes `<name>.ocproj.json` and Open
+  round-trips through the schema-validated path (AC-U8.1), template/gallery load
+  via `Templates.loadTemplate` / `Help.openEntry` (AC-U8.2), theme/panel/dock
+  changes persist via `UserEnvironment.save` and survive a restart (AC-U8.3), and
+  the 3-D view renders a 2-D orthographic projection of `placeElements`/`beamSegments`
+  on the Canvas host without GL (AC-U8.4).
+- `ui-smoke`: every panel/page (including the 3-D view) renders one frame
+  headlessly; the Canvas host renders without GL (§U1.8 / §U8.4).
+- `build`, `constructor-unit-tests`, `unit-tests`: green; no frozen edits.
+
+## Risks
+
+- **Medium: file-IO continuations + headless 3-D.** Open/Save use the Avalonia
+  `IStorageProvider`, which MUST live in the host layer (§0.5) and whose
+  continuations MUST marshal back per §0.4. The 2-D-orthographic 3-D view MUST
+  render on the Canvas host without a GL surface so the `ui-smoke` gate stays
+  headless-green (§U8.4). Environment persistence must round-trip
+  (`UserEnvironment.save`) without introducing a new committable file type (§0.6).
+
+## Hand-off
+
+- This is the final slice; with it landed the app is a usable tool (open/save/new,
+  templates, gallery, live environment persistence, and a first 2-D-orthographic
+  3-D view), and the whole arc ends `build` / `constructor-unit-tests` /
+  `ui-smoke` / `ui-tests` green.
+- Emit the state-of-the-world `gates:` YAML block with this round's final baseline
+  counts (the supervisor pulls the `What's working` bullets into the commit
+  message).

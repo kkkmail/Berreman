@@ -1,0 +1,58 @@
+# Arc-runner worker task -- 001.slice-md
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+round and lists them below. Do not compute or guess these
+paths: the canonical layout block describes the shape, this
+section pins the concrete values for the slice you are about
+to implement.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0024`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0024\.slices\001.slice-md`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0024\.artifacts`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0024\.slices\001-impl-log.md`
+- **impl_plan_path:** `C:\GitHub\Berreman\specs\0024\.slices\001-impl-plan.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0024\.slices\001-state-of-the-world.md`
+- **spec_id:** `0024`
+- **slice_id:** `001`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Slice spec
+
+Implement this slice end-to-end:
+
+- C:\GitHub\Berreman\specs\0024\.slices\001.slice-md
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your state-of-the-world markdown to**
+`C:\GitHub\Berreman\specs\0024\.slices\001-state-of-the-world.md`. **Do not write the SoW anywhere else.**
+
+**Save your impl-log markdown to**
+`C:\GitHub\Berreman\specs\0024\.slices\001-impl-log.md`. **Do not write the impl-log anywhere else.**
+
+## Artifacts folder
+
+Use `C:\GitHub\Berreman\specs\0024\.artifacts` for any persistent run artifacts
+(captured logs, screenshots, traces, dumps). The folder is
+pre-created; this path is the arc-runner's authoritative
+value and supersedes any path the project prompt computes
+from convention.
+
+## Retry hint
+
+Replace the inline private initialSystem/initialNode/initialProject triple in Shell.fs:93-120 with a single call through the existing Templates factories -- e.g. Templates.systemOf "..." [Templates.film ...; Templates.film ...] None |> Templates.projectOf, or simply Templates.bandpassFilter () (a >=2-layer stack satisfies R-5/AC-U1.2 and the PanelViewTests `layerRows.Length >= 2` assertion). This routes the seed node's incident light through Templates.defaultLight automatically, fixing the 600->550 nm drift in the same edit. Do NOT touch the spec-mandated dual construction/workspace project fields (R-2 requires both; just seed both from the one factory result) and do NOT edit the inherited ui-tests gate description. Keep all gates green and note the substitution in the impl-log.
+
