@@ -1,7 +1,0 @@
-{
-  "reason": "out-of-scope: Temp/0026-feature-list-summary.txt (allowed: .feature-list-md, .history, .manual, .manual/*, .artifacts, .artifacts/*)",
-  "trigger": "out-of-scope",
-  "intent": "feature-list",
-  "at": "2026-06-05T01:53:09Z",
-  "operator_action": "review the reason; either add an operator-reply hint via the composer or edit the spec to relax the failing structural rule, then re-submit the cycle"
-}
