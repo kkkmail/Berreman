@@ -2,10 +2,12 @@
 
 This document is the free-form, prose-first description of what the
 Optical Constructor user interface needs to become. It is *steering
-prose*, not the structured spec: it captures who needs what and why,
-the relative priority of each capability, and the open questions that
-the spec-author and the operator still need to settle. The structured,
-testable specification is written in the next step from this document.
+prose*, not the structured spec: it captures who needs what and why and
+the relative priority of each capability. It is the **authoritative
+description** of the feature — the behaviour it states is decided, and
+the only items left open are lower-level refinements explicitly handed to
+the spec-author near the end. The structured, testable specification is
+written in the next step from this document.
 
 A note on what already exists, so this list is read in context. The
 project already has a working Avalonia + FuncUI (Elm-style MVU) desktop
@@ -26,12 +28,10 @@ Throughout, relative priority is tagged with the MoSCoW convention —
 spec-author sequence the work. Terms specific to this project are
 defined on first use and collected in the glossary at the end.
 
-**Sequencing.** The operator has been explicit that the optical
-constructor is a large and intricate piece of UI and is the **first
-thing to build**, ahead of any other work that depends on it. The
-spec-author should treat the constructor screen and its element/ray
-model as the leading deliverable and let the remaining capabilities
-follow it.
+**Sequencing.** The optical constructor is a large and intricate piece
+of UI and is the **first thing to build**, ahead of any other work that
+depends on it. The constructor screen and its element/ray model are the
+leading deliverable; the remaining capabilities follow it.
 
 ---
 
@@ -62,9 +62,8 @@ The desired behaviour, in plain terms:
   for example *Build* (place elements and groups), *Element* (edit the
   active element), *Trace / View* (rays, zoom, table view, reset),
   *Experiment* (groups, collections, detectors), and *Settings*
-  (language, units, controls, help). The operator has **accepted this
-  set as the starting point**; the spec-author may still refine the
-  grouping as the ribbons fill in.
+  (language, units, controls, help). This set is the **starting point**;
+  the spec-author may still refine the grouping as the ribbons fill in.
 
 **Non-functional notes.** The ribbon must stay legible under EN and RU
 strings, which differ in length (Cyrillic labels tend to run longer), so
@@ -221,10 +220,18 @@ exact dimensions; the spec-author can fix concrete defaults.
 
 ### 7.2 The drawer
 
-A **drawer** is a function that, **given an element's placement point
-and its three rotations, draws the element** on the table. Decoupling
-"how an element looks" into a drawer lets every element kind get its own
-appearance later without changing the placement or ray logic.
+A **drawer** is a function that, **given an element's placement point,
+its three rotations, its element kind, and its element value id, draws
+the element** on the table. The kind and the value id are passed in
+explicitly so the drawer can vary an element's appearance both by its
+role (a source vs. a detector vs. a polarizer) and, later, by the
+concrete device or material bound to it (the value id; see §9). For the
+first build the **value id is always absent** — modelled as `None` in
+F# — but it is part of the drawer's inputs from the start, so that
+per-device or per-material looks can be added later **without rewiring
+the placement or ray logic**. Decoupling "how an element looks" into a
+drawer this way lets every element kind get its own appearance later
+without changing the placement or ray logic.
 
 For the first build, there is **one standard drawer used by every
 element**, drawn as a **cylinder**: a visible **cylinder frame** with a
@@ -295,7 +302,7 @@ inline editors. The user can **lock or unlock any of the three rotations
 individually**, freezing them at their current values to prevent
 accidental change; R3 starts locked.
 
-**Reset.** A single action (proposed **Shift+R, with confirmation**)
+**Reset.** A single action (**Shift+R, with confirmation**; §10)
 **resets the element to its standard orientation** (R1 = R2 = R3 = 0).
 
 ## 8. The ray model: light, ray groups, and placement  [Must]
@@ -345,11 +352,12 @@ IRG. This is the frame against which the element's rotations are
 measured.
 
 **Detector terminates the ray.** A **detector (D)** **terminates the ray
-group** it receives. (The operator settled the naming: this element is
-called simply a **Detector (D)** across the UI, catalogue, and docs.)
+group** it receives. This element is called simply a **Detector (D)**
+across the UI, catalogue, and docs.
 
 **Placement point and snapping.** Each element has a **placement point
-(PP)** that **snaps onto the central ray**. When an element is rotated so
+(PP)**, which is the **centre of its rectangular bounding box**, and the
+PP **snaps onto the central ray**. When an element is rotated so
 that the ray leaving it changes direction, everything snapped to the
 ray(s) downstream of it **travels with those rays**: changing **R2 and/or
 R3** changes the direction of the reflected ray R and may change the
@@ -418,7 +426,7 @@ it is still "a light source"). The capability is a catalogue of
 concrete device captured as a property of the element rather than as a
 separate kind.
 
-The proposed standard names (to be reviewed and completed):
+The standard names (the catalogue is completed as element kinds fill in):
 
 - **Optical Table (OT)** — the workspace itself.
 - **Light Source (LS)** — emits the ray group; the device (laser, lamp,
@@ -428,11 +436,11 @@ The proposed standard names (to be reviewed and completed):
 - **Sample (S)** — the material(s) under study.
 - **Detector (D)** — terminates the ray.
 
-**A polarizer is a polarizer wherever it sits.** The operator settled
-the "analyzer" question: a polarizer is **just a polarizer regardless of
-where it is placed** on the bench — there is no separate "analyzer"
-element kind and no special label for a polarizer that happens to follow
-the sample. Nothing stops the user putting **more than two** polarizers
+**A polarizer is a polarizer wherever it sits.** A polarizer is **just a
+polarizer regardless of where it is placed** on the bench — there is no
+separate "analyzer" element kind and no special label for a polarizer
+that happens to follow the sample. Nothing stops the user putting **more
+than two** polarizers
 in a chain, after which "polarizer / analyzer" terminology would only
 blur, which is another reason not to bake the role into the name.
 
@@ -446,9 +454,12 @@ dispersive setups.
 *role* on the table; the **concrete device or material behind it is a
 property of the element** — e.g. an **S** stands for a particular sample,
 an **LS** for a particular laser or lamp. To let that concrete choice be
-attached later, the **element schema should reserve an identity slot (an
-id)** so the actual device/material can be **bound to the on-table
-element** in a future step. The element's menu should also expose an
+attached later, the **element schema should reserve an identity slot —
+the element value id** — so the actual device/material can be **bound to
+the on-table element** in a future step. This is the same value id the
+drawer already receives (§7.2), so a bound device/material can change the
+element's look later without rewiring. For the first build the id is
+**absent (`None` in F#)**. The element's menu should also expose an
 **action to open that binding** — for now it is enough that this action
 **opens an empty modal dialog** as a placeholder; the real picker is
 deferred. The point of doing it now is to fix the id in the schema and
@@ -459,98 +470,101 @@ real device/material picker behind the dialog.
 ## 10. Interaction model: mouse and keyboard  [Must]
 
 **Who / what / why.** The researcher manipulates the active element and
-the table mostly by mouse, with keyboard accelerators for speed. The
-proposed scheme below is recorded together with this document's **advice
-on each item**, since the operator explicitly asked for that review.
-Every action operates on the **active element** unless it is a table
-action.
+the table mostly by mouse, with keyboard accelerators for speed. Every
+command operates on the **active element** unless it is marked a table or
+global command.
 
-Proposed scheme (operator's list, annotated):
+The scheme is organised **by command**, not by device: where a single
+command can be reached by **both** a mouse gesture and a keyboard
+shortcut, the two are **listed together on one line** so it is clear they
+do the same thing. This is the user-facing face of the
+single-source-of-commands idea below — one command, one or more bindings.
 
-- **Double-click** an element → open its **element dialog**. *Keep.*
-- **Right-click** an element → context menu: element dialog, local help,
-  and more. *Keep; suggested additions to the menu: lock/unlock each
-  rotation, reset rotation, toggle reflected/transmitted, delete,
-  duplicate, turn the element or its group on/off, and (for a detector)
-  "set as primary".*
-- **Ctrl+Z** undo, **Ctrl+Y** redo, with **more than one level**.
-  *Keep; the underlying engine already supports multi-step undo. Suggest
-  also accepting **Ctrl+Shift+Z** as a redo alias, which many users
-  expect.*
-- **Shift+R** (with confirmation) → reset the element's rotation to
-  (0, 0, 0). *Keep.*
-- **F1** → **local help**: a pop-up window describing the selected object
-  and what its controls do. *Keep; see §13.*
-- **Esc** → close the local menu / pop-up. *Keep; also a natural
-  "cancel current drag / deselect" key.*
-- **Left-press + drag on an element does nothing.** *Keep — this is a
-  deliberate guard against accidental moves, which are very easy to
-  trigger. The trade-off is discoverability: because the obvious gesture
-  does nothing, the real gesture (Shift+drag) needs a visible hint, e.g.
-  the cursor or a tooltip when the pointer is over a movable element.*
-- **Shift + left-press + drag** → slide the element **along its ray**,
-  but **only within the gap between its two neighbours** (the elements
-  immediately before and after it on the ray); it cannot be dragged past
-  either neighbour. When the element is **dropped**, the table is
-  **redrawn**, because moving it may change where the rays fall. A Shift
-  drag to the left or to the right behaves the same way — it is the same
-  constrained slide in either direction. *Refined from the earlier
-  "move the placement point along the central ray": the slide is now
-  bounded by the neighbouring elements, and finer placement-point editing
-  lives in the local element menu (§7.3, §8).*
-- **Ctrl + left-press + drag** → move the element **to a different ray**
-  (for example off the transmitted branch and onto the reflected one).
-  As with the Shift drag, the table is **redrawn on drop** since the ray
-  layout may change. *New: this is how an element is reassigned between
-  rays, distinct from the Shift drag that keeps it on the same ray.*
-- **Shift + mouse wheel** → R1, default step **5°** (configurable), if
-  not locked. *Keep.*
-- **Ctrl + mouse wheel** → **zoom in / out**. *Resolved: the operator
-  chose to honour the strong system-wide "Ctrl+wheel = zoom" convention
-  rather than fight it, so Ctrl+wheel is the standard zoom gesture
-  (alongside the plain wheel zoom in §6), and R2 moves off this binding.*
-- **Ctrl + Shift + mouse wheel** → R2, step 5° (configurable), if not
-  locked. *New home for R2, freed up by making Ctrl+wheel zoom.*
-- **Alt + mouse wheel** → R3 (must be unlocked first), step 5°
-  (configurable). *Keep.*
+**Active-element commands.**
 
-**Suggested additional hotkeys** (the operator asked for more where they
-make sense):
-
-- **Delete / Backspace** → remove the active element (with confirmation
-  for a non-trivial element).
-- **Ctrl+D** → duplicate the active element; **Ctrl+C / Ctrl+V** →
-  copy/paste an element.
-- **Tab / Shift+Tab** → make the next / previous element along the beam
-  path active, so the whole chain can be stepped through without the
+- **Open element dialog** — *double-click* the element, or *right-click →
+  Element dialog*.
+- **Element context menu** — *right-click* the element. The menu exposes
+  the element's commands directly: Element dialog, Local help, lock /
+  unlock each rotation, Reset rotation, toggle reflected / transmitted,
+  Delete, Duplicate, turn the element or its group on / off, and (for a
+  detector) "Set as primary".
+- **Reset rotation** to (0, 0, 0), with confirmation — *Shift+R*, or
+  *right-click → Reset rotation*.
+- **Delete element**, with confirmation for a non-trivial element —
+  *Delete* / *Backspace*, or *right-click → Delete*.
+- **Duplicate element** — *Ctrl+D*, or *right-click → Duplicate*.
+  **Copy / paste** an element — *Ctrl+C* / *Ctrl+V*.
+- **Local help** for the selected object — *F1*, or *right-click → Local
+  help* (see §13).
+- **Make next / previous element active** along the beam path — *Tab* /
+  *Shift+Tab*, so the whole chain can be stepped through without the
   mouse.
-- **Arrow keys** → nudge the active element's placement point along the
-  ray a small step; **Shift+arrow** for a larger step.
-- **Ctrl+0** (or a "Reset view" button) → reset the table view to
-  top-down (0, 0, 0) and a sensible zoom; **Ctrl+S** → save the project.
-- **Number keys** → quickly toggle the corresponding element group on or
-  off (ties into §11).
 
-**One centralized place for every command.** All of the keyboard keys
-and their **duplicate mouse commands** (where a command has both, like
-"reset rotation" or "delete element") should live in **one centralized
+**Rotations** (each step defaults to **5°** and is configurable; a
+rotation does nothing while it is locked):
+
+- **R1** — *Shift + mouse wheel*.
+- **R2** — *Ctrl + Shift + mouse wheel*.
+- **R3** — *Alt + mouse wheel* (R3 must be unlocked first).
+
+**Move the active element.**
+
+- **Slide along its ray** — *Shift + left-drag*, or the *arrow keys*
+  (with *Shift+arrow* for a larger step). The slide is bounded to the
+  **gap between the element's two neighbours** (the elements immediately
+  before and after it on the ray) and cannot pass either one; a left or
+  right slide is the same constrained move in either direction. Finer
+  placement-point editing lives in the local element menu (§7.3, §8).
+- **Move to a different ray** — *Ctrl + left-drag* (for example off the
+  transmitted branch onto the reflected one). This is how an element is
+  reassigned between rays, distinct from the Shift slide that keeps it on
+  the same ray.
+- On **drop** the table is **redrawn**, because moving an element may
+  change where the rays fall.
+- **Plain left-drag on an element does nothing** — a deliberate guard
+  against accidental moves, which are very easy to trigger. Because the
+  obvious gesture is inert, the real gesture (Shift+drag) needs a visible
+  hint, e.g. the cursor or a tooltip when the pointer is over a movable
+  element.
+
+**Table and view commands.**
+
+- **Pan** the whole table — *left-drag on empty table* (§6).
+- **Zoom** in / out — *plain mouse wheel*, or *Ctrl + mouse wheel*. The
+  app honours the strong system-wide "Ctrl + wheel = zoom" convention
+  rather than fighting it; that is why R2 sits on Ctrl+Shift+wheel above.
+- **Reset view** to top-down (0, 0, 0) and a sensible zoom — *Ctrl+0*, or
+  the *"Reset view" button*.
+- **Toggle an element group** on / off — the *number keys* select the
+  corresponding group (ties into §11), alongside the right-click toggle.
+
+**Global commands.**
+
+- **Undo** — *Ctrl+Z*; **Redo** — *Ctrl+Y* (also *Ctrl+Shift+Z*, which
+  many users expect). Both support **more than one level**; the
+  underlying engine already provides multi-step undo / redo.
+- **Save the project** — *Ctrl+S*.
+- **Close the local menu / pop-up, or cancel the current drag /
+  deselect** — *Esc*.
+
+**One centralized place for every command.** Every command above —
+keyboard shortcut, mouse gesture, or both — lives in **one centralized
 location** rather than being wired up gesture-by-gesture across the code.
-The intent is that a command is **described once** and its binding(s)
-hang off that single description, so the key map and the mouse map stay
-in sync and a new command can be added in one place. A light design note
-for the spec-author and implementer (this is F#): a natural shape is to
-**model each command as a discriminated union case** and let each command
-carry a small **three-state binding** — keyboard-only, mouse-only, or
-keyboard-plus-mouse (the exact spelling of that DU is a design decision,
-recorded here only as a direction, not a requirement). This is the same
-single-source-of-commands idea that §1 asks for between the ribbon and
-the menus, applied to the input bindings.
+A command is **described once** and its binding(s) hang off that single
+description, so the key map and the mouse map stay in sync and a new
+command is added in one place. A design note for the implementer (this is
+F#): a natural shape is to **model each command as a discriminated union
+case** carrying a small **three-state binding** — keyboard-only,
+mouse-only, or keyboard-plus-mouse — so that a command reachable by both
+mouse and keyboard declares both bindings on one definition. This is the
+same single-source-of-commands idea that §1 asks for between the ribbon
+and the menus, applied to the input bindings.
 
 **Non-functional notes.** A consistent, discoverable scheme matters more
-than any single binding; making the key map **configurable** (and the
-rotation step already is) would let users resolve the Ctrl+wheel
-question for themselves and is worth considering, though it can be a
-later increment.
+than any single binding. The key map should be **configurable** (the
+rotation step already is), so a user who prefers a different Ctrl+wheel
+behaviour can change it; this can be a later increment.
 
 ## 11. Element groups and experiment assembly  [Must]
 
@@ -609,11 +623,11 @@ primary one**; results and the headline readout follow the primary
 detector, while secondary detectors report their own branch
 independently.
 
-**Where groups and collections are stored.** The operator settled this:
-element groups and experiment collections are **stored in their own
-separate JSON file**, kept apart from the per-project file rather than
-folded into it. That keeps reusable groups and sample-centred
-collections available across projects.
+**Where groups and collections are stored.** Element groups and
+experiment collections are **stored in their own separate JSON file**,
+kept apart from the per-project file rather than folded into it. That
+keeps reusable groups and sample-centred collections available across
+projects.
 
 ## 12. Experiment collections  [Should]
 
@@ -651,55 +665,17 @@ provides multi-step undo/redo and should back this; the new screen's job
 is to make sure every constructor action participates in it. Destructive
 or hard-to-reverse actions (reset rotation, delete element, reset view)
 should either be undoable or ask for confirmation, consistent with the
-Shift+R-with-confirmation behaviour already proposed.
+Shift+R-with-confirmation behaviour in §10.
 
 ---
 
-## Decisions settled, and details left to the spec-author
+## Details left to the spec-author
 
-Most of the questions this document raised in the previous cycle have
-now been **settled by the operator**, and the prose above has been
-updated to match. Recorded here so the resolutions are not lost:
-
-- **Detector name.** Settled: the element is **Detector (D)** — no
-  "photo detector", no separate analyzer (a polarizer is a polarizer
-  wherever it sits; §9).
-- **R1 axis.** Settled: **R1 turns around the element's surface normal
-  (N1)**; it coincides with the central ray only at normal incidence,
-  and parts company with the CR once R2 ≠ 0. Corrected this cycle: **R1
-  is not a polarizer's azimuth** — R1's axis is the face normal, the
-  azimuth lies in the face, and at the rest pose it is **R2** that gives
-  the azimuth (§7.3).
-- **Ctrl + wheel.** Settled: **Ctrl + wheel zooms** (honouring the OS
-  convention); **R2 moves to Ctrl + Shift + wheel** (§10).
-- **Ribbon tab set.** Settled as a **starting point** (Build / Element /
-  Trace-View / Experiment / Settings; §1).
-- **Side-ray count.** Settled: **one CR plus eight side rays**, a 45°
-  circle at normal incidence, with a **show-CR-only / show-all** toggle
-  (§8).
-- **Storage of groups and collections.** Settled: a **separate JSON
-  file** (§11).
-- **Default LS / detector positions.** Settled: light source at the
-  left-middle, detector at the right-middle, **2 m apart** initially,
-  measured along the CR; moving the LS drags the chain, and the LS has a
-  **position reset** (§8).
-- **Drag gestures.** Settled: **Shift + drag** slides an element along its
-  ray, bounded by its two neighbours; **Ctrl + drag** moves it to a
-  different ray; both **redraw on drop**. Adding an element is a
-  **drag from the ribbon**, snapping to the middle of the nearest CR
-  path (§8, §10).
-- **Element editing is menu-centric.** Settled: the user does not edit
-  angles one-by-one inline — **everything about an element is done from
-  its local menu** (§7.3, §8).
-- **Centralized commands.** Settled as a direction: keys and their
-  duplicate mouse commands live in **one place**, modelled in F# as
-  command DUs carrying a keyboard/mouse/both binding (§10).
-- **Orphaning.** Settled: elements are orphaned **only** by switching the
-  tracked ray or removing one of two in-use rays; they re-snap if the ray
-  returns within a configured distance (§8).
-
-A few **details remain for the spec-author** — these are refinements,
-not open operator decisions, and none blocks a first draft:
+Everything in the sections above is **decided** and should be read as the
+authoritative description of the feature. A few **lower-level details**
+are deliberately left to the spec-author — these are refinements of
+already-decided behaviour, not open questions, and none blocks a first
+draft:
 
 - **Schematic drawing weights.** Exact line thicknesses, colours, and
   the on-screen offset of the eight side rays, chosen from established
@@ -727,18 +703,24 @@ not open operator decisions, and none blocks a first draft:
 - **N1 / N2 — primary / secondary normal.** N1 is the element's face
   normal (R1 turns around it); N2 is its perpendicular reference. Unrotated,
   N1 lies along the CR and N2 along the table normal.
-- **Drawer.** The function that draws an element from its placement point
-  and three rotations; the first build uses one standard cylinder drawer.
+- **Drawer.** The function that draws an element from its placement point,
+  three rotations, element kind, and element value id; the first build
+  uses one standard cylinder drawer and the value id is absent (`None`).
 - **LS — Light Source.** Emits the ray group; long and narrow.
 - **D — Detector.** Terminates the ray group.
 - **LP / CP — Linear / Circular Polarizer.** A polarizer regardless of
   where it sits on the bench.
 - **S — Sample.** The material(s) under study.
+- **Element value id.** The schema slot that identifies the concrete
+  device or material behind an element's role; absent (`None`) in the
+  first build, and passed to the drawer so the look can vary by device
+  later (§7.2, §9).
 - **RG — Ray Group.** One central ray plus eight side rays.
 - **CR — Central Ray.** The main drawn ray.
 - **RRG / TRG — Reflected / Transmitted Ray Group.**
 - **IRG — Incident Ray Group.** The ray group falling on an element.
-- **PP — Placement Point.** The point that snaps an element onto the CR.
+- **PP — Placement Point.** The centre of an element's rectangular
+  bounding box; this is the point that snaps the element onto the CR.
 - **Local element menu.** The single per-element menu that exposes
   everything the user can do to the active element — its three angles
   (with resets and locks) and its placement point included.
