@@ -1,0 +1,12 @@
+{
+  "spec_id": "0026",
+  "ticket": null,
+  "created": "2026-06-05T01:40:48Z",
+  "status": "in-authoring",
+  "gates": [],
+  "user_files": {
+    "splitter": ".user-md/splitter.user-md",
+    "arc-runner": ".user-md/arc-runner.user-md"
+  },
+  "description": "Work out the optical constructor"
+}
