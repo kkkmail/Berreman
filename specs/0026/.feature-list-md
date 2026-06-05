@@ -250,8 +250,11 @@ measured against the **table**:
   At **normal incidence** this axis **coincides with the central ray**.
   Once the element is tilted (R2 ≠ 0) the element's face no longer faces
   the beam, so the **R1 axis is no longer the same as the central ray** —
-  R1 still turns the element about its own face normal. For a polarizer
-  R1 is its azimuth.
+  R1 still turns the element about its own face normal. A common pitfall
+  to avoid: **R1 is not a polarizer's azimuth.** R1's axis is the normal
+  to the face, whereas a polarizer's azimuth is an angle that lies *in*
+  the face. At the rest pose (0, 0, 0) it is **R2** that corresponds to
+  the polarizer's azimuth, not R1.
 - **R2** — rotation around the **normal to the optical table** (the
   vertical axis in the top view). R2 is the tilt that steers a beam
   within the plane of the table, and it is what makes the R1 axis part
@@ -267,10 +270,28 @@ exactly. A consequence the spec-author must carry through: **when R3 is
 non-zero, R1 is no longer perpendicular to R2.** The three axes are not
 a fixed orthogonal triad; they follow the element's mount.
 
+**R2 is measured from the incident ray, not from the table.** When an
+element sits on a ray that is **not horizontal**, R2 is always measured
+**from the direction of that ray**, not from a fixed table axis. So the
+R2 the user dials in is a tilt *relative to the beam arriving at the
+element*. The practical consequence: if an element carries some R2 while
+on a horizontal ray and is then moved onto a non-horizontal ray where
+the ray itself already makes an angle r2 with the horizontal, then in the
+table's own coordinate system the element ends up rotated by **(r2 + R2)**
+— the ray's own direction and the element's R2 add. This keeps an
+element's R2 meaning "tilt off the beam" no matter how the upstream beam
+has been steered.
+
 **Showing and editing the angles.** Each element **displays its R1, R2,
-R3 values nearby**. Clicking the displayed values lets the user **type
-exact angles by hand**, and each rotation has its **own reset button**
-(back to 0). The user can **lock or unlock any of the three rotations
+R3 values nearby** so the current orientation is visible at a glance.
+The user does **not** edit the three angles one at a time inline;
+instead, **all editing happens in the element's local menu** — a single
+**local element menu** is shown for the active element, and the exact
+angles (along with each rotation's reset to 0 and the per-rotation
+lock/unlock) are set there. In fact, **everything the user can do to an
+element is available from that one local menu**, so it is the single
+place to reach the element's full behaviour rather than a scatter of
+inline editors. The user can **lock or unlock any of the three rotations
 individually**, freezing them at their current values to prevent
 accidental change; R3 starts locked.
 
@@ -328,15 +349,48 @@ group** it receives. (The operator settled the naming: this element is
 called simply a **Detector (D)** across the UI, catalogue, and docs.)
 
 **Placement point and snapping.** Each element has a **placement point
-(PP)** that **snaps onto the central ray (or onto its incident ray
-group)**. When an element is rotated so that the ray group leaving it
-changes direction, the downstream elements' placement points **travel
-with the redirected central ray** — they re-snap onto the new path, and
-their rotations re-anchor to the new incident central ray. In effect,
-tilting one element drags everything downstream of it along the new beam
-direction automatically. **Shift + left-press + drag** moves the active
-element's placement point **along the central ray** (sliding it nearer
-or further along the beam without leaving the beam).
+(PP)** that **snaps onto the central ray**. When an element is rotated so
+that the ray leaving it changes direction, everything snapped to the
+ray(s) downstream of it **travels with those rays**: changing **R2 and/or
+R3** changes the direction of the reflected ray R and may change the
+direction of the transmitted ray T, and anything snapped to a ray after
+the element being rotated travels with that ray **while preserving all
+the distances** along it. In effect, tilting one element drags everything
+downstream of it along the new beam direction automatically, keeping the
+spacing between elements unchanged. The placement point itself is also
+**edited from the same local element menu where the angles are** — and,
+as noted in §7.3, **basically everything the user does to an element can
+be done from that one menu**, the PP included.
+
+**Default positions of the light source and detector.** The light source
+and the detector each have a **default placement on the table**: the
+**light source sits near the left side of the table, in the middle**, and
+the **detector sits near the right side, in the middle**. Distances are
+measured along the central ray, which **originates at the light source
+and terminates at the detector**, and the **initial distance between them
+is 2 m**. Because everything downstream is snapped to that ray, **moving
+the light source drags the whole chain with it**. The light source
+therefore has a **position reset** (reachable from its own local menu)
+that returns it to its default spot; when it moves or resets, the rest of
+the elements simply **re-snap** to the ray.
+
+**Orphaned elements.** The only way an element becomes *orphaned* (left
+without a ray to sit on) is by **changing which ray is tracked** — for
+example switching the tracked branch from T to R — or by **removing one
+ray while both R and T are in use**. Elements that were sitting on the
+removed ray become orphaned. If that ray is later **restored**, an
+orphaned element **re-snaps** to it provided the ray now passes **within
+a configured distance of the element's placement point**; otherwise the
+element **stays orphaned** until the user reattaches it. No other
+operation orphans elements — ordinary rotation and dragging always keep
+elements attached to a ray.
+
+**Placing a new element by dragging from the ribbon.** The way to add an
+element is to **drag it from the ribbon onto the table**. When the user
+releases the mouse, the new element **snaps to the middle of the closest
+central-ray path** at the drop point, so it lands on a ray rather than
+floating free. This makes "add an element" a single drag-and-drop gesture
+that ends with the element already attached to the nearest beam.
 
 **Schematic ray tracing through tilted elements.** When an element is
 rotated such that R2 and/or R3 are non-zero, the beam genuinely changes
@@ -434,8 +488,21 @@ Proposed scheme (operator's list, annotated):
   trigger. The trade-off is discoverability: because the obvious gesture
   does nothing, the real gesture (Shift+drag) needs a visible hint, e.g.
   the cursor or a tooltip when the pointer is over a movable element.*
-- **Shift + left-press + drag** → move the placement point **along the
-  central ray**. *Keep.*
+- **Shift + left-press + drag** → slide the element **along its ray**,
+  but **only within the gap between its two neighbours** (the elements
+  immediately before and after it on the ray); it cannot be dragged past
+  either neighbour. When the element is **dropped**, the table is
+  **redrawn**, because moving it may change where the rays fall. A Shift
+  drag to the left or to the right behaves the same way — it is the same
+  constrained slide in either direction. *Refined from the earlier
+  "move the placement point along the central ray": the slide is now
+  bounded by the neighbouring elements, and finer placement-point editing
+  lives in the local element menu (§7.3, §8).*
+- **Ctrl + left-press + drag** → move the element **to a different ray**
+  (for example off the transmitted branch and onto the reflected one).
+  As with the Shift drag, the table is **redrawn on drop** since the ray
+  layout may change. *New: this is how an element is reassigned between
+  rays, distinct from the Shift drag that keeps it on the same ray.*
 - **Shift + mouse wheel** → R1, default step **5°** (configurable), if
   not locked. *Keep.*
 - **Ctrl + mouse wheel** → **zoom in / out**. *Resolved: the operator
@@ -463,6 +530,21 @@ make sense):
   top-down (0, 0, 0) and a sensible zoom; **Ctrl+S** → save the project.
 - **Number keys** → quickly toggle the corresponding element group on or
   off (ties into §11).
+
+**One centralized place for every command.** All of the keyboard keys
+and their **duplicate mouse commands** (where a command has both, like
+"reset rotation" or "delete element") should live in **one centralized
+location** rather than being wired up gesture-by-gesture across the code.
+The intent is that a command is **described once** and its binding(s)
+hang off that single description, so the key map and the mouse map stay
+in sync and a new command can be added in one place. A light design note
+for the spec-author and implementer (this is F#): a natural shape is to
+**model each command as a discriminated union case** and let each command
+carry a small **three-state binding** — keyboard-only, mouse-only, or
+keyboard-plus-mouse (the exact spelling of that DU is a design decision,
+recorded here only as a direction, not a requirement). This is the same
+single-source-of-commands idea that §1 asks for between the ribbon and
+the menus, applied to the input bindings.
 
 **Non-functional notes.** A consistent, discoverable scheme matters more
 than any single binding; making the key map **configurable** (and the
@@ -493,6 +575,31 @@ change. This makes the group the natural unit of "what is in the beam
 right now". Groups should be nameable and reusable, building on the
 existing favourites/board idea so a commonly used group can be pinned
 and dropped back in later.
+
+**Why a group, and what it preserves.** The whole point of the group is
+to make **closely related experiments out of one setup** without a fiddly
+rebuild each time. The motivating example: the user wants to **swap a
+linear polarizer for a circular one** (LP ↔ CP) without going through the
+laborious cycle of adding an LP, dialling in all of its fine details,
+deleting it, placing a CP, dialling in *its* details, and then doing the
+whole dance again to go back. A group sidesteps that by **holding the
+full description of every element it contains** — each member keeps its
+own configuration in the group — so switching the chosen piece is a quick
+toggle that **does not lose any element's settings**, which is exactly
+what a plain delete-then-add *would* lose.
+
+**How members behave within a group.** A group's members can be wired up
+in one of two ways, which the user picks per group:
+
+- **Mutually exclusive** — at most **one** member may be in the beam at a
+  time (e.g. Group 1 above: nothing, or LP1, or CP1). Choosing one
+  automatically takes the others out of the beam.
+- **Multi-select** — **zero, one, or several** members may be in the beam
+  at the same time (e.g. Group 2: nothing, or S1, or S2, or S1 + S2).
+
+Either way the group remembers all of its members and their settings; the
+on/off and swap choices only change which of them are currently in the
+beam, never their stored configuration.
 
 **Multiple detectors and the primary one.** The primary path normally
 ends in one **detector**, but the user may place **more than one
@@ -559,7 +666,10 @@ updated to match. Recorded here so the resolutions are not lost:
   wherever it sits; §9).
 - **R1 axis.** Settled: **R1 turns around the element's surface normal
   (N1)**; it coincides with the central ray only at normal incidence,
-  and parts company with the CR once R2 ≠ 0 (§7.3).
+  and parts company with the CR once R2 ≠ 0. Corrected this cycle: **R1
+  is not a polarizer's azimuth** — R1's axis is the face normal, the
+  azimuth lies in the face, and at the rest pose it is **R2** that gives
+  the azimuth (§7.3).
 - **Ctrl + wheel.** Settled: **Ctrl + wheel zooms** (honouring the OS
   convention); **R2 moves to Ctrl + Shift + wheel** (§10).
 - **Ribbon tab set.** Settled as a **starting point** (Build / Element /
@@ -569,6 +679,24 @@ updated to match. Recorded here so the resolutions are not lost:
   (§8).
 - **Storage of groups and collections.** Settled: a **separate JSON
   file** (§11).
+- **Default LS / detector positions.** Settled: light source at the
+  left-middle, detector at the right-middle, **2 m apart** initially,
+  measured along the CR; moving the LS drags the chain, and the LS has a
+  **position reset** (§8).
+- **Drag gestures.** Settled: **Shift + drag** slides an element along its
+  ray, bounded by its two neighbours; **Ctrl + drag** moves it to a
+  different ray; both **redraw on drop**. Adding an element is a
+  **drag from the ribbon**, snapping to the middle of the nearest CR
+  path (§8, §10).
+- **Element editing is menu-centric.** Settled: the user does not edit
+  angles one-by-one inline — **everything about an element is done from
+  its local menu** (§7.3, §8).
+- **Centralized commands.** Settled as a direction: keys and their
+  duplicate mouse commands live in **one place**, modelled in F# as
+  command DUs carrying a keyboard/mouse/both binding (§10).
+- **Orphaning.** Settled: elements are orphaned **only** by switching the
+  tracked ray or removing one of two in-use rays; they re-snap if the ray
+  returns within a configured distance (§8).
 
 A few **details remain for the spec-author** — these are refinements,
 not open operator decisions, and none blocks a first draft:
@@ -611,6 +739,13 @@ not open operator decisions, and none blocks a first draft:
 - **RRG / TRG — Reflected / Transmitted Ray Group.**
 - **IRG — Incident Ray Group.** The ray group falling on an element.
 - **PP — Placement Point.** The point that snaps an element onto the CR.
+- **Local element menu.** The single per-element menu that exposes
+  everything the user can do to the active element — its three angles
+  (with resets and locks) and its placement point included.
+- **Orphaned element.** An element left without a ray to sit on after the
+  tracked ray was switched or one of two in-use rays was removed; it
+  re-snaps if the ray returns within a configured distance of its PP,
+  otherwise it stays orphaned. This is the only way to orphan an element.
 - **R1 / R2 / R3.** The three element rotations. R1 turns around the
   surface normal (N1); R2 around the table normal; R3 around the third
   box axis. R3 is locked by default, and when R3 ≠ 0, R1 is no longer

@@ -19,6 +19,16 @@
       "tokens_in": null,
       "tokens_out": null,
       "usd": null
+    },
+    {
+      "at": "2026-06-05T22:09:25Z",
+      "phase": "spec_writer",
+      "role": "feature-list",
+      "intent": "feature-list",
+      "agent": "claude-code",
+      "tokens_in": null,
+      "tokens_out": null,
+      "usd": null
     }
   ]
 }
