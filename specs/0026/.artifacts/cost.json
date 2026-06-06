@@ -89,6 +89,16 @@
       "tokens_in": null,
       "tokens_out": null,
       "usd": null
+    },
+    {
+      "at": "2026-06-06T00:55:40Z",
+      "phase": "spec_writer",
+      "role": "handoff_verifier",
+      "intent": "handoff",
+      "agent": "claude-code",
+      "tokens_in": null,
+      "tokens_out": null,
+      "usd": null
     }
   ]
 }
