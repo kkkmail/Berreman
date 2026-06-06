@@ -1,0 +1,86 @@
+# Verifier task -- round 01 iter 01
+
+## Role
+
+You are playing the **verifier** role of the spec-loop.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-arc path you need this
+verifier iteration and lists them below. Do not compute or
+guess these paths: the canonical layout block describes the
+shape, this section pins the concrete values for the spawn
+you are about to run.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0026`
+- **spec_md_path:** `C:\GitHub\Berreman\specs\0026\.spec-md`
+- **spec_bundle_path:** `C:\GitHub\Berreman\specs\0026\.spec-bundle`
+- **manifest_path:** `C:\GitHub\Berreman\specs\0026\.manifest`
+- **slices_dir:** `C:\GitHub\Berreman\specs\0026\.slices`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0026\.artifacts`
+- **verifier_round_trail_dir:** `C:\GitHub\Berreman\specs\0026\.artifacts\verifier`
+- **prior_split_md_path:** `(none)`
+- **spec_id:** `0026`
+- **seq:** `(not yet resolved)`
+- **rn:** `1`
+- **iter:** `1`
+
+
+## System prompts (read first, in order)
+
+1. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\verifier.system-md
+   -- the four-role spec-loop protocol; verifier rubric
+   lives here.
+2. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+   -- the worker round protocol. Several rubric items
+   (SoW required headings, artifacts folder, gates-file
+   pointer) check the splitter's drafts against this
+   contract.
+
+## User prompts (read second, in order)
+
+1. C:\GitHub\Berreman\.user-md\splitter.user-md
+   -- per-project splitter rules.
+2. C:\GitHub\Berreman\.user-md\arc-runner.user-md
+   -- per-project worker rules. The verifier checks the
+   manifest and slice specs against the conventions
+   declared here (build tool, gates file name,
+   artifacts-folder rule, naming convention).
+
+## Inputs
+
+### Big spec
+
+- C:\GitHub\Berreman\specs\0026\.spec-md
+
+### Extra guideline files (--splitter-guideline)
+
+(none -- the operator passed no --splitter-guideline files)
+
+### Manifest
+
+- C:\GitHub\Berreman\specs\0026\.manifest
+
+### Slice specs (in manifest order)
+
+- C:\GitHub\Berreman\specs\0026\.slices\001.slice-md
+- C:\GitHub\Berreman\specs\0026\.slices\002.slice-md
+- C:\GitHub\Berreman\specs\0026\.slices\003.slice-md
+- C:\GitHub\Berreman\specs\0026\.slices\004.slice-md
+- C:\GitHub\Berreman\specs\0026\.slices\005.slice-md
+- C:\GitHub\Berreman\specs\0026\.slices\006.slice-md
+- C:\GitHub\Berreman\specs\0026\.slices\007.slice-md
+
+## Verifier feedback
+
+None -- this is the first verifier iteration of the round.
+
+
+## Output you MUST write (and nowhere else)
+
+**Save your complete critique to**
+`C:\GitHub\Berreman\specs\0026\.artifacts\splitter\003-01-01-verify.md`. **Do not write the critique anywhere else.**
+
+Follow the verifier output structure documented in the
+splitter system prompt: verdict line, severity counts,
+per-rubric findings, recommendations.

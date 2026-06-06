@@ -1,0 +1,141 @@
+# Splitter task -- round 02
+
+## Role
+
+You are playing the **splitter** role of the spec-loop.
+
+## System prompts (read first, in order)
+
+1. C:/GitHub/Berreman/specs/0026/.artifacts/splitter/splitter.system-md
+   -- the four-role spec-loop protocol you are part of.
+2. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+   -- the worker round protocol the slices you write must
+   target. The verifier rubric checks your slices against
+   this contract; you must understand it to draft slices
+   that pass.
+
+## User prompts (read second, in order)
+
+1. C:\GitHub\Berreman\.user-md\splitter.user-md
+   -- per-project splitter rules.
+2. C:\GitHub\Berreman\.user-md\arc-runner.user-md
+   -- per-project worker rules (build tool, gates file,
+   artifacts-folder convention, file-naming). The manifest
+   and slice files you write must conform to these.
+
+## Inputs
+
+### Big spec
+
+- C:\GitHub\Berreman\specs\0026\.spec-md
+
+### Extra guideline files (--splitter-guideline)
+
+(none -- the operator passed no --splitter-guideline files)
+
+## Reconciler feedback (round 1)
+
+You are running because the prior round's reconciler routed
+to-splitter. Read the reconciler decision in full and apply
+the substantive findings it forwards:
+
+- C:\GitHub\Berreman\specs\0026\.artifacts\splitter\005-01-01-reconcile.md
+
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your complete output to**
+`C:\GitHub\Berreman\specs\0026\.artifacts\splitter\006-02-split.md`. **Do not write the summary anywhere else.**
+
+Save the slice manifest to:
+
+- C:\GitHub\Berreman\specs\0026\.manifest
+
+Save the slice spec files next to the big spec, following
+the project's `<nnn>-<mm>-<kk>-<description>.md` naming
+convention.
+
+## Spec folder context
+
+- Spec folder: C:\GitHub\Berreman\specs\0026
+- Splitter subfolder (your prior outputs and the next
+  reconciler / verifier files): C:\GitHub\Berreman\specs\0026\.artifacts\splitter
+
+## New-shape spec-folder conventions (active)
+
+This spec follows the spec-writer `.spec-bundle` conventions
+(§4.1 / §13 of `050-spec-writer.md`):
+
+- Spec body: `C:\GitHub\Berreman\specs\0026\.spec-md`
+- Bundle manifest: `C:\GitHub\Berreman\specs\0026\.spec-bundle` -- declares
+  `spec_id`, `ticket`, `status`, `gates`, `user_files`.
+- Slice manifest to write: `C:\GitHub\Berreman\specs\0026\.manifest`
+- Slice files to write: `C:\GitHub\Berreman\specs\0026\.slices/<NNN>.slice-md`
+  (three-digit zero-padded, starting at 001).
+- Per-arc artifacts folder (for arc-runner artifacts later):
+  `C:\GitHub\Berreman\specs\0026\.artifacts`
+
+After your spawn writes the slice files, the supervisor runs an
+LLM **fidelity-judge** (spec 011/007) that reads the parent
+`.spec-md` and your slices end-to-end and decides whether every
+contractful item (binding constraints, AC bullets, files-in-scope
+bullets, file:line references) was preserved and that nothing was
+invented. Routing back happens on the judge's verdict, not on a
+byte-exact hash compare; produce slices that preserve meaning and
+identifiers, do not paraphrase clauses that carry contract weight,
+and do not invent new items.
+
+The bundle declares:
+
+- `spec_id = 0026`
+- `ticket = (none)`
+- `gates = [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure]`
+
+When writing the manifest body (the post-`---` portion), emit
+ONE fenced YAML block named `slice_gates:` BEFORE any slice
+path lines. Each entry maps a 1-indexed three-digit slice
+number to the gate subset that applies to that slice. The
+**last slice** must carry the full set above; intermediate
+slices carry the subset matching their "Files modified
+(planned)" globs.
+
+**Forward-introduced gates (spec 037 A-1).** A gate that
+depends on a runtime symbol introduced in slice X (for example,
+a new `--ui-smoke` driver added in the last slice of an arc)
+MUST NOT appear in `slice_gates:` for any slice `< X`. Earlier
+slices that would otherwise match the gate's `applies_to`
+globs still omit it. Concretely: when you draft slice N's
+"Files modified (planned)" list, scan the bundle's gate set
+for any gate whose runtime support has not yet shipped at
+slice N (the gate's `command` references a symbol the spec
+introduces only in a later slice). Drop such gates from
+slice N's subset. Slice X (the slice that ships the runtime)
+and every later slice include the gate.
+
+Skipping this discipline produces the spec 0110 class of
+failure: the arc-runner reaches an early slice, tries to
+enforce the forward-introduced gate, can't find the runtime,
+and escalates. The spec-writer cannot pre-annotate this --
+the splitter is the sole component that owns the slice list
+and therefore is the sole component that can compute the
+per-slice subset.
+
+Example manifest body:
+
+```
+slice-gates-block-and-paths-here
+```
+
+The exact fenced shape is:
+
+- Open fence: a line ````yaml`.
+- Top-level key on its own line: `slice_gates:`.
+- One entry per slice with `- slice: NNN` and
+  `gates: [name1, name2, ...]`.
+- Close fence: a line with only `````.
+
+Slice files MUST follow the naming convention
+`<NNN>.slice-md` and live in the `.slices/` directory next
+to the bundle. Do not invent cross-spec slice names; the
+`<NNN>` is the only number that appears in the filename.
+

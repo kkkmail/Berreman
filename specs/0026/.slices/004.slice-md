@@ -1,0 +1,321 @@
+# 004 — Optical table, drawer & top‑down rendering geometry; standardized controls
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part C**
+  (table + drawer + top‑down rendering geometry) and **Part J**
+  (standardized controls).
+- Depends on slice 001 (`Placement.fs`) and slice 002 (`RayModel.fs`).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑C1: A new project's table is `1.2 m × 2.0 m × 0.10 m`; an edited size
+  persists and reloads (C.1).
+- AC‑C4: The standard drawer returns cylinder geometry given placement,
+  three rotations, kind, and `valueId`; the source shade is darker and the
+  detector shade near‑black with a visible frame (C.4); toggling show‑bounding‑box
+  adds box edges.
+- AC‑C5: The active element's indicator is ≥2 px and ≥3:1 contrast against
+  the table background (C.6).
+- AC‑C6: The show‑CR‑only / show‑all toggle defaults to CR‑only and redraws
+  on change (C.7).
+- AC‑J1: The constructor's buttons/toggles/numeric‑with‑units fields are
+  produced by `Controls.fs` flavours; a new flavour is added there by
+  overriding only the distinguishing properties (J.1).
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Table.fs` (new) — optical‑table record, default/edited size, view state.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Drawer.fs` (new) — the standard cylinder drawer (kind + value id inputs, shadings, show/hide box).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorTable.fs` (new) — top‑down table layout geometry (pure) and ray drawing weights.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Controls.fs` (new) — standardized control flavours.
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (edit) — extend `OpticalConstructorProject` with table + per‑element placement. *(This slice owns the table extension; the per‑element placement extension was delivered by slice 001.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (edit) — add placement + table representation. *(This slice owns the table representation; the placement representation was delivered by slice 001.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ConstructorViewTests.fs` (new) — drawer/table/active-element headless render-shape tests.
+
+### File:line references owned by this slice
+
+- `Schematic.fs:18` — the existing module draws a *vertical cross‑section of a single `OpticalSystem`*; it is a different view and MUST NOT be repurposed or removed; geometry MUST be a pure projection like it (C.0, C.8).
+- `Schematic.fs:35` `SchematicColor` — reused as the colour value shape for the top‑down surface (C.5.2, C.8).
+- `ConstructionView.fs:40` `positiveCta`/`negativeCta` — duplicated CTA colours today; MUST be expressed as the destructive‑gate flavour in `Controls.fs` (J.0, J.2).
+- `Project.fs:26` `OpticalConstructorProject` — extended to carry the table (A.8.2 / C.1.2).
+- `ProjectFile.fs:20` `saveProject` / `ProjectFile.fs:31` `openProject` — the edited table size MUST round‑trip through this serialization (C.1.2, AC‑C1).
+- `SchemaValidation.fs:61` `validate` — the table representation MUST pass schema validation (A.8.2, AC‑C1).
+
+## Scope
+
+This slice builds the optical table and the top‑down rendering geometry as
+pure, headless‑testable projections, plus the standardized control flavours.
+It adds `Table.fs` (the plate record + view state), `Drawer.fs` (the single
+standard cylinder drawer keyed by kind + value id), `ConstructorTable.fs`
+(top‑down layout geometry + ray drawing weights), and `Controls.fs` (the one
+control‑flavours module). It extends the project aggregate and schema with
+the table, and proves drawer geometry, the active‑element indicator
+threshold, the CR‑only default, control‑flavour usage, and the table
+round‑trip headlessly.
+
+The existing `Schematic.fs` (a vertical cross‑section view, Schematic.fs:18)
+MUST NOT be repurposed or removed; the top‑down surface is net‑new. The
+FuncUI `Canvas` binding (the only Avalonia‑aware seam) and the MVU page that
+hosts it are delivered with the interaction model in slice 005; this slice
+delivers only the pure geometry and the controls.
+
+## Requirements
+
+### R-1. The plate (C.1)
+
+C.1.1 A new module `Berreman/OpticalConstructor/OpticalConstructor.Domain/Table.fs`
+MUST define an `OpticalTable` record holding the plate's physical width,
+length, and thickness in canonical meters, plus a display unit. The default
+size MUST be `1.2 m × 2.0 m × 0.10 m` (width × length × thickness).
+
+C.1.2 The plate size MUST be editable by the user and MUST be stored with
+the project (A.8.2), so a reopened experiment shows the same plate.
+
+C.1.3 The plate MUST be drawn as a grey plate to scale, so elements and
+beams sit at true relative scale.
+
+### R-2. View state: pan, zoom, rotate, reset defaults (C.2)
+
+C.2.1 The default view MUST be top‑down. `Table.fs` / `ConstructorTable.fs`
+MUST carry the view state (the table's own R1/R2/R3 measured relative to the
+screen, pan offset, zoom) with the default view being straight top‑down
+`(0, 0, 0)` and a sensible default zoom.
+
+*(The pan/zoom/rotate/reset interaction gestures and their bindings, and
+table selection on click, are wired by slice 005 — AC‑C2 and AC‑C3 are owned
+there. This slice owns the default top‑down view state and the reset target
+`(0, 0, 0)` + default zoom as pure values, per C.2.1 and C.2.5.)*
+
+### R-3. The drawer (C.4)
+
+C.4.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Drawer.fs` MUST define
+the drawer as a pure function whose inputs are the element's placement
+point, its three rotations, its **element kind**, and its **element value
+id** (`None` for the first build), returning pure top‑down draw geometry
+(no Avalonia type). Passing the kind and the value id explicitly from the
+start is mandatory so per‑role and (later) per‑device/material looks can be
+added without rewiring placement or ray logic.
+
+C.4.2 For the first build there MUST be exactly **one standard drawer** used
+by every element, drawing the element as a **cylinder**: a visible cylinder
+frame with a very light‑grey, transparent interior so rays passing through
+remain visible. Two role‑based shadings MUST depart from that default: the
+light source is drawn in a darker shade; the detector is drawn almost
+black, but with its frame still visible so it can be seen and selected.
+
+C.4.3 The drawer MUST offer a **show / hide bounding box** option, off by
+default. When on, the box edges MUST make R1/R2/R3 visible at a glance for
+inspecting an element's orientation.
+
+### R-4. Drawing weights (schematic conventions) (C.5)
+
+C.5.1 The schematic MUST follow established optics ray‑diagram practice:
+the central ray is the prominent line (the chief‑ray analogue) and the side
+rays are lighter (marginal‑ray analogue). There is no formal standard for
+pixel weights, so the following concrete defaults are fixed here (see
+References) and MUST be named constants so a single edit restyles the
+schematic:
+- central ray: 2.0 px, solid, full opacity;
+- side rays: 1.0 px, solid, ~60% opacity;
+- reflected group: same hue as the transmitted group at ~35% opacity (it
+  carries less energy), so reflected and transmitted read apart at a
+  glance;
+- element cylinder frame: 1.0 px outline; interior fill light‑grey at ~15%
+  opacity;
+- grid lines (if drawn): 1.0 px at ≤25% opacity, so the grid never competes
+  with geometry.
+
+C.5.2 Colours MUST be chosen for clear on‑screen visibility and MUST be
+expressed as pure colour values the FuncUI binding maps to Avalonia, in the
+same style as `SchematicColor` (Schematic.fs:35).
+
+### R-5. Active‑element clarity (C.6)
+
+C.6.1 The active element MUST be drawn so that it is unmistakably the active
+one (a highlight / halo / selection frame). The active‑element indicator
+MUST be at least 2 px and contrast at least 3:1 against the table
+background (WCAG focus‑indicator floor; see References). Acting on the wrong
+element silently is the main hazard, so this clarity is a firm requirement,
+not a nicety. The exact treatment is a design detail; the clarity is not.
+
+### R-6. Show central ray only, or all rays (C.7)
+
+C.7.1 The constructor MUST offer an option to show only the CR or the CR
+together with all eight side rays. The default MUST be CR‑only (most
+reasoning is on the CR alone; side rays are switched on for focusing or
+dispersion). This toggle MUST live on the *Trace / View* ribbon (Part D)
+and MUST redraw the table when changed.
+
+*(The ribbon control that hosts the toggle is wired by slice 006; this
+slice owns the CR‑only default state and the redraw‑on‑change geometry.)*
+
+### R-7. Reuse before invention for the surface (C.8)
+
+Reuse `SchematicColor` (Schematic.fs:35) as the colour value shape. Do not
+fold the top‑down table geometry into `Schematic.fs` (a different,
+cross‑section view); add the new `Table.fs` / `Drawer.fs` / top‑down layout
+modules instead.
+
+### R-8. Single control‑flavours module (J.1)
+
+J.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Controls.fs` MUST be the
+single place that describes the standard control flavours: a default button,
+a primary/accent button, a destructive button, a toggle, and a
+numeric‑field‑with‑units. Each flavour MUST be a function the call sites use
+instead of styling buttons ad hoc.
+
+J.1.2 When a new flavour is genuinely needed (e.g. a differently coloured
+button to stand out), it MUST be added in `Controls.fs` by changing only the
+minimum set of properties that distinguish it, rather than styled at the
+call site. This is consistency and one‑touch restyling, not a comprehensive
+design system.
+
+### R-9. Reuse before invention for controls (J.2)
+
+The new constructor views MUST use `Controls.fs` flavours. The existing
+`positiveCta`/`negativeCta` (ConstructionView.fs:40) MUST be expressed as
+the destructive‑gate flavour in `Controls.fs` so the same‑row Confirm/Cancel
+gate (UX commitments) draws from one definition.
+
+## Non-requirements
+
+- No FuncUI `Canvas` MVU page and no interaction gestures (pan/zoom/rotate
+  selection, drag) — owned by slice 005 (Part E). AC‑C2 and AC‑C3 are owned
+  there.
+- No ribbon controls (the *Trace / View* toggle host, the table‑resize
+  control) — owned by slice 006 (Part D).
+- No repurposing or removal of `Schematic.fs` (C.0).
+- No caching / retained‑mode scene graph / drawing‑backend abstraction (0.6).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Table.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Drawer.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorTable.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Controls.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ConstructorViewTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (add the table to `OpticalConstructorProject`)
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (add the table representation)
+
+## Testing plan
+
+Gates that apply this slice (touches Domain, Storage, Ui, Ui.Tests):
+`build`, `unit-tests`, `constructor-unit-tests`, `ui-smoke`, `ui-tests`,
+`impl-log-structure`, `state-of-world-structure`.
+
+- `constructor-unit-tests` — a project round‑trip fixture exercising the
+  table (AC‑C1) added under `OpticalConstructor.Tests` reusing the existing
+  `ProjectJsonRoundtripTests` harness (the placement portion of that fixture
+  was added by slice 001).
+- `ui-tests` — `ConstructorViewTests.fs`: drawer geometry + shadings +
+  show‑box (AC‑C4), active‑element indicator threshold (AC‑C5), CR‑only
+  default (AC‑C6), control‑flavour usage (AC‑J1).
+- `ui-smoke` — the headless app boots and renders one frame per existing
+  view with the new Ui modules linked.
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+Medium: extending `Project.fs` + schema with the table while preserving the
+placement anchors slice 001 added (round‑trip + schema‑validation must stay
+green for both). The active‑element‑indicator ≥2 px / ≥3:1‑contrast threshold
+(AC‑C5) must be asserted from pure geometry/colour values without an Avalonia
+render. Keep `Schematic.fs` untouched.
+
+## Hand-off
+
+Record the `OpticalTable` shape, the `Drawer.fs` pure geometry signature
+(placement, three rotations, kind, value id → draw geometry), the
+`ConstructorTable.fs` layout + named drawing‑weight constants, and the
+`Controls.fs` flavour functions, so slice 005 (the FuncUI `Canvas` page +
+interaction) can host them and slice 006 (ribbon) can wire the *Trace / View*
+show‑CR toggle and the table‑resize control. Carry the `gates:` baseline
+YAML block forward.

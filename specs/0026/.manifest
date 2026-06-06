@@ -1,0 +1,32 @@
+repo_root:                C:/GitHub/Berreman
+branch:                   0026
+data_version:             5
+worker_timeout_sec:       14400   # 4 h default; FuncUI view slices + headless smoke/ui tests are session-sized
+worker_hangup_idle_sec:   3600    # 1 h max with no transcript activity
+worker_review_max_cycles: 3
+max_total_route_backs:    30
+---
+```yaml
+slice_gates:
+  - slice: 001
+    gates: [build, unit-tests, constructor-unit-tests, impl-log-structure, state-of-world-structure]
+  - slice: 002
+    gates: [build, unit-tests, constructor-unit-tests, impl-log-structure, state-of-world-structure]
+  - slice: 003
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure]
+  - slice: 004
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure]
+  - slice: 005
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure]
+  - slice: 006
+    gates: [build, unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure]
+  - slice: 007
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure]
+```
+.slices/001.slice-md
+.slices/002.slice-md
+.slices/003.slice-md
+.slices/004.slice-md
+.slices/005.slice-md
+.slices/006.slice-md
+.slices/007.slice-md

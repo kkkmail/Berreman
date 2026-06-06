@@ -1,0 +1,318 @@
+# 007 — Element groups, experiment collections, multiple detectors & undo/redo participation
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part G**
+  (element groups, multiple detectors, separate storage), **Part H**
+  (experiment collections [Should]), and **Part K** (undo/redo participation
+  and safety [Must]). As the final slice it carries the full bundle gate set.
+- Depends on slice 001 (`Placement.fs`), slice 004 (storage/schema patterns),
+  slice 005 (`Commands.fs`, `ConstructorView.fs`), and slice 006 (ribbon
+  *Experiment* tab, element context menu).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑G1: A mutually‑exclusive group allows at most one member in the beam
+  (choosing one removes the others); a multi‑select group allows zero/one/
+  several; both preserve every member's stored configuration across a swap
+  (G.1).
+- AC‑G2: With more than one detector, the user can set the primary; the
+  headline readout follows the primary while secondary detectors report
+  their own branch (G.2).
+- AC‑G3: Groups and collections round‑trip through the separate app‑data
+  JSON file with schema validation, independent of any `.ocproj` (G.3).
+- AC‑H1: An experiment collection groups experiments around shared
+  sample(s), supports on/off across the collection, and round‑trips through
+  the groups/collections JSON (H.1).
+- AC‑K1: Each of placement, rotation, lock toggle, group on/off, swap, and
+  detector change pushes a snapshot so `Ctrl+Z` reverses it and `Ctrl+Y`
+  replays it, across more than one level (K.1).
+- AC‑K2: Reset rotation, delete element, and reset view are each either
+  undoable or confirmation‑gated with same‑row distinct‑colour Confirm/Cancel
+  (K.2).
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Groups.fs` (new) — `ElementGroup`, member modes, `ExperimentCollection`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs` (new) — load/save the separate groups/collections JSON.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-groups.schema.json` (new) — schema for that file.
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/GroupsRoundTripTests.fs` (new) — G/H storage round‑trip + schema tests.
+
+### File:line references owned by this slice
+
+- `UserEnvironment.fs:126` `FavoriteGroup` — groups build on the existing favourites concept so a commonly used group can be pinned and dropped back in later (G.1.3, G.4).
+- `UserEnvironment.fs:279` — the environment store's per‑user `Softellect/Berreman/OpticalConstructor` app‑data folder; the groups/collections file lives at a fixed app‑data path mirroring this convention (G.3.2).
+- `UserEnvironment.fs:185` — the defaults/load/save pattern reused for the groups library rather than a new serializer (G.4).
+- `SchemaValidation.fs:61` `validate` — the groups library reuses the schema‑validate‑on‑load seam (G.3.1, G.4).
+- `ProjectFile.fs:14` — `.ocproj` user documents remain committable and are explicitly never git‑ignored (UX commitment 6).
+- `BeamTree.fs:98` `branchEmField` — each branch carries its own field; secondary detectors report their own branch independently (G.2.1).
+- `History.fs:20` `EditHistory`; `History.fs:33` `push`; `History.fs:39` `undo`; `History.fs:47` `redo` — the multi‑level snapshot zipper reused as the undo/redo carrier; every constructor action `push`es the new project (K.0, K.1.1, K.3).
+- `ConstructionView.fs:40` `positiveCta`/`negativeCta` — any opposing‑action pair (Confirm/Cancel) MUST be same‑row with a visible gap and distinct positive‑CTA / negative‑CTA colours (K.2.1, via Part J.2 / slice 004 `Controls.fs`).
+
+## Scope
+
+This slice completes the feature with three things. **Part G/H:** element
+groups (a named set of member elements, each holding its full
+configuration), the two member modes (mutually exclusive / multi‑select),
+multiple detectors with a user‑chosen primary, experiment collections around
+shared samples, and a separate per‑user app‑data JSON file (with its own
+schema) for groups + collections, kept apart from the per‑project `.ocproj`.
+**Part K:** wiring every constructor model edit that changes the project to
+`push` a snapshot onto the shared `EditHistory`, keeping undo/redo
+multi‑level, and the safety gate on destructive actions. Because all
+project‑mutating actions (placement, rotation, lock, group on/off, swap,
+detector add/remove, set‑primary, table resize, light‑source move/reset) now
+exist after slices 001–006, this final slice is where AC‑K1/AC‑K2 can be
+satisfied end‑to‑end.
+
+## Requirements
+
+### R-1. Group model and member modes (G.1)
+
+G.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Domain/Groups.fs` MUST
+define an `ElementGroup` as a named set of member elements, each member
+holding its **full configuration** (its placement, rotations, value id,
+emission metadata). The group MUST be placeable on, or removable from, the
+central‑ray path as a unit.
+
+G.1.2 Each group MUST be one of two member modes, chosen per group:
+- **Mutually exclusive** — at most one member may be in the beam at a time;
+  choosing one MUST automatically take the others out of the beam.
+- **Multi‑select** — zero, one, or several members may be in the beam at
+  once.
+Either way the group MUST remember all members and their settings; the
+on/off and swap choices MUST change only which members are currently in the
+beam, never their stored configuration.
+
+G.1.3 Groups MUST be nameable and reusable, building on the existing
+favourites concept (`FavoriteGroup`, UserEnvironment.fs:126) so a commonly
+used group can be pinned and dropped back in later.
+
+### R-2. Multiple detectors and the primary one (G.2)
+
+G.2.1 The primary path normally ends in one detector, but the user MUST be
+able to place more than one detector when a branch (e.g. a reflected arm)
+needs its own. When there is more than one, the user MUST choose which
+detector is the primary one (Part E "Set as primary"). Results and the
+headline readout MUST follow the primary detector; secondary detectors MUST
+report their own branch independently (consistent with each branch carrying
+its own field, BeamTree.fs:98).
+
+### R-3. Separate groups/collections storage (G.3)
+
+G.3.1 Element groups and experiment collections (Part H) MUST be stored in
+their own separate JSON file, kept apart from the per‑project `.ocproj`
+file, so reusable groups and sample‑centred collections are available
+across projects. A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs`
+MUST own this file's load/save, reusing the shared JSON options and the
+schema‑validate‑on‑load seam (SchemaValidation.fs:61), with a new schema
+file
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-groups.schema.json`.
+
+G.3.2 The groups/collections file MUST live at a fixed per‑user
+application‑data path, mirroring the environment store's location
+convention (UserEnvironment.fs:279, the `Softellect/Berreman/OpticalConstructor`
+app‑data folder). Because that path is outside the repository working tree,
+this file raises no `.gitignore` collision (constraint check satisfied: the
+committable‑state cross‑check is moot for an app‑data file; were it ever
+placed in‑tree, a `*.json` name does not collide with any root `.gitignore`
+pattern such as `*.cache`/`*.log`/`*.tmp`/`[Bb]in/`/`[Oo]bj/`).
+
+### R-4. Reuse before invention for storage (G.4)
+
+Reuse the JSON options and validation seam used by the project and
+environment stores (SchemaValidation.fs:61; UserEnvironment.fs:185
+defaults/load/save pattern) rather than a new serializer; reuse the
+`FavoriteGroup` notion (UserEnvironment.fs:126) for pin/reuse.
+
+### R-5. Collection model (H.1)
+
+H.1.1 `Groups.fs` (R-1) MUST define an `ExperimentCollection` as a named
+set of experiments sharing the same sample(s), with the user able to turn
+elements and groups on and off across the collection. Collections MUST be
+stored in the same separate JSON file as groups (G.3) and MUST round‑trip
+through it.
+
+### R-6. Every constructor action is a snapshot edit (K.1)
+
+K.1.1 Every constructor model edit that changes the project (placement,
+each rotation, each lock toggle, group on/off, swap, detector add/remove,
+set‑primary, table resize, light‑source move/reset) MUST `push` the new
+project onto the shared `EditHistory` (History.fs:33), so `Ctrl+Z` /
+`Ctrl+Y` (Part E.6) step through them.
+
+K.1.2 Undo and redo MUST be multi‑level (History.fs is a multi‑level
+zipper); the constructor MUST NOT degrade it to single‑level.
+
+### R-7. Safety on destructive actions (K.2)
+
+K.2.1 Destructive or hard‑to‑reverse actions (reset rotation, delete
+element, reset view) MUST either be undoable through K.1 or ask for
+confirmation, consistent with the `Shift+R`‑with‑confirmation behaviour
+(Part E.2). Any opposing‑action pair (Confirm/Cancel) MUST be same‑row with
+a visible gap and distinct positive‑CTA / negative‑CTA colours (Part J.2 /
+ConstructionView.fs:40).
+
+### R-8. Reuse before invention for history (K.3)
+
+Reuse `History.fs` (History.fs:20) as the undo/redo carrier; do not add a
+command‑pattern diff log or a parallel history.
+
+### R-9. UX commitments completed here (UX 5, UX 6)
+
+- UX 5 — Opposing actions (Confirm/Cancel on reset/delete) MUST be same‑row,
+  with a visible gap and distinct positive/negative colours (J.2). Every
+  action that moves or deletes user‑visible state MUST be undoable via
+  `EditHistory` (K.1) — the undo affordance, not a separate recent‑actions
+  panel.
+- UX 6 — The only new persisted operator state is the groups/collections
+  JSON, placed at the per‑user app‑data path outside the repository (G.3.2),
+  so no `.gitignore` collision is possible; `.ocproj` user documents remain
+  committable and are explicitly never git‑ignored (ProjectFile.fs:14).
+
+## Non-requirements
+
+- No schema migration / version‑upgrade code for the groups file (0.6).
+- No command‑pattern diff log or parallel history (K.3) — reuse
+  `History.fs`.
+- No new serializer for the groups library (G.4) — reuse the shared JSON
+  options / validation seam.
+- No third member mode beyond mutually‑exclusive and multi‑select (G.1.2).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Groups.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-groups.schema.json`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/GroupsRoundTripTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Commands.fs` (add group on/off, swap, detector add/remove, set‑primary commands in the one registry — constraint 0.4)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorView.fs` (group on/off + detector primary behaviour; wire every project‑mutating edit to `push` an `EditHistory` snapshot; destructive‑action confirmation gate)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Ribbon.fs` (surface group / collection / detector commands on the *Experiment* tab and the element context menu)
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` and/or the project schema if a group reference must round‑trip with `.ocproj` (keep the placement + table anchors from slices 001/004 stable)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/` group/detector/undo view tests (extend the existing per‑panel harness)
+
+## Testing plan
+
+This is the **final slice** and carries the full bundle gate set:
+`build`, `unit-tests`, `constructor-unit-tests`, `ui-smoke`, `ui-tests`,
+`impl-log-structure`, `state-of-world-structure`.
+
+- `constructor-unit-tests` — `GroupsRoundTripTests.fs`: group member modes +
+  lossless swap (AC‑G1), primary detector (AC‑G2), separate‑JSON round‑trip +
+  schema (AC‑G3, AC‑H1).
+- `ui-tests` — group on/off and `Set as primary` from the *Experiment* tab /
+  context menu; undo/redo across placement, rotation, lock, group on/off,
+  swap, detector change, multi‑level (AC‑K1); reset rotation / delete /
+  reset view each undoable or confirmation‑gated with same‑row distinct‑colour
+  Confirm/Cancel (AC‑K2).
+- `ui-smoke` — the full app (constructor front door + ribbon + groups +
+  detectors) boots and renders one frame per page/panel without throwing.
+- `unit-tests` — legacy `BerremanTests` regression remains green.
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+High: Part K is cross‑cutting — every project‑mutating edit introduced in
+slices 001–006 must now `push` a snapshot (History.fs:33) and stay
+multi‑level (AC‑K1), without double‑pushing or pushing on no‑op edits. The
+mutually‑exclusive vs multi‑select swap must preserve every member's stored
+configuration losslessly (AC‑G1). The separate app‑data groups file
+(G.3.2) must load/save and validate against its new schema independent of any
+`.ocproj` (AC‑G3). As the final slice, a regression in any earlier area
+fails the full gate set.
+
+## Hand-off
+
+This is the last slice of the arc. State‑of‑the‑world must carry the final
+`gates:` baseline YAML block (legacy `berreman_unit_tests`,
+`constructor` test count, and the UI test counts) so the arc closes with a
+complete baseline. Record that every constructor action now participates in
+`EditHistory` and that the groups/collections library lives at the per‑user
+app‑data path — no in‑tree persisted operator state was added.
