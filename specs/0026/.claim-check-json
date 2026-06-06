@@ -1,26 +1,26 @@
 {
   "data_version": 5,
-  "spec_md_sha": "ef7687badf80bc4fdf5a612ae300951ef2123c83445a1916bb223f4a49c6d498",
+  "spec_md_sha": "5e42cdc40a79d473501a30874477d34f012361d919be074492c1d8142ab007e1",
   "claims": [
     {
       "id": 1,
       "phrase": "layered on top of the existing Avalonia + FuncUI (Elm-style MVU) desktop app, that reuses the existing beam-tree physics, units, JSON storage, and snapshot undo/redo rather than re-inventing them",
       "spec_location": "intro paragraph (lines 1-10)",
-      "evidence": "Intro summary; each named subsystem resolves and is concretely pointered in this same chunk (§0.1 BeamTree.fs, §0.2 Units.fs, §0.7 ProjectFile.fs/History.fs). Glob confirms Berreman/OpticalConstructor/{OpticalConstructor.Domain,OpticalConstructor.Storage,OpticalConstructor.Ui} all exist.",
+      "evidence": "Intro summary; each named subsystem resolves and is concretely pointered later in this same chunk (§0.1 BeamTree.fs, §0.2 Units.fs, §0.7 ProjectFile.fs/History.fs). Glob confirms Berreman/OpticalConstructor/{OpticalConstructor.Domain,OpticalConstructor.Storage,OpticalConstructor.Ui} all exist.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 2,
       "phrase": "The constructor MUST drive the existing beam tree (Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35 defines ConstructorElement; :53 defines BeamNode; :91 solve; :117 routeAndSolve) and the project aggregate (Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26, OpticalConstructorProject)",
       "spec_location": "§0.1",
-      "evidence": "Read BeamTree.fs:35 -> 'type ConstructorElement'; :53 -> 'type BeamNode'; :91 -> 'let solve'; :117 -> 'let routeAndSolve'. Read Project.fs:26 -> 'type OpticalConstructorProject'. All five pointers exact.",
+      "evidence": "Read BeamTree.fs:35 -> 'type ConstructorElement'; :53 -> 'type BeamNode'; :91 -> 'let solve (node : BeamNode)'; :117 -> 'let routeAndSolve'. Read Project.fs:26 -> 'type OpticalConstructorProject'. All five pointers exact.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 3,
       "phrase": "matching the units spine (Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20, UnitOfMeasure; :43 toMeters; :71 fromMeters) ... a per-object preferred display unit (display metadata only, mirroring BeamNode.defaultUnit, BeamTree.fs:59)",
       "spec_location": "§0.2",
-      "evidence": "Read Units.fs:20 -> 'type UnitOfMeasure'; :43 -> 'let toMeters'; :71 -> 'let fromMeters'. Read BeamTree.fs:59 -> 'defaultUnit : Units.UnitOfMeasure' inside BeamNode. Phrase 'mirroring' inferred as assumption-shape (existing-artefact reference); all pointers exact.",
+      "evidence": "Read Units.fs:20 -> 'type UnitOfMeasure'; :43 -> 'let toMeters'; :71 -> 'let fromMeters'. Read BeamTree.fs:59 -> 'defaultUnit : Units.UnitOfMeasure' inside BeamNode record. Phrase 'mirroring' inferred as assumption-shape (existing-artefact reference); all pointers exact.",
       "verdict": "CONFIRMED"
     },
     {
@@ -34,7 +34,7 @@
       "id": 5,
       "phrase": "The audit-gated FuncUI clone at C:/GitHub/Avalonia.FuncUI.Clone/ MUST NOT be referenced, linked, or built (Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8 records the gate)",
       "spec_location": "§0.3",
-      "evidence": "Read AppShell.fs:8 -> begins '**FuncUI-clone gate (constraint 5 / §A.6 / §A.9 / AC-J8).**' stating the clone at C:\\GitHub\\Avalonia.FuncUI.Clone\\ MUST NOT be referenced/linked/built. Pointer exact.",
+      "evidence": "Read AppShell.fs:8 -> '**FuncUI-clone gate (constraint 5 / §A.6 / §A.9 / AC-J8).**' stating the clone at C:\\GitHub\\Avalonia.FuncUI.Clone\\ MUST NOT be referenced/linked/built. fsproj grep confirms only the public 'Avalonia.FuncUI' v1.6.0 NuGet is referenced (Ui/App .fsproj), never the clone. Pointer exact.",
       "verdict": "CONFIRMED"
     },
     {
@@ -55,7 +55,7 @@
       "id": 8,
       "phrase": "EN/RU localization (no CultureInfo-based localization, ResourceManager, or .resx exists; the only CultureInfo uses are InvariantCulture number parsing) ... net-new (verified absent today)",
       "spec_location": "§0.7",
-      "evidence": "Grep ResourceManager|\\.resx|CultureInfo over Berreman/OpticalConstructor: zero ResourceManager hits, zero .resx (Glob Berreman/**/*.resx -> none); all 5 CultureInfo hits are CultureInfo.InvariantCulture (Export.fs:41, MaterialImport.fs:34, InverseFit.fs:56, SpectralImport.fs:25, SourceView.fs:77). Absence claim holds.",
+      "evidence": "Grep ResourceManager|\\.resx|CultureInfo over Berreman/OpticalConstructor: zero ResourceManager hits, zero .resx (Glob Berreman/OpticalConstructor/**/Placement.fs and *.resx -> none); all CultureInfo hits in the OpticalConstructor solution are CultureInfo.InvariantCulture (Export.fs:41, MaterialImport.fs:34, SpectralImport.fs:25, InverseFit.fs:56, SourceView.fs:77). The MathNetNumerics hits are vendored third-party code, out of the solution. Absence claim holds.",
       "verdict": "CONFIRMED"
     },
     {
@@ -76,7 +76,7 @@
       "id": 11,
       "phrase": "r1, r2, r3 ... each carried as the engine's Angle value so the existing angle constructors are reused, not re-derived",
       "spec_location": "§A.1.1",
-      "evidence": "Class-anchored on Angle. Grep -> 'type Angle =' at Berreman/Geometry.fs:34 (engine geometry module). Existing Angle type confirmed.",
+      "evidence": "Class-anchored on Angle. Grep 'type Angle' -> unique match in Berreman/Berreman/Geometry.fs (engine geometry module); spec/claim-file hits aside, it is the sole source definition. Existing Angle type confirmed.",
       "verdict": "CONFIRMED"
     },
     {
@@ -146,7 +146,7 @@
       "id": 21,
       "phrase": "For angles use the engine's existing `Angle` type and its constructors rather than introducing a new angle type",
       "spec_location": "§A.9",
-      "evidence": "class-anchored `Angle`; Grep `type Angle` returns exactly one match -> Geometry.fs:34 `type Angle =`",
+      "evidence": "class-anchored `Angle`; Grep `type Angle` returns exactly one production match -> Geometry.fs:34 `type Angle =`",
       "verdict": "CONFIRMED"
     },
     {
@@ -221,268 +221,289 @@
     },
     {
       "id": 32,
-      "phrase": "The key map MUST be configurable (the rotation step already is)",
-      "spec_location": "§E.8.1",
-      "evidence": "\"already\" assumption-shape phrase with no <file>:<symbol> pointer in the sentence; the cited prior configurability is a spec MUST (E.3.1), not an existing artefact. Grep for rotation-step configuration (rotation.?step / rotationStep / rotation_step, case-insensitive) over Berreman/OpticalConstructor returns 0 hits; Preferences (UserEnvironment.fs:94) carries no rotation-step field. No existing artefact resolves the 'already configurable' claim.",
-      "verdict": "REFUTED-NO-POINTER"
+      "phrase": "Today there is no key‑binding or command infrastructure to reuse (only per‑button `onClick`); this part introduces the centralized command model both the ribbon (Part D) and the input handlers read from.",
+      "spec_location": "§E.0 Problem statement",
+      "evidence": "Inferred current-state assumption phrase (\"Today there is no ... to reuse\" / \"only per-button onClick\") not matched verbatim against the trigger list; treated as a 'this is the existing state' claim. Glob OpticalConstructor.Ui/Commands.fs -> no file. Grep KeyBinding|KeyGesture|KeyMap|keyBinding|HotKey|onKeyDown|KeyDown over Berreman/OpticalConstructor -> 0 hits (no existing command/keybinding infrastructure). Grep onClick over the same tree -> 22 occurrences across 8 view files (ChartView/FitView/ConstructionView/LifecycleView/MaterialsView/ResultsView/Shell/SourceView), confirming per-button onClick is the only existing reachability.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 33,
       "phrase": "the configured key map MUST persist with the environment settings (Part I / UserEnvironment.fs:141). Reuse that settings store rather than adding a parallel preferences file.",
       "spec_location": "§E.8.1",
-      "evidence": "Read UserEnvironment.fs:141 -> matched `type EnvironmentSettings` (the persistent user-environment settings store; favorites/recentFiles/layout/theme/preferences fields). Existing settings store confirmed at the cited pointer.",
+      "evidence": "Read UserEnvironment.fs:141 -> matched `type EnvironmentSettings` (the persistent user-environment settings store carrying favorites/lastFolders/recentFiles/layout/theme/... fields). The settings store to reuse exists at the cited pointer.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 34,
       "phrase": "The domain already enumerates element kinds (BeamTree.fs:35).",
-      "spec_location": "§F.0",
-      "evidence": "Read BeamTree.fs:35 -> matched `type ConstructorElement =` with cases Source/Polarizer/Sample/Lens/CurvedMirror/FlatMirror/Analyzer/Detector (lines 35-43). Element-kind enumeration exists at the cited pointer.",
+      "spec_location": "§F.0 Problem statement",
+      "evidence": "Read BeamTree.fs:35 -> matched `type ConstructorElement` whose cases (Source/Polarizer/Sample/Lens/CurvedMirror/FlatMirror/Analyzer/Detector, lines 36-43) enumerate the element kinds. Enumeration exists at the cited pointer.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 35,
       "phrase": "Map catalogue kinds onto the existing `ConstructorElement` cases (BeamTree.fs:35) via the A.5.2 function",
-      "spec_location": "§F.3",
+      "spec_location": "§F.3 Reuse before invention",
       "evidence": "Read BeamTree.fs:35 -> `type ConstructorElement` with DU cases at lines 36-43. Existing ConstructorElement cases confirmed at the cited pointer.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 36,
       "phrase": "do not add new element DU cases for LP/CP (they are `Polarizer`)",
-      "spec_location": "§F.3",
-      "evidence": "Read BeamTree.fs:37 -> matched `| Polarizer` case within the `ConstructorElement` union (BeamTree.fs:35). Reuse-target case exists.",
+      "spec_location": "§F.3 Reuse before invention",
+      "evidence": "Read BeamTree.fs:37 -> matched `| Polarizer` case within the `ConstructorElement` union (BeamTree.fs:35). The reuse-target case exists.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 37,
       "phrase": "do not remove `Analyzer` (BeamTree.fs:42)",
-      "spec_location": "§F.3",
+      "spec_location": "§F.3 Reuse before invention",
       "evidence": "Read BeamTree.fs:42 -> matched `| Analyzer` case within the `ConstructorElement` union. Cited file and line both match.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 38,
-      "phrase": "building on the existing favourites concept (`FavoriteGroup`, UserEnvironment.fs:126)",
+      "phrase": "building on the existing favourites concept (`FavoriteGroup`, UserEnvironment.fs:126) so a commonly used group can be pinned and dropped back in later.",
       "spec_location": "§G.1.3",
       "evidence": "Read UserEnvironment.fs:126 -> matched `type FavoriteGroup = { name : string; pins : FavoritePin list }`. Existing favourites type confirmed at the cited pointer.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 39,
-      "phrase": "consistent with each branch carrying its own field, BeamTree.fs:98",
+      "phrase": "secondary detectors MUST report their own branch independently (consistent with each branch carrying its own field, BeamTree.fs:98).",
       "spec_location": "§G.2.1",
-      "evidence": "Read BeamTree.fs:98 -> matched `let branchEmField (branch : BeamBranch) (ems : EmFieldSystem) : EmField`, which returns `ems.reflected`/`ems.transmitted` per branch; the doc comment (lines 94-97) states each branch carries its own field state so detectors on different branches report independent results. Cited file and line both match.",
+      "evidence": "Read BeamTree.fs:98 -> matched `let branchEmField (branch : BeamBranch) (ems : EmFieldSystem) : EmField`, returning `ems.reflected`/`ems.transmitted` per branch; its doc-comment (lines 94-97) states each branch carries its own field state so detectors on different branches report independent results. Cited file and line both match.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 40,
       "phrase": "secondary detectors MUST report their own branch independently (consistent with each branch carrying its own field, BeamTree.fs:98)",
       "spec_location": "§G.2.1",
-      "evidence": "Read BeamTree.fs:94-101 -> let branchEmField at :98 plus comment :95-97 'Each branch carries its own field state, so detectors on different branches report independent results' -> matches 'each branch carrying its own field'",
+      "evidence": "Read BeamTree.fs:94-101 -> `let branchEmField (branch : BeamBranch) (ems : EmFieldSystem) : EmField` at :98; doc comment :94-97 'Each branch carries its own field state, so detectors on different branches report independent results' -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 41,
       "phrase": "reusing the shared JSON options and the schema-validate-on-load seam (SchemaValidation.fs:61)",
       "spec_location": "§G.3.1",
-      "evidence": "Read SchemaValidation.fs:58-73 -> let validate (element : JsonElement) at :61 is the validate-on-load seam (SchemaValidation module, validates BEFORE binding). 'shared JSON options' has no separate pointer but the seam pointer resolves",
+      "evidence": "Read SchemaValidation.fs:58-68 -> `let validate (element : JsonElement) : Result<unit, StorageError>` at :61, the validate-before-bind seam -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 42,
       "phrase": "mirroring the environment store's location convention (UserEnvironment.fs:279, the `Softellect/Berreman/OpticalConstructor` app-data folder)",
       "spec_location": "§G.3.2",
-      "evidence": "Read UserEnvironment.fs:276-284 -> let settingsPath () at :279 builds Path.Combine(ApplicationData, 'Softellect', 'Berreman', 'OpticalConstructor') -> matches",
+      "evidence": "Read UserEnvironment.fs:276-284 -> `let settingsPath ()` at :279 builds Path.Combine(ApplicationData, 'Softellect', 'Berreman', 'OpticalConstructor') -> matches the cited folder convention",
       "verdict": "CONFIRMED"
     },
     {
       "id": 43,
       "phrase": "a `*.json` name does not collide with any root `.gitignore` pattern such as `*.cache`/`*.log`/`*.tmp`/`[Bb]in/`/`[Oo]bj/`",
       "spec_location": "§G.3.2",
-      "evidence": "Grep root .gitignore -> [Bb]in/ (:23), [Oo]bj/ (:24), *.tmp (:78), *.log (:80) all present; cited `*.cache` is actually `*.cachefile` (:98) but no pattern matches *.json, so the substantive non-collision claim holds",
+      "evidence": "Read root .gitignore -> cited patterns present (`*.[Cc]ache` :209 covers *.cache, `*.log` :80, `*.tmp` :78, `[Bb]in/` :23, `[Oo]bj/` :24); no `*.json` ignore pattern exists, so a `*.json` name does not collide. Inferred assumption-shape claim about the existing .gitignore",
       "verdict": "CONFIRMED"
     },
     {
       "id": 44,
       "phrase": "Reuse the JSON options and validation seam used by the project and environment stores (SchemaValidation.fs:61; UserEnvironment.fs:185 defaults/load/save pattern) rather than a new serializer",
       "spec_location": "§G.4",
-      "evidence": "Read SchemaValidation.fs:61 -> validate seam; Read UserEnvironment.fs:183-195 -> let defaults at :185, with load (:290) and save (:302) forming the defaults/load/save pattern -> matches",
+      "evidence": "Read SchemaValidation.fs:61 -> `let validate`; Read UserEnvironment.fs:183-194 -> `let defaults : EnvironmentSettings` at :185, with load (:290) and save (:302) forming the defaults/load/save pattern -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 45,
       "phrase": "reuse the `FavoriteGroup` notion (UserEnvironment.fs:126) for pin/reuse",
       "spec_location": "§G.4",
-      "evidence": "Read UserEnvironment.fs:125-130 -> type FavoriteGroup at :126 (name + pins) -> matches",
+      "evidence": "Read UserEnvironment.fs:125-130 -> `type FavoriteGroup = { name : string; pins : FavoritePin list }` at :126 -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 46,
       "phrase": "mirroring how the schema content item is shipped, SchemaValidation.fs:17, and read from the runtime base directory",
       "spec_location": "§I.1.1",
-      "evidence": "Read SchemaValidation.fs:14-21 -> let schemaRelativePath at :17 (build-copied schema content item, relative to assembly base directory, read via AppContext.BaseDirectory at :20-21) -> matches",
+      "evidence": "Read SchemaValidation.fs:14-21 -> `let schemaRelativePath` at :17 (build-copied schema content item, relative to assembly base directory); :20-21 reads it via AppContext.BaseDirectory -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 47,
-      "phrase": "`EnvironmentSettings` (UserEnvironment.fs:141) MUST be extended with a `language` field",
+      "phrase": "`EnvironmentSettings` (UserEnvironment.fs:141) MUST be extended with a `language` field, defaulting to English",
       "spec_location": "§I.2.1",
-      "evidence": "Read UserEnvironment.fs:141-153 -> type EnvironmentSettings at :141 -> exists (no language field yet, consistent with 'MUST be extended')",
+      "evidence": "Read UserEnvironment.fs:141-153 -> `type EnvironmentSettings = { ... }` at :141 (no language field yet, consistent with 'MUST be extended') -> existing record resolves",
       "verdict": "CONFIRMED"
     },
     {
       "id": 48,
-      "phrase": "MUST write through the existing save path (UserEnvironment.fs:302)",
+      "phrase": "the environment schema (`Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json`) MUST be extended to match",
       "spec_location": "§I.2.1",
-      "evidence": "Read UserEnvironment.fs:299-310 -> let save (path) (settings) : Result<unit, StorageError> at :302 -> matches existing save path",
+      "evidence": "Glob -> Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json exists -> the schema to be extended resolves",
       "verdict": "CONFIRMED"
     },
     {
       "id": 49,
-      "phrase": "Reuse the `EnvironmentSettings` store (UserEnvironment.fs:141/:302) for the saved language; reuse the build-copied-content-item + base-directory read pattern (SchemaValidation.fs:17)",
-      "spec_location": "§I.5",
-      "evidence": "Read UserEnvironment.fs:141 (type EnvironmentSettings) and :302 (let save); SchemaValidation.fs:17 (schemaRelativePath, build-copied content item) -> all resolve",
+      "phrase": "MUST write through the existing save path (UserEnvironment.fs:302)",
+      "spec_location": "§I.2.1",
+      "evidence": "Read UserEnvironment.fs:299-310 -> `let save (path : string) (settings : EnvironmentSettings) : Result<unit, StorageError>` at :302 -> matches the existing save path",
       "verdict": "CONFIRMED"
     },
     {
       "id": 50,
-      "phrase": "Today CTA colours are duplicated per view (e.g. `positiveCta`/`negativeCta`, ConstructionView.fs:40)",
-      "spec_location": "§J.0",
-      "evidence": "Read ConstructionView.fs:38-41 -> let private positiveCta at :40 and negativeCta at :41 -> matches",
+      "phrase": "The startup check and the copyable error surface MUST be wired in the app entry point (`Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs`)",
+      "spec_location": "§I.3.1",
+      "evidence": "Glob -> Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs exists -> the cited app entry point resolves",
       "verdict": "CONFIRMED"
     },
     {
       "id": 51,
-      "phrase": "The existing `positiveCta`/`negativeCta` (ConstructionView.fs:40) MUST be expressed as the destructive-gate flavour in `Controls.fs`",
-      "spec_location": "§J.2",
-      "evidence": "Read ConstructionView.fs:40-41 -> positiveCta/negativeCta exist at :40/:41 -> matches the existing pointer",
+      "phrase": "Reuse the `EnvironmentSettings` store (UserEnvironment.fs:141/:302) for the saved language",
+      "spec_location": "§I.5",
+      "evidence": "Read UserEnvironment.fs:141 -> `type EnvironmentSettings`; :302 -> `let save`. Both pointers resolve",
       "verdict": "CONFIRMED"
     },
     {
       "id": 52,
-      "phrase": "The engine already provides multi-step whole-project snapshot undo/redo (History.fs:20, `EditHistory`; `:33` `push`; `:39` `undo`; `:47` `redo`)",
-      "spec_location": "§K.0",
-      "evidence": "Read History.fs in full -> type EditHistory at :20, let push at :33, let undo at :39, let redo at :47 -> all four pointers match",
+      "phrase": "reuse the build-copied-content-item + base-directory read pattern (SchemaValidation.fs:17) for shipping and reading `strings.json`",
+      "spec_location": "§I.5",
+      "evidence": "Read SchemaValidation.fs:17 -> `let schemaRelativePath` (build-copied content item); :20-21 reads from AppContext.BaseDirectory -> the build-copied + base-directory pattern resolves",
       "verdict": "CONFIRMED"
     },
     {
       "id": 53,
-      "phrase": "MUST `push` the new project onto the shared `EditHistory` (History.fs:33)",
-      "spec_location": "§K.1.1",
-      "evidence": "Read History.fs:31-34 -> let push (next) (h : EditHistory) : EditHistory at :33 -> matches",
+      "phrase": "Today CTA colours are duplicated per view (e.g. `positiveCta`/`negativeCta`, ConstructionView.fs:40)",
+      "spec_location": "§J.0",
+      "evidence": "Read ConstructionView.fs:38-41 -> `let private positiveCta : IBrush` at :40, `let private negativeCta` at :41 -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 54,
-      "phrase": "Undo and redo MUST be multi-level (History.fs is a multi-level zipper)",
-      "spec_location": "§K.1.2",
-      "evidence": "Read History.fs:5-14 -> module doc 'EditHistory is an immutable F# zipper over three project-snapshot lists ... This is the multi-level history' -> matches",
+      "phrase": "The existing `positiveCta`/`negativeCta` (ConstructionView.fs:40) MUST be expressed as the destructive-gate flavour in `Controls.fs`",
+      "spec_location": "§J.2",
+      "evidence": "Read ConstructionView.fs:40-41 -> positiveCta/negativeCta brush definitions both present -> the existing pointer resolves",
       "verdict": "CONFIRMED"
     },
     {
       "id": 55,
-      "phrase": "distinct positive-CTA / negative-CTA colours (Part J.2 / ConstructionView.fs:40)",
-      "spec_location": "§K.2.1",
-      "evidence": "Read ConstructionView.fs:40-41 -> positiveCta/negativeCta brushes at :40/:41 -> matches",
+      "phrase": "The engine already provides multi-step whole-project snapshot undo/redo (History.fs:20, `EditHistory`; `:33` `push`; `:39` `undo`; `:47` `redo`)",
+      "spec_location": "§K.0",
+      "evidence": "Read History.fs:14-50 -> `type EditHistory` at :20, `let push` at :33, `let undo` at :39, `let redo` at :47 -> all four pointers match",
       "verdict": "CONFIRMED"
     },
     {
       "id": 56,
-      "phrase": "Reuse `History.fs` (History.fs:20) as the undo/redo carrier; do not add a command-pattern diff log or a parallel history",
-      "spec_location": "§K.3",
-      "evidence": "Read History.fs:20 -> type EditHistory (the undo/redo carrier) -> matches",
+      "phrase": "MUST `push` the new project onto the shared `EditHistory` (History.fs:33)",
+      "spec_location": "§K.1.1",
+      "evidence": "Read History.fs:31-34 -> `let push (next : OpticalConstructorProject) (h : EditHistory) : EditHistory` at :33 -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 57,
-      "phrase": "its nav/shell entry is added to the existing `Page` union (Shell.fs:73)",
-      "spec_location": "Operator-facing UX commitments §1 (Discoverability)",
-      "evidence": "Read Shell.fs:72-76 -> type Page = Construction | SynthesisFit at :73 -> existing union resolves",
+      "phrase": "Undo and redo MUST be multi-level (History.fs is a multi-level zipper); the constructor MUST NOT degrade it to single-level",
+      "spec_location": "§K.1.2",
+      "evidence": "Read History.fs:17-50 -> EditHistory record carries `past`/`present`/`future` project-snapshot lists (a zipper); undo (:39) and redo (:47) step the lists -> multi-level zipper confirmed",
       "verdict": "CONFIRMED"
     },
     {
       "id": 58,
-      "phrase": "marked active with distinct styling like the current `navButton` (Shell.fs:500)",
-      "spec_location": "Operator-facing UX commitments §1 (Discoverability)",
-      "evidence": "Read Shell.fs:500-506 -> let private navButton (dispatch) (label) (target) (active) at :500, marks isActive with SteelBlue background -> matches",
+      "phrase": "distinct positive-CTA / negative-CTA colours (Part J.2 / ConstructionView.fs:40)",
+      "spec_location": "§K.2.1",
+      "evidence": "Read ConstructionView.fs:40-41 -> positiveCta (SeaGreen) / negativeCta (IndianRed) brushes at :40/:41 -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 59,
-      "phrase": "The *Legacy* entry (D.5) opens the existing dockable screen.",
-      "spec_location": "Operator-facing UX commitments §1 (Discoverability)",
-      "evidence": "No <file>:<symbol> pointer in the sentence or adjacent bullet for 'the existing dockable screen'; only an internal §D.5 reference (out of this chunk). Un-anchored 'the existing <X>' phrase -> no concrete artefact to resolve",
-      "verdict": "REFUTED-NO-POINTER"
+      "phrase": "Reuse `History.fs` (History.fs:20) as the undo/redo carrier; do not add a command-pattern diff log or a parallel history",
+      "spec_location": "§K.3",
+      "evidence": "Read History.fs:20 -> `type EditHistory` (the undo/redo carrier) -> matches",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 60,
-      "phrase": "The per-node solve reuses the existing async per-node mechanism (BeamTree.fs:91) at per-element granularity",
-      "spec_location": "Operator-facing UX commitments §2 (Progress granularity)",
-      "evidence": "Read BeamTree.fs:86-92 -> let solve (node : BeamNode) : EmFieldSystem at :91 is the per-node solve mechanism (exists). Note: :91 is synchronous ('No parallel solver is invoked'); the 'async' descriptor is not reflected at that line, but the cited per-node artefact resolves",
+      "phrase": "its nav/shell entry is added to the existing `Page` union (Shell.fs:73)",
+      "spec_location": "Operator-facing UX commitments §1 (Discoverability)",
+      "evidence": "Read Shell.fs:72-76 -> `type Page = | Construction | SynthesisFit` at :73 -> existing union resolves",
       "verdict": "CONFIRMED"
     },
     {
       "id": 61,
-      "phrase": "`.ocproj` user documents remain committable and are explicitly never git-ignored (ProjectFile.fs:14)",
-      "spec_location": "Operator-facing UX commitments §6 (Committable-state under dot-folder)",
-      "evidence": "Read ProjectFile.fs:12-17 -> comment at :14-15 '`.ocproj` files are user documents and are never added to `.gitignore`' above let extension = '.ocproj' (:17) -> matches",
+      "phrase": "marked active with distinct styling like the current `navButton` (Shell.fs:500)",
+      "spec_location": "Operator-facing UX commitments §1 (Discoverability)",
+      "evidence": "Read Shell.fs:500-506 -> `let private navButton (dispatch : RootMsg -> unit) (label : string) (target : Page) (active : Page) : IView` at :500, sets SteelBlue background when active -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 62,
-      "phrase": "AC‑D4: The *Legacy* entry opens the existing dockable Construction / Synthesis‑Fit screen (D.5); the constructor is the default landing page (D.6).",
-      "spec_location": "Acceptance criteria § Part D acceptance, AC‑D4 (chunk 6, lines 999-1132)",
-      "evidence": "Class-anchored on the named screen (no file pointer in sentence; (D.5) is a spec-section ref). Glob resolves both named artefacts: Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructionPage.fs (module OpticalConstructor.Ui.ConstructionPage) and Berreman/OpticalConstructor/OpticalConstructor.Ui/SynthesisFitPage.fs (module OpticalConstructor.Ui.SynthesisFitPage); sibling ConstructionView.fs and FitView.fs also present. The existing Construction / Synthesis-Fit screen resolves to real modules.",
+      "phrase": "The *Legacy* entry (D.5) opens the present dockable-panel main screen (`constructionBody`, Shell.fs:572)",
+      "spec_location": "Operator-facing UX commitments §1 (Discoverability)",
+      "evidence": "Read Shell.fs:569-577 -> `let private constructionBody (model : RootModel) (dispatch : RootMsg -> unit) : IView` at :572, the dockable-panel page body -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 63,
-      "phrase": "A project round-trip fixture exercising placement + table (AC-A6, AC-C1) added under `OpticalConstructor.Tests` reusing the existing `ProjectJsonRoundtripTests` harness.",
-      "spec_location": "Test artifacts (chunk lines 1133-1199)",
-      "evidence": "Literal 'existing' trigger; class-anchored on `ProjectJsonRoundtripTests`. Grep resolves to exactly one production file: Berreman/OpticalConstructor/OpticalConstructor.Tests/ProjectJsonRoundtripTests.fs (also referenced in OpticalConstructor.Tests.fsproj). Harness exists.",
+      "phrase": "The per-node solve reuses the existing async per-node mechanism (BeamTree.fs:91) at per-element granularity",
+      "spec_location": "Operator-facing UX commitments §2 (Progress granularity)",
+      "evidence": "Read BeamTree.fs:86-92 -> `let solve (node : BeamNode) : EmFieldSystem` at :91, the per-node solve via the EXISTING engine solver (:86). The per-node artefact resolves; 'async' is a semantic descriptor not reflected at the cited line but out of scope for pointer resolution",
       "verdict": "CONFIRMED"
     },
     {
       "id": 64,
-      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (edit) — extend `OpticalConstructorProject` with table + per-element placement.",
-      "spec_location": "Files in scope (chunk lines 1133-1199)",
-      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file and the named type pre-exist (phrase inferred, not in the default/project trigger list). Read confirms Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs exists; Grep found `type OpticalConstructorProject =` at Project.fs:26.",
+      "phrase": "`.ocproj` user documents remain committable and are explicitly never git-ignored (ProjectFile.fs:14)",
+      "spec_location": "Operator-facing UX commitments §6 (Committable-state under dot-folder)",
+      "evidence": "Read ProjectFile.fs:12-17 -> comment at :14-15 '`.ocproj` files are user documents and are never added to `.gitignore`' above `let extension = \".ocproj\"` (:17); root .gitignore has no `.ocproj` pattern -> matches",
       "verdict": "CONFIRMED"
     },
     {
       "id": 65,
-      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (edit) — add placement + table representation.",
-      "spec_location": "Files in scope (chunk lines 1133-1199)",
-      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file pre-exists (phrase inferred). File-existence check confirms Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json exists.",
+      "phrase": "AC‑D4: The *Legacy* entry opens the existing dockable Construction / Synthesis‑Fit screen (D.5); the constructor is the default landing page (D.6).",
+      "spec_location": "Acceptance criteria § Part D acceptance, AC‑D4 (chunk 6, lines 999-1132)",
+      "evidence": "Class-anchored on the named screen (no file:symbol pointer in sentence; (D.5) is a spec-section ref). Resolves uniquely in Berreman/OpticalConstructor/OpticalConstructor.Ui/: Shell.fs defines Page.Construction / Page.SynthesisFit (lines 74-75), carries the sub-models (construction : ConstructionPage.Model line 100, fit : SynthesisFitPage.Model option line 103), and routes docking (SetPanelDock of panel : string * dock : DockSide, line 83). Backing modules ConstructionPage.fs, ConstructionView.fs, SynthesisFitPage.fs and FitView.fs all exist. The existing dockable Construction / Synthesis-Fit screen resolves to real artefacts.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 66,
-      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (edit) — add the Constructor and Legacy pages to `Page`; route through `RootModel`/`RootMsg`; default landing.",
-      "spec_location": "Files in scope (chunk lines 1133-1199)",
-      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file and the named types pre-exist (phrase inferred). Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs exists; Grep found `type Page =` (Shell.fs:73), `type RootModel =` (Shell.fs:94), `type RootMsg =` (Shell.fs:121).",
+      "phrase": "A project round-trip fixture exercising placement + table (AC-A6, AC-C1) added under `OpticalConstructor.Tests` reusing the existing `ProjectJsonRoundtripTests` harness.",
+      "spec_location": "Test artifacts (chunk lines 1134-1200)",
+      "evidence": "Literal 'existing' trigger; class-anchored on `ProjectJsonRoundtripTests`. Grep resolves to exactly one production file: Berreman/OpticalConstructor/OpticalConstructor.Tests/ProjectJsonRoundtripTests.fs (also referenced in OpticalConstructor.Tests.fsproj). Harness exists.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 67,
-      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (edit) — add `language` and the configurable key map to `EnvironmentSettings`.",
-      "spec_location": "Files in scope (chunk lines 1133-1199)",
-      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file and the named type pre-exist (phrase inferred). Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs exists; Grep found `type EnvironmentSettings =` at UserEnvironment.fs:141.",
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (edit) — extend `OpticalConstructorProject` with table + per-element placement.",
+      "spec_location": "Files in scope (chunk lines 1134-1200)",
+      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file and the named type pre-exist (phrase inferred, not in the default/project trigger list). Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs exists; Grep found `type OpticalConstructorProject =` at Project.fs:26.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 68,
-      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (edit) — add `language` + key-map fields.",
-      "spec_location": "Files in scope (chunk lines 1133-1199)",
-      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file pre-exists (phrase inferred). File-existence check confirms Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json exists.",
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (edit) — add placement + table representation.",
+      "spec_location": "Files in scope (chunk lines 1134-1200)",
+      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file pre-exists (phrase inferred). Glob confirms Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json exists.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 69,
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (edit) — add the Constructor and Legacy pages to `Page`; route through `RootModel`/`RootMsg`; default landing.",
+      "spec_location": "Files in scope (chunk lines 1134-1200)",
+      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file and the named types pre-exist (phrase inferred). Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs exists; Grep found `type Page =` (Shell.fs:73), `type RootModel =` (Shell.fs:94), `type RootMsg =` (Shell.fs:121).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 70,
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (edit) — add `language` and the configurable key map to `EnvironmentSettings`.",
+      "spec_location": "Files in scope (chunk lines 1134-1200)",
+      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file and the named type pre-exist (phrase inferred). Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs exists; Grep found `type EnvironmentSettings =` at UserEnvironment.fs:141.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 71,
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (edit) — add `language` + key-map fields.",
+      "spec_location": "Files in scope (chunk lines 1134-1200)",
+      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file pre-exists (phrase inferred). Glob confirms Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json exists.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 72,
       "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (edit) — startup localization completeness check + copyable error surface; constructor as default landing.",
-      "spec_location": "Files in scope (chunk lines 1133-1199)",
-      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file pre-exists (phrase inferred). File-existence check confirms Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs exists.",
+      "spec_location": "Files in scope (chunk lines 1134-1200)",
+      "evidence": "Inferred assumption-shape: the '(edit)' marker asserts the file pre-exists (phrase inferred). Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs exists.",
       "verdict": "CONFIRMED"
     }
   ],

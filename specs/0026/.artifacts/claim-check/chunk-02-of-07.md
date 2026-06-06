@@ -67,7 +67,7 @@
       "id": 10,
       "phrase": "For angles use the engine's existing `Angle` type and its constructors rather than introducing a new angle type",
       "spec_location": "§A.9",
-      "evidence": "class-anchored `Angle`; Grep `type Angle` returns exactly one match -> Geometry.fs:34 `type Angle =`",
+      "evidence": "class-anchored `Angle`; Grep `type Angle` returns exactly one production match -> Geometry.fs:34 `type Angle =`",
       "verdict": "CONFIRMED"
     },
     {
