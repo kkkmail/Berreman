@@ -686,7 +686,8 @@ nearest beam rather than floating free.
 
 ### E.8 Configurability and reuse
 
-E.8.1 The key map MUST be configurable (the rotation step already is), so a
+E.8.1 The key map MUST be configurable (matching the rotation‑step
+configurability this spec also mandates, E.3.1), so a
 user who prefers different behaviour can change it; the configured key map
 MUST persist with the environment settings (Part I / UserEnvironment.fs:141)
 . Reuse that settings store rather than adding a parallel preferences file.
@@ -961,7 +962,7 @@ commits explicitly on each checklist point:
    default landing page (D.6); its nav/shell entry is added to the existing
    `Page` union (Shell.fs:73) and marked active with distinct styling like
    the current `navButton` (Shell.fs:500). The *Legacy* entry (D.5) opens
-   the existing dockable screen.
+   the present dockable‑panel main screen (`constructionBody`, Shell.fs:572).
 2. **Progress granularity.** Feedback MUST be **per‑element**: selection,
    edits, and re‑snaps reflect on the affected element(s) and the redraw is
    synchronous on drop/edit. The per‑node solve reuses the existing async
