@@ -37,7 +37,7 @@ module HistoryTests =
 
     /// Two projects differing in the root `defaultUnit` — a destructive model edit.
     let private projectWith (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
-        { beamTree = { root = node (Sample vacuumSystem) Map.empty defaultUnit }; systems = [ vacuumSystem ]; sources = [] }
+        { beamTree = { root = node (Sample vacuumSystem) Map.empty defaultUnit }; systems = [ vacuumSystem ]; sources = []; placements = [] }
 
     let private preEdit = projectWith Nanometer
     let private edited = projectWith Micrometer

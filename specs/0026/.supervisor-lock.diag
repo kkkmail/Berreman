@@ -1,1 +1,1 @@
-pid=42360 exe=C:\Python314\python.exe argv=[C:\GitHub\AI-Strategy-Generator\splitter.py C:/GitHub/Berreman/specs/0026/.spec-md --splitter-user-prompt C:/GitHub/Berreman/.user-md/splitter.user-md --arc-runner-user-prompt C:/GitHub/Berreman/.user-md/arc-runner.user-md --splitter-manifest-path C:/GitHub/Berreman/specs/0026/.manifest --splitter-repo-root C:/GitHub/Berreman] acquired_at=2026-06-06T01:00:50Z
+pid=30048 exe=C:\Python314\python.exe argv=[C:\GitHub\AI-Strategy-Generator\arc-runner.py C:/GitHub/Berreman/specs/0026/.manifest] acquired_at=2026-06-06T02:11:20Z

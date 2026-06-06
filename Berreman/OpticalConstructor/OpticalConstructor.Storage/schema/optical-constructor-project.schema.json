@@ -34,6 +34,11 @@
       "items": { "$ref": "#/$defs/sourceSpec" },
       "description": "Source specifications (added by slice 007)."
     },
+    "placements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/elementPlacement" },
+      "description": "Per-element on-table placements (Spec 0026 Part A, slice 001). Each entry carries the box, two normals, three rotations with per-axis locks, catalogue kind, value id, emission metadata, and display unit in canonical SI. The table representation is a sibling field added by slice 004."
+    },
     "sweeps": {
       "type": "array",
       "description": "Parametric-sweep descriptors (later slices)."
@@ -195,6 +200,75 @@
           }
         },
         "defaultUnit": { "$ref": "#/$defs/unitOfMeasure" }
+      }
+    },
+    "vector3": {
+      "type": "object",
+      "description": "A pure direction 3-vector for box normals / oriented axes (Spec 0026 Part A, A.3.2). Direction only; carries no unit.",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "tablePoint": {
+      "type": "object",
+      "description": "A point on the 2-D table plane in canonical meters (Spec 0026 Part A, R-2). The placement point is the centre of the element's bounding box.",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "boundingBox": {
+      "type": "object",
+      "description": "The element's rectangular bounding box (Spec 0026 Part A, A.3): a square a1 x a2 face (a1 = a2 for the standard box) extruded by depth b along the primary normal, plus the two normals n1 (primary, perpendicular to the face) and n2 (secondary). All extents are canonical SI meters.",
+      "required": ["a1", "a2", "b", "n1", "n2"],
+      "properties": {
+        "a1": { "type": "number" },
+        "a2": { "type": "number" },
+        "b": { "type": "number" },
+        "n1": { "$ref": "#/$defs/vector3" },
+        "n2": { "$ref": "#/$defs/vector3" }
+      }
+    },
+    "catalogueKind": {
+      "type": "string",
+      "enum": [
+        "LightSource",
+        "LinearPolarizer",
+        "CircularPolarizer",
+        "Sample",
+        "Lens",
+        "FlatMirror",
+        "CurvedMirror",
+        "Detector"
+      ],
+      "description": "The UI-facing catalogue roles of Part F (Spec 0026 Part A, A.5.1). A fieldless DU serialized as a bare string."
+    },
+    "emission": {
+      "type": "string",
+      "enum": ["EmitReflectedOnly", "EmitTransmittedOnly", "EmitBoth"],
+      "description": "Per-element ray-group emission metadata (Spec 0026 Part A, A.7). The three states make the 'both groups suppressed' state unrepresentable. A fieldless DU serialized as a bare string."
+    },
+    "elementPlacement": {
+      "type": "object",
+      "description": "One on-table element's placement (Spec 0026 Part A, R-1). The three rotation angles r1/r2/r3 are the engine Angle single-case union serialized as bare radian numbers; the three lock flags are booleans; valueId is the optional element value id (None serializes as null). Added as a sibling of the permissive constructorElement anchor (A.8.1) without renaming any reserved $def.",
+      "required": ["placementPoint", "r1", "r2", "r3", "r1Locked", "r2Locked", "r3Locked", "catalogueKind", "box", "emission", "displayUnit"],
+      "properties": {
+        "placementPoint": { "$ref": "#/$defs/tablePoint" },
+        "r1": { "type": "number" },
+        "r2": { "type": "number" },
+        "r3": { "type": "number" },
+        "r1Locked": { "type": "boolean" },
+        "r2Locked": { "type": "boolean" },
+        "r3Locked": { "type": "boolean" },
+        "catalogueKind": { "$ref": "#/$defs/catalogueKind" },
+        "valueId": { "type": ["string", "null"] },
+        "box": { "$ref": "#/$defs/boundingBox" },
+        "emission": { "$ref": "#/$defs/emission" },
+        "displayUnit": { "$ref": "#/$defs/unitOfMeasure" }
       }
     },
     "opticalProperties": true,

@@ -28,6 +28,7 @@
         <Compile Include="BeamTreeTests.fs" />
         <Compile Include="CurvedElementsTests.fs" />
         <Compile Include="BeamRoutingTests.fs" />
+        <Compile Include="PlacementTests.fs" />
         <Compile Include="ProjectJsonRoundtripTests.fs" />
         <Compile Include="RoundTripTests.fs" />
         <Compile Include="SidecarTests.fs" />

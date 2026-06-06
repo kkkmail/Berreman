@@ -32,6 +32,14 @@ module Project =
             /// shape; each `SourceSpec` expands into weighted `IncidentLightInfo`
             /// values combined incoherently on `StokesVector` output (Part E).
             sources : SourceSpec.SourceSpec list
+            /// Per-element on-table placements (Spec 0026 Part A / slice 001, A.8.2).
+            /// Each `ElementPlacement` carries one element's box, two normals, three
+            /// rotations with per-axis locks, catalogue kind, value-id slot, emission
+            /// metadata, and display unit — all in canonical SI. This is the
+            /// per-element placement portion of the §A.8 project extension; the TABLE
+            /// portion (Spec 0026 Part C) is added by slice 004 as a sibling field,
+            /// leaving these placement anchors stable for that follow-on edit.
+            placements : Placement.ElementPlacement list
         }
 
     /// The nine JSON-Schema `$defs` anchor names reserved by §A.7. Parts B–J

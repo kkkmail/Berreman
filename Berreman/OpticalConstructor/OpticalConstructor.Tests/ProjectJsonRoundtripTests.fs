@@ -47,7 +47,7 @@ module ProjectJsonRoundtripTests =
     let private sampleProject (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
         let detector = node Detector Map.empty Nanometer
         let root = node (Sample vacuumSystem) (Map.ofList [ BeamBranch.Transmitted, detector ]) defaultUnit
-        { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = [] }
+        { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = []; placements = [] }
 
     let private okOr (r : Result<'a, _>) : 'a =
         match r with
@@ -106,7 +106,7 @@ module ProjectJsonRoundtripTests =
         let mirror = { (node FlatMirror Map.empty Nanometer) with system = plateSystem }
         let detector = node Detector Map.empty Nanometer
         let root = { (node (Sample plateSystem) (Map.ofList [ BeamBranch.Reflected, mirror; BeamBranch.Transmitted, detector ]) Micrometer) with system = plateSystem }
-        { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ]; sources = [] }
+        { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ]; sources = []; placements = [] }
 
     [<Fact>]
     let ``AC-B9 beam tree and systems round-trip through the schema-validated canonical project`` () =
