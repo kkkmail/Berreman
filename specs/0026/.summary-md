@@ -1,0 +1,78 @@
+# Arc 0026 — narrative summary
+
+> **This is not a substitute for stats.** It is the narrative companion to the
+> numbers the stats tool computes (token/cost/timing/per-slice figures); read the
+> two together. This file is prose only — the story the structured impl-logs and
+> `.manifest-arc-runner.log` do not tell.
+
+## How it went, in one line
+
+Six of seven slices landed green and unattended; slice 007 escalated on a
+genuinely-trivial cosmetic defect and was closed by hand + `accept-current-slice`.
+The arc is COMPLETE.
+
+## The uneventful part (001–006)
+
+Slices 001 through 006 — the geometry/placement domain model, the ray/snapping
+model, localization (EN/RU), the optical-table rendering geometry, the centralized
+commands + constructor MVU surface, and the ribbon/menu shell — committed cleanly
+across roughly nine hours with no operator intervention and nothing the supervisor
+flagged as surprising. From the supervisor's vantage these were ordinary green
+slices; their internal decisions live in their own impl-logs.
+
+## The slice-007 story (the part worth remembering)
+
+Slice 007 (element groups, experiment collections, multiple detectors, undo/redo)
+escalated with **all seven gates green**. The code-judge routed back twice over a
+single narrow defect: the no-op undo-snapshot guard was not actually uniform while
+the state-of-the-world asserted it was. Cycle 1 had correctly steered the worker to
+route `editActive` through the `commitIfChanged` guard so an inert edit pushes no
+empty `Ctrl+Z` step — but two sibling commit sites, `resetRotationNow` and
+`setPrimaryDetectorNow`, were left on the unconditional `commit`. Confirming
+reset-rotation on an already-zero element, or "Set as primary" on the
+already-primary (index-0) detector, therefore still pushed an empty undo step — the
+exact no-op-push the slice's own High risk (AC-K1) forbids. The SoW meanwhile
+claimed "the guard is now UNIFORM," a claim the diff contradicted; on the arc's
+final slice (which carries the closing baseline) the judge declined to rubber-stamp
+a SoW that overstated the very property the review loop had been gating.
+
+The defect itself was real but **cosmetic** — an empty undo step, not data loss —
+and the architecture critic was ship-leaning. What turned a "one cheap re-spawn
+away" fix into a red arc was a budget accident: an earlier worker `exit 1` crash,
+unrelated to any review finding, consumed a per-slice failure slot. That forced the
+slice's single resolver run early, so when the cycle-2 route-back arrived the
+resolver cap was already spent and the supervisor escalated instead of re-spawning.
+
+## Resolution and the decision behind it
+
+We chose to **hand-fix** rather than restart the arc or issue an operator-reply.
+A plain restart was the wrong call: it would re-enter slice 007 with no steering
+and the resolver budget already spent, re-creating the exact escalation conditions
+(the worker would re-attempt against code + SoW that already *claimed* to be done).
+An operator-reply (injecting the judge's `retry_hint`) was sound but became
+redundant once the fix — two one-line changes the judge had specified verbatim,
+plus two regression tests mirroring the existing locked-axis no-op test, plus the
+SoW correction — was applied and verified directly (build clean; ui-tests 88→90;
+ui-smoke, constructor and unit gates green). Slice 007 was then closed with
+`accept-current-slice`, completing the arc.
+
+## Things a future reader should know
+
+- **The slice-007 SHA in the state file is misleading.** `accept-current-slice`
+  commits "whatever's dirty," and the only dirty file at boot was the supervisor's
+  own `.supervisor-lock.diag`. So the recorded slice-007 commit points at a
+  one-line diag-file change, **not** the code fix. The actual fix lives in the
+  preceding manual commit (message "0026-07 - Manual"), flagged `manual: true`.
+  Chase the fix through history, not through the recorded SHA.
+
+- **Two stale beliefs were corrected mid-run.** (1) The postmortem claimed the
+  per-slice failure budget had to be "topped up" before re-spawning — it does not;
+  that counter resets every launch, and only `total_route_backs` and
+  `resolver_runs` persist across launches. (2) The arc-runner launcher doc says
+  `accept-current-slice` "validates the worktree is clean" — that precondition was
+  removed in the actual code, which now commits the dirty tree (porcelain-as-truth).
+
+- **The root irritant was process, not design.** An unrelated worker crash counting
+  against the per-slice failures cap is a sharp edge: it spent the rescue budget
+  that would otherwise have absorbed a trivial cycle-2 fix on the final slice. If
+  that accounting is ever revisited, this arc is the motivating example.

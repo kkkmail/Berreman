@@ -1,0 +1,248 @@
+{
+  "timing": {
+    "arc_started_at": "2026-06-05T01:44:34Z",
+    "arc_ended_at": "2026-06-06T16:19:50Z",
+    "total_wall_clock_seconds": 138916.0,
+    "spec_writer_seconds": 83466.0,
+    "splitter_seconds": 2868.0,
+    "arc_runner_seconds": 50910.0,
+    "idle_gap_seconds": 49323.0,
+    "largest_gaps": [
+      {
+        "at": "2026-06-06T11:07:33Z",
+        "seconds": 18736.0
+      },
+      {
+        "at": "2026-06-06T06:35:24Z",
+        "seconds": 3080.0
+      },
+      {
+        "at": "2026-06-06T05:33:53Z",
+        "seconds": 2735.0
+      },
+      {
+        "at": "2026-06-06T09:27:25Z",
+        "seconds": 2150.0
+      }
+    ]
+  },
+  "cost": {
+    "total_usd": null,
+    "total_tokens": null,
+    "by_phase": {},
+    "by_role": {
+      "splitter": null,
+      "arc_runner_worker": null,
+      "architecture_critic": null,
+      "reuse_critic": null,
+      "code_judge": null,
+      "resolver": null,
+      "spec_author": null,
+      "claim_checker": null,
+      "gate_keeper": null,
+      "handoff_verifier": null
+    },
+    "by_slice": {},
+    "cost_per_accepted_slice": null,
+    "review_share": null,
+    "row_warnings": {}
+  },
+  "iterations": {
+    "spec_writer": {
+      "cycles_by_intent": {
+        "feature-list": 4,
+        "spec": 2,
+        "claim-check": 2,
+        "gates": 1,
+        "handoff": 1
+      }
+    },
+    "splitter": {
+      "rounds": 2,
+      "verifier_iterations_per_round": {
+        "max": 1,
+        "median": 1.0
+      }
+    },
+    "arc_runner": {
+      "slice_attempts_total": 13,
+      "slices_with_retries": 3,
+      "review_cycles_per_slice": {
+        "max": 3,
+        "median": 1.0
+      },
+      "resolver_invocations": 0,
+      "route_backs_total": 6,
+      "max_route_backs_per_slice": 2
+    }
+  },
+  "outcomes": {
+    "arc_status": "COMPLETE",
+    "arc_escalation_trigger": {
+      "slice_index": 6,
+      "slice_path": "C:\\GitHub\\Berreman\\specs\\0026\\.slices\\007.slice-md",
+      "reason": "too many failures (3/3): code-judge route-back-to-worker on cycle 2"
+    },
+    "gate_pass_rate": 1.0,
+    "gates_failed_top": [],
+    "hangup_count": 0,
+    "operator_overrides": 1
+  },
+  "sizes": {
+    "spec_md_bytes": 62544,
+    "spec_md_lines": 1200,
+    "spec_md_section_count": 96,
+    "slice_count": 7,
+    "gate_count_chosen": 44,
+    "gate_count_proposed_open": 0,
+    "per_slice": {
+      "slice 001": {
+        "sow_bytes": 6538,
+        "impl_log_bytes": 5423,
+        "selected_test_classes_count": 0
+      },
+      "slice 002": {
+        "sow_bytes": 11062,
+        "impl_log_bytes": 10549,
+        "selected_test_classes_count": 0
+      },
+      "slice 003": {
+        "sow_bytes": 9548,
+        "impl_log_bytes": 6511,
+        "selected_test_classes_count": 0
+      },
+      "slice 004": {
+        "sow_bytes": 11212,
+        "impl_log_bytes": 3722,
+        "selected_test_classes_count": 0
+      },
+      "slice 005": {
+        "sow_bytes": 11617,
+        "impl_log_bytes": 3705,
+        "selected_test_classes_count": 0
+      },
+      "slice 006": {
+        "sow_bytes": 16879,
+        "impl_log_bytes": 12357,
+        "selected_test_classes_count": 0
+      },
+      "slice 007": {
+        "sow_bytes": 16671,
+        "impl_log_bytes": 9918,
+        "selected_test_classes_count": 0
+      }
+    },
+    "git": {
+      "files_touched": 188,
+      "lines_added": 20945,
+      "lines_removed": 395,
+      "commit_count": 15
+    }
+  },
+  "agent_mix": {
+    "roles": {
+      "splitter": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "arc_runner_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 13,
+        "escalations": 1
+      },
+      "architecture_critic": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 12,
+        "escalations": 0
+      },
+      "reuse_critic": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 12,
+        "escalations": 0
+      },
+      "code_judge": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 12,
+        "escalations": 0
+      },
+      "resolver": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 3,
+        "escalations": 0
+      },
+      "spec_author": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "claim_checker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "gate_keeper": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "handoff_verifier": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "postmortem": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      }
+    }
+  },
+  "anomalies": {
+    "review_cost_exceeds_worker": [],
+    "resolver_invocations_gt_one": [],
+    "gates_over_estimate": [],
+    "idle_gaps_over_30min": [
+      {
+        "entity": "2026-06-06T04:45:37Z",
+        "value": 2006.0
+      },
+      {
+        "entity": "2026-06-06T05:33:53Z",
+        "value": 2735.0
+      },
+      {
+        "entity": "2026-06-06T06:35:24Z",
+        "value": 3080.0
+      },
+      {
+        "entity": "2026-06-06T09:27:25Z",
+        "value": 2150.0
+      },
+      {
+        "entity": "2026-06-06T11:07:33Z",
+        "value": 18736.0
+      }
+    ],
+    "escalations": [
+      {
+        "entity": "slice 6",
+        "value": "too many failures (3/3): code-judge route-back-to-worker on cycle 2"
+      }
+    ],
+    "hangups": [],
+    "operator_overrides": [
+      {
+        "entity": "override#1",
+        "value": "accepted"
+      }
+    ]
+  },
+  "meta": {
+    "schema_version": 5,
+    "spec_id": "0026",
+    "generated_at": "2026-06-06T16:23:35Z",
+    "tool_version": 5,
+    "warnings": []
+  }
+}
