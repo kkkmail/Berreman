@@ -25,6 +25,7 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.Commands
 open OpticalConstructor.Ui.Localization
@@ -92,7 +93,8 @@ let tabOf (cmd : Command) : RibbonTab =
     | RotateR1 | RotateR2 | RotateR3
     | SlideAlongRay | MoveToRay -> ElementTab
     | PanView | ZoomView | ResetView -> TraceView
-    | ToggleGroup -> Experiment
+    // Element groups & multiple detectors (Part G, slice 007) live on the Experiment tab.
+    | ToggleGroup | SwapGroup | AddDetector | RemoveDetector | SetPrimaryDetector -> Experiment
     | LocalHelp -> Settings
     // Global file/edit commands (Undo/Redo/Save/Cancel) — and any unclassified future
     // registry command — surface on the always-present Build tab.
@@ -275,36 +277,79 @@ let private settingsView (resource : Resource) (language : Language) (env : Envi
 let private tabCommandButtons (resource : Resource) (language : Language) (d : Dispatch) (tab : RibbonTab) : IView list =
     tabCommands tab |> List.map (commandButton resource language d)
 
+/// The Experiment-tab extras (Part G/H, slice 007): the group controls + a detector summary.
+/// The group member toggles / swaps are PARAMETERIZED by group + member (which a parameterless
+/// command `Invoke` cannot carry), so they dispatch the dedicated `GroupToggle`/`GroupSwap`
+/// messages; "Group selected element" dispatches `GroupActiveElement`. The detector summary shows
+/// the count and which detector is primary (the detector *commands* — Add / Remove / Set as
+/// primary — are the Experiment-tab command buttons, acting on the active selection, G.2).
+let private experimentView (resource : Resource) (language : Language) (cv : ConstructorView.Model) (d : Dispatch) : IView =
+    let memberLabel (m : Groups.GroupMember) : string = roleTitle resource language (ElementRole m.placement.catalogueKind)
+    let groupRows : IView list =
+        [ for gi, g in List.indexed cv.groups do
+            yield labelBlock g.name
+            for mi, m in List.indexed g.members do
+                yield StackPanel.create [
+                    StackPanel.orientation Orientation.Horizontal
+                    StackPanel.spacing 4.0
+                    StackPanel.children [
+                        yield Controls.toggle (memberLabel m) m.inBeam
+                                (fun on -> d.onConstructor (ConstructorView.GroupToggle (gi, mi, on)))
+                        match g.mode with
+                        | Groups.MutuallyExclusive ->
+                            yield Controls.defaultButton (lookup resource language "experiment.swap")
+                                    (fun () -> d.onConstructor (ConstructorView.GroupSwap (gi, mi)))
+                        | Groups.MultiSelect -> ()
+                    ]
+                ] ]
+    let detectorSummary : IView =
+        let count = List.length (ConstructorView.detectorIndices cv)
+        let text =
+            match ConstructorView.primaryDetectorIndex cv with
+            | Some p -> sprintf "%s: %d — %s #%d" (lookup resource language "experiment.detectors") count (lookup resource language "experiment.primary") p
+            | None -> sprintf "%s: 0" (lookup resource language "experiment.detectors")
+        labelBlock text
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 4.0
+        StackPanel.children (
+            [ labelBlock (lookup resource language "experiment.groups")
+              Controls.defaultButton (lookup resource language "experiment.newGroup") (fun () -> d.onConstructor ConstructorView.GroupActiveElement) ]
+            @ (if List.isEmpty cv.groups then [ labelBlock (lookup resource language "experiment.noGroups") ] else groupRows)
+            @ [ detectorSummary ])
+    ] :> IView
+
 /// The tab-specific extra controls (the non-command controls a tab also carries): the
-/// catalogue on Build, the value-id action on the contextual Element tab, the
-/// language/theme/Legacy controls on Settings.
-let private tabExtras (resource : Resource) (language : Language) (env : EnvironmentSettings) (d : Dispatch) (tab : RibbonTab) : IView list =
+/// catalogue on Build, the value-id action on the contextual Element tab, the Experiment-tab
+/// group/detector controls, the language/theme/Legacy controls on Settings.
+let private tabExtras (resource : Resource) (language : Language) (env : EnvironmentSettings) (cv : ConstructorView.Model) (d : Dispatch) (tab : RibbonTab) : IView list =
     match tab with
     | Build -> [ catalogueView resource language d ]
     | ElementTab -> [ bindValueButton resource language d ]
+    | Experiment -> [ experimentView resource language cv d ]
     | Settings -> [ settingsView resource language env d ]
-    | TraceView | Experiment -> []
+    | TraceView -> []
 
 /// The expanded content for the active tab (D.1): its registry-command buttons followed
 /// by its tab-specific extras, on one flexing row (D.4 — flexes, never truncates).
-let private expandedContent (resource : Resource) (language : Language) (env : EnvironmentSettings) (d : Dispatch) (tab : RibbonTab) : IView =
+let private expandedContent (resource : Resource) (language : Language) (env : EnvironmentSettings) (cv : ConstructorView.Model) (d : Dispatch) (tab : RibbonTab) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 8.0
-        StackPanel.children (tabCommandButtons resource language d tab @ tabExtras resource language env d tab)
+        StackPanel.children (tabCommandButtons resource language d tab @ tabExtras resource language env cv d tab)
     ] :> IView
 
 /// One collapsed-menu column for a tab (D.2.1): the tab title over its command items and
 /// extras. Reads the SAME `tabCommands`/`tabExtras` the expanded ribbon does, so the menu
 /// exposes everything the ribbon offers — both are projections of the one command set.
-let private menuColumn (resource : Resource) (language : Language) (env : EnvironmentSettings) (d : Dispatch) (tab : RibbonTab) : IView =
+let private menuColumn (resource : Resource) (language : Language) (env : EnvironmentSettings) (cv : ConstructorView.Model) (d : Dispatch) (tab : RibbonTab) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
         StackPanel.children (
             labelBlock (tabTitle resource language tab)
             :: tabCommandButtons resource language d tab
-            @ tabExtras resource language env d tab)
+            @ tabExtras resource language env cv d tab)
     ] :> IView
 
 /// The collapsed drop-down menus (D.2.1): every visible tab listed with its commands —
@@ -313,7 +358,7 @@ let private collapsedContent (resource : Resource) (language : Language) (env : 
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 12.0
-        StackPanel.children [ for tab in visibleTabs cv -> menuColumn resource language env d tab ]
+        StackPanel.children [ for tab in visibleTabs cv -> menuColumn resource language env cv d tab ]
     ] :> IView
 
 /// The tab-header row (D.1 / D.3): a selector toggle per visible tab (the contextual
@@ -347,7 +392,7 @@ let view
     let activeTab = if List.contains model.activeTab (visibleTabs cv) then model.activeTab else Build
     let body =
         if model.collapsed then collapsedContent resource language env cv d
-        else expandedContent resource language env d activeTab
+        else expandedContent resource language env cv d activeTab
     Border.create [
         Border.dock Dock.Top
         Border.borderThickness 1.0
@@ -417,3 +462,64 @@ let helpOverlay (resource : Resource) (language : Language) (cv : ConstructorVie
         [ labelBlock (LH.helpText resource language ctx) ]
         (lookup resource language "common.close")
         (fun () -> onConstructor ConstructorView.CloseHelp)
+
+// ---------------------------------------------------------------------------
+// Slice-007 front-door overlays (Part G/K). The element dialog (placeholder), the right-click
+// element context menu, and the same-row Confirm/Cancel destructive gate — the three overlays
+// slice 006 deferred. Each is rendered by the shell over the constructor page when its model flag
+// is set; each dismisses through the constructor's own messages (the page stays single-sourced).
+// ---------------------------------------------------------------------------
+
+/// The element-properties dialog overlay (§E.2): a working, dismissible PLACEHOLDER modal opened
+/// by `OpenElementDialog` (no property editor ships yet, 0.6). Dismissed via `CloseElementDialog`,
+/// which clears the flag without deselecting.
+let elementDialogOverlay (resource : Resource) (language : Language) (onConstructor : ConstructorView.Msg -> unit) : IView =
+    modalOverlay
+        (lookup resource language "elementDialog.title")
+        [ labelBlock (lookup resource language "elementDialog.placeholder") ]
+        (lookup resource language "common.close")
+        (fun () -> onConstructor ConstructorView.CloseElementDialog)
+
+/// The right-click element context menu overlay (§E.2): the registry commands flagged
+/// `inContextMenu`, projected from the ONE registry, each dispatching its `Invoke` — a parameterized
+/// command with no parameterless effect renders DISABLED (mirroring the ribbon's `commandButton`),
+/// so it stays discoverable without a silent no-op. Dismissed via `CloseContextMenu`.
+let contextMenuOverlay (resource : Resource) (language : Language) (onConstructor : ConstructorView.Msg -> unit) : IView =
+    let item (cmd : Command) : IView =
+        let label = LH.commandLabel resource language cmd
+        if ConstructorView.isParameterlessInvokable cmd then
+            Controls.defaultButton label (fun () -> onConstructor (ConstructorView.Invoke cmd))
+        else Controls.disabledButton label
+    modalOverlay
+        (lookup resource language "contextMenu.title")
+        (ConstructorView.contextMenuCommands |> List.map item)
+        (lookup resource language "common.close")
+        (fun () -> onConstructor ConstructorView.CloseContextMenu)
+
+/// The same-row Confirm/Cancel destructive gate overlay (K.2 / UX 5): the pending action's
+/// localized prompt over a `Controls.destructiveGate` (distinct positive/negative CTA colours, one
+/// row, a visible gap). Confirm applies the action (`ConfirmPending`); Cancel clears it
+/// (`CancelPending`). The shell renders this only when an action is pending.
+let confirmGateOverlay (resource : Resource) (language : Language) (cv : ConstructorView.Model) (onConstructor : ConstructorView.Msg -> unit) : IView =
+    let promptKey = ConstructorView.pendingPromptKey cv |> Option.defaultValue "common.confirm"
+    let gate =
+        Controls.destructiveGate
+            (lookup resource language promptKey)
+            (lookup resource language "common.confirm")
+            (lookup resource language "common.cancel")
+            (fun () -> onConstructor ConstructorView.ConfirmPending)
+            (fun () -> onConstructor ConstructorView.CancelPending)
+    let dialog =
+        Border.create [
+            Border.horizontalAlignment HorizontalAlignment.Center
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.background (Brushes.White :> IBrush)
+            Border.borderBrush (Brushes.Gray :> IBrush)
+            Border.borderThickness 1.0
+            Border.padding 16.0
+            Border.child gate
+        ]
+    Border.create [
+        Border.background (SolidColorBrush(Color.FromArgb(120uy, 0uy, 0uy, 0uy)) :> IBrush)
+        Border.child dialog
+    ] :> IView

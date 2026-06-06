@@ -136,6 +136,14 @@ type Command =
     | CancelOrDeselect
     // Drag-to-place from the ribbon (§E.7).
     | PlaceFromRibbon
+    // Element groups & detectors (Part G, slice 007). The group/member a swap targets and
+    // the detector a set-primary targets are read from the concrete UI control / active
+    // selection by the page, not encoded in the command (so a gesture maps to one command):
+    // `ToggleGroup` (above) is group on/off; these add swap and the detector commands.
+    | SwapGroup
+    | AddDetector
+    | RemoveDetector
+    | SetPrimaryDetector
 
 /// Whether a command targets the active element, the table/view, or is global (§E.1.2).
 type CommandScope =
@@ -257,6 +265,21 @@ let registry : CommandDef list =
         // --- Drag-to-place from the ribbon (§E.7) -----------------------------
         { command = PlaceFromRibbon; scope = TableOrView; id = "place-from-ribbon"
           inContextMenu = false; binding = mouse [ RibbonDropGesture ] }
+
+        // --- Element groups & detectors (Part G, slice 007) -------------------
+        // Surfaced on the Experiment tab and (the detector ones) the element context menu.
+        // They carry no single hotkey — the group member a swap targets is chosen from the
+        // Experiment-tab control, and the detector a remove/set-primary targets is the active
+        // selection — so they declare an empty keyboard binding (`KeyboardOnly []`): still
+        // single-sourced HERE and projected into the ribbon/menus exactly once (AC-E1/AC-D2).
+        { command = SwapGroup; scope = TableOrView; id = "swap-group"
+          inContextMenu = false; binding = kbd [] }
+        { command = AddDetector; scope = TableOrView; id = "add-detector"
+          inContextMenu = false; binding = kbd [] }
+        { command = RemoveDetector; scope = ActiveElement; id = "remove-detector"
+          inContextMenu = true;  binding = kbd [] }
+        { command = SetPrimaryDetector; scope = ActiveElement; id = "set-primary-detector"
+          inContextMenu = true;  binding = kbd [] }
     ]
 
 // ---------------------------------------------------------------------------

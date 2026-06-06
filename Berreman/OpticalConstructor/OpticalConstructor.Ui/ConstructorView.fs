@@ -33,6 +33,7 @@ open Berreman.Geometry
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Project
+open OpticalConstructor.Storage
 open OpticalConstructor.Ui.Commands
 open OpticalConstructor.Ui.UserEnvironment
 
@@ -60,11 +61,14 @@ type RotationAxis =
     | AxisR2
     | AxisR3
 
-/// A pending destructive single action awaiting confirmation (§E.2 / UX commitment 3):
-/// reset rotation always confirms; deleting a non-trivial element confirms.
+/// A pending destructive single action awaiting confirmation (§E.2 / UX commitment 3 / K.2):
+/// reset rotation always confirms; deleting a non-trivial element confirms; resetting the view
+/// confirms (it is ephemeral view state, NOT captured by the project-snapshot `EditHistory`, so
+/// K.2 requires it be confirmation-gated rather than undoable).
 type PendingAction =
     | ConfirmResetRotation of int
     | ConfirmDelete of int
+    | ConfirmResetView
 
 /// The constructor MVU model (§E / §C). Pure and serializable (§0.3): the canonical
 /// project, the ephemeral top-down view state, the selection, the configured key map,
@@ -97,10 +101,18 @@ type Model =
         valueIdModalOpen : bool
         clipboard : ElementPlacement option
         pending : PendingAction option
-        /// Single-level undo/redo (§E.6 binds the commands and dispatches the edits); the
-        /// multi-level history + all-action snapshot-push participation is slice 007 (K).
-        undo : OpticalConstructorProject option
-        redo : OpticalConstructorProject option
+        /// Multi-level undo/redo over WHOLE-PROJECT snapshots, reusing the shared
+        /// `History.EditHistory` (History.fs:20 / Part K, R-8 — no parallel history). Every
+        /// project-mutating edit `commit`s the new project onto it (K.1.1); `Undo`/`Redo` step
+        /// `History.undo`/`redo`, so they are multi-level (K.1.2). INVARIANT: `history.present`
+        /// equals `project` between edits — `commit` re-establishes it after each edit.
+        history : History.EditHistory
+        /// The element groups currently in the workspace (Part G / G.1). Each group holds its
+        /// members' FULL configurations; toggling a member on/off (or swapping) flips only which
+        /// members are in the beam — reflected into `project.placements` so the change is a
+        /// snapshot edit (K.1) — never their stored configuration (AC-G1). Loaded from /
+        /// persisted to the separate app-data library (`GroupsLibrary`, G.3).
+        groups : Groups.ElementGroup list
         /// Incremented on each Save command (§E.6); the host wires the actual write (006).
         saveRequests : int
         /// The last command the surface invoked (the ribbon/menu of slice 006 reads it).
@@ -126,8 +138,8 @@ let init (env : EnvironmentSettings) (project : OpticalConstructorProject) : Mod
         valueIdModalOpen = false
         clipboard = None
         pending = None
-        undo = None
-        redo = None
+        history = History.ofPresent project
+        groups = []
         saveRequests = 0
         lastCommand = None
     }
@@ -168,16 +180,32 @@ let private setPlacements (ps : ElementPlacement list) (model : Model) : Model =
 let private setPlacement (i : int) (p : ElementPlacement) (model : Model) : Model =
     setPlacements (placements model |> List.mapi (fun j q -> if j = i then p else q)) model
 
-/// Snapshot the current project for single-level undo, dropping the redo slot (§E.6).
-let private snapshot (model : Model) : Model =
-    { model with undo = Some model.project; redo = None }
+/// Commit the model's freshly-updated project as one undoable edit on the shared multi-level
+/// `EditHistory` (K.1 — every project-mutating action is a snapshot). PRECONDITION: `model.project`
+/// is the NEW project and `model.history.present` is still the OLD project (the between-edits
+/// invariant); `History.push` moves the old present onto `past`, sets `present` to the new project,
+/// and clears the redo future — re-establishing the invariant. Pure; no parallel history (R-8).
+let private commit (model : Model) : Model =
+    { model with history = History.push model.project model.history }
 
-/// Apply a placement transform to the active element with an undo snapshot.
+/// Commit one undoable edit ONLY when the project actually changed from the history present —
+/// the no-op guard (K.1 risk: never push on a no-op edit). A slide that hit a clamp bound, or a
+/// drag that ended without moving, leaves `model.project = model.history.present`, so nothing is
+/// pushed and `Ctrl+Z` is not littered with empty steps. Relies on the between-edits invariant
+/// (`history.present = project`) holding when the edit began.
+let private commitIfChanged (model : Model) : Model =
+    if model.project = model.history.present then model else commit model
+
+/// Apply a placement transform to the active element, committing one undoable edit — guarded by
+/// `commitIfChanged`, so an INERT transform pushes no empty undo step (K.1 risk: never push on a
+/// no-op edit). The transform is inert when the lock-respecting setters drop it: a rotation about a
+/// locked axis (R3 is locked by default, A.1.2) or an emission toggle that would create the
+/// unrepresentable both-off state both leave the placement — and so the project — unchanged.
 let private editActive (f : ElementPlacement -> ElementPlacement) (model : Model) : Model =
     match activeIndex model with
     | Some i ->
         match tryPlacement i model with
-        | Some p -> setPlacement i (f p) (snapshot model)
+        | Some p -> commitIfChanged (setPlacement i (f p) model)
         | None -> model
     | None -> model
 
@@ -311,21 +339,23 @@ let private deleteNow (i : int) (model : Model) : Model =
         |> Map.toList
         |> List.choose (fun (j, r) -> if j = i then None elif j > i then Some (j - 1, r) else Some (j, r))
         |> Map.ofList
-    { (snapshot model) with
-        project = { model.project with placements = ps }
-        rayOf = rayOf'
-        selection = TableSelected }
+    commit
+        { model with
+            project = { model.project with placements = ps }
+            rayOf = rayOf'
+            selection = TableSelected }
 
 let private resetRotationNow (i : int) (model : Model) : Model =
     match tryPlacement i model with
-    | Some p -> setPlacement i { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } (snapshot model)
+    | Some p -> commit (setPlacement i { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } model)
     | None -> model
 
 let private appendPlacement (p : ElementPlacement) (model : Model) : Model =
     let ps = placements model @ [ p ]
-    { (snapshot model) with
-        project = { model.project with placements = ps }
-        selection = ElementSelected (List.length ps - 1) }
+    commit
+        { model with
+            project = { model.project with placements = ps }
+            selection = ElementSelected (List.length ps - 1) }
 
 /// A small offset for a duplicated/pasted element so it does not land exactly on its source.
 let private offset (p : ElementPlacement) : ElementPlacement =
@@ -353,6 +383,123 @@ let private cycleActive (forward : bool) (model : Model) : Model =
             elif forward then (cur + 1) % n
             else (cur - 1 + n) % n
         { model with selection = ElementSelected (List.item pos order) }
+
+// ---------------------------------------------------------------------------
+// Multiple detectors & the primary one (Part G / G.2). Detectors are `Detector`-kind
+// placements; the primary is the FIRST detector (the convention `centralRayEndpoints` already
+// uses). "Set as primary" reorders the placements so the chosen detector becomes first — a real
+// project mutation that round-trips and pushes an undoable snapshot (K.1), with NO new project
+// field (the project record is constructed in many sites; a new field would break them all and
+// the spec keeps the placement/table anchors stable).
+// ---------------------------------------------------------------------------
+
+/// The indices of the detector placements (G.2): there may be more than one when a branch (e.g. a
+/// reflected arm) needs its own (G.2.1).
+let detectorIndices (model : Model) : int list =
+    placements model
+    |> List.mapi (fun i p -> i, p)
+    |> List.filter (fun (_, p) -> p.catalogueKind = Detector)
+    |> List.map fst
+
+/// The primary detector's placement index (G.2): the FIRST detector. Results and the headline
+/// readout follow it; secondary detectors report their own branch independently (consistent with
+/// each branch carrying its own field, BeamTree.fs:98). `None` when no detector is placed.
+let primaryDetectorIndex (model : Model) : int option =
+    detectorIndices model |> List.tryHead
+
+/// Move item `i` to the front of a list (used to make a detector primary). Out-of-range is inert.
+let private moveToFront (i : int) (xs : 'a list) : 'a list =
+    match List.tryItem i xs with
+    | Some x -> x :: (xs |> List.mapi (fun j y -> j, y) |> List.filter (fun (j, _) -> j <> i) |> List.map snd)
+    | None -> xs
+
+/// Re-key an index after moving item `i` to the front: `i -> 0`; an index below `i` shifts up by
+/// one; an index above `i` is unchanged. Used to keep `rayOf`/`selection` consistent across a
+/// set-primary reorder.
+let private remapToFront (i : int) (j : int) : int =
+    if j = i then 0 elif j < i then j + 1 else j
+
+/// Make the detector at index `i` the primary one (G.2 / AC-G2): move it to the front of the
+/// placements so it becomes the first detector. A real project mutation — it round-trips and
+/// pushes an undoable snapshot (K.1) — with `rayOf`/`selection` index-remapped. Inert when `i` is
+/// not a detector.
+let private setPrimaryDetectorNow (i : int) (model : Model) : Model =
+    match tryPlacement i model with
+    | Some p when p.catalogueKind = Detector ->
+        let ps' = moveToFront i (placements model)
+        let rayOf' = model.rayOf |> Map.toList |> List.map (fun (j, r) -> remapToFront i j, r) |> Map.ofList
+        let selection' =
+            match model.selection with
+            | ElementSelected k -> ElementSelected (remapToFront i k)
+            | TableSelected -> TableSelected
+        commit { model with project = { model.project with placements = ps' }; rayOf = rayOf'; selection = selection' }
+    | _ -> model
+
+/// Add a detector (G.2.1): append a fresh `Detector` placement snapped to the central-ray middle,
+/// pushing an undoable snapshot (K.1). The user may place more than one detector this way.
+let private addDetectorNow (model : Model) : Model =
+    appendPlacement (ElementPlacement.create Detector (centralRayMiddle model)) model
+
+/// Remove the detector at index `i` (G.2.1): deletes the placement (reusing `deleteNow`, which
+/// re-keys `rayOf` and pushes a snapshot). Inert when `i` is not a detector.
+let private removeDetectorNow (i : int) (model : Model) : Model =
+    match tryPlacement i model with
+    | Some p when p.catalogueKind = Detector -> deleteNow i model
+    | _ -> model
+
+// ---------------------------------------------------------------------------
+// Element groups in the workspace (Part G / G.1). The group holds its members' FULL
+// configurations; toggling a member on/off (or swapping) flips only which members are in the beam
+// and reflects that into `project.placements` (so it is a snapshot edit, K.1), never the stored
+// configuration (AC-G1). The group's own member-mode rules live in the pure `Groups` domain.
+// ---------------------------------------------------------------------------
+
+/// Remove the FIRST placement equal to `x` from a list (the inverse of an append). Used to take a
+/// group member's placement out of the beam.
+let rec private removeFirst (x : 'a) (xs : 'a list) : 'a list =
+    match xs with
+    | [] -> []
+    | h :: t -> if h = x then t else h :: removeFirst x t
+
+/// Reflect a group on/off (or swap) into the project placements (G.1.2): for every member whose
+/// `inBeam` changed, add its placement when it came IN, remove its first matching placement when it
+/// went OUT. `oldG`/`newG` have identical members in identical order (only `inBeam` flips), so the
+/// diff is positional. Members that did not change leave the project untouched.
+let private syncGroupChange (oldG : Groups.ElementGroup) (newG : Groups.ElementGroup) (project : OpticalConstructorProject) : OpticalConstructorProject =
+    List.zip oldG.members newG.members
+    |> List.fold (fun proj (o, n) ->
+        if o.inBeam = n.inBeam then proj
+        elif n.inBeam then { proj with placements = proj.placements @ [ n.placement ] }
+        else { proj with placements = removeFirst n.placement proj.placements }) project
+
+/// Apply a group transform (`setInBeam`/`swapTo`) to the group at index `gi`, reflect it into the
+/// project, and commit one undoable snapshot IFF the project actually changed (K.1 — no no-op
+/// pushes). The stored member configurations are preserved by the pure `Groups` operation (AC-G1).
+let private applyGroupChange (gi : int) (f : Groups.ElementGroup -> Groups.ElementGroup) (model : Model) : Model =
+    match List.tryItem gi model.groups with
+    | Some g ->
+        let g' = f g
+        let project' = syncGroupChange g g' model.project
+        let groups' = model.groups |> List.mapi (fun j x -> if j = gi then g' else x)
+        let model' = { model with groups = groups' }
+        if project' = model.project then model'
+        else commit { model' with project = project' }
+    | None -> model
+
+/// Create a one-member group from the active element (a small workspace creation path for G.1): the
+/// new multi-select group carries the active element's full configuration, marked in-beam (it is
+/// already placed), so it can then be toggled out / back in. Adds the group only — not a project
+/// mutation, so no snapshot is pushed.
+let private groupActiveElementNow (model : Model) : Model =
+    match activeElement model with
+    | Some p ->
+        let name = sprintf "Group %d" (List.length model.groups + 1)
+        let g =
+            Groups.ElementGroup.create name Groups.MultiSelect
+            |> Groups.ElementGroup.addMember p
+            |> Groups.ElementGroup.setInBeam 0 true
+        { model with groups = model.groups @ [ g ] }
+    | None -> model
 
 // ---------------------------------------------------------------------------
 // View commands (§C.2 / §E.5).
@@ -406,16 +553,33 @@ let private applyCommand (cmd : Command) (model : Model) : Model =
     | LocalHelp -> { m with helpOpen = true }
     | NextElement -> cycleActive true m
     | PreviousElement -> cycleActive false m
-    | ResetView -> { m with view = Table.resetView m.view }
-    | ToggleGroup -> m   // the number-key group-toggle SHAPE only; the behaviour is slice 007 (Part G)
+    // Reset view is ephemeral view state, NOT captured by the project-snapshot EditHistory, so K.2
+    // requires it be confirmation-gated rather than undoable: arm a pending confirm (resolved by
+    // ConfirmPending, rendered as the same-row Confirm/Cancel gate).
+    | ResetView -> { m with pending = Some ConfirmResetView }
+    // Detectors (G.2). Add appends a detector; remove/set-primary act on the ACTIVE detector (the
+    // selection the context-menu "Set as primary" / "Remove detector" target). Each is a real
+    // project mutation that pushes an undoable snapshot (K.1).
+    | AddDetector -> addDetectorNow m
+    | RemoveDetector ->
+        match activeIndex m with
+        | Some i -> removeDetectorNow i m
+        | None -> m
+    | SetPrimaryDetector ->
+        match activeIndex m with
+        | Some i -> setPrimaryDetectorNow i m
+        | None -> m
+    // The number-key group-toggle (ToggleGroup) and the group swap are parameterized by the group /
+    // member, supplied by the Experiment-tab control or the digit event — handled by their own
+    // messages (GroupToggle / GroupSwap), inert when Invoke'd parameterlessly.
+    | ToggleGroup -> m
+    | SwapGroup -> m
     | Undo ->
-        match m.undo with
-        | Some prev -> { m with project = prev; undo = None; redo = Some m.project }
-        | None -> m
+        let h = History.undo m.history
+        { m with project = h.present; history = h }
     | Redo ->
-        match m.redo with
-        | Some next -> { m with project = next; redo = None; undo = Some m.project }
-        | None -> m
+        let h = History.redo m.history
+        { m with project = h.present; history = h }
     | SaveProject -> { m with saveRequests = m.saveRequests + 1 }
     | CancelOrDeselect ->
         { m with
@@ -432,31 +596,31 @@ let private applyCommand (cmd : Command) (model : Model) : Model =
     | PanView | ZoomView | PlaceFromRibbon -> m
 
 /// The ONE source of truth for the commands a ribbon/menu button MUST render DISABLED:
-/// the commands with NO visible front-door effect on the constructor page. Two groups, one
-/// list — the ribbon reads it through `isParameterlessInvokable`, and the `RibbonTests`
-/// disabled-set derives from it, so there is no second hand-maintained copy to drift:
+/// the commands with NO visible front-door effect on the constructor page — the ten
+/// GESTURE-ONLY / PARAMETERIZED commands. The ribbon reads it through `isParameterlessInvokable`,
+/// and the `RibbonTests` disabled-set derives from it, so there is no second hand-maintained copy
+/// to drift:
 ///
-///   * the nine GESTURE-ONLY commands (`RotateR1/R2/R3`, `SlideAlongRay`, `MoveToRay`,
-///     `PanView`, `ZoomView`, `PlaceFromRibbon`, and the slice-007 `ToggleGroup`
-///     placeholder) — `applyCommand` returns the model UNCHANGED for these because they
-///     need the event context (a wheel notch, a drag delta, a ribbon-drop kind/point) a
-///     parameterless `Invoke` cannot supply, so a button that merely `Invoke`s them no-ops;
-///   * the four ELEMENT-EDIT commands (`OpenElementDialog`, `ElementContextMenu`,
-///     `ResetRotation`, `DeleteElement`) — these DO mutate the model in `applyCommand` (a
-///     flag, or an armed `pending`), but no overlay renders their surface on the constructor
-///     front door yet (slice 007 wires the context-menu / dialog / confirm overlays), so an
-///     enabled button sets state the user can neither see nor clear.
+///   * the nine gesture-only commands (`RotateR1/R2/R3`, `SlideAlongRay`, `MoveToRay`, `PanView`,
+///     `ZoomView`, `PlaceFromRibbon`, and the `ToggleGroup` number-key group-toggle) — `applyCommand`
+///     returns the model UNCHANGED because they need event context (a wheel notch, a drag delta, a
+///     ribbon-drop kind/point, a group/member) a parameterless `Invoke` cannot supply;
+///   * the slice-007 `SwapGroup` — parameterized by the group + target member (the Experiment-tab
+///     per-member control supplies them via `GroupSwap`), so a parameterless `Invoke` no-ops.
 ///
-/// This list is therefore DELIBERATELY BROADER than `applyCommand`'s inert-return arms: the
-/// seam is "no rendered front-door surface," NOT model-equality (the four element-edit
-/// commands change the model, so a model-equality test would wrongly call them invokable).
-/// When slice 007 renders an overlay for one of the four, drop it from this list.
+/// The four element-edit commands (`OpenElementDialog`, `ElementContextMenu`, `ResetRotation`,
+/// `DeleteElement`) are NO LONGER here: slice 007 renders their front-door overlays (the element
+/// dialog, the right-click context menu, and the same-row confirm gate), so an enabled ribbon
+/// button now leads to a visible, dismissible surface — they re-enable (the slice-006 hand-off).
+/// `AddDetector`/`RemoveDetector`/`SetPrimaryDetector` have real `applyCommand` effects, so they are
+/// invokable and absent here too. When a later slice gives a gesture-only command a parameterless
+/// step, drop it from this list.
 let commandsWithoutFrontDoorSurface : Command list =
     [ // gesture-only — inert in `applyCommand` (need event context)
       RotateR1; RotateR2; RotateR3; SlideAlongRay; MoveToRay
       PanView; ZoomView; PlaceFromRibbon; ToggleGroup
-      // element-edit — mutate the model, but no rendered front-door surface until slice 007
-      OpenElementDialog; ElementContextMenu; ResetRotation; DeleteElement ]
+      // parameterized group swap — driven by the Experiment-tab control via `GroupSwap`
+      SwapGroup ]
 
 /// Whether a command has a visible effect when invoked PARAMETERLESSLY from a ribbon/menu
 /// button — i.e. it is NOT one of `commandsWithoutFrontDoorSurface`. The ribbon's
@@ -482,7 +646,9 @@ let private arrowSlide (g : KeyGesture) (model : Model) : Model =
                 | ArrowRight | ArrowUp -> 1.0
                 | ArrowLeft | ArrowDown -> -1.0
                 | _ -> 0.0
-            slideActiveToX (p.placementPoint.x + dir * mag) (snapshot model)
+            // A discrete keyboard arrow press is one undoable edit: slide, then commit iff it moved
+            // (the clamp at a neighbour bound makes a press at the edge a no-op — no empty snapshot).
+            commitIfChanged (slideActiveToX (p.placementPoint.x + dir * mag) model)
         | None -> model
     | None -> model
 
@@ -533,6 +699,18 @@ type Msg =
     /// Apply / cancel a pending destructive single action (§E.2).
     | ConfirmPending
     | CancelPending
+    /// Dismiss the right-click context-menu / element-dialog overlays WITHOUT deselecting (mirrors
+    /// `CloseValueIdModal`/`CloseHelp`): closing the overlay leaves the active element selected.
+    | CloseContextMenu
+    | CloseElementDialog
+    /// Element groups (Part G, slice 007): put member `mi` of group `gi` in/out of the beam
+    /// (`GroupToggle`, respecting the member mode), or swap the mutually-exclusive group `gi` to
+    /// member `mi` (`GroupSwap`). Both flip only `inBeam` and reflect into the project as ONE
+    /// undoable snapshot (K.1), never the members' stored configuration (AC-G1).
+    | GroupToggle of int * int * bool
+    | GroupSwap of int * int
+    /// Create a one-member group from the active element (a small workspace group-creation path).
+    | GroupActiveElement
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
@@ -567,7 +745,10 @@ let update (msg : Msg) (model : Model) : Model =
             | ElementSelected i -> { model with drag = NoDrag; selection = ElementSelected i; movableHint = true }
         | Some SlideAlongRay ->
             match hit with
-            | ElementSelected i -> { (snapshot model) with drag = SlideDrag i; selection = ElementSelected i }
+            // Begin the slide WITHOUT snapshotting: mid-drag `SlideTo` mutates the project directly,
+            // and `EndDrag` commits ONE undoable snapshot for the whole drag (guarded against a no-op
+            // move) — so a drag is a single undo step, not one per pointer move (K.1, no double-push).
+            | ElementSelected i -> { model with drag = SlideDrag i; selection = ElementSelected i }
             | TableSelected -> model
         | Some MoveToRay ->
             match hit with
@@ -589,6 +770,9 @@ let update (msg : Msg) (model : Model) : Model =
         let model' =
             match model.drag with
             | ReassignDrag _ -> reassignActive model
+            // The slide mutated the project across the drag; commit ONE undoable snapshot now,
+            // iff it actually moved (a begin-then-end with no move pushes nothing, K.1).
+            | SlideDrag _ -> commitIfChanged model
             | _ -> model
         { model' with drag = NoDrag }
 
@@ -613,13 +797,26 @@ let update (msg : Msg) (model : Model) : Model =
 
     | CloseHelp -> { model with helpOpen = false }
 
+    | CloseContextMenu -> { model with contextMenuOpen = false }
+
+    | CloseElementDialog -> { model with elementDialogOpen = false }
+
     | ConfirmPending ->
         match model.pending with
         | Some (ConfirmResetRotation i) -> { (resetRotationNow i model) with pending = None }
         | Some (ConfirmDelete i) -> { (deleteNow i model) with pending = None }
+        // Reset view confirmed (K.2): reset the ephemeral top-down view state. It is NOT a project
+        // edit, so it is confirmation-gated (this) rather than undoable through `EditHistory`.
+        | Some ConfirmResetView -> { model with view = Table.resetView model.view; pending = None }
         | None -> model
 
     | CancelPending -> { model with pending = None }
+
+    // Element groups (Part G, slice 007). `applyGroupChange` runs the pure `Groups` operation,
+    // reflects the in-beam diff into the project, and commits one undoable snapshot iff it changed.
+    | GroupToggle (gi, mi, on) -> applyGroupChange gi (Groups.ElementGroup.setInBeam mi on) model
+    | GroupSwap (gi, mi) -> applyGroupChange gi (Groups.ElementGroup.swapTo mi) model
+    | GroupActiveElement -> groupActiveElementNow model
 
 // ---------------------------------------------------------------------------
 // Avalonia-free presentation helpers (the menu/ribbon of slice 006 read these).
@@ -630,11 +827,14 @@ let update (msg : Msg) (model : Model) : Model =
 /// — projected from the ONE registry — surfaced when an element is active.
 let contextMenuCommands : Command list = Commands.contextMenuCommands
 
-/// The confirmation prompt for a pending destructive action (§E.2), or `None`.
-let confirmationPrompt (model : Model) : string option =
+/// The localization key for the pending destructive action's confirm prompt (§E.2 / K.2), or
+/// `None` when nothing is pending. The shell resolves the key through `Localization` and renders
+/// the same-row Confirm/Cancel destructive gate (`Controls.destructiveGate`, distinct CTA colours).
+let pendingPromptKey (model : Model) : string option =
     match model.pending with
-    | Some (ConfirmResetRotation _) -> Some "Reset this element's rotation to (0, 0, 0)?"
-    | Some (ConfirmDelete _) -> Some "Delete this element?"
+    | Some (ConfirmResetRotation _) -> Some "confirm.resetRotation"
+    | Some (ConfirmDelete _) -> Some "confirm.delete"
+    | Some ConfirmResetView -> Some "confirm.resetView"
     | None -> None
 
 // ---------------------------------------------------------------------------

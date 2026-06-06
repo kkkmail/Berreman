@@ -38,8 +38,11 @@ module SchemaValidation =
     /// Flatten a JsonSchema.Net evaluation tree into a list of human-readable
     /// messages (`<instance-location>: <keyword> -> <message>`), preserving the
     /// library's own wording verbatim (§I.2 — the messages travel into
-    /// `SchemaValidationError`).
-    let private collectMessages (results : EvaluationResults) : string list =
+    /// `SchemaValidationError`). Walks `results.Details` recursively so a NESTED
+    /// violation keeps its precise instance location. Public so the groups store
+    /// reuses this exact seam (slice 007 / R-4) instead of re-implementing a
+    /// shallower, top-level-only collector that drops nested detail.
+    let collectMessages (results : EvaluationResults) : string list =
         let rec walk (r : EvaluationResults) =
             seq {
                 match r.Errors with

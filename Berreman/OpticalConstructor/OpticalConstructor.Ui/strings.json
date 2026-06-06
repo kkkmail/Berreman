@@ -105,5 +105,28 @@
   "help.element.lens":      { "en": "A lens focuses or diverges the beam and makes the side rays meaningful.", "ru": "Линза фокусирует или расширяет пучок и делает боковые лучи значимыми." },
   "help.element.flatMirror":   { "en": "A flat mirror reflects the beam; it carries the reflected branch only.", "ru": "Плоское зеркало отражает пучок; у него есть только отражённая ветвь." },
   "help.element.curvedMirror": { "en": "A curved mirror reflects and focuses the beam.", "ru": "Изогнутое зеркало отражает и фокусирует пучок." },
-  "help.element.detector":  { "en": "The detector measures the beam that reaches it.", "ru": "Детектор измеряет дошедший до него пучок." }
+  "help.element.detector":  { "en": "The detector measures the beam that reaches it.", "ru": "Детектор измеряет дошедший до него пучок." },
+
+  "common.confirm":         { "en": "Confirm",                  "ru": "Подтвердить" },
+
+  "command.swapGroup":      { "en": "Swap group member",        "ru": "Сменить элемент группы" },
+  "command.addDetector":    { "en": "Add detector",             "ru": "Добавить детектор" },
+  "command.removeDetector": { "en": "Remove detector",          "ru": "Удалить детектор" },
+  "command.setPrimary":     { "en": "Set as primary",           "ru": "Сделать основным" },
+
+  "confirm.resetRotation":  { "en": "Reset this element's rotation to zero?", "ru": "Сбросить поворот этого элемента в ноль?" },
+  "confirm.delete":         { "en": "Delete this element?",      "ru": "Удалить этот элемент?" },
+  "confirm.resetView":      { "en": "Reset the view to straight top-down?", "ru": "Сбросить вид к прямому виду сверху?" },
+
+  "contextMenu.title":      { "en": "Element actions",           "ru": "Действия с элементом" },
+  "elementDialog.title":    { "en": "Element properties",        "ru": "Свойства элемента" },
+  "elementDialog.placeholder": { "en": "The element property editor is not available yet.", "ru": "Редактор свойств элемента пока недоступен." },
+
+  "experiment.groups":      { "en": "Groups",                    "ru": "Группы" },
+  "experiment.detectors":   { "en": "Detectors",                 "ru": "Детекторы" },
+  "experiment.newGroup":    { "en": "Group selected element",    "ru": "Сгруппировать выбранный элемент" },
+  "experiment.noGroups":    { "en": "No groups yet.",            "ru": "Групп пока нет." },
+  "experiment.swap":        { "en": "Swap",                      "ru": "Сменить" },
+  "experiment.primary":     { "en": "Primary",                   "ru": "Основной" },
+  "experiment.collections": { "en": "Collections",               "ru": "Коллекции" }
 }

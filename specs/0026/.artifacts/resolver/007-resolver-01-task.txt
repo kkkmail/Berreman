@@ -1,0 +1,117 @@
+# Resolver task -- 007.slice-md
+
+## Role
+
+You are playing the **resolver** role above the arc-runner code
+judge. Binary decision: `issue-hint` or `confirm-escalation`.
+Read-only on everything except your own output MD.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+resolver cycle and lists them below. Do not compute or guess
+these paths: the canonical layout block describes the shape,
+this section pins the concrete values for the spawn you are
+about to run.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0026`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0026\.slices\007.slice-md`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0026\.slices\007-impl-log.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0026\.slices\007-state-of-the-world.md`
+- **resolver_round_trail_dir:** `C:\GitHub\Berreman\specs\0026\.artifacts\resolver`
+- **code_judge_md_path:** `C:\GitHub\Berreman\specs\0026\.artifacts\code_judge\007-03-code-judge.md`
+- **spec_id:** `0026`
+- **slice_id:** `007`
+- **review_cycle:** `0`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\resolver.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\arc-runner.user-md
+
+## Inputs
+
+### Slice spec
+
+- C:\GitHub\Berreman\specs\0026\.slices\007.slice-md
+
+### Worker state-of-the-world
+
+- C:\GitHub\Berreman\specs\0026\.slices\007-state-of-the-world.md
+
+### Worker impl-log
+
+- C:\GitHub\Berreman\specs\0026\.slices\007-impl-log.md
+
+### Most recent code-judge MD
+
+- C:\GitHub\Berreman\specs\0026\.artifacts\code_judge\007-03-code-judge.md
+
+### Critic critiques (in run_after order)
+
+- architecture_critic: C:\GitHub\Berreman\specs\0026\.artifacts\architecture_critic\007-01-architecture-critic.md
+- reuse_critic: C:\GitHub\Berreman\specs\0026\.artifacts\reuse_critic\007-02-reuse-critic.md
+
+### Deterministic gate results (most recent cycle)
+
+```
+build: pass
+unit-tests: pass
+constructor-unit-tests: pass
+ui-smoke: pass
+ui-tests: pass
+impl-log-structure: pass
+state-of-world-structure: pass
+```
+
+### Supervisor log tail
+
+- C:\GitHub\Berreman\specs\0026\.manifest-arc-runner.log
+
+(Read the last few hundred lines for the recent ESCALATE / SLICE-FAILURE /
+JUDGE_VERDICT / REVIEW-ROUTE-BACK events.)
+
+### Escalation reason
+
+```
+too many failures (2/2): code-judge route-back-to-worker on cycle 1
+```
+
+Category (one of `judge-escalate`, `route-back-cap`, `failures-cap`):
+**failures-cap**
+
+### Per-slice budget facts
+
+- `total_route_backs` so far: 1 / base cap 30.
+- `resolver_runs` so far: 0 / cap 1.
+- If you pick `issue-hint`, the loop bumps the effective
+  route-back cap by +1 for this slice and routes the worker back
+  one more time with your `operator_reply_text` as the retry hint.
+
+## Decision constraints (manifest-driven)
+
+- Required confidence level: **high**.
+- Max sentences in `operator_reply_text`: **5**.
+- Max files the hint may direct edits to: **2**.
+
+Pick `confirm-escalation` if any of these are exceeded or if your
+confidence is below the required level.
+
+## Output you MUST write (and nowhere else)
+
+**Save your complete output to**
+`C:\GitHub\Berreman\specs\0026\.artifacts\resolver\007-resolver-01.md`. **Do not write anywhere else.**
+
+Follow the resolver output structure documented in the resolver
+system prompt: Inputs read, Diagnosis, Verdict, Hint (only on
+`issue-hint`), and a single-line JSON envelope with the schema
+given in the system prompt as the LAST fenced code block of the
+file.

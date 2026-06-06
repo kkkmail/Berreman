@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://berreman/schema/optical-constructor-groups.json",
+  "title": "OpticalConstructorGroupsLibrary",
+  "description": "Canonical, hand/LLM-editable groups + experiment-collections library for the Berreman Optical Constructor (Spec 0026 Part G/H, slice 007). Stored as a separate per-user app-data JSON file, kept apart from any per-project .ocproj, so reusable element groups and sample-centred experiment collections are available across projects. Validated on load against this schema (no migration; a schemaVersion mismatch is a validation error). All physical magnitudes carried by a group member's placement are canonical SI meters; displayUnit is a display/IO label only.",
+  "type": "object",
+  "required": ["schemaVersion", "groups", "collections"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "The single shipped schema version. A differing value is a validation error, not a migration trigger (Spec 0026, out-of-scope migration)."
+    },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/elementGroup" },
+      "description": "The reusable element groups (G.1). Each group is a named set of member elements, each holding its full configuration, in one of two member modes."
+    },
+    "collections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/experimentCollection" },
+      "description": "The experiment collections (H.1). Each is a named set of experiments sharing the same sample(s), with elements and groups toggled on/off across the collection."
+    }
+  },
+  "$defs": {
+    "memberMode": {
+      "type": "string",
+      "enum": ["MutuallyExclusive", "MultiSelect"],
+      "description": "A group's member mode (G.1.2): at most one member in the beam (mutually exclusive), or zero/one/several (multi-select). A fieldless DU serialized as a bare string."
+    },
+    "groupMember": {
+      "type": "object",
+      "description": "One member of an element group (G.1.1): its full configuration (a reused elementPlacement) plus whether it is currently in the beam. The on/off and swap choices flip only inBeam, never the stored placement (G.1.2).",
+      "required": ["placement", "inBeam"],
+      "properties": {
+        "placement": { "$ref": "#/$defs/elementPlacement" },
+        "inBeam": { "type": "boolean" }
+      }
+    },
+    "elementGroup": {
+      "type": "object",
+      "description": "A named, reusable element group (G.1.1): a set of member elements, each holding its full configuration, in one of two member modes.",
+      "required": ["name", "mode", "members"],
+      "properties": {
+        "name": { "type": "string" },
+        "mode": { "$ref": "#/$defs/memberMode" },
+        "members": { "type": "array", "items": { "$ref": "#/$defs/groupMember" } }
+      }
+    },
+    "toggle": {
+      "type": "object",
+      "description": "A named on/off toggle (H.1): an experiment, an element, or a group within a collection.",
+      "required": ["name", "enabled"],
+      "properties": {
+        "name": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "experimentCollection": {
+      "type": "object",
+      "description": "An experiment collection (H.1.1): a named set of experiments sharing the same sample(s), with elements and groups toggled on/off across the collection.",
+      "required": ["name", "sampleValueIds", "experiments", "elements", "groups"],
+      "properties": {
+        "name": { "type": "string" },
+        "sampleValueIds": { "type": "array", "items": { "type": "string" } },
+        "experiments": { "type": "array", "items": { "$ref": "#/$defs/toggle" } },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/toggle" } },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/toggle" } }
+      }
+    },
+    "unitOfMeasure": {
+      "type": "string",
+      "enum": ["Meter", "Millimeter", "Micrometer", "Nanometer", "Angstrom", "ElectronVolt", "Wavenumber"],
+      "description": "Boundary unit-of-measure vocabulary (Part D, D.1). A display/IO label only; the stored magnitude is always canonical SI."
+    },
+    "catalogueKind": {
+      "type": "string",
+      "enum": ["LightSource", "LinearPolarizer", "CircularPolarizer", "Sample", "Lens", "FlatMirror", "CurvedMirror", "Detector"],
+      "description": "The UI-facing catalogue roles of Part F (Spec 0026 Part A, A.5.1). A fieldless DU serialized as a bare string."
+    },
+    "emission": {
+      "type": "string",
+      "enum": ["EmitReflectedOnly", "EmitTransmittedOnly", "EmitBoth"],
+      "description": "Per-element ray-group emission metadata (Spec 0026 Part A, A.7). A fieldless DU serialized as a bare string."
+    },
+    "vector3": {
+      "type": "object",
+      "description": "A pure direction 3-vector for box normals / oriented axes (Spec 0026 Part A, A.3.2). Direction only; carries no unit.",
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "tablePoint": {
+      "type": "object",
+      "description": "A point on the 2-D table plane in canonical meters (Spec 0026 Part A, R-2).",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "boundingBox": {
+      "type": "object",
+      "description": "The element's rectangular bounding box (Spec 0026 Part A, A.3): a square a1 x a2 face extruded by depth b along the primary normal, plus the two normals n1/n2. All extents are canonical SI meters.",
+      "required": ["a1", "a2", "b", "n1", "n2"],
+      "properties": {
+        "a1": { "type": "number" },
+        "a2": { "type": "number" },
+        "b": { "type": "number" },
+        "n1": { "$ref": "#/$defs/vector3" },
+        "n2": { "$ref": "#/$defs/vector3" }
+      }
+    },
+    "elementPlacement": {
+      "type": "object",
+      "description": "One element's placement (Spec 0026 Part A, R-1), reused verbatim as a group member's full configuration. The three rotation angles r1/r2/r3 are the engine Angle single-case union serialized as bare radian numbers; the three lock flags are booleans; valueId is the optional element value id (None serializes as null).",
+      "required": ["placementPoint", "r1", "r2", "r3", "r1Locked", "r2Locked", "r3Locked", "catalogueKind", "box", "emission", "displayUnit"],
+      "properties": {
+        "placementPoint": { "$ref": "#/$defs/tablePoint" },
+        "r1": { "type": "number" },
+        "r2": { "type": "number" },
+        "r3": { "type": "number" },
+        "r1Locked": { "type": "boolean" },
+        "r2Locked": { "type": "boolean" },
+        "r3Locked": { "type": "boolean" },
+        "catalogueKind": { "$ref": "#/$defs/catalogueKind" },
+        "valueId": { "type": ["string", "null"] },
+        "box": { "$ref": "#/$defs/boundingBox" },
+        "emission": { "$ref": "#/$defs/emission" },
+        "displayUnit": { "$ref": "#/$defs/unitOfMeasure" }
+      }
+    }
+  }
+}

@@ -696,6 +696,15 @@ let private constructorBody (model : RootModel) (dispatch : RootMsg -> unit) : I
             // E.2: the context-sensitive local-help overlay, when help is open.
             if model.constructor.helpOpen then
                 yield Rb.helpOverlay model.strings model.env.language model.constructor onConstructor
+            // E.2 (slice 007): the element-properties placeholder dialog, when open.
+            if model.constructor.elementDialogOpen then
+                yield Rb.elementDialogOverlay model.strings model.env.language onConstructor
+            // E.2 (slice 007): the right-click element context menu, when open.
+            if model.constructor.contextMenuOpen then
+                yield Rb.contextMenuOverlay model.strings model.env.language onConstructor
+            // K.2 (slice 007): the same-row Confirm/Cancel destructive gate, when an action is pending.
+            if Option.isSome model.constructor.pending then
+                yield Rb.confirmGateOverlay model.strings model.env.language model.constructor onConstructor
         ]
     ] :> IView
 

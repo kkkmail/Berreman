@@ -237,12 +237,12 @@ module RibbonTests =
             Assert.False dismissed.valueIdModalOpen)
 
     // =======================================================================
-    // Surfaceless-button guard (slice 006 retry) — the commands with no visible
-    // front-door effect render DISABLED in both the ribbon and the collapsed menus
-    // rather than as silent no-op clicks. Two groups, ONE source of truth:
-    //   * the nine gesture-only commands (inert in `applyCommand` — need event context);
-    //   * the four element-edit commands that mutate the model but have no rendered
-    //     surface on the constructor front door yet (slice 007 wires their overlays).
+    // Surfaceless-button guard — the commands with no visible front-door effect render
+    // DISABLED in both the ribbon and the collapsed menus rather than as silent no-op clicks.
+    // Slice 007: this is now the ten GESTURE-ONLY / PARAMETERIZED commands (nine gesture-only
+    // inert-in-`applyCommand` + the `SwapGroup` group swap). The four element-edit commands are
+    // RE-ENABLED — slice 007 renders their front-door overlays (dialog / context menu / confirm
+    // gate), so the slice-006 deferral is discharged.
     // =======================================================================
 
     /// The disabled-button set, DERIVED from the one source of truth in `ConstructorView`
@@ -250,10 +250,10 @@ module RibbonTests =
     /// the ribbon reads. The ribbon must render exactly these disabled.
     let private surfacelessCommands : Command list = ConstructorView.commandsWithoutFrontDoorSurface
 
-    /// The four element-edit commands routed to the contextual Element tab that mutate the
-    /// model but render no front-door surface this slice (the cycle-2 finding): they MUST be
-    /// in the disabled set, not enabled silent-no-op buttons on the new default landing page.
-    let private frontDoorlessElementCommands : Command list =
+    /// The four element-edit commands routed to the contextual Element tab. Slice 007 renders
+    /// their front-door overlays (element dialog, right-click context menu, same-row confirm gate),
+    /// so they are RE-ENABLED — no longer surfaceless, and parameterless-invokable.
+    let private reEnabledElementCommands : Command list =
         [ OpenElementDialog; ElementContextMenu; ResetRotation; DeleteElement ]
 
     [<Fact>]
@@ -265,11 +265,11 @@ module RibbonTests =
         for cmd in registryCommands do
             if not (List.contains cmd surfacelessCommands) then
                 Assert.True(ConstructorView.isParameterlessInvokable cmd, sprintf "%A must be parameterless-invokable" cmd)
-        // The four element-edit commands are explicitly in the disabled set (regression guard
-        // for the cycle-2 finding: enabled silent-no-op buttons on the default landing page).
-        for cmd in frontDoorlessElementCommands do
-            Assert.True(List.contains cmd surfacelessCommands, sprintf "%A must have no front-door surface" cmd)
-            Assert.False(ConstructorView.isParameterlessInvokable cmd, sprintf "%A must not be parameterless-invokable" cmd)
+        // The four element-edit commands are RE-ENABLED this slice (their overlays now render),
+        // so they are NOT in the surfaceless set and ARE parameterless-invokable.
+        for cmd in reEnabledElementCommands do
+            Assert.False(List.contains cmd surfacelessCommands, sprintf "%A now has a rendered front-door surface" cmd)
+            Assert.True(ConstructorView.isParameterlessInvokable cmd, sprintf "%A must be parameterless-invokable" cmd)
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
@@ -302,13 +302,12 @@ module RibbonTests =
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
-    let ``the contextual Element tab renders the four surfaceless element-edit commands disabled`` () =
+    let ``the contextual Element tab renders the re-enabled element-edit commands enabled`` () =
         HeadlessSession.run (fun () ->
             // The contextual Element tab (an element selected) carries the four element-edit
-            // commands with no rendered front-door surface — Element dialog, Element menu,
-            // Reset rotation, Delete — plus invokable ones like Duplicate. The four MUST
-            // render DISABLED (they would otherwise set state the user can neither see nor
-            // clear — Reset rotation / Delete arm an unresolvable `pending`).
+            // commands — Element dialog, Element menu, Reset rotation, Delete — which slice 007
+            // RE-ENABLES (their front-door overlays now render: the element dialog, the right-click
+            // context menu, and the same-row confirm gate). They must render ENABLED and clickable.
             let cv = { model [ sampleAt 0.0 0.0 ] with selection = ConstructorView.ElementSelected 0 }
             let window = Window()
             window.Content <-
@@ -325,10 +324,10 @@ module RibbonTests =
                     | _ -> None)
                 |> Map.ofSeq
             let labelOf cmd = LocalHelp.commandLabel resource Localization.English cmd
-            // Each of the four surfaceless element-edit commands renders as a DISABLED button.
-            for cmd in frontDoorlessElementCommands do
-                Assert.Equal(Some false, Map.tryFind (labelOf cmd) enabledByLabel)
-            // ...while an invokable Element-tab command (Duplicate) stays enabled and clickable.
+            // Each of the four re-enabled element-edit commands renders as an ENABLED button...
+            for cmd in reEnabledElementCommands do
+                Assert.Equal(Some true, Map.tryFind (labelOf cmd) enabledByLabel)
+            // ...alongside another invokable Element-tab command (Duplicate).
             Assert.Equal(Some true, Map.tryFind (labelOf DuplicateElement) enabledByLabel)
             window.Close())
 

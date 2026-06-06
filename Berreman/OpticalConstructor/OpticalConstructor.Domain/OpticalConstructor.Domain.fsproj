@@ -32,6 +32,10 @@
         <Compile Include="SourceCombination.fs" />
         <Compile Include="Table.fs" />
         <Compile Include="Project.fs" />
+        <!-- Spec 0026 Part G/H (slice 007): element groups + experiment collections.
+             Pure domain on top of Placement (member configs are reused ElementPlacement
+             values); compiles after Project, no new dependency. -->
+        <Compile Include="Groups.fs" />
         <Compile Include="CurvedElements.fs" />
         <Compile Include="DispersionModels.fs" />
         <Compile Include="MaterialLibrary.fs" />

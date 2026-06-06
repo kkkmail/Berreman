@@ -289,11 +289,19 @@ module CommandRegistryTests =
     let ``AC-C2 reset view returns to straight top-down at the default zoom`` () =
         let m0 = model []
         let dirty = { m0 with view = { m0.view with r2 = Angle.degree 30.0; panX = 50.0; panY = -20.0; zoom = 3.0 } }
-        let reset = ConstructorView.update (ConstructorView.Invoke ResetView) dirty
+        // Reset view is confirmation-gated in slice 007 (K.2 / AC-K2 — it is ephemeral view state
+        // NOT captured by the project-snapshot EditHistory, so it confirms rather than undoes):
+        // `Invoke ResetView` arms a pending confirm and leaves the (dirty) view untouched...
+        let armed = ConstructorView.update (ConstructorView.Invoke ResetView) dirty
+        Assert.True(abs ((armed.view.r2.degrees) - 30.0) < 1e-9, "the view stays dirty until the reset is confirmed")
+        Assert.Equal(Some "confirm.resetView", ConstructorView.pendingPromptKey armed)
+        // ...then confirming through the same-row gate performs the reset to straight top-down.
+        let reset = ConstructorView.update ConstructorView.ConfirmPending armed
         Assert.Equal(0.0, reset.view.r2.value)
         Assert.Equal(0.0, reset.view.panX)
         Assert.Equal(0.0, reset.view.panY)
         Assert.Equal(Table.defaultZoom, reset.view.zoom)
+        Assert.Equal(None, reset.pending)
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]

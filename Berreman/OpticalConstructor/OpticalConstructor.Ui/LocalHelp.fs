@@ -66,6 +66,11 @@ let commandLabelKey (cmd : Command) : string =
     | SaveProject -> "command.save"
     | CancelOrDeselect -> "command.cancel"
     | PlaceFromRibbon -> "command.place"
+    // Element groups & detectors (Part G, slice 007).
+    | SwapGroup -> "command.swapGroup"
+    | AddDetector -> "command.addDetector"
+    | RemoveDetector -> "command.removeDetector"
+    | SetPrimaryDetector -> "command.setPrimary"
 
 /// The localization key for a help context's text.
 let helpKey (ctx : HelpContext) : string =
