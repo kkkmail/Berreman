@@ -1,0 +1,1199 @@
+# Spec 0026 — Optical Constructor UI (element/ray model, top‑down table, ribbon shell, groups, EN/RU)
+
+This spec realises the Optical Constructor feature list: a new top‑down
+operator‑facing constructor screen, layered on top of the existing
+Avalonia + FuncUI (Elm‑style MVU) desktop app, that reuses the existing
+beam‑tree physics, units, JSON storage, and snapshot undo/redo rather than
+re‑inventing them. The screen becomes the application's front door; the
+present dockable‑panel main screen is preserved behind a *Legacy* menu
+entry.
+
+The spec is ordered by priority. The element/ray/geometry domain model and
+the top‑down rendering surface are the conceptual heart of the tool and
+gate every other part, so they come first and are marked **CRITICAL —
+land first**.
+
+---
+
+## 0. Binding constraints (apply to every part)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+---
+
+## Part A — Element geometry, placement & rotation domain model (CRITICAL — land first)
+
+### A.0 Problem statement
+
+Today an element on the beam tree (`BeamNode`, BeamTree.fs:53) has no
+spatial placement: it carries its kind, its solved `OpticalSystem`, its
+incident light, its branch children, and a display unit, but no position,
+no orientation, and no bounding geometry. The constructor needs every
+element described geometrically — a bounding box, two normals, a placement
+point, and three rotation angles — so it can be drawn on a top‑down table
+and manipulated. This part adds that geometry as a pure, headless‑testable
+domain layer and reserves the schema slots for it. It introduces no
+drawing code (Part C) and no ray routing (Part B).
+
+The chosen R1/R2/R3 scheme is dictated by how real optical mounts and
+stages are built, not by mathematical convenience; that is why the axes are
+modelled exactly rather than as a fixed orthogonal triad.
+
+### A.1 Add an element‑placement record
+
+A.1.1 A new module `Berreman/OpticalConstructor/OpticalConstructor.Domain/Placement.fs`
+MUST define an immutable F# record `ElementPlacement` holding, for one
+on‑table element:
+- `placementPoint` — the placement point in canonical meters on the table
+  plane (see A.2);
+- `r1`, `r2`, `r3` — the three rotation angles, each carried as the
+  engine's `Angle` value so the existing angle constructors are reused, not
+  re‑derived;
+- `r1Locked`, `r2Locked`, `r3Locked` — three independent lock flags;
+- `catalogueKind` — the UI‑facing catalogue kind (A.5);
+- `valueId : string option` — the element value id (A.6);
+- `box` — the bounding box (A.3);
+- `displayUnit : Units.UnitOfMeasure` — the element's preferred display unit
+  (display metadata only).
+
+A.1.2 `r3Locked` MUST default to `true`; `r1Locked` and `r2Locked` MUST
+default to `false` (R3 is locked by default and MUST be deliberately
+unlocked before it can change).
+
+### A.2 Placement point is the box centre
+
+A.2.1 The placement point MUST be defined as the centre of the element's
+rectangular bounding box. Drawing, snapping (Part B), and slide bounds
+(Part E) MUST all treat the placement point as the box centre, never an
+edge or corner.
+
+### A.3 Bounding box and the two normals
+
+A.3.1 `Placement.fs` MUST define a `BoundingBox` record with three
+canonical‑meter extents `a1`, `a2`, `b` describing an `A × A × B` box: a
+square `a1 × a2` face (with `a1 = a2` for the standard box) extruded by
+depth `b` along the primary normal.
+
+A.3.2 The box MUST carry **two normals**:
+- **N1 — primary normal**, perpendicular to the `A × A` face. R1 spins
+  about N1 (R1 and N1 coincide by definition).
+- **N2 — secondary normal**, perpendicular to N1 in the element's rest
+  pose.
+
+A.3.3 **Rest pose.** When an element is placed without rotation
+(R1 = R2 = R3 = 0), N1 MUST point along the central ray (and so along the
+R1 axis) and N2 MUST point along the table normal. An unrotated element
+faces the incoming beam squarely.
+
+A.3.4 **Default box proportions by role.** The default box dimensions are a
+spec‑author detail fixed here (concrete values, canonical meters). They are
+guidance for recognisable schematic shapes, not physical dimensions:
+- Optical elements (polarizers, sample, lens, mirrors) — thin and wide:
+  face `A_O = 0.05 m`, depth `B_O = 0.01 m` (`A_O > B_O`).
+- Light source — long and narrow: face `A_L = 0.025 m`, depth
+  `B_L = 0.08 m` (`B_L > A_L`, and `A_O > A_L`, `B_L > B_O`).
+- Detector — shaped like an optical element: `A_O × A_O × B_O`.
+These defaults MUST live as named constants in `Placement.fs` so a single
+edit restyles every element of a role.
+
+### A.4 The three rotations and their frames
+
+A.4.1 **R1** MUST rotate the element about its surface normal N1. At normal
+incidence the R1 axis coincides with the central ray; once R2 ≠ 0 the face
+no longer faces the beam and the R1 axis is no longer the central ray — R1
+still turns the element about its own face normal. R1 MUST NOT be treated
+as a polarizer's azimuth (a polarizer's azimuth lies *in* the face; at rest
+pose it is R2 that corresponds to the azimuth).
+
+A.4.2 **R2** MUST rotate the element about the table normal. R2 is the tilt
+that steers a beam within the table plane and is what decouples the R1 axis
+from the central ray.
+
+A.4.3 **R2 is measured from the incident ray, not from a fixed table
+axis.** When an element sits on a ray that is not horizontal, the element's
+own R2 MUST be applied relative to the direction of the incident ray. The
+table‑frame rotation of an element whose incident ray already makes angle
+`r2` with the horizontal and whose own dialled tilt is `R2` MUST therefore
+equal `r2 + R2`. `Placement.fs` MUST expose a pure function that, given the
+incident‑ray direction and the element's `r2`, returns the element's
+table‑frame orientation; this function MUST satisfy the `r2 + R2` additive
+law.
+
+A.4.4 **R3** MUST rotate the element about the third box axis (the
+`N1 × N2` direction). When R3 ≠ 0 the three axes are no longer a fixed
+orthogonal triad and **R1 is no longer perpendicular to R2** — the
+placement math MUST follow the element's mount, not assume orthogonality.
+
+A.4.5 **Per‑axis lock.** Each rotation MUST be independently lockable and
+unlockable, freezing it at its current value. A locked rotation MUST ignore
+any change request (Part E rotation gestures are inert while the targeted
+axis is locked).
+
+### A.5 Catalogue kind tag
+
+A.5.1 `Placement.fs` MUST define a `CatalogueKind` discriminated union with
+exactly the catalogue roles of Part F (Light Source, Linear Polarizer,
+Circular Polarizer, Sample, Lens, Flat Mirror, Curved Mirror, Detector).
+
+A.5.2 `Placement.fs` MUST define a pure total function
+`toConstructorElement : CatalogueKind -> ConstructorElement` mapping each
+catalogue kind to its existing domain case (BeamTree.fs:35): Light Source →
+`Source`; **both** Linear Polarizer and Circular Polarizer → `Polarizer`
+(BeamTree.fs:37) — a polarizer is a polarizer regardless of placement, and
+linear vs circular is a catalogue‑kind distinction, not a new domain case;
+Sample → `Sample`; Lens → `Lens`; Flat Mirror → `FlatMirror`; Curved
+Mirror → `CurvedMirror`; Detector → `Detector`. The existing `Analyzer`
+case (BeamTree.fs:42) MUST NOT be surfaced as a catalogue kind and MUST be
+left untouched (no domain‑DU removal in this spec).
+
+### A.6 Element value id slot
+
+A.6.1 The `valueId : string option` field (A.1) MUST be present in the
+schema and the placement record from the first build, and MUST be `None`
+for every element the first build creates. It identifies the concrete
+device or material behind an element's role (e.g. which laser an `LS` is,
+which material a `Sample` is); the binding of a concrete id is deferred
+(Part F commits only the menu action and an empty modal). Reserving the id
+now fixes it in the schema so nothing is retro‑fitted later, and it is one
+of the drawer's inputs from the start (Part C) so per‑device looks can be
+added later without rewiring placement or ray logic.
+
+### A.7 Ray‑group emission metadata
+
+A.7.1 `Placement.fs` MUST define per‑element emission metadata recording
+whether the element emits its reflected ray group, its transmitted ray
+group, or both. The invariant MUST be: an element MAY suppress its
+reflected group **or** its transmitted group but **never both** — turning
+the second one off MUST automatically turn the other back on. This MUST be
+enforced by a smart constructor that cannot represent the both‑off state.
+
+A.7.2 A mirror's default placement MUST suppress transmission (consistent
+with the existing mirror rule that a mirror carries the reflected branch
+only — `BeamNode.attach`, BeamTree.fs:74). Every non‑mirror element MUST be
+placed emitting whatever its catalogue kind is configured to emit
+(by default both).
+
+### A.8 Schema and project extensions
+
+A.8.1 The project schema
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json`)
+MUST be extended so that placement (the A.1 record, including box, normals
+basis, three angles, three lock flags, catalogue kind, value id, emission
+metadata, display unit) is representable. The `constructorElement` `$def`
+is currently permissive (`true`, schema file `:201`); placement MUST be
+added as a sibling of the per‑node element data without renaming any of the
+nine reserved anchors (Project.fs:42).
+
+A.8.2 The project aggregate `OpticalConstructorProject` (Project.fs:26)
+MUST be extended to carry the table (Part C) and per‑element placement, so
+that an opened project shows every element where it was left. The placement
+data MUST round‑trip through the existing serialization
+(ProjectFile.fs:20/:31) and pass schema validation
+(SchemaValidation.fs:61) with no new serialization library.
+
+### A.9 Reuse before invention
+
+For angles use the engine's existing `Angle` type and its constructors
+rather than introducing a new angle type. For canonical‑meter values reuse
+the `Units` conversions (Units.fs:43/:71). Add placement as a new record in
+a new `Placement.fs` module rather than overloading `BeamNode`
+(BeamTree.fs:53) with a flag‑heavy spatial payload — placement is a
+distinct concern from beam‑tree topology.
+
+---
+
+## Part B — Ray model, snapping & schematic tracing (CRITICAL — land first)
+
+### B.0 Problem statement
+
+The constructor draws the light path as a central ray plus side rays,
+snaps elements onto it, re‑aims downstream rays when an element is tilted,
+and bends rays schematically through tilted elements. This is the visual
+layer; the quantitative result at each element still comes from the
+existing beam‑tree solver (BeamTree.fs:91), and the drawn branches MUST
+stay consistent with the reflected/transmitted branches the engine
+computes (BeamTree.fs:98 `branchEmField`). This part is a pure geometry
+layer in a new module
+`Berreman/OpticalConstructor/OpticalConstructor.Domain/RayModel.fs`; it
+carries no Avalonia type.
+
+### B.1 Ray group: one central ray and eight side rays
+
+B.1.1 `RayModel.fs` MUST model a ray group as one **central ray (CR)** plus
+**eight side rays**. At normal incidence the eight side rays MUST land as
+equidistant points on a circle, 45° apart, with the CR striking the centre
+of that circle (the "rifle‑target" pattern). The side rays MUST visibly
+spread only when a lens, a non‑flat (curved) mirror, a prism, or a wedge
+bends them.
+
+B.1.2 The on‑screen radius of the eight‑ray bundle MUST be a fixed fraction
+of the element's clear face: `bundle_radius = 0.4 × (face_extent / 2)`.
+This fraction is a schematic legibility choice (no canonical standard
+exists for ray‑bundle radius; it is anchored to the optics rule that a
+clear aperture is ≈2–3× the beam, so 0.4 keeps all eight side rays clearly
+inside the face — see References). It MUST be a named constant.
+
+### B.2 Incident, reflected, transmitted groups; detector termination
+
+B.2.1 `RayModel.fs` MUST name the incident ray group (IRG) — the ray group
+falling on an element — as the frame against which that element's rotations
+are measured (A.4.3). Every element except a mirror produces both a
+transmitted ray group (TRG) and a reflected ray group (RRG); a mirror
+produces only an RRG. The drawn groups MUST follow the element's A.7
+emission metadata and MUST correspond to the engine branches
+(`Reflected`/`Transmitted`, BeamTree.fs:21).
+
+B.2.2 A **Detector (D)** MUST terminate the ray group it receives: no
+ray group is drawn leaving a detector.
+
+### B.3 Snapping and downstream travel
+
+B.3.1 Each element's placement point MUST snap onto the central ray
+(B.1, A.2). `RayModel.fs` MUST expose a pure function that, given a ray and
+a set of elements with their placement points and rotations, produces the
+drawn ray geometry with every element snapped to its ray.
+
+B.3.2 Changing an element's R2 and/or R3 MUST change the direction of its
+reflected ray R and MAY change the direction of its transmitted ray T.
+Everything snapped to a ray downstream of the rotated element MUST travel
+with the new ray direction **while preserving all distances** measured
+along the ray. Tilting one element MUST therefore drag everything
+downstream of it along the new beam direction automatically, keeping the
+inter‑element spacing unchanged.
+
+### B.4 Default light‑source and detector placement
+
+B.4.1 The light source MUST have a default placement near the left side of
+the table, vertically centred; the detector MUST have a default placement
+near the right side, vertically centred. The central ray MUST originate at
+the light source and terminate at the detector, and the initial distance
+between them MUST be `2.0 m`, measured along the central ray.
+
+B.4.2 Because everything downstream is snapped to the central ray, moving
+the light source MUST drag the whole chain with it. The light source MUST
+expose a **position reset** (reachable from its local element menu, Part E)
+that returns it to its default spot; when the light source moves or resets,
+the remaining elements MUST re‑snap to the ray, preserving their along‑ray
+distances.
+
+### B.5 Orphaned elements
+
+B.5.1 An element MUST become *orphaned* (left without a ray) only by one of
+two operations: (a) changing which ray is tracked (e.g. switching the
+tracked branch from T to R), or (b) removing one ray while both R and T are
+in use. Elements that were sitting on the removed ray MUST become orphaned.
+
+B.5.2 No other operation MUST orphan an element — ordinary rotation and
+dragging MUST always keep elements attached to a ray.
+
+B.5.3 If a removed ray is later restored, an orphaned element MUST re‑snap
+to it when the restored ray passes within a configured distance of the
+element's placement point; otherwise the element MUST stay orphaned until
+the user reattaches it. The re‑snap distance MUST be a named, configurable
+constant.
+
+### B.6 Schematic Snell tracing through tilted elements
+
+B.6.1 When an element has R2 ≠ 0 and/or R3 ≠ 0, the central and side rays
+genuinely change direction and the side rays MAY refract. `RayModel.fs`
+MUST compute the bent line geometry by applying Snell's law with `n = 1.0`
+outside and `n = 1.5` inside the element (constraint 0.5). These two indices
+MUST be named constants in `RayModel.fs`.
+
+B.6.2 When both the reflected and transmitted groups are emitted, the two
+MUST be drawn as distinct outgoing groups from the element's face; the
+visual distinction (colour / weight / alpha) is specified in Part C.
+
+### B.7 Consistency with the engine
+
+B.7.1 The reflected/transmitted groups the constructor draws MUST be the
+same two branches the engine beam tree routes and solves (BeamTree.fs:98,
+`:117`). The drawing MUST NOT invent a branch the engine does not compute,
+and MUST NOT suppress a branch the element's A.7 metadata emits.
+
+---
+
+## Part C — The optical table and top‑down rendering surface
+
+### C.0 Problem statement
+
+The optical table (OT) is the working surface — a top‑down, drawn‑to‑scale
+grey plate on which elements and rays are drawn. The existing
+`Schematic.fs` module (Schematic.fs:18) draws a *vertical cross‑section of a
+single `OpticalSystem`*; it is a different view and MUST NOT be repurposed
+or removed. The constructor's top‑down surface is net‑new. Its geometry MUST
+be a pure projection (constraint 0.3); the FuncUI `Canvas` binding is the
+only Avalonia‑aware seam.
+
+### C.1 The plate
+
+C.1.1 A new module `Berreman/OpticalConstructor/OpticalConstructor.Domain/Table.fs`
+MUST define an `OpticalTable` record holding the plate's physical width,
+length, and thickness in canonical meters, plus a display unit. The default
+size MUST be `1.2 m × 2.0 m × 0.10 m` (width × length × thickness).
+
+C.1.2 The plate size MUST be editable by the user and MUST be stored with
+the project (A.8.2), so a reopened experiment shows the same plate.
+
+C.1.3 The plate MUST be drawn as a grey plate to scale, so elements and
+beams sit at true relative scale.
+
+### C.2 View: pan, zoom, rotate, reset
+
+C.2.1 The default view MUST be top‑down.
+
+C.2.2 **Pan.** Left‑press + drag on empty table MUST pan the whole table
+and every element on it together (elements travel with the table).
+
+C.2.3 **Zoom.** The plain mouse wheel and `Ctrl + wheel` MUST both zoom the
+table in and out (honouring the OS‑standard `Ctrl + wheel = zoom`
+convention; this is why R2 is on `Ctrl + Shift + wheel`, Part E).
+
+C.2.4 **Rotate as a view operation.** Rotating the table MUST change only
+the viewpoint; all elements travel with it. The table's own R1/R2/R3 MUST
+be measured relative to the screen.
+
+C.2.5 **Reset view.** A single action MUST reset the view to (0, 0, 0)
+(straight top‑down) and a sensible default zoom (Part E binds `Ctrl+0` and a
+"Reset view" button). This reset is required because the view is easy to
+tumble and hard to recover by hand.
+
+C.3 **Table selection.** The table MUST become the selected object whenever
+the user clicks anything that is not an optical element. Selecting the table
+is how the user steps out of an element to operate on the workspace as a
+whole.
+
+### C.4 The drawer
+
+C.4.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Drawer.fs` MUST define
+the drawer as a pure function whose inputs are the element's placement
+point, its three rotations, its **element kind**, and its **element value
+id** (`None` for the first build), returning pure top‑down draw geometry
+(no Avalonia type). Passing the kind and the value id explicitly from the
+start is mandatory so per‑role and (later) per‑device/material looks can be
+added without rewiring placement or ray logic.
+
+C.4.2 For the first build there MUST be exactly **one standard drawer** used
+by every element, drawing the element as a **cylinder**: a visible cylinder
+frame with a very light‑grey, transparent interior so rays passing through
+remain visible. Two role‑based shadings MUST depart from that default: the
+light source is drawn in a darker shade; the detector is drawn almost
+black, but with its frame still visible so it can be seen and selected.
+
+C.4.3 The drawer MUST offer a **show / hide bounding box** option, off by
+default. When on, the box edges MUST make R1/R2/R3 visible at a glance for
+inspecting an element's orientation.
+
+### C.5 Drawing weights (schematic conventions)
+
+C.5.1 The schematic MUST follow established optics ray‑diagram practice:
+the central ray is the prominent line (the chief‑ray analogue) and the side
+rays are lighter (marginal‑ray analogue). There is no formal standard for
+pixel weights, so the following concrete defaults are fixed here (see
+References) and MUST be named constants so a single edit restyles the
+schematic:
+- central ray: 2.0 px, solid, full opacity;
+- side rays: 1.0 px, solid, ~60% opacity;
+- reflected group: same hue as the transmitted group at ~35% opacity (it
+  carries less energy), so reflected and transmitted read apart at a
+  glance;
+- element cylinder frame: 1.0 px outline; interior fill light‑grey at ~15%
+  opacity;
+- grid lines (if drawn): 1.0 px at ≤25% opacity, so the grid never competes
+  with geometry.
+
+C.5.2 Colours MUST be chosen for clear on‑screen visibility and MUST be
+expressed as pure colour values the FuncUI binding maps to Avalonia, in the
+same style as `SchematicColor` (Schematic.fs:35).
+
+### C.6 Active‑element clarity
+
+C.6.1 The active element MUST be drawn so that it is unmistakably the active
+one (a highlight / halo / selection frame). The active‑element indicator
+MUST be at least 2 px and contrast at least 3:1 against the table
+background (WCAG focus‑indicator floor; see References). Acting on the wrong
+element silently is the main hazard, so this clarity is a firm requirement,
+not a nicety. The exact treatment is a design detail; the clarity is not.
+
+### C.7 Show central ray only, or all rays
+
+C.7.1 The constructor MUST offer an option to show only the CR or the CR
+together with all eight side rays. The default MUST be CR‑only (most
+reasoning is on the CR alone; side rays are switched on for focusing or
+dispersion). This toggle MUST live on the *Trace / View* ribbon (Part D)
+and MUST redraw the table when changed.
+
+### C.8 Reuse before invention
+
+Reuse `SchematicColor` (Schematic.fs:35) as the colour value shape. Do not
+fold the top‑down table geometry into `Schematic.fs` (a different,
+cross‑section view); add the new `Table.fs` / `Drawer.fs` / top‑down layout
+modules instead.
+
+---
+
+## Part D — Ribbon‑and‑menu shell and the single command source
+
+### D.0 Problem statement
+
+The main screen needs an Office‑style shell: a top menu bar whose top‑level
+entries each switch a ribbon, and — when the ribbon is collapsed — the same
+entries expand into full drop‑down menus exposing everything the ribbons
+offer. The two are two presentations of one command set; a new command MUST
+be declared once and appear in both automatically. The existing shell has a
+flat two‑page nav bar (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:73`
+`Page`; `:510` `navBar`; `:500` `navButton`); the ribbon shell is net‑new
+and is added as the new front door.
+
+### D.1 Ribbon tab set
+
+D.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Ribbon.fs` MUST define
+the ribbon as a set of task tabs. The starting tab set MUST be: **Build**
+(place elements and groups), **Element** (edit the active element),
+**Trace / View** (rays, zoom, table view, reset, show‑CR toggle),
+**Experiment** (groups, collections, detectors), and **Settings**
+(language, units, controls, help).
+
+D.1.2 Each ribbon tab's controls MUST be generated from the centralized
+command registry (Part E), not hand‑placed per tab, so a command added to
+the registry appears on its tab automatically.
+
+### D.2 Collapsible ribbon ↔ full menus
+
+D.2.1 The ribbon MUST be collapsible to reclaim screen space. When
+collapsed, the same top‑level entries MUST expand into full drop‑down menus
+that expose **everything** the ribbons offer. No command MUST be reachable
+only from a ribbon or only from a menu — both MUST be projections of the
+one command set (constraint 0.4). A command added to the registry MUST
+appear in both the ribbon and the menus with no second wiring site.
+
+D.2.2 Office‑style multi‑state collapse (full ribbon → titles‑and‑tabs →
+tabs only) MAY be implemented as a progression but is a design detail, not
+a fixed requirement; the firm requirement is the single‑source ribbon↔menu
+equivalence of D.2.1.
+
+### D.3 Contextual element tab
+
+D.3.1 A contextual ribbon tab for the active element MUST appear when an
+element is selected and MUST be **appended** beside the persistent tabs
+rather than taking over the whole ribbon.
+
+### D.4 Bilingual layout robustness
+
+D.4.1 The ribbon and menus MUST remain legible under both EN and RU
+strings, which differ in length (Cyrillic labels tend to run longer). The
+layout MUST flex rather than truncate when a label is longer in one
+language.
+
+### D.5 Legacy menu entry
+
+D.5.1 A **Legacy** menu entry MUST open the present dockable‑panel main
+screen as‑is (the Construction and Synthesis/Fit pages, `Page` of
+Shell.fs:73, laid out by `constructionBody`, Shell.fs:572). The legacy form
+is a reference and fallback; it MUST remain reachable and functional but
+MUST NOT be required to evolve in lock‑step with the new screen.
+
+### D.6 The constructor is the front door
+
+D.6.1 The new constructor screen MUST be a top‑level page and MUST be the
+default landing page when the app starts. The existing `Page` union
+(Shell.fs:73) MUST be extended with the constructor page, and the nav /
+shell entry MUST be wired through the existing root message path
+(`RootMsg`, Shell.fs:121) so navigation stays single‑sourced.
+
+### D.7 Reuse before invention
+
+Extend the existing `Page` union (Shell.fs:73) and route through the
+existing `RootModel`/`RootMsg` (Shell.fs:94/:121) rather than building a
+parallel navigation system. Reuse the dock‑edge seam (`AppShell.toDock`,
+AppShell.fs:89) for any docked sub‑panels of the constructor.
+
+---
+
+## Part E — Interaction model: centralized commands, mouse and keyboard
+
+### E.0 Problem statement
+
+The researcher manipulates the active element and the table mostly by mouse
+with keyboard accelerators for speed. Where a command is reachable by both
+a mouse gesture and a key, the two MUST be one command with two bindings.
+Today there is no key‑binding or command infrastructure to reuse (only
+per‑button `onClick`); this part introduces the centralized command model
+both the ribbon (Part D) and the input handlers read from.
+
+### E.1 The centralized command model
+
+E.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Commands.fs` MUST model
+each command as a discriminated‑union case carrying a small three‑state
+binding — **keyboard‑only**, **mouse‑only**, or **keyboard‑plus‑mouse** —
+so a command reachable both ways declares both bindings on one definition.
+Every key map and mouse map, and every ribbon/menu control, MUST be derived
+from this one registry (constraint 0.4). A new command MUST be added in
+this one place.
+
+E.1.2 Every command MUST operate on the **active element** unless it is
+explicitly a table or global command.
+
+### E.2 Active‑element commands (one command per row; both bindings shown together)
+
+The registry MUST declare at least:
+- **Open element dialog** — double‑click the element, or right‑click →
+  *Element dialog*.
+- **Element context menu** — right‑click the element. It MUST expose the
+  element's commands directly: Element dialog, Local help, lock/unlock each
+  rotation, Reset rotation, toggle reflected/transmitted, Delete,
+  Duplicate, turn the element or its group on/off, and (for a detector)
+  *Set as primary*.
+- **Reset rotation** to (0, 0, 0), with confirmation — `Shift+R`, or
+  right‑click → *Reset rotation*.
+- **Delete element**, with confirmation for a non‑trivial element —
+  `Delete` / `Backspace`, or right‑click → *Delete*.
+- **Duplicate element** — `Ctrl+D`, or right‑click → *Duplicate*;
+  **Copy/Paste** — `Ctrl+C` / `Ctrl+V`.
+- **Local help** for the selected object — `F1`, or right‑click → *Local
+  help* (Part J).
+- **Make next/previous element active** along the beam path — `Tab` /
+  `Shift+Tab`.
+
+### E.3 Rotations
+
+E.3.1 Each rotation step MUST default to **5°** and MUST be configurable. A
+rotation gesture MUST do nothing while its targeted axis is locked (A.4.5).
+The registry MUST bind:
+- **R1** — `Shift + mouse wheel`;
+- **R2** — `Ctrl + Shift + mouse wheel`;
+- **R3** — `Alt + mouse wheel` (R3 MUST be unlocked first).
+
+### E.4 Move the active element
+
+E.4.1 **Slide along its ray** — `Shift + left‑drag`, or the arrow keys
+(`Shift + arrow` for a larger step). The slide MUST be bounded to the gap
+between the element's two immediate neighbours on the ray and MUST NOT pass
+either one; left and right slides are the same constrained move in either
+direction. Finer placement‑point editing MUST be available from the local
+element menu (Part E.2 / A).
+
+E.4.2 **Move to a different ray** — `Ctrl + left‑drag` (e.g. off the
+transmitted branch onto the reflected one). This is the only gesture that
+reassigns an element between rays, distinct from the `Shift` slide.
+
+E.4.3 On **drop**, the table MUST be redrawn, because moving an element may
+change where the rays fall.
+
+E.4.4 **Plain left‑drag on an element MUST do nothing** — a deliberate
+guard against accidental moves. Because the obvious gesture is inert, the
+real gesture (`Shift+drag`) MUST be hinted (cursor change or tooltip when
+the pointer is over a movable element).
+
+### E.5 Table and view commands
+
+The registry MUST bind: **Pan** — left‑drag on empty table (C.2.2);
+**Zoom** — plain wheel or `Ctrl + wheel` (C.2.3); **Reset view** to
+top‑down — `Ctrl+0` or the *Reset view* button (C.2.5); **Toggle an element
+group** on/off — the number keys select the corresponding group (Part G),
+alongside the right‑click toggle.
+
+### E.6 Global commands
+
+The registry MUST bind: **Undo** — `Ctrl+Z`; **Redo** — `Ctrl+Y` (and
+`Ctrl+Shift+Z`), both multi‑level (Part K); **Save the project** —
+`Ctrl+S`; **Close the local menu / pop‑up, or cancel the current drag /
+deselect** — `Esc`.
+
+### E.7 Drag‑to‑place from the ribbon
+
+E.7.1 Adding an element MUST be a drag from the *Build* ribbon onto the
+table. On mouse release, the new element MUST snap to the middle of the
+closest central‑ray path at the drop point, so it lands attached to the
+nearest beam rather than floating free.
+
+### E.8 Configurability and reuse
+
+E.8.1 The key map MUST be configurable (the rotation step already is), so a
+user who prefers different behaviour can change it; the configured key map
+MUST persist with the environment settings (Part I / UserEnvironment.fs:141)
+. Reuse that settings store rather than adding a parallel preferences file.
+
+---
+
+## Part F — Standard element catalogue and value‑id binding placeholder
+
+### F.0 Problem statement
+
+Researchers think in named bench components; the same role can be filled by
+different hardware. The catalogue names the roles; the concrete device is a
+property (the value id, A.6). The domain already enumerates element kinds
+(BeamTree.fs:35).
+
+### F.1 Catalogue names
+
+F.1.1 The catalogue MUST surface these roles, each mapping through
+`CatalogueKind.toConstructorElement` (A.5.2): **Optical Table (OT)** (the
+workspace itself, Part C), **Light Source (LS)**, **Linear Polarizer (LP)**,
+**Circular Polarizer (CP)**, **Sample (S)**, **Lens**, **Flat Mirror**,
+**Curved Mirror**, **Detector (D)**. Mirrors, lenses, prisms, and wedges are
+the elements that make the side rays meaningful (Part B) and are needed for
+focusing and dispersive setups.
+
+F.1.2 A polarizer MUST be just a polarizer regardless of where it sits;
+there MUST be no separate "analyzer" catalogue entry and no special label
+for a polarizer that follows the sample. The catalogue MUST allow more than
+two polarizers in a chain.
+
+### F.2 Value‑id binding action (placeholder)
+
+F.2.1 The element's local menu MUST expose an action to open the value‑id
+binding. For the first build this action MUST open a functioning **empty
+modal dialog** (a fully working, dismissible modal with no picker content).
+
+F.2.2 The real device/material picker behind that dialog is out of scope
+for this spec (constraint 0.6). The committed deliverable is the working
+menu action and the working empty modal; this is a complete end state, not
+a stub — the id slot (A.6) and the menu entry exist so nothing is
+retro‑fitted later.
+
+### F.3 Reuse before invention
+
+Map catalogue kinds onto the existing `ConstructorElement` cases
+(BeamTree.fs:35) via the A.5.2 function; do not add new element DU cases for
+LP/CP (they are `Polarizer`) and do not remove `Analyzer` (BeamTree.fs:42).
+
+---
+
+## Part G — Element groups, multiple detectors, and separate storage
+
+### G.0 Problem statement
+
+A researcher runs families of closely related experiments — same beam, same
+detector, swapping one block at a time — and needs to assemble and
+re‑assemble them quickly. An element group is the interchangeable block
+along the primary central‑ray path. The whole point is lossless swapping:
+swapping a linear polarizer for a circular one (LP ↔ CP) without the
+delete‑then‑re‑add cycle that loses each element's settings.
+
+### G.1 Group model and member modes
+
+G.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Domain/Groups.fs` MUST
+define an `ElementGroup` as a named set of member elements, each member
+holding its **full configuration** (its placement, rotations, value id,
+emission metadata). The group MUST be placeable on, or removable from, the
+central‑ray path as a unit.
+
+G.1.2 Each group MUST be one of two member modes, chosen per group:
+- **Mutually exclusive** — at most one member may be in the beam at a time;
+  choosing one MUST automatically take the others out of the beam.
+- **Multi‑select** — zero, one, or several members may be in the beam at
+  once.
+Either way the group MUST remember all members and their settings; the
+on/off and swap choices MUST change only which members are currently in the
+beam, never their stored configuration.
+
+G.1.3 Groups MUST be nameable and reusable, building on the existing
+favourites concept (`FavoriteGroup`, UserEnvironment.fs:126) so a commonly
+used group can be pinned and dropped back in later.
+
+### G.2 Multiple detectors and the primary one
+
+G.2.1 The primary path normally ends in one detector, but the user MUST be
+able to place more than one detector when a branch (e.g. a reflected arm)
+needs its own. When there is more than one, the user MUST choose which
+detector is the primary one (Part E "Set as primary"). Results and the
+headline readout MUST follow the primary detector; secondary detectors MUST
+report their own branch independently (consistent with each branch carrying
+its own field, BeamTree.fs:98).
+
+### G.3 Separate groups/collections storage
+
+G.3.1 Element groups and experiment collections (Part H) MUST be stored in
+their own separate JSON file, kept apart from the per‑project `.ocproj`
+file, so reusable groups and sample‑centred collections are available
+across projects. A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs`
+MUST own this file's load/save, reusing the shared JSON options and the
+schema‑validate‑on‑load seam (SchemaValidation.fs:61), with a new schema
+file
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-groups.schema.json`.
+
+G.3.2 The groups/collections file MUST live at a fixed per‑user
+application‑data path, mirroring the environment store's location
+convention (UserEnvironment.fs:279, the `Softellect/Berreman/OpticalConstructor`
+app‑data folder). Because that path is outside the repository working tree,
+this file raises no `.gitignore` collision (constraint check satisfied: the
+committable‑state cross‑check is moot for an app‑data file; were it ever
+placed in‑tree, a `*.json` name does not collide with any root `.gitignore`
+pattern such as `*.cache`/`*.log`/`*.tmp`/`[Bb]in/`/`[Oo]bj/`).
+
+### G.4 Reuse before invention
+
+Reuse the JSON options and validation seam used by the project and
+environment stores (SchemaValidation.fs:61; UserEnvironment.fs:185
+defaults/load/save pattern) rather than a new serializer; reuse the
+`FavoriteGroup` notion (UserEnvironment.fs:126) for pin/reuse.
+
+---
+
+## Part H — Experiment collections [Should]
+
+### H.0 Problem statement
+
+An experiment collection is a set of experiments built around the same
+sample or samples. It exists to make on/off assembly convenient across the
+related experiments and to keep an experiment reproducible when it must be
+repeated because conditions changed.
+
+### H.1 Collection model
+
+H.1.1 `Groups.fs` (G.1) MUST define an `ExperimentCollection` as a named
+set of experiments sharing the same sample(s), with the user able to turn
+elements and groups on and off across the collection. Collections MUST be
+stored in the same separate JSON file as groups (G.3) and MUST round‑trip
+through it.
+
+---
+
+## Part I — Localization: English and Russian
+
+### I.0 Problem statement
+
+The user base spans EN‑ and RU‑speaking researchers. Localization is
+net‑new (constraint 0.7): no localization infrastructure exists today.
+
+### I.1 Centralized, runtime‑read, editable resource
+
+I.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Localization.fs` MUST
+load all translatable string pairs from one centralized, human‑editable
+text resource read at run time. The resource MUST be a JSON file
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/strings.json` holding,
+per string key, the EN and RU values. An operator or translator MUST be
+able to edit the strings, or add a further language, by editing that file —
+no rebuild required (the file MUST be copied beside the assembly at build,
+mirroring how the schema content item is shipped, SchemaValidation.fs:17,
+and read from the runtime base directory).
+
+### I.2 Language persisted and restored
+
+I.2.1 The selected language MUST be saved into settings and restored on the
+next launch. `EnvironmentSettings` (UserEnvironment.fs:141) MUST be extended
+with a `language` field, defaulting to English, and the environment schema
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json`)
+MUST be extended to match. The language selector MUST live on the *Settings*
+ribbon (Part D) and MUST write through the existing save path
+(UserEnvironment.fs:302).
+
+### I.3 Startup completeness check with copyable error
+
+I.3.1 At startup the application MUST check the resource for completeness.
+If any string is missing for the active language, the app MUST fall back to
+the English default for that entry and MUST surface a startup error message
+the user can **copy** (so it can be pasted into a bug report or a
+translation fix), rather than failing silently or crashing. The startup
+check and the copyable error surface MUST be wired in the app entry point
+(`Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs`).
+
+### I.4 Language‑neutral scientific notation
+
+I.4.1 Scientific symbols and notation (Ψ, Δ, °, the unit symbols, R1/R2/R3)
+MUST stay language‑neutral and MUST NOT be translated.
+
+### I.5 Reuse before invention
+
+Reuse the `EnvironmentSettings` store (UserEnvironment.fs:141/:302) for the
+saved language; reuse the build‑copied‑content‑item + base‑directory read
+pattern (SchemaValidation.fs:17) for shipping and reading `strings.json`. Do
+not introduce `.resx`/`ResourceManager` (constraint 0.7).
+
+---
+
+## Part J — Standardized controls
+
+### J.0 Problem statement
+
+As the interface grows, the maintainer needs visual and behavioural
+consistency without hunting through the code. Today CTA colours are
+duplicated per view (e.g. `positiveCta`/`negativeCta`, ConstructionView.fs:40).
+
+### J.1 Single control‑flavours module
+
+J.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Controls.fs` MUST be the
+single place that describes the standard control flavours: a default button,
+a primary/accent button, a destructive button, a toggle, and a
+numeric‑field‑with‑units. Each flavour MUST be a function the call sites use
+instead of styling buttons ad hoc.
+
+J.1.2 When a new flavour is genuinely needed (e.g. a differently coloured
+button to stand out), it MUST be added in `Controls.fs` by changing only the
+minimum set of properties that distinguish it, rather than styled at the
+call site. This is consistency and one‑touch restyling, not a comprehensive
+design system.
+
+### J.2 Reuse before invention
+
+The new constructor views MUST use `Controls.fs` flavours. The existing
+`positiveCta`/`negativeCta` (ConstructionView.fs:40) MUST be expressed as
+the destructive‑gate flavour in `Controls.fs` so the same‑row Confirm/Cancel
+gate (UX commitments, below) draws from one definition.
+
+---
+
+## Part K — Undo/redo participation and safety [Must]
+
+### K.0 Problem statement
+
+The constructor needs multi‑level undo/redo across element placement,
+rotation, locking, group on/off, and detector changes. The engine already
+provides multi‑step whole‑project snapshot undo/redo (History.fs:20,
+`EditHistory`; `:33` `push`; `:39` `undo`; `:47` `redo`); the constructor's
+job is to make every constructor action participate.
+
+### K.1 Every constructor action is a snapshot edit
+
+K.1.1 Every constructor model edit that changes the project (placement,
+each rotation, each lock toggle, group on/off, swap, detector add/remove,
+set‑primary, table resize, light‑source move/reset) MUST `push` the new
+project onto the shared `EditHistory` (History.fs:33), so `Ctrl+Z` /
+`Ctrl+Y` (Part E.6) step through them.
+
+K.1.2 Undo and redo MUST be multi‑level (History.fs is a multi‑level
+zipper); the constructor MUST NOT degrade it to single‑level.
+
+### K.2 Safety on destructive actions
+
+K.2.1 Destructive or hard‑to‑reverse actions (reset rotation, delete
+element, reset view) MUST either be undoable through K.1 or ask for
+confirmation, consistent with the `Shift+R`‑with‑confirmation behaviour
+(Part E.2). Any opposing‑action pair (Confirm/Cancel) MUST be same‑row with
+a visible gap and distinct positive‑CTA / negative‑CTA colours (Part J.2 /
+ConstructionView.fs:40).
+
+### K.3 Reuse before invention
+
+Reuse `History.fs` (History.fs:20) as the undo/redo carrier; do not add a
+command‑pattern diff log or a parallel history.
+
+---
+
+## Operator‑facing UX commitments
+
+The constructor introduces a new top‑level operator page, so the spec
+commits explicitly on each checklist point:
+
+1. **Discoverability.** The constructor is a new top‑level page and the
+   default landing page (D.6); its nav/shell entry is added to the existing
+   `Page` union (Shell.fs:73) and marked active with distinct styling like
+   the current `navButton` (Shell.fs:500). The *Legacy* entry (D.5) opens
+   the existing dockable screen.
+2. **Progress granularity.** Feedback MUST be **per‑element**: selection,
+   edits, and re‑snaps reflect on the affected element(s) and the redraw is
+   synchronous on drop/edit. The per‑node solve reuses the existing async
+   per‑node mechanism (BeamTree.fs:91) at per‑element granularity; no new
+   long‑running background job with a progress bar is introduced.
+3. **Pre‑confirmation gate.** The constructor dispatches no LLM calls and no
+   long‑duration batch work, so a one‑click interaction model is correct;
+   an identify→confirm→process scope gate MUST NOT be added. Destructive
+   single actions still confirm per K.2.
+4. **Completion → result‑surface refresh.** When an edit changes the rays
+   (rotate, move, group toggle, detector change), the MVU update MUST
+   re‑render the table automatically (the FuncUI re‑render path; E.4.3
+   redraw‑on‑drop). A manual reload MUST NOT be required.
+5. **Action‑button UX.** Opposing actions (Confirm/Cancel on reset/delete)
+   MUST be same‑row, with a visible gap and distinct positive/negative
+   colours (J.2). Every action that moves or deletes user‑visible state
+   MUST be undoable via `EditHistory` (K.1) — the undo affordance, not a
+   separate recent‑actions panel.
+6. **Committable‑state under dot‑folder.** The only new persisted operator
+   state is the groups/collections JSON, placed at the per‑user app‑data
+   path outside the repository (G.3.2), so no `.gitignore` collision is
+   possible; `.ocproj` user documents remain committable and are explicitly
+   never git‑ignored (ProjectFile.fs:14).
+
+**Hidden‑controls treatment.** The spec‑writer's hidden‑controls checklist
+(LLM‑profile select, web‑search‑provider select, session token counters,
+`.specrc.agent` dropdown) does **not apply**: Berreman is an Avalonia F#
+desktop application with no `nav.html` and none of those controls. There is
+nothing to hide or surface on that axis.
+
+---
+
+## Acceptance criteria
+
+### Part A acceptance
+- AC‑A1: After an element is created with no rotation, `Placement.fs`
+  reports N1 along the central ray and N2 along the table normal (rest pose,
+  A.3.3), provable headless.
+- AC‑A2: A new element's `r3Locked` is `true` and `r1Locked`/`r2Locked` are
+  `false` (A.1.2).
+- AC‑A3: Given an incident ray at angle `r2` and an element with own tilt
+  `R2`, the A.4.3 function returns a table‑frame orientation equal to
+  `r2 + R2`.
+- AC‑A4: Setting R3 ≠ 0 yields a basis in which R1 is not perpendicular to
+  R2 (A.4.4), provable from the placement math.
+- AC‑A5: The emission smart constructor (A.7.1) cannot represent
+  reflected‑off‑and‑transmitted‑off simultaneously; turning the second off
+  re‑enables the first.
+- AC‑A6: A project carrying placement (box, three angles, three locks,
+  catalogue kind, `valueId = None`, emission metadata, display unit)
+  round‑trips through `saveProject`/`openProject` and passes schema
+  validation (A.8).
+- AC‑A7: `CatalogueKind.toConstructorElement` maps Linear Polarizer and
+  Circular Polarizer both to `Polarizer`, Detector to `Detector`, and never
+  to `Analyzer` (A.5.2).
+
+### Part B acceptance
+- AC‑B1: At normal incidence the eight side rays are equidistant points 45°
+  apart on a circle of radius `0.4 × face_extent/2` with the CR at the
+  centre (B.1).
+- AC‑B2: A mirror's drawn groups contain an RRG and no TRG; a non‑mirror
+  element with both emissions draws both (B.2.1), consistent with the engine
+  branches.
+- AC‑B3: After an element's R2 changes, every downstream element's along‑ray
+  distance is unchanged while its absolute position follows the new ray
+  direction (B.3.2).
+- AC‑B4: A fresh project places the light source left‑middle and the
+  detector right‑middle exactly `2.0 m` apart along the CR; the light‑source
+  position reset restores that placement and downstream elements re‑snap
+  preserving distances (B.4).
+- AC‑B5: Switching the tracked branch (T→R) or removing one of two in‑use
+  rays orphans exactly the elements on the removed ray; restoring the ray
+  re‑snaps an orphan iff the ray passes within the configured distance of
+  its placement point; no other operation orphans an element (B.5).
+- AC‑B6: A ray crossing an element with R2 ≠ 0 bends per Snell's law with
+  `n = 1.0`/`n = 1.5` (B.6), provable headless from `RayModel.fs`.
+
+### Part C acceptance
+- AC‑C1: A new project's table is `1.2 m × 2.0 m × 0.10 m`; an edited size
+  persists and reloads (C.1).
+- AC‑C2: Plain wheel and `Ctrl + wheel` both change zoom; `Ctrl+0` resets
+  the view to (0,0,0) and the default zoom (C.2.3, C.2.5).
+- AC‑C3: Clicking empty table selects the table; clicking an element selects
+  that element (C.3).
+- AC‑C4: The standard drawer returns cylinder geometry given placement,
+  three rotations, kind, and `valueId`; the source shade is darker and the
+  detector shade near‑black with a visible frame (C.4); toggling show‑bounding‑box
+  adds box edges.
+- AC‑C5: The active element's indicator is ≥2 px and ≥3:1 contrast against
+  the table background (C.6).
+- AC‑C6: The show‑CR‑only / show‑all toggle defaults to CR‑only and redraws
+  on change (C.7).
+
+### Part D acceptance
+- AC‑D1: The ribbon shows the Build / Element / Trace‑View / Experiment /
+  Settings tabs, each populated from the command registry (D.1).
+- AC‑D2: Collapsing the ribbon exposes every ribbon command through the
+  drop‑down menus, and a command added once to the registry appears in both
+  the ribbon and the menus with no second wiring site (D.2.1).
+- AC‑D3: Selecting an element appends a contextual Element tab beside the
+  persistent tabs (D.3).
+- AC‑D4: The *Legacy* entry opens the existing dockable Construction /
+  Synthesis‑Fit screen (D.5); the constructor is the default landing page
+  (D.6).
+
+### Part E acceptance
+- AC‑E1: Every key map, mouse map, and ribbon/menu control derives from the
+  one `Commands.fs` registry; a command with both bindings declares them on
+  one definition (E.1, constraint 0.4).
+- AC‑E2: `Shift+wheel`/`Ctrl+Shift+wheel`/`Alt+wheel` change R1/R2/R3 by the
+  configured step (default 5°) and are inert when the targeted axis is
+  locked; R3 requires unlocking (E.3).
+- AC‑E3: `Shift+drag` slides an element along its ray bounded by its
+  neighbours and never past them; `Ctrl+drag` reassigns it between rays;
+  plain left‑drag does nothing and shows the movable hint; the table redraws
+  on drop (E.4).
+- AC‑E4: Dragging an element from the Build ribbon onto the table drops it
+  snapped to the middle of the nearest CR path (E.7).
+- AC‑E5: `Ctrl+Z`/`Ctrl+Y`/`Ctrl+S`/`Esc` perform undo/redo/save/cancel per
+  E.6.
+
+### Part F acceptance
+- AC‑F1: The catalogue offers LS, LP, CP, S, Lens, Flat Mirror, Curved
+  Mirror, D and no "analyzer" entry; a chain may hold more than two
+  polarizers (F.1).
+- AC‑F2: The value‑id binding menu action opens a working, dismissible empty
+  modal; no picker content ships (F.2).
+
+### Part G acceptance
+- AC‑G1: A mutually‑exclusive group allows at most one member in the beam
+  (choosing one removes the others); a multi‑select group allows zero/one/
+  several; both preserve every member's stored configuration across a swap
+  (G.1).
+- AC‑G2: With more than one detector, the user can set the primary; the
+  headline readout follows the primary while secondary detectors report
+  their own branch (G.2).
+- AC‑G3: Groups and collections round‑trip through the separate app‑data
+  JSON file with schema validation, independent of any `.ocproj` (G.3).
+
+### Part H acceptance
+- AC‑H1: An experiment collection groups experiments around shared
+  sample(s), supports on/off across the collection, and round‑trips through
+  the groups/collections JSON (H.1).
+
+### Part I acceptance
+- AC‑I1: All UI strings resolve through `strings.json` at run time; editing
+  the file changes the strings with no rebuild (I.1).
+- AC‑I2: The selected language persists in `EnvironmentSettings` and is
+  restored on next launch (I.2).
+- AC‑I3: With a string missing for the active language, the app falls back to
+  the English entry and shows a copyable startup error; it neither crashes
+  nor fails silently (I.3).
+- AC‑I4: Scientific symbols (Ψ, Δ, °, R1/R2/R3, unit symbols) are not
+  translated (I.4).
+
+### Part J acceptance
+- AC‑J1: The constructor's buttons/toggles/numeric‑with‑units fields are
+  produced by `Controls.fs` flavours; a new flavour is added there by
+  overriding only the distinguishing properties (J.1).
+
+### Part K acceptance
+- AC‑K1: Each of placement, rotation, lock toggle, group on/off, swap, and
+  detector change pushes a snapshot so `Ctrl+Z` reverses it and `Ctrl+Y`
+  replays it, across more than one level (K.1).
+- AC‑K2: Reset rotation, delete element, and reset view are each either
+  undoable or confirmation‑gated with same‑row distinct‑colour Confirm/Cancel
+  (K.2).
+
+## Files in scope
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Placement.fs` (new) — bounding box, N1/N2 normals, R1/R2/R3 + locks, catalogue kind, value‑id slot, emission metadata, `toConstructorElement`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/RayModel.fs` (new) — CR + 8 side rays, IRG/RRG/TRG, snapping + downstream travel, orphaning, default LS/D placement, Snell schematic tracing (pure geometry).
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Table.fs` (new) — optical‑table record, default/edited size, view state.
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Groups.fs` (new) — `ElementGroup`, member modes, `ExperimentCollection`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (edit) — extend `OpticalConstructorProject` with table + per‑element placement.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (edit) — add placement + table representation.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/GroupsLibrary.fs` (new) — load/save the separate groups/collections JSON.
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-groups.schema.json` (new) — schema for that file.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Drawer.fs` (new) — the standard cylinder drawer (kind + value id inputs, shadings, show/hide box).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorTable.fs` (new) — top‑down table layout geometry (pure) and ray drawing weights.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorView.fs` (new) — FuncUI canvas, MVU model/msg/update/view for the constructor page, interaction handlers.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Commands.fs` (new) — centralized command DU + three‑state bindings; the single command registry.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Ribbon.fs` (new) — ribbon tabs + collapsed‑ribbon menus generated from the registry; contextual element tab; Legacy entry.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Controls.fs` (new) — standardized control flavours.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Localization.fs` (new) — runtime string loader + completeness check.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/strings.json` (new) — EN/RU string pairs (build‑copied, runtime‑read).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/LocalHelp.fs` (new) — context‑sensitive local help content (Part E.2 / J references; help text resolves through `Localization.fs`).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (edit) — add the Constructor and Legacy pages to `Page`; route through `RootModel`/`RootMsg`; default landing.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (edit) — add `language` and the configurable key map to `EnvironmentSettings`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (edit) — add `language` + key‑map fields.
+- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (edit) — startup localization completeness check + copyable error surface; constructor as default landing.
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/PlacementTests.fs` (new) — A‑part headless geometry tests.
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/RayModelTests.fs` (new) — B‑part ray/snapping/orphaning/Snell tests.
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/GroupsRoundTripTests.fs` (new) — G/H storage round‑trip + schema tests.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/CommandRegistryTests.fs` (new) — E‑part single‑source‑of‑commands + binding tests.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LocalizationTests.fs` (new) — I‑part completeness/fallback tests.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/ConstructorViewTests.fs` (new) — drawer/table/active‑element headless render‑shape tests.
+
+## Test artifacts
+
+- `PlacementTests.fs` — rest‑pose normals (AC‑A1), default locks (AC‑A2),
+  `r2 + R2` additivity (AC‑A3), R3 non‑orthogonality (AC‑A4), emission
+  invariant (AC‑A5), catalogue‑kind mapping (AC‑A7).
+- `RayModelTests.fs` — 45° eight‑ray circle (AC‑B1), mirror RRG‑only
+  (AC‑B2), distance‑preserving downstream travel (AC‑B3), default 2 m
+  placement + LS reset (AC‑B4), orphaning rules (AC‑B5), Snell n=1/1.5
+  bending (AC‑B6).
+- `GroupsRoundTripTests.fs` — group member modes + lossless swap (AC‑G1),
+  primary detector (AC‑G2), separate‑JSON round‑trip + schema (AC‑G3, AC‑H1).
+- A project round‑trip fixture exercising placement + table (AC‑A6, AC‑C1)
+  added under `OpticalConstructor.Tests` reusing the existing
+  `ProjectJsonRoundtripTests` harness.
+- `CommandRegistryTests.fs` — every binding derives from one registry entry;
+  ribbon and menu projections cover the same command set (AC‑D2, AC‑E1).
+- `LocalizationTests.fs` — runtime load, missing‑string fallback + copyable
+  error, no‑translate symbol set (AC‑I1, AC‑I3, AC‑I4).
+- `ConstructorViewTests.fs` — drawer geometry + shadings + show‑box (AC‑C4),
+  active‑element indicator threshold (AC‑C5), CR‑only default (AC‑C6),
+  control‑flavour usage (AC‑J1).
+
+## References
+
+- Ray Optics Simulation (ricktu288/ray‑optics) default theme — ray line
+  weights, reflected‑branch alpha, glass fill, grid/selection treatment:
+  https://github.com/ricktu288/ray-optics
+- SPIE Optipedia, *Marginal and Chief Rays* (chief‑ray = prominent/central
+  convention): https://spie.org/publications/spie-publication-resources/optipedia-free-optics-information/pm92_161_marginal_chief_rays
+- Greivenkamp / Univ. Arizona, *Marginal and Chief Rays*:
+  https://wp.optics.arizona.edu/jgreivenkamp/wp-content/uploads/sites/11/2019/10/Marginal-and-Chief-Rays.pdf
+- Zemax KB, *Drawing specific rays in layout plots* (chief = middle ray,
+  marginals from stop periphery): https://support.zemax.com/hc/en-us/articles/1500005576462
+- WCAG 2.1 Technique C40 (focus/selection indicator ≥2 px, contrast floor)
+  — basis for the active‑element indicator threshold: https://www.w3.org/WAI/WCAG21/Techniques/css/C40
+- Clear‑aperture ≈2–3× beam diameter (basis for the 0.4 bundle‑radius
+  fraction): https://www.lasercomponents.com/fileadmin/user_upload/home/Datasheets/lc-optics/tipps/principles_optics.pdf
