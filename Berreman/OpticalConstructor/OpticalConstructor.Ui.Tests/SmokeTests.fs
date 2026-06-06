@@ -69,10 +69,12 @@ module SmokeTests =
             Assert.True(desktop.MainWindow.IsVisible)
             desktop.MainWindow.Close()
 
-            // 3) Each page body renders one frame without throwing. Navigating opens
-            //    the fit page's SynthesisFitPage.Model (R-1) so FitView renders one
-            //    frame headlessly, not merely the placeholder.
+            // 3) Each page body renders one frame without throwing — including the new
+            //    Spec 0026 Constructor front door (ribbon shell + constructor canvas) and
+            //    the Legacy dockable screen (D.4/D.6). Navigating to Synthesis/Fit opens
+            //    the fit page's SynthesisFitPage.Model (R-1) so FitView renders one frame
+            //    headlessly, not merely the placeholder.
             let model = fst Shell.init
-            for page in [ Shell.Page.Construction; Shell.Page.SynthesisFit ] do
+            for page in [ Shell.Page.Constructor; Shell.Page.Legacy; Shell.Page.Construction; Shell.Page.SynthesisFit ] do
                 let navigated = fst (Shell.update (Shell.RootMsg.Shell (Shell.Navigate page)) model)
                 renderInWindow (Shell.view navigated ignore))

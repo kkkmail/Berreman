@@ -35,6 +35,10 @@
              constructor MVU interaction tests (pure update, `ui-tests`) plus one
              mount-and-render case (`ui-smoke`). -->
         <Compile Include="CommandRegistryTests.fs" />
+        <!-- Spec 0026 Part D / Part F (slice 006): the ribbon/menu single-source
+             projection, the contextual element tab, the catalogue, and the value-id
+             modal (pure `ui-tests`) plus one constructor-page mount (`ui-smoke`). -->
+        <Compile Include="RibbonTests.fs" />
         <Compile Include="SmokeTests.fs" />
         <Compile Include="PanelViewTests.fs" />
         <Compile Include="ChartPanelTests.fs" />

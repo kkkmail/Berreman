@@ -56,5 +56,54 @@
   "common.copy":          { "en": "Copy to clipboard",         "ru": "Копировать в буфер обмена" },
 
   "error.title":          { "en": "Error",                     "ru": "Ошибка" },
-  "error.localization.title": { "en": "Localization warning",  "ru": "Предупреждение локализации" }
+  "error.localization.title": { "en": "Localization warning",  "ru": "Предупреждение локализации" },
+
+  "nav.constructor":      { "en": "Constructor",               "ru": "Конструктор" },
+  "nav.legacy":           { "en": "Legacy",                    "ru": "Прежний интерфейс" },
+
+  "ribbon.tab.build":       { "en": "Build",                   "ru": "Сборка" },
+  "ribbon.tab.element":     { "en": "Element",                 "ru": "Элемент" },
+  "ribbon.tab.traceView":   { "en": "Trace / View",            "ru": "Трассировка / Вид" },
+  "ribbon.tab.experiment":  { "en": "Experiment",              "ru": "Эксперимент" },
+  "ribbon.tab.settings":    { "en": "Settings",                "ru": "Настройки" },
+  "ribbon.collapse":        { "en": "Collapse ribbon",         "ru": "Свернуть ленту" },
+  "ribbon.expand":          { "en": "Show ribbon",             "ru": "Показать ленту" },
+
+  "catalogue.title":        { "en": "Catalogue",               "ru": "Каталог" },
+  "element.linearPolarizer":   { "en": "Linear polarizer",     "ru": "Линейный поляризатор" },
+  "element.circularPolarizer": { "en": "Circular polarizer",   "ru": "Круговой поляризатор" },
+
+  "command.place":          { "en": "Place",                   "ru": "Разместить" },
+  "command.openElement":    { "en": "Element dialog",          "ru": "Диалог элемента" },
+  "command.elementMenu":    { "en": "Element menu",            "ru": "Меню элемента" },
+  "command.resetRotation":  { "en": "Reset rotation",          "ru": "Сбросить поворот" },
+  "command.duplicate":      { "en": "Duplicate",               "ru": "Дублировать" },
+  "command.help":           { "en": "Local help",              "ru": "Локальная справка" },
+  "command.nextElement":    { "en": "Next element",            "ru": "Следующий элемент" },
+  "command.previousElement": { "en": "Previous element",       "ru": "Предыдущий элемент" },
+  "command.rotateR1":       { "en": "Rotate R1",               "ru": "Поворот R1" },
+  "command.rotateR2":       { "en": "Rotate R2",               "ru": "Поворот R2" },
+  "command.rotateR3":       { "en": "Rotate R3",               "ru": "Поворот R3" },
+  "command.slide":          { "en": "Slide along ray",         "ru": "Сдвиг вдоль луча" },
+  "command.moveToRay":      { "en": "Move to ray",             "ru": "Перенести на луч" },
+  "command.pan":            { "en": "Pan",                     "ru": "Панорама" },
+  "command.zoom":           { "en": "Zoom",                    "ru": "Масштаб" },
+  "command.resetView":      { "en": "Reset view",              "ru": "Сбросить вид" },
+  "command.toggleGroup":    { "en": "Toggle group",            "ru": "Переключить группу" },
+  "command.cancel":         { "en": "Cancel / deselect",       "ru": "Отмена / снять выбор" },
+
+  "valueId.action":         { "en": "Bind value…",             "ru": "Привязать значение…" },
+  "valueId.title":          { "en": "Bind value",              "ru": "Привязка значения" },
+  "valueId.placeholder":    { "en": "No value picker is available yet.", "ru": "Выбор значения пока недоступен." },
+
+  "help.title":             { "en": "Local help",              "ru": "Локальная справка" },
+  "help.table":             { "en": "The optical table is the workspace surface. Place elements from the catalogue and arrange them along the beam.", "ru": "Оптический стол — рабочая поверхность. Размещайте элементы из каталога и располагайте их вдоль луча." },
+  "help.element.lightSource":   { "en": "The light source emits the central ray that the chain operates on.", "ru": "Источник света испускает центральный луч, с которым работает цепочка." },
+  "help.element.linearPolarizer":   { "en": "A linear polarizer transmits one linear polarization component.", "ru": "Линейный поляризатор пропускает одну линейную компоненту поляризации." },
+  "help.element.circularPolarizer": { "en": "A circular polarizer transmits one circular polarization handedness.", "ru": "Круговой поляризатор пропускает одну круговую поляризацию." },
+  "help.element.sample":    { "en": "The sample is the optical system under study; bind its material through the value picker.", "ru": "Образец — исследуемая оптическая система; задайте материал через выбор значения." },
+  "help.element.lens":      { "en": "A lens focuses or diverges the beam and makes the side rays meaningful.", "ru": "Линза фокусирует или расширяет пучок и делает боковые лучи значимыми." },
+  "help.element.flatMirror":   { "en": "A flat mirror reflects the beam; it carries the reflected branch only.", "ru": "Плоское зеркало отражает пучок; у него есть только отражённая ветвь." },
+  "help.element.curvedMirror": { "en": "A curved mirror reflects and focuses the beam.", "ru": "Изогнутое зеркало отражает и фокусирует пучок." },
+  "help.element.detector":  { "en": "The detector measures the beam that reaches it.", "ru": "Детектор измеряет дошедший до него пучок." }
 }

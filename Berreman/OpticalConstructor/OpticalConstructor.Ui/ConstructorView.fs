@@ -91,6 +91,10 @@ type Model =
         elementDialogOpen : bool
         contextMenuOpen : bool
         helpOpen : bool
+        /// The value-id binding modal (Spec 0026 Part F / F.2). A fully working,
+        /// dismissible empty modal — opened from the element's local menu, with no
+        /// picker content (the real device/material picker is out of scope, 0.6 / F.2.2).
+        valueIdModalOpen : bool
         clipboard : ElementPlacement option
         pending : PendingAction option
         /// Single-level undo/redo (§E.6 binds the commands and dispatches the edits); the
@@ -119,6 +123,7 @@ let init (env : EnvironmentSettings) (project : OpticalConstructorProject) : Mod
         elementDialogOpen = false
         contextMenuOpen = false
         helpOpen = false
+        valueIdModalOpen = false
         clipboard = None
         pending = None
         undo = None
@@ -143,6 +148,12 @@ let activeIndex (model : Model) : int option =
     match model.selection with
     | ElementSelected i when i >= 0 && i < placementCount model -> Some i
     | _ -> None
+
+/// The active element's placement, when an element (not the table) is selected
+/// (§D.3): the ribbon's contextual Element tab reads this to appear/label itself, and
+/// the local help resolves the active element's catalogue-kind help from it.
+let activeElement (model : Model) : ElementPlacement option =
+    activeIndex model |> Option.bind (fun i -> tryPlacement i model)
 
 /// The ray an element index is attached to (default: the central ray).
 let rayOfIndex (i : int) (model : Model) : RayModel.RayId =
@@ -412,12 +423,48 @@ let private applyCommand (cmd : Command) (model : Model) : Model =
             contextMenuOpen = false
             elementDialogOpen = false
             helpOpen = false
+            valueIdModalOpen = false
             pending = None
             drag = NoDrag
             movableHint = false }
     // Gesture-driven commands handled by their own messages (not invokable parameterlessly):
     | RotateR1 | RotateR2 | RotateR3 | SlideAlongRay | MoveToRay
     | PanView | ZoomView | PlaceFromRibbon -> m
+
+/// The ONE source of truth for the commands a ribbon/menu button MUST render DISABLED:
+/// the commands with NO visible front-door effect on the constructor page. Two groups, one
+/// list — the ribbon reads it through `isParameterlessInvokable`, and the `RibbonTests`
+/// disabled-set derives from it, so there is no second hand-maintained copy to drift:
+///
+///   * the nine GESTURE-ONLY commands (`RotateR1/R2/R3`, `SlideAlongRay`, `MoveToRay`,
+///     `PanView`, `ZoomView`, `PlaceFromRibbon`, and the slice-007 `ToggleGroup`
+///     placeholder) — `applyCommand` returns the model UNCHANGED for these because they
+///     need the event context (a wheel notch, a drag delta, a ribbon-drop kind/point) a
+///     parameterless `Invoke` cannot supply, so a button that merely `Invoke`s them no-ops;
+///   * the four ELEMENT-EDIT commands (`OpenElementDialog`, `ElementContextMenu`,
+///     `ResetRotation`, `DeleteElement`) — these DO mutate the model in `applyCommand` (a
+///     flag, or an armed `pending`), but no overlay renders their surface on the constructor
+///     front door yet (slice 007 wires the context-menu / dialog / confirm overlays), so an
+///     enabled button sets state the user can neither see nor clear.
+///
+/// This list is therefore DELIBERATELY BROADER than `applyCommand`'s inert-return arms: the
+/// seam is "no rendered front-door surface," NOT model-equality (the four element-edit
+/// commands change the model, so a model-equality test would wrongly call them invokable).
+/// When slice 007 renders an overlay for one of the four, drop it from this list.
+let commandsWithoutFrontDoorSurface : Command list =
+    [ // gesture-only — inert in `applyCommand` (need event context)
+      RotateR1; RotateR2; RotateR3; SlideAlongRay; MoveToRay
+      PanView; ZoomView; PlaceFromRibbon; ToggleGroup
+      // element-edit — mutate the model, but no rendered front-door surface until slice 007
+      OpenElementDialog; ElementContextMenu; ResetRotation; DeleteElement ]
+
+/// Whether a command has a visible effect when invoked PARAMETERLESSLY from a ribbon/menu
+/// button — i.e. it is NOT one of `commandsWithoutFrontDoorSurface`. The ribbon's
+/// `commandButton` reads this to render the surface-less commands DISABLED rather than as
+/// clickable controls that silently change nothing the user can see. Every other registry
+/// command is invokable here.
+let isParameterlessInvokable (cmd : Command) : bool =
+    not (List.contains cmd commandsWithoutFrontDoorSurface)
 
 /// Slide the active element via the arrow keys (§E.4.1): the base step, or a larger step
 /// with Shift. Left/Down slide negative, Right/Up positive — both clamped to the bounds.
@@ -475,6 +522,14 @@ type Msg =
     /// Context-menu element edits (§E.2): lock/unlock a rotation, toggle reflected/transmitted.
     | MenuToggleLock of RotationAxis
     | MenuToggleEmission of BeamTree.BeamBranch
+    /// Open / dismiss the value-id binding modal (§F.2): the element's local-menu action
+    /// opens a fully working, dismissible empty modal (no picker content ships, 0.6).
+    | OpenValueIdModal
+    | CloseValueIdModal
+    /// Dismiss the local-help overlay WITHOUT touching the selection (mirrors
+    /// `CloseValueIdModal`): closing context help must not deselect the active element /
+    /// collapse the contextual Element tab — which `Invoke CancelOrDeselect` would do.
+    | CloseHelp
     /// Apply / cancel a pending destructive single action (§E.2).
     | ConfirmPending
     | CancelPending
@@ -551,6 +606,12 @@ let update (msg : Msg) (model : Model) : Model =
     | MenuToggleLock axis -> toggleLock axis model
 
     | MenuToggleEmission branch -> toggleEmission branch model
+
+    | OpenValueIdModal -> { model with valueIdModalOpen = true; lastCommand = None }
+
+    | CloseValueIdModal -> { model with valueIdModalOpen = false }
+
+    | CloseHelp -> { model with helpOpen = false }
 
     | ConfirmPending ->
         match model.pending with

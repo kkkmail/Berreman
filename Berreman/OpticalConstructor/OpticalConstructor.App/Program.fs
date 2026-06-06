@@ -94,6 +94,10 @@ type MainWindow() as this =
         match Startup.localizationError with
         | Some message -> this.Opened.Add(fun _ -> LocalizationErrorWindow(message).Show())
         | None -> ()
+        // Spec 0026 D.6.1: the constructor is the default landing page. That landing is
+        // realised in `Shell.initFrom` (which seeds `page = Page.Constructor`), so the
+        // composition root mounts it for free here — no separate page selection at the
+        // host. The localization completeness surface above is unchanged (slice 003).
         Program.mkProgram (fun () -> Shell.initFrom Startup.settings) Shell.update Shell.view
         |> Program.withHost this
         |> Program.run

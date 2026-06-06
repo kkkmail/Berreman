@@ -128,6 +128,16 @@ let primaryButton (label : string) (onClick : unit -> unit) : IView = button pri
 /// The destructive-button flavour function (J.1.1).
 let destructiveButton (label : string) (onClick : unit -> unit) : IView = button destructiveButtonFlavor label onClick
 
+/// A disabled button (J.1.1): a default-flavour button rendered non-interactive — its
+/// label stays visible (so the command is still discoverable on its tab) but it cannot be
+/// clicked. The ribbon uses this for gesture-only commands that have no parameterless
+/// invocation, so they read as "not clickable here" rather than as silent no-ops.
+let disabledButton (label : string) : IView =
+    Button.create [
+        Button.content label
+        Button.isEnabled false
+    ] :> IView
+
 /// A toggle flavour (J.1.1): an accent fill when on, transparent when off (the
 /// established toggle-button idiom). Clicking flips the state through `onToggle`.
 let toggle (label : string) (isOn : bool) (onToggle : bool -> unit) : IView =
