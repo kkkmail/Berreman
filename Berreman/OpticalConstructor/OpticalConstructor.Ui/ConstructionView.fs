@@ -37,8 +37,11 @@ let private selectedNode (model : ConstructionPage.Model) : BeamNode =
 
 /// Distinct positive / negative CTA brushes for the destructive-edit gate
 /// (UX commitment 5: same-row Confirm/Cancel with distinct positive/negative colours).
-let private positiveCta : IBrush = Brushes.SeaGreen :> IBrush
-let private negativeCta : IBrush = Brushes.IndianRed :> IBrush
+/// Spec 0026 J.2 / R-9: these draw from the single destructive-gate CTA definition in
+/// `Controls.fs` (formerly duplicated SeaGreen / IndianRed here) so the gate has ONE
+/// colour source; the hues are unchanged.
+let private positiveCta : IBrush = Controls.positiveCtaBrush
+let private negativeCta : IBrush = Controls.negativeCtaBrush
 
 /// A button dispatching one stack edit through `EditStack` (R-1). The view
 /// re-implements NO stack mutation — every edit routes the frozen

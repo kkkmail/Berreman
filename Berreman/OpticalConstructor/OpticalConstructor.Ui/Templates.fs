@@ -75,7 +75,7 @@ let projectOf (sys : OpticalSystem) : OpticalConstructorProject =
             children = Map.empty
             defaultUnit = Nanometer
         }
-    { beamTree = { root = root }; systems = [ sys ]; sources = []; placements = [] }
+    { beamTree = { root = root }; systems = [ sys ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
 /// Assemble an `OpticalSystem` from films + optional substrate, air-incident over
 /// a glass exit medium (`Media.fs:94`).

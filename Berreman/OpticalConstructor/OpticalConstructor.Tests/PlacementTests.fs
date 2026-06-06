@@ -158,7 +158,7 @@ module PlacementTests =
             |> setR2Locked false
             |> withR2 (Angle.degree 12.0)
         let project : OpticalConstructorProject =
-            { beamTree = { root = rootNode }; systems = [ vacuumSystem ]; sources = []; placements = [ placement ] }
+            { beamTree = { root = rootNode }; systems = [ vacuumSystem ]; sources = []; placements = [ placement ]; table = OpticalConstructor.Domain.Table.defaultTable }
         // serialize -> validate-on-load -> bind. validate-on-load runs the published
         // schema against the document before binding (AC-A6).
         let json = project |> ProjectJson.serializeProject |> okOr

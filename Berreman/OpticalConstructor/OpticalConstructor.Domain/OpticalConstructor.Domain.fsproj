@@ -30,6 +30,7 @@
         <Compile Include="RayModel.fs" />
         <Compile Include="SourceSpec.fs" />
         <Compile Include="SourceCombination.fs" />
+        <Compile Include="Table.fs" />
         <Compile Include="Project.fs" />
         <Compile Include="CurvedElements.fs" />
         <Compile Include="DispersionModels.fs" />

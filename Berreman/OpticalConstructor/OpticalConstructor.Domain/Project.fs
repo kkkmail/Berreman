@@ -37,9 +37,14 @@ module Project =
             /// rotations with per-axis locks, catalogue kind, value-id slot, emission
             /// metadata, and display unit — all in canonical SI. This is the
             /// per-element placement portion of the §A.8 project extension; the TABLE
-            /// portion (Spec 0026 Part C) is added by slice 004 as a sibling field,
-            /// leaving these placement anchors stable for that follow-on edit.
+            /// portion (Spec 0026 Part C) is the sibling `table` field below.
             placements : Placement.ElementPlacement list
+            /// The optical table plate (Spec 0026 Part C / slice 004, A.8.2 / C.1.2):
+            /// width, length, and thickness in canonical SI meters plus a display unit.
+            /// The edited plate size persists and reloads (AC-C1) so a reopened
+            /// experiment shows the same plate. The top-down VIEW state (pan/zoom/screen
+            /// rotation) is NOT persisted — it is ephemeral UI state owned by slice 005.
+            table : Table.OpticalTable
         }
 
     /// The nine JSON-Schema `$defs` anchor names reserved by §A.7. Parts B–J

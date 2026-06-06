@@ -52,7 +52,7 @@ module SystemView3DTests =
         }
 
     let private probeProject : OpticalConstructorProject =
-        { beamTree = { root = probeRoot }; systems = [ probeSystem ]; sources = []; placements = [] }
+        { beamTree = { root = probeRoot }; systems = [ probeSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     let private mount (content : Avalonia.FuncUI.Types.IView) : Window =
         let window = Window()

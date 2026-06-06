@@ -39,7 +39,7 @@ module RoundTripTests =
                 children = Map.empty
                 defaultUnit = Nanometer
             }
-        { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = []; placements = [] }
+        { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     let private withTempFile (f : string -> unit) =
         let path = Path.Combine(Path.GetTempPath(), $"oc-roundtrip-{System.Guid.NewGuid():N}.ocproj")

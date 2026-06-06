@@ -101,6 +101,16 @@
              slice-002 Canvas host. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
         <Compile Include="LifecycleView.fs" />
         <Compile Include="SystemView3DView.fs" />
+        <!-- Spec 0026 Part C / Part J (slice 004): the standardized control flavours,
+             the net-new top-down table layout geometry + drawing weights, and the one
+             standard cylinder drawer. Pure projections (no Avalonia type) reusing
+             SchematicColor; Controls precedes ConstructionView, which now draws its CTA
+             colours from Controls (J.2). ConstructorTable owns the named drawing-weight
+             constants Drawer consumes, so it compiles first. Schematic.fs is left
+             untouched (the top-down surface is net-new). Public MIT FuncUI DSL only. -->
+        <Compile Include="Controls.fs" />
+        <Compile Include="ConstructorTable.fs" />
+        <Compile Include="Drawer.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->

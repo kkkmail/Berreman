@@ -37,7 +37,11 @@
     "placements": {
       "type": "array",
       "items": { "$ref": "#/$defs/elementPlacement" },
-      "description": "Per-element on-table placements (Spec 0026 Part A, slice 001). Each entry carries the box, two normals, three rotations with per-axis locks, catalogue kind, value id, emission metadata, and display unit in canonical SI. The table representation is a sibling field added by slice 004."
+      "description": "Per-element on-table placements (Spec 0026 Part A, slice 001). Each entry carries the box, two normals, three rotations with per-axis locks, catalogue kind, value id, emission metadata, and display unit in canonical SI. The table representation is the sibling 'table' property added by slice 004."
+    },
+    "table": {
+      "$ref": "#/$defs/opticalTable",
+      "description": "The optical table plate (Spec 0026 Part C, slice 004). The edited plate size persists and reloads (AC-C1). A sibling of 'placements'; the top-down view state (pan/zoom/screen rotation) is ephemeral UI state and is NOT persisted."
     },
     "sweeps": {
       "type": "array",
@@ -268,6 +272,17 @@
         "valueId": { "type": ["string", "null"] },
         "box": { "$ref": "#/$defs/boundingBox" },
         "emission": { "$ref": "#/$defs/emission" },
+        "displayUnit": { "$ref": "#/$defs/unitOfMeasure" }
+      }
+    },
+    "opticalTable": {
+      "type": "object",
+      "description": "The optical table plate (Spec 0026 Part C, C.1.1 / C.1.2). width/length/thickness are canonical SI meters (a fresh table is 1.2 x 2.0 x 0.10 m); displayUnit is a display/IO label only, never a stored magnitude. The plate size is editable and persists with the project (AC-C1).",
+      "required": ["width", "length", "thickness", "displayUnit"],
+      "properties": {
+        "width": { "type": "number" },
+        "length": { "type": "number" },
+        "thickness": { "type": "number" },
         "displayUnit": { "$ref": "#/$defs/unitOfMeasure" }
       }
     },
