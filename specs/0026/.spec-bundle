@@ -3,7 +3,15 @@
   "ticket": null,
   "created": "2026-06-05T01:40:48Z",
   "status": "in-authoring",
-  "gates": [],
+  "gates": [
+    "build",
+    "unit-tests",
+    "constructor-unit-tests",
+    "ui-smoke",
+    "ui-tests",
+    "impl-log-structure",
+    "state-of-world-structure"
+  ],
   "user_files": {
     "splitter": ".user-md/splitter.user-md",
     "arc-runner": ".user-md/arc-runner.user-md"
