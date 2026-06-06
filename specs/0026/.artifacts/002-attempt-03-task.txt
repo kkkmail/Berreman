@@ -1,0 +1,58 @@
+# Arc-runner worker task -- 002.slice-md
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+round and lists them below. Do not compute or guess these
+paths: the canonical layout block describes the shape, this
+section pins the concrete values for the slice you are about
+to implement.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0026`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0026\.slices\002.slice-md`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0026\.artifacts`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0026\.slices\002-impl-log.md`
+- **impl_plan_path:** `C:\GitHub\Berreman\specs\0026\.slices\002-impl-plan.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0026\.slices\002-state-of-the-world.md`
+- **spec_id:** `0026`
+- **slice_id:** `002`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\arc-runner.user-md
+
+## Slice spec
+
+Implement this slice end-to-end:
+
+- C:\GitHub\Berreman\specs\0026\.slices\002.slice-md
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your state-of-the-world markdown to**
+`C:\GitHub\Berreman\specs\0026\.slices\002-state-of-the-world.md`. **Do not write the SoW anywhere else.**
+
+**Save your impl-log markdown to**
+`C:\GitHub\Berreman\specs\0026\.slices\002-impl-log.md`. **Do not write the impl-log anywhere else.**
+
+## Artifacts folder
+
+Use `C:\GitHub\Berreman\specs\0026\.artifacts` for any persistent run artifacts
+(captured logs, screenshots, traces, dumps). The folder is
+pre-created; this path is the arc-runner's authoritative
+value and supersedes any path the project prompt computes
+from convention.
+
+## Retry hint
+
+FINAL retry -- make two edits, both in this slice's owned files, and do NOT touch Placement.fs (the reuse-critic F1/F2 hoists stay deferred as out-of-scope). In RayModel.fs:183-184 replace the mirror arm `emittedGroups p.emission |> List.filter (fun g -> g = Reflected)` with the unconditional structural form `| FlatMirror | CurvedMirror -> [ Reflected ]`. The current filter form returns [] for an EmitTransmittedOnly mirror (representable via Emission.withReflected false, Placement.fs:126-130) -- a mirror that draws no RRG at all, violating B.2.1's 'a mirror produces only an RRG'; the unconditional form is one token shorter, truly independent of p.emission, and matches the engine's unconditional Reflected attach (BeamTree.fs:74-77). In RayModelTests.fs add one AC-B2 assertion that a mirror with emission forced to EmitTransmittedOnly still yields exactly [ Reflected ] (non-empty, no TRG). Re-run the gates and update the impl-log / state-of-the-world changelog accordingly.
+

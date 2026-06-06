@@ -27,6 +27,7 @@
         <Compile Include="Units.fs" />
         <Compile Include="BeamTree.fs" />
         <Compile Include="Placement.fs" />
+        <Compile Include="RayModel.fs" />
         <Compile Include="SourceSpec.fs" />
         <Compile Include="SourceCombination.fs" />
         <Compile Include="Project.fs" />
