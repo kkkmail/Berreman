@@ -1,2 +1,2 @@
-. ./../Softellect/Functions.ps1
-CleanAll
+. ./../Softellect/Scripts/Clean-All.ps1
+Clean-All

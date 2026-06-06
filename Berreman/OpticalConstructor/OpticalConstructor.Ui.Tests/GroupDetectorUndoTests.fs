@@ -194,10 +194,13 @@ module GroupDetectorUndoTests =
         Assert.Equal(1, List.length grouped.groups)
         let off = ConstructorView.update (ConstructorView.GroupToggle (0, 0, false)) grouped
         Assert.Equal(0, placements off |> List.length)
+        Assert.False((List.head off.groups).members.[0].inBeam)
         let undo = ConstructorView.update (ConstructorView.Invoke Undo) off
         Assert.Equal(1, placements undo |> List.length)
+        Assert.True((List.head undo.groups).members.[0].inBeam)
         let on = ConstructorView.update (ConstructorView.GroupToggle (0, 0, true)) off
         Assert.Equal(1, placements on |> List.length)
+        Assert.True((List.head on.groups).members.[0].inBeam)
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
@@ -219,6 +222,9 @@ module GroupDetectorUndoTests =
         // Undo restores member A in the beam.
         let undo = ConstructorView.update (ConstructorView.Invoke Undo) swapped
         Assert.Equal(LinearPolarizer, (List.head (placements undo)).catalogueKind)
+        let undoMembers = (List.head undo.groups).members
+        Assert.True(undoMembers.[0].inBeam)
+        Assert.False(undoMembers.[1].inBeam)
 
     // =======================================================================
     // AC-K2 — destructive actions are confirmation-gated (same-row distinct-colour gate).
@@ -290,7 +296,7 @@ module GroupDetectorUndoTests =
                         Grid.children [
                             Ribbon.view resource Localization.English { Ribbon.init with activeTab = Ribbon.Experiment } cvGrouped UserEnvironment.defaults noopDispatch
                             Ribbon.confirmGateOverlay resource Localization.English cvGrouped ignore
-                            Ribbon.contextMenuOverlay resource Localization.English ignore
+                            Ribbon.contextMenuOverlay resource Localization.English cvGrouped ignore
                             Ribbon.elementDialogOverlay resource Localization.English ignore
                         ]
                     ] :> IView)

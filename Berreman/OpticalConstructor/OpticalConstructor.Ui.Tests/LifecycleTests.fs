@@ -124,7 +124,7 @@ module LifecycleTests =
         Assert.True(
             m2.construction.project.systems |> List.exists (fun s -> s.description = Some "AR coating"),
             "the template must load through Templates.loadTemplate")
-        Assert.Equal(Shell.Page.Construction, m2.page)
+        Assert.Equal(Shell.Page.Constructor, m2.page)
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]

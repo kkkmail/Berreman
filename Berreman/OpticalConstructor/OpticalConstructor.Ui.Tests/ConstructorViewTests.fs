@@ -20,12 +20,20 @@ open Berreman.Constants
 open Berreman.Geometry
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.Project
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.Schematic
+open OpticalConstructor.Ui.UserEnvironment
 
 module ConstructorViewTests =
 
     let private origin : TablePoint = { x = 0.0<meter>; y = 0.0<meter> }
+    let private at (x : float) (y : float) : TablePoint = { x = x * 1.0<meter>; y = y * 1.0<meter> }
+    let private sampleAt (x : float) (y : float) : ElementPlacement = ElementPlacement.create Sample (at x y)
+
+    let private model (ps : ElementPlacement list) : ConstructorView.Model =
+        let proj = { Templates.bandpassFilter () with placements = ps; table = Table.defaultTable }
+        ConstructorView.init UserEnvironment.defaults proj
 
     // --- R-1: the plate default size ----------------------------------------
 
@@ -115,6 +123,44 @@ module ConstructorViewTests =
         Assert.Empty noBox.boundingBoxEdges
         Assert.Equal(12, List.length withBox.boundingBoxEdges)
 
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-C4 the live constructor view uses the standard drawer with the default cylinder axis along the ray`` () =
+        let m = model [ sampleAt 0.0 0.0 ]
+        let g = ConstructorView.elementGeometry m (List.head m.project.placements)
+        // At (R1,R2,R3) = (0,0,0), N1 is the central-ray direction (+X), so the
+        // cylinder axis lies on the ray. This guards against the wrong "standing on
+        // the table" interpretation.
+        Assert.True(g.axisEnd.x > g.axisStart.x, sprintf "axis must run along +X, got %A -> %A" g.axisStart g.axisEnd)
+        Assert.True(abs ((g.axisEnd.y - g.axisStart.y) / 1.0<meter>) < 1.0e-9)
+        Assert.Empty(g.visibleCapCenters)
+        Assert.Empty(g.boundingBoxEdges)
+        let boxed = ConstructorView.elementGeometry { m with showBoundingBox = true } (List.head m.project.placements)
+        Assert.Equal(12, List.length boxed.boundingBoxEdges)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-C4 a side-on cylinder projects as a rectangle, while an end-on cylinder shows one circular cap`` () =
+        let side = Drawer.draw origin Angle.zero Angle.zero Angle.zero Sample None false
+        Assert.False(List.isEmpty side.frame)
+        Assert.Empty(side.visibleCapCenters)
+        let sideXs = side.frame |> List.map (fun p -> p.x)
+        let sideYs = side.frame |> List.map (fun p -> p.y)
+        Assert.True((List.max sideXs - List.min sideXs) > 0.0<meter>)
+        Assert.True((List.max sideYs - List.min sideYs) > 0.0<meter>)
+
+        let endOn = Drawer.draw origin Angle.zero Angle.zero (Angle.degree 90.0) Sample None false
+        Assert.Empty(endOn.frame)
+        Assert.Single(endOn.visibleCapCenters) |> ignore
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-C3 hit-test follows the visible projected drawer rectangle`` () =
+        let m = model [ ElementPlacement.create LightSource (at 0.0 0.0) ]
+        // The light-source side-on rectangle is long along the CR. This point is inside
+        // that visible rectangle but outside the old circular centre-radius hit-test.
+        Assert.Equal(ConstructorView.ElementSelected 0, ConstructorView.hitTest (at 0.03 0.0) m)
+
     // --- AC-C5: the active-element indicator --------------------------------
 
     [<Fact>]
@@ -143,6 +189,25 @@ module ConstructorViewTests =
         // set is a pure function of the flag, so flipping it redraws the table.
         Assert.Equal(0, ConstructorTable.drawnSideRayCount true)
         Assert.Equal(RayModel.sideRayCount, ConstructorTable.drawnSideRayCount false)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-C6 the live constructor ray list flips from central-only to all incident side rays`` () =
+        let m = model []
+        let crOnly = ConstructorView.drawnRaySegments m
+        Assert.Equal(1, List.length crOnly)
+        Assert.All(crOnly, fun r -> Assert.True(r.isCentral))
+        let all = ConstructorView.update (ConstructorView.SetCentralRayOnly false) m
+        let rays = ConstructorView.drawnRaySegments all
+        Assert.Equal(1 + RayModel.sideRayCount, List.length rays)
+        Assert.Equal(RayModel.sideRayCount, rays |> List.filter (fun r -> not r.isCentral) |> List.length)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``B2 outgoing reflected and transmitted branches are drawn from an emitting element`` () =
+        let rays = ConstructorView.drawnRaySegments (model [ sampleAt 0.0 0.0 ])
+        Assert.Contains(rays, fun r -> r.group = RayModel.Reflected && r.isCentral)
+        Assert.Contains(rays, fun r -> r.group = RayModel.Transmitted && r.isCentral)
 
     // --- C.5: the named drawing weights -------------------------------------
 

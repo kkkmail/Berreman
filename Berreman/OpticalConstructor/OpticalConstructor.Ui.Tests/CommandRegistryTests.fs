@@ -191,6 +191,22 @@ module CommandRegistryTests =
         let mTurned = ConstructorView.update (ConstructorView.WheelAt ([ Shift ], 1, at 0.0 0.0)) m10
         Assert.True(abs ((placementAt 0 mTurned).r1.degrees - 10.0) < 1e-9)
 
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-E2 rotation commands invoked from the element menu perform one configured step`` () =
+        let m0 = select 0 (model [ sampleAt 0.0 0.0 ])
+        let r1 = ConstructorView.update (ConstructorView.Invoke RotateR1) m0
+        Assert.True(abs ((placementAt 0 r1).r1.degrees - 5.0) < 1e-9)
+        let r2 = ConstructorView.update (ConstructorView.Invoke RotateR2) m0
+        Assert.True(abs ((placementAt 0 r2).r2.degrees - 5.0) < 1e-9)
+
+        // R3 is still correctly lock-respecting when invoked from the menu.
+        let lockedR3 = ConstructorView.update (ConstructorView.Invoke RotateR3) m0
+        Assert.Equal(0.0, (placementAt 0 lockedR3).r3.value)
+        let unlocked = ConstructorView.update (ConstructorView.MenuToggleLock ConstructorView.AxisR3) m0
+        let r3 = ConstructorView.update (ConstructorView.Invoke RotateR3) unlocked
+        Assert.True(abs ((placementAt 0 r3).r3.degrees - 5.0) < 1e-9)
+
     // =======================================================================
     // AC-E3 — slide bounded by neighbours / reassign / inert plain-drag + hint.
     // =======================================================================
@@ -235,15 +251,43 @@ module CommandRegistryTests =
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
-    let ``AC-E4 a ribbon drop snaps the new element to the central-ray middle`` () =
+    let ``AC-E4 a ribbon drop snaps the new element to the nearest central-ray point`` () =
         let m0 = model []
         let dropped = ConstructorView.update (ConstructorView.RibbonDrop (Sample, at 0.4 0.3)) m0
-        // The new element lands attached to the CR (its middle), not at the free drop point.
-        let mid = ConstructorView.centralRayMiddle m0
+        // The new element lands attached to the CR, preserving the along-ray release
+        // coordinate and removing only the perpendicular offset.
+        let snapped = ConstructorView.snapToCentralRay (at 0.4 0.3) m0
         Assert.Equal(1, List.length dropped.project.placements)
-        Assert.Equal(mid.x, (placementAt 0 dropped).placementPoint.x)
-        Assert.Equal(mid.y, (placementAt 0 dropped).placementPoint.y)
+        Assert.Equal(snapped.x, (placementAt 0 dropped).placementPoint.x)
+        Assert.Equal(snapped.y, (placementAt 0 dropped).placementPoint.y)
         Assert.Equal(ConstructorView.ElementSelected 0, dropped.selection)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-E4 catalogue click arms a visible preview and the next table click drops the element`` () =
+        let m0 = model []
+        let armed = ConstructorView.update (ConstructorView.StartPlacement Lens) m0
+        Assert.Equal(0, List.length armed.project.placements)
+        match armed.placementDraft with
+        | Some draft ->
+            Assert.Equal(Lens, draft.kind)
+            Assert.Equal(None, draft.previewPoint)
+        | None -> Assert.Fail("expected placement to be armed without committing an element")
+
+        let moved = ConstructorView.update (ConstructorView.PreviewPlacementAt (at 0.4 0.3)) armed
+        match moved.placementDraft with
+        | Some draft ->
+            Assert.Equal(Lens, draft.kind)
+            Assert.Equal(Some (at 0.4 0.3), draft.previewPoint)
+        | None -> Assert.Fail("expected an element preview while placement is armed")
+
+        let dropped = ConstructorView.update (ConstructorView.DropPendingPlacement (at 0.4 0.3)) moved
+        let snapped = ConstructorView.snapToCentralRay (at 0.4 0.3) m0
+        Assert.Equal(1, List.length dropped.project.placements)
+        Assert.Equal(Lens, (placementAt 0 dropped).catalogueKind)
+        Assert.Equal(snapped.x, (placementAt 0 dropped).placementPoint.x)
+        Assert.Equal(snapped.y, (placementAt 0 dropped).placementPoint.y)
+        Assert.Equal(None, dropped.placementDraft)
 
     // =======================================================================
     // AC-E5 — undo / redo / save / cancel.
@@ -336,6 +380,17 @@ module CommandRegistryTests =
         Assert.Equal(ConstructorView.ElementSelected 0, onElement.selection)
         let onEmpty = ConstructorView.update (ConstructorView.SelectAt (at 0.9 0.4)) onElement
         Assert.Equal(ConstructorView.TableSelected, onEmpty.selection)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-C3 context menu opens on the clicked element and menu rotation acts on it`` () =
+        let m0 = model [ sampleAt 0.3 0.0 ]
+        let menu = ConstructorView.update (ConstructorView.ContextMenuAt (at 0.3 0.0)) m0
+        Assert.True(menu.contextMenuOpen, "right-click on an element must open the element menu")
+        Assert.Equal(ConstructorView.ElementSelected 0, menu.selection)
+
+        let rotated = ConstructorView.update (ConstructorView.Invoke RotateR1) menu
+        Assert.True(abs ((placementAt 0 rotated).r1.degrees - 5.0) < 1e-9)
 
     // =======================================================================
     // ui-smoke — the constructor surface mounts and renders one frame.

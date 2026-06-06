@@ -134,6 +134,10 @@ type RootModel =
         /// The ribbon shell's own UI state (Spec 0026 Part D, slice 006): collapsed flag +
         /// selected tab. Pure: plain values projected over the slice-005 command registry.
         ribbon : Rb.Model
+        /// The reusable experiment collections loaded from the separate per-user groups
+        /// library. The constructor edits group state; collections are preserved across
+        /// those saves until their own authoring UI lands.
+        collections : Groups.ExperimentCollection list
         /// The loaded EN/RU string resource (Spec 0026 Part I, slice 003), read once at
         /// startup; the ribbon/menus/nav resolve their labels against it for the active
         /// `env.language`. Pure data (a `Map`), never an Avalonia handle.
@@ -203,6 +207,7 @@ let private loadStrings () : Localization.Resource =
 /// the persisted `Startup.settings`). `update` attaches no effects in U1, so `init`
 /// carries `Cmd.none`.
 let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
+    let groupsLibrary = GroupsLibrary.load (GroupsLibrary.libraryPath ())
     let model =
         {
             env = env
@@ -219,8 +224,9 @@ let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
             status = None
             // Spec 0026 slice 006: the constructor page seeded over the same project,
             // the ribbon's default (expanded, Build) state, and the loaded EN/RU strings.
-            constructor = ConstructorView.init env initialProject
+            constructor = ConstructorView.initWithGroups env initialProject groupsLibrary.groups
             ribbon = Rb.init
+            collections = groupsLibrary.collections
             strings = loadStrings ()
         }
     model, Cmd.none
@@ -407,16 +413,23 @@ let private openCmd () : Cmd<RootMsg> =
                     | None -> ())
             |> ignore ]
 
-/// Save the project to `<name>.ocproj.json` (R-1 / AC-U8.1) via the frozen
-/// `ConstructionPage.saveProject` serializer; the write is OFF the UI thread and its
-/// `Io (Saved …)` / `Io (IoError …)` result marshals back (§0.4). When a host provider
-/// is registered the save picker chooses the destination; otherwise the project's
-/// working-folder default path is used (the headless fallback).
-let private saveCmd (construction : ConstructionPage.Model) : Cmd<RootMsg> =
+/// Save the AUTHORITATIVE constructor project to `<name>.ocproj.json` (R-1 / AC-U8.1)
+/// via the shared `ProjectJson.serializeProject` seam. The write is OFF the UI thread
+/// and its `Io (Saved …)` / `Io (IoError …)` result marshals back (§0.4). When a host
+/// provider is registered the save picker chooses the destination; otherwise the
+/// working-folder fallback path is used. This deliberately accepts the project directly:
+/// the constructor front door owns the live project, while the legacy construction page
+/// is kept in sync as a secondary surface.
+let private saveCmdForProject
+    (project : OpticalConstructorProject)
+    (workingFolder : string)
+    (projectName : string)
+    : Cmd<RootMsg> =
     [ fun (dispatch : RootMsg -> unit) ->
-        match ConstructionPage.saveProject construction with
+        match ProjectJson.serializeProject project with
         | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "%A" e))
-        | Ok (defaultPath, json) ->
+        | Ok json ->
+            let defaultPath = Path.Combine(workingFolder, projectName + ".ocproj.json")
             let writeTo (path : string) =
                 System.Threading.Tasks.Task.Run(fun () ->
                     try
@@ -445,14 +458,34 @@ let private persistEnvCmd (env : EnvironmentSettings) : Cmd<RootMsg> =
             UserEnvironment.save environmentPath env |> ignore)
         |> ignore ]
 
+let private saveGroupsLibraryCmd
+    (groups : Groups.ElementGroup list)
+    (collections : Groups.ExperimentCollection list)
+    : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        System.Threading.Tasks.Task.Run(fun () ->
+            match GroupsLibrary.save (GroupsLibrary.libraryPath ()) { groups = groups; collections = collections } with
+            | Ok () -> ()
+            | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "Groups library error: %A" e)))
+        |> ignore ]
+
 /// Strip the committable `<name>.ocproj.json` suffix back to the bare project name.
 let private projectNameOfPath (path : string) : string =
     let stem = Path.GetFileNameWithoutExtension path   // "<name>.ocproj"
     if stem.EndsWith ".ocproj" then stem.Substring(0, stem.Length - ".ocproj".Length) else stem
 
-/// Load a freshly-opened/templated project into the root model: re-seed the
-/// construction page (which solves the tree once) and the workspace, drop any open fit
-/// page, and land on the Construction page (R-1 / R-2).
+/// Keep the legacy construction/workspace surfaces synchronized with the constructor
+/// project. The constructor is the front-door owner; legacy views are re-seeded from the
+/// same project so navigating away from the constructor cannot reveal a stale snapshot.
+let private syncLegacySurfaces (project : OpticalConstructorProject) (model : RootModel) : RootModel =
+    { model with
+        construction = ConstructionPage.init project model.construction.workingFolder model.construction.projectName
+        workspace = WS.init project
+        fit = None }
+
+/// Load a freshly-opened/templated project into the root model: re-seed the constructor,
+/// construction page (which solves the tree once), and workspace from ONE project, drop
+/// any open fit page, and land on the constructor front door (R-1 / R-2 / Spec 0026 D.6).
 let private loadProjectInto
     (project : OpticalConstructorProject)
     (folder : string)
@@ -464,7 +497,8 @@ let private loadProjectInto
         construction = ConstructionPage.init project folder name
         workspace = WS.init project
         fit = None
-        page = Page.Construction
+        constructor = ConstructorView.initWithGroups model.env project model.constructor.groups
+        page = Page.Constructor
         status = Some statusMsg }
 
 let private updateIo (im : LifecycleView.IoMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
@@ -476,7 +510,8 @@ let private updateIo (im : LifecycleView.IoMsg) (model : RootModel) : RootModel 
     | LifecycleView.Loaded (project, path) ->
         loadProjectInto project (Path.GetDirectoryName path) (projectNameOfPath path)
             (sprintf "Opened %s" (Path.GetFileName path)) model, Cmd.none
-    | LifecycleView.SaveRequested -> model, saveCmd model.construction
+    | LifecycleView.SaveRequested ->
+        model, saveCmdForProject model.constructor.project model.construction.workingFolder model.construction.projectName
     | LifecycleView.Saved path ->
         // Subsequent saves follow the just-written destination.
         { model with
@@ -518,7 +553,13 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         // attaches the async node-solve Cmd; the pure update already set `busy` and the
         // host re-solves off-thread, marshaling NodeSolved back onto the UI thread.
         let cmd = constructionCmd cm model.construction.pendingDeletion construction.project.beamTree.root
-        { model with construction = construction }, cmd
+        let model' = { model with construction = construction }
+        if construction.project <> model.construction.project then
+            { model' with
+                constructor = ConstructorView.initWithGroups model.env construction.project model.constructor.groups
+                workspace = WS.init construction.project
+                fit = None }, cmd
+        else model', cmd
     | RootMsg.Workspace wm -> { model with workspace = WS.update wm model.workspace }, Cmd.none
     | RootMsg.Shell sm ->
         // R-3: a theme / panel-visibility / panel-dock change attaches a fire-and-forget
@@ -544,9 +585,23 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         | Some fit -> { model with fit = Some (SynthesisFitPage.update fm fit) }, fitCmd fm fit
         | None -> model, Cmd.none
     | RootMsg.Io im -> updateIo im model
-    // Spec 0026 slice 006: the constructor page and the ribbon shell are pure MVU
-    // sub-surfaces (no effects yet) — route through their own `update` and re-wrap.
-    | RootMsg.Constructor cm -> { model with constructor = ConstructorView.update cm model.constructor }, Cmd.none
+    // Spec 0026: the constructor front door owns the live project. Route through its
+    // reducer, synchronize the legacy surfaces when the project changed, and turn the
+    // constructor Save command into the shared project-write Cmd.
+    | RootMsg.Constructor cm ->
+        let constructor = ConstructorView.update cm model.constructor
+        let saveRequested = constructor.saveRequests > model.constructor.saveRequests
+        let groupsChanged = constructor.groups <> model.constructor.groups
+        let model' = { model with constructor = constructor }
+        let model'' =
+            if constructor.project <> model.constructor.project then syncLegacySurfaces constructor.project model'
+            else model'
+        let cmd : Cmd<RootMsg> =
+            [ if saveRequested then
+                  yield! saveCmdForProject constructor.project model''.construction.workingFolder model''.construction.projectName
+              if groupsChanged then
+                  yield! saveGroupsLibraryCmd constructor.groups model.collections ]
+        model'', cmd
     | RootMsg.Ribbon rm -> { model with ribbon = Rb.update rm model.ribbon }, Cmd.none
 
 // ---------------------------------------------------------------------------
@@ -701,7 +756,7 @@ let private constructorBody (model : RootModel) (dispatch : RootMsg -> unit) : I
                 yield Rb.elementDialogOverlay model.strings model.env.language onConstructor
             // E.2 (slice 007): the right-click element context menu, when open.
             if model.constructor.contextMenuOpen then
-                yield Rb.contextMenuOverlay model.strings model.env.language onConstructor
+                yield Rb.contextMenuOverlay model.strings model.env.language model.constructor onConstructor
             // K.2 (slice 007): the same-row Confirm/Cancel destructive gate, when an action is pending.
             if Option.isSome model.constructor.pending then
                 yield Rb.confirmGateOverlay model.strings model.env.language model.constructor onConstructor

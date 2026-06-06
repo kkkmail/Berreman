@@ -69,9 +69,12 @@ let showBoundingBoxDefault : bool = false
 
 /// The pure top-down draw geometry of one element drawn as a cylinder (C.4). All points
 /// are table-frame canonical meters (`TablePoint`); the view transform is applied later
-/// (slice 005). `frame` is the closed cylinder-body silhouette; `axisStart`/`axisEnd`
-/// are the two cap centres and `capRadius` the cap radius, so the binding can draw the
-/// rounded ends; `fill` is the role shade; `frameStroke` is the always-visible outline;
+/// (slice 005). `frame` is the closed side-on cylinder-body silhouette; `axisStart`/
+/// `axisEnd` are the two physical cap centres; `visibleCapCenters` contains only caps
+/// that actually project as visible circular end faces in the orthographic top view.
+/// Therefore the rest pose `(0,0,0)`, whose axis lies in the table plane along the
+/// central ray, draws as a rectangle, not as a smashed rectangle with two circles.
+/// `fill` is the role shade; `frameStroke` is the always-visible outline;
 /// `boundingBoxEdges` is empty unless show-box is on, then the twelve projected box
 /// edges.
 type DrawerGeometry =
@@ -79,6 +82,7 @@ type DrawerGeometry =
         frame : TablePoint list
         axisStart : TablePoint
         axisEnd : TablePoint
+        visibleCapCenters : TablePoint list
         capRadius : float<meter>
         fill : Fill
         frameStroke : ConstructorTable.Stroke
@@ -91,10 +95,12 @@ type DrawerGeometry =
 ///
 /// The element box (`A × A × B`, the face perpendicular to the primary normal N1, depth
 /// B along N1) is oriented by reusing `Placement.orientedBasis`. The cylinder is drawn
-/// along N1 with its circular cross-section of radius `A/2`, so its silhouette is a
-/// rectangle of length = the projected axis and width = 2·radius, independent of the R1
-/// spin (a cylinder looks the same spun about its axis). The square box, in contrast,
-/// reveals R1/R2/R3 — which is why the optional box edges are the orientation tell.
+/// along N1 with its circular cross-section of radius `A/2`. With the current
+/// orthographic top view, caps are visible as circles only when the axis projects
+/// end-on. In the rest pose the axis is parallel to the CR and lies in the table plane,
+/// so the projected shape is the side silhouette: a plain rectangle. The square box, in
+/// contrast, reveals R1/R2/R3 — which is why the optional box edges are the orientation
+/// tell.
 let draw
     (point : TablePoint)
     (r1 : Angle)
@@ -126,16 +132,21 @@ let draw
     // The in-plane perpendicular to the projected axis (the silhouette half-width
     // direction). When the axis projects to ~0 (the cylinder seen end-on, e.g. R3 ≈ 90°)
     // fall back to +X so the silhouette is still a well-formed (square) outline.
-    let (px, py) = if axisLen2D < 1.0e-9 then (0.0, 1.0) else (-axy / axisLen2D, axx / axisLen2D)
+    let axisEndOn = axisLen2D < 1.0e-9
+    let (px, py) = if axisEndOn then (0.0, 1.0) else (-axy / axisLen2D, axx / axisLen2D)
     let r = halfA1
     let edgePoint (cap : Vector3) (sign : float) : TablePoint =
         { x = (cap.x + sign * r * px) * 1.0<meter>; y = (cap.y + sign * r * py) * 1.0<meter> }
     let frame =
-        [ edgePoint capMinus 1.0
-          edgePoint capPlus 1.0
-          edgePoint capPlus -1.0
-          edgePoint capMinus -1.0
-          edgePoint capMinus 1.0 ]
+        if axisEndOn then []
+        else
+            [ edgePoint capMinus 1.0
+              edgePoint capPlus 1.0
+              edgePoint capPlus -1.0
+              edgePoint capMinus -1.0
+              edgePoint capMinus 1.0 ]
+    let visibleCapCenters =
+        if axisEndOn then [ point ] else []
 
     // --- Bounding-box edges (off by default; the 12 projected edges when on) ----------
     let cornerAt (sa : int) (sb : int) (sc : int) : TablePoint =
@@ -159,6 +170,7 @@ let draw
         frame = frame
         axisStart = toTablePoint capMinus
         axisEnd = toTablePoint capPlus
+        visibleCapCenters = visibleCapCenters
         capRadius = r * 1.0<meter>
         fill = shadeFor kind
         frameStroke = frameStroke

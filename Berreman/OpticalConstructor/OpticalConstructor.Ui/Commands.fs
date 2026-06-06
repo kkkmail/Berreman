@@ -217,11 +217,11 @@ let registry : CommandDef list =
         // --- Rotations (§E.3) — each step defaults to 5°, configurable; inert on a
         //     locked axis (R3 starts locked). -----------------------------------
         { command = RotateR1; scope = ActiveElement; id = "rotate-r1"
-          inContextMenu = false; binding = mouse [ wheel [ Shift ] ] }
+          inContextMenu = true; binding = mouse [ wheel [ Shift ] ] }
         { command = RotateR2; scope = ActiveElement; id = "rotate-r2"
-          inContextMenu = false; binding = mouse [ wheel [ Ctrl; Shift ] ] }
+          inContextMenu = true; binding = mouse [ wheel [ Ctrl; Shift ] ] }
         { command = RotateR3; scope = ActiveElement; id = "rotate-r3"
-          inContextMenu = false; binding = mouse [ wheel [ Alt ] ] }
+          inContextMenu = true; binding = mouse [ wheel [ Alt ] ] }
 
         // --- Move the active element (§E.4) -----------------------------------
         // Slide is the canonical keyboard-PLUS-mouse command: Shift+left-drag OR the

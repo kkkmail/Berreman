@@ -25,6 +25,7 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
+open Berreman.Constants
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.Commands
@@ -228,21 +229,54 @@ let private commandButton (resource : Resource) (language : Language) (d : Dispa
     else
         Controls.disabledButton label
 
-/// The catalogue control (F.1): a labelled button per role. An element role drops a new
-/// placement — `RibbonDrop` snaps it to the central-ray middle (E.7), so the passed
-/// point is irrelevant; the optical-table role deselects to the table workspace (C.3).
+/// The catalogue control (F.1): a labelled button per role. An element role arms a
+/// click-drop placement on the optical table; while armed, the constructor canvas shows
+/// the element under the pointer and the next table click commits it onto the nearest
+/// central-ray path (E.7). The optical-table role deselects to the table workspace
+/// (C.3).
 let private catalogueView (resource : Resource) (language : Language) (d : Dispatch) : IView =
     let roleButton (role : CatalogueRole) : IView =
         let label = roleTitle resource language role
         match role with
         | TableRole -> Controls.defaultButton label (fun () -> d.onConstructor (ConstructorView.Invoke CancelOrDeselect))
-        | ElementRole kind -> Controls.defaultButton label (fun () -> d.onConstructor (ConstructorView.RibbonDrop (kind, TablePoint.origin)))
+        | ElementRole kind -> Controls.defaultButton label (fun () -> d.onConstructor (ConstructorView.StartPlacement kind))
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 4.0
         StackPanel.children [
             yield labelBlock (lookup resource language "catalogue.title")
             for role in catalogue do yield roleButton role
+        ]
+    ] :> IView
+
+let private formatMeters (v : float<meter>) : string =
+    sprintf "%.3f" (v / 1.0<meter>)
+
+let private traceView (resource : Resource) (language : Language) (cv : ConstructorView.Model) (d : Dispatch) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 8.0
+        StackPanel.children [
+            Controls.toggle
+                (lookup resource language "trace.centralRayOnly")
+                cv.showCentralRayOnly
+                (ConstructorView.SetCentralRayOnly >> d.onConstructor)
+            Controls.toggle
+                (lookup resource language "trace.boundingBox")
+                cv.showBoundingBox
+                (ConstructorView.SetBoundingBoxVisible >> d.onConstructor)
+            Controls.defaultButton (lookup resource language "trace.rotateLeft") (fun () -> d.onConstructor (ConstructorView.RotateViewR1 -1))
+            Controls.defaultButton (lookup resource language "trace.rotateRight") (fun () -> d.onConstructor (ConstructorView.RotateViewR1 1))
+            Controls.numericWithUnits
+                (lookup resource language "table.length")
+                (formatMeters cv.project.table.length)
+                "m"
+                (ConstructorView.SetTableLengthMeters >> d.onConstructor)
+            Controls.numericWithUnits
+                (lookup resource language "table.width")
+                (formatMeters cv.project.table.width)
+                "m"
+                (ConstructorView.SetTableWidthMeters >> d.onConstructor)
         ]
     ] :> IView
 
@@ -326,9 +360,9 @@ let private tabExtras (resource : Resource) (language : Language) (env : Environ
     match tab with
     | Build -> [ catalogueView resource language d ]
     | ElementTab -> [ bindValueButton resource language d ]
+    | TraceView -> [ traceView resource language cv d ]
     | Experiment -> [ experimentView resource language cv d ]
     | Settings -> [ settingsView resource language env d ]
-    | TraceView -> []
 
 /// The expanded content for the active tab (D.1): its registry-command buttons followed
 /// by its tab-specific extras, on one flexing row (D.4 — flexes, never truncates).
@@ -484,15 +518,38 @@ let elementDialogOverlay (resource : Resource) (language : Language) (onConstruc
 /// `inContextMenu`, projected from the ONE registry, each dispatching its `Invoke` — a parameterized
 /// command with no parameterless effect renders DISABLED (mirroring the ribbon's `commandButton`),
 /// so it stays discoverable without a silent no-op. Dismissed via `CloseContextMenu`.
-let contextMenuOverlay (resource : Resource) (language : Language) (onConstructor : ConstructorView.Msg -> unit) : IView =
+let contextMenuOverlay (resource : Resource) (language : Language) (cv : ConstructorView.Model) (onConstructor : ConstructorView.Msg -> unit) : IView =
     let item (cmd : Command) : IView =
         let label = LH.commandLabel resource language cmd
         if ConstructorView.isParameterlessInvokable cmd then
             Controls.defaultButton label (fun () -> onConstructor (ConstructorView.Invoke cmd))
         else Controls.disabledButton label
+    let axisItem (axis : ConstructorView.RotationAxis) (locked : bool) : IView =
+        let key =
+            match axis, locked with
+            | ConstructorView.AxisR1, false -> "context.lockR1"
+            | ConstructorView.AxisR1, true -> "context.unlockR1"
+            | ConstructorView.AxisR2, false -> "context.lockR2"
+            | ConstructorView.AxisR2, true -> "context.unlockR2"
+            | ConstructorView.AxisR3, false -> "context.lockR3"
+            | ConstructorView.AxisR3, true -> "context.unlockR3"
+        Controls.defaultButton (lookup resource language key) (fun () -> onConstructor (ConstructorView.MenuToggleLock axis))
+    let branchItems : IView list =
+        [ Controls.defaultButton (lookup resource language "context.toggleReflected")
+              (fun () -> onConstructor (ConstructorView.MenuToggleEmission BeamTree.Reflected))
+          Controls.defaultButton (lookup resource language "context.toggleTransmitted")
+              (fun () -> onConstructor (ConstructorView.MenuToggleEmission BeamTree.Transmitted)) ]
+    let elementItems =
+        match ConstructorView.activeElement cv with
+        | Some p ->
+            [ axisItem ConstructorView.AxisR1 p.r1Locked
+              axisItem ConstructorView.AxisR2 p.r2Locked
+              axisItem ConstructorView.AxisR3 p.r3Locked ]
+            @ branchItems
+        | None -> []
     modalOverlay
         (lookup resource language "contextMenu.title")
-        (ConstructorView.contextMenuCommands |> List.map item)
+        ((ConstructorView.contextMenuCommands |> List.map item) @ elementItems)
         (lookup resource language "common.close")
         (fun () -> onConstructor ConstructorView.CloseContextMenu)
 

@@ -32,6 +32,7 @@
   "element.beamSplitter": { "en": "Beam splitter",             "ru": "Светоделитель" },
 
   "table.title":          { "en": "Optical table",             "ru": "Оптический стол" },
+  "table.length":         { "en": "Length",                    "ru": "Длина" },
   "table.width":          { "en": "Width",                     "ru": "Ширина" },
   "table.height":         { "en": "Height",                    "ru": "Высота" },
 
@@ -68,6 +69,10 @@
   "ribbon.tab.settings":    { "en": "Settings",                "ru": "Настройки" },
   "ribbon.collapse":        { "en": "Collapse ribbon",         "ru": "Свернуть ленту" },
   "ribbon.expand":          { "en": "Show ribbon",             "ru": "Показать ленту" },
+  "trace.centralRayOnly":   { "en": "CR only",                 "ru": "Только ЦЛ" },
+  "trace.boundingBox":      { "en": "Bounding box",            "ru": "Габарит" },
+  "trace.rotateLeft":       { "en": "View -R1",                "ru": "Вид -R1" },
+  "trace.rotateRight":      { "en": "View +R1",                "ru": "Вид +R1" },
 
   "catalogue.title":        { "en": "Catalogue",               "ru": "Каталог" },
   "element.linearPolarizer":   { "en": "Linear polarizer",     "ru": "Линейный поляризатор" },
@@ -119,6 +124,14 @@
   "confirm.resetView":      { "en": "Reset the view to straight top-down?", "ru": "Сбросить вид к прямому виду сверху?" },
 
   "contextMenu.title":      { "en": "Element actions",           "ru": "Действия с элементом" },
+  "context.lockR1":         { "en": "Lock R1",                   "ru": "Заблокировать R1" },
+  "context.unlockR1":       { "en": "Unlock R1",                 "ru": "Разблокировать R1" },
+  "context.lockR2":         { "en": "Lock R2",                   "ru": "Заблокировать R2" },
+  "context.unlockR2":       { "en": "Unlock R2",                 "ru": "Разблокировать R2" },
+  "context.lockR3":         { "en": "Lock R3",                   "ru": "Заблокировать R3" },
+  "context.unlockR3":       { "en": "Unlock R3",                 "ru": "Разблокировать R3" },
+  "context.toggleReflected": { "en": "Toggle reflected ray",     "ru": "Переключить отражённый луч" },
+  "context.toggleTransmitted": { "en": "Toggle transmitted ray", "ru": "Переключить прошедший луч" },
   "elementDialog.title":    { "en": "Element properties",        "ru": "Свойства элемента" },
   "elementDialog.placeholder": { "en": "The element property editor is not available yet.", "ru": "Редактор свойств элемента пока недоступен." },
 

@@ -239,10 +239,9 @@ module RibbonTests =
     // =======================================================================
     // Surfaceless-button guard — the commands with no visible front-door effect render
     // DISABLED in both the ribbon and the collapsed menus rather than as silent no-op clicks.
-    // Slice 007: this is now the ten GESTURE-ONLY / PARAMETERIZED commands (nine gesture-only
-    // inert-in-`applyCommand` + the `SwapGroup` group swap). The four element-edit commands are
-    // RE-ENABLED — slice 007 renders their front-door overlays (dialog / context menu / confirm
-    // gate), so the slice-006 deferral is discharged.
+    // The remaining surfaceless commands are gesture-only / parameterized commands
+    // (drag/pan/zoom/drop/group controls). Element-edit and rotation commands are
+    // parameterless-invokable because they now render real surfaces or apply one step.
     // =======================================================================
 
     /// The disabled-button set, DERIVED from the one source of truth in `ConstructorView`

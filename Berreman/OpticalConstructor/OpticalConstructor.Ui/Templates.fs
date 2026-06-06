@@ -21,6 +21,8 @@ open Berreman.Fields
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalProperties.Standard
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.RayModel
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
@@ -75,7 +77,10 @@ let projectOf (sys : OpticalSystem) : OpticalConstructorProject =
             children = Map.empty
             defaultUnit = Nanometer
         }
-    { beamTree = { root = root }; systems = [ sys ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
+    let placements =
+        [ ElementPlacement.create CatalogueKind.LightSource defaultSourcePoint
+          ElementPlacement.create CatalogueKind.Detector defaultDetectorPoint ]
+    { beamTree = { root = root }; systems = [ sys ]; sources = []; placements = placements; table = OpticalConstructor.Domain.Table.defaultTable }
 
 /// Assemble an `OpticalSystem` from films + optional substrate, air-incident over
 /// a glass exit medium (`Media.fs:94`).
