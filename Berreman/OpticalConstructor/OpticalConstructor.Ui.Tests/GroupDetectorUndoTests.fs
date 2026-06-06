@@ -74,6 +74,22 @@ module GroupDetectorUndoTests =
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
+    let ``AC-G2 and AC-K1 Set as primary on the already-primary detector pushes no undo step`` () =
+        // `setPrimaryDetectorNow` shares the `commitIfChanged` no-op guard: when the chosen detector
+        // is already the primary (placement index 0), `moveToFront 0` is identity — an inert edit that
+        // must push NOTHING (the slice's own High risk: never push on a no-op edit).
+        let m = model [ detectorAt 0.0 0.0; sampleAt 0.1 0.0; detectorAt 0.2 0.0 ]
+        Assert.Equal(Some 0, ConstructorView.primaryDetectorIndex m) // precondition: detector 0 is primary
+        let noop = ConstructorView.update (ConstructorView.Invoke SetPrimaryDetector) (select 0 m)
+        Assert.Equal<ElementPlacement list>(placements m, placements noop)
+        Assert.True(List.isEmpty noop.history.past)
+        // Promoting a NON-primary detector (index 2) is a real reorder and pushes exactly one step.
+        let real = ConstructorView.update (ConstructorView.Invoke SetPrimaryDetector) (select 2 m)
+        Assert.Equal(1, List.length real.history.past)
+        Assert.Equal(0.2<meter>, (List.head (placements real)).placementPoint.x)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
     let ``AC-G2 and AC-K1 adding and removing a detector are undoable project edits`` () =
         let m0 = model [ sampleAt 0.0 0.0 ]
         // Add a detector → appended, undoable.
@@ -132,6 +148,28 @@ module GroupDetectorUndoTests =
         // A real rotation about the UNLOCKED R1 (Shift+wheel) by contrast DOES push exactly one step.
         let real = ConstructorView.update (ConstructorView.WheelAt ([ Shift ], 1, at 0.0 0.0)) m
         Assert.Equal(1, List.length real.history.past)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``AC-K1 and AC-K2 confirming reset-rotation on an already-zero element pushes no undo step`` () =
+        // `resetRotationNow` shares the `commitIfChanged` no-op guard. Reset-rotation is armed
+        // regardless of the element's current rotation, so confirming it on an element ALREADY at
+        // zero re-applies the same zero angles — an inert edit that must push NOTHING (the slice's
+        // own High risk: never push on a no-op edit).
+        let m = select 0 (model [ sampleAt 0.0 0.0 ])
+        Assert.Equal(0.0, (List.item 0 (placements m)).r1.value) // precondition: already at zero rotation
+        let armed = ConstructorView.update (ConstructorView.Invoke ResetRotation) m
+        Assert.Equal(Some "confirm.resetRotation", ConstructorView.pendingPromptKey armed)
+        let confirmed = ConstructorView.update ConstructorView.ConfirmPending armed
+        Assert.Equal<ElementPlacement list>(placements m, placements confirmed)
+        Assert.True(List.isEmpty confirmed.history.past)
+        // Resetting a genuinely-rotated element, by contrast, pushes exactly one step.
+        let rotated = ConstructorView.update (ConstructorView.WheelAt ([ Shift ], 1, at 0.0 0.0)) m
+        let before = List.length rotated.history.past
+        let armedReal = ConstructorView.update (ConstructorView.Invoke ResetRotation) rotated
+        let resetReal = ConstructorView.update ConstructorView.ConfirmPending armedReal
+        Assert.Equal(before + 1, List.length resetReal.history.past)
+        Assert.Equal(0.0, (List.item 0 (placements resetReal)).r1.value)
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]

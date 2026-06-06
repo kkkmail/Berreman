@@ -345,9 +345,12 @@ let private deleteNow (i : int) (model : Model) : Model =
             rayOf = rayOf'
             selection = TableSelected }
 
+/// Reset the active element's rotation to zero (K.2, confirmation-gated). Guarded by
+/// `commitIfChanged`, so confirming the reset on an element that is ALREADY at zero rotation is
+/// inert and pushes no empty undo step (K.1 risk: never push on a no-op edit).
 let private resetRotationNow (i : int) (model : Model) : Model =
     match tryPlacement i model with
-    | Some p -> commit (setPlacement i { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } model)
+    | Some p -> commitIfChanged (setPlacement i { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } model)
     | None -> model
 
 let private appendPlacement (p : ElementPlacement) (model : Model) : Model =
@@ -421,8 +424,9 @@ let private remapToFront (i : int) (j : int) : int =
 
 /// Make the detector at index `i` the primary one (G.2 / AC-G2): move it to the front of the
 /// placements so it becomes the first detector. A real project mutation — it round-trips and
-/// pushes an undoable snapshot (K.1) — with `rayOf`/`selection` index-remapped. Inert when `i` is
-/// not a detector.
+/// pushes an undoable snapshot (K.1) — with `rayOf`/`selection` index-remapped. Guarded by
+/// `commitIfChanged`, so it is inert (no empty undo step) when `i` is not a detector or is ALREADY
+/// the primary (index 0, where `moveToFront 0` is identity).
 let private setPrimaryDetectorNow (i : int) (model : Model) : Model =
     match tryPlacement i model with
     | Some p when p.catalogueKind = Detector ->
@@ -432,7 +436,7 @@ let private setPrimaryDetectorNow (i : int) (model : Model) : Model =
             match model.selection with
             | ElementSelected k -> ElementSelected (remapToFront i k)
             | TableSelected -> TableSelected
-        commit { model with project = { model.project with placements = ps' }; rayOf = rayOf'; selection = selection' }
+        commitIfChanged { model with project = { model.project with placements = ps' }; rayOf = rayOf'; selection = selection' }
     | _ -> model
 
 /// Add a detector (G.2.1): append a fresh `Detector` placement snapped to the central-ray middle,

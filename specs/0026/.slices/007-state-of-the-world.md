@@ -78,10 +78,12 @@ gates:
   `history : History.EditHistory`. The invariant is `history.present = project` between edits;
   the `commit` helper (`History.push` after the edit) re‑establishes it, and `commitIfChanged`
   guards no‑op pushes. The guard is now UNIFORM: `editActive` (every rotation, lock toggle and
-  emission toggle), the arrow‑key slide and the slide drag all route through `commitIfChanged`, so
-  an inert edit — a wheel‑rotate about the default‑locked R3 axis, a both‑off emission toggle, a
-  slide that hit a clamp bound, or a begin‑then‑end drag with no move — pushes NOTHING and never
-  litters `Ctrl+Z` with empty steps (the slice's own High risk; AC‑K1). A slide drag commits ONCE
+  emission toggle), the arrow‑key slide, the slide drag, `resetRotationNow` and
+  `setPrimaryDetectorNow` all route through `commitIfChanged`, so an inert edit — a wheel‑rotate
+  about the default‑locked R3 axis, a both‑off emission toggle, a slide that hit a clamp bound, a
+  begin‑then‑end drag with no move, confirming reset‑rotation on an already‑zero element, or
+  "Set as primary" on the already‑primary (index‑0) detector — pushes NOTHING and never litters
+  `Ctrl+Z` with empty steps (the slice's own High risk; AC‑K1). A slide drag commits ONCE
   at `EndDrag`, not per `SlideTo` — one undo step for the whole drag.
 - **The primary detector is encoded as placement ORDER, not a new project field (G.2).** The
   primary is the FIRST `Detector` placement (the convention `centralRayEndpoints` already used);
