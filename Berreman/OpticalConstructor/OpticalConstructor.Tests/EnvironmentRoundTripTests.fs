@@ -6,6 +6,7 @@ open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Ui.Localization
 open OpticalConstructor.Ui.UserEnvironment
 open Xunit
 
@@ -150,6 +151,29 @@ module EnvironmentRoundTripTests =
     [<Fact>]
     let ``AC-J7 solver defaults are the engine SolverParameters, not a parallel record`` () =
         Assert.Equal(Berreman.Solvers.SolverParameters.defaultValue, defaults.preferences.solver)
+
+    // --- AC-I2 (Spec 0026 Part I): the selected language persists and is restored ---
+
+    [<Fact>]
+    let ``AC-I2 the selected language defaults to English and round-trips through the JSON`` () =
+        // I.2.1: the language field defaults to English on the built-in environment.
+        Assert.Equal(English, defaults.language)
+        // A chosen language survives serialize -> validate-on-load -> bind (the schema
+        // admits the new field), so it is restored on next launch.
+        let ru = { defaults with language = Russian }
+        let back = serialize ru |> okOr |> deserialize |> okOr
+        Assert.Equal(Russian, back.language)
+
+    [<Fact>]
+    let ``AC-I2 the selected language persists through the on-disk save path`` () =
+        // The Settings-ribbon selector (Part D / slice 006) writes through `save`; the
+        // chosen language is restored by `load` on the next launch (I.2.1 / I.5).
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-lang-%s.json" (Guid.NewGuid().ToString("N")))
+        try
+            save path { defaults with language = Russian } |> okOr
+            Assert.Equal(Russian, (load path).language)
+        finally
+            if File.Exists path then File.Delete path
 
     // --- AC-J8: theme + panel layout round-trip through EnvironmentSettings JSON -
 

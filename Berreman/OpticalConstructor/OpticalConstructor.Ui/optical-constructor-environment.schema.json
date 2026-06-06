@@ -13,7 +13,8 @@
     "theme",
     "chartPalette",
     "toolbar",
-    "preferences"
+    "preferences",
+    "language"
   ],
   "properties": {
     "schemaVersion": {
@@ -57,6 +58,10 @@
     "preferences": {
       "$ref": "#/$defs/preferences",
       "description": "User preferences (J.7)."
+    },
+    "language": {
+      "$ref": "#/$defs/language",
+      "description": "The selected UI language (Spec 0026 Part I §I.2.1). Persisted and restored on next launch; defaults to English. A fieldless DU serialized as a bare string. EN and RU ship; a further language is added by editing strings.json (no third language ships)."
     }
   },
   "$defs": {
@@ -77,6 +82,11 @@
       "type": "string",
       "enum": ["Light", "Dark"],
       "description": "Theme selection (J.8). A fieldless DU serialized as a bare string."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["English", "Russian"],
+      "description": "UI language selection (Spec 0026 Part I §I.2). A fieldless DU serialized as a bare string. EN and RU ship; the strings.json mechanism supports adding a further language by editing the file."
     },
     "dockSide": {
       "type": "string",

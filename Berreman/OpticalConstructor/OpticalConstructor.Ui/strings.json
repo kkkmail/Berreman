@@ -1,0 +1,60 @@
+{
+  "app.title":            { "en": "Optical Constructor",      "ru": "Оптический конструктор" },
+
+  "menu.file":            { "en": "File",                      "ru": "Файл" },
+  "menu.edit":            { "en": "Edit",                      "ru": "Правка" },
+  "menu.view":            { "en": "View",                      "ru": "Вид" },
+  "menu.elements":        { "en": "Elements",                  "ru": "Элементы" },
+  "menu.experiments":     { "en": "Experiments",               "ru": "Эксперименты" },
+  "menu.settings":        { "en": "Settings",                  "ru": "Настройки" },
+  "menu.help":            { "en": "Help",                      "ru": "Справка" },
+
+  "command.new":          { "en": "New",                       "ru": "Создать" },
+  "command.open":         { "en": "Open",                      "ru": "Открыть" },
+  "command.save":         { "en": "Save",                      "ru": "Сохранить" },
+  "command.saveAs":       { "en": "Save As",                   "ru": "Сохранить как" },
+  "command.undo":         { "en": "Undo",                      "ru": "Отменить" },
+  "command.redo":         { "en": "Redo",                      "ru": "Повторить" },
+  "command.cut":          { "en": "Cut",                       "ru": "Вырезать" },
+  "command.copy":         { "en": "Copy",                      "ru": "Копировать" },
+  "command.paste":        { "en": "Paste",                     "ru": "Вставить" },
+  "command.delete":       { "en": "Delete",                    "ru": "Удалить" },
+  "command.solve":        { "en": "Solve",                     "ru": "Рассчитать" },
+
+  "element.lightSource":  { "en": "Light source",              "ru": "Источник света" },
+  "element.detector":     { "en": "Detector",                  "ru": "Детектор" },
+  "element.flatMirror":   { "en": "Flat mirror",               "ru": "Плоское зеркало" },
+  "element.curvedMirror": { "en": "Curved mirror",             "ru": "Изогнутое зеркало" },
+  "element.lens":         { "en": "Lens",                      "ru": "Линза" },
+  "element.prism":        { "en": "Prism",                     "ru": "Призма" },
+  "element.wedge":        { "en": "Wedge",                     "ru": "Клин" },
+  "element.sample":       { "en": "Sample",                    "ru": "Образец" },
+  "element.beamSplitter": { "en": "Beam splitter",             "ru": "Светоделитель" },
+
+  "table.title":          { "en": "Optical table",             "ru": "Оптический стол" },
+  "table.width":          { "en": "Width",                     "ru": "Ширина" },
+  "table.height":         { "en": "Height",                    "ru": "Высота" },
+
+  "rotation.r1":          { "en": "Rotation 1",                "ru": "Поворот 1" },
+  "rotation.r2":          { "en": "Rotation 2",                "ru": "Поворот 2" },
+  "rotation.r3":          { "en": "Rotation 3",                "ru": "Поворот 3" },
+
+  "settings.title":       { "en": "Settings",                  "ru": "Настройки" },
+  "settings.language":    { "en": "Language",                  "ru": "Язык" },
+  "settings.language.english": { "en": "English",              "ru": "Английский" },
+  "settings.language.russian": { "en": "Russian",              "ru": "Русский" },
+  "settings.theme":       { "en": "Theme",                     "ru": "Тема" },
+  "settings.theme.light": { "en": "Light",                     "ru": "Светлая" },
+  "settings.theme.dark":  { "en": "Dark",                      "ru": "Тёмная" },
+
+  "common.ok":            { "en": "OK",                        "ru": "ОК" },
+  "common.cancel":        { "en": "Cancel",                    "ru": "Отмена" },
+  "common.apply":         { "en": "Apply",                     "ru": "Применить" },
+  "common.close":         { "en": "Close",                     "ru": "Закрыть" },
+  "common.yes":           { "en": "Yes",                       "ru": "Да" },
+  "common.no":            { "en": "No",                        "ru": "Нет" },
+  "common.copy":          { "en": "Copy to clipboard",         "ru": "Копировать в буфер обмена" },
+
+  "error.title":          { "en": "Error",                     "ru": "Ошибка" },
+  "error.localization.title": { "en": "Localization warning",  "ru": "Предупреждение локализации" }
+}

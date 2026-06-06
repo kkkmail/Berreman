@@ -47,6 +47,10 @@
         <Compile Include="Templates.fs" />
         <Compile Include="Schematic.fs" />
         <Compile Include="Workspace.fs" />
+        <!-- Spec 0026 Part I (slice 003): EN/RU localization. The pure runtime
+             string loader + completeness check; defines the `Language` DU
+             UserEnvironment's `language` field reuses, so it compiles FIRST. -->
+        <Compile Include="Localization.fs" />
         <!-- Part J UX shell II (slice 015): UserEnvironment (EnvironmentSettings/
              Preferences) first; Validation is standalone; AppShell consumes the
              UserEnvironment theme/layout types and is authored against the public
@@ -110,6 +114,18 @@
          output (so the Tests project's validate-on-load finds it). -->
     <ItemGroup>
         <Content Include="optical-constructor-environment.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <!-- Spec 0026 §I.1.1 (slice 003): the EN/RU string resource is a build-copied
+         content item loaded beside the assembly at runtime by Localization.loadFromFile
+         (mirroring the env schema above / SchemaValidation.fs:17). Copying it — rather
+         than embedding — is what lets an operator/translator edit the strings, or add a
+         further language, with NO rebuild. Flows transitively to consuming projects'
+         output (App, Ui.Tests, Tests). -->
+    <ItemGroup>
+        <Content Include="strings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

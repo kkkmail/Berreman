@@ -35,6 +35,7 @@ open Berreman.Solvers
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Storage
 open OpticalConstructor.Storage.Errors
+open OpticalConstructor.Ui.Localization
 
 // ---------------------------------------------------------------------------
 // Theme & dockable-panel layout (J.8 fields of EnvironmentSettings).
@@ -150,6 +151,12 @@ type EnvironmentSettings =
         chartPalette : string list
         toolbar : string list
         preferences : Preferences
+        /// The selected UI language (Spec 0026 §I.2.1), persisted here and restored on
+        /// next launch. Defaults to `English`. The *Settings*-ribbon selector (Part D /
+        /// slice 006) writes through `save` (UserEnvironment.fs `save`); every UI string
+        /// resolves through `Localization` against this language. A fieldless DU, so the
+        /// shared `ProjectJson.options` round-trip it as a bare string.
+        language : Language
     }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +199,7 @@ let defaults : EnvironmentSettings =
         chartPalette = [ "#1f77b4"; "#ff7f0e"; "#2ca02c"; "#d62728"; "#9467bd" ]
         toolbar = [ "open"; "save"; "build"; "solve"; "chart" ]
         preferences = defaultPreferences
+        language = English
     }
 
 // ---------------------------------------------------------------------------
