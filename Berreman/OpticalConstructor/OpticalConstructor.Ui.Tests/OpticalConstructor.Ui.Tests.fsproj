@@ -31,6 +31,10 @@
         <!-- Spec 0026 Part C / Part J (slice 004): pure drawer/table/active-element/
              control-flavour geometry tests (no headless session); `ui-tests` gate. -->
         <Compile Include="ConstructorViewTests.fs" />
+        <!-- Spec 0026 Part E (slice 005): the centralized-command registry + the
+             constructor MVU interaction tests (pure update, `ui-tests`) plus one
+             mount-and-render case (`ui-smoke`). -->
+        <Compile Include="CommandRegistryTests.fs" />
         <Compile Include="SmokeTests.fs" />
         <Compile Include="PanelViewTests.fs" />
         <Compile Include="ChartPanelTests.fs" />

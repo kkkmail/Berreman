@@ -109,6 +109,45 @@ type Preferences =
     }
 
 // ---------------------------------------------------------------------------
+// Constructor key map (Spec 0026 Part E §E.8.1 + §E.3.1). The centralized command
+// model (`Commands.fs`) declares the DEFAULT key map; this persists the user's
+// customizations so a preferred key map and rotation step survive across sessions
+// (Part I / UserEnvironment.fs:141). Reuses the settings store rather than a parallel
+// preferences file (E.8.1). A pure, serializable shape — plain strings/float, no
+// Avalonia handle and no dependency on `Commands` — so it round-trips through the
+// shared `ProjectJson.options` and `Commands` parses the gesture strings against its
+// registry without a module cycle.
+// ---------------------------------------------------------------------------
+
+/// One key-binding override (§E.8.1): the language-neutral command id (the
+/// `Commands.CommandDef.id`, e.g. `"reset-rotation"`) bound to a gesture string the
+/// `Commands` parser understands (e.g. `"Ctrl+R"`). Persisted by value.
+type KeyBindingOverride =
+    {
+        command : string
+        gesture : string
+    }
+
+/// The configurable constructor key map (§E.8.1) plus the configurable rotation step
+/// (§E.3.1, default 5°). `overrides` is empty on the built-in environment — an empty
+/// override set means the built-in default key map from `Commands.fs`. Persisted with
+/// `EnvironmentSettings` so a user's customized bindings and rotation step are restored
+/// on next launch (E.8.1 / Part I).
+type KeyMap =
+    {
+        rotationStepDegrees : float
+        overrides : KeyBindingOverride list
+    }
+
+/// The built-in default constructor key map: the 5° rotation step (E.3.1) and NO
+/// overrides — the default bindings declared in `Commands.fs`.
+let defaultKeyMap : KeyMap =
+    {
+        rotationStepDegrees = 5.0
+        overrides = []
+    }
+
+// ---------------------------------------------------------------------------
 // Favorites board (§J.6 [Core]).
 // ---------------------------------------------------------------------------
 
@@ -157,6 +196,12 @@ type EnvironmentSettings =
         /// resolves through `Localization` against this language. A fieldless DU, so the
         /// shared `ProjectJson.options` round-trip it as a bare string.
         language : Language
+        /// The configurable constructor key map (Spec 0026 Part E §E.8.1): the user's
+        /// key-binding overrides + the rotation step (§E.3.1), persisted here so a
+        /// preferred key map survives across sessions. Defaults to `defaultKeyMap` (the
+        /// 5° step, no overrides → the built-in `Commands.fs` bindings). The constructor
+        /// page (`ConstructorView`) applies the overrides over the default registry.
+        keyMap : KeyMap
     }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +245,7 @@ let defaults : EnvironmentSettings =
         toolbar = [ "open"; "save"; "build"; "solve"; "chart" ]
         preferences = defaultPreferences
         language = English
+        keyMap = defaultKeyMap
     }
 
 // ---------------------------------------------------------------------------

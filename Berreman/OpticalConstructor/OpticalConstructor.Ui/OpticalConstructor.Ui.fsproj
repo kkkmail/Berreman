@@ -111,6 +111,13 @@
         <Compile Include="Controls.fs" />
         <Compile Include="ConstructorTable.fs" />
         <Compile Include="Drawer.fs" />
+        <!-- Spec 0026 Part E (slice 005): the centralized command registry and the FuncUI
+             Canvas MVU page. Commands is pure (no Avalonia type) and persistence-agnostic
+             (it consumes the slice-003 UserEnvironment KeyMap only as string overrides),
+             so it compiles after UserEnvironment and before ConstructorView, which drives
+             the slice-004 ConstructorTable/Drawer geometry. Public MIT FuncUI DSL only. -->
+        <Compile Include="Commands.fs" />
+        <Compile Include="ConstructorView.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->

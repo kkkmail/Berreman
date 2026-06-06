@@ -175,6 +175,43 @@ module EnvironmentRoundTripTests =
         finally
             if File.Exists path then File.Delete path
 
+    // --- AC-E8 (Spec 0026 Part E): the configurable key map persists with the env -----
+
+    [<Fact>]
+    let ``AC-E8 the constructor key map defaults to a 5 degree step with no overrides`` () =
+        // E.3.1: the rotation step defaults to 5°. E.8.1: no overrides means the built-in
+        // default bindings declared in Commands.fs.
+        Assert.Equal(5.0, defaults.keyMap.rotationStepDegrees)
+        Assert.Empty(defaults.keyMap.overrides)
+
+    [<Fact>]
+    let ``AC-E8 a customized key map round-trips through the schema-validated JSON`` () =
+        // A user's customized rotation step + key-binding overrides persist with the
+        // environment settings and are restored on next launch (E.8.1 / Part I).
+        let customized =
+            { defaults with
+                keyMap =
+                    { rotationStepDegrees = 10.0
+                      overrides =
+                        [ { command = "reset-rotation"; gesture = "Ctrl+R" }
+                          { command = "delete-element"; gesture = "Ctrl+Delete" } ] } }
+        let back = serialize customized |> okOr |> deserialize |> okOr
+        Assert.Equal(10.0, back.keyMap.rotationStepDegrees)
+        Assert.Equal<KeyBindingOverride list>(customized.keyMap.overrides, back.keyMap.overrides)
+        // Whole-record structural equality (the new field included).
+        Assert.True((customized = back), "the customized key map must survive the round-trip")
+
+    [<Fact>]
+    let ``AC-E8 the customized key map persists through the on-disk save path`` () =
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-keymap-%s.json" (Guid.NewGuid().ToString("N")))
+        try
+            let customized =
+                { defaults with keyMap = { defaults.keyMap with rotationStepDegrees = 7.5 } }
+            save path customized |> okOr
+            Assert.Equal(7.5, (load path).keyMap.rotationStepDegrees)
+        finally
+            if File.Exists path then File.Delete path
+
     // --- AC-J8: theme + panel layout round-trip through EnvironmentSettings JSON -
 
     [<Fact>]
