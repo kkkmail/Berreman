@@ -29,12 +29,14 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
+open Berreman.Constants
 open Berreman.Media
 open Berreman.Fields
 open Berreman.FieldFunctions
 open Berreman.Dispersion
 open Analytics.Variables
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Ui.Charts
 
@@ -220,6 +222,43 @@ let private workspaceSection (source : SourceSpec.SourceSpec) (ws : WS.Model) (d
     ] :> IView
 
 // ---------------------------------------------------------------------------
+// Constructor detector readout (Spec 0026 G.2). The constructor owns detector
+// placements in the project; Shell keeps `workspace.project` synchronized with it, so
+// the results panel can surface the primary detector (first detector placement) and
+// every secondary detector without adding a second detector store.
+// ---------------------------------------------------------------------------
+
+let private detectorRows (ws : WS.Model) : (int * ElementPlacement) list =
+    ws.project.placements
+    |> List.mapi (fun i p -> i, p)
+    |> List.filter (fun (_, p) -> p.catalogueKind = Detector)
+
+let private detectorLabel (primary : int option) (i : int) (p : ElementPlacement) : string =
+    let role =
+        match primary with
+        | Some j when j = i -> "Primary detector"
+        | _ -> "Secondary detector"
+    sprintf "%s #%d — x=%.3f m, y=%.3f m" role i (p.placementPoint.x / 1.0<meter>) (p.placementPoint.y / 1.0<meter>)
+
+let private detectorSection (ws : WS.Model) : IView =
+    let rows = detectorRows ws
+    let primary = rows |> List.tryHead |> Option.map fst
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 2.0
+        StackPanel.margin 4.0
+        StackPanel.children (
+            [ TextBlock.create [ TextBlock.text "Detectors"; TextBlock.fontWeight FontWeight.Bold ] :> IView ]
+            @
+            (match rows with
+             | [] -> [ TextBlock.create [ TextBlock.text "No detector placements." ] :> IView ]
+             | ds ->
+                 ds
+                 |> List.map (fun (i, p) ->
+                     TextBlock.create [ TextBlock.text (detectorLabel primary i p) ] :> IView)))
+    ] :> IView
+
+// ---------------------------------------------------------------------------
 // The results panel (R-1 / R-2): the schematic cross-section of the active system over
 // the multi-system comparison controls + overlay. Scrollable so each section lays out
 // independently of the panel height.
@@ -236,6 +275,7 @@ let resultsPanel (workspace : WS.Model) (source : SourceSpec.SourceSpec) (dispat
             StackPanel.spacing 6.0
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Results"; TextBlock.fontWeight FontWeight.Bold; TextBlock.margin 4.0 ]
+                detectorSection workspace
                 schematic
                 workspaceSection source workspace dispatch
             ]

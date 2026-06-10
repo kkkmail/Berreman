@@ -1,0 +1,1 @@
+Gates cycle: included 7 gates (build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests, impl-log-structure, state-of-world-structure) for spec 0026 Optical Constructor UI; existing gates cover all Domain/Storage/Ui/App + test surfaces, so no propose-new or exclude.

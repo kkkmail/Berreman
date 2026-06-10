@@ -1,0 +1,738 @@
+# Optical Constructor UI — feature list
+
+This document is the free-form, prose-first description of what the
+Optical Constructor user interface needs to become. It is *steering
+prose*, not the structured spec: it captures who needs what and why and
+the relative priority of each capability. It is the **authoritative
+description** of the feature — the behaviour it states is decided, and
+the only items left open are lower-level refinements explicitly handed to
+the spec-author near the end. The structured, testable specification is
+written in the next step from this document.
+
+A note on what already exists, so this list is read in context. The
+project already has a working Avalonia + FuncUI (Elm-style MVU) desktop
+application under `OpticalConstructor` with a dockable-panel main
+screen (a Construction page and a Synthesis/Fit page), a *beam tree*
+domain model (each non-mirror element splits light into a reflected and
+a transmitted branch), a catalogue of element kinds (source, linear and
+circular polarizer, sample, lens, flat and curved mirror, analyzer,
+detector), JSON project files validated against a schema, canonical-SI
+units with display-only conversion, and whole-project snapshot
+undo/redo. This feature list does **not** restate that engine; it
+describes the *new* operator-facing constructor screen that is layered
+on top of it, and it reuses the existing physics, units, beam tree, and
+storage rather than re-inventing them.
+
+Throughout, relative priority is tagged with the MoSCoW convention —
+**[Must]**, **[Should]**, **[Could]**, **[Won't-now]** — to help the
+spec-author sequence the work. Terms specific to this project are
+defined on first use and collected in the glossary at the end.
+
+**Sequencing.** The optical constructor is a large and intricate piece
+of UI and is the **first thing to build**, ahead of any other work that
+depends on it. The constructor screen and its element/ray model are the
+leading deliverable; the remaining capabilities follow it.
+
+---
+
+## 1. Main screen: ribbon-and-menu shell  [Must]
+
+**Who / what / why.** The primary user is an optics researcher (often
+the operator themselves) assembling and adjusting an optical experiment.
+They need a main screen whose controls reorganise around the task in
+hand, the way Microsoft Word and Excel do, so that the small set of
+controls relevant *right now* is large and obvious, while everything
+else stays one click away.
+
+The desired behaviour, in plain terms:
+
+- A **top menu bar** whose top-level entries each correspond to a
+  **ribbon** — a horizontal band of task-relevant controls. Selecting a
+  top-level menu entry switches the visible ribbon, exactly as clicking
+  "Home", "Insert", "Layout" switches ribbons in Office.
+- The ribbon is **collapsible**. When the ribbon is hidden to reclaim
+  screen space, the same top menu entries expand into **full drop-down
+  menus** that expose *everything* the ribbons offer. Nothing is
+  reachable only through a ribbon and unreachable from the menus, or
+  vice-versa — the two are two presentations of one command set. This
+  single-source-of-commands property is the important part and should be
+  designed so a new command is declared once and appears in both places
+  automatically, rather than being wired up twice.
+- A sensible default set of ribbon tabs, grouped by the phase of work —
+  for example *Build* (place elements and groups), *Element* (edit the
+  active element), *Trace / View* (rays, zoom, table view, reset),
+  *Experiment* (groups, collections, detectors), and *Settings*
+  (language, units, controls, help). This set is the **starting point**;
+  the spec-author may still refine the grouping as the ribbons fill in.
+
+**Non-functional notes.** The ribbon must stay legible under EN and RU
+strings, which differ in length (Cyrillic labels tend to run longer), so
+the layout needs to flex rather than truncate. A *contextual* ribbon tab
+for the active element is desirable (it appears when an element is
+selected); good practice from comparable CAD tools is to **append**
+contextual controls beside the persistent tabs rather than let a
+contextual tab take over the whole ribbon.
+
+**Reference for adjacent tools.** Office and CAD ribbon UIs commonly
+offer three collapse states (full ribbon → titles-and-tabs → tabs only);
+adopting that progression is a reasonable starting point but is a design
+detail, not a fixed requirement here.
+
+## 2. The legacy form  [Must]
+
+**Who / what / why.** The current dockable-panel main screen is a good
+illustration of what the application can already do, and the operator
+wants to keep it reachable rather than discard it. The capability is: a
+**"Legacy" menu entry** that opens the present main screen as-is, so the
+existing panels, charts, fit page, and material tools remain available
+while the new ribbon-based constructor becomes the front door. The
+legacy form is a reference and a fallback, not something that needs to
+evolve in lock-step with the new screen.
+
+## 3. Languages: English and Russian  [Must]
+
+**Who / what / why.** The user base spans English- and Russian-speaking
+researchers, and the chosen language needs to persist between sessions.
+The capability:
+
+- Full **EN / RU** support across the interface, with the selected
+  language **saved into settings** and restored on the next launch.
+- All translatable string pairs live in **one centralized, human-
+  editable resource** (a JSON, YAML, or similar text file) that is
+  **read at run time**. An operator or translator can edit the strings,
+  or add a further language, by editing that file — no rebuild required.
+- At startup the application **checks the resource for completeness**.
+  If any string is missing for the active language it **falls back to an
+  English default** for that entry and surfaces a **startup error
+  message the user can copy** (so it can be pasted into a bug report or
+  a translation fix), rather than failing silently or crashing.
+
+**Non-functional notes.** Scientific symbols and notation (Ψ, Δ, °, the
+unit symbols, R1/R2/R3) stay language-neutral. This localization work is
+new: prior specs treated localization as deferred, so the centralized
+string resource and the startup completeness check are net-new
+capabilities introduced here.
+
+## 4. Standardized controls  [Must]
+
+**Who / what / why.** As the interface grows, the maintainer needs
+visual and behavioural consistency without hunting through the code for
+every button. The capability is a **single place that describes the
+standard control "flavours"** (the default button, a primary/accent
+button, a destructive button, a toggle, a numeric field with units, and
+so on). When a new flavour is genuinely needed — say a button in a
+different colour to make it stand out — it is **added in that one place,
+changing only the minimum set of properties** that distinguish it,
+rather than being styled ad hoc at each call site. The goal is
+consistency and one-touch restyling, not a comprehensive design system.
+
+## 5. Units of measure  [Must, unchanged]
+
+**Who / what / why.** Researchers work in whatever length unit suits the
+quantity — metres down to ångströms, with inches available for those who
+want them. The supported display units are **m, cm, mm, mkm (micron),
+nm, Å, and in**, with values held internally in canonical SI and
+converted only at the display and import/export boundary, and with each
+element or source able to carry its own preferred display unit. This
+matches what previous specs already settled; **there are no changes
+here**, and this section exists only to record that the new screen
+inherits that behaviour rather than redefining it.
+
+## 6. The optical table (OT)  [Must]
+
+**Definition.** The **optical table (OT)** is the working surface where
+all editing happens — the canvas on which optical elements are placed
+and the rays are drawn.
+
+**Who / what / why.** The researcher needs a stable, top-down workspace
+that behaves like looking down on a real optical bench, because the top
+view is what an experiment is reasoned about in the great majority of
+cases.
+
+**Physical plate.** The table is drawn as a **grey plate** with real
+physical dimensions, so that elements and beams are placed at a true
+scale. Its **default size is 1.2 m × 2 m × 10 cm** (width × length ×
+thickness), and the **user can change the size** to match their own
+bench. The size lives with the project so a reopened experiment shows
+the same plate.
+
+- **Default view is from the top**, and for most work that is all that
+  is needed.
+- **Left-press + drag on empty table** pans the whole table and every
+  element on it together (the elements travel with the table).
+- **Mouse wheel** **zooms** in and out — both the plain wheel and the
+  OS-standard **Ctrl + wheel** zoom the table (see §10).
+- The table itself can be **rotated as a view operation**: rotating the
+  table only changes the viewpoint, so all elements "travel" with it.
+  The table's own R1/R2/R3 are measured **relative to the screen**, and
+  there is an **easy, one-action reset of the view back to (0, 0, 0)**
+  (straight top-down). This reset is important because it is easy to
+  tumble the view and hard to recover by hand.
+- The **table is the selected object whenever the user clicks anything
+  that is not an optical element**. Selecting the table is how the user
+  steps "out of" an element to operate on the workspace as a whole.
+
+**Non-functional notes.** Panning and zooming need to stay smooth as the
+number of elements and rays grows; the rendering is a schematic, so it
+does not need physical-grade ray accuracy to feel responsive.
+
+## 7. Optical elements: geometry, drawer, and rotations  [Must]
+
+**Definition.** An **optical element (OE)** is the basic unit placed on
+the table. The **active element** is the one currently selected; **all
+editing actions apply only to the active element**, and the active
+element is drawn so that it is unmistakably the active one (a highlight,
+halo, or selection frame — the exact treatment is a design detail, but
+the *clarity* of it is a firm need, because acting on the wrong element
+silently is the main hazard here).
+
+### 7.1 Geometry: bounding box and the two normals
+
+Every element is described geometrically by a **bounding box** plus
+**two normals** and a **drawer** (defined in §7.2). The bounding box
+gives the element its size and orientation; the two normals anchor how
+the rotations are interpreted:
+
+- **N1 — primary normal.** The normal to the element's face. R1 always
+  spins around N1 (R1 and N1 coincide).
+- **N2 — secondary normal.** A second reference direction perpendicular
+  to N1 in the element's rest pose.
+
+**Rest pose.** When an element is placed on the table **without
+rotation**, **N1 points along the central ray** (and so along the R1
+axis) and **N2 points along the R2 axis** (the table normal). In other
+words, an unrotated element faces the incoming beam squarely.
+
+**Box proportions by role.** Most elements have an **A × A × B** box —
+a square A × A face with N1 perpendicular to that square, extruded by a
+depth B. The proportions express the role on the bench:
+
+- **Optical elements** (polarizers, samples, lenses, mirrors, detector)
+  are **thin and wide**: the face is large and the depth is small
+  (A\_O > B\_O).
+- A **light source** is **long and narrow**: it runs deep along its own
+  axis and has a small face (B\_L > A\_L), and is both narrower and
+  longer than a typical optical element (A\_O > A\_L, B\_L > B\_O).
+- A **detector** is shaped **like an optical element** (thin and wide).
+
+These proportions are guidance for recognisable schematic shapes, not
+exact dimensions; the spec-author can fix concrete defaults.
+
+### 7.2 The drawer
+
+A **drawer** is a function that, **given an element's placement point,
+its three rotations, its element kind, and its element value id, draws
+the element** on the table. The kind and the value id are passed in
+explicitly so the drawer can vary an element's appearance both by its
+role (a source vs. a detector vs. a polarizer) and, later, by the
+concrete device or material bound to it (the value id; see §9). For the
+first build the **value id is always absent** — modelled as `None` in
+F# — but it is part of the drawer's inputs from the start, so that
+per-device or per-material looks can be added later **without rewiring
+the placement or ray logic**. Decoupling "how an element looks" into a
+drawer this way lets every element kind get its own appearance later
+without changing the placement or ray logic.
+
+For the first build, there is **one standard drawer used by every
+element**, drawn as a **cylinder**: a visible **cylinder frame** with a
+**very light-grey, transparent interior** so the rays passing through
+remain visible. Two role-based shadings depart from that default:
+
+- the **light source** is drawn in a **darker** shade;
+- the **detector** is drawn **almost black**, but its **frame stays
+  visible** so it can still be seen and selected.
+
+The drawer also offers a **show / hide bounding box** option. Drawing
+the bounding box is a convenient way to **see how an element is
+rotated**, since the box edges make R1/R2/R3 visible at a glance; it is
+off by default and toggled when the user wants to inspect orientation.
+
+### 7.3 The three rotations
+
+Every element has three angles of rotation. R1 and R3 are measured in
+the **element's own frame** (relative to its normals), while R2 is
+measured against the **table**:
+
+- **R1** — rotation around the **normal to the element's surface (N1)**.
+  At **normal incidence** this axis **coincides with the central ray**.
+  Once the element is tilted (R2 ≠ 0) the element's face no longer faces
+  the beam, so the **R1 axis is no longer the same as the central ray** —
+  R1 still turns the element about its own face normal. A common pitfall
+  to avoid: **R1 is not a polarizer's azimuth.** R1's axis is the normal
+  to the face, whereas a polarizer's azimuth is an angle that lies *in*
+  the face. At the rest pose (0, 0, 0) it is **R2** that corresponds to
+  the polarizer's azimuth, not R1.
+- **R2** — rotation around the **normal to the optical table** (the
+  vertical axis in the top view). R2 is the tilt that steers a beam
+  within the plane of the table, and it is what makes the R1 axis part
+  company with the central ray.
+- **R3** — rotation around the **third box axis** (the N1 × N2
+  direction). R3 is very rarely used, is **locked by default**, and has
+  to be deliberately unlocked before it can change.
+
+**Why these three, and the R3 coupling.** The choice of R1, R2, R3 is
+**dictated by how real optical fittings (mounts and stages) are built**,
+not by mathematical convenience — that is why they are worth modelling
+exactly. A consequence the spec-author must carry through: **when R3 is
+non-zero, R1 is no longer perpendicular to R2.** The three axes are not
+a fixed orthogonal triad; they follow the element's mount.
+
+**R2 is measured from the incident ray, not from the table.** When an
+element sits on a ray that is **not horizontal**, R2 is always measured
+**from the direction of that ray**, not from a fixed table axis. So the
+R2 the user dials in is a tilt *relative to the beam arriving at the
+element*. The practical consequence: if an element carries some R2 while
+on a horizontal ray and is then moved onto a non-horizontal ray where
+the ray itself already makes an angle r2 with the horizontal, then in the
+table's own coordinate system the element ends up rotated by **(r2 + R2)**
+— the ray's own direction and the element's R2 add. This keeps an
+element's R2 meaning "tilt off the beam" no matter how the upstream beam
+has been steered.
+
+**Showing and editing the angles.** Each element **displays its R1, R2,
+R3 values nearby** so the current orientation is visible at a glance.
+The user does **not** edit the three angles one at a time inline;
+instead, **all editing happens in the element's local menu** — a single
+**local element menu** is shown for the active element, and the exact
+angles (along with each rotation's reset to 0 and the per-rotation
+lock/unlock) are set there. In fact, **everything the user can do to an
+element is available from that one local menu**, so it is the single
+place to reach the element's full behaviour rather than a scatter of
+inline editors. The user can **lock or unlock any of the three rotations
+individually**, freezing them at their current values to prevent
+accidental change; R3 starts locked.
+
+**Reset.** A single action (**Shift+R, with confirmation**; §10)
+**resets the element to its standard orientation** (R1 = R2 = R3 = 0).
+
+## 8. The ray model: light, ray groups, and placement  [Must]
+
+This section captures the physics-facing behaviour the constructor draws.
+It is the conceptual heart of the tool and deserves careful treatment by
+the spec-author.
+
+**Light source and the ray group.** A **light source (LS)** emits a
+**ray group (RG)** drawn as a small bundle of parallel lines: **one
+central ray (CR)** plus **eight side rays** arranged evenly around it.
+At **normal incidence** the eight side rays land as **equidistant dots
+on a circle**, 45° apart, with the **CR striking the centre** of that
+circle — so the group reads as a tidy "rifle-target" pattern when the
+beam meets a face square-on. The side rays only visibly spread once
+**lenses, non-flat (curved) mirrors, prisms, or wedges** bend them
+apart; they exist so that focusing, diverging, and dispersive behaviour
+can be shown schematically.
+
+**Show central ray only, or all rays.** Because eight side rays add
+clutter, the constructor offers an **option to show only the CR, or the
+CR together with all eight side rays**. Most reasoning is done on the CR
+alone; the side rays are switched on when focusing or dispersion needs
+to be seen.
+
+**Drawing weights.** The schematic should follow the well-established
+conventions for optics ray diagrams (the CR is the prominent line — the
+analogue of the *chief ray* — and the side rays, like *marginal rays*,
+are drawn lighter), with line weights and colours chosen for clear
+visibility at a glance. The exact pixel weights are a usability detail
+for the spec-author to settle from common schematic practice rather than
+something fixed here.
+
+**Reflected and transmitted ray groups.** Every element except a mirror
+produces both a **transmitted ray group (TRG)** and a **reflected ray
+group (RRG)**; a **mirror produces only an RRG**. Whether an element
+emits R or T is **metadata on the element**: any element can be
+configured to **ignore its reflected or its transmitted group, but never
+both** — turning the second one off automatically turns the other one
+back on. By default a mirror is placed with transmission off; every
+other element is placed with whatever it is configured to suppress, if
+anything.
+
+**Incident light.** The light arriving at an element is its **incident
+ray group (IRG)**; any ray group falling on an element is that element's
+IRG. This is the frame against which the element's rotations are
+measured.
+
+**Detector terminates the ray.** A **detector (D)** **terminates the ray
+group** it receives. This element is called simply a **Detector (D)**
+across the UI, catalogue, and docs.
+
+**Placement point and snapping.** Each element has a **placement point
+(PP)**, which is the **centre of its rectangular bounding box**, and the
+PP **snaps onto the central ray**. When an element is rotated so
+that the ray leaving it changes direction, everything snapped to the
+ray(s) downstream of it **travels with those rays**: changing **R2 and/or
+R3** changes the direction of the reflected ray R and may change the
+direction of the transmitted ray T, and anything snapped to a ray after
+the element being rotated travels with that ray **while preserving all
+the distances** along it. In effect, tilting one element drags everything
+downstream of it along the new beam direction automatically, keeping the
+spacing between elements unchanged. The placement point itself is also
+**edited from the same local element menu where the angles are** — and,
+as noted in §7.3, **basically everything the user does to an element can
+be done from that one menu**, the PP included.
+
+**Default positions of the light source and detector.** The light source
+and the detector each have a **default placement on the table**: the
+**light source sits near the left side of the table, in the middle**, and
+the **detector sits near the right side, in the middle**. Distances are
+measured along the central ray, which **originates at the light source
+and terminates at the detector**, and the **initial distance between them
+is 2 m**. Because everything downstream is snapped to that ray, **moving
+the light source drags the whole chain with it**. The light source
+therefore has a **position reset** (reachable from its own local menu)
+that returns it to its default spot; when it moves or resets, the rest of
+the elements simply **re-snap** to the ray.
+
+**Orphaned elements.** The only way an element becomes *orphaned* (left
+without a ray to sit on) is by **changing which ray is tracked** — for
+example switching the tracked branch from T to R — or by **removing one
+ray while both R and T are in use**. Elements that were sitting on the
+removed ray become orphaned. If that ray is later **restored**, an
+orphaned element **re-snaps** to it provided the ray now passes **within
+a configured distance of the element's placement point**; otherwise the
+element **stays orphaned** until the user reattaches it. No other
+operation orphans elements — ordinary rotation and dragging always keep
+elements attached to a ray.
+
+**Placing a new element by dragging from the ribbon.** The way to add an
+element is to **drag it from the ribbon onto the table**. When the user
+releases the mouse, the new element **snaps to the middle of the closest
+central-ray path** at the drop point, so it lands on a ray rather than
+floating free. This makes "add an element" a single drag-and-drop gesture
+that ends with the element already attached to the nearest beam.
+
+**Schematic ray tracing through tilted elements.** When an element is
+rotated such that R2 and/or R3 are non-zero, the beam genuinely changes
+direction and the side rays may refract. The drawing is a **schematic**,
+not a physical-optics render: it uses a **standard index of n = 1
+outside and n = 1.5 inside** an element and applies **Snell's law** to
+draw the bent lines. The exact conventions (how thick a schematic
+element is, how the eight side rays are offset, how reflection is drawn
+when both R and T are on) are details for the spec-author to pin down;
+the agreed principle is "schematic, Snell-based, n = 1 / n = 1.5".
+
+**Relationship to the engine.** This CR-plus-side-rays drawing is the
+visual layer; the quantitative result at each element still comes from
+the existing Berreman beam-tree solver (reflected/transmitted branches),
+so the schematic should stay consistent with which branches the engine
+actually computes.
+
+## 9. Standard element catalogue  [Must]
+
+**Who / what / why.** Researchers think in terms of named bench
+components, and the same role can be filled by different hardware (a
+light source might be a green laser or a mercury lamp, but on the table
+it is still "a light source"). The capability is a catalogue of
+**standard element kinds**, named by their role on the table, with the
+concrete device captured as a property of the element rather than as a
+separate kind.
+
+The standard names (the catalogue is completed as element kinds fill in):
+
+- **Optical Table (OT)** — the workspace itself.
+- **Light Source (LS)** — emits the ray group; the device (laser, lamp,
+  wavelength/spectrum) is a property.
+- **Linear Polarizer (LP)**.
+- **Circular Polarizer (CP)**.
+- **Sample (S)** — the material(s) under study.
+- **Detector (D)** — terminates the ray.
+
+**A polarizer is a polarizer wherever it sits.** A polarizer is **just a
+polarizer regardless of where it is placed** on the bench — there is no
+separate "analyzer" element kind and no special label for a polarizer
+that happens to follow the sample. Nothing stops the user putting **more
+than two** polarizers
+in a chain, after which "polarizer / analyzer" terminology would only
+blur, which is another reason not to bake the role into the name.
+
+The existing model also carries **lens, flat mirror, and curved mirror**
+element kinds (and prisms / wedges). These should be reconciled into the
+catalogue: mirrors, lenses, prisms, and wedges are the elements that
+make the side rays meaningful (§8) and are needed for focusing and
+dispersive setups.
+
+**Underlying device / value and its identity.** A catalogue name is the
+*role* on the table; the **concrete device or material behind it is a
+property of the element** — e.g. an **S** stands for a particular sample,
+an **LS** for a particular laser or lamp. To let that concrete choice be
+attached later, the **element schema should reserve an identity slot —
+the element value id** — so the actual device/material can be **bound to
+the on-table element** in a future step. This is the same value id the
+drawer already receives (§7.2), so a bound device/material can change the
+element's look later without rewiring. For the first build the id is
+**absent (`None` in F#)**. The element's menu should also expose an
+**action to open that binding** — for now it is enough that this action
+**opens an empty modal dialog** as a placeholder; the real picker is
+deferred. The point of doing it now is to fix the id in the schema and
+the menu entry so nothing has to be retro-fitted later. **[Must]** for
+the id slot and the placeholder menu action; **[Won't-now]** for the
+real device/material picker behind the dialog.
+
+## 10. Interaction model: mouse and keyboard  [Must]
+
+**Who / what / why.** The researcher manipulates the active element and
+the table mostly by mouse, with keyboard accelerators for speed. Every
+command operates on the **active element** unless it is marked a table or
+global command.
+
+The scheme is organised **by command**, not by device: where a single
+command can be reached by **both** a mouse gesture and a keyboard
+shortcut, the two are **listed together on one line** so it is clear they
+do the same thing. This is the user-facing face of the
+single-source-of-commands idea below — one command, one or more bindings.
+
+**Active-element commands.**
+
+- **Open element dialog** — *double-click* the element, or *right-click →
+  Element dialog*.
+- **Element context menu** — *right-click* the element. The menu exposes
+  the element's commands directly: Element dialog, Local help, lock /
+  unlock each rotation, Reset rotation, toggle reflected / transmitted,
+  Delete, Duplicate, turn the element or its group on / off, and (for a
+  detector) "Set as primary".
+- **Reset rotation** to (0, 0, 0), with confirmation — *Shift+R*, or
+  *right-click → Reset rotation*.
+- **Delete element**, with confirmation for a non-trivial element —
+  *Delete* / *Backspace*, or *right-click → Delete*.
+- **Duplicate element** — *Ctrl+D*, or *right-click → Duplicate*.
+  **Copy / paste** an element — *Ctrl+C* / *Ctrl+V*.
+- **Local help** for the selected object — *F1*, or *right-click → Local
+  help* (see §13).
+- **Make next / previous element active** along the beam path — *Tab* /
+  *Shift+Tab*, so the whole chain can be stepped through without the
+  mouse.
+
+**Rotations** (each step defaults to **5°** and is configurable; a
+rotation does nothing while it is locked):
+
+- **R1** — *Shift + mouse wheel*.
+- **R2** — *Ctrl + Shift + mouse wheel*.
+- **R3** — *Alt + mouse wheel* (R3 must be unlocked first).
+
+**Move the active element.**
+
+- **Slide along its ray** — *Shift + left-drag*, or the *arrow keys*
+  (with *Shift+arrow* for a larger step). The slide is bounded to the
+  **gap between the element's two neighbours** (the elements immediately
+  before and after it on the ray) and cannot pass either one; a left or
+  right slide is the same constrained move in either direction. Finer
+  placement-point editing lives in the local element menu (§7.3, §8).
+- **Move to a different ray** — *Ctrl + left-drag* (for example off the
+  transmitted branch onto the reflected one). This is how an element is
+  reassigned between rays, distinct from the Shift slide that keeps it on
+  the same ray.
+- On **drop** the table is **redrawn**, because moving an element may
+  change where the rays fall.
+- **Plain left-drag on an element does nothing** — a deliberate guard
+  against accidental moves, which are very easy to trigger. Because the
+  obvious gesture is inert, the real gesture (Shift+drag) needs a visible
+  hint, e.g. the cursor or a tooltip when the pointer is over a movable
+  element.
+
+**Table and view commands.**
+
+- **Pan** the whole table — *left-drag on empty table* (§6).
+- **Zoom** in / out — *plain mouse wheel*, or *Ctrl + mouse wheel*. The
+  app honours the strong system-wide "Ctrl + wheel = zoom" convention
+  rather than fighting it; that is why R2 sits on Ctrl+Shift+wheel above.
+- **Reset view** to top-down (0, 0, 0) and a sensible zoom — *Ctrl+0*, or
+  the *"Reset view" button*.
+- **Toggle an element group** on / off — the *number keys* select the
+  corresponding group (ties into §11), alongside the right-click toggle.
+
+**Global commands.**
+
+- **Undo** — *Ctrl+Z*; **Redo** — *Ctrl+Y* (also *Ctrl+Shift+Z*, which
+  many users expect). Both support **more than one level**; the
+  underlying engine already provides multi-step undo / redo.
+- **Save the project** — *Ctrl+S*.
+- **Close the local menu / pop-up, or cancel the current drag /
+  deselect** — *Esc*.
+
+**One centralized place for every command.** Every command above —
+keyboard shortcut, mouse gesture, or both — lives in **one centralized
+location** rather than being wired up gesture-by-gesture across the code.
+A command is **described once** and its binding(s) hang off that single
+description, so the key map and the mouse map stay in sync and a new
+command is added in one place. A design note for the implementer (this is
+F#): a natural shape is to **model each command as a discriminated union
+case** carrying a small **three-state binding** — keyboard-only,
+mouse-only, or keyboard-plus-mouse — so that a command reachable by both
+mouse and keyboard declares both bindings on one definition. This is the
+same single-source-of-commands idea that §1 asks for between the ribbon
+and the menus, applied to the input bindings.
+
+**Non-functional notes.** A consistent, discoverable scheme matters more
+than any single binding. The key map should be **configurable** (the
+rotation step already is), so a user who prefers a different Ctrl+wheel
+behaviour can change it; this can be a later increment.
+
+## 11. Element groups and experiment assembly  [Must]
+
+**Definition.** An **element group** is one or more optical elements that
+can be **placed onto, or removed from, the central-ray path as a unit**,
+so the user can quickly assemble an experiment from chosen pieces.
+
+**Who / what / why.** A researcher runs families of closely related
+experiments — same beam, same detector, swapping one block at a time —
+and needs to assemble and re-assemble them quickly rather than rebuild
+from scratch. There is always a **primary central-ray path**; the groups
+are the interchangeable blocks along it. A typical experiment reads as a
+sequence of choices:
+
+> LS ⇒ Group 1 (nothing, or LP1, or CP1) ⇒ Group 2 (nothing, or S1,
+> or S2, or S1 + S2) ⇒ Group 3 (nothing, or LP2, or CP2) ⇒ D
+
+The capability is to **turn the elements of each group on and off
+quickly** and to **swap the chosen piece** in each group, so a whole
+experiment can be assembled, run, changed, and re-run as conditions
+change. This makes the group the natural unit of "what is in the beam
+right now". Groups should be nameable and reusable, building on the
+existing favourites/board idea so a commonly used group can be pinned
+and dropped back in later.
+
+**Why a group, and what it preserves.** The whole point of the group is
+to make **closely related experiments out of one setup** without a fiddly
+rebuild each time. The motivating example: the user wants to **swap a
+linear polarizer for a circular one** (LP ↔ CP) without going through the
+laborious cycle of adding an LP, dialling in all of its fine details,
+deleting it, placing a CP, dialling in *its* details, and then doing the
+whole dance again to go back. A group sidesteps that by **holding the
+full description of every element it contains** — each member keeps its
+own configuration in the group — so switching the chosen piece is a quick
+toggle that **does not lose any element's settings**, which is exactly
+what a plain delete-then-add *would* lose.
+
+**How members behave within a group.** A group's members can be wired up
+in one of two ways, which the user picks per group:
+
+- **Mutually exclusive** — at most **one** member may be in the beam at a
+  time (e.g. Group 1 above: nothing, or LP1, or CP1). Choosing one
+  automatically takes the others out of the beam.
+- **Multi-select** — **zero, one, or several** members may be in the beam
+  at the same time (e.g. Group 2: nothing, or S1, or S2, or S1 + S2).
+
+Either way the group remembers all of its members and their settings; the
+on/off and swap choices only change which of them are currently in the
+beam, never their stored configuration.
+
+**Multiple detectors and the primary one.** The primary path normally
+ends in one **detector**, but the user may place **more than one
+detector** when a branch (e.g. a reflected arm) genuinely needs its own.
+When there is more than one, the user **chooses which detector is the
+primary one**; results and the headline readout follow the primary
+detector, while secondary detectors report their own branch
+independently.
+
+**Where groups and collections are stored.** Element groups and
+experiment collections are **stored in their own separate JSON file**,
+kept apart from the per-project file rather than folded into it. That
+keeps reusable groups and sample-centred collections available across
+projects.
+
+## 12. Experiment collections  [Should]
+
+**Definition.** An **experiment collection** is a set of experiments
+built around the **same sample or samples** (the materials under study).
+
+**Who / what / why.** A study of a given material produces many related
+experiments, and the researcher wants them grouped so that elements and
+groups can be turned on and off across the collection conveniently,
+without losing the thread that ties them together (the shared sample).
+The collection exists chiefly to make that on/off assembly convenient
+across the related experiments, and to keep an experiment reproducible
+when it has to be repeated because conditions changed.
+
+## 13. Local help and onboarding  [Should]
+
+**Who / what / why.** The interaction model above is rich, and a new
+user (or a returning one) needs to learn what the controls of the
+selected object do without leaving the table. The capability:
+
+- **F1 / right-click → local help**: a pop-up describing the **selected
+  object** and what each of its controls does — context-sensitive to the
+  active element or to the table.
+- Beyond that, light onboarding (tooltips, a short "what does this
+  gesture do" hint for the deliberately-inert left-drag, a discoverable
+  list of hotkeys) would meaningfully reduce the learning curve given
+  how much behaviour is hidden behind modifier keys.
+
+## 14. Undo, redo, and safety  [Must]
+
+The constructor needs **multi-level undo and redo** across element
+placement, rotation, locking, group on/off, and detector changes — not a
+single step. The existing whole-project snapshot history already
+provides multi-step undo/redo and should back this; the new screen's job
+is to make sure every constructor action participates in it. Destructive
+or hard-to-reverse actions (reset rotation, delete element, reset view)
+should either be undoable or ask for confirmation, consistent with the
+Shift+R-with-confirmation behaviour in §10.
+
+---
+
+## Details left to the spec-author
+
+Everything in the sections above is **decided** and should be read as the
+authoritative description of the feature. A few **lower-level details**
+are deliberately left to the spec-author — these are refinements of
+already-decided behaviour, not open questions, and none blocks a first
+draft:
+
+- **Schematic drawing weights.** Exact line thicknesses, colours, and
+  the on-screen offset of the eight side rays, chosen from established
+  optics-diagram practice for good visibility (§8).
+- **Schematic element thickness and reflection drawing.** How thick a
+  schematic element is drawn and how reflected and transmitted groups
+  are shown together when both are on (§8).
+- **Default box dimensions.** Concrete defaults for the A × A × B boxes
+  by role (thin-wide optical element, long-narrow source; §7.1).
+- **Mapping the separate groups/collections JSON** onto the beam-tree
+  and the per-project file (§11–§12) — user-facing behaviour is fixed
+  above; the internal mapping is the spec-author's.
+
+---
+
+## Glossary
+
+- **OT — Optical Table.** The top-down working surface; a grey plate,
+  default 1.2 m × 2 m × 10 cm, resizable.
+- **OE — Optical Element.** The basic placeable unit.
+- **Active element.** The currently selected element; all editing acts
+  on it and it is drawn distinctly.
+- **Bounding box.** The A × A × B box that gives an element its size and
+  orientation.
+- **N1 / N2 — primary / secondary normal.** N1 is the element's face
+  normal (R1 turns around it); N2 is its perpendicular reference. Unrotated,
+  N1 lies along the CR and N2 along the table normal.
+- **Drawer.** The function that draws an element from its placement point,
+  three rotations, element kind, and element value id; the first build
+  uses one standard cylinder drawer and the value id is absent (`None`).
+- **LS — Light Source.** Emits the ray group; long and narrow.
+- **D — Detector.** Terminates the ray group.
+- **LP / CP — Linear / Circular Polarizer.** A polarizer regardless of
+  where it sits on the bench.
+- **S — Sample.** The material(s) under study.
+- **Element value id.** The schema slot that identifies the concrete
+  device or material behind an element's role; absent (`None`) in the
+  first build, and passed to the drawer so the look can vary by device
+  later (§7.2, §9).
+- **RG — Ray Group.** One central ray plus eight side rays.
+- **CR — Central Ray.** The main drawn ray.
+- **RRG / TRG — Reflected / Transmitted Ray Group.**
+- **IRG — Incident Ray Group.** The ray group falling on an element.
+- **PP — Placement Point.** The centre of an element's rectangular
+  bounding box; this is the point that snaps the element onto the CR.
+- **Local element menu.** The single per-element menu that exposes
+  everything the user can do to the active element — its three angles
+  (with resets and locks) and its placement point included.
+- **Orphaned element.** An element left without a ray to sit on after the
+  tracked ray was switched or one of two in-use rays was removed; it
+  re-snaps if the ray returns within a configured distance of its PP,
+  otherwise it stays orphaned. This is the only way to orphan an element.
+- **R1 / R2 / R3.** The three element rotations. R1 turns around the
+  surface normal (N1); R2 around the table normal; R3 around the third
+  box axis. R3 is locked by default, and when R3 ≠ 0, R1 is no longer
+  perpendicular to R2.
+- **Element group.** One or more elements placed on or removed from the
+  CR path as a unit.
+- **Experiment collection.** A set of experiments around the same
+  sample(s).

@@ -67,6 +67,8 @@ module ResultsPanelTests =
             // The ray overlay renders as the three ray Lines (incident/reflected/transmitted).
             let lines = descendants |> List.filter (fun v -> v :? Line) |> List.length
             Assert.True(lines >= 3, sprintf "expected >= 3 ray lines, got %d" lines)
+            let texts = textBlocks window
+            Assert.Contains(texts, fun t -> t.Contains "Primary detector #1")
             window.Close())
 
     [<Fact>]

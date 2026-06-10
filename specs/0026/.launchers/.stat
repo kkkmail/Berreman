@@ -1,0 +1,7 @@
+# End-of-arc -- write the narrative summary for this spec.
+Write the arc summary for C:/GitHub/Berreman/specs/0026 to C:/GitHub/Berreman/specs/0026/.summary-md using
+C:/GitHub/AI-Strategy-Generator/summary.launcher-md
+
+# Default -- compute stats for this spec.
+Run the stats tool on C:/GitHub/Berreman/specs/0026 using
+C:/GitHub/AI-Strategy-Generator/stat.launcher-md

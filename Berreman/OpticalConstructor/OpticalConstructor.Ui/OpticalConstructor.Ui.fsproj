@@ -47,6 +47,10 @@
         <Compile Include="Templates.fs" />
         <Compile Include="Schematic.fs" />
         <Compile Include="Workspace.fs" />
+        <!-- Spec 0026 Part I (slice 003): EN/RU localization. The pure runtime
+             string loader + completeness check; defines the `Language` DU
+             UserEnvironment's `language` field reuses, so it compiles FIRST. -->
+        <Compile Include="Localization.fs" />
         <!-- Part J UX shell II (slice 015): UserEnvironment (EnvironmentSettings/
              Preferences) first; Validation is standalone; AppShell consumes the
              UserEnvironment theme/layout types and is authored against the public
@@ -97,6 +101,33 @@
              slice-002 Canvas host. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
         <Compile Include="LifecycleView.fs" />
         <Compile Include="SystemView3DView.fs" />
+        <!-- Spec 0026 Part C / Part J (slice 004): the standardized control flavours,
+             the net-new top-down table layout geometry + drawing weights, and the one
+             standard cylinder drawer. Pure projections (no Avalonia type) reusing
+             SchematicColor; Controls precedes ConstructionView, which now draws its CTA
+             colours from Controls (J.2). ConstructorTable owns the named drawing-weight
+             constants Drawer consumes, so it compiles first. Schematic.fs is left
+             untouched (the top-down surface is net-new). Public MIT FuncUI DSL only. -->
+        <Compile Include="Controls.fs" />
+        <Compile Include="ConstructorTable.fs" />
+        <Compile Include="Drawer.fs" />
+        <!-- Spec 0026 Part E (slice 005): the centralized command registry and the FuncUI
+             Canvas MVU page. Commands is pure (no Avalonia type) and persistence-agnostic
+             (it consumes the slice-003 UserEnvironment KeyMap only as string overrides),
+             so it compiles after UserEnvironment and before ConstructorView, which drives
+             the slice-004 ConstructorTable/Drawer geometry. Public MIT FuncUI DSL only. -->
+        <Compile Include="Commands.fs" />
+        <Compile Include="ConstructorView.fs" />
+        <!-- Spec 0026 Part D / Part F (slice 006): the ribbon-and-menu shell + the
+             standard element catalogue, and the context-sensitive local help. LocalHelp
+             is pure (Commands + Localization only) and owns the command-label-key mapping
+             the ribbon reuses, so it compiles first; Ribbon then projects the ribbon tabs
+             and collapsed menus from the ONE slice-005 Commands registry and renders over
+             the slice-005 ConstructorView page. Both take plain shell callbacks (never
+             referencing Shell), so the compile order stays acyclic. Public MIT FuncUI DSL
+             only; the audit-gated clone stays UNREFERENCED. -->
+        <Compile Include="LocalHelp.fs" />
+        <Compile Include="Ribbon.fs" />
         <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
              root MVU surface, composed LAST over every sibling module above. Authored
              against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->
@@ -110,6 +141,18 @@
          output (so the Tests project's validate-on-load finds it). -->
     <ItemGroup>
         <Content Include="optical-constructor-environment.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <!-- Spec 0026 §I.1.1 (slice 003): the EN/RU string resource is a build-copied
+         content item loaded beside the assembly at runtime by Localization.loadFromFile
+         (mirroring the env schema above / SchemaValidation.fs:17). Copying it — rather
+         than embedding — is what lets an operator/translator edit the strings, or add a
+         further language, with NO rebuild. Flows transitively to consuming projects'
+         output (App, Ui.Tests, Tests). -->
+    <ItemGroup>
+        <Content Include="strings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

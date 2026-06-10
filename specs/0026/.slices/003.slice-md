@@ -1,0 +1,232 @@
+# 003 — Localization: English and Russian
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part I**.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑I1: All UI strings resolve through `strings.json` at run time; editing
+  the file changes the strings with no rebuild (I.1).
+- AC‑I2: The selected language persists in `EnvironmentSettings` and is
+  restored on next launch (I.2).
+- AC‑I3: With a string missing for the active language, the app falls back to
+  the English entry and shows a copyable startup error; it neither crashes
+  nor fails silently (I.3).
+- AC‑I4: Scientific symbols (Ψ, Δ, °, R1/R2/R3, unit symbols) are not
+  translated (I.4).
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Localization.fs` (new) — runtime string loader + completeness check.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/strings.json` (new) — EN/RU string pairs (build‑copied, runtime‑read).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (edit) — add `language` and the configurable key map to `EnvironmentSettings`. *(This slice owns the `language` field; the key map is owned by slice 005.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (edit) — add `language` + key‑map fields. *(This slice owns the `language` field; the key‑map fields are owned by slice 005.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (edit) — startup localization completeness check + copyable error surface; constructor as default landing. *(This slice owns the localization completeness check + copyable error surface; the constructor‑as‑default‑landing edit is owned by slice 006.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LocalizationTests.fs` (new) — I‑part completeness/fallback tests.
+
+### File:line references owned by this slice
+
+- `UserEnvironment.fs:141` `EnvironmentSettings` — extended with a `language` field defaulting to English (I.2.1).
+- `UserEnvironment.fs:302` — the existing save path the language selector MUST write through (I.2.1, I.5).
+- `SchemaValidation.fs:17` — the build‑copied‑content‑item + base‑directory read pattern reused for shipping and reading `strings.json` (I.1.1, I.5).
+
+## Scope
+
+This slice adds EN/RU localization, which is net‑new (constraint 0.7): a
+centralized, runtime‑read, human‑editable string resource (`strings.json`),
+a `Localization.fs` loader with a startup completeness check and copyable
+error surface, a persisted/restored language setting on
+`EnvironmentSettings`, and language‑neutral scientific notation. It is
+sequenced before the big UI slices so that the ribbon/menu/catalogue/control
+text authored later resolves through `Localization.fs` from the start.
+
+## Requirements
+
+### R-1. Centralized, runtime‑read, editable resource (I.1)
+
+I.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Localization.fs` MUST
+load all translatable string pairs from one centralized, human‑editable
+text resource read at run time. The resource MUST be a JSON file
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/strings.json` holding,
+per string key, the EN and RU values. An operator or translator MUST be
+able to edit the strings, or add a further language, by editing that file —
+no rebuild required (the file MUST be copied beside the assembly at build,
+mirroring how the schema content item is shipped, SchemaValidation.fs:17,
+and read from the runtime base directory).
+
+### R-2. Language persisted and restored (I.2)
+
+I.2.1 The selected language MUST be saved into settings and restored on the
+next launch. `EnvironmentSettings` (UserEnvironment.fs:141) MUST be extended
+with a `language` field, defaulting to English, and the environment schema
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json`)
+MUST be extended to match. The language selector MUST live on the *Settings*
+ribbon (Part D) and MUST write through the existing save path
+(UserEnvironment.fs:302).
+
+### R-3. Startup completeness check with copyable error (I.3)
+
+I.3.1 At startup the application MUST check the resource for completeness.
+If any string is missing for the active language, the app MUST fall back to
+the English default for that entry and MUST surface a startup error message
+the user can **copy** (so it can be pasted into a bug report or a
+translation fix), rather than failing silently or crashing. The startup
+check and the copyable error surface MUST be wired in the app entry point
+(`Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs`).
+
+### R-4. Language‑neutral scientific notation (I.4)
+
+I.4.1 Scientific symbols and notation (Ψ, Δ, °, the unit symbols, R1/R2/R3)
+MUST stay language‑neutral and MUST NOT be translated.
+
+### R-5. Reuse before invention (I.5)
+
+Reuse the `EnvironmentSettings` store (UserEnvironment.fs:141/:302) for the
+saved language; reuse the build‑copied‑content‑item + base‑directory read
+pattern (SchemaValidation.fs:17) for shipping and reading `strings.json`. Do
+not introduce `.resx`/`ResourceManager` (constraint 0.7).
+
+## Non-requirements
+
+- No third language ships; the *mechanism* must support adding one by
+  editing `strings.json`, but only EN and RU ship (0.6).
+- No `.resx` / `ResourceManager` / `CultureInfo`‑based localization (0.7).
+- The configurable **key map** fields on `EnvironmentSettings` / the
+  environment schema are owned by slice 005 (Part E.8); this slice adds only
+  the `language` field.
+- The *Settings* ribbon control that hosts the language selector is wired in
+  the Part D shell (slice 006); this slice provides the persisted setting and
+  the selector's backing message path.
+- The constructor‑as‑default‑landing edit to `Program.fs` is owned by slice
+  006 (Part D.6); this slice adds only the startup completeness check and
+  copyable error surface.
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Localization.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/strings.json`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/LocalizationTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (add `language`)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (add `language`)
+- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (startup completeness check + copyable error surface)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.fsproj` and/or `OpticalConstructor.App.fsproj` content‑item entries to copy `strings.json` beside the assembly (mirroring SchemaValidation.fs:17).
+
+## Testing plan
+
+Gates that apply this slice (touches Ui, App, Ui.Tests, and `UserEnvironment.fs`
+which `OpticalConstructor.Tests/EnvironmentRoundTripTests.fs` covers):
+`build`, `unit-tests`, `constructor-unit-tests`, `ui-smoke`, `ui-tests`,
+`impl-log-structure`, `state-of-world-structure`.
+
+- `constructor-unit-tests` — the `language` round‑trip on `EnvironmentSettings`
+  (AC‑I2) via the existing `EnvironmentRoundTripTests` harness.
+- `ui-tests` — `LocalizationTests.fs`: runtime load (AC‑I1), missing‑string
+  fallback + copyable error (AC‑I3), no‑translate symbol set (AC‑I4).
+- `ui-smoke` — the headless app still boots and renders one frame per
+  existing view with `strings.json` resolving at run time.
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+Medium: the `strings.json` build‑copy + base‑directory read must exactly
+mirror the schema content‑item pattern (SchemaValidation.fs:17) or the
+runtime read fails in the published layout; the startup completeness check
+must surface a *copyable* error without crashing the headless smoke host.
+Low risk on the `language` settings round‑trip (reuses the existing store).
+
+## Hand-off
+
+Record the `Localization.fs` public lookup API and the `language` field
+shape on `EnvironmentSettings` so the Part D shell (slice 006) can place the
+*Settings*‑ribbon language selector and so every later UI string resolves
+through it. Note that `UserEnvironment.fs` / the environment schema still
+need the **key‑map** extension (slice 005) and `Program.fs` still needs the
+**default‑landing** edit (slice 006) — keep the `language` additions stable
+for those follow‑on edits. Carry the `gates:` baseline YAML block forward.

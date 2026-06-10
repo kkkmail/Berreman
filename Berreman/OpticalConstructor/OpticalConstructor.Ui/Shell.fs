@@ -36,6 +36,11 @@ open OpticalConstructor.Ui.UserEnvironment
 /// keeps the module reachable unambiguously in value position.
 module WS = OpticalConstructor.Ui.Workspace
 
+/// `Ribbon` is both the new ribbon module (slice 006) and a `RootMsg`/sub-model name
+/// below; the alias keeps the module reachable unambiguously in value position, exactly
+/// as `WS` does for `Workspace`.
+module Rb = OpticalConstructor.Ui.Ribbon
+
 /// Host-layer holder for the in-flight fit's `CancellationTokenSource` (§0.5): the
 /// fit page hosts ONE cancellable run at a time, so a single module-level cell is the
 /// "host field" the spec admits. It is NEVER a field of the pure/serializable root
@@ -69,18 +74,27 @@ let setEnvironmentPathForTests (path : string) : unit = environmentPath <- path
 // Root model, message, and the shell-level sub-message (R-2).
 // ---------------------------------------------------------------------------
 
-/// The two top-level pages, matching the two `navEntry` modules (R-2).
+/// The top-level pages (spec 0024 R-2, extended by spec 0026 D.6). `Constructor` is the
+/// new ribbon front door and the default landing (D.6); `Legacy` opens the present
+/// dockable-panel main screen (D.5). The original `Construction` / `SynthesisFit` pages
+/// are the legacy dockable screen's two sub-pages, reachable under `Legacy`.
 type Page =
     | Construction
     | SynthesisFit
+    | Constructor
+    | Legacy
 
 /// Shell-level edits the `Shell` `RootMsg` case carries (R-2 — navigation / theme /
-/// panel-show / dock). Each routes through an existing pure `AppShell` reducer.
+/// panel-show / dock / UI language). Each routes through an existing pure reducer (or,
+/// for `SetLanguage`, a plain `env` field write persisted like the theme).
 type ShellMsg =
     | Navigate of Page
     | ToggleTheme
     | SetPanelVisible of panel : string * visible : bool
     | SetPanelDock of panel : string * dock : DockSide
+    /// Spec 0026 §I.2 / D.1.1: set the UI language from the Settings ribbon. Updates the
+    /// persisted `env.language`; every UI string then resolves through that language.
+    | SetLanguage of Localization.Language
 
 /// The root MVU model aggregating the existing sub-models (R-2). Pure and
 /// serializable (§0.5): no Avalonia handle, renderer instance, or token source.
@@ -113,6 +127,21 @@ type RootModel =
         /// The last lifecycle/IO status or error surfaced to the toolbar (Part U8 / R-1).
         /// Pure: a plain string, never a renderer handle.
         status : string option
+        /// The constructor MVU page (Spec 0026 Part C/E, slice 005) the new ribbon front
+        /// door drives (D.6). Pure/serializable (§0.3): the canonical project + ephemeral
+        /// view/selection/transient state, no Avalonia handle.
+        constructor : ConstructorView.Model
+        /// The ribbon shell's own UI state (Spec 0026 Part D, slice 006): collapsed flag +
+        /// selected tab. Pure: plain values projected over the slice-005 command registry.
+        ribbon : Rb.Model
+        /// The reusable experiment collections loaded from the separate per-user groups
+        /// library. The constructor edits group state; collections are preserved across
+        /// those saves until their own authoring UI lands.
+        collections : Groups.ExperimentCollection list
+        /// The loaded EN/RU string resource (Spec 0026 Part I, slice 003), read once at
+        /// startup; the ribbon/menus/nav resolve their labels against it for the active
+        /// `env.language`. Pure data (a `Map`), never an Avalonia handle.
+        strings : Localization.Resource
     }
 
 /// The root message, wrapping each wired sub-`Msg` plus the shell-level case (R-2).
@@ -130,6 +159,12 @@ type RootMsg =
     /// Part U8: lifecycle / IO (open / save / new / template / gallery), routed through
     /// `updateIo` with §0.4-marshaled file-picker / reader / writer `Cmd`s.
     | Io of LifecycleView.IoMsg
+    /// Spec 0026 Part C/E (slice 006 front door): the constructor MVU page's sub-message,
+    /// routed through `ConstructorView.update`.
+    | Constructor of ConstructorView.Msg
+    /// Spec 0026 Part D (slice 006): the ribbon shell's UI sub-message (collapse / tab
+    /// select), routed through `Ribbon.update`.
+    | Ribbon of Rb.Msg
 
 // ---------------------------------------------------------------------------
 // Initial project + model (R-2 / R-3 seed). Built through the existing
@@ -153,14 +188,31 @@ let private defaultWorkingFolder : string =
         System.Environment.GetFolderPath System.Environment.SpecialFolder.MyDocuments,
         "OpticalConstructor")
 
+/// The empty fall-back string resource (Spec 0026 §I.3.1): when the shipped
+/// `strings.json` is missing/unreadable, lookups fall back to the keys themselves so the
+/// UI never crashes or shows blank — the same total-failure posture `Localization.lookup`
+/// guarantees per key.
+let private emptyStrings : Localization.Resource = { entries = Map.empty }
+
+/// Load the shipped EN/RU string resource once at startup (Spec 0026 Part I): read the
+/// build-copied `strings.json` from beside the assembly. Any load failure falls back to
+/// the empty resource (lookups then yield the keys); the localization completeness
+/// surface (`Program.fs`) reports the failure copyably either way.
+let private loadStrings () : Localization.Resource =
+    match Localization.loadFromFile (Localization.resourcePath ()) with
+    | Ok resource -> resource
+    | Error _ -> emptyStrings
+
 /// Build the root model for the supplied environment (R-3 — the App seeds `env` from
 /// the persisted `Startup.settings`). `update` attaches no effects in U1, so `init`
 /// carries `Cmd.none`.
 let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
+    let groupsLibrary = GroupsLibrary.load (GroupsLibrary.libraryPath ())
     let model =
         {
             env = env
-            page = Page.Construction
+            // D.6.1: the constructor is the default landing page when the app starts.
+            page = Page.Constructor
             construction = ConstructionPage.init initialProject defaultWorkingFolder "untitled"
             workspace = WS.init initialProject
             fit = None
@@ -170,6 +222,12 @@ let initFrom (env : EnvironmentSettings) : RootModel * Cmd<RootMsg> =
             materialsFilter = MaterialsView.Filter.empty
             source = SourceEditorView.defaultSource "source-1"
             status = None
+            // Spec 0026 slice 006: the constructor page seeded over the same project,
+            // the ribbon's default (expanded, Build) state, and the loaded EN/RU strings.
+            constructor = ConstructorView.initWithGroups env initialProject groupsLibrary.groups
+            ribbon = Rb.init
+            collections = groupsLibrary.collections
+            strings = loadStrings ()
         }
     model, Cmd.none
 
@@ -355,16 +413,23 @@ let private openCmd () : Cmd<RootMsg> =
                     | None -> ())
             |> ignore ]
 
-/// Save the project to `<name>.ocproj.json` (R-1 / AC-U8.1) via the frozen
-/// `ConstructionPage.saveProject` serializer; the write is OFF the UI thread and its
-/// `Io (Saved …)` / `Io (IoError …)` result marshals back (§0.4). When a host provider
-/// is registered the save picker chooses the destination; otherwise the project's
-/// working-folder default path is used (the headless fallback).
-let private saveCmd (construction : ConstructionPage.Model) : Cmd<RootMsg> =
+/// Save the AUTHORITATIVE constructor project to `<name>.ocproj.json` (R-1 / AC-U8.1)
+/// via the shared `ProjectJson.serializeProject` seam. The write is OFF the UI thread
+/// and its `Io (Saved …)` / `Io (IoError …)` result marshals back (§0.4). When a host
+/// provider is registered the save picker chooses the destination; otherwise the
+/// working-folder fallback path is used. This deliberately accepts the project directly:
+/// the constructor front door owns the live project, while the legacy construction page
+/// is kept in sync as a secondary surface.
+let private saveCmdForProject
+    (project : OpticalConstructorProject)
+    (workingFolder : string)
+    (projectName : string)
+    : Cmd<RootMsg> =
     [ fun (dispatch : RootMsg -> unit) ->
-        match ConstructionPage.saveProject construction with
+        match ProjectJson.serializeProject project with
         | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "%A" e))
-        | Ok (defaultPath, json) ->
+        | Ok json ->
+            let defaultPath = Path.Combine(workingFolder, projectName + ".ocproj.json")
             let writeTo (path : string) =
                 System.Threading.Tasks.Task.Run(fun () ->
                     try
@@ -393,14 +458,34 @@ let private persistEnvCmd (env : EnvironmentSettings) : Cmd<RootMsg> =
             UserEnvironment.save environmentPath env |> ignore)
         |> ignore ]
 
+let private saveGroupsLibraryCmd
+    (groups : Groups.ElementGroup list)
+    (collections : Groups.ExperimentCollection list)
+    : Cmd<RootMsg> =
+    [ fun (dispatch : RootMsg -> unit) ->
+        System.Threading.Tasks.Task.Run(fun () ->
+            match GroupsLibrary.save (GroupsLibrary.libraryPath ()) { groups = groups; collections = collections } with
+            | Ok () -> ()
+            | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "Groups library error: %A" e)))
+        |> ignore ]
+
 /// Strip the committable `<name>.ocproj.json` suffix back to the bare project name.
 let private projectNameOfPath (path : string) : string =
     let stem = Path.GetFileNameWithoutExtension path   // "<name>.ocproj"
     if stem.EndsWith ".ocproj" then stem.Substring(0, stem.Length - ".ocproj".Length) else stem
 
-/// Load a freshly-opened/templated project into the root model: re-seed the
-/// construction page (which solves the tree once) and the workspace, drop any open fit
-/// page, and land on the Construction page (R-1 / R-2).
+/// Keep the legacy construction/workspace surfaces synchronized with the constructor
+/// project. The constructor is the front-door owner; legacy views are re-seeded from the
+/// same project so navigating away from the constructor cannot reveal a stale snapshot.
+let private syncLegacySurfaces (project : OpticalConstructorProject) (model : RootModel) : RootModel =
+    { model with
+        construction = ConstructionPage.init project model.construction.workingFolder model.construction.projectName
+        workspace = WS.init project
+        fit = None }
+
+/// Load a freshly-opened/templated project into the root model: re-seed the constructor,
+/// construction page (which solves the tree once), and workspace from ONE project, drop
+/// any open fit page, and land on the constructor front door (R-1 / R-2 / Spec 0026 D.6).
 let private loadProjectInto
     (project : OpticalConstructorProject)
     (folder : string)
@@ -412,7 +497,8 @@ let private loadProjectInto
         construction = ConstructionPage.init project folder name
         workspace = WS.init project
         fit = None
-        page = Page.Construction
+        constructor = ConstructorView.initWithGroups model.env project model.constructor.groups
+        page = Page.Constructor
         status = Some statusMsg }
 
 let private updateIo (im : LifecycleView.IoMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
@@ -424,7 +510,8 @@ let private updateIo (im : LifecycleView.IoMsg) (model : RootModel) : RootModel 
     | LifecycleView.Loaded (project, path) ->
         loadProjectInto project (Path.GetDirectoryName path) (projectNameOfPath path)
             (sprintf "Opened %s" (Path.GetFileName path)) model, Cmd.none
-    | LifecycleView.SaveRequested -> model, saveCmd model.construction
+    | LifecycleView.SaveRequested ->
+        model, saveCmdForProject model.constructor.project model.construction.workingFolder model.construction.projectName
     | LifecycleView.Saved path ->
         // Subsequent saves follow the just-written destination.
         { model with
@@ -454,6 +541,9 @@ let private updateShell (msg : ShellMsg) (model : RootModel) : RootModel =
         { model with env = { model.env with layout = AppShell.setPanelVisible panel visible model.env.layout } }
     | SetPanelDock (panel, dock) ->
         { model with env = { model.env with layout = AppShell.dockPanel panel dock model.env.layout } }
+    // D.1.1 / I.2: switch the UI language; the persisted `env.language` drives every
+    // `Localization.lookup`, so the ribbon/menus/nav re-render in the chosen language.
+    | SetLanguage language -> { model with env = { model.env with language = language } }
 
 let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
     match msg with
@@ -463,7 +553,13 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         // attaches the async node-solve Cmd; the pure update already set `busy` and the
         // host re-solves off-thread, marshaling NodeSolved back onto the UI thread.
         let cmd = constructionCmd cm model.construction.pendingDeletion construction.project.beamTree.root
-        { model with construction = construction }, cmd
+        let model' = { model with construction = construction }
+        if construction.project <> model.construction.project then
+            { model' with
+                constructor = ConstructorView.initWithGroups model.env construction.project model.constructor.groups
+                workspace = WS.init construction.project
+                fit = None }, cmd
+        else model', cmd
     | RootMsg.Workspace wm -> { model with workspace = WS.update wm model.workspace }, Cmd.none
     | RootMsg.Shell sm ->
         // R-3: a theme / panel-visibility / panel-dock change attaches a fire-and-forget
@@ -472,7 +568,7 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         let model' = updateShell sm model
         let cmd =
             match sm with
-            | ToggleTheme | SetPanelVisible _ | SetPanelDock _ -> persistEnvCmd model'.env
+            | ToggleTheme | SetPanelVisible _ | SetPanelDock _ | SetLanguage _ -> persistEnvCmd model'.env
             | Navigate _ -> Cmd.none
         model', cmd
     | RootMsg.Chart cm ->
@@ -489,6 +585,24 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
         | Some fit -> { model with fit = Some (SynthesisFitPage.update fm fit) }, fitCmd fm fit
         | None -> model, Cmd.none
     | RootMsg.Io im -> updateIo im model
+    // Spec 0026: the constructor front door owns the live project. Route through its
+    // reducer, synchronize the legacy surfaces when the project changed, and turn the
+    // constructor Save command into the shared project-write Cmd.
+    | RootMsg.Constructor cm ->
+        let constructor = ConstructorView.update cm model.constructor
+        let saveRequested = constructor.saveRequests > model.constructor.saveRequests
+        let groupsChanged = constructor.groups <> model.constructor.groups
+        let model' = { model with constructor = constructor }
+        let model'' =
+            if constructor.project <> model.constructor.project then syncLegacySurfaces constructor.project model'
+            else model'
+        let cmd : Cmd<RootMsg> =
+            [ if saveRequested then
+                  yield! saveCmdForProject constructor.project model''.construction.workingFolder model''.construction.projectName
+              if groupsChanged then
+                  yield! saveGroupsLibraryCmd constructor.groups model.collections ]
+        model'', cmd
+    | RootMsg.Ribbon rm -> { model with ribbon = Rb.update rm model.ribbon }, Cmd.none
 
 // ---------------------------------------------------------------------------
 // view (R-4) — a top-level navigation control over a DockPanel of the visible
@@ -497,24 +611,53 @@ let update (msg : RootMsg) (model : RootModel) : RootModel * Cmd<RootMsg> =
 // dock edges keep coming from the existing pure `AppShell` reducers.
 // ---------------------------------------------------------------------------
 
-let private navButton (dispatch : RootMsg -> unit) (label : string) (target : Page) (active : Page) : IView =
-    let isActive = target = active
+/// A navigation button (UX commitment 1 / AC-U1.1): the active page marked by a distinct
+/// background, navigating through the single `RootMsg.Shell (Navigate …)` path (R-7 /
+/// D.6.1 — navigation stays single-sourced). `isActive` is supplied explicitly so the
+/// Legacy entry can read active across its three sub-pages.
+let private navButtonActive (dispatch : RootMsg -> unit) (label : string) (target : Page) (isActive : bool) : IView =
     Button.create [
         Button.content label
         Button.background (if isActive then Brushes.SteelBlue :> IBrush else Brushes.Transparent :> IBrush)
         Button.onClick (fun _ -> dispatch (RootMsg.Shell (Navigate target)))
     ] :> IView
 
-/// The top navigation bar (UX commitment 1 / AC-U1.1): the two pages with the active
-/// one marked by a distinct background.
-let private navBar (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+let private navButton (dispatch : RootMsg -> unit) (label : string) (target : Page) (active : Page) : IView =
+    navButtonActive dispatch label target (target = active)
+
+/// Whether a page is part of the legacy dockable screen (D.5) — the Legacy entry itself
+/// or its two sub-pages — so the front-door Legacy nav button reads active across them.
+let private isLegacyPage (page : Page) : bool =
+    match page with
+    | Page.Legacy | Page.Construction | Page.SynthesisFit -> true
+    | Page.Constructor -> false
+
+/// The front-door navigation (UX commitment 1 / D.6): the new Constructor page (the
+/// default landing, marked active with the distinct `navButton` styling, R-11) and the
+/// Legacy entry (D.5). Both single-sourced through `Navigate`.
+let private frontDoorNav (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+    let text key = Localization.lookup model.strings model.env.language key
     StackPanel.create [
         StackPanel.dock Dock.Top
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
         StackPanel.children [
-            navButton dispatch ConstructionPage.navEntry.title Page.Construction model.page
-            navButton dispatch SynthesisFitPage.navEntry.title Page.SynthesisFit model.page
+            navButtonActive dispatch (text "nav.constructor") Page.Constructor (model.page = Page.Constructor)
+            navButtonActive dispatch (text "nav.legacy") Page.Legacy (isLegacyPage model.page)
+        ]
+    ] :> IView
+
+/// The legacy sub-navigation (D.5): the present dockable screen's Construction /
+/// Synthesis-Fit pages. `Legacy` lands on Construction. Reuses the existing `navButton`.
+let private legacyNavBar (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+    let active = match model.page with | Page.SynthesisFit -> Page.SynthesisFit | _ -> Page.Construction
+    StackPanel.create [
+        StackPanel.dock Dock.Top
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            navButton dispatch ConstructionPage.navEntry.title Page.Construction active
+            navButton dispatch SynthesisFitPage.navEntry.title Page.SynthesisFit active
         ]
     ] :> IView
 
@@ -576,22 +719,85 @@ let private constructionBody (model : RootModel) (dispatch : RootMsg -> unit) : 
         ]
     ] :> IView
 
-let private pageBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+/// The constructor front-door page (Spec 0026 Part D/F, slice 006): the ribbon shell
+/// docked over the slice-005 `ConstructorView` canvas, with the value-id modal and the
+/// local-help overlay layered on top when open. The ribbon's shell-level actions (open
+/// Legacy / set language / toggle theme) are wired here to `RootMsg.Shell`, so the ribbon
+/// itself never references this module (acyclic compile order). Both modal overlays
+/// dismiss through the constructor's own messages (the page stays single-sourced).
+let private constructorBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+    let onConstructor = RootMsg.Constructor >> dispatch
+    let ribbonDispatch : Rb.Dispatch =
+        {
+            onRibbon = RootMsg.Ribbon >> dispatch
+            onConstructor = onConstructor
+            onNavigateLegacy = fun () -> dispatch (RootMsg.Shell (Navigate Page.Legacy))
+            onSetLanguage = fun language -> dispatch (RootMsg.Shell (SetLanguage language))
+            onToggleTheme = fun () -> dispatch (RootMsg.Shell ToggleTheme)
+        }
+    // A single-cell Grid stacks the page (ribbon + canvas) under the modal overlays, so
+    // an open modal/help dialog covers the page in z-order (a schematic-grade modal).
+    Grid.create [
+        Grid.children [
+            yield DockPanel.create [
+                DockPanel.children [
+                    Rb.view model.strings model.env.language model.ribbon model.constructor model.env ribbonDispatch
+                    ConstructorView.view model.constructor onConstructor
+                ]
+            ] :> IView
+            // F.2: the working, dismissible empty value-id modal, overlaid when open.
+            if model.constructor.valueIdModalOpen then
+                yield Rb.valueIdModal model.strings model.env.language onConstructor
+            // E.2: the context-sensitive local-help overlay, when help is open.
+            if model.constructor.helpOpen then
+                yield Rb.helpOverlay model.strings model.env.language model.constructor onConstructor
+            // E.2 (slice 007): the element-properties placeholder dialog, when open.
+            if model.constructor.elementDialogOpen then
+                yield Rb.elementDialogOverlay model.strings model.env.language onConstructor
+            // E.2 (slice 007): the right-click element context menu, when open.
+            if model.constructor.contextMenuOpen then
+                yield Rb.contextMenuOverlay model.strings model.env.language model.constructor onConstructor
+            // K.2 (slice 007): the same-row Confirm/Cancel destructive gate, when an action is pending.
+            if Option.isSome model.constructor.pending then
+                yield Rb.confirmGateOverlay model.strings model.env.language model.constructor onConstructor
+        ]
+    ] :> IView
+
+/// The legacy dockable screen's active sub-page body (D.5): the Construction panels
+/// (`constructionBody`) or the Synthesis/Fit page, unchanged from spec 0024.
+let private legacyPageBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     match model.page with
-    | Page.Construction -> constructionBody model dispatch
     | Page.SynthesisFit ->
         match model.fit with
         | Some fit -> FitView.fitPanel fit (RootMsg.Fit >> dispatch)
         | None -> placeholder SynthesisFitPage.navEntry.title
+    | _ -> constructionBody model dispatch
 
-/// The root view (R-4): navigation docked top, the active page body filling the rest.
+/// The present dockable-panel main screen the *Legacy* entry opens (D.5.1): the legacy
+/// sub-nav + the lifecycle toolbar + the active legacy sub-page, exactly as before — it
+/// remains reachable and functional but is not evolved in lock-step with the new screen.
+let private legacyBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+    DockPanel.create [
+        DockPanel.children [
+            legacyNavBar model dispatch
+            // Part U8 (R-1/R-2): the lifecycle toolbar (New/Open/Save + templates + gallery).
+            LifecycleView.lifecycleBar model.status (RootMsg.Io >> dispatch)
+            legacyPageBody model dispatch
+        ]
+    ] :> IView
+
+let private pageBody (model : RootModel) (dispatch : RootMsg -> unit) : IView =
+    match model.page with
+    | Page.Constructor -> constructorBody model dispatch
+    | Page.Legacy | Page.Construction | Page.SynthesisFit -> legacyBody model dispatch
+
+/// The root view (R-4 / D.6): the front-door nav (Constructor + Legacy) docked top, the
+/// active page body filling the rest. The lifecycle toolbar now lives inside the legacy
+/// screen; the constructor page carries its own ribbon.
 let view (model : RootModel) (dispatch : RootMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
-            navBar model dispatch
-            // Part U8 (R-1/R-2): the lifecycle toolbar (New/Open/Save + templates + gallery),
-            // docked top below the nav bar; dispatches `IoMsg` wrapped as `RootMsg.Io`.
-            LifecycleView.lifecycleBar model.status (RootMsg.Io >> dispatch)
+            frontDoorNav model dispatch
             pageBody model dispatch
         ]
     ] :> IView

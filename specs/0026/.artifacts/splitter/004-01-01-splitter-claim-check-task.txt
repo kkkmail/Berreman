@@ -1,0 +1,60 @@
+# Claim-checker task -- round 01 iter 01
+
+## Role
+
+You are playing the **claim-checker** role of the spec-loop.
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-arc path you need this
+claim-check iteration and lists them below. Do not compute or
+guess these paths: the canonical layout block describes the
+shape, this section pins the concrete values for the spawn
+you are about to run.
+
+- **spec_folder:** `(not yet resolved)`
+- **spec_md_path:** `(not yet resolved)`
+- **spec_bundle_path:** `(not yet resolved)`
+- **manifest_path:** `(not yet resolved)`
+- **artifacts_folder:** `(not yet resolved)`
+- **splitter_claim_checker_round_trail_dir:** `(not yet resolved)`
+- **prior_verify_md_path:** `C:\GitHub\Berreman\specs\0026\.artifacts\splitter\003-01-01-verify.md`
+- **spec_id:** `(not yet resolved)`
+- **seq:** `(not yet resolved)`
+- **rn:** `1`
+- **iter:** `1`
+
+
+## System prompts (read first, in order)
+
+1. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\splitter-claim-checker.system-md
+   -- claim-checker protocol lives here.
+2. C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\arc-runner.system-md
+   -- the worker round protocol. Some verifier claims
+   reference SoW / impl-log heading sets defined here;
+   knowing the canonical contract helps you fact-check.
+
+## User prompts (read second, in order)
+
+1. C:\GitHub\Berreman\.user-md\splitter.user-md
+2. C:\GitHub\Berreman\.user-md\arc-runner.user-md
+
+## Inputs
+
+### Verifier critique to fact-check
+
+- C:\GitHub\Berreman\specs\0026\.artifacts\splitter\003-01-01-verify.md
+
+### Repo root (for repo-relative path resolution)
+
+- C:\GitHub\Berreman
+
+## Output you MUST write (and nowhere else)
+
+**Save your complete claim-check report to**
+`C:\GitHub\Berreman\specs\0026\.artifacts\splitter\004-01-01-splitter-claim-check.md`. **Do not write the report anywhere else.**
+
+Follow the claim-checker report structure documented in
+the splitter system prompt: per-claim verdict table
+(CONFIRMED / REFUTED / NOT-CHECKED) and a Bottom-line
+paragraph.

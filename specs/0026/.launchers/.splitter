@@ -1,0 +1,46 @@
+# Default -- fresh run / resume from last reconcile decision.
+Run the splitter on C:/GitHub/Berreman/specs/0026/.spec-md using
+C:/GitHub/AI-Strategy-Generator/splitter.launcher-md
+with splitter-user-prompt C:/GitHub/Berreman/.user-md/splitter.user-md
+arc-runner-user-prompt C:/GitHub/Berreman/.user-md/arc-runner.user-md
+splitter-manifest-path C:/GitHub/Berreman/specs/0026/.manifest
+splitter-repo-root C:/GitHub/Berreman
+
+# Variant -- force-one-more-round.
+# Use after the prior run hit a splitter-round budget wall
+# (.pending-force present; reconciler chose escalate-to-human or
+# the splitter wrote a BUDGET message). Adds one extra round.
+Run the splitter on C:/GitHub/Berreman/specs/0026/.spec-md using
+C:/GitHub/AI-Strategy-Generator/splitter.launcher-md
+with splitter-user-prompt C:/GitHub/Berreman/.user-md/splitter.user-md
+arc-runner-user-prompt C:/GitHub/Berreman/.user-md/arc-runner.user-md
+splitter-manifest-path C:/GitHub/Berreman/specs/0026/.manifest
+splitter-repo-root C:/GitHub/Berreman
+splitter-force-one-more-round
+
+# Variant -- force-one-more-verifier-iter.
+# Use after the prior run hit a verifier-sub-loop budget wall
+# (.pending-force present; same reconcile envelope as above).
+# Adds one extra verifier iteration inside the current round.
+Run the splitter on C:/GitHub/Berreman/specs/0026/.spec-md using
+C:/GitHub/AI-Strategy-Generator/splitter.launcher-md
+with splitter-user-prompt C:/GitHub/Berreman/.user-md/splitter.user-md
+arc-runner-user-prompt C:/GitHub/Berreman/.user-md/arc-runner.user-md
+splitter-manifest-path C:/GitHub/Berreman/specs/0026/.manifest
+splitter-repo-root C:/GitHub/Berreman
+splitter-force-one-more-verifier-iter
+
+# Variant -- single-slice (spec 011/001-04 T4).
+# Operator opt-in: skip the LLM split / verify / claim-check /
+# reconcile loop entirely. The splitter deterministically writes
+# .slices/001.slice-md (the big spec copied verbatim), a
+# single-entry manifest carrying the full bundle gate set, and
+# .slices/001.gates. Operator owns the risk -- if the spec is too
+# large the arc-runner will escalate at its per-slice cap.
+Run the splitter on C:/GitHub/Berreman/specs/0026/.spec-md using
+C:/GitHub/AI-Strategy-Generator/splitter.launcher-md
+with splitter-user-prompt C:/GitHub/Berreman/.user-md/splitter.user-md
+arc-runner-user-prompt C:/GitHub/Berreman/.user-md/arc-runner.user-md
+splitter-manifest-path C:/GitHub/Berreman/specs/0026/.manifest
+splitter-repo-root C:/GitHub/Berreman
+single-slice

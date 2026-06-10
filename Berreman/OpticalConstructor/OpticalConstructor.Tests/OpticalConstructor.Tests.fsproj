@@ -28,6 +28,8 @@
         <Compile Include="BeamTreeTests.fs" />
         <Compile Include="CurvedElementsTests.fs" />
         <Compile Include="BeamRoutingTests.fs" />
+        <Compile Include="PlacementTests.fs" />
+        <Compile Include="RayModelTests.fs" />
         <Compile Include="ProjectJsonRoundtripTests.fs" />
         <Compile Include="RoundTripTests.fs" />
         <Compile Include="SidecarTests.fs" />
@@ -60,6 +62,10 @@
              (registered above) per the slice's files-in-scope. -->
         <Compile Include="JobRunnerCancelTests.fs" />
         <Compile Include="HelpGalleryTests.fs" />
+        <!-- Spec 0026 Part G/H (slice 007): element-group + experiment-collection domain
+             (member modes, lossless swap) and the separate groups/collections library
+             round-trip + schema validation. Pure Domain + Storage (Avalonia-free). -->
+        <Compile Include="GroupsRoundTripTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

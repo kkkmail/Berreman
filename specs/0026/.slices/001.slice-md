@@ -1,0 +1,371 @@
+# 001 — Element geometry, placement & rotation domain model (CRITICAL — land first)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part A**.
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑A1: After an element is created with no rotation, `Placement.fs`
+  reports N1 along the central ray and N2 along the table normal (rest pose,
+  A.3.3), provable headless.
+- AC‑A2: A new element's `r3Locked` is `true` and `r1Locked`/`r2Locked` are
+  `false` (A.1.2).
+- AC‑A3: Given an incident ray at angle `r2` and an element with own tilt
+  `R2`, the A.4.3 function returns a table‑frame orientation equal to
+  `r2 + R2`.
+- AC‑A4: Setting R3 ≠ 0 yields a basis in which R1 is not perpendicular to
+  R2 (A.4.4), provable from the placement math.
+- AC‑A5: The emission smart constructor (A.7.1) cannot represent
+  reflected‑off‑and‑transmitted‑off simultaneously; turning the second off
+  re‑enables the first.
+- AC‑A6: A project carrying placement (box, three angles, three locks,
+  catalogue kind, `valueId = None`, emission metadata, display unit)
+  round‑trips through `saveProject`/`openProject` and passes schema
+  validation (A.8).
+- AC‑A7: `CatalogueKind.toConstructorElement` maps Linear Polarizer and
+  Circular Polarizer both to `Polarizer`, Detector to `Detector`, and never
+  to `Analyzer` (A.5.2).
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Placement.fs` (new) — bounding box, N1/N2 normals, R1/R2/R3 + locks, catalogue kind, value‑id slot, emission metadata, `toConstructorElement`.
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (edit) — extend `OpticalConstructorProject` with table + per‑element placement. *(This slice owns the per‑element placement extension; the table extension is owned by slice 004.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (edit) — add placement + table representation. *(This slice owns the placement representation; the table representation is owned by slice 004.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/PlacementTests.fs` (new) — A‑part headless geometry tests.
+
+### File:line references owned by this slice
+
+- `BeamTree.fs:53` — `BeamNode` carries kind, solved `OpticalSystem`, incident light, branch children, and a display unit, but no spatial placement (A.0).
+- `BeamTree.fs:35` — defines `ConstructorElement` (target of `toConstructorElement`, A.5.2).
+- `BeamTree.fs:37` — the `Polarizer` case (both Linear and Circular polarizer map here, A.5.2).
+- `BeamTree.fs:42` — the existing `Analyzer` case; MUST NOT be surfaced as a catalogue kind and MUST be left untouched (A.5.2).
+- `BeamTree.fs:59` — `BeanNode.defaultUnit`, the precedent for the per‑object display unit (A.1, 0.2).
+- `BeamTree.fs:74` — `BeamNode.attach`, the existing mirror rule that a mirror carries the reflected branch only (A.7.2).
+- `Project.fs:26` — `OpticalConstructorProject`, extended to carry per‑element placement (A.8.2).
+- `Project.fs:42` — the nine reserved anchors; placement is added as a sibling without renaming any of them (A.8.1).
+- `Units.fs:20` `UnitOfMeasure`; `Units.fs:43` `toMeters`; `Units.fs:71` `fromMeters` — reused for canonical‑meter values and the display unit (A.9, 0.2).
+- `optical-constructor-project.schema.json:201` — the `constructorElement` `$def` is currently permissive (`true`); placement is added as a sibling (A.8.1).
+- `ProjectFile.fs:20` `saveProject` / `ProjectFile.fs:31` `openProject` — placement data MUST round‑trip through this existing serialization (A.8.2, AC‑A6).
+- `SchemaValidation.fs:61` `validate` — placement MUST pass schema validation with no new serialization library (A.8.2, AC‑A6).
+
+## Scope
+
+This slice adds the element geometry / placement / rotation domain as a
+pure, headless‑testable layer in a new `Placement.fs` module, and reserves
+the schema and project slots for it. It introduces no drawing code (Part C)
+and no ray routing (Part B). The placement record, bounding box, two
+normals, three rotations with per‑axis locks, catalogue‑kind tag, value‑id
+slot, emission metadata, and the `toConstructorElement` mapping all land
+here, together with the schema extension and the `OpticalConstructorProject`
+extension for per‑element placement, proven by a round‑trip + schema‑validation
+test.
+
+The R1/R2/R3 scheme is dictated by how real optical mounts and stages are
+built, not by mathematical convenience; the axes are modelled exactly rather
+than as a fixed orthogonal triad.
+
+## Requirements
+
+### R-1. Element‑placement record (A.1)
+
+A.1.1 A new module `Berreman/OpticalConstructor/OpticalConstructor.Domain/Placement.fs`
+MUST define an immutable F# record `ElementPlacement` holding, for one
+on‑table element:
+- `placementPoint` — the placement point in canonical meters on the table
+  plane (see R-2);
+- `r1`, `r2`, `r3` — the three rotation angles, each carried as the
+  engine's `Angle` value so the existing angle constructors are reused, not
+  re‑derived;
+- `r1Locked`, `r2Locked`, `r3Locked` — three independent lock flags;
+- `catalogueKind` — the UI‑facing catalogue kind (R-6);
+- `valueId : string option` — the element value id (R-7);
+- `box` — the bounding box (R-3);
+- `displayUnit : Units.UnitOfMeasure` — the element's preferred display unit
+  (display metadata only).
+
+A.1.2 `r3Locked` MUST default to `true`; `r1Locked` and `r2Locked` MUST
+default to `false` (R3 is locked by default and MUST be deliberately
+unlocked before it can change).
+
+### R-2. Placement point is the box centre (A.2)
+
+A.2.1 The placement point MUST be defined as the centre of the element's
+rectangular bounding box. Drawing, snapping (Part B), and slide bounds
+(Part E) MUST all treat the placement point as the box centre, never an
+edge or corner.
+
+### R-3. Bounding box and the two normals (A.3)
+
+A.3.1 `Placement.fs` MUST define a `BoundingBox` record with three
+canonical‑meter extents `a1`, `a2`, `b` describing an `A × A × B` box: a
+square `a1 × a2` face (with `a1 = a2` for the standard box) extruded by
+depth `b` along the primary normal.
+
+A.3.2 The box MUST carry **two normals**:
+- **N1 — primary normal**, perpendicular to the `A × A` face. R1 spins
+  about N1 (R1 and N1 coincide by definition).
+- **N2 — secondary normal**, perpendicular to N1 in the element's rest
+  pose.
+
+A.3.3 **Rest pose.** When an element is placed without rotation
+(R1 = R2 = R3 = 0), N1 MUST point along the central ray (and so along the
+R1 axis) and N2 MUST point along the table normal. An unrotated element
+faces the incoming beam squarely.
+
+A.3.4 **Default box proportions by role.** The default box dimensions are a
+spec‑author detail fixed here (concrete values, canonical meters). They are
+guidance for recognisable schematic shapes, not physical dimensions:
+- Optical elements (polarizers, sample, lens, mirrors) — thin and wide:
+  face `A_O = 0.05 m`, depth `B_O = 0.01 m` (`A_O > B_O`).
+- Light source — long and narrow: face `A_L = 0.025 m`, depth
+  `B_L = 0.08 m` (`B_L > A_L`, and `A_O > A_L`, `B_L > B_O`).
+- Detector — shaped like an optical element: `A_O × A_O × B_O`.
+These defaults MUST live as named constants in `Placement.fs` so a single
+edit restyles every element of a role.
+
+### R-4. The three rotations and their frames (A.4)
+
+A.4.1 **R1** MUST rotate the element about its surface normal N1. At normal
+incidence the R1 axis coincides with the central ray; once R2 ≠ 0 the face
+no longer faces the beam and the R1 axis is no longer the central ray — R1
+still turns the element about its own face normal. R1 MUST NOT be treated
+as a polarizer's azimuth (a polarizer's azimuth lies *in* the face; at rest
+pose it is R2 that corresponds to the azimuth).
+
+A.4.2 **R2** MUST rotate the element about the table normal. R2 is the tilt
+that steers a beam within the table plane and is what decouples the R1 axis
+from the central ray.
+
+A.4.3 **R2 is measured from the incident ray, not from a fixed table
+axis.** When an element sits on a ray that is not horizontal, the element's
+own R2 MUST be applied relative to the direction of the incident ray. The
+table‑frame rotation of an element whose incident ray already makes angle
+`r2` with the horizontal and whose own dialled tilt is `R2` MUST therefore
+equal `r2 + R2`. `Placement.fs` MUST expose a pure function that, given the
+incident‑ray direction and the element's `r2`, returns the element's
+table‑frame orientation; this function MUST satisfy the `r2 + R2` additive
+law.
+
+A.4.4 **R3** MUST rotate the element about the third box axis (the
+`N1 × N2` direction). When R3 ≠ 0 the three axes are no longer a fixed
+orthogonal triad and **R1 is no longer perpendicular to R2** — the
+placement math MUST follow the element's mount, not assume orthogonality.
+
+A.4.5 **Per‑axis lock.** Each rotation MUST be independently lockable and
+unlockable, freezing it at its current value. A locked rotation MUST ignore
+any change request (Part E rotation gestures are inert while the targeted
+axis is locked).
+
+### R-5. Catalogue kind tag (A.5)
+
+A.5.1 `Placement.fs` MUST define a `CatalogueKind` discriminated union with
+exactly the catalogue roles of Part F (Light Source, Linear Polarizer,
+Circular Polarizer, Sample, Lens, Flat Mirror, Curved Mirror, Detector).
+
+A.5.2 `Placement.fs` MUST define a pure total function
+`toConstructorElement : CatalogueKind -> ConstructorElement` mapping each
+catalogue kind to its existing domain case (BeamTree.fs:35): Light Source →
+`Source`; **both** Linear Polarizer and Circular Polarizer → `Polarizer`
+(BeamTree.fs:37) — a polarizer is a polarizer regardless of placement, and
+linear vs circular is a catalogue‑kind distinction, not a new domain case;
+Sample → `Sample`; Lens → `Lens`; Flat Mirror → `FlatMirror`; Curved
+Mirror → `CurvedMirror`; Detector → `Detector`. The existing `Analyzer`
+case (BeamTree.fs:42) MUST NOT be surfaced as a catalogue kind and MUST be
+left untouched (no domain‑DU removal in this spec).
+
+### R-6. Element value id slot (A.6)
+
+A.6.1 The `valueId : string option` field (R-1) MUST be present in the
+schema and the placement record from the first build, and MUST be `None`
+for every element the first build creates. It identifies the concrete
+device or material behind an element's role (e.g. which laser an `LS` is,
+which material a `Sample` is); the binding of a concrete id is deferred
+(Part F commits only the menu action and an empty modal). Reserving the id
+now fixes it in the schema so nothing is retro‑fitted later, and it is one
+of the drawer's inputs from the start (Part C) so per‑device looks can be
+added later without rewiring placement or ray logic.
+
+### R-7. Ray‑group emission metadata (A.7)
+
+A.7.1 `Placement.fs` MUST define per‑element emission metadata recording
+whether the element emits its reflected ray group, its transmitted ray
+group, or both. The invariant MUST be: an element MAY suppress its
+reflected group **or** its transmitted group but **never both** — turning
+the second one off MUST automatically turn the other back on. This MUST be
+enforced by a smart constructor that cannot represent the both‑off state.
+
+A.7.2 A mirror's default placement MUST suppress transmission (consistent
+with the existing mirror rule that a mirror carries the reflected branch
+only — `BeamNode.attach`, BeamTree.fs:74). Every non‑mirror element MUST be
+placed emitting whatever its catalogue kind is configured to emit
+(by default both).
+
+### R-8. Schema and project extensions (A.8)
+
+A.8.1 The project schema
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json`)
+MUST be extended so that placement (the R-1 record, including box, normals
+basis, three angles, three lock flags, catalogue kind, value id, emission
+metadata, display unit) is representable. The `constructorElement` `$def`
+is currently permissive (`true`, schema file `:201`); placement MUST be
+added as a sibling of the per‑node element data without renaming any of the
+nine reserved anchors (Project.fs:42).
+
+A.8.2 The project aggregate `OpticalConstructorProject` (Project.fs:26)
+MUST be extended to carry the table (Part C) and per‑element placement, so
+that an opened project shows every element where it was left. The placement
+data MUST round‑trip through the existing serialization
+(ProjectFile.fs:20/:31) and pass schema validation
+(SchemaValidation.fs:61) with no new serialization library. *(The table
+portion of this extension is delivered by slice 004; this slice delivers the
+per‑element placement portion.)*
+
+### R-9. Reuse before invention (A.9)
+
+For angles use the engine's existing `Angle` type and its constructors
+rather than introducing a new angle type. For canonical‑meter values reuse
+the `Units` conversions (Units.fs:43/:71). Add placement as a new record in
+a new `Placement.fs` module rather than overloading `BeamNode`
+(BeamTree.fs:53) with a flag‑heavy spatial payload — placement is a
+distinct concern from beam‑tree topology.
+
+## Non-requirements
+
+- No drawing code (Part C / slice 004) and no ray routing (Part B / slice 002).
+- No removal of the `Analyzer` domain case (BeamTree.fs:42).
+- No real device/material picker behind the value id (Part F / slice 006).
+- No schema migration / version‑upgrade code (0.6).
+- The table representation and the `OpticalConstructorProject` table field
+  are owned by slice 004, not this slice.
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Placement.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/PlacementTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs` (add per‑element placement to `OpticalConstructorProject`)
+- `Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json` (add placement representation)
+
+## Testing plan
+
+Gates that apply this slice (domain + storage only, no UI):
+`build`, `unit-tests`, `constructor-unit-tests`, `impl-log-structure`,
+`state-of-world-structure`.
+
+- `build` — `dotnet build Berreman.slnx -c Release` (cwd `Berreman/`).
+- `unit-tests` — legacy `BerremanTests` suite (regression; baseline‑gated).
+- `constructor-unit-tests` — `OpticalConstructor.Tests` exercises the new
+  `PlacementTests.fs`: rest‑pose normals (AC‑A1), default locks (AC‑A2),
+  `r2 + R2` additivity (AC‑A3), R3 non‑orthogonality (AC‑A4), emission
+  invariant (AC‑A5), catalogue‑kind mapping (AC‑A7), and a placement
+  round‑trip + schema‑validation fixture (AC‑A6) added reusing the existing
+  `ProjectJsonRoundtripTests` harness.
+- `ui-smoke` / `ui-tests` do **not** apply: this slice touches no
+  `OpticalConstructor.Ui` or `OpticalConstructor.Ui.Tests` file.
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+Medium: schema extension of a currently‑permissive `constructorElement`
+`$def` (schema `:201`) while preserving the nine reserved anchors
+(Project.fs:42) and keeping `saveProject`/`openProject` round‑trip green —
+mis‑numbering or renaming an anchor breaks every existing project fixture.
+Modelling R3 non‑orthogonality (A.4.4) correctly so AC‑A4 holds is the
+main numerical care‑point; reuse the engine `Angle` type to avoid a parallel
+rotation representation.
+
+## Hand-off
+
+State‑of‑the‑world for this slice must carry the new baseline counts in a
+fenced `gates:` YAML block keyed by `berreman_unit_tests` (legacy suite) and
+the constructor‑test count, so downstream `count_at_least` gates have a
+baseline. Record the `ElementPlacement` / `BoundingBox` / `CatalogueKind`
+shapes and the emission smart constructor's public surface so slice 002
+(RayModel) and slice 004 (Table/Drawer) can consume them. Note that
+`Project.fs` and the project schema still need their **table** extension
+(slice 004) — leave the placement anchors stable for that follow‑on edit.

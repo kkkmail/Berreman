@@ -1,0 +1,59 @@
+{
+  "manifest": "C:\\GitHub\\Berreman\\specs\\0026\\.manifest",
+  "branch": "0026",
+  "started_utc": "2026-06-06T02:11:21Z",
+  "last_updated_utc": "2026-06-06T16:19:50Z",
+  "completed_slices": [
+    {
+      "index": 0,
+      "path": "specs\\0026\\.slices\\001.slice-md",
+      "commit": "12050275c2ca456abbe5a5c4252324bc21f36b52",
+      "manual": false,
+      "utc": "2026-06-06T02:53:51Z"
+    },
+    {
+      "index": 1,
+      "path": "specs\\0026\\.slices\\002.slice-md",
+      "commit": "42f9c7886c973052b0be2357130b8b9164262c3a",
+      "manual": false,
+      "utc": "2026-06-06T04:06:29Z"
+    },
+    {
+      "index": 2,
+      "path": "specs\\0026\\.slices\\003.slice-md",
+      "commit": "be251974a259e455509cffe691d7732fdedcdae9",
+      "manual": false,
+      "utc": "2026-06-06T04:45:32Z"
+    },
+    {
+      "index": 3,
+      "path": "specs\\0026\\.slices\\004.slice-md",
+      "commit": "3650bd1c40390c95272e66b08f1053023abb1180",
+      "manual": false,
+      "utc": "2026-06-06T05:33:48Z"
+    },
+    {
+      "index": 4,
+      "path": "specs\\0026\\.slices\\005.slice-md",
+      "commit": "decffdc0553b6a7d8f62b8782ffd81946e5cbb70",
+      "manual": false,
+      "utc": "2026-06-06T06:35:19Z"
+    },
+    {
+      "index": 5,
+      "path": "specs\\0026\\.slices\\006.slice-md",
+      "commit": "9b750716eef5754624a39ab6098710ad50ed0ff0",
+      "manual": false,
+      "utc": "2026-06-06T08:58:14Z"
+    },
+    {
+      "index": 6,
+      "path": "specs\\0026\\.slices\\007.slice-md",
+      "commit": "8ffc9605c20fb6156ff5a1a12e7c1608f04666bf",
+      "manual": true,
+      "utc": "2026-06-06T16:19:50Z"
+    }
+  ],
+  "current_slice": null,
+  "remaining_slices": []
+}

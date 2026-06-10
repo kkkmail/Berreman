@@ -1,0 +1,96 @@
+# Post-mortem task -- slice 007, attempt 01
+
+## Role
+
+You are playing the **post-mortem** role. The arc-runner has just
+escalated this slice; you are running inline AFTER the
+`ESCALATE` line is already in the run log and AFTER the
+structured `arc_runner.escalated` notification has fired. Your
+job is the after-the-fact summary the operator opens FIRST when
+they pick up the escalated arc. Read-only on everything except
+your own output MD.
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\src\ai_strategy_generator\multistep\postmortem.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\arc-runner.user-md
+
+## Inputs
+
+### Slice spec
+
+- C:\GitHub\Berreman\specs\0026\.slices\007.slice-md
+
+### Worker state-of-the-world
+
+- C:\GitHub\Berreman\specs\0026\.slices\007-state-of-the-world.md
+
+### Worker impl-log
+
+- C:\GitHub\Berreman\specs\0026\.slices\007-impl-log.md
+
+### Most recent code-judge MD
+
+- C:\GitHub\Berreman\specs\0026\.artifacts\code_judge\007-03-code-judge.md
+
+### Critic critiques (in run_after order)
+
+- architecture_critic: C:\GitHub\Berreman\specs\0026\.artifacts\architecture_critic\007-01-architecture-critic.md
+- reuse_critic: C:\GitHub\Berreman\specs\0026\.artifacts\reuse_critic\007-02-reuse-critic.md
+
+### Deterministic gate results (most recent cycle)
+
+```
+build: pass
+unit-tests: pass
+constructor-unit-tests: pass
+ui-smoke: pass
+ui-tests: pass
+impl-log-structure: pass
+state-of-world-structure: pass
+```
+
+### Escalation MD (what the arc-runner just wrote)
+
+- (none)
+
+### Resolver MD (when present)
+
+- (none)
+
+### Supervisor log tail
+
+- C:\GitHub\Berreman\specs\0026\.manifest-arc-runner.log
+
+(Read the last few hundred lines for the recent ESCALATE / SLICE-FAILURE /
+JUDGE_VERDICT / REVIEW-ROUTE-BACK / RESOLVER-RESULT events.)
+
+### Per-slice budget facts
+
+- `total_route_backs` so far: 2.
+- `resolver_runs` so far: 1.
+- `conversation_seq` (escalation counter on this slice): 1.
+
+### Environment
+
+- `repo_root`: C:\GitHub\Berreman
+- `multistep_dir`: C:\GitHub\AI-Strategy-Generator
+- `project_prompt_path`: C:\GitHub\Berreman\.user-md\arc-runner.user-md
+
+## Output you MUST write (and nowhere else)
+
+**Save your complete output to**
+`C:\GitHub\Berreman\specs\0026\.slices\007-01.postmortem-md`. **Do not write anywhere else.**
+
+Follow the post-mortem output structure documented in the
+post-mortem system prompt: exactly four ATX-level-2 headings
+(`## Summary`, `## Root cause`, `## Evidence`,
+`## Proposed solutions`) under a single ATX-level-1 title. No
+JSON envelope. No front-matter. No other top-level headings.

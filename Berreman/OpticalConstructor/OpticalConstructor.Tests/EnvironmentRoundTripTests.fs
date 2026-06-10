@@ -6,6 +6,7 @@ open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Ui.Localization
 open OpticalConstructor.Ui.UserEnvironment
 open Xunit
 
@@ -150,6 +151,66 @@ module EnvironmentRoundTripTests =
     [<Fact>]
     let ``AC-J7 solver defaults are the engine SolverParameters, not a parallel record`` () =
         Assert.Equal(Berreman.Solvers.SolverParameters.defaultValue, defaults.preferences.solver)
+
+    // --- AC-I2 (Spec 0026 Part I): the selected language persists and is restored ---
+
+    [<Fact>]
+    let ``AC-I2 the selected language defaults to English and round-trips through the JSON`` () =
+        // I.2.1: the language field defaults to English on the built-in environment.
+        Assert.Equal(English, defaults.language)
+        // A chosen language survives serialize -> validate-on-load -> bind (the schema
+        // admits the new field), so it is restored on next launch.
+        let ru = { defaults with language = Russian }
+        let back = serialize ru |> okOr |> deserialize |> okOr
+        Assert.Equal(Russian, back.language)
+
+    [<Fact>]
+    let ``AC-I2 the selected language persists through the on-disk save path`` () =
+        // The Settings-ribbon selector (Part D / slice 006) writes through `save`; the
+        // chosen language is restored by `load` on the next launch (I.2.1 / I.5).
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-lang-%s.json" (Guid.NewGuid().ToString("N")))
+        try
+            save path { defaults with language = Russian } |> okOr
+            Assert.Equal(Russian, (load path).language)
+        finally
+            if File.Exists path then File.Delete path
+
+    // --- AC-E8 (Spec 0026 Part E): the configurable key map persists with the env -----
+
+    [<Fact>]
+    let ``AC-E8 the constructor key map defaults to a 5 degree step with no overrides`` () =
+        // E.3.1: the rotation step defaults to 5°. E.8.1: no overrides means the built-in
+        // default bindings declared in Commands.fs.
+        Assert.Equal(5.0, defaults.keyMap.rotationStepDegrees)
+        Assert.Empty(defaults.keyMap.overrides)
+
+    [<Fact>]
+    let ``AC-E8 a customized key map round-trips through the schema-validated JSON`` () =
+        // A user's customized rotation step + key-binding overrides persist with the
+        // environment settings and are restored on next launch (E.8.1 / Part I).
+        let customized =
+            { defaults with
+                keyMap =
+                    { rotationStepDegrees = 10.0
+                      overrides =
+                        [ { command = "reset-rotation"; gesture = "Ctrl+R" }
+                          { command = "delete-element"; gesture = "Ctrl+Delete" } ] } }
+        let back = serialize customized |> okOr |> deserialize |> okOr
+        Assert.Equal(10.0, back.keyMap.rotationStepDegrees)
+        Assert.Equal<KeyBindingOverride list>(customized.keyMap.overrides, back.keyMap.overrides)
+        // Whole-record structural equality (the new field included).
+        Assert.True((customized = back), "the customized key map must survive the round-trip")
+
+    [<Fact>]
+    let ``AC-E8 the customized key map persists through the on-disk save path`` () =
+        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-keymap-%s.json" (Guid.NewGuid().ToString("N")))
+        try
+            let customized =
+                { defaults with keyMap = { defaults.keyMap with rotationStepDegrees = 7.5 } }
+            save path customized |> okOr
+            Assert.Equal(7.5, (load path).keyMap.rotationStepDegrees)
+        finally
+            if File.Exists path then File.Delete path
 
     // --- AC-J8: theme + panel layout round-trip through EnvironmentSettings JSON -
 

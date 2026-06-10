@@ -1,0 +1,334 @@
+# 005 — Centralized commands, mouse/keyboard interaction & the constructor MVU surface
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part E**
+  (centralized command model, mouse and keyboard), the FuncUI `Canvas` MVU
+  page that hosts the surface, and the **Part C** view‑interaction acceptance
+  criteria (pan/zoom/reset, table selection) that depend on it.
+- Depends on slice 002 (`RayModel.fs`), slice 003 (`UserEnvironment` /
+  environment schema), and slice 004 (`Table.fs`, `Drawer.fs`,
+  `ConstructorTable.fs`, `Controls.fs`).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑C2: Plain wheel and `Ctrl + wheel` both change zoom; `Ctrl+0` resets
+  the view to (0,0,0) and the default zoom (C.2.3, C.2.5).
+- AC‑C3: Clicking empty table selects the table; clicking an element selects
+  that element (C.3).
+- AC‑E1: Every key map, mouse map, and ribbon/menu control derives from the
+  one `Commands.fs` registry; a command with both bindings declares them on
+  one definition (E.1, constraint 0.4).
+- AC‑E2: `Shift+wheel`/`Ctrl+Shift+wheel`/`Alt+wheel` change R1/R2/R3 by the
+  configured step (default 5°) and are inert when the targeted axis is
+  locked; R3 requires unlocking (E.3).
+- AC‑E3: `Shift+drag` slides an element along its ray bounded by its
+  neighbours and never past them; `Ctrl+drag` reassigns it between rays;
+  plain left‑drag does nothing and shows the movable hint; the table redraws
+  on drop (E.4).
+- AC‑E4: Dragging an element from the Build ribbon onto the table drops it
+  snapped to the middle of the nearest CR path (E.7).
+- AC‑E5: `Ctrl+Z`/`Ctrl+Y`/`Ctrl+S`/`Esc` perform undo/redo/save/cancel per
+  E.6.
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Commands.fs` (new) — centralized command DU + three‑state bindings; the single command registry.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorView.fs` (new) — FuncUI canvas, MVU model/msg/update/view for the constructor page, interaction handlers.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (edit) — add `language` and the configurable key map to `EnvironmentSettings`. *(This slice owns the configurable key map; the `language` field was delivered by slice 003.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (edit) — add `language` + key‑map fields. *(This slice owns the key‑map fields; the `language` field was delivered by slice 003.)*
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/CommandRegistryTests.fs` (new) — E‑part single‑source‑of‑commands + binding tests.
+
+### File:line references owned by this slice
+
+- `UserEnvironment.fs:141` `EnvironmentSettings` — extended with the configurable key map; the configured key map MUST persist with the environment settings (E.8.1).
+- `Shell.fs:94` `RootModel` — the new MVU model MUST be a pure, serializable value matching this root model (0.3).
+- `BeamTree.fs:91` `solve` — the per‑node solve reuses the existing async per‑node mechanism at per‑element granularity; no new long‑running background job with a progress bar (UX commitment 2).
+
+## Scope
+
+This slice introduces the centralized command model (`Commands.fs`) — every
+command is a DU case carrying a three‑state binding (keyboard‑only,
+mouse‑only, or keyboard‑plus‑mouse) — and the FuncUI `Canvas` MVU page
+(`ConstructorView.fs`) that hosts the top‑down surface (slice 004 geometry)
+and reads the registry for both its key map and mouse map. It implements the
+active‑element, rotation, move/slide, drag‑to‑place, table/view, and global
+commands, the view interactions of Part C that depend on the page
+(pan/zoom/rotate/reset, table selection), and makes the configurable key map
+persist with the environment settings.
+
+Per UX commitment 4, when an edit changes the rays the MVU update MUST
+re‑render the table automatically (the FuncUI re‑render path; E.4.3
+redraw‑on‑drop); no manual reload is required. Per UX commitment 2, feedback
+is per‑element and the per‑node solve reuses the existing async per‑node
+mechanism (BeamTree.fs:91). Per UX commitment 3, no identify→confirm→process
+scope gate is added (one‑click interaction is correct; destructive single
+actions still confirm — see slice 007 / Part K).
+
+## Requirements
+
+### R-1. The centralized command model (E.1)
+
+E.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Commands.fs` MUST model
+each command as a discriminated‑union case carrying a small three‑state
+binding — **keyboard‑only**, **mouse‑only**, or **keyboard‑plus‑mouse** —
+so a command reachable both ways declares both bindings on one definition.
+Every key map and mouse map, and every ribbon/menu control, MUST be derived
+from this one registry (constraint 0.4). A new command MUST be added in
+this one place.
+
+E.1.2 Every command MUST operate on the **active element** unless it is
+explicitly a table or global command.
+
+### R-2. Active‑element commands (E.2)
+
+The registry MUST declare at least:
+- **Open element dialog** — double‑click the element, or right‑click →
+  *Element dialog*.
+- **Element context menu** — right‑click the element. It MUST expose the
+  element's commands directly: Element dialog, Local help, lock/unlock each
+  rotation, Reset rotation, toggle reflected/transmitted, Delete,
+  Duplicate, turn the element or its group on/off, and (for a detector)
+  *Set as primary*.
+- **Reset rotation** to (0, 0, 0), with confirmation — `Shift+R`, or
+  right‑click → *Reset rotation*.
+- **Delete element**, with confirmation for a non‑trivial element —
+  `Delete` / `Backspace`, or right‑click → *Delete*.
+- **Duplicate element** — `Ctrl+D`, or right‑click → *Duplicate*;
+  **Copy/Paste** — `Ctrl+C` / `Ctrl+V`.
+- **Local help** for the selected object — `F1`, or right‑click → *Local
+  help* (Part J).
+- **Make next/previous element active** along the beam path — `Tab` /
+  `Shift+Tab`.
+
+### R-3. Rotations (E.3)
+
+E.3.1 Each rotation step MUST default to **5°** and MUST be configurable. A
+rotation gesture MUST do nothing while its targeted axis is locked (A.4.5).
+The registry MUST bind:
+- **R1** — `Shift + mouse wheel`;
+- **R2** — `Ctrl + Shift + mouse wheel`;
+- **R3** — `Alt + mouse wheel` (R3 MUST be unlocked first).
+
+### R-4. Move the active element (E.4)
+
+E.4.1 **Slide along its ray** — `Shift + left‑drag`, or the arrow keys
+(`Shift + arrow` for a larger step). The slide MUST be bounded to the gap
+between the element's two immediate neighbours on the ray and MUST NOT pass
+either one; left and right slides are the same constrained move in either
+direction. Finer placement‑point editing MUST be available from the local
+element menu (Part E.2 / A).
+
+E.4.2 **Move to a different ray** — `Ctrl + left‑drag` (e.g. off the
+transmitted branch onto the reflected one). This is the only gesture that
+reassigns an element between rays, distinct from the `Shift` slide.
+
+E.4.3 On **drop**, the table MUST be redrawn, because moving an element may
+change where the rays fall.
+
+E.4.4 **Plain left‑drag on an element MUST do nothing** — a deliberate
+guard against accidental moves. Because the obvious gesture is inert, the
+real gesture (`Shift+drag`) MUST be hinted (cursor change or tooltip when
+the pointer is over a movable element).
+
+### R-5. Table and view commands (E.5)
+
+The registry MUST bind: **Pan** — left‑drag on empty table (C.2.2);
+**Zoom** — plain wheel or `Ctrl + wheel` (C.2.3); **Reset view** to
+top‑down — `Ctrl+0` or the *Reset view* button (C.2.5); **Toggle an element
+group** on/off — the number keys select the corresponding group (Part G),
+alongside the right‑click toggle.
+
+### R-6. Global commands (E.6)
+
+The registry MUST bind: **Undo** — `Ctrl+Z`; **Redo** — `Ctrl+Y` (and
+`Ctrl+Shift+Z`), both multi‑level (Part K); **Save the project** —
+`Ctrl+S`; **Close the local menu / pop‑up, or cancel the current drag /
+deselect** — `Esc`.
+
+### R-7. Drag‑to‑place from the ribbon (E.7)
+
+E.7.1 Adding an element MUST be a drag from the *Build* ribbon onto the
+table. On mouse release, the new element MUST snap to the middle of the
+closest central‑ray path at the drop point, so it lands attached to the
+nearest beam rather than floating free.
+
+### R-8. Configurability and reuse (E.8)
+
+E.8.1 The key map MUST be configurable (matching the rotation‑step
+configurability this spec also mandates, E.3.1), so a
+user who prefers different behaviour can change it; the configured key map
+MUST persist with the environment settings (Part I / UserEnvironment.fs:141)
+. Reuse that settings store rather than adding a parallel preferences file.
+
+### R-9. Part C view interactions that depend on the page (C.2, C.3)
+
+C.2.2 **Pan.** Left‑press + drag on empty table MUST pan the whole table
+and every element on it together (elements travel with the table).
+
+C.2.3 **Zoom.** The plain mouse wheel and `Ctrl + wheel` MUST both zoom the
+table in and out (honouring the OS‑standard `Ctrl + wheel = zoom`
+convention; this is why R2 is on `Ctrl + Shift + wheel`, Part E).
+
+C.2.4 **Rotate as a view operation.** Rotating the table MUST change only
+the viewpoint; all elements travel with it. The table's own R1/R2/R3 MUST
+be measured relative to the screen.
+
+C.2.5 **Reset view.** A single action MUST reset the view to (0, 0, 0)
+(straight top‑down) and a sensible default zoom (Part E binds `Ctrl+0` and a
+"Reset view" button). This reset is required because the view is easy to
+tumble and hard to recover by hand.
+
+C.3 **Table selection.** The table MUST become the selected object whenever
+the user clicks anything that is not an optical element. Selecting the table
+is how the user steps out of an element to operate on the workspace as a
+whole.
+
+## Non-requirements
+
+- No ribbon / menu shell (Part D / slice 006) — this slice exposes the
+  registry that the ribbon will project from, but does not build the ribbon.
+- No catalogue surfacing or value‑id modal (Part F / slice 006).
+- No undo/redo *participation* wiring across all actions (Part K / slice 007)
+  — this slice binds the `Ctrl+Z`/`Ctrl+Y` commands (E.6) and dispatches the
+  edits; the snapshot‑push participation and AC‑K1/K2 are owned by slice 007.
+- No element‑group on/off behaviour (Part G / slice 007); this slice only
+  binds the number‑key group‑toggle command shape.
+- No real device/material picker (0.6).
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Commands.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorView.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/CommandRegistryTests.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs` (add the configurable key map)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/optical-constructor-environment.schema.json` (add the key‑map fields)
+
+## Testing plan
+
+Gates that apply this slice (touches Ui, Ui.Tests, and `UserEnvironment.fs`
+which `OpticalConstructor.Tests/EnvironmentRoundTripTests.fs` covers):
+`build`, `unit-tests`, `constructor-unit-tests`, `ui-smoke`, `ui-tests`,
+`impl-log-structure`, `state-of-world-structure`.
+
+- `ui-tests` — `CommandRegistryTests.fs`: every key map / mouse map / control
+  derives from one registry entry; a command with both bindings declares them
+  on one definition (AC‑E1); rotation steps + lock inertness (AC‑E2);
+  slide/move/plain‑drag + redraw (AC‑E3); drag‑to‑place snap (AC‑E4);
+  undo/redo/save/cancel bindings (AC‑E5); zoom + reset‑view (AC‑C2); table
+  selection (AC‑C3). Use the existing `Avalonia.Headless` per‑panel test
+  harness in `OpticalConstructor.Ui.Tests` to mount `ConstructorView` and
+  simulate the interactions.
+- `ui-smoke` — the headless app boots and renders the constructor surface
+  frame without throwing.
+- `constructor-unit-tests` — the configurable key‑map round‑trip on
+  `EnvironmentSettings` via the existing `EnvironmentRoundTripTests` harness.
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+High: this is the largest UI slice — the `Commands.fs` registry must be the
+single source from which both the key map and the mouse map derive (AC‑E1 is
+the constraint‑0.4 lynchpin), and `ConstructorView.fs` wires every gesture
+through it without a second binding site. The headless simulation of
+wheel/drag gestures in `OpticalConstructor.Ui.Tests` is the main test
+care‑point. Keep the MVU model pure and serializable (0.3).
+
+## Hand-off
+
+Record the `Commands.fs` registry shape (the command DU, the three‑state
+binding type, how the key map and mouse map are projected) so slice 006
+(Ribbon) projects ribbon + menu controls from the *same* registry with no
+second wiring site, and so slice 007 (Part G) adds the group‑toggle and
+detector `Set as primary` commands in this one place. Record the
+`ConstructorView` MVU model/msg surface so slices 006 (catalogue drag‑in,
+value‑id modal) and 007 (group on/off, K snapshot push) extend it. Note that
+every project‑mutating action this slice dispatches MUST be wired to push an
+`EditHistory` snapshot in slice 007 (Part K). Carry the `gates:` baseline
+YAML block forward.

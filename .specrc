@@ -8,29 +8,6 @@
       "path": "C:/OpenAI/Codex/npm-prefix/codex.cmd"
     }
   },
-  "tool_agents": {
-    "spec_writer": {
-      "console":          false,
-      "spec_author":      "default",
-      "claim_checker":    "default",
-      "gate_keeper":      "default",
-      "handoff_verifier": "default"
-    },
-    "multistep": {
-      "console":                 true,
-      "splitter":                "default",
-      "fidelity_judge":          "default",
-      "verifier":                "default",
-      "splitter_claim_checker":  "default",
-      "reconciler":              "default",
-      "arc_runner_worker":       "default",
-      "code_judge":              "default",
-      "architecture_critic":     "default",
-      "reuse_critic":            "default",
-      "resolver":                "default",
-      "postmortem":              "default"
-    }
-  },
   "specs_root": "specs/",
   "spec_naming": {
     "regex": "^\\d{3,5}(-\\d{2})?(-\\d{2})?$"
@@ -69,27 +46,5 @@
   },
   "data_version": 5,
 
-  "max_arc_wall_seconds": 172800,
-
-  "overrides_documentation": {
-    "comment": "Per-repo override paths for the constitution and the 14 *.system-md files (spec 009/049). Each entry below is INACTIVE -- it sits inside this 'overrides_documentation' block which the .specrc loader silently ignores (any unrecognised top-level key is documentation, same convention as claude-agent.yolo's 'comment' fields). To activate an override, move the entry OUT of this block to the top level of .specrc (alongside 'agent', 'agents', etc.). PATH SOURCE: overrides come from the TARGET REPO (the repo this .specrc is sitting in / the --repo argument the spec-writer was launched with); defaults come from the ASG INSTALL ROOT (the install location of the ai_strategy_generator package, NOT the target repo). The two roots never mix: a missing override key resolves to ASG's bundled file under <asg-install>; an active override key resolves to a file under <target-repo>. PATH SHAPE: the convention is target-repo-RELATIVE: a string like '.constitution-md' or 'src/.../foo.system-md' that the loader resolves as (<target-repo> / value). Absolute paths are accepted as an escape hatch (used as-is, target-repo NOT prepended) but are discouraged because they break portability across machines. The file MUST exist when the key is active; a typo aborts the cycle (no silent fallback to defaults). The values shown below are deliberately written as target-repo-RELATIVE paths that happen to match ASG's own internal layout -- for a different target repo, the override values would point at THAT repo's own files. Promoting an entry as-is in ASG's OWN .specrc would resolve to ASG's repo root, which happens to carry the same files as ASG's install root, so the rendered prompts would be byte-identical to leaving the keys off -- the block exists as documentation of the SHAPE, not as a recommended copy-paste for non-ASG repos.",
-
-    "constitution_path": ".constitution-md",
-
-    "arc_runner_system_md": "src/ai_strategy_generator/multistep/arc-runner.system-md",
-    "architecture_critic_system_md": "src/ai_strategy_generator/multistep/architecture-critic.system-md",
-    "code_judge_system_md": "src/ai_strategy_generator/multistep/code-judge.system-md",
-    "reuse_critic_system_md": "src/ai_strategy_generator/multistep/reuse-critic.system-md",
-    "reconciler_system_md": "src/ai_strategy_generator/multistep/reconciler.system-md",
-    "verifier_system_md": "src/ai_strategy_generator/multistep/verifier.system-md",
-    "splitter_system_md": "src/ai_strategy_generator/multistep/splitter.system-md",
-    "splitter_claim_checker_system_md": "src/ai_strategy_generator/multistep/splitter-claim-checker.system-md",
-    "resolver_system_md": "src/ai_strategy_generator/multistep/resolver.system-md",
-    "postmortem_system_md": "src/ai_strategy_generator/multistep/postmortem.system-md",
-
-    "spec_author_system_md": "src/schemas/spec_writer/spec_author/spec-author.system-md",
-    "spec_writer_claim_checker_system_md": "src/schemas/spec_writer/claim_checker/claim-checker.system-md",
-    "gate_keeper_system_md": "src/schemas/spec_writer/gate_keeper/gate-keeper.system-md",
-    "handoff_verifier_system_md": "src/schemas/spec_writer/handoff_verifier/handoff-verifier.system-md"
-  }
+  "max_arc_wall_seconds": 172800
 }

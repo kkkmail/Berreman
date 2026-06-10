@@ -170,7 +170,7 @@ module StackEditTests =
         let sample = mkNode (Sample baseSystem) (Map.ofList [ BeamBranch.Transmitted, detector ])
         let mirror = mkNode FlatMirror Map.empty
         let root = mkNode (Sample baseSystem) (Map.ofList [ BeamBranch.Reflected, mirror; BeamBranch.Transmitted, sample ])
-        { beamTree = { root = root }; systems = [ baseSystem ]; sources = [] }
+        { beamTree = { root = root }; systems = [ baseSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     let private model0 = ConstructionPage.init project "C:\\projects\\demo" "demo"
 

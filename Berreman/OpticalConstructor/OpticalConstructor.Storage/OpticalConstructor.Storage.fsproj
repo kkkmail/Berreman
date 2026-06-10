@@ -30,6 +30,10 @@
         <Compile Include="SchemaValidation.fs" />
         <Compile Include="ProjectJson.fs" />
         <Compile Include="ProjectFile.fs" />
+        <!-- Spec 0026 Part G/H (slice 007): the separate per-user groups + experiment-
+             collections store. Reuses ProjectJson.options + the validate-on-load seam;
+             compiles after ProjectJson (its shared options) and ProjectFile. -->
+        <Compile Include="GroupsLibrary.fs" />
         <Compile Include="Sidecar.fs" />
         <Compile Include="MaterialImport.fs" />
         <Compile Include="SpectralImport.fs" />
@@ -48,6 +52,11 @@
          `SchemaValidation` can load it beside the assembly at runtime (§I.2). -->
     <ItemGroup>
         <Content Include="schema\optical-constructor-project.schema.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <!-- Spec 0026 Part G/H (slice 007): the groups/collections schema, build-copied
+             beside the assembly so GroupsLibrary.validate loads it at runtime (G.3.1). -->
+        <Content Include="schema\optical-constructor-groups.schema.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

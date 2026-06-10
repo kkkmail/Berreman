@@ -1,0 +1,315 @@
+# 006 — Ribbon‑and‑menu shell, front door, Legacy entry; element catalogue & value‑id modal
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part D**
+  (ribbon‑and‑menu shell and the single command source) and **Part F**
+  (standard element catalogue and value‑id binding placeholder).
+- Depends on slice 003 (`Localization.fs`), slice 004 (table/drawer/controls),
+  and slice 005 (`Commands.fs` registry, `ConstructorView.fs`).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑D1: The ribbon shows the Build / Element / Trace‑View / Experiment /
+  Settings tabs, each populated from the command registry (D.1).
+- AC‑D2: Collapsing the ribbon exposes every ribbon command through the
+  drop‑down menus, and a command added once to the registry appears in both
+  the ribbon and the menus with no second wiring site (D.2.1).
+- AC‑D3: Selecting an element appends a contextual Element tab beside the
+  persistent tabs (D.3).
+- AC‑D4: The *Legacy* entry opens the existing dockable Construction /
+  Synthesis‑Fit screen (D.5); the constructor is the default landing page
+  (D.6).
+- AC‑F1: The catalogue offers LS, LP, CP, S, Lens, Flat Mirror, Curved
+  Mirror, D and no "analyzer" entry; a chain may hold more than two
+  polarizers (F.1).
+- AC‑F2: The value‑id binding menu action opens a working, dismissible empty
+  modal; no picker content ships (F.2).
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Ribbon.fs` (new) — ribbon tabs + collapsed‑ribbon menus generated from the registry; contextual element tab; Legacy entry.
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/LocalHelp.fs` (new) — context‑sensitive local help content (Part E.2 / J references; help text resolves through `Localization.fs`).
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (edit) — add the Constructor and Legacy pages to `Page`; route through `RootModel`/`RootMsg`; default landing.
+- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (edit) — startup localization completeness check + copyable error surface; constructor as default landing. *(This slice owns the constructor‑as‑default‑landing edit; the localization completeness check was delivered by slice 003.)*
+
+### File:line references owned by this slice
+
+- `Shell.fs:73` `Page` — the existing flat two‑page nav; extended with the Constructor and Legacy pages (D.0, D.6, UX commitment 1).
+- `Shell.fs:510` `navBar` / `Shell.fs:500` `navButton` — the existing nav bar / button; the new nav/shell entry is marked active with distinct styling like the current `navButton` (D.0, UX commitment 1).
+- `Shell.fs:94` `RootModel` / `Shell.fs:121` `RootMsg` — the nav / shell entry MUST be wired through the existing root message path so navigation stays single‑sourced (D.6.1, D.7).
+- `Shell.fs:572` `constructionBody` — the present dockable‑panel main screen the *Legacy* entry opens as‑is (the Construction and Synthesis/Fit pages) (D.5.1, UX commitment 1).
+- `AppShell.fs:89` `AppShell.toDock` — the dock‑edge seam reused for any docked sub‑panels of the constructor (D.7).
+- `BeamTree.fs:35` — the existing `ConstructorElement` cases the catalogue kinds map onto via `CatalogueKind.toConstructorElement` (F.3).
+- `BeamTree.fs:42` — the `Analyzer` case; no new DU cases for LP/CP (they are `Polarizer`) and `Analyzer` MUST NOT be removed (F.3).
+
+## Scope
+
+This slice adds the Office‑style ribbon‑and‑menu shell as the new front
+door and surfaces the standard element catalogue. The ribbon
+(`Ribbon.fs`) presents task tabs whose controls are generated from the
+centralized command registry (slice 005, `Commands.fs`); when collapsed the
+same entries expand into full drop‑down menus, so a command added once to the
+registry appears in both with no second wiring site (constraint 0.4). The
+contextual Element tab is appended when an element is selected. The
+constructor becomes a top‑level page and the default landing page; a *Legacy*
+entry opens the present dockable‑panel main screen. The catalogue surfaces
+the Part F roles and the value‑id binding action opens a working empty modal.
+`LocalHelp.fs` provides context‑sensitive help whose text resolves through
+`Localization.fs` (slice 003).
+
+The spec‑writer's hidden‑controls checklist (LLM‑profile select,
+web‑search‑provider select, session token counters, `.specrc.agent`
+dropdown) does **not** apply: Berreman is an Avalonia F# desktop application
+with no `nav.html` and none of those controls.
+
+## Requirements
+
+### R-1. Ribbon tab set (D.1)
+
+D.1.1 A new module
+`Berreman/OpticalConstructor/OpticalConstructor.Ui/Ribbon.fs` MUST define
+the ribbon as a set of task tabs. The starting tab set MUST be: **Build**
+(place elements and groups), **Element** (edit the active element),
+**Trace / View** (rays, zoom, table view, reset, show‑CR toggle),
+**Experiment** (groups, collections, detectors), and **Settings**
+(language, units, controls, help).
+
+D.1.2 Each ribbon tab's controls MUST be generated from the centralized
+command registry (Part E), not hand‑placed per tab, so a command added to
+the registry appears on its tab automatically.
+
+### R-2. Collapsible ribbon ↔ full menus (D.2)
+
+D.2.1 The ribbon MUST be collapsible to reclaim screen space. When
+collapsed, the same top‑level entries MUST expand into full drop‑down menus
+that expose **everything** the ribbons offer. No command MUST be reachable
+only from a ribbon or only from a menu — both MUST be projections of the
+one command set (constraint 0.4). A command added to the registry MUST
+appear in both the ribbon and the menus with no second wiring site.
+
+D.2.2 Office‑style multi‑state collapse (full ribbon → titles‑and‑tabs →
+tabs only) MAY be implemented as a progression but is a design detail, not
+a fixed requirement; the firm requirement is the single‑source ribbon↔menu
+equivalence of D.2.1.
+
+### R-3. Contextual element tab (D.3)
+
+D.3.1 A contextual ribbon tab for the active element MUST appear when an
+element is selected and MUST be **appended** beside the persistent tabs
+rather than taking over the whole ribbon.
+
+### R-4. Bilingual layout robustness (D.4)
+
+D.4.1 The ribbon and menus MUST remain legible under both EN and RU
+strings, which differ in length (Cyrillic labels tend to run longer). The
+layout MUST flex rather than truncate when a label is longer in one
+language.
+
+### R-5. Legacy menu entry (D.5)
+
+D.5.1 A **Legacy** menu entry MUST open the present dockable‑panel main
+screen as‑is (the Construction and Synthesis/Fit pages, `Page` of
+Shell.fs:73, laid out by `constructionBody`, Shell.fs:572). The legacy form
+is a reference and fallback; it MUST remain reachable and functional but
+MUST NOT be required to evolve in lock‑step with the new screen.
+
+### R-6. The constructor is the front door (D.6)
+
+D.6.1 The new constructor screen MUST be a top‑level page and MUST be the
+default landing page when the app starts. The existing `Page` union
+(Shell.fs:73) MUST be extended with the constructor page, and the nav /
+shell entry MUST be wired through the existing root message path
+(`RootMsg`, Shell.fs:121) so navigation stays single‑sourced.
+
+### R-7. Reuse before invention for the shell (D.7)
+
+Extend the existing `Page` union (Shell.fs:73) and route through the
+existing `RootModel`/`RootMsg` (Shell.fs:94/:121) rather than building a
+parallel navigation system. Reuse the dock‑edge seam (`AppShell.toDock`,
+AppShell.fs:89) for any docked sub‑panels of the constructor.
+
+### R-8. Catalogue names (F.1)
+
+F.1.1 The catalogue MUST surface these roles, each mapping through
+`CatalogueKind.toConstructorElement` (A.5.2): **Optical Table (OT)** (the
+workspace itself, Part C), **Light Source (LS)**, **Linear Polarizer (LP)**,
+**Circular Polarizer (CP)**, **Sample (S)**, **Lens**, **Flat Mirror**,
+**Curved Mirror**, **Detector (D)**. Mirrors, lenses, prisms, and wedges are
+the elements that make the side rays meaningful (Part B) and are needed for
+focusing and dispersive setups.
+
+F.1.2 A polarizer MUST be just a polarizer regardless of where it sits;
+there MUST be no separate "analyzer" catalogue entry and no special label
+for a polarizer that follows the sample. The catalogue MUST allow more than
+two polarizers in a chain.
+
+### R-9. Value‑id binding action (placeholder) (F.2)
+
+F.2.1 The element's local menu MUST expose an action to open the value‑id
+binding. For the first build this action MUST open a functioning **empty
+modal dialog** (a fully working, dismissible modal with no picker content).
+
+F.2.2 The real device/material picker behind that dialog is out of scope
+for this spec (constraint 0.6). The committed deliverable is the working
+menu action and the working empty modal; this is a complete end state, not
+a stub — the id slot (A.6) and the menu entry exist so nothing is
+retro‑fitted later.
+
+### R-10. Reuse before invention for the catalogue (F.3)
+
+Map catalogue kinds onto the existing `ConstructorElement` cases
+(BeamTree.fs:35) via the A.5.2 function; do not add new element DU cases for
+LP/CP (they are `Polarizer`) and do not remove `Analyzer` (BeamTree.fs:42).
+
+### R-11. Discoverability UX commitment (UX 1)
+
+The constructor is a new top‑level page and the default landing page (D.6);
+its nav/shell entry is added to the existing `Page` union (Shell.fs:73) and
+marked active with distinct styling like the current `navButton`
+(Shell.fs:500). The *Legacy* entry (D.5) opens the present dockable‑panel
+main screen (`constructionBody`, Shell.fs:572).
+
+## Non-requirements
+
+- No real device/material picker behind the value‑id modal (0.6, F.2.2) —
+  only the working menu action + empty modal.
+- No removal of the `Analyzer` DU case and no new LP/CP DU cases
+  (BeamTree.fs:42, F.3).
+- The legacy dockable screen MUST remain reachable but MUST NOT be evolved
+  in lock‑step with the new screen (D.5.1).
+- No element‑group / experiment‑collection behaviour behind the *Experiment*
+  tab (Part G/H / slice 007) — the tab exists and projects its commands from
+  the registry, but the group/collection semantics land in slice 007.
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Ribbon.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/LocalHelp.fs`
+
+Edited:
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs` (add Constructor + Legacy pages to `Page`; route through `RootModel`/`RootMsg`; default landing)
+- `Berreman/OpticalConstructor/OpticalConstructor.App/Program.fs` (constructor as default landing)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui/ConstructorView.fs` (wire the value‑id modal action + contextual‑tab selection into the existing MVU page from slice 005)
+- `Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/` ribbon/menu/page view tests (extend the existing per‑panel view‑test harness)
+
+## Testing plan
+
+Gates that apply this slice (touches Ui, App, Ui.Tests; no Domain/Storage
+change, so `constructor-unit-tests` does not apply by glob):
+`build`, `unit-tests`, `ui-smoke`, `ui-tests`,
+`impl-log-structure`, `state-of-world-structure`.
+
+- `ui-smoke` — the headless host boots with the constructor as the default
+  landing page and renders one frame for every page/panel, including the new
+  ribbon shell and the constructor page (AC‑D4 landing).
+- `ui-tests` — ribbon shows Build/Element/Trace‑View/Experiment/Settings
+  populated from the registry (AC‑D1); collapse exposes every command through
+  menus with no second wiring site (AC‑D2); selecting an element appends the
+  contextual Element tab (AC‑D3); the *Legacy* entry opens the existing
+  dockable screen (AC‑D4); the catalogue lists LS/LP/CP/S/Lens/Flat
+  Mirror/Curved Mirror/D with no analyzer entry and allows >2 polarizers
+  (AC‑F1); the value‑id action opens a dismissible empty modal (AC‑F2).
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+High: making the constructor the default landing page (D.6) reroutes the
+app's front door through the existing `RootModel`/`RootMsg` (Shell.fs:94/:121)
+without breaking the legacy `Page` paths the `ui-smoke`/`ui-tests` gates
+already cover — a regression here fails every existing panel test. The
+ribbon↔menu single‑source equivalence (AC‑D2) is the constraint‑0.4 proof
+point; both projections must read the slice‑005 registry with no second
+wiring site. Bilingual layout flex (D.4) must not truncate RU labels.
+
+## Hand-off
+
+Record the `Ribbon.fs` projection API (how ribbon tabs and collapsed menus
+derive from the registry), the *Experiment* tab's command slots, and the
+value‑id modal entry point, so slice 007 (Part G/H/K) can hang group /
+collection / detector commands off the *Experiment* tab and the element
+context menu, all from the slice‑005 registry. Confirm the legacy screen
+still renders for `ui-smoke`. Carry the `gates:` baseline YAML block forward.

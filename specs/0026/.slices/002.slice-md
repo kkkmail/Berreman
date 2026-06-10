@@ -1,0 +1,283 @@
+# 002 — Ray model, snapping & schematic tracing (CRITICAL — land first)
+
+## Spec reference
+
+- `C:\GitHub\Berreman\specs\0026\.spec-md` — parent spec this slice belongs to
+  (Spec 0026 — Optical Constructor UI). This slice realises **Part B**.
+- Depends on slice 001 (Part A — `Placement.fs`: `ElementPlacement`,
+  `BoundingBox`, `CatalogueKind`, emission metadata).
+
+## Inherited from parent spec
+
+### Binding constraints (from `.spec-md` ## 0)
+
+0.1 **Reuse the engine, do not re‑type it.** The constructor MUST drive the
+existing beam tree (`Berreman/OpticalConstructor/OpticalConstructor.Domain/BeamTree.fs:35`
+defines `ConstructorElement`; `:53` defines `BeamNode`; `:91` `solve`;
+`:117` `routeAndSolve`) and the project aggregate
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/Project.fs:26`,
+`OpticalConstructorProject`). It MUST NOT introduce a parallel element
+catalogue, a parallel solver, or a parallel project type.
+
+0.2 **Canonical SI everywhere.** Every stored physical magnitude (table
+dimensions, placement‑point coordinates, distances along rays, box
+dimensions) MUST be held in canonical SI base units (meters), matching the
+units spine (`Berreman/OpticalConstructor/OpticalConstructor.Domain/Units.fs:20`,
+`UnitOfMeasure`; `:43` `toMeters`; `:71` `fromMeters`). Unit conversion
+happens ONLY at the display / import / export boundary through that module;
+no other module hand‑rolls a conversion. Each element and the table MAY
+carry a per‑object preferred display unit (display metadata only, mirroring
+`BeamNode.defaultUnit`, BeamTree.fs:59).
+
+0.3 **Pure, serializable MVU models; public FuncUI surface only.** All new
+view models MUST be pure and serializable F# values (no Avalonia handle,
+renderer instance, or cancellation token in a model), matching the existing
+root model (`Berreman/OpticalConstructor/OpticalConstructor.Ui/Shell.fs:94`,
+`RootModel`). All view code MUST be authored against the public MIT
+`Avalonia.FuncUI` NuGet DSL surface used today. The audit‑gated FuncUI clone
+at `C:/GitHub/Avalonia.FuncUI.Clone/` MUST NOT be referenced, linked, or
+built (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppShell.fs:8`
+records the gate). Geometry MUST be expressed as pure projections carrying
+no Avalonia type, so every geometry rule is provable headless, exactly as
+the existing schematic does
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/Schematic.fs:18`).
+
+0.4 **Single source of commands — declared once, surfaced twice.** Two
+distinct command surfaces in this spec MUST each be driven from one
+declaration, never wired twice:
+- the **ribbon ↔ drop‑down menu** pairing (Part D): a command appears in
+  both the ribbon and the collapsed‑ribbon menus from one definition;
+- the **keyboard ↔ mouse** pairing (Part E): a command reachable by both a
+  key and a mouse gesture declares both bindings on one definition.
+Both surfaces MUST read from the centralized command registry of Part E.
+
+0.5 **Schematic, not physical‑grade.** The on‑table drawing is a schematic.
+Ray bending through tilted elements MUST use a fixed refractive index of
+`n = 1.0` outside an element and `n = 1.5` inside, applying Snell's law to
+position the drawn lines (Part B). The schematic MUST stay consistent with
+which branches the engine beam tree actually computes (reflected /
+transmitted), but it MUST NOT attempt physical‑optics accuracy.
+
+0.6 **Plausible‑expansion exclusions.** A downstream implementer MUST NOT
+add, unless a directive in this spec names it: caching or a retained‑mode
+scene graph for the table render; a drawing‑backend abstraction layer;
+schema migration or version‑upgrade code (every install starts from a
+blank slate; a schema‑version mismatch is a validation error, matching
+`Berreman/OpticalConstructor/OpticalConstructor.Storage/schema/optical-constructor-project.schema.json:12`);
+a real device/material picker behind the value‑id binding action (Part F
+commits only an empty modal); physical‑grade ray tracing; a third language
+beyond the EN/RU resource mechanism (the *mechanism* MUST support adding
+one by editing a file, but no third language ships).
+
+0.7 **Net‑new vs reused.** The following are **net‑new** (verified absent
+today): element placement (position, the three rotations, bounding box,
+normals, drawer), the ray‑group model and snapping, the top‑down table
+surface, the ribbon/menu shell, the centralized command model, EN/RU
+localization (no `CultureInfo`‑based localization, `ResourceManager`, or
+`.resx` exists; the only `CultureInfo` uses are `InvariantCulture` number
+parsing), the standardized‑controls module, element groups, and experiment
+collections. The following are **reused as‑is**: the beam‑tree solver
+(BeamTree.fs:91), the units spine (Units.fs), JSON project storage
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/ProjectFile.fs:20`
+`saveProject`, `:31` `openProject`), schema validation
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/SchemaValidation.fs:61`
+`validate`), snapshot undo/redo
+(`Berreman/OpticalConstructor/OpticalConstructor.Storage/History.fs:20`
+`EditHistory`), and the environment/settings store
+(`Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:141`
+`EnvironmentSettings`).
+
+### Acceptance criteria owned by this slice
+
+- AC‑B1: At normal incidence the eight side rays are equidistant points 45°
+  apart on a circle of radius `0.4 × face_extent/2` with the CR at the
+  centre (B.1).
+- AC‑B2: A mirror's drawn groups contain an RRG and no TRG; a non‑mirror
+  element with both emissions draws both (B.2.1), consistent with the engine
+  branches.
+- AC‑B3: After an element's R2 changes, every downstream element's along‑ray
+  distance is unchanged while its absolute position follows the new ray
+  direction (B.3.2).
+- AC‑B4: A fresh project places the light source left‑middle and the
+  detector right‑middle exactly `2.0 m` apart along the CR; the light‑source
+  position reset restores that placement and downstream elements re‑snap
+  preserving distances (B.4).
+- AC‑B5: Switching the tracked branch (T→R) or removing one of two in‑use
+  rays orphans exactly the elements on the removed ray; restoring the ray
+  re‑snaps an orphan iff the ray passes within the configured distance of
+  its placement point; no other operation orphans an element (B.5).
+- AC‑B6: A ray crossing an element with R2 ≠ 0 bends per Snell's law with
+  `n = 1.0`/`n = 1.5` (B.6), provable headless from `RayModel.fs`.
+
+### Files in scope owned by this slice
+
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/RayModel.fs` (new) — CR + 8 side rays, IRG/RRG/TRG, snapping + downstream travel, orphaning, default LS/D placement, Snell schematic tracing (pure geometry).
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/RayModelTests.fs` (new) — B‑part ray/snapping/orphaning/Snell tests.
+
+### File:line references owned by this slice
+
+- `BeamTree.fs:91` `solve` — the quantitative result at each element still comes from the existing beam‑tree solver; this slice is the visual layer only (B.0).
+- `BeamTree.fs:117` `routeAndSolve` — the reflected/transmitted groups the constructor draws MUST be the same two branches the engine routes and solves (B.7.1).
+- `BeamTree.fs:98` `branchEmField` — the drawn branches MUST stay consistent with the reflected/transmitted branches the engine computes (B.0, B.7.1).
+- `BeamTree.fs:21` — the engine `Reflected`/`Transmitted` branch tags the drawn RRG/TRG must correspond to (B.2.1).
+- `BeamTree.fs:74` `BeamNode.attach` — the existing mirror rule (mirror carries the reflected branch only) the drawn groups follow (B.2.1, via A.7 emission metadata).
+
+## Scope
+
+This slice is the pure geometry layer that draws the light path: one central
+ray plus eight side rays, incident/reflected/transmitted ray groups,
+element snapping onto the central ray, distance‑preserving downstream travel
+when an element is tilted, orphaning rules, default light‑source and detector
+placement, and schematic Snell tracing through tilted elements. It lives in
+a new `RayModel.fs` module and carries no Avalonia type. The quantitative
+result at each element still comes from the existing beam‑tree solver
+(BeamTree.fs:91); the drawn branches MUST stay consistent with the
+reflected/transmitted branches the engine computes (BeamTree.fs:98).
+
+## Requirements
+
+### R-1. Ray group: one central ray and eight side rays (B.1)
+
+B.1.1 `RayModel.fs` MUST model a ray group as one **central ray (CR)** plus
+**eight side rays**. At normal incidence the eight side rays MUST land as
+equidistant points on a circle, 45° apart, with the CR striking the centre
+of that circle (the "rifle‑target" pattern). The side rays MUST visibly
+spread only when a lens, a non‑flat (curved) mirror, a prism, or a wedge
+bends them.
+
+B.1.2 The on‑screen radius of the eight‑ray bundle MUST be a fixed fraction
+of the element's clear face: `bundle_radius = 0.4 × (face_extent / 2)`.
+This fraction is a schematic legibility choice (no canonical standard
+exists for ray‑bundle radius; it is anchored to the optics rule that a
+clear aperture is ≈2–3× the beam, so 0.4 keeps all eight side rays clearly
+inside the face — see References). It MUST be a named constant.
+
+### R-2. Incident, reflected, transmitted groups; detector termination (B.2)
+
+B.2.1 `RayModel.fs` MUST name the incident ray group (IRG) — the ray group
+falling on an element — as the frame against which that element's rotations
+are measured (A.4.3). Every element except a mirror produces both a
+transmitted ray group (TRG) and a reflected ray group (RRG); a mirror
+produces only an RRG. The drawn groups MUST follow the element's A.7
+emission metadata and MUST correspond to the engine branches
+(`Reflected`/`Transmitted`, BeamTree.fs:21).
+
+B.2.2 A **Detector (D)** MUST terminate the ray group it receives: no
+ray group is drawn leaving a detector.
+
+### R-3. Snapping and downstream travel (B.3)
+
+B.3.1 Each element's placement point MUST snap onto the central ray
+(B.1, A.2). `RayModel.fs` MUST expose a pure function that, given a ray and
+a set of elements with their placement points and rotations, produces the
+drawn ray geometry with every element snapped to its ray.
+
+B.3.2 Changing an element's R2 and/or R3 MUST change the direction of its
+reflected ray R and MAY change the direction of its transmitted ray T.
+Everything snapped to a ray downstream of the rotated element MUST travel
+with the new ray direction **while preserving all distances** measured
+along the ray. Tilting one element MUST therefore drag everything
+downstream of it along the new beam direction automatically, keeping the
+inter‑element spacing unchanged.
+
+### R-4. Default light‑source and detector placement (B.4)
+
+B.4.1 The light source MUST have a default placement near the left side of
+the table, vertically centred; the detector MUST have a default placement
+near the right side, vertically centred. The central ray MUST originate at
+the light source and terminate at the detector, and the initial distance
+between them MUST be `2.0 m`, measured along the central ray.
+
+B.4.2 Because everything downstream is snapped to the central ray, moving
+the light source MUST drag the whole chain with it. The light source MUST
+expose a **position reset** (reachable from its local element menu, Part E)
+that returns it to its default spot; when the light source moves or resets,
+the remaining elements MUST re‑snap to the ray, preserving their along‑ray
+distances.
+
+### R-5. Orphaned elements (B.5)
+
+B.5.1 An element MUST become *orphaned* (left without a ray) only by one of
+two operations: (a) changing which ray is tracked (e.g. switching the
+tracked branch from T to R), or (b) removing one ray while both R and T are
+in use. Elements that were sitting on the removed ray MUST become orphaned.
+
+B.5.2 No other operation MUST orphan an element — ordinary rotation and
+dragging MUST always keep elements attached to a ray.
+
+B.5.3 If a removed ray is later restored, an orphaned element MUST re‑snap
+to it when the restored ray passes within a configured distance of the
+element's placement point; otherwise the element MUST stay orphaned until
+the user reattaches it. The re‑snap distance MUST be a named, configurable
+constant.
+
+### R-6. Schematic Snell tracing through tilted elements (B.6)
+
+B.6.1 When an element has R2 ≠ 0 and/or R3 ≠ 0, the central and side rays
+genuinely change direction and the side rays MAY refract. `RayModel.fs`
+MUST compute the bent line geometry by applying Snell's law with `n = 1.0`
+outside and `n = 1.5` inside the element (constraint 0.5). These two indices
+MUST be named constants in `RayModel.fs`.
+
+B.6.2 When both the reflected and transmitted groups are emitted, the two
+MUST be drawn as distinct outgoing groups from the element's face; the
+visual distinction (colour / weight / alpha) is specified in Part C.
+
+### R-7. Consistency with the engine (B.7)
+
+B.7.1 The reflected/transmitted groups the constructor draws MUST be the
+same two branches the engine beam tree routes and solves (BeamTree.fs:98,
+`:117`). The drawing MUST NOT invent a branch the engine does not compute,
+and MUST NOT suppress a branch the element's A.7 metadata emits.
+
+## Non-requirements
+
+- No Avalonia type in this module (pure geometry; constraint 0.3).
+- No physical‑optics accuracy; schematic only (constraint 0.5).
+- No drawing weights / colours (Part C / slice 004) and no interaction
+  gestures (Part E / slice 005) — this slice exposes pure geometry only.
+- No re‑implementation of the engine solver (BeamTree.fs:91) — reuse it.
+
+## Files modified (planned)
+
+New:
+- `Berreman/OpticalConstructor/OpticalConstructor.Domain/RayModel.fs`
+- `Berreman/OpticalConstructor/OpticalConstructor.Tests/RayModelTests.fs`
+
+Edited:
+- (none)
+
+## Testing plan
+
+Gates that apply this slice (domain only, no UI):
+`build`, `unit-tests`, `constructor-unit-tests`, `impl-log-structure`,
+`state-of-world-structure`.
+
+- `constructor-unit-tests` — `RayModelTests.fs`: 45° eight‑ray circle
+  (AC‑B1), mirror RRG‑only (AC‑B2), distance‑preserving downstream travel
+  (AC‑B3), default 2 m placement + LS reset (AC‑B4), orphaning rules
+  (AC‑B5), Snell n=1/1.5 bending (AC‑B6).
+- `ui-smoke` / `ui-tests` do **not** apply: no `OpticalConstructor.Ui` /
+  `OpticalConstructor.Ui.Tests` file is touched.
+
+(Worker: fill in concrete test names and counts as you implement.)
+
+## Risks
+
+Medium: the distance‑preserving downstream‑travel transform (B.3.2) and the
+Snell bending math (B.6) are the numerical care‑points; AC‑B3 and AC‑B6
+are exact headless assertions, so floating‑point tolerance must follow the
+project precedent (`MatrixComparison.fs`). The orphaning state machine (B.5)
+has several edge cases (restore‑within‑distance re‑snap) that the tests must
+pin precisely.
+
+## Hand-off
+
+Carry the baseline `gates:` YAML block forward (legacy + constructor test
+counts) so `count_at_least` has a baseline. Record the public `RayModel.fs`
+surface — the snap function signature, the IRG/RRG/TRG group types, the
+named constants (`bundle_radius` fraction 0.4, re‑snap distance, n=1.0/1.5)
+— so slice 004 (Table/Drawer/ConstructorTable) can draw the groups and
+slice 005 (interaction) can wire rotation/move to re‑snapping. The visual
+distinction between reflected and transmitted groups (B.6.2) is specified in
+Part C (slice 004); leave it to the drawing layer.

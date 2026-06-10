@@ -13,7 +13,9 @@
     "theme",
     "chartPalette",
     "toolbar",
-    "preferences"
+    "preferences",
+    "language",
+    "keyMap"
   ],
   "properties": {
     "schemaVersion": {
@@ -57,6 +59,14 @@
     "preferences": {
       "$ref": "#/$defs/preferences",
       "description": "User preferences (J.7)."
+    },
+    "language": {
+      "$ref": "#/$defs/language",
+      "description": "The selected UI language (Spec 0026 Part I §I.2.1). Persisted and restored on next launch; defaults to English. A fieldless DU serialized as a bare string. EN and RU ship; a further language is added by editing strings.json (no third language ships)."
+    },
+    "keyMap": {
+      "$ref": "#/$defs/keyMap",
+      "description": "The configurable constructor key map (Spec 0026 Part E §E.8.1): the user's key-binding overrides plus the rotation step (§E.3.1, default 5). Persisted so a preferred key map and rotation step survive across sessions; an empty overrides list means the built-in default bindings declared in Commands.fs."
     }
   },
   "$defs": {
@@ -77,6 +87,11 @@
       "type": "string",
       "enum": ["Light", "Dark"],
       "description": "Theme selection (J.8). A fieldless DU serialized as a bare string."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["English", "Russian"],
+      "description": "UI language selection (Spec 0026 Part I §I.2). A fieldless DU serialized as a bare string. EN and RU ship; the strings.json mechanism supports adding a further language by editing the file."
     },
     "dockSide": {
       "type": "string",
@@ -155,6 +170,26 @@
       "properties": {
         "name": { "type": "string" },
         "pins": { "type": "array", "items": { "$ref": "#/$defs/favoritePin" } }
+      },
+      "additionalProperties": false
+    },
+    "keyBindingOverride": {
+      "type": "object",
+      "description": "One key-binding override (Spec 0026 Part E §E.8.1): a language-neutral command id (Commands.CommandDef.id) bound to a gesture string the Commands parser understands (e.g. \"Ctrl+R\").",
+      "required": ["command", "gesture"],
+      "properties": {
+        "command": { "type": "string" },
+        "gesture": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "keyMap": {
+      "type": "object",
+      "description": "The configurable constructor key map (Spec 0026 Part E §E.8.1 + §E.3.1): the rotation step in degrees (default 5) and the ordered key-binding overrides.",
+      "required": ["rotationStepDegrees", "overrides"],
+      "properties": {
+        "rotationStepDegrees": { "type": "number", "description": "The rotation step in degrees (§E.3.1); default 5." },
+        "overrides": { "type": "array", "items": { "$ref": "#/$defs/keyBindingOverride" } }
       },
       "additionalProperties": false
     }

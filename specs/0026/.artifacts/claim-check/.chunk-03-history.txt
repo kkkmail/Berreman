@@ -1,0 +1,1 @@
+Chunk 3/7 (.spec-md lines 353-563): audited 5 assumption-shape claims (B.7.1 BeamTree.fs:98/:117; C.0 Schematic.fs:18; C.5.2 + C.8 SchematicColor at Schematic.fs:35; D.0 Shell.fs:73 Page/:510 navBar/:500 navButton) -- all CONFIRMED against the live tree.

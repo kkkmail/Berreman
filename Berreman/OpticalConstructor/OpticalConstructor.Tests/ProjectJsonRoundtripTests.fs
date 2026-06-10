@@ -47,7 +47,7 @@ module ProjectJsonRoundtripTests =
     let private sampleProject (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
         let detector = node Detector Map.empty Nanometer
         let root = node (Sample vacuumSystem) (Map.ofList [ BeamBranch.Transmitted, detector ]) defaultUnit
-        { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = [] }
+        { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     let private okOr (r : Result<'a, _>) : 'a =
         match r with
@@ -106,7 +106,7 @@ module ProjectJsonRoundtripTests =
         let mirror = { (node FlatMirror Map.empty Nanometer) with system = plateSystem }
         let detector = node Detector Map.empty Nanometer
         let root = { (node (Sample plateSystem) (Map.ofList [ BeamBranch.Reflected, mirror; BeamBranch.Transmitted, detector ]) Micrometer) with system = plateSystem }
-        { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ]; sources = [] }
+        { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     [<Fact>]
     let ``AC-B9 beam tree and systems round-trip through the schema-validated canonical project`` () =
@@ -142,3 +142,29 @@ module ProjectJsonRoundtripTests =
         match ProjectJson.deserializeProject bad with
         | Error (SchemaValidationError _) -> ()
         | other -> failwith $"expected SchemaValidationError, got: {other}"
+
+    // --- AC-C1 (slice 004): the optical table plate round-trips through the
+    // schema-validated canonical project. A fresh table is 1.2 x 2.0 x 0.10 m; an
+    // edited plate size persists and reloads (C.1.1 / C.1.2 / AC-C1).
+    [<Fact>]
+    let ``AC-C1 a fresh project table is 1.2 x 2.0 x 0.10 m`` () =
+        let fresh = OpticalConstructor.Domain.Table.defaultTable
+        Assert.Equal(1.2<meter>, fresh.width)
+        Assert.Equal(2.0<meter>, fresh.length)
+        Assert.Equal(0.10<meter>, fresh.thickness)
+
+    [<Fact>]
+    let ``AC-C1 the edited table size round-trips through the schema-validated canonical project`` () =
+        // Edit the plate size to a new (exactly-representable) width/length/thickness ...
+        let edited = OpticalConstructor.Domain.Table.withSize 1.5<meter> 2.5<meter> 0.125<meter> OpticalConstructor.Domain.Table.defaultTable
+        let project = { sampleProject Nanometer with table = edited }
+        // ... serialize -> validate-on-load -> bind: the table validates against the
+        // opticalTable $def and the edited size survives byte-identically (no conversion).
+        let json = project |> ProjectJson.serializeProject |> okOr
+        Assert.Contains("\"table\"", json)
+        let back = json |> ProjectJson.deserializeProject |> okOr
+        Assert.Equal(1.5<meter>, back.table.width)
+        Assert.Equal(2.5<meter>, back.table.length)
+        Assert.Equal(0.125<meter>, back.table.thickness)
+        // The display unit (display metadata only) is preserved through the round-trip.
+        Assert.Equal(Millimeter, back.table.displayUnit)
