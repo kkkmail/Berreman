@@ -1,0 +1,56 @@
+# ============================================================================
+# Line-ending policy — single source of truth, overrides per-machine
+# core.autocrlf. Text is stored as LF in the repository on every platform,
+# so Windows / Linux / Android clones produce byte-identical blobs and never
+# generate EOL-only merge conflicts. Working-tree EOL is pinned per type.
+# ============================================================================
+
+# Default: auto-detect text vs binary; store text as LF; check out as LF.
+* text=auto eol=lf
+
+# --- F# / .NET source & project files (LF) ---
+*.fs      text eol=lf
+*.fsi     text eol=lf
+*.fsx     text eol=lf
+*.fsproj  text eol=lf
+*.cs      text eol=lf
+*.csproj  text eol=lf
+*.sln     text eol=lf
+*.slnx    text eol=lf
+*.props   text eol=lf
+*.targets text eol=lf
+*.config  text eol=lf
+
+# --- Data / markup / docs (LF) ---
+*.json  text eol=lf
+*.jsonl text eol=lf
+*.xml   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+
+# --- Scripts ---
+*.sh    text eol=lf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# --- Binary (never normalized) ---
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.docx binary
+*.xlsx binary
+*.dll  binary
+*.exe  binary
+*.pdb  binary
+*.snk  binary
+
+# Mathematica notebooks: NEVER touch. Treat as pure binary so git does no
+# line-ending conversion, no diff, no merge. `!eol` clears the inert eol=lf
+# inherited from the `*` catch-all, leaving zero EOL policy on these files.
+*.nb   binary !eol
