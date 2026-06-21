@@ -1,0 +1,9 @@
+We are going to work out claude.md for this repo. Here are some guidelines that we want to follow:
+The constitution (from ASG repo): C:\GitHub\AI-Strategy-Generator\.constitution-md – do not reference it but keep it in mind.
+Generate F# guidelines (from STL repo): C:\GitHub\Softellect\specs\0133\.manual\014-preliminary-spec-reworked.md and in general discussion in 
+C:\GitHub\Softellect\specs\0133\ - where it talks about `elevate` all primitive types and use explicit function signatures for all public functions, 
+functional proxies (so that to be able to model all IO using pure functions) and so on.
+UI: C:\GitHub\AI-Strategy-Generator\LLM_UI_AUTOMATION_GUIDE.md – take the pieces that are applicable to this repo: Avalonia and WinForms 
+(I am still not sure if I want to keep Avalonia). There is no Kotlin, so never mention it here.
+Anything else that you find useful in ASG or STL repos and which is appropriate for the current repo.
+Write claude.md for this repo. Make no other changes.
