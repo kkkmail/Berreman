@@ -1,0 +1,18 @@
+Look at these specs: C:\GitHub\Berreman\specs\0022\.spec-md, C:\GitHub\Berreman\specs\0024\.spec-md, C:\GitHub\Berreman\specs\0026\.spec-md and especially at the last one. 
+You seem to have extreme difficulties with 3D rotations and 3D projections to the screen. 
+
+So, let’s start VERY SIMPLE.
+
+Create and wire a very simple main form. The form must have just two buttons: `Test Optical Table Rotations` (`<test>` button) and `Main`. Button `Main` must open 
+the current main window. The `<test>` button must open a test window. These test windows will be used to test various 3D and other things. Put all such test windows 
+into their separate folder / project. The first test window must show an optical table (we look at it from the top). This is exactly the same optical table (and its rotations) 
+as we use in the main app, NOT a separate optical table. I think that default table is 1 m x 2 m x 10 cm but use whatever is in the code. This test window must ensure that 
+select / unselect table and the rotations of the table as described in the specs work. Because currently they fucking DO NOT. You use the information from CLAUDE.MD, from 
+the spec, etc. to do that. Make sure that you can test table rotations from the headless carcass first, then pass it to me for the final UI tests. If you do need 
+to fix the table and / or any other related logic, then go ahead and fix that. Look up the web if you need any assistance in how to power up and test 3D things. 
+
+Follow CLAUDE.MD recommendations. 
+
+If you have questions, then STOP and ASK me by writing the next MD file in the spec `.manual` folder (increase `<NNN>`).
+
+Write an implementation log into C:\GitHub\Berreman\specs\0027\.manual\<NNN>-<description>.md.
