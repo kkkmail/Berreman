@@ -66,6 +66,9 @@
              (member modes, lossless swap) and the separate groups/collections library
              round-trip + schema validation. Pure Domain + Storage (Avalonia-free). -->
         <Compile Include="GroupsRoundTripTests.fs" />
+        <!-- Spec 0027 (002-rotate-table-task): the pure 3-D table rotation + orthographic
+             projection + selection hit-test (Domain `TableView.fs`). Avalonia-free. -->
+        <Compile Include="TableViewTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

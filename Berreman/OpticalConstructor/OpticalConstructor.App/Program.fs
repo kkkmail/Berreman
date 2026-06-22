@@ -24,6 +24,7 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Ui
+open OpticalConstructor.TestWindows
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
@@ -102,6 +103,44 @@ type MainWindow() as this =
         |> Program.withHost this
         |> Program.run
 
+/// The simple launcher form (Spec 0027, task 002-rotate-table): two buttons. `Main` opens
+/// the existing Optical Constructor window (the `MainWindow` above, unchanged); `Test Optical
+/// Table Rotations` opens the first diagnostic test window (`OpticalConstructor.TestWindows`).
+/// This is the app's startup window so both paths are one click away; further test windows
+/// are added as buttons here and live in the TestWindows project.
+type LauncherWindow() as this =
+    inherit Window()
+
+    do
+        this.Title <- "Optical Constructor — Launcher"
+        this.Width <- 380.0
+        this.Height <- 220.0
+        this.CanResize <- false
+        let title =
+            TextBlock(
+                Text = "Optical Constructor",
+                FontSize = 18.0,
+                FontWeight = FontWeight.SemiBold,
+                Margin = Thickness(0.0, 0.0, 0.0, 14.0))
+        let mainButton =
+            Button(
+                Name = "OpenMainButton",
+                Content = "Main",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        mainButton.Click.Add(fun _ -> MainWindow().Show())
+        let testButton =
+            Button(
+                Name = "OpenTableRotationTestButton",
+                Content = "Test Optical Table Rotations",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+        testButton.Click.Add(fun _ -> TableRotationWindow().Show())
+        let panel = StackPanel(Margin = Thickness 20.0)
+        panel.Children.Add title
+        panel.Children.Add mainButton
+        panel.Children.Add testButton
+        this.Content <- panel
+
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).
 type App() =
@@ -114,7 +153,10 @@ type App() =
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
         | :? IClassicDesktopStyleApplicationLifetime as desktop ->
-            desktop.MainWindow <- MainWindow()
+            // The launcher is the startup window. Closing it after opening Main / a test
+            // window must NOT quit the app, so shut down only when the last window closes.
+            desktop.ShutdownMode <- ShutdownMode.OnLastWindowClose
+            desktop.MainWindow <- LauncherWindow()
         | _ -> ()
 
 module Program =

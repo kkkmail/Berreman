@@ -53,6 +53,10 @@
         <Compile Include="FitPanelTests.fs" />
         <Compile Include="LifecycleTests.fs" />
         <Compile Include="SystemView3DTests.fs" />
+        <!-- Spec 0027 (002-rotate-table-task): the table-rotation test window — pure MVU
+             (rotations, reset, select/unselect; `ui-tests`) plus two headless render proofs
+             of the FuncUI view + window host (`ui-smoke`). -->
+        <Compile Include="TableRotationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -81,6 +85,9 @@
         <!-- The App reference lets the smoke test boot the real composition root
              (MainWindow) headlessly; the test never runs the Exe entry point. -->
         <ProjectReference Include="..\OpticalConstructor.App\OpticalConstructor.App.fsproj" />
+        <!-- Spec 0027 (002-rotate-table-task): the project under test for the
+             table-rotation test window. -->
+        <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
     </ItemGroup>
 
 </Project>

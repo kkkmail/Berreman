@@ -31,6 +31,12 @@
         <Compile Include="SourceSpec.fs" />
         <Compile Include="SourceCombination.fs" />
         <Compile Include="Table.fs" />
+        <!-- Spec 0027 (002-rotate-table-task): the pure 3-D rotation + orthographic
+             projection of the table to the screen (§C.2.4). Avalonia-free single source
+             of truth for the table tumble, consumed by the constructor page and the
+             standalone rotation test window; compiles after Table (its `TableViewState`)
+             and Placement (its `Vector3`). -->
+        <Compile Include="TableView.fs" />
         <Compile Include="Project.fs" />
         <!-- Spec 0026 Part G/H (slice 007): element groups + experiment collections.
              Pure domain on top of Placement (member configs are reused ElementPlacement

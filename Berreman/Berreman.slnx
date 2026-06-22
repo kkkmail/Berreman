@@ -32,6 +32,9 @@
   <Project Path="OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj">
     <Platform Project="x64" />
   </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.TestWindows/OpticalConstructor.TestWindows.fsproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj">
     <Platform Project="x64" />
   </Project>

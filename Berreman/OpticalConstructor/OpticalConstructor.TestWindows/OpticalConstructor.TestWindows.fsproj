@@ -1,10 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
-        <AssemblyName>Softellect.Berreman.OpticalConstructor.App</AssemblyName>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.TestWindows</AssemblyName>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <IsPackable>false</IsPackable>
     </PropertyGroup>
@@ -22,32 +21,28 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
+    <!-- Spec 0027 (002-rotate-table-task): the separate home for the diagnostic test
+         windows. The pure rotation/projection/selection logic lives in
+         OpticalConstructor.Domain (TableView.fs); this project is the thin FuncUI shell
+         that renders it. Public MIT Avalonia + FuncUI NuGet only (matching Ui); the
+         audit-gated clone stays UNREFERENCED. -->
     <ItemGroup>
-        <Compile Include="Program.fs" />
+        <Compile Include="TableRotationView.fs" />
+        <Compile Include="TableRotationWindow.fs" />
     </ItemGroup>
 
-    <!-- The composition root (Program.fs) directly hosts the FuncUI shell, so it
-         depends on the public MIT Avalonia + FuncUI NuGet surface explicitly. This
-         is NOT the audit-gated clone at Avalonia.FuncUI.Clone, which stays
-         unreferenced until the §A.9 audit passes (AC-A8). Versions mirror
-         OpticalConstructor.Ui. -->
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.300" />
         <PackageReference Include="Avalonia" Version="11.3.4" />
         <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
         <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
-        <!-- spec 0024 §U1.1 / R-1: the Elmish host packages so the composition root
-             mounts the MVU program. Version-aligned with FuncUI 1.6.0; MIT NuGet. -->
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.6.0" />
         <PackageReference Include="Elmish" Version="4.3.0" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
-        <!-- Spec 0027 (002-rotate-table-task): the launcher's `<test>` button opens the
-             diagnostic table-rotation window, which lives in this separate project. -->
-        <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
     </ItemGroup>
 
 </Project>
