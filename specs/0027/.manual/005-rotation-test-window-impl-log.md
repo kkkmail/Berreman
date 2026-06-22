@@ -61,10 +61,39 @@ table could not be tumbled in 3-D — exactly the "3D rotation / projection" gap
 
 1. Run `OpticalConstructor.App` (e.g. `dotnet run --project Berreman/OpticalConstructor/OpticalConstructor.App -c Release`, or launch the built exe).
 2. In the launcher click **Test Optical Table Rotations**.
-3. Use `R1±` (flat spin), `R2±` (pitch/tilt), `R3±` (yaw) and watch the plate tumble in 3-D;
-   `Reset` returns to straight top-down. Click on the plate to select it (blue highlight),
-   click off the plate to deselect. The readout shows the live angles + selection.
+3. **Drag the table with the mouse to tumble it**; **mouse-wheel to spin (R1)**; **click to
+   select / deselect**. Or use the `R1±`/`R2±`/`R3±` buttons (15° each, **Shift = 5°**) and
+   `Reset` (straight top-down). The readout shows the live angles + selection.
 4. **Main** opens the existing Optical Constructor window, unchanged.
+
+## Update — round 2 (your feedback: "rotation by mouse doesn't work; test it"; 5°/15°; mod 360)
+
+You were right — the first cut only had buttons, so mouse rotation was never wired. This round:
+
+- **Rotation by mouse now works and is tested for real.** Drag tumbles the table (horizontal =
+  yaw R3, vertical = pitch R2); the wheel spins R1; a click (no drag) selects. The pointer
+  handlers are dumb event→message translators and all logic is in the pure `update`, so I test
+  the mouse path **end to end with real `Avalonia.Headless` pointer injection**
+  (`MouseDown`/`MouseMove`/`MouseUp`/`MouseWheel` through the live input pipeline) and assert
+  the model actually rotated — not a simulated message. See the four `ui-smoke` injection tests
+  in `TableRotationTests.fs`.
+- **Shift+button = 5°, normal = 15°** (`buttonStepDegrees`), proved by a real Shift+click
+  injection test. (Rotate controls are button-styled `Border`s, because a real `Button.Click`
+  carries no key modifiers.)
+- **Angles wrap mod 360** (`normalizeDegrees`) — 350° + 15° = 5°, −15° = 345°.
+
+- **Root cause of the "fishy" rotation — a genuine finding.** FuncUI subscribes every pointer
+  handler with the event's full `Tunnel|Bubble` routing, so a handler fires **twice** for the
+  clicked element (once tunneling down, once bubbling up). Idempotent handlers (select, drag-
+  begin) hide it, but an **accumulating** handler doubles: a single click rotated **10°, not 5°**,
+  until I fixed it. The fix is `e.Handled <- true` in each handler (drops the duplicate pass).
+  **This very likely affects the main app too** — e.g. element rotation by `Shift`/`Ctrl+Shift`/
+  `Alt`+wheel in `ConstructorView` goes through `Border.onPointerWheelChanged` and would apply
+  **two** steps per notch. That is a strong candidate for the rotation looking off, and is worth
+  a follow-up sweep (add `e.Handled <- true` to the accumulating mouse handlers there).
+
+Tests after round 2: `OpticalConstructor.Tests` 245/245; `OpticalConstructor.Ui.Tests` 116/116
+(the table-rotation module is 14 tests — 9 pure MVU + 5 real-input/headless). Full build green.
 
 ## Deliberately NOT done this round (needs your go-ahead)
 
