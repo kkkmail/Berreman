@@ -187,13 +187,42 @@ Tests updated/added: `C2-4` flipped as above; the test window's two drag tests n
 pan delta (pure + real headless injection). After round 6: `OpticalConstructor.Ui.Tests` 121/121;
 `OpticalConstructor.Tests` 245/245 (`TableView` 11/11); full build green.
 
+## Update — round 7 (a second test window: optical-element rotations)
+
+A third launcher button — **"Test Optical Element Rotations"** — opens a new window
+(`ElementRotationView`/`ElementRotationWindow` in the TestWindows project). It looks at a **fixed**
+top-down table (drawn for context — plate + central ray + source/detector markers — but never
+rotated/panned/zoomed, the "simple" part). **Three optical elements** (a linear polarizer, a
+sample, a flat mirror) sit on the central ray at spec-correct positions (`y = 0`, placement point
+= box centre; rest pose N1 along the central ray, N2 along the table normal — asserted in the
+tests). A click selects the nearest element; the selected one is highlighted.
+
+Each element is drawn as its **oriented 3-D bounding box + N1 (beam-facing) / N2 (roll) axes**,
+computed from the spec model `Placement.orientedBasis`, projected through the fixed top-down view.
+
+- **Rotation of the selected element** mirrors the table test: R1±/R2±/R3± buttons (15°, Shift =
+  5°) and `Shift`+wheel = R1, `Ctrl+Shift`+wheel = R2, `Alt`+wheel = R3 (5°/notch, §E.3), via the
+  lock-respecting `withR1/withR2/withR3`. **R3 starts locked** (spec A.1.2) — R3± / Alt+wheel are
+  inert until the **Unlock R3** toggle.
+- **Per-element draw zoom** (your "default 5×", a constant for now): **`Ctrl+Alt`+wheel zooms the
+  selected element**, **`Ctrl+Alt+Shift`+wheel zooms all** (the previously-unused combos). Zoom is
+  a visual magnification of the drawn box only — the element's *position* stays correct. **Reset
+  element** restores the selected element's rest pose + 5× zoom + re-locks R3. A plain drag does
+  nothing (the table is fixed).
+
+Proven by 16 tests (pure MVU + real headless pointer injection): rest-pose normals (AC-A1),
+positions on the CR, the wheel map, one-axis-at-a-time rotation, the R3 lock, zoom selected-vs-all,
+reset, click-select-vs-drag, and the Shift+button = 5° path. After round 7:
+`OpticalConstructor.Ui.Tests` 137/137; `OpticalConstructor.Tests` 245/245; full build green.
+
 ## Still deliberately not done
 
 - The constructor's **caps** (element end-circles) and the **active-element indicator** are still
   drawn as circles sized by zoom, not foreshortened ellipses, under a steep tilt — positions are
   3-D-correct (they go through `toScreen`), only the cap *shape* is approximate.
-- Test-window content stays minimal (plate + central ray + source/detector markers): the goal was
-  table rotation / selection / pan, not full element rendering.
+- The element test draws elements as oriented boxes + axes (Domain-only, same approach as the
+  table test), not the app's `Drawer` cylinder, and the per-element zoom lives in the test window's
+  model (not a real per-element/project setting yet).
 
 ## Files
 

@@ -103,18 +103,17 @@ type MainWindow() as this =
         |> Program.withHost this
         |> Program.run
 
-/// The simple launcher form (Spec 0027, task 002-rotate-table): two buttons. `Main` opens
-/// the existing Optical Constructor window (the `MainWindow` above, unchanged); `Test Optical
-/// Table Rotations` opens the first diagnostic test window (`OpticalConstructor.TestWindows`).
-/// This is the app's startup window so both paths are one click away; further test windows
-/// are added as buttons here and live in the TestWindows project.
+/// The simple launcher form (Spec 0027): `Main` opens the existing Optical Constructor window
+/// (the `MainWindow` above, unchanged); the test buttons open the diagnostic test windows
+/// (`OpticalConstructor.TestWindows`). This is the app's startup window so every path is one
+/// click away; further test windows are added as buttons here and live in the TestWindows project.
 type LauncherWindow() as this =
     inherit Window()
 
     do
         this.Title <- "Optical Constructor — Launcher"
         this.Width <- 380.0
-        this.Height <- 220.0
+        this.Height <- 260.0
         this.CanResize <- false
         let title =
             TextBlock(
@@ -129,16 +128,24 @@ type LauncherWindow() as this =
                 HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
                 Margin = Thickness(0.0, 0.0, 0.0, 8.0))
         mainButton.Click.Add(fun _ -> MainWindow().Show())
-        let testButton =
+        let tableTestButton =
             Button(
                 Name = "OpenTableRotationTestButton",
                 Content = "Test Optical Table Rotations",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        tableTestButton.Click.Add(fun _ -> TableRotationWindow().Show())
+        let elementTestButton =
+            Button(
+                Name = "OpenElementRotationTestButton",
+                Content = "Test Optical Element Rotations",
                 HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
-        testButton.Click.Add(fun _ -> TableRotationWindow().Show())
+        elementTestButton.Click.Add(fun _ -> ElementRotationWindow().Show())
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         panel.Children.Add mainButton
-        panel.Children.Add testButton
+        panel.Children.Add tableTestButton
+        panel.Children.Add elementTestButton
         this.Content <- panel
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
