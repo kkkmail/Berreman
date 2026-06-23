@@ -28,7 +28,23 @@ module TableRotationTests =
     let private isTopDown (m : Model) : bool =
         close m.view.r1.degrees 0.0 && close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0
 
+    /// `init` with the table selected (the table is only rotatable when selected, task 006 #1):
+    /// a clean click on the plate centre selects it.
+    let private selectedModel () : Model =
+        TableRotationView.init ()
+        |> TableRotationView.update (PointerDown TableRotationView.center)
+        |> TableRotationView.update (PointerUp TableRotationView.center)
+
     // ============================ pure MVU ============================
+
+    [<Fact>]
+    let ``the table is rotatable ONLY when it is selected`` () =
+        // Unselected: button and wheel rotation are both inert.
+        Assert.True(isTopDown (TableRotationView.update (RotateR1By 15.0) (TableRotationView.init ())), "an unselected table must not rotate by button")
+        Assert.True(isTopDown (TableRotationView.update (Wheel (Set.ofList [ ModShift ], 1)) (TableRotationView.init ())), "an unselected table must not rotate by wheel")
+        // Selected: it rotates.
+        let sel = TableRotationView.update (RotateR1By 15.0) (selectedModel ())
+        Assert.True(close sel.view.r1.degrees 15.0, $"a selected table should rotate, got {sel.view.r1.degrees}")
 
     [<Fact>]
     let ``init starts straight top-down and unselected`` () =
@@ -50,15 +66,15 @@ module TableRotationTests =
 
     [<Fact>]
     let ``Shift+wheel rotates ONLY R1 by one 5 degree step`` () =
-        let m = TableRotationView.update (Wheel (Set.ofList [ ModShift ], 1)) (TableRotationView.init ())
+        let m = TableRotationView.update (Wheel (Set.ofList [ ModShift ], 1)) (selectedModel ())
         Assert.True(close m.view.r1.degrees 5.0, $"R1 = {m.view.r1.degrees}")
         Assert.True(close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0 && close m.view.zoom 1.0, "only R1 should move")
 
     [<Fact>]
     let ``Ctrl+Shift+wheel rotates ONLY R2, Alt+wheel rotates ONLY R3`` () =
-        let r2 = TableRotationView.update (Wheel (Set.ofList [ ModCtrl; ModShift ], 1)) (TableRotationView.init ())
+        let r2 = TableRotationView.update (Wheel (Set.ofList [ ModCtrl; ModShift ], 1)) (selectedModel ())
         Assert.True(close r2.view.r2.degrees 5.0 && close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0)
-        let r3 = TableRotationView.update (Wheel (Set.ofList [ ModAlt ], -1)) (TableRotationView.init ())
+        let r3 = TableRotationView.update (Wheel (Set.ofList [ ModAlt ], -1)) (selectedModel ())
         Assert.True(close r3.view.r3.degrees 355.0 && close r3.view.r1.degrees 0.0 && close r3.view.r2.degrees 0.0, $"R3 = {r3.view.r3.degrees}")
 
     [<Fact>]
@@ -76,7 +92,7 @@ module TableRotationTests =
     [<Fact>]
     let ``angles wrap mod 360`` () =
         Assert.True(close (normalizeDegrees 370.0) 10.0 && close (normalizeDegrees -15.0) 345.0)
-        let m = TableRotationView.init () |> TableRotationView.update (RotateR1By 350.0) |> TableRotationView.update (RotateR1By 15.0)
+        let m = selectedModel () |> TableRotationView.update (RotateR1By 350.0) |> TableRotationView.update (RotateR1By 15.0)
         Assert.True(close m.view.r1.degrees 5.0, $"R1 wrapped to {m.view.r1.degrees}")
 
     [<Fact>]
@@ -114,10 +130,11 @@ module TableRotationTests =
     [<Fact>]
     let ``reset returns a rotated view to straight top-down`` () =
         let tumbled =
-            TableRotationView.init ()
+            selectedModel ()
             |> TableRotationView.update (RotateR1By 30.0)
             |> TableRotationView.update (RotateR2By 20.0)
             |> TableRotationView.update (RotateR3By -45.0)
+        Assert.False(isTopDown tumbled, "the selected table should have tumbled before the reset")
         Assert.True(isTopDown (TableRotationView.update ResetView tumbled))
 
     // ================== real headless pointer injection ==================
@@ -139,12 +156,20 @@ module TableRotationTests =
 
     let private at (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 
+    /// Select the table by a real click on its centre (rotation needs the table selected, #1).
+    let private selectTable (w : Window) : unit =
+        w.MouseDown(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
+        Dispatcher.UIThread.RunJobs()
+        w.MouseUp(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
+        Dispatcher.UIThread.RunJobs()
+
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``a real Shift+wheel notch rotates ONLY R1 by exactly 5 degrees`` () =
         HeadlessSession.run (fun () ->
             let model =
                 withMouseHarness (fun w ->
+                    selectTable w
                     w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Shift))
             // Exactly 5°, NOT 10° — proves one notch = one step (FuncUI's duplicate pass is dropped).
             Assert.True(close model.view.r1.degrees 5.0, $"R1 = {model.view.r1.degrees} (expected exactly 5)")
@@ -156,10 +181,12 @@ module TableRotationTests =
         HeadlessSession.run (fun () ->
             let r2 =
                 withMouseHarness (fun w ->
+                    selectTable w
                     w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Control ||| RawInputModifiers.Shift))
             Assert.True(close r2.view.r2.degrees 5.0 && close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0, $"R2 = {r2.view.r2.degrees}")
             let r3 =
                 withMouseHarness (fun w ->
+                    selectTable w
                     w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Alt))
             Assert.True(close r3.view.r3.degrees 5.0 && close r3.view.r1.degrees 0.0 && close r3.view.r2.degrees 0.0, $"R3 = {r3.view.r3.degrees}"))
 
@@ -198,6 +225,7 @@ module TableRotationTests =
         HeadlessSession.run (fun () ->
             let model =
                 withMouseHarness (fun w ->
+                    selectTable w
                     let button =
                         w.GetVisualDescendants()
                         |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = UiIds.rotateR2Plus -> Some b | _ -> None)

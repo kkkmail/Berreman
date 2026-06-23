@@ -31,6 +31,8 @@
         <Compile Include="TableRotationWindow.fs" />
         <Compile Include="ElementRotationView.fs" />
         <Compile Include="ElementRotationWindow.fs" />
+        <Compile Include="TableAndElementRotationView.fs" />
+        <Compile Include="TableAndElementRotationWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>

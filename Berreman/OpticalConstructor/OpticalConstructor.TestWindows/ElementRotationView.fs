@@ -64,11 +64,13 @@ type WheelAction =
     | RotateSelectedR3
     | ZoomSelected
     | ZoomAll
+    | ZoomTable
     | NoWheelAction
 
 /// `Shift`→R1, `Ctrl+Shift`→R2, `Alt`→R3 (the documented element-rotation gestures);
-/// `Ctrl+Alt`→zoom the selected element, `Ctrl+Alt+Shift`→zoom all elements; everything else
-/// (including a plain or `Ctrl` wheel — the table is fixed, so there is no table zoom) → nothing.
+/// `Ctrl+Alt`→zoom the selected element, `Ctrl+Alt+Shift`→zoom all elements; a plain or `Ctrl`
+/// wheel zooms the TABLE (task 006 #2 — the table is now pan/zoomable like the table test);
+/// anything else (e.g. `Shift+Alt`) → nothing.
 let wheelAction (mods : Set<WheelModifier>) : WheelAction =
     let has m = Set.contains m mods
     match has ModCtrl, has ModShift, has ModAlt with
@@ -77,6 +79,8 @@ let wheelAction (mods : Set<WheelModifier>) : WheelAction =
     | false, false, true -> RotateSelectedR3
     | true, false, true -> ZoomSelected
     | true, true, true -> ZoomAll
+    | false, false, false -> ZoomTable
+    | true, false, false -> ZoomTable
     | _ -> NoWheelAction
 
 // ---------------------------------------------------------------------------
@@ -91,15 +95,20 @@ type TestElement =
         zoom : float
     }
 
-/// A left-button gesture in progress (only to tell a click from a drag — a plain drag is inert).
+/// A left-button gesture in progress. `Pressed` is a click candidate; once it moves past the
+/// threshold it becomes `Panning` and the drag pans the table (#2 — standard click-and-drag).
 type DragState =
     | NotPressed
     | Pressed of ScreenPoint
-    | Dragged
+    | Panning of ScreenPoint
 
 type Model =
     {
         table : OpticalTable
+        /// The table view (#2): pan + zoom are live (like the table test), but it is never rotated
+        /// in THIS test — table rotation is the job of test #3. The elements are projected through
+        /// it, so panning / zooming the table moves / scales them with it.
+        view : TableViewState
         elements : TestElement list
         selected : int
         drag : DragState
@@ -116,6 +125,7 @@ let init () : Model =
         { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
     {
         table = Table.defaultTable
+        view = Table.defaultView
         elements = [ mk -0.5 LinearPolarizer; mk 0.0 Sample; mk 0.5 FlatMirror ]
         selected = 1
         drag = NotPressed
@@ -159,9 +169,6 @@ let canvasHeight = 560.0
 let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
 let pixelsPerMeter : float = 200.0
 
-/// The table view is FIXED top-down for this test — never rotated / panned / zoomed.
-let fixedView : TableViewState = Table.defaultView
-
 // ---------------------------------------------------------------------------
 // Pure update. Angles wrap mod 360.
 // ---------------------------------------------------------------------------
@@ -193,9 +200,22 @@ let private zoomSelectedBy (notches : int) (model : Model) : Model =
 let private zoomAllBy (notches : int) (model : Model) : Model =
     { model with elements = model.elements |> List.map (fun e -> { e with zoom = clampZoom (e.zoom * (zoomStep ** float notches)) }) }
 
-/// The fixed-view projected centre of an element (its placement point), for click hit-testing.
-let private projectedCenter (e : TestElement) : ScreenPoint =
-    TableView.project pixelsPerMeter center fixedView
+/// Pan the table by the screen delta (#2) — a pure screen-space translation of the view.
+let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (model : Model) : Model =
+    { model with
+        view = { model.view with panX = model.view.panX + (pt.sx - refPt.sx); panY = model.view.panY + (pt.sy - refPt.sy) }
+        drag = Panning pt }
+
+/// Zoom the table view (#2). Table zoom is bounded [0.2, 5] like the table test (distinct from the
+/// per-element draw zoom).
+let private zoomTableBy (notches : int) (model : Model) : Model =
+    let z = model.view.zoom * (zoomStep ** float notches)
+    { model with view = { model.view with zoom = max 0.2 (min 5.0 z) } }
+
+/// The projected centre of an element (its placement point) under the current view, for click
+/// hit-testing.
+let private projectedCenter (view : TableViewState) (e : TestElement) : ScreenPoint =
+    TableView.project pixelsPerMeter center view
         (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
 
 /// The index of the element whose projected centre is nearest the click (there are always a few
@@ -205,7 +225,7 @@ let nearestElement (pt : ScreenPoint) (model : Model) : int option =
     | [] -> None
     | _ ->
         model.elements
-        |> List.mapi (fun i e -> i, dist pt (projectedCenter e))
+        |> List.mapi (fun i e -> i, dist pt (projectedCenter model.view e))
         |> List.minBy snd
         |> fst
         |> Some
@@ -217,18 +237,24 @@ let update (msg : Msg) (model : Model) : Model =
     | RotateR3By d -> rotate3 d model
     | ToggleR3Lock -> editSelectedPlacement (fun p -> setR3Locked (not p.r3Locked) p) model
     | ResetSelected ->
-        mapSelected
-            (fun e -> { placement = ElementPlacement.create e.placement.catalogueKind e.placement.placementPoint; zoom = defaultElementZoom })
-            model
+        // Reset the selected element to its rest pose + default zoom AND the table view to
+        // straight top-down / no pan / default zoom (#2 — a clean slate, like the table test reset).
+        let reset =
+            mapSelected
+                (fun e -> { placement = ElementPlacement.create e.placement.catalogueKind e.placement.placementPoint; zoom = defaultElementZoom })
+                model
+        { reset with view = Table.resetView model.view }
     | ZoomSelectedBy n -> zoomSelectedBy n model
     | ZoomAllBy n -> zoomAllBy n model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
+        // A press that moves past the threshold becomes a pan-drag, then tracks the pointer.
         match model.drag with
-        | Pressed start when dist start pt >= dragThresholdPx -> { model with drag = Dragged }
-        | _ -> model
+        | NotPressed -> model
+        | Pressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
+        | Panning last -> panFrom last pt model
     | PointerUp _ ->
-        // A clean click (no drag) selects the nearest element; a drag does nothing.
+        // A clean click (no drag) selects the nearest element; a pan-drag does not change selection.
         let model' =
             match model.drag with
             | Pressed start ->
@@ -244,6 +270,7 @@ let update (msg : Msg) (model : Model) : Model =
         | RotateSelectedR3 -> rotate3 (wheelStepDegrees * float notches) model
         | ZoomSelected -> zoomSelectedBy notches model
         | ZoomAll -> zoomAllBy notches model
+        | ZoomTable -> zoomTableBy notches model
         | NoWheelAction -> model
 
 // ---------------------------------------------------------------------------
@@ -286,7 +313,7 @@ let private n1Color = color 30 90 200      // beam-facing primary normal
 let private n2Color = color 210 120 0      // roll marker (secondary normal)
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-let private projectPt (p : Vector3) : ScreenPoint = TableView.project pixelsPerMeter center fixedView p
+let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableView.project pixelsPerMeter center view p
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
@@ -297,15 +324,16 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
         Line.strokeThickness w
     ] :> IView
 
-/// The fixed top-down table: the grey plate, the central ray, and the source / detector markers.
+/// The top-down table under the current (pannable / zoomable) view: the grey plate, the central
+/// ray, and the source / detector markers.
 let private tableViews (model : Model) : IView list =
     let hl = (model.table.length / 2.0) / 1.0<meter>
     let hw = (model.table.width / 2.0) / 1.0<meter>
     let plate =
         [ v3 (-hl) (-hw) 0.0; v3 hl (-hw) 0.0; v3 hl hw 0.0; v3 (-hl) hw 0.0 ]
-        |> List.map (projectPt >> toPoint)
-    let s = projectPt (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-    let d = projectPt (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
+        |> List.map (projectPt model.view >> toPoint)
+    let s = projectPt model.view (RayModel.pointToVector3 RayModel.defaultSourcePoint)
+    let d = projectPt model.view (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
     let marker (sp : ScreenPoint) (c : Color) : IView =
         Ellipse.create [
             Ellipse.left (sp.sx - 6.0)
@@ -330,7 +358,7 @@ let private tableViews (model : Model) : IView list =
 /// The selected element is drawn heavier and in the selection colour.
 let private elementView (i : int) (model : Model) (e : TestElement) : IView list =
     let selected = (i = model.selected)
-    let corners = elementCorners e |> List.map (projectPt >> toPoint) |> List.toArray
+    let corners = elementCorners e |> List.map (projectPt model.view >> toPoint) |> List.toArray
     let boxColor = if selected then selectedColor else elementColor
     let weight = if selected then 2.5 else 1.0
     let edges =
@@ -346,8 +374,8 @@ let private elementView (i : int) (model : Model) (e : TestElement) : IView list
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
-    let centreScr = projectPt (v3 cx cy 0.0)
-    let along (n : Vector3) (len : float) = projectPt (v3 (cx + len * n.x) (cy + len * n.y) (len * n.z))
+    let centreScr = projectPt model.view (v3 cx cy 0.0)
+    let along (n : Vector3) (len : float) = projectPt model.view (v3 (cx + len * n.x) (cy + len * n.y) (len * n.z))
     let n1Axis = line centreScr (along n1 (1.8 * half)) n1Color (if selected then 3.0 else 2.0)
     let n2Axis = line centreScr (along n2 (1.3 * half)) n2Color (if selected then 3.0 else 2.0)
     edges @ [ n1Axis; n2Axis ]
@@ -425,7 +453,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
                     rotateButton UiIds.rotateR3Minus "R3 −" RotateR3By (-1.0) dispatch
                     rotateButton UiIds.rotateR3Plus "R3 +" RotateR3By 1.0 dispatch
                     textButton UiIds.unlockR3 (if p.r3Locked then "Unlock R3" else "Lock R3") ToggleR3Lock dispatch
-                    textButton UiIds.reset "Reset element" ResetSelected dispatch
+                    textButton UiIds.reset "Reset" ResetSelected dispatch
                 ]
             ]
             TextBlock.create [
@@ -434,7 +462,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
             ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
-                TextBlock.text "click = select element · Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 (unlock first) · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
+                TextBlock.text "click = select element · drag = pan table · wheel = zoom table · Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 (unlock first) · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
             ]
         ]
     ] :> IView

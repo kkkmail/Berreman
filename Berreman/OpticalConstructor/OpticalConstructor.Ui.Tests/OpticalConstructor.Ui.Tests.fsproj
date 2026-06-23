@@ -60,6 +60,8 @@
         <!-- Spec 0027: the optical-element-rotation test window — pure MVU (rotations, R3 lock,
              per-element + all-element zoom, selection) plus real headless pointer-injection. -->
         <Compile Include="ElementRotationTests.fs" />
+        <!-- Spec 0027 task 006 #3: the combined table + element rotation test window. -->
+        <Compile Include="TableAndElementRotationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

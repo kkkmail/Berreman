@@ -57,9 +57,11 @@ module ElementRotationTests =
         Assert.Equal(RotateSelectedR3, wheelAction (Set.ofList [ ModAlt ]))
         Assert.Equal(ZoomSelected, wheelAction (Set.ofList [ ModCtrl; ModAlt ]))
         Assert.Equal(ZoomAll, wheelAction (Set.ofList [ ModCtrl; ModShift; ModAlt ]))
-        // Plain / Ctrl wheel does nothing here (the table is fixed — no table zoom).
-        Assert.Equal(NoWheelAction, wheelAction Set.empty)
-        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModCtrl ]))
+        // Plain / Ctrl wheel zooms the TABLE (#2).
+        Assert.Equal(ZoomTable, wheelAction Set.empty)
+        Assert.Equal(ZoomTable, wheelAction (Set.ofList [ ModCtrl ]))
+        // Shift+Alt is still undocumented → nothing.
+        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModShift; ModAlt ]))
 
     [<Fact>]
     let ``Shift+wheel rotates ONLY the selected element's R1`` () =
@@ -93,17 +95,19 @@ module ElementRotationTests =
                     "all elements zoomed")
 
     [<Fact>]
-    let ``reset restores the selected element to its rest pose, 5x zoom, R3 re-locked`` () =
+    let ``reset restores the selected element AND the table view to defaults`` () =
         let dirtied =
             ElementRotationView.init ()
             |> ElementRotationView.update (RotateR1By 30.0)
             |> ElementRotationView.update ToggleR3Lock
             |> ElementRotationView.update (RotateR3By 20.0)
             |> ElementRotationView.update (ZoomSelectedBy 3)
+            |> ElementRotationView.update (Wheel (Set.empty, 2))   // also zoom the table view
         let m = ElementRotationView.update ResetSelected dirtied
         let e = elem 1 m
         Assert.True(close (deg e.placement.r1) 0.0 && close (deg e.placement.r2) 0.0 && close (deg e.placement.r3) 0.0)
         Assert.True(e.placement.r3Locked && close e.zoom defaultElementZoom)
+        Assert.True(close m.view.zoom 1.0 && close m.view.panX 0.0 && close m.view.panY 0.0, "the table view is reset too")
 
     [<Fact>]
     let ``rotation and zoom act on whichever element is selected`` () =
@@ -117,20 +121,27 @@ module ElementRotationTests =
         Assert.True(close (deg (elem 0 m).placement.r2) 15.0 && close (deg (elem 1 m).placement.r2) 0.0)
 
     [<Fact>]
-    let ``a clean click selects the nearest element; a plain drag does not`` () =
+    let ``a clean click selects the nearest element; a drag pans the table (no reselect)`` () =
         let m0 = ElementRotationView.init ()
         let clicked =
             m0
             |> ElementRotationView.update (PointerDown { sx = 510.0; sy = 280.0 })   // element 2
             |> ElementRotationView.update (PointerUp { sx = 510.0; sy = 280.0 })
         Assert.Equal(2, clicked.selected)
-        // A drag (press, move far, release) leaves the selection unchanged.
+        // A drag pans the table by the screen delta and leaves the selection unchanged.
         let dragged =
             clicked
             |> ElementRotationView.update (PointerDown { sx = 310.0; sy = 280.0 })
             |> ElementRotationView.update (PointerMove { sx = 460.0; sy = 360.0 })
             |> ElementRotationView.update (PointerUp { sx = 460.0; sy = 360.0 })
         Assert.Equal(2, dragged.selected)
+        Assert.True(close dragged.view.panX 150.0 && close dragged.view.panY 80.0, $"pan = ({dragged.view.panX}, {dragged.view.panY})")
+
+    [<Fact>]
+    let ``plain wheel zooms the table view, not the elements`` () =
+        let m = ElementRotationView.update (Wheel (Set.empty, 1)) (ElementRotationView.init ())
+        Assert.True(m.view.zoom > 1.0, $"table zoom = {m.view.zoom}")
+        Assert.True(close (elem 1 m).zoom defaultElementZoom, "the per-element zoom is unchanged by a table-zoom wheel")
 
     [<Fact>]
     let ``the button step is 15 degrees normally and 5 with Shift; angles wrap mod 360`` () =

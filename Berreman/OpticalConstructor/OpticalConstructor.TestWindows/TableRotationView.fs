@@ -189,11 +189,19 @@ let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : Model) : Model
         view = { m.view with panX = m.view.panX + (pt.sx - refPt.sx); panY = m.view.panY + (pt.sy - refPt.sy) }
         drag = Panning pt }
 
+/// The table is rotatable ONLY when it is selected (Spec 0027, task 006 #1): a rotation request
+/// is dropped unless the table is currently selected. Pan / zoom / reset are not rotations and
+/// stay available regardless.
+let private rotateIfSelected (f : Model -> Model) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> f model
+    | TableUnselected -> model
+
 let update (msg : Msg) (model : Model) : Model =
     match msg with
-    | RotateR1By d -> rotate1 d model
-    | RotateR2By d -> rotate2 d model
-    | RotateR3By d -> rotate3 d model
+    | RotateR1By d -> rotateIfSelected (rotate1 d) model
+    | RotateR2By d -> rotateIfSelected (rotate2 d) model
+    | RotateR3By d -> rotateIfSelected (rotate3 d) model
     | ResetView -> { model with view = Table.resetView model.view; drag = NotPressed }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
@@ -214,9 +222,9 @@ let update (msg : Msg) (model : Model) : Model =
         { model with selection = selection; drag = NotPressed }
     | Wheel (mods, notches) ->
         match wheelAction mods with
-        | RotateView1 -> rotate1 (wheelStepDegrees * float notches) model
-        | RotateView2 -> rotate2 (wheelStepDegrees * float notches) model
-        | RotateView3 -> rotate3 (wheelStepDegrees * float notches) model
+        | RotateView1 -> rotateIfSelected (rotate1 (wheelStepDegrees * float notches)) model
+        | RotateView2 -> rotateIfSelected (rotate2 (wheelStepDegrees * float notches)) model
+        | RotateView3 -> rotateIfSelected (rotate3 (wheelStepDegrees * float notches)) model
         | ZoomView -> zoomBy notches model
         | NoWheelAction -> model
 
@@ -345,7 +353,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
             ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
-                TextBlock.text "drag = pan · Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 · wheel = zoom · click = select · Shift+button = 5°"
+                TextBlock.text "click = select table (rotation needs the table SELECTED) · drag = pan · wheel = zoom · Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 · Shift+button = 5°"
             ]
         ]
     ] :> IView
