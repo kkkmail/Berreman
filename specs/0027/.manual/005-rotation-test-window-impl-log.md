@@ -125,6 +125,43 @@ real-input/headless). After round 3: `OpticalConstructor.Tests` 245/245;
 Still open / not in the test window yet: `Ctrl+0` reset is a Reset button here rather than the
 keyboard chord (the spec's keyboard reset); say the word if you want the chord too.
 
+## Update — round 4 (apply the e.Handled fix to the MAIN app's wheel rotation)
+
+Done. `ConstructorView`'s `Border.onPointerWheelChanged` (the constructor canvas) now sets
+`e.Handled <- true`, so FuncUI's duplicate Tunnel|Bubble pass is dropped and one wheel notch
+applies exactly one step — element rotation (`Shift`/`Ctrl+Shift`/`Alt`+wheel) and zoom
+(plain/`Ctrl`+wheel) no longer double per notch. This is the likely source of the original
+"fishy" rotation in the real app.
+
+Regression test: `CommandRegistryTests` now drives a **real** `Shift`+wheel through the headless
+input pipeline into the mounted `ConstructorView` and asserts the active element's R1 advanced by
+**exactly 5°** — it would read 10° if the fix were removed (the existing AC-E2 cases only feed a
+single `WheelAt` message to `update`, so they cannot catch the handler-level double-fire). After
+round 4: `OpticalConstructor.Ui.Tests` 120/120; full build green.
+
+Still not swept: the constructor's `onPointerMoved` (pan/slide) and `onPointerPressed` handlers
+have the same latent double-invocation. They are idempotent-ish today (pan re-applies a delta
+twice → moves at 2× speed; select/begin-drag are idempotent), so the visible damage is smaller,
+but the same `e.Handled` belongs there too — say the word and I'll do that sweep.
+
+## Update — round 5 (sweep the pan / slide / pressed / released handlers)
+
+Done — but NOT with `e.Handled`. Marking `onPointerPressed` handled risked changing focus /
+pointer-capture behaviour (the canvas is focusable for keyboard shortcuts), which no test would
+catch. Instead each of `onPointerPressed` / `onPointerMoved` / `onPointerReleased` now runs its
+logic **only on the bubble pass** (`if e.Route = RoutingStrategies.Bubble then …`): FuncUI fires
+the handler twice (Tunnel then Bubble), and gating on the bubble phase makes the logic run exactly
+once **without consuming the event**, so focus, capture, hover, and ancestor handling are
+unchanged — only the duplicate dispatch is removed. The wheel handler now uses the same bubble
+gate AND still marks the event handled (it should be consumed by the canvas, not also scroll an
+ancestor).
+
+Regression test: a real `MouseDown` injected into the mounted `ConstructorView` with a capturing
+dispatch records **exactly one** `SelectAt` (a count of 0 would mean the bubble gate never fired;
+2 would mean the double-fire is back). With the existing real-`Shift`+wheel = 5° test, both the
+`e.Route` gate and the wheel dedup are covered. After round 5: `OpticalConstructor.Ui.Tests`
+121/121; `OpticalConstructor.Tests` 245/245; full build green.
+
 ## Deliberately NOT done this round (needs your go-ahead)
 
 - **The main constructor page still uses the old in-plane-only projection.** I did **not**

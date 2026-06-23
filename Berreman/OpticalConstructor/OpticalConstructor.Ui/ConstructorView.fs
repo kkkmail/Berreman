@@ -27,6 +27,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Input
+open Avalonia.Interactivity
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Media.Imaging
@@ -1342,38 +1343,50 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
             | None -> new Cursor(StandardCursorType.Arrow))
         Border.background (Brushes.White :> IBrush)
         Border.child canvas
+        // FuncUI subscribes every pointer handler for the event's full Tunnel|Bubble routing, so the
+        // handler fires TWICE for the target (tunnel down, then bubble up). Each handler below runs
+        // its logic ONLY on the bubble pass, so it happens exactly once. For press / move / release
+        // this dedup does NOT mark the event handled — focus, pointer capture, and ancestor handling
+        // stay exactly as before; only the duplicate dispatch is removed (Spec 0027).
         Border.onPointerPressed (fun e ->
-            let pt = e.GetPosition null
-            let tp = fromScreen model.view pt.X pt.Y
-            let mods = modifiersOf e.KeyModifiers
-            if e.GetCurrentPoint(null).Properties.IsRightButtonPressed then
-                if Option.isSome model.placementDraft then dispatch (Invoke CancelOrDeselect)
-                else dispatch (ContextMenuAt tp)
-            elif Option.isSome model.placementDraft then
-                dispatch (DropPendingPlacement tp)
-            else
-                lastPointer <- Some pt
-                if e.ClickCount >= 2 then dispatch (OpenDialogAt tp)
+            if e.Route = RoutingStrategies.Bubble then
+                let pt = e.GetPosition null
+                let tp = fromScreen model.view pt.X pt.Y
+                let mods = modifiersOf e.KeyModifiers
+                if e.GetCurrentPoint(null).Properties.IsRightButtonPressed then
+                    if Option.isSome model.placementDraft then dispatch (Invoke CancelOrDeselect)
+                    else dispatch (ContextMenuAt tp)
+                elif Option.isSome model.placementDraft then
+                    dispatch (DropPendingPlacement tp)
                 else
-                    dispatch (SelectAt tp)
-                    dispatch (BeginDrag (mods, tp)))
+                    lastPointer <- Some pt
+                    if e.ClickCount >= 2 then dispatch (OpenDialogAt tp)
+                    else
+                        dispatch (SelectAt tp)
+                        dispatch (BeginDrag (mods, tp)))
         Border.onPointerMoved (fun e ->
-            let pt = e.GetPosition null
-            if Option.isSome model.placementDraft then
-                dispatch (PreviewPlacementAt (fromScreen model.view pt.X pt.Y))
-            match lastPointer with
-            | Some last ->
-                dispatch (PanByScreen (pt.X - last.X, pt.Y - last.Y))
-                dispatch (SlideTo (fromScreen model.view pt.X pt.Y))
-                lastPointer <- Some pt
-            | None -> ())
-        Border.onPointerReleased (fun _ ->
-            lastPointer <- None
-            dispatch EndDrag)
+            if e.Route = RoutingStrategies.Bubble then
+                let pt = e.GetPosition null
+                if Option.isSome model.placementDraft then
+                    dispatch (PreviewPlacementAt (fromScreen model.view pt.X pt.Y))
+                match lastPointer with
+                | Some last ->
+                    dispatch (PanByScreen (pt.X - last.X, pt.Y - last.Y))
+                    dispatch (SlideTo (fromScreen model.view pt.X pt.Y))
+                    lastPointer <- Some pt
+                | None -> ())
+        Border.onPointerReleased (fun e ->
+            if e.Route = RoutingStrategies.Bubble then
+                lastPointer <- None
+                dispatch EndDrag)
         Border.onPointerWheelChanged (fun e ->
-            let pt = e.GetPosition null
-            let notches = if e.Delta.Y >= 0.0 then 1 else -1
-            dispatch (WheelAt (modifiersOf e.KeyModifiers, notches, fromScreen model.view pt.X pt.Y)))
+            // Run once on the bubble pass so a notch applies ONE rotation/zoom step, and ALSO mark it
+            // handled so the wheel is consumed by the canvas rather than scrolling an ancestor too.
+            if e.Route = RoutingStrategies.Bubble then
+                e.Handled <- true
+                let pt = e.GetPosition null
+                let notches = if e.Delta.Y >= 0.0 then 1 else -1
+                dispatch (WheelAt (modifiersOf e.KeyModifiers, notches, fromScreen model.view pt.X pt.Y)))
         Border.onKeyDown (fun e ->
             match keyOf e.Key with
             | Some k -> dispatch (KeyPress { key = k; modifiers = Set.ofList (modifiersOf e.KeyModifiers) })

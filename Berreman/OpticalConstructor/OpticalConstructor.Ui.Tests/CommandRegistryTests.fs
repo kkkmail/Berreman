@@ -19,7 +19,10 @@
 ///   * AC-C3 — clicking empty table selects the table; clicking an element selects it.
 namespace OpticalConstructor.Ui.Tests
 
+open Avalonia
 open Avalonia.Controls
+open Avalonia.Input
+open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.FuncUI
 open Avalonia.FuncUI.Types
@@ -407,3 +410,47 @@ module CommandRegistryTests =
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible)
             window.Close())
+
+    // =======================================================================
+    // Spec 0027 — a REAL Shift+wheel notch rotates the active element by EXACTLY one step.
+    // The pure AC-E2 cases above feed one `WheelAt` message to `update`; this drives a real
+    // pointer event through the live input pipeline, so it catches the FuncUI Tunnel|Bubble
+    // double-fire that `e.Handled <- true` (ConstructorView wheel handler) suppresses —
+    // without the fix the same notch would rotate 10°.
+    // =======================================================================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a real Shift+wheel notch rotates the active element by exactly one 5 degree step`` () =
+        HeadlessSession.run (fun () ->
+            let mutable m = select 0 (model [ sampleAt 0.0 0.0 ])
+            let dispatch (msg : ConstructorView.Msg) = m <- ConstructorView.update msg m
+            // The constructor canvas is 760x480; size the host to it and inject at its centre.
+            let window = Window(Width = 760.0, Height = 480.0)
+            window.Content <- Component(fun _ -> ConstructorView.view m dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            window.MouseWheel(Point(380.0, 240.0), Vector(0.0, 1.0), RawInputModifiers.Shift)
+            Dispatcher.UIThread.RunJobs()
+            window.Close()
+            let r1 = (List.item 0 m.project.placements).r1.degrees
+            Assert.True(abs (r1 - 5.0) < 1e-9, sprintf "one Shift+wheel notch rotated R1 to %f° (expected exactly 5°; 10° means the double-fire is back)" r1))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a real click dispatches its select exactly once (pressed handler is deduped)`` () =
+        HeadlessSession.run (fun () ->
+            // The pressed/moved/released handlers run their logic only on the bubble pass. This
+            // proves the dedup AND that the bubble pass actually fires: a count of 0 would mean the
+            // logic never ran, a count of 2 would mean the FuncUI Tunnel|Bubble double-fire is back.
+            let captured = System.Collections.Generic.List<ConstructorView.Msg>()
+            let m = model [ sampleAt 0.0 0.0 ]
+            let window = Window(Width = 760.0, Height = 480.0)
+            window.Content <- Component(fun _ -> ConstructorView.view m (fun msg -> captured.Add msg))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            window.MouseDown(Point(380.0, 240.0), MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.Close()
+            let selects = captured |> Seq.filter (function ConstructorView.SelectAt _ -> true | _ -> false) |> Seq.length
+            Assert.Equal(1, selects))
