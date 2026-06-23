@@ -95,6 +95,36 @@ You were right — the first cut only had buttons, so mouse rotation was never w
 Tests after round 2: `OpticalConstructor.Tests` 245/245; `OpticalConstructor.Ui.Tests` 116/116
 (the table-rotation module is 14 tests — 9 pure MVU + 5 real-input/headless). Full build green.
 
+## Update — round 3 (your feedback: constrain the rotations; plain drag must do nothing)
+
+You were right that free drag-to-orbit is wrong for a scientific app: it mixed two axes at once
+and triggered on a too-easy gesture. I replaced it with the **documented, constrained gesture
+scheme** (Spec 0026 §E.3/§E.5, mirroring `OpticalConstructor.Ui/Commands.fs` — replicated in the
+test window with the citation, to keep this diagnostic project isolated on the Domain only):
+
+- **One axis per gesture, 5° per notch** — `Shift`+wheel → R1, `Ctrl+Shift`+wheel → R2,
+  `Alt`+wheel → R3; plain / `Ctrl`+wheel → zoom; **any other modifier combination does NOTHING**
+  (a gesture does exactly one thing, or nothing — never several at once).
+- **A plain press→drag→release does NOTHING** — it neither rotates nor selects (too easy a
+  gesture to manipulate a scientific scene; deliberately blocked). Only a clean click (a press
+  that never moved past the threshold) selects / deselects the table.
+- Buttons unchanged (one axis each, 15°, Shift = 5°); angles still wrap mod 360.
+
+- **On your `e.Handled` doubt:** it is exactly relevant here, so I kept it. FuncUI fires each
+  pointer handler twice (Tunnel|Bubble), so without it a single wheel notch would rotate **10°,
+  not 5°**. `e.Handled <- true` makes **one notch = one 5° step** — a headless test asserts
+  exactly 5°, which would read 10° if the dedup were removed. (Same fix still wanted in the main
+  app's wheel rotation — a follow-up.)
+
+These are proven by **real `Avalonia.Headless` pointer injection**, not simulated messages:
+`Shift`/`Ctrl+Shift`/`Alt`+wheel each rotate exactly one axis by exactly 5°, a real plain drag
+changes nothing, and a real click selects. Table-rotation module is now 17 tests (11 pure + 6
+real-input/headless). After round 3: `OpticalConstructor.Tests` 245/245;
+`OpticalConstructor.Ui.Tests` 119/119; full build green.
+
+Still open / not in the test window yet: `Ctrl+0` reset is a Reset button here rather than the
+keyboard chord (the spec's keyboard reset); say the word if you want the chord too.
+
 ## Deliberately NOT done this round (needs your go-ahead)
 
 - **The main constructor page still uses the old in-plane-only projection.** I did **not**

@@ -14,103 +14,115 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.TableRotationView
 
-/// Tests for the table-rotation test window (Spec 0027, task 002-rotate-table). Two layers:
-///   * pure MVU `update` proves the rotation maths — button steps (15° / Shift 5°), mod-360,
-///     drag-to-tumble, wheel-spin, and click-select — with no window at all;
-///   * **real headless pointer injection** (`Avalonia.Headless` `MouseDown/Move/Up/Wheel`)
-///     drives ACTUAL mouse events through the live input pipeline into the real FuncUI view
-///     and asserts the model rotated — i.e. it tests "rotation by mouse", the thing that was
-///     broken, end to end. The handlers are dumb event→message translators, so a manual MVU
-///     loop (mutable model + capturing dispatch) lets the test read the model after injection.
+/// Tests for the table-rotation test window (Spec 0027, task 002-rotate-table). The rotation is
+/// CONSTRAINED to one axis at a time by the documented modifier+wheel gestures (§E.3/§E.5); a
+/// plain drag does NOTHING. Two layers:
+///   * pure MVU `update` proves the gesture map, the one-axis constraint, mod-360, and that a
+///     plain drag is inert;
+///   * **real `Avalonia.Headless` pointer injection** drives actual wheel/drag/click events
+///     through the live input pipeline and asserts the model — so "rotation by mouse" and
+///     "plain drag does nothing" are proved end to end, and one notch = exactly one 5° step.
 module TableRotationTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
+    let private isTopDown (m : Model) : bool =
+        close m.view.r1.degrees 0.0 && close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0
 
     // ============================ pure MVU ============================
 
     [<Fact>]
     let ``init starts straight top-down and unselected`` () =
         let m = TableRotationView.init ()
-        Assert.True(close m.view.r1.degrees 0.0 && close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0)
+        Assert.True(isTopDown m && close m.view.zoom 1.0)
         Assert.Equal(TableUnselected, m.selection)
 
     [<Fact>]
-    let ``the button step is 15 degrees normally and 5 degrees with Shift`` () =
-        Assert.True(close (buttonStepDegrees false) 15.0)
-        Assert.True(close (buttonStepDegrees true) 5.0)
+    let ``the documented wheel map sends each modifier combo to exactly one action`` () =
+        Assert.Equal(RotateView1, wheelAction (Set.ofList [ ModShift ]))
+        Assert.Equal(RotateView2, wheelAction (Set.ofList [ ModCtrl; ModShift ]))
+        Assert.Equal(RotateView3, wheelAction (Set.ofList [ ModAlt ]))
+        Assert.Equal(ZoomView, wheelAction Set.empty)
+        Assert.Equal(ZoomView, wheelAction (Set.ofList [ ModCtrl ]))
+        // Undocumented combinations do NOTHING (one thing at a time, or nothing).
+        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModCtrl; ModAlt ]))
+        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModShift; ModAlt ]))
+        Assert.Equal(NoWheelAction, wheelAction (Set.ofList [ ModCtrl; ModShift; ModAlt ]))
 
     [<Fact>]
-    let ``a button rotation advances exactly its axis by the given degrees`` () =
+    let ``Shift+wheel rotates ONLY R1 by one 5 degree step`` () =
+        let m = TableRotationView.update (Wheel (Set.ofList [ ModShift ], 1)) (TableRotationView.init ())
+        Assert.True(close m.view.r1.degrees 5.0, $"R1 = {m.view.r1.degrees}")
+        Assert.True(close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0 && close m.view.zoom 1.0, "only R1 should move")
+
+    [<Fact>]
+    let ``Ctrl+Shift+wheel rotates ONLY R2, Alt+wheel rotates ONLY R3`` () =
+        let r2 = TableRotationView.update (Wheel (Set.ofList [ ModCtrl; ModShift ], 1)) (TableRotationView.init ())
+        Assert.True(close r2.view.r2.degrees 5.0 && close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0)
+        let r3 = TableRotationView.update (Wheel (Set.ofList [ ModAlt ], -1)) (TableRotationView.init ())
+        Assert.True(close r3.view.r3.degrees 355.0 && close r3.view.r1.degrees 0.0 && close r3.view.r2.degrees 0.0, $"R3 = {r3.view.r3.degrees}")
+
+    [<Fact>]
+    let ``plain wheel zooms and changes no rotation`` () =
+        let m = TableRotationView.update (Wheel (Set.empty, 1)) (TableRotationView.init ())
+        Assert.True(m.view.zoom > 1.0, $"zoom = {m.view.zoom}")
+        Assert.True(isTopDown m, "zoom must not rotate")
+
+    [<Fact>]
+    let ``an undocumented modifier combo does nothing`` () =
         let init = TableRotationView.init ()
-        let r2 = TableRotationView.update (RotateR2By 5.0) init
-        Assert.True(close r2.view.r2.degrees 5.0, $"R2 = {r2.view.r2.degrees}")
-        Assert.True(close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0, "only R2 should move")
+        let m = TableRotationView.update (Wheel (Set.ofList [ ModCtrl; ModAlt ], 1)) init
+        Assert.Equal<Model>(init, m)
 
     [<Fact>]
-    let ``angles wrap mod 360 (no values over 360, negatives wrap up)`` () =
-        Assert.True(close (normalizeDegrees 370.0) 10.0)
-        Assert.True(close (normalizeDegrees -15.0) 345.0)
-        // 350 + 15 -> 5, not 365.
+    let ``angles wrap mod 360`` () =
+        Assert.True(close (normalizeDegrees 370.0) 10.0 && close (normalizeDegrees -15.0) 345.0)
         let m = TableRotationView.init () |> TableRotationView.update (RotateR1By 350.0) |> TableRotationView.update (RotateR1By 15.0)
         Assert.True(close m.view.r1.degrees 5.0, $"R1 wrapped to {m.view.r1.degrees}")
 
     [<Fact>]
-    let ``reset returns a tumbled view to straight top-down`` () =
+    let ``the button step is 15 degrees normally and 5 degrees with Shift`` () =
+        Assert.True(close (buttonStepDegrees false) 15.0 && close (buttonStepDegrees true) 5.0)
+
+    [<Fact>]
+    let ``a plain press - drag - release does NOTHING (no rotation, no selection)`` () =
+        let p0 = TableRotationView.center
+        let p1 : ScreenPoint = { sx = p0.sx + 150.0; sy = p0.sy + 80.0 }
+        let m =
+            TableRotationView.init ()
+            |> TableRotationView.update (PointerDown p0)
+            |> TableRotationView.update (PointerMove p1)
+            |> TableRotationView.update (PointerUp p1)
+        Assert.True(isTopDown m && close m.view.zoom 1.0, "a plain drag must not rotate or zoom")
+        Assert.Equal(TableUnselected, m.selection)
+
+    [<Fact>]
+    let ``a clean click (no drag) selects the table, a click off it deselects`` () =
+        let selected =
+            TableRotationView.init ()
+            |> TableRotationView.update (PointerDown TableRotationView.center)
+            |> TableRotationView.update (PointerUp TableRotationView.center)
+        Assert.Equal(TableSelected, selected.selection)
+        let far : ScreenPoint = { sx = 3.0; sy = 3.0 }
+        let unselected =
+            selected
+            |> TableRotationView.update (PointerDown far)
+            |> TableRotationView.update (PointerUp far)
+        Assert.Equal(TableUnselected, unselected.selection)
+
+    [<Fact>]
+    let ``reset returns a rotated view to straight top-down`` () =
         let tumbled =
             TableRotationView.init ()
             |> TableRotationView.update (RotateR1By 30.0)
             |> TableRotationView.update (RotateR2By 20.0)
             |> TableRotationView.update (RotateR3By -45.0)
-        let reset = TableRotationView.update ResetView tumbled
-        Assert.True(close reset.view.r1.degrees 0.0 && close reset.view.r2.degrees 0.0 && close reset.view.r3.degrees 0.0)
-
-    [<Fact>]
-    let ``a pointer drag tumbles the table (horizontal yaws R3, vertical pitches R2)`` () =
-        let p0 : ScreenPoint = TableRotationView.center
-        let p1 : ScreenPoint = { sx = p0.sx + 100.0; sy = p0.sy + 50.0 }
-        let m =
-            TableRotationView.init ()
-            |> TableRotationView.update (PointerDown p0)
-            |> TableRotationView.update (PointerMove p1)
-        Assert.True(close m.view.r3.degrees (orbitDegreesPerPixel * 100.0), $"R3 = {m.view.r3.degrees}")
-        Assert.True(close m.view.r2.degrees (orbitDegreesPerPixel * 50.0), $"R2 = {m.view.r2.degrees}")
-
-    [<Fact>]
-    let ``a press that does not move past the threshold is a click, not a drag`` () =
-        let p0 : ScreenPoint = TableRotationView.center
-        let nudge : ScreenPoint = { sx = p0.sx + 1.0; sy = p0.sy + 1.0 }
-        let m =
-            TableRotationView.init ()
-            |> TableRotationView.update (PointerDown p0)
-            |> TableRotationView.update (PointerMove nudge)
-        // Below threshold: no rotation yet.
-        Assert.True(close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0, "sub-threshold nudge rotated the view")
-        // ...and releasing selects the table (it was a click).
-        let released = TableRotationView.update (PointerUp p0) m
-        Assert.Equal(TableSelected, released.selection)
-
-    [<Fact>]
-    let ``clicking empty space (off the plate) unselects`` () =
-        let far : ScreenPoint = { sx = TableRotationView.center.sx + 100000.0; sy = TableRotationView.center.sy }
-        let m =
-            TableRotationView.init ()
-            |> TableRotationView.update (PointerDown TableRotationView.center)
-            |> TableRotationView.update (PointerUp TableRotationView.center)   // select first
-            |> TableRotationView.update (PointerDown far)
-            |> TableRotationView.update (PointerUp far)
-        Assert.Equal(TableUnselected, m.selection)
-
-    [<Fact>]
-    let ``the mouse wheel spins R1 in-plane`` () =
-        let m = TableRotationView.update (WheelBy 1) (TableRotationView.init ())
-        Assert.True(close m.view.r1.degrees wheelSpinDegrees, $"R1 = {m.view.r1.degrees}")
+        Assert.True(isTopDown (TableRotationView.update ResetView tumbled))
 
     // ================== real headless pointer injection ==================
 
     /// Build the real FuncUI view over a manual MVU loop (mutable model + capturing dispatch),
-    /// show it headlessly, run `inject` (which fires real pointer events), and return the final
-    /// model. The handlers carry no model state, so they stay valid across the whole gesture
-    /// without re-rendering the tree (which would disturb pointer routing).
+    /// show it headlessly, run `inject` (real pointer events), and return the final model. The
+    /// handlers carry no model state, so they stay valid across a gesture without re-rendering.
     let private withMouseHarness (inject : Window -> unit) : Model =
         let mutable model = TableRotationView.init ()
         let dispatch (m : Msg) = model <- TableRotationView.update m model
@@ -123,50 +135,58 @@ module TableRotationTests =
         window.Close()
         model
 
-    let private pt (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
+    let private at (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``dragging the mouse across the table tumbles it (real pointer input)`` () =
+    let ``a real Shift+wheel notch rotates ONLY R1 by exactly 5 degrees`` () =
+        HeadlessSession.run (fun () ->
+            let model =
+                withMouseHarness (fun w ->
+                    w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Shift))
+            // Exactly 5°, NOT 10° — proves one notch = one step (FuncUI's duplicate pass is dropped).
+            Assert.True(close model.view.r1.degrees 5.0, $"R1 = {model.view.r1.degrees} (expected exactly 5)")
+            Assert.True(close model.view.r2.degrees 0.0 && close model.view.r3.degrees 0.0, "only R1 should move"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a real Ctrl+Shift+wheel rotates ONLY R2 and Alt+wheel rotates ONLY R3`` () =
+        HeadlessSession.run (fun () ->
+            let r2 =
+                withMouseHarness (fun w ->
+                    w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Control ||| RawInputModifiers.Shift))
+            Assert.True(close r2.view.r2.degrees 5.0 && close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0, $"R2 = {r2.view.r2.degrees}")
+            let r3 =
+                withMouseHarness (fun w ->
+                    w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Alt))
+            Assert.True(close r3.view.r3.degrees 5.0 && close r3.view.r1.degrees 0.0 && close r3.view.r2.degrees 0.0, $"R3 = {r3.view.r3.degrees}"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a real plain press - drag - release does NOTHING`` () =
         HeadlessSession.run (fun () ->
             let p0 = TableRotationView.center
-            let p1 : ScreenPoint = { sx = p0.sx + 120.0; sy = p0.sy + 40.0 }
+            let p1 : ScreenPoint = { sx = p0.sx + 160.0; sy = p0.sy + 70.0 }
             let model =
                 withMouseHarness (fun w ->
-                    w.MouseDown(pt p0, MouseButton.Left, RawInputModifiers.None)
+                    w.MouseDown(at p0, MouseButton.Left, RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-                    w.MouseMove(pt p1, RawInputModifiers.LeftMouseButton)
+                    w.MouseMove(at p1, RawInputModifiers.LeftMouseButton)
                     Dispatcher.UIThread.RunJobs()
-                    w.MouseUp(pt p1, MouseButton.Left, RawInputModifiers.None))
-            Assert.True(model.view.r3.degrees > 1.0, $"drag did not yaw R3: {model.view.r3.degrees}")
-            Assert.True(model.view.r2.degrees > 1.0, $"drag did not pitch R2: {model.view.r2.degrees}"))
+                    w.MouseUp(at p1, MouseButton.Left, RawInputModifiers.None))
+            Assert.True(isTopDown model && close model.view.zoom 1.0, $"a real drag changed the view: R1={model.view.r1.degrees} zoom={model.view.zoom}")
+            Assert.Equal(TableUnselected, model.selection))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``a real mouse click selects the table, a click off it deselects`` () =
-        HeadlessSession.run (fun () ->
-            let onPlate =
-                withMouseHarness (fun w ->
-                    w.MouseDown(pt TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-                    w.MouseUp(pt TableRotationView.center, MouseButton.Left, RawInputModifiers.None))
-            Assert.Equal(TableSelected, onPlate.selection)
-            let offPlate =
-                withMouseHarness (fun w ->
-                    let corner : ScreenPoint = { sx = 5.0; sy = 5.0 }
-                    w.MouseDown(pt corner, MouseButton.Left, RawInputModifiers.None)
-                    Dispatcher.UIThread.RunJobs()
-                    w.MouseUp(pt corner, MouseButton.Left, RawInputModifiers.None))
-            Assert.Equal(TableUnselected, offPlate.selection))
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``a real mouse wheel notch spins the table (R1)`` () =
+    let ``a real clean click selects the table`` () =
         HeadlessSession.run (fun () ->
             let model =
                 withMouseHarness (fun w ->
-                    w.MouseWheel(pt TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.None))
-            Assert.True(model.view.r1.degrees > 0.0, $"wheel did not spin R1: {model.view.r1.degrees}"))
+                    w.MouseDown(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                    w.MouseUp(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None))
+            Assert.Equal(TableSelected, model.selection))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -188,8 +208,6 @@ module TableRotationTests =
                         else Assert.Fail("could not locate the R2+ button on screen")
                     | None -> Assert.Fail("R2+ button not found in the visual tree"))
             Assert.True(close model.view.r2.degrees 5.0, $"Shift+button gave {model.view.r2.degrees}, expected 5"))
-
-    // ===================== headless render proof =====================
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

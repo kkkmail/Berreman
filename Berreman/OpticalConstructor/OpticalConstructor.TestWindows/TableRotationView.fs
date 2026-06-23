@@ -1,11 +1,24 @@
-/// The first test window (Spec 0027, task 002-rotate-table): a deliberately SIMPLE surface
-/// that shows the optical table from the top and proves the table's 3-D rotation and select /
-/// unselect actually work — by BUTTON and, crucially, by MOUSE (drag to tumble, wheel to
-/// spin), which was the original broken interaction. It reuses the EXACT same table domain as
-/// the main app (`Table.defaultTable` / `Table.TableViewState`) and the single-source-of-truth
-/// pure projection `OpticalConstructor.Domain.TableView`. The `Model`/`Msg`/`update` are pure
-/// and Avalonia-free; the pointer handlers are dumb event→message translators, so the whole
-/// chain (real pointer event → message → `update` → rotated model) is provable headless.
+/// The first test window (Spec 0027, task 002-rotate-table): a SIMPLE surface that shows the
+/// optical table from the top and proves the table's 3-D rotation + select / unselect work.
+/// It reuses the EXACT same table domain as the main app (`Table.defaultTable` /
+/// `Table.TableViewState`) and the single-source-of-truth pure projection
+/// `OpticalConstructor.Domain.TableView`.
+///
+/// Rotation is CONSTRAINED, one axis at a time, by the documented gestures (Spec 0026 §E.3 /
+/// §E.5, mirroring `OpticalConstructor.Ui/Commands.fs` — replicated here, with the citation,
+/// to keep this diagnostic window isolated on the Domain only):
+///   * `Shift`+wheel       → R1   (5° per notch)
+///   * `Ctrl`+`Shift`+wheel → R2
+///   * `Alt`+wheel         → R3
+///   * plain / `Ctrl`+wheel → zoom
+///   * any other modifier combination → NOTHING (exactly one thing per gesture, never several).
+/// A plain click selects / deselects the table; a plain press→drag→release does NOTHING (it is
+/// too easy a gesture to be allowed to manipulate a scientific scene — it is deliberately
+/// blocked). The buttons rotate one axis by 15° (Shift = 5°).
+///
+/// The `Model`/`Msg`/`update` are pure and Avalonia-free; the pointer handlers are dumb
+/// event→message translators, so the whole chain (real pointer event → message → `update` →
+/// rotated model) is provable headless.
 module OpticalConstructor.TestWindows.TableRotationView
 
 open Avalonia
@@ -23,8 +36,7 @@ open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 
 // ---------------------------------------------------------------------------
-// Stable automation ids (CLAUDE.md UI guidance): one place, never duplicated, so the
-// headless tests and any external UI-Automation test address controls by intent.
+// Stable automation ids (CLAUDE.md UI guidance): one place, never duplicated.
 // ---------------------------------------------------------------------------
 
 [<RequireQualifiedAccess>]
@@ -40,24 +52,41 @@ module UiIds =
     let readout = "TableRotationReadout"
 
 // ---------------------------------------------------------------------------
-// Pure model (no Avalonia handle) — provable headless.
+// Pure model (no Avalonia handle).
 // ---------------------------------------------------------------------------
 
-/// Whether the table is currently selected. A two-case named condition rather than a bool
-/// (CLAUDE.md), so a match site reads as prose.
+/// Whether the table is currently selected (a named condition, not a bool — CLAUDE.md).
 type TableSelection =
     | TableSelected
     | TableUnselected
 
-/// A mouse gesture in progress over the canvas. `Pressed` is a click candidate (no movement
-/// yet); once the pointer moves past the threshold it becomes `Orbiting` (a drag-to-tumble).
+/// A left-button gesture in progress. `Pressed` is a click candidate; once the pointer moves
+/// past the threshold it becomes `Dragged` — and a drag does NOTHING (it neither rotates nor
+/// selects). Only a clean `Pressed`→release (no movement) is a click.
 type DragState =
-    | NotDragging
+    | NotPressed
     | Pressed of ScreenPoint
-    | Orbiting of ScreenPoint
+    | Dragged
 
-/// The test-window model: the SAME optical table and view-orientation types the main app uses,
-/// the binary table selection, and the transient mouse-gesture state. Nothing Avalonia here.
+/// The keyboard modifiers a wheel gesture carries (mirrors `Commands.Modifier`, §E.1/§E.3),
+/// as a comparable set so the gesture maps one-to-one to an action.
+type WheelModifier =
+    | ModCtrl
+    | ModShift
+    | ModAlt
+
+/// The single thing a wheel gesture resolves to (§E.3/§E.5). `NoWheelAction` is the explicit
+/// "this combination does nothing" — the scientific-app constraint that a gesture does exactly
+/// one thing or nothing, never several at once.
+type WheelAction =
+    | RotateView1
+    | RotateView2
+    | RotateView3
+    | ZoomView
+    | NoWheelAction
+
+/// The test-window model: the SAME optical table + view-orientation types the main app uses,
+/// the binary selection, and the transient left-button gesture state. Nothing Avalonia here.
 type Model =
     {
         table : OpticalTable
@@ -66,14 +95,13 @@ type Model =
         drag : DragState
     }
 
-/// The straight top-down starting state: the default `1.2 × 2.0 × 0.10 m` table, the `(0,0,0)`
-/// top-down view, nothing selected, no gesture in progress.
+/// Straight top-down, default table, nothing selected, no gesture in progress.
 let init () : Model =
     {
         table = Table.defaultTable
         view = Table.defaultView
         selection = TableUnselected
-        drag = NotDragging
+        drag = NotPressed
     }
 
 type Msg =
@@ -83,48 +111,59 @@ type Msg =
     | RotateR3By of float
     /// Reset the view to straight top-down `(0, 0, 0)`.
     | ResetView
-    /// Raw mouse-gesture messages (the pointer handlers emit these verbatim; all gesture logic
-    /// lives in `update`, so the handlers need no model and the chain is headless-testable).
+    /// Raw left-button gesture messages (the handlers emit these verbatim; the click-vs-drag
+    /// logic lives in `update`, so the handlers carry no model and the chain is testable).
     | PointerDown of ScreenPoint
     | PointerMove of ScreenPoint
     | PointerUp of ScreenPoint
-    /// Mouse-wheel notches (+1 up / -1 down) → R1 in-plane spin.
-    | WheelBy of int
+    /// A wheel notch (+1 up / -1 down) with its modifiers — resolved against the documented
+    /// gesture map in `update`.
+    | Wheel of Set<WheelModifier> * int
 
 // ---------------------------------------------------------------------------
 // Constants.
 // ---------------------------------------------------------------------------
 
-/// The button rotation step: 15° normally, 5° with Shift held (a finer nudge to catch subtle
-/// behaviour). The user asked for exactly this.
+/// The BUTTON rotation step: 15° normally, 5° with Shift (a finer nudge).
 let buttonStepDegrees (shiftHeld : bool) : float = if shiftHeld then 5.0 else 15.0
 
-/// Drag-to-tumble sensitivity (degrees of view rotation per pixel of mouse travel).
-let orbitDegreesPerPixel : float = 0.4
+/// The WHEEL rotation step — the spec's documented default (§E.3): 5° per notch.
+let wheelStepDegrees : float = 5.0
 
-/// One mouse-wheel notch spins the in-plane R1 by this many degrees.
-let wheelSpinDegrees : float = 15.0
-
-/// A press that never moves more than this many pixels is a click (select), not a drag.
+/// A press that never moves past this many pixels is a click, not a drag.
 let private dragThresholdPx : float = 3.0
+
+let private zoomStep : float = 1.1
+let private zoomMin : float = 0.2
+let private zoomMax : float = 5.0
 
 [<Literal>]
 let canvasWidth = 820.0
 [<Literal>]
 let canvasHeight = 560.0
 
-/// The canvas centre the table projects around.
 let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
-
-/// Drawing units per canonical meter: the `2.0 m × 1.2 m` plate draws ~400 × 240 px at the
-/// default zoom, leaving room for the tumble to swing corners out without clipping.
 let pixelsPerMeter : float = 200.0
 
 // ---------------------------------------------------------------------------
-// Pure update. Angles are normalised mod 360 (no spinors here — 370° ≡ 10°).
+// The documented wheel-gesture map (§E.3/§E.5, mirroring Commands.fs verbatim):
+//   {Shift} -> R1 ; {Ctrl,Shift} -> R2 ; {Alt} -> R3 ; {} or {Ctrl} -> zoom ; else nothing.
 // ---------------------------------------------------------------------------
 
-/// Wrap a degree value into `[0, 360)` — the user's "no angles more than 360, use mod 360".
+let wheelAction (mods : Set<WheelModifier>) : WheelAction =
+    let has m = Set.contains m mods
+    match has ModCtrl, has ModShift, has ModAlt with
+    | false, true, false -> RotateView1
+    | true, true, false -> RotateView2
+    | false, false, true -> RotateView3
+    | false, false, false -> ZoomView
+    | true, false, false -> ZoomView
+    | _ -> NoWheelAction
+
+// ---------------------------------------------------------------------------
+// Pure update. Angles wrap mod 360 (no spinors — 370° ≡ 10°).
+// ---------------------------------------------------------------------------
+
 let normalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
@@ -135,45 +174,46 @@ let private rotate1 (d : float) (m : Model) : Model = { m with view = { m.view w
 let private rotate2 (d : float) (m : Model) : Model = { m with view = { m.view with r2 = addDeg m.view.r2 d } }
 let private rotate3 (d : float) (m : Model) : Model = { m with view = { m.view with r3 = addDeg m.view.r3 d } }
 
+let private zoomBy (notches : int) (m : Model) : Model =
+    let z = m.view.zoom * (zoomStep ** float notches)
+    { m with view = { m.view with zoom = max zoomMin (min zoomMax z) } }
+
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
     sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
-
-/// Orbit from a reference screen point to the current one: horizontal travel yaws (R3),
-/// vertical travel pitches (R2), so a drag tumbles the table the way a hand would turn it.
-let private orbitFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : Model) : Model =
-    let dx = pt.sx - refPt.sx
-    let dy = pt.sy - refPt.sy
-    m
-    |> rotate3 (orbitDegreesPerPixel * dx)
-    |> rotate2 (orbitDegreesPerPixel * dy)
-    |> fun m' -> { m' with drag = Orbiting pt }
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotate1 d model
     | RotateR2By d -> rotate2 d model
     | RotateR3By d -> rotate3 d model
-    | ResetView -> { model with view = Table.resetView model.view; drag = NotDragging }
+    | ResetView -> { model with view = Table.resetView model.view; drag = NotPressed }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
+        // The moment a press turns into a drag, mark it `Dragged` — but do NOT rotate or pan.
+        // A plain drag is deliberately inert; rotation is the documented modifier+wheel gesture.
         match model.drag with
-        | NotDragging -> model
-        | Pressed start -> if dist start pt < dragThresholdPx then model else orbitFrom start pt model
-        | Orbiting last -> orbitFrom last pt model
+        | Pressed start when dist start pt >= dragThresholdPx -> { model with drag = Dragged }
+        | _ -> model
     | PointerUp _ ->
-        // A press with no drag is a click → (de)select by hit-testing where the press landed.
-        let selected =
+        // Only a clean click (a press that never became a drag) (de)selects the table.
+        let selection =
             match model.drag with
             | Pressed start ->
                 if TableView.tableHit pixelsPerMeter center model.view model.table start
                 then TableSelected
                 else TableUnselected
             | _ -> model.selection
-        { model with selection = selected; drag = NotDragging }
-    | WheelBy notches -> rotate1 (float notches * wheelSpinDegrees) model
+        { model with selection = selection; drag = NotPressed }
+    | Wheel (mods, notches) ->
+        match wheelAction mods with
+        | RotateView1 -> rotate1 (wheelStepDegrees * float notches) model
+        | RotateView2 -> rotate2 (wheelStepDegrees * float notches) model
+        | RotateView3 -> rotate3 (wheelStepDegrees * float notches) model
+        | ZoomView -> zoomBy notches model
+        | NoWheelAction -> model
 
 // ---------------------------------------------------------------------------
-// Colours (mirroring the constructor table's palette so the test reads like the real one).
+// Colours (mirroring the constructor table's palette).
 // ---------------------------------------------------------------------------
 
 let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
@@ -191,7 +231,7 @@ let private detectorColor = color 20 20 20
 
 // ---------------------------------------------------------------------------
 // The FuncUI view. Geometry is the pure `TableView` projection; the pointer handlers turn
-// raw events into the pure mouse messages (no model logic in the handlers).
+// raw events into the pure messages (no model logic in the handlers).
 // ---------------------------------------------------------------------------
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
@@ -199,9 +239,6 @@ let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 let private projected (model : Model) (p : Vector3) : ScreenPoint =
     TableView.project pixelsPerMeter center model.view p
 
-/// The plate: the filled top face plus the twelve box edges, so the slab reads as a 3-D object
-/// when tumbled. The top face carries the selection indicator (≥ 2 px, strong-blue) when
-/// selected.
 let private plateViews (model : Model) : IView list =
     let corners = TableView.plateCorners3D model.table |> List.map (projected model) |> List.toArray
     let selected = model.selection = TableSelected
@@ -224,9 +261,6 @@ let private plateViews (model : Model) : IView list =
             ] :> IView)
     face :: edges
 
-/// A reference overlay drawn on the table plane (z = 0): the central-ray axis from the source
-/// (left) to the detector (right), with a marker at each end, so the rotation is unmistakable
-/// (you can see which way the bench is facing).
 let private referenceViews (model : Model) : IView list =
     let s = projected model (RayModel.pointToVector3 RayModel.defaultSourcePoint)
     let d = projected model (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
@@ -250,8 +284,8 @@ let private referenceViews (model : Model) : IView list =
       marker d detectorColor 7.0 ]
 
 /// A clickable, button-styled `Border` (a real `Button.Click` carries no key modifiers, so a
-/// Border + `onPointerPressed` is what lets Shift change the step). Dispatches `mk (sign·step)`
-/// where the step is 5° with Shift, else 15°.
+/// Border + `onPointerPressed` is what lets Shift change the step). `e.Handled <- true` drops
+/// FuncUI's duplicate Tunnel|Bubble invocation, so one click = exactly one 5°/15° step.
 let private rotateButton (id : string) (label : string) (mk : float -> Msg) (sign : float) (dispatch : Msg -> unit) : IView =
     Border.create [
         Border.name id
@@ -262,9 +296,6 @@ let private rotateButton (id : string) (label : string) (mk : float -> Msg) (sig
         Border.padding (Thickness(12.0, 6.0))
         Border.child (TextBlock.create [ TextBlock.text label ])
         Border.onPointerPressed (fun e ->
-            // FuncUI subscribes pointer handlers for the event's full Tunnel|Bubble routing, so
-            // the handler fires TWICE for the clicked element (tunnel down, then bubble up).
-            // Marking it handled drops the second pass, so one click = one 5°/15° step.
             e.Handled <- true
             let step = buttonStepDegrees (e.KeyModifiers.HasFlag KeyModifiers.Shift)
             dispatch (mk (sign * step)))
@@ -275,8 +306,8 @@ let private degrees (a : Angle) : float = a.degrees
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     let readout =
         sprintf
-            "R1 %.0f°   R2 %.0f°   R3 %.0f°      Table: %s"
-            (degrees model.view.r1) (degrees model.view.r2) (degrees model.view.r3)
+            "R1 %.0f°   R2 %.0f°   R3 %.0f°   Zoom %.2f×      Table: %s"
+            (degrees model.view.r1) (degrees model.view.r2) (degrees model.view.r3) model.view.zoom
             (match model.selection with TableSelected -> "SELECTED" | TableUnselected -> "not selected")
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
@@ -306,7 +337,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
             ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
-                TextBlock.text "Drag the table to tumble it · mouse-wheel to spin (R1) · click to select/deselect · Shift+button = 5°"
+                TextBlock.text "Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 · wheel = zoom · click = select · plain drag does nothing · Shift+button = 5°"
             ]
         ]
     ] :> IView
@@ -316,17 +347,20 @@ let private tableCanvas (model : Model) : IView =
         Canvas.name UiIds.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
-        // Pin to the top-left of the host Border (which sits at the window content origin), so a
-        // top-level pointer position equals a canvas coordinate.
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
         Canvas.children (referenceViews model @ plateViews model)
     ] :> IView
 
-/// The whole test surface: the table canvas — wrapped in a Border that owns the background and
-/// the pointer handlers (a `Panel` exposes no background attr, and the Border at the content
-/// origin makes a top-level pointer position equal a canvas coordinate) — with the rotation /
-/// reset controls and the live readout docked beneath it.
+let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
+    [ if km.HasFlag KeyModifiers.Control then ModCtrl
+      if km.HasFlag KeyModifiers.Shift then ModShift
+      if km.HasFlag KeyModifiers.Alt then ModAlt ]
+    |> Set.ofList
+
+/// The whole test surface. The canvas Border owns the background + pointer handlers; sitting at
+/// the content origin, a top-level pointer position equals a canvas coordinate. `e.Handled <-
+/// true` drops FuncUI's duplicate Tunnel|Bubble pass, so a wheel notch is exactly one step.
 let view (model : Model) (dispatch : Msg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint =
         let p = e.GetPosition null
@@ -339,12 +373,13 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
             ]
             Border.create [
                 Border.background (brush (color 250 250 250))
-                // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble invocation, so a wheel
-                // notch spins once and a drag step orbits once (the handlers accumulate rotation).
                 Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
                 Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
                 Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
-                Border.onPointerWheelChanged (fun e -> e.Handled <- true; dispatch (WheelBy (if e.Delta.Y >= 0.0 then 1 else -1)))
+                Border.onPointerWheelChanged (fun e ->
+                    e.Handled <- true
+                    let notches = if e.Delta.Y >= 0.0 then 1 else -1
+                    dispatch (Wheel (wheelModifiers e.KeyModifiers, notches)))
                 Border.child (tableCanvas model)
             ]
         ]
