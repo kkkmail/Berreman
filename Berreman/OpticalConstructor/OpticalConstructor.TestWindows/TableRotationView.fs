@@ -12,9 +12,8 @@
 ///   * `Alt`+wheel         → R3
 ///   * plain / `Ctrl`+wheel → zoom
 ///   * any other modifier combination → NOTHING (exactly one thing per gesture, never several).
-/// A plain click selects / deselects the table; a plain press→drag→release does NOTHING (it is
-/// too easy a gesture to be allowed to manipulate a scientific scene — it is deliberately
-/// blocked). The buttons rotate one axis by 15° (Shift = 5°).
+/// A plain click selects / deselects the table; a plain press→drag→release PANS the table across
+/// the screen (the standard click-and-drag). The buttons rotate one axis by 15° (Shift = 5°).
 ///
 /// The `Model`/`Msg`/`update` are pure and Avalonia-free; the pointer handlers are dumb
 /// event→message translators, so the whole chain (real pointer event → message → `update` →
@@ -61,12 +60,13 @@ type TableSelection =
     | TableUnselected
 
 /// A left-button gesture in progress. `Pressed` is a click candidate; once the pointer moves
-/// past the threshold it becomes `Dragged` — and a drag does NOTHING (it neither rotates nor
-/// selects). Only a clean `Pressed`→release (no movement) is a click.
+/// past the threshold it becomes `Panning` and the drag PANS the table across the screen (the
+/// standard click-and-drag). `Panning` carries the last pointer position. Only a clean
+/// `Pressed`→release (no movement) is a click.
 type DragState =
     | NotPressed
     | Pressed of ScreenPoint
-    | Dragged
+    | Panning of ScreenPoint
 
 /// The keyboard modifiers a wheel gesture carries (mirrors `Commands.Modifier`, §E.1/§E.3),
 /// as a comparable set so the gesture maps one-to-one to an action.
@@ -181,6 +181,14 @@ let private zoomBy (notches : int) (m : Model) : Model =
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
     sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
+/// Pan the table by the screen delta from a reference point to the current one — the standard
+/// click-and-drag move. Pan is a pure screen-space translation (`TableViewState.panX/panY`), so
+/// it never rotates; rotation stays the documented modifier+wheel gesture.
+let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : Model) : Model =
+    { m with
+        view = { m.view with panX = m.view.panX + (pt.sx - refPt.sx); panY = m.view.panY + (pt.sy - refPt.sy) }
+        drag = Panning pt }
+
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotate1 d model
@@ -189,11 +197,11 @@ let update (msg : Msg) (model : Model) : Model =
     | ResetView -> { model with view = Table.resetView model.view; drag = NotPressed }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
-        // The moment a press turns into a drag, mark it `Dragged` — but do NOT rotate or pan.
-        // A plain drag is deliberately inert; rotation is the documented modifier+wheel gesture.
+        // Once a press moves past the threshold it becomes a pan-drag, then tracks the pointer.
         match model.drag with
-        | Pressed start when dist start pt >= dragThresholdPx -> { model with drag = Dragged }
-        | _ -> model
+        | NotPressed -> model
+        | Pressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
+        | Panning last -> panFrom last pt model
     | PointerUp _ ->
         // Only a clean click (a press that never became a drag) (de)selects the table.
         let selection =
@@ -337,7 +345,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
             ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
-                TextBlock.text "Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 · wheel = zoom · click = select · plain drag does nothing · Shift+button = 5°"
+                TextBlock.text "drag = pan · Shift+wheel = R1 · Ctrl+Shift+wheel = R2 · Alt+wheel = R3 · wheel = zoom · click = select · Shift+button = 5°"
             ]
         ]
     ] :> IView

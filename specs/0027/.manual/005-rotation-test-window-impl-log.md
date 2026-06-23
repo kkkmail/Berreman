@@ -162,16 +162,38 @@ dispatch records **exactly one** `SelectAt` (a count of 0 would mean the bubble 
 `e.Route` gate and the wheel dedup are covered. After round 5: `OpticalConstructor.Ui.Tests`
 121/121; `OpticalConstructor.Tests` 245/245; full build green.
 
-## Deliberately NOT done this round (needs your go-ahead)
+## Update — round 6 (wire the constructor page to TableView's 3-D projection + drag-to-pan in the test)
 
-- **The main constructor page still uses the old in-plane-only projection.** I did **not**
-  rewire `ConstructorView`/`ConstructorTable` to `TableView` yet — the test window is the
-  proving ground ("start very simple"). Once you're happy with the rotation model here, the
-  follow-up is to point the real page's projection at `TableView` (the single source of
-  truth) so the constructor canvas tumbles too. It's a focused change but touches the live
-  page and its many tests, so I left it until you've validated the model on screen.
-- Test-window content is intentionally minimal (plate + central ray + source/detector
-  markers): the goal was table rotation + selection, not full element rendering.
+Two changes:
+
+1. **The main constructor page now uses TableView's 3-D projection** (the single source of truth).
+   `ConstructorView.projectToCanvas` now calls `TableView.project` (R1/R2/R3 relative to the
+   screen, orthographic) and `fromScreen` calls `TableView.unprojectToTablePlane`; the old
+   in-plane-only `rotateInPlane` is gone, and the plate is drawn as a projected quad (a `Polygon`)
+   so an R2/R3 tilt shows the correct parallelogram instead of a flat spin. Everything that goes
+   through `toScreen` — plate, elements, rays, the active-element indicator — now tumbles together.
+   At the default `(0,0,0)` view it is identical to before. The one consequence: TableView's R1
+   rotates about the table up-axis, which is the opposite *screen* direction to the old
+   `rotateInPlane`, so the `C2-4` test's expected mapping flips from `(-vy, vx)` to `(vy, -vx)` —
+   the AC it proves (every element travels with the table) is unchanged.
+
+2. **The test window's click-and-drag now PANS the table** (the standard gesture you noted), in
+   place of the earlier "plain drag does nothing": a press that moves past the threshold pans by
+   the pointer delta (`TableViewState.panX/panY`, a pure screen-space translation — it never
+   rotates); a clean click (no movement) still selects. Rotation stays the documented
+   modifier+wheel gesture.
+
+Tests updated/added: `C2-4` flipped as above; the test window's two drag tests now assert the
+pan delta (pure + real headless injection). After round 6: `OpticalConstructor.Ui.Tests` 121/121;
+`OpticalConstructor.Tests` 245/245 (`TableView` 11/11); full build green.
+
+## Still deliberately not done
+
+- The constructor's **caps** (element end-circles) and the **active-element indicator** are still
+  drawn as circles sized by zoom, not foreshortened ellipses, under a steep tilt — positions are
+  3-D-correct (they go through `toScreen`), only the cap *shape* is approximate.
+- Test-window content stays minimal (plate + central ray + source/detector markers): the goal was
+  table rotation / selection / pan, not full element rendering.
 
 ## Files
 

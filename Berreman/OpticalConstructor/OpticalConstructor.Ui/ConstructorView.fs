@@ -1066,37 +1066,32 @@ let private placementCursor (kind : CatalogueKind) : Cursor =
             with _ ->
                 new Cursor(StandardCursorType.Cross)))
 
-/// In-plane screen rotation of a vector by `a` (§C.2.4 — the view's R1 is measured
-/// relative to the screen). The 2-D top-down surface realises R1 as an in-plane spin
-/// about the canvas centre, so the whole table — plate, elements, rays — rotates
-/// together (all geometry goes through `projectToCanvas`). R2/R3 (out-of-plane tilt)
-/// keep the top-down approximation, consistent with the schematic-not-physical mandate
-/// (constraint 0.5) and the slice-004 top-down `project`.
-let private rotateInPlane (a : Angle) (px : float, py : float) : float * float =
-    let c = cos a.value
-    let s = sin a.value
-    (px * c - py * s, px * s + py * c)
+/// The constructor canvas centre the table projects around (a `TableView.ScreenPoint`).
+let private canvasCentre : TableView.ScreenPoint = { sx = centerX; sy = centerY }
 
-/// Project a table-frame point to canvas coordinates (a pure float pair — no Avalonia):
-/// the slice-004 transform (scale + Y-flip + pan), the view's in-plane R1 rotation about
-/// the canvas centre (so elements travel with the table, C.2.4), then the centre offset.
+/// Project a table-frame point to canvas coordinates (a pure float pair — no Avalonia): the
+/// table's full 3-D view rotation (R1/R2/R3 measured relative to the screen) and orthographic
+/// projection, taken from the single source of truth `TableView` (Spec 0027), at the constructor
+/// canvas centre and base scale. At the default `(0,0,0)` view this is the straight top-down
+/// layout; R1 spins it in-plane and R2/R3 tilt it out of plane, with the whole table — plate,
+/// elements, rays — travelling together (C.2.4).
 let projectToCanvas (view : Table.TableViewState) (p : TablePoint) : float * float =
-    let d = ConstructorTable.project view p
-    let (rx, ry) = rotateInPlane view.r1 (d.dx, d.dy)
-    (centerX + rx, centerY + ry)
+    let v = Vector3.create (p.x / 1.0<meter>) (p.y / 1.0<meter>) 0.0
+    let sp = TableView.project ConstructorTable.basePixelsPerMeter canvasCentre view v
+    (sp.sx, sp.sy)
 
 /// Project a table-frame point to an Avalonia canvas point.
 let private toScreen (view : Table.TableViewState) (p : TablePoint) : Point =
     let (x, y) = projectToCanvas view p
     Point(x, y)
 
-/// The inverse of `projectToCanvas` — a canvas point back to a table-frame point (the R1
-/// view rotation is undone first, then the pan/zoom/Y-flip).
+/// The inverse of `projectToCanvas` — a canvas point back to its table-frame point on the table
+/// plane (z = 0), via `TableView.unprojectToTablePlane`. Falls back to the table origin when the
+/// view is edge-on (the plane projects to a line), so a click is never lost.
 let private fromScreen (view : Table.TableViewState) (sx : float) (sy : float) : TablePoint =
-    let s = ConstructorTable.basePixelsPerMeter * view.zoom
-    let (dx, dy) = rotateInPlane (- view.r1) (sx - centerX, sy - centerY)
-    { x = ((dx - view.panX) / s) * 1.0<meter>
-      y = ((view.panY - dy) / s) * 1.0<meter> }
+    match TableView.unprojectToTablePlane ConstructorTable.basePixelsPerMeter canvasCentre view { sx = sx; sy = sy } with
+    | Some tp -> tp
+    | None -> TablePoint.origin
 
 let private toTablePoint (v : Vector3) : TablePoint =
     { x = v.x * 1.0<meter>; y = v.y * 1.0<meter> }
@@ -1217,33 +1212,23 @@ let private capView (model : Model) (fill : Drawer.Fill) (stroke : ConstructorTa
     ] :> IView
 
 let private plateView (model : Model) : IView list =
-    let corners =
-        ConstructorTable.plateCorners model.project.table model.view
-        |> List.map (fun d -> let (rx, ry) = rotateInPlane model.view.r1 (d.dx, d.dy) in (centerX + rx, centerY + ry))
-    let xs = corners |> List.map fst
-    let ys = corners |> List.map snd
-    let left = List.min xs
-    let top = List.min ys
-    let fill =
-        Rectangle.create [
-            Rectangle.left left
-            Rectangle.top top
-            Rectangle.width (List.max xs - left)
-            Rectangle.height (List.max ys - top)
-            Rectangle.fill (toBrush ConstructorTable.tablePlateColor)
-            Rectangle.stroke (toBrush ConstructorTable.elementFrameColor)
-            Rectangle.strokeThickness 1.0
-        ] :> IView
+    // The grey plate as its four corners projected through the 3-D view transform, so it tilts
+    // with the table (a single filled quad — under an R2/R3 tilt the rectangle becomes the
+    // correctly-projected parallelogram, which an axis-aligned rectangle could not show).
     let halfL = model.project.table.length / 2.0
     let halfW = model.project.table.width / 2.0
-    let plateCorners =
+    let pts =
         [ { x = -halfL; y = -halfW }
           { x =  halfL; y = -halfW }
           { x =  halfL; y =  halfW }
-          { x = -halfL; y =  halfW }
-          { x = -halfL; y = -halfW } ]
-    let outlineStroke = { Drawer.frameStroke with opacity = 1.0 }
-    fill :: (plateCorners |> List.pairwise |> List.map (fun (a, b) -> viewLine model outlineStroke a b))
+          { x = -halfL; y =  halfW } ]
+        |> List.map (fun c -> let (x, y) = projectToCanvas model.view c in Point(x, y))
+    [ Polygon.create [
+        Polygon.points pts
+        Polygon.fill (toBrush ConstructorTable.tablePlateColor)
+        Polygon.stroke (toBrush ConstructorTable.elementFrameColor)
+        Polygon.strokeThickness 1.0
+      ] :> IView ]
 
 let private raySegmentView (model : Model) (segment : DrawnRaySegment) : IView =
     viewLine model (ConstructorTable.rayStroke segment.group segment.isCentral) segment.startPoint segment.endPoint

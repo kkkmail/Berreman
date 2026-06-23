@@ -84,7 +84,7 @@ module TableRotationTests =
         Assert.True(close (buttonStepDegrees false) 15.0 && close (buttonStepDegrees true) 5.0)
 
     [<Fact>]
-    let ``a plain press - drag - release does NOTHING (no rotation, no selection)`` () =
+    let ``a plain press - drag - release PANS the table (no rotation, no selection)`` () =
         let p0 = TableRotationView.center
         let p1 : ScreenPoint = { sx = p0.sx + 150.0; sy = p0.sy + 80.0 }
         let m =
@@ -92,7 +92,9 @@ module TableRotationTests =
             |> TableRotationView.update (PointerDown p0)
             |> TableRotationView.update (PointerMove p1)
             |> TableRotationView.update (PointerUp p1)
-        Assert.True(isTopDown m && close m.view.zoom 1.0, "a plain drag must not rotate or zoom")
+        // The drag pans by the screen delta; it must NOT rotate, zoom, or select.
+        Assert.True(close m.view.panX 150.0 && close m.view.panY 80.0, $"pan = ({m.view.panX}, {m.view.panY})")
+        Assert.True(isTopDown m && close m.view.zoom 1.0, "a drag must not rotate or zoom")
         Assert.Equal(TableUnselected, m.selection)
 
     [<Fact>]
@@ -163,7 +165,7 @@ module TableRotationTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``a real plain press - drag - release does NOTHING`` () =
+    let ``a real click-and-drag PANS the table across the screen`` () =
         HeadlessSession.run (fun () ->
             let p0 = TableRotationView.center
             let p1 : ScreenPoint = { sx = p0.sx + 160.0; sy = p0.sy + 70.0 }
@@ -174,7 +176,9 @@ module TableRotationTests =
                     w.MouseMove(at p1, RawInputModifiers.LeftMouseButton)
                     Dispatcher.UIThread.RunJobs()
                     w.MouseUp(at p1, MouseButton.Left, RawInputModifiers.None))
-            Assert.True(isTopDown model && close model.view.zoom 1.0, $"a real drag changed the view: R1={model.view.r1.degrees} zoom={model.view.zoom}")
+            // The drag pans by the pointer delta — and must not rotate, zoom, or select.
+            Assert.True(close model.view.panX 160.0 && close model.view.panY 70.0, $"pan = ({model.view.panX}, {model.view.panY})")
+            Assert.True(isTopDown model && close model.view.zoom 1.0, $"a drag changed rotation/zoom: R1={model.view.r1.degrees} zoom={model.view.zoom}")
             Assert.Equal(TableUnselected, model.selection))
 
     [<Fact>]

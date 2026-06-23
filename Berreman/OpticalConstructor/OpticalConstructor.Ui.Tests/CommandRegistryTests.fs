@@ -363,8 +363,10 @@ module CommandRegistryTests =
         let vecFrom (v : Table.TableViewState) (p : TablePoint) =
             let (x, y) = ConstructorView.projectToCanvas v p
             (x - fst center, y - snd center)
-        // A +90° in-plane rotation sends (vx, vy) -> (-vy, vx).
-        let rot90 (vx, vy) = (-vy, vx)
+        // Through TableView's single-source-of-truth 3-D projection (Spec 0027), a +90° view R1
+        // (about the table up-axis) maps a screen vector (vx, vy) -> (vy, -vx). The table — and
+        // every element on it — still travels together, which is what this AC asserts.
+        let rot90 (vx, vy) = (vy, -vx)
         for p in [ at 0.5 0.0; at 0.0 0.5; at -0.3 0.2 ] do
             let (ex, ey) = rot90 (vecFrom v0 p)
             let (rx, ry) = vecFrom vRot p
