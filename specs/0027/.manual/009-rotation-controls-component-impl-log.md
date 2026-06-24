@@ -102,3 +102,22 @@ constructor tests (dedup / round-trip on the 760×480 surface) still pass under 
   `RotateActiveBy`/`SetActiveAxis`/`RotRequest*`/`RotConfirm`/`RotCancel`; `rotationBarState`/`Handlers`).
 - **Changed (wiring/tests):** `Berreman.slnx`, the `OpticalConstructor.Ui` and `OpticalConstructor.TestWindows`
   `.fsproj`s (reference `Controls`), and the four rotation test files plus `CommandRegistryTests.fs`.
+
+## Follow-up fix — `Test Table + Element Rotations` could not be unselected
+
+Reported after the above landed: on `Test Optical Table` clicking off the plate correctly unselects the
+table, but on `Test Table + Element Rotations` it did not — the table stayed selected forever.
+
+Cause: `TableAndElementRotationView.selectionAt` had only two outcomes (`ElementSelected` / `TableSelected`)
+and fell back to `TableSelected` for *any* click that missed an element — there was no unselected state, so
+a click far outside the plate still "selected the table." `TableRotationView` already does the right thing
+via `TableView.tableHit`.
+
+Fix: added a third selection case `NothingSelected` and made `selectionAt` mirror the table test —
+nearest element within the select radius → `ElementSelected`; else on the plate (`TableView.tableHit`) →
+`TableSelected`; else → `NothingSelected`. All the selection matches (rotate / set-angle / reset / R3-lock /
+element-zoom / readout) handle the new case as a no-op, and the rotation bar's `enabled` is now `false`
+when nothing is selected (consistent with task 008's "nothing selected ⇒ controls disabled"). Tests: the
+existing click test now also asserts an on-plate empty click selects the table and an off-plate click
+yields `NothingSelected`, plus a new test that rotation gestures are inert while unselected
+(`OpticalConstructor.Ui.Tests` 168/168).

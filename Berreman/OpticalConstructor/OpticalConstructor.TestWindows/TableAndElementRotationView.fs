@@ -82,6 +82,7 @@ type TestElement =
 type Selection =
     | TableSelected
     | ElementSelected of int
+    | NothingSelected
 
 type DragState =
     | NotPressed
@@ -206,6 +207,7 @@ let private rotateSelected (axis : int) (deg : float) (m : Model) : Model =
     match m.selection with
     | TableSelected -> rotateView axis deg m
     | ElementSelected i -> rotateElement axis deg i m
+    | NothingSelected -> m
 
 let private clamp (lo : float) (hi : float) (x : float) : float = max lo (min hi x)
 
@@ -227,8 +229,8 @@ let private elementCentreScreen (view : TableViewState) (e : TestElement) : Scre
     TableView.project pixelsPerMeter center view
         (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
 
-/// A click selects the nearest element if it is within the select radius, else the table (#3 —
-/// clicking empty table selects the table, exactly like the main app).
+/// A click selects the nearest element within the select radius; else the table if the click landed
+/// on the plate; else nothing — clicking outside the table unselects it, exactly like the table test.
 let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
     let nearest =
         m.elements
@@ -237,7 +239,7 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
         |> List.tryHead
     match nearest with
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
-    | _ -> TableSelected
+    | _ -> if TableView.tableHit pixelsPerMeter center m.view m.table pt then TableSelected else NothingSelected
 
 /// Set the selection's axis to an exact angle (lock-respecting for R3, task 008).
 let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
@@ -250,6 +252,7 @@ let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Mode
         | RotationControls.R3 -> if m.tableR3Locked then m else { m with view = { m.view with r3 = a } }
     | ElementSelected i ->
         mapElement i (fun e -> { e with placement = (match axis with RotationControls.R1 -> withR1 a | RotationControls.R2 -> withR2 a | RotationControls.R3 -> withR3 a) e.placement }) m
+    | NothingSelected -> m
 
 /// Reset rotations only (bypassing locks), keeping pan / zoom / position (task 008).
 let private resetViewRotations (m : Model) : Model = { m with view = { m.view with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
@@ -258,6 +261,7 @@ let private resetSelectionRotations (m : Model) : Model =
     match m.selection with
     | TableSelected -> resetViewRotations m
     | ElementSelected i -> mapElement i (fun e -> { e with placement = resetPlacementRotations e.placement }) m
+    | NothingSelected -> m
 /// Reset All: every object's rotations — the table view AND all elements (task 008, your call).
 let private resetAllRotations (m : Model) : Model =
     { (resetViewRotations m) with elements = m.elements |> List.map (fun e -> { e with placement = resetPlacementRotations e.placement }) }
@@ -271,6 +275,7 @@ let update (msg : Msg) (model : Model) : Model =
         match model.selection with
         | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
         | ElementSelected i -> mapElement i (fun e -> { e with placement = setR3Locked (not e.placement.r3Locked) e.placement }) model
+        | NothingSelected -> model
     | RotSetAxis (axis, v) -> setSelectedAxis axis v model
     | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
     | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
@@ -303,7 +308,7 @@ let update (msg : Msg) (model : Model) : Model =
         | ZoomElementSelected ->
             match model.selection with
             | ElementSelected i -> zoomElement i notches model
-            | TableSelected -> model
+            | TableSelected | NothingSelected -> model
         | ZoomElementsAll -> zoomAllElements notches model
         | ZoomTable -> zoomTable notches model
         | NoWheelAction -> model
@@ -407,7 +412,7 @@ let private elementViews (model : Model) : IView list =
     model.elements |> List.mapi (fun i e -> elementView i model e) |> List.concat
 
 /// The shared rotation-controls bar's state for whatever is selected (the table, or an element).
-/// Something is always selected here, so the bar is always enabled.
+/// When nothing is selected the bar is disabled — there is nothing to rotate (task 008).
 let private rotationState (model : Model) : RotationControls.State =
     match model.selection with
     | TableSelected ->
@@ -417,6 +422,8 @@ let private rotationState (model : Model) : RotationControls.State =
         let p = (List.item i model.elements).placement
         { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
           r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
+    | NothingSelected ->
+        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
@@ -445,6 +452,7 @@ let private readoutText (model : Model) : string =
         sprintf "Selected: Element %d (%s)   R1 %.0f°   R2 %.0f°   R3 %.0f° (%s)   zoom %.1f×"
             (i + 1) (kindName p.catalogueKind) p.r1.degrees p.r2.degrees p.r3.degrees
             (if p.r3Locked then "R3 locked" else "R3 free") e.zoom
+    | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [

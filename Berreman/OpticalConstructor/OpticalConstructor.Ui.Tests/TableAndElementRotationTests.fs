@@ -128,9 +128,19 @@ module TableAndElementRotationTests =
         Assert.True((update (Wheel (Set.empty, 1)) m0).view.zoom > 1.0, "plain wheel zooms the table")
         let dragged = m0 |> update (PointerDown center) |> update (PointerMove { sx = center.sx + 120.0; sy = center.sy + 40.0 }) |> update (PointerUp { sx = center.sx + 120.0; sy = center.sy + 40.0 })
         Assert.True(close dragged.view.panX 120.0 && close dragged.view.panY 40.0, "a drag pans the table")
-        // Click an element vs the empty table.
+        // Click an element vs the empty plate vs off the plate entirely.
         Assert.Equal(ElementSelected 0, (clickAt { sx = center.sx - 100.0; sy = center.sy } m0).selection)   // element 0 at x=-0.5 → screen -100
-        Assert.Equal(TableSelected, (clickAt { sx = center.sx; sy = center.sy + 200.0 } m0).selection)        // far from any element
+        Assert.Equal(TableSelected, (clickAt { sx = center.sx; sy = center.sy + 100.0 } m0).selection)        // on the plate (y≈0.5 m), clear of every element
+        Assert.Equal(NothingSelected, (clickAt { sx = center.sx; sy = center.sy + 200.0 } m0).selection)      // off the plate (y≈1.0 m > 0.6 m half-width) → unselects
+
+    [<Fact>]
+    let ``clicking off the plate unselects the table, then rotation gestures are inert`` () =
+        let off = clickAt { sx = center.sx; sy = center.sy + 200.0 } (init ())   // init has the table selected
+        Assert.Equal(NothingSelected, off.selection)
+        // Nothing selected ⇒ nothing to rotate (button delta and wheel both no-ops).
+        let after = off |> update (RotateR1By 15.0) |> update (Wheel (Set.ofList [ ModShift ], 1))
+        Assert.True(close after.view.r1.degrees 0.0, "the table is not rotated while unselected")
+        Assert.True(after.elements |> List.forall (fun e -> close e.placement.r1.degrees 0.0), "no element is rotated while unselected")
 
     [<Fact>]
     let ``the table R3 is unlocked by default; locking it makes table R3 rotation inert`` () =
