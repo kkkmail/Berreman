@@ -1,0 +1,13 @@
+The rotation tests work. Now, here is what we need to do BEFORE we fix the main screen (the one that is opened by “Main” button) to use 
+the same rotation / selection / zooming logic as the tests. The main screen has these special element menus, which the tests model by controls 
+at the bottom of the screen. I think that what came out in the tests (call it the bottom <rotation-controls>) is actually way better than the menus. 
+So, let’s work on this <rotation-controls> control (the one with R1- , R1+, etc. buttons) first. Do the following.
+First, let’s come up with the collective name for all these rotation controls. I will call it <rotation-controls> and you will come up with the 
+name and put them into a container / component so that it can be easily used.
+Button `Unlock / Lock R3` must change the name between `Unlock R3` and `Lock R3` based on the state. Table has it unlocked by default 
+(so the button will say `Lock R3`) and all other elements have R3 locked by default (the button will say `Unlock R3` until clicked). Locking 
+locks the current value of R3 and does not reset it. Button `Reset` should only reset currently selected elements, NOT all of them. Button `Reset` 
+must ask for confirmation. So, we also need to add a button `Reset All` to reset rotations of all elements (with confirmation). The degrees 
+R1 / R2 / R3 must be editable in case the user wants to put some number (non-integers must be allowed). If no element is selected, then 
+all controls on <rotation-controls> must be disabled (there is nothing to rotate).
+Do that, then fix the Main screen to use the same controls / approach.

@@ -30,6 +30,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
+open OpticalConstructor.Controls
 
 // ---------------------------------------------------------------------------
 // Stable automation ids (CLAUDE.md UI guidance).
@@ -112,6 +113,8 @@ type Model =
         elements : TestElement list
         selected : int
         drag : DragState
+        /// Which reset (if any) the rotation-controls bar is awaiting confirmation for (task 008).
+        rotationConfirm : RotationControls.ResetConfirm
     }
 
 /// The default per-element visual zoom (the user's "default element zoom is 5×"). A constant for
@@ -129,6 +132,7 @@ let init () : Model =
         elements = [ mk -0.5 LinearPolarizer; mk 0.0 Sample; mk 0.5 FlatMirror ]
         selected = 1
         drag = NotPressed
+        rotationConfirm = RotationControls.NoConfirm
     }
 
 type Msg =
@@ -138,8 +142,13 @@ type Msg =
     | RotateR3By of float
     /// Lock / unlock the selected element's R3 (spec A.4.5).
     | ToggleR3Lock
-    /// Reset the selected element to its rest pose (R3 re-locked) and the default 5× zoom.
-    | ResetSelected
+    /// Rotation-controls bar (task 008): set an axis to an exact angle, and confirmation-gated
+    /// Reset (the selected element's rotations) / Reset All (every element's rotations).
+    | RotSetAxis of RotationControls.Axis * float
+    | RotRequestReset
+    | RotRequestResetAll
+    | RotConfirm
+    | RotCancel
     /// Zoom (visual magnification) the selected element / all elements by wheel notches.
     | ZoomSelectedBy of int
     | ZoomAllBy of int
@@ -194,6 +203,17 @@ let private rotate1 (deg : float) (model : Model) : Model = editSelectedPlacemen
 let private rotate2 (deg : float) (model : Model) : Model = editSelectedPlacement (fun p -> withR2 (addDeg p.r2 deg) p) model
 let private rotate3 (deg : float) (model : Model) : Model = editSelectedPlacement (fun p -> withR3 (addDeg p.r3 deg) p) model
 
+/// Set the selected element's axis to an exact angle (lock-respecting for R3, task 008).
+let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (model : Model) : Model =
+    let a = Angle.degree (normalizeDegrees v)
+    editSelectedPlacement (fun p -> match axis with RotationControls.R1 -> withR1 a p | RotationControls.R2 -> withR2 a p | RotationControls.R3 -> withR3 a p) model
+
+/// Reset rotations only — bypassing locks, keeping zoom / position (task 008 Reset).
+let private resetPlacementRotations (p : ElementPlacement) : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
+let private resetSelectedRotations (model : Model) : Model = editSelectedPlacement resetPlacementRotations model
+let private resetAllRotations (model : Model) : Model =
+    { model with elements = model.elements |> List.map (fun e -> { e with placement = resetPlacementRotations e.placement }) }
+
 let private zoomSelectedBy (notches : int) (model : Model) : Model =
     mapSelected (fun e -> { e with zoom = clampZoom (e.zoom * (zoomStep ** float notches)) }) model
 
@@ -236,14 +256,17 @@ let update (msg : Msg) (model : Model) : Model =
     | RotateR2By d -> rotate2 d model
     | RotateR3By d -> rotate3 d model
     | ToggleR3Lock -> editSelectedPlacement (fun p -> setR3Locked (not p.r3Locked) p) model
-    | ResetSelected ->
-        // Reset the selected element to its rest pose + default zoom AND the table view to
-        // straight top-down / no pan / default zoom (#2 — a clean slate, like the table test reset).
-        let reset =
-            mapSelected
-                (fun e -> { placement = ElementPlacement.create e.placement.catalogueKind e.placement.placementPoint; zoom = defaultElementZoom })
-                model
-        { reset with view = Table.resetView model.view }
+    | RotSetAxis (axis, v) -> setSelectedAxis axis v model
+    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | RotConfirm ->
+        let m =
+            match model.rotationConfirm with
+            | RotationControls.ConfirmReset -> resetSelectedRotations model
+            | RotationControls.ConfirmResetAll -> resetAllRotations model
+            | RotationControls.NoConfirm -> model
+        { m with rotationConfirm = RotationControls.NoConfirm }
+    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
     | ZoomSelectedBy n -> zoomSelectedBy n model
     | ZoomAllBy n -> zoomAllBy n model
     | PointerDown pt -> { model with drag = Pressed pt }
@@ -387,33 +410,16 @@ let private elementViews (model : Model) : IView list =
 // Controls + readout.
 // ---------------------------------------------------------------------------
 
-let private rotateButton (id : string) (label : string) (mk : float -> Msg) (sign : float) (dispatch : Msg -> unit) : IView =
-    Border.create [
-        Border.name id
-        Border.background (brush (color 232 232 232))
-        Border.borderBrush (brush (color 120 120 120))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 6.0))
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed (fun e ->
-            // FuncUI fires pointer handlers twice (Tunnel|Bubble); mark handled so one click is one step.
-            e.Handled <- true
-            let step = buttonStepDegrees (e.KeyModifiers.HasFlag KeyModifiers.Shift)
-            dispatch (mk (sign * step)))
-    ] :> IView
-
-let private textButton (id : string) (label : string) (msg : Msg) (dispatch : Msg -> unit) : IView =
-    Border.create [
-        Border.name id
-        Border.background (brush (color 232 232 232))
-        Border.borderBrush (brush (color 120 120 120))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 6.0))
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed (fun e -> e.Handled <- true; dispatch msg)
-    ] :> IView
+let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+    {
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
+        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
+        toggleR3Lock = fun () -> dispatch ToggleR3Lock
+        requestReset = fun () -> dispatch RotRequestReset
+        requestResetAll = fun () -> dispatch RotRequestResetAll
+        confirm = fun () -> dispatch RotConfirm
+        cancel = fun () -> dispatch RotCancel
+    }
 
 let private kindName (k : CatalogueKind) : string =
     match k with
@@ -427,6 +433,19 @@ let private kindName (k : CatalogueKind) : string =
     | Detector -> "Detector"
 
 let private selectedElement (model : Model) : TestElement = List.item model.selected model.elements
+
+/// The shared rotation-controls bar's state for the SELECTED element. An element is always
+/// selected here, so the bar is always enabled.
+let private rotationState (model : Model) : RotationControls.State =
+    let p = (selectedElement model).placement
+    {
+        r1 = p.r1.degrees
+        r2 = p.r2.degrees
+        r3 = p.r3.degrees
+        r3Locked = p.r3Locked
+        enabled = true
+        confirm = model.rotationConfirm
+    }
 
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     let e = selectedElement model
@@ -442,20 +461,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.spacing 6.0
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 6.0
-                StackPanel.children [
-                    rotateButton UiIds.rotateR1Minus "R1 −" RotateR1By (-1.0) dispatch
-                    rotateButton UiIds.rotateR1Plus "R1 +" RotateR1By 1.0 dispatch
-                    rotateButton UiIds.rotateR2Minus "R2 −" RotateR2By (-1.0) dispatch
-                    rotateButton UiIds.rotateR2Plus "R2 +" RotateR2By 1.0 dispatch
-                    rotateButton UiIds.rotateR3Minus "R3 −" RotateR3By (-1.0) dispatch
-                    rotateButton UiIds.rotateR3Plus "R3 +" RotateR3By 1.0 dispatch
-                    textButton UiIds.unlockR3 (if p.r3Locked then "Unlock R3" else "Lock R3") ToggleR3Lock dispatch
-                    textButton UiIds.reset "Reset" ResetSelected dispatch
-                ]
-            ]
+            RotationControls.view (rotationState model) (rotationHandlers dispatch)
             TextBlock.create [
                 TextBlock.name UiIds.readout
                 TextBlock.text readout

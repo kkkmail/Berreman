@@ -180,6 +180,8 @@
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
+        <!-- Spec 0027 (008-task): the shared rotation-controls bar. -->
+        <ProjectReference Include="..\OpticalConstructor.Controls\OpticalConstructor.Controls.fsproj" />
         <!-- Part H (slice 012) consumes the engine sweeps/charting data builders
              (Analytics.Variables/Charting) and §F.6/§F.8 (Analytics.FieldProfile/
              Colorimetry). No new C# project, no FuncUI-clone reference. -->

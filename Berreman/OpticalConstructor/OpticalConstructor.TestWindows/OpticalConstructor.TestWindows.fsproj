@@ -47,6 +47,8 @@
 
     <ItemGroup>
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <!-- Spec 0027 (008-task): the shared rotation-controls bar. -->
+        <ProjectReference Include="..\OpticalConstructor.Controls\OpticalConstructor.Controls.fsproj" />
     </ItemGroup>
 
 </Project>

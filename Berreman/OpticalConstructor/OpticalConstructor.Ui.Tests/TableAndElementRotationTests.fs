@@ -10,6 +10,7 @@ open Avalonia.FuncUI
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
@@ -96,10 +97,10 @@ module TableAndElementRotationTests =
         Assert.True(d2 before after > 1.0, "the element should project to a new place after the table rotates")
 
     [<Fact>]
-    let ``R3 starts locked on elements; the unlock toggle is inert while the table is selected`` () =
+    let ``R3 starts locked on elements and unlocked on the table; the toggle targets the selection`` () =
         let m0 = init ()
-        // Table selected → ToggleR3Lock does nothing (the view has no R3 lock).
-        Assert.Equal<Model>(m0, update ToggleR3Lock m0)
+        // Table selected → ToggleR3Lock toggles the TABLE's R3 lock (task 008 — the table now has one).
+        Assert.True((update ToggleR3Lock m0).tableR3Locked)
         // Select an element: R3 locked, so Alt+wheel is inert; after unlocking it turns.
         let sel = clickAt { sx = center.sx; sy = center.sy } m0
         Assert.True(close (deg (elem 1 (update (Wheel (Set.ofList [ ModAlt ], 1)) sel)).placement.r3) 0.0, "R3 inert while locked")
@@ -132,18 +133,43 @@ module TableAndElementRotationTests =
         Assert.Equal(TableSelected, (clickAt { sx = center.sx; sy = center.sy + 200.0 } m0).selection)        // far from any element
 
     [<Fact>]
-    let ``reset returns the table view and every element to defaults`` () =
+    let ``the table R3 is unlocked by default; locking it makes table R3 rotation inert`` () =
+        let m0 = init ()   // table selected
+        Assert.False(m0.tableR3Locked)
+        let locked = update ToggleR3Lock m0
+        Assert.True(locked.tableR3Locked)
+        Assert.True(close (update (RotateR3By 15.0) locked).view.r3.degrees 0.0, "a locked table R3 ignores rotation")
+
+    [<Fact>]
+    let ``setting an axis to an exact angle acts on the current selection`` () =
+        let t = update (RotSetAxis (RotationControls.R1, 42.5)) (init ())   // table selected
+        Assert.True(close t.view.r1.degrees 42.5, $"table R1 = {t.view.r1.degrees}")
+        let e = init () |> clickAt { sx = center.sx; sy = center.sy } |> update (RotSetAxis (RotationControls.R1, 33.0))
+        Assert.True(close (deg (elem 1 e).placement.r1) 33.0, "element R1 set")
+
+    [<Fact>]
+    let ``Reset (selection, confirmed) zeros only the selected object's rotations`` () =
+        let m =
+            init ()
+            |> update (RotateR1By 30.0)                       // table R1 = 30
+            |> clickAt { sx = center.sx; sy = center.sy }     // select element 1
+            |> update (RotateR2By 20.0)                        // element 1 R2 = 20
+            |> update RotRequestReset
+            |> update RotConfirm
+        Assert.True(close (deg (elem 1 m).placement.r2) 0.0, "the selected element is reset")
+        Assert.True(close m.view.r1.degrees 30.0, "the table's rotation is NOT reset by Reset (selection)")
+
+    [<Fact>]
+    let ``Reset All (confirmed) zeros the table's AND every element's rotations`` () =
         let dirtied =
             init ()
             |> update (RotateR1By 40.0)                       // rotate the table
-            |> update (Wheel (Set.empty, 2))                  // zoom the table
             |> clickAt { sx = center.sx; sy = center.sy }     // select element 1
-            |> update ToggleR3Lock
+            |> update ToggleR3Lock                            // unlock element R3
             |> update (RotateR3By 25.0)                        // rotate the element
-            |> update (Wheel (Set.ofList [ ModCtrl; ModAlt ], 3))   // zoom the element
-        let m = update Reset dirtied
-        Assert.True(close m.view.r1.degrees 0.0 && close m.view.zoom 1.0 && close m.view.panX 0.0)
-        Assert.True(m.elements |> List.forall (fun e -> close (deg e.placement.r1) 0.0 && close (deg e.placement.r3) 0.0 && e.placement.r3Locked && close e.zoom defaultElementZoom))
+        let m = dirtied |> update RotRequestResetAll |> update RotConfirm
+        Assert.True(close m.view.r1.degrees 0.0 && close m.view.r2.degrees 0.0 && close m.view.r3.degrees 0.0, "table rotations zeroed")
+        Assert.True(m.elements |> List.forall (fun e -> close (deg e.placement.r1) 0.0 && close (deg e.placement.r2) 0.0 && close (deg e.placement.r3) 0.0), "all element rotations zeroed")
 
     [<Fact>]
     let ``the button step is 15 normally and 5 with Shift; angles wrap mod 360`` () =
@@ -210,7 +236,7 @@ module TableAndElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = UiIds.rotateR2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->

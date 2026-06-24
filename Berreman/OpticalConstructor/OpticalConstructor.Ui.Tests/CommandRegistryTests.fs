@@ -29,6 +29,7 @@ open Avalonia.FuncUI.Types
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Project
@@ -396,6 +397,45 @@ module CommandRegistryTests =
 
         let rotated = ConstructorView.update (ConstructorView.Invoke RotateR1) menu
         Assert.True(abs ((placementAt 0 rotated).r1.degrees - 5.0) < 1e-9)
+
+    // =======================================================================
+    // Spec 0027 task 008 — the shared rotation-controls bar on the main screen.
+    // =======================================================================
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the rotation bar rotates the active element by a delta and sets an exact angle`` () =
+        let m0 = select 0 (model [ sampleAt 0.0 0.0 ])
+        let rotated = ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R1, 15.0)) m0
+        Assert.True(abs ((placementAt 0 rotated).r1.degrees - 15.0) < 1e-9)
+        let set = ConstructorView.update (ConstructorView.SetActiveAxis (RotationControls.R2, 42.5)) m0
+        Assert.True(abs ((placementAt 0 set).r2.degrees - 42.5) < 1e-9)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the rotation bar is enabled only when an element is active`` () =
+        Assert.True((ConstructorView.rotationBarState (select 0 (model [ sampleAt 0.0 0.0 ]))).enabled, "enabled with an element")
+        Assert.False((ConstructorView.rotationBarState (model [ sampleAt 0.0 0.0 ])).enabled, "disabled with only the table selected")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the rotation bar Reset (confirmed) zeros the active element; Reset All zeros every element`` () =
+        // Reset is confirmation-gated and resets only the active element.
+        let armed =
+            select 0 (model [ sampleAt -0.3 0.0; sampleAt 0.3 0.0 ])
+            |> ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R1, 20.0))
+            |> ConstructorView.update ConstructorView.RotRequestReset
+        Assert.Equal(RotationControls.ConfirmReset, armed.rotationConfirm)
+        Assert.True(abs ((placementAt 0 armed).r1.degrees - 20.0) < 1e-9, "not reset until confirmed")
+        let reset = ConstructorView.update ConstructorView.RotConfirm armed
+        Assert.True(abs ((placementAt 0 reset).r1.degrees) < 1e-9 && reset.rotationConfirm = RotationControls.NoConfirm)
+        // Reset All zeros every element's rotations.
+        let allReset =
+            select 1 (model [ sampleAt -0.3 0.0; sampleAt 0.3 0.0 ])
+            |> ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R2, 30.0))
+            |> ConstructorView.update ConstructorView.RotRequestResetAll
+            |> ConstructorView.update ConstructorView.RotConfirm
+        Assert.True(allReset.project.placements |> List.forall (fun p -> p.r1.value = 0.0 && p.r2.value = 0.0 && p.r3.value = 0.0))
 
     // =======================================================================
     // ui-smoke — the constructor surface mounts and renders one frame.

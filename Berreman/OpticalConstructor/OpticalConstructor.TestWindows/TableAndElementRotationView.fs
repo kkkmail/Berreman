@@ -22,6 +22,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
+open OpticalConstructor.Controls
 
 [<RequireQualifiedAccess>]
 module UiIds =
@@ -94,6 +95,10 @@ type Model =
         elements : TestElement list  // each with its own spec rotation + draw zoom
         selection : Selection
         drag : DragState
+        /// The table's R3-lock (task 008): unlocked by default. Elements carry their own R3-lock.
+        tableR3Locked : bool
+        /// Which reset (if any) the rotation-controls bar is awaiting confirmation for.
+        rotationConfirm : RotationControls.ResetConfirm
     }
 
 let defaultElementZoom : float = 5.0
@@ -108,18 +113,23 @@ let init () : Model =
         elements = [ mk -0.5 LinearPolarizer; mk 0.0 Sample; mk 0.5 FlatMirror ]
         selection = TableSelected
         drag = NotPressed
+        tableR3Locked = false
+        rotationConfirm = RotationControls.NoConfirm
     }
 
 type Msg =
     | RotateR1By of float
     | RotateR2By of float
     | RotateR3By of float
-    /// Lock / unlock the selected ELEMENT's R3 (inert when the table is selected — the table view
-    /// has no R3 lock).
+    /// Lock / unlock the selection's R3 (the table's, or the selected element's).
     | ToggleR3Lock
-    /// Reset the whole scene (table view top-down / no pan / default zoom; every element to its
-    /// rest pose + 5× zoom + R3 re-locked).
-    | Reset
+    /// Rotation-controls bar (task 008): set the selection's axis to an exact angle, and the
+    /// confirmation-gated Reset (selection's rotations) / Reset All (every object's rotations).
+    | RotSetAxis of RotationControls.Axis * float
+    | RotRequestReset
+    | RotRequestResetAll
+    | RotConfirm
+    | RotCancel
     | PointerDown of ScreenPoint
     | PointerMove of ScreenPoint
     | PointerUp of ScreenPoint
@@ -165,15 +175,18 @@ let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
 let private mapElement (i : int) (f : TestElement -> TestElement) (m : Model) : Model =
     { m with elements = m.elements |> List.mapi (fun j e -> if j = i then f e else e) }
 
-/// Rotate the TABLE VIEW about screen axis Rk by `deg` (no lock — the view has no R3 lock).
+/// Rotate the TABLE VIEW about screen axis Rk by `deg`. R3 respects the table's R3-lock (task 008).
 let private rotateView (axis : int) (deg : float) (m : Model) : Model =
-    let v = m.view
-    let v' =
-        match axis with
-        | 1 -> { v with r1 = bumpAngle v.r1 deg }
-        | 2 -> { v with r2 = bumpAngle v.r2 deg }
-        | _ -> { v with r3 = bumpAngle v.r3 deg }
-    { m with view = v' }
+    match axis with
+    | 3 when m.tableR3Locked -> m
+    | _ ->
+        let v = m.view
+        let v' =
+            match axis with
+            | 1 -> { v with r1 = bumpAngle v.r1 deg }
+            | 2 -> { v with r2 = bumpAngle v.r2 deg }
+            | _ -> { v with r3 = bumpAngle v.r3 deg }
+        { m with view = v' }
 
 /// Rotate ELEMENT `i` about Rk by `deg`, lock-respecting (R3 starts locked).
 let private rotateElement (axis : int) (deg : float) (i : int) (m : Model) : Model =
@@ -226,8 +239,28 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
     | _ -> TableSelected
 
-let private resetElement (e : TestElement) : TestElement =
-    { placement = ElementPlacement.create e.placement.catalogueKind e.placement.placementPoint; zoom = defaultElementZoom }
+/// Set the selection's axis to an exact angle (lock-respecting for R3, task 008).
+let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
+    let a = Angle.degree (normalizeDegrees v)
+    match m.selection with
+    | TableSelected ->
+        match axis with
+        | RotationControls.R1 -> { m with view = { m.view with r1 = a } }
+        | RotationControls.R2 -> { m with view = { m.view with r2 = a } }
+        | RotationControls.R3 -> if m.tableR3Locked then m else { m with view = { m.view with r3 = a } }
+    | ElementSelected i ->
+        mapElement i (fun e -> { e with placement = (match axis with RotationControls.R1 -> withR1 a | RotationControls.R2 -> withR2 a | RotationControls.R3 -> withR3 a) e.placement }) m
+
+/// Reset rotations only (bypassing locks), keeping pan / zoom / position (task 008).
+let private resetViewRotations (m : Model) : Model = { m with view = { m.view with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
+let private resetPlacementRotations (p : ElementPlacement) : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
+let private resetSelectionRotations (m : Model) : Model =
+    match m.selection with
+    | TableSelected -> resetViewRotations m
+    | ElementSelected i -> mapElement i (fun e -> { e with placement = resetPlacementRotations e.placement }) m
+/// Reset All: every object's rotations — the table view AND all elements (task 008, your call).
+let private resetAllRotations (m : Model) : Model =
+    { (resetViewRotations m) with elements = m.elements |> List.map (fun e -> { e with placement = resetPlacementRotations e.placement }) }
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
@@ -236,12 +269,19 @@ let update (msg : Msg) (model : Model) : Model =
     | RotateR3By d -> rotateSelected 3 d model
     | ToggleR3Lock ->
         match model.selection with
+        | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
         | ElementSelected i -> mapElement i (fun e -> { e with placement = setR3Locked (not e.placement.r3Locked) e.placement }) model
-        | TableSelected -> model
-    | Reset ->
-        { model with
-            view = Table.resetView model.view
-            elements = model.elements |> List.map resetElement }
+    | RotSetAxis (axis, v) -> setSelectedAxis axis v model
+    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | RotConfirm ->
+        let m =
+            match model.rotationConfirm with
+            | RotationControls.ConfirmReset -> resetSelectionRotations model
+            | RotationControls.ConfirmResetAll -> resetAllRotations model
+            | RotationControls.NoConfirm -> model
+        { m with rotationConfirm = RotationControls.NoConfirm }
+    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -366,31 +406,28 @@ let private elementView (i : int) (model : Model) (e : TestElement) : IView list
 let private elementViews (model : Model) : IView list =
     model.elements |> List.mapi (fun i e -> elementView i model e) |> List.concat
 
-let private rotateButton (id : string) (label : string) (mk : float -> Msg) (sign : float) (dispatch : Msg -> unit) : IView =
-    Border.create [
-        Border.name id
-        Border.background (brush (color 232 232 232))
-        Border.borderBrush (brush (color 120 120 120))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 6.0))
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed (fun e ->
-            e.Handled <- true
-            dispatch (mk (sign * buttonStepDegrees (e.KeyModifiers.HasFlag KeyModifiers.Shift))))
-    ] :> IView
+/// The shared rotation-controls bar's state for whatever is selected (the table, or an element).
+/// Something is always selected here, so the bar is always enabled.
+let private rotationState (model : Model) : RotationControls.State =
+    match model.selection with
+    | TableSelected ->
+        { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+          r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
+    | ElementSelected i ->
+        let p = (List.item i model.elements).placement
+        { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+          r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
 
-let private textButton (id : string) (label : string) (msg : Msg) (dispatch : Msg -> unit) : IView =
-    Border.create [
-        Border.name id
-        Border.background (brush (color 232 232 232))
-        Border.borderBrush (brush (color 120 120 120))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(12.0, 6.0))
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed (fun e -> e.Handled <- true; dispatch msg)
-    ] :> IView
+let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+    {
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
+        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
+        toggleR3Lock = fun () -> dispatch ToggleR3Lock
+        requestReset = fun () -> dispatch RotRequestReset
+        requestResetAll = fun () -> dispatch RotRequestResetAll
+        confirm = fun () -> dispatch RotConfirm
+        cancel = fun () -> dispatch RotCancel
+    }
 
 let private kindName (k : CatalogueKind) : string =
     match k with
@@ -415,20 +452,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.spacing 6.0
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 6.0
-                StackPanel.children [
-                    rotateButton UiIds.rotateR1Minus "R1 −" RotateR1By (-1.0) dispatch
-                    rotateButton UiIds.rotateR1Plus "R1 +" RotateR1By 1.0 dispatch
-                    rotateButton UiIds.rotateR2Minus "R2 −" RotateR2By (-1.0) dispatch
-                    rotateButton UiIds.rotateR2Plus "R2 +" RotateR2By 1.0 dispatch
-                    rotateButton UiIds.rotateR3Minus "R3 −" RotateR3By (-1.0) dispatch
-                    rotateButton UiIds.rotateR3Plus "R3 +" RotateR3By 1.0 dispatch
-                    textButton UiIds.unlockR3 "Unlock/Lock R3" ToggleR3Lock dispatch
-                    textButton UiIds.reset "Reset" Reset dispatch
-                ]
-            ]
+            RotationControls.view (rotationState model) (rotationHandlers dispatch)
             TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model) ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))

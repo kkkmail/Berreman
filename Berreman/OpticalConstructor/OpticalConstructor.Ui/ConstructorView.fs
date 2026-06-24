@@ -35,6 +35,7 @@ open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Project
@@ -132,6 +133,8 @@ type Model =
         saveRequests : int
         /// The last command the surface invoked (the ribbon/menu of slice 006 reads it).
         lastCommand : Command option
+        /// The shared rotation-controls bar's reset-confirmation state (Spec 0027, task 008).
+        rotationConfirm : RotationControls.ResetConfirm
     }
 
 let private placementExists (placement : ElementPlacement) (project : OpticalConstructorProject) : bool =
@@ -175,6 +178,7 @@ let initWithGroups
         groups = syncGroupsWithProject project groups
         saveRequests = 0
         lastCommand = None
+        rotationConfirm = RotationControls.NoConfirm
     }
 
 /// Build the page model for an environment + project (the host seeds both; slice 006
@@ -389,6 +393,25 @@ let private rotateActive (axis : RotationAxis) (notches : int) (model : Model) :
         | AxisR2 -> withR2 (p.r2 + step) p
         | AxisR3 -> withR3 (p.r3 + step) p) model
 
+/// Rotate the active element about an axis by an exact degree DELTA — the rotation-controls bar's
+/// +/- buttons supply the 15°/5° step (Spec 0027, task 008). Lock-respecting via the §A.4.5 setters.
+let private rotateActiveBy (axis : RotationControls.Axis) (deg : float) (model : Model) : Model =
+    let step = Angle.degree deg
+    editActive (fun p ->
+        match axis with
+        | RotationControls.R1 -> withR1 (p.r1 + step) p
+        | RotationControls.R2 -> withR2 (p.r2 + step) p
+        | RotationControls.R3 -> withR3 (p.r3 + step) p) model
+
+/// Set the active element's axis to an exact angle — the bar's editable fields (task 008).
+let private setActiveAxis (axis : RotationControls.Axis) (v : float) (model : Model) : Model =
+    let a = Angle.degree v
+    editActive (fun p ->
+        match axis with
+        | RotationControls.R1 -> withR1 a p
+        | RotationControls.R2 -> withR2 a p
+        | RotationControls.R3 -> withR3 a p) model
+
 /// Lock/unlock a rotation axis of the active element (§E.2 — a context-menu element edit).
 let private toggleLock (axis : RotationAxis) (model : Model) : Model =
     editActive (fun p ->
@@ -444,6 +467,15 @@ let private resetRotationNow (i : int) (model : Model) : Model =
     match tryPlacement i model with
     | Some p -> commitIfChanged (setPlacement i { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } model)
     | None -> model
+
+/// Reset the active element's rotations to zero — the rotation-controls bar's Reset (task 008).
+let private resetActiveRotation (model : Model) : Model =
+    editActive (fun p -> { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }) model
+
+/// Reset EVERY element's rotations to zero — the bar's Reset All (task 008), one undoable snapshot.
+let private resetAllRotations (model : Model) : Model =
+    let ps = placements model |> List.map (fun p -> { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero })
+    commitIfChanged (setPlacements ps model)
 
 let private appendPlacement (p : ElementPlacement) (model : Model) : Model =
     let ps = placements model @ [ p ]
@@ -847,6 +879,14 @@ type Msg =
     | GroupSwap of int * int
     /// Create a one-member group from the active element (a small workspace group-creation path).
     | GroupActiveElement
+    /// Shared rotation-controls bar (Spec 0027, task 008): rotate the active element by a degree
+    /// delta, set an axis to an exact angle, and the confirmation-gated Reset / Reset All.
+    | RotateActiveBy of RotationControls.Axis * float
+    | SetActiveAxis of RotationControls.Axis * float
+    | RotRequestReset
+    | RotRequestResetAll
+    | RotConfirm
+    | RotCancel
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
@@ -984,6 +1024,20 @@ let update (msg : Msg) (model : Model) : Model =
     | GroupToggle (gi, mi, on) -> applyGroupChange gi (Groups.ElementGroup.setInBeam mi on) model
     | GroupSwap (gi, mi) -> applyGroupChange gi (Groups.ElementGroup.swapTo mi) model
     | GroupActiveElement -> groupActiveElementNow model
+
+    // Shared rotation-controls bar (Spec 0027, task 008).
+    | RotateActiveBy (axis, d) -> rotateActiveBy axis d model
+    | SetActiveAxis (axis, v) -> setActiveAxis axis v model
+    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | RotConfirm ->
+        let m =
+            match model.rotationConfirm with
+            | RotationControls.ConfirmReset -> resetActiveRotation model
+            | RotationControls.ConfirmResetAll -> resetAllRotations model
+            | RotationControls.NoConfirm -> model
+        { m with rotationConfirm = RotationControls.NoConfirm }
+    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
 
 // ---------------------------------------------------------------------------
 // Avalonia-free presentation helpers (the menu/ribbon of slice 006 read these).
@@ -1301,11 +1355,34 @@ let private keyOf (k : Avalonia.Input.Key) : Key option =
         | Avalonia.Input.Key.F1 -> Some F1
         | _ -> None
 
-/// The constructor `Canvas` MVU page (§E / §C). Renders the grey plate, the central ray,
-/// each element drawer, and the active-element indicator, and translates pointer/wheel/key
-/// events into the pure messages through the one `Commands` registry. The view is a pure
-/// function of the model, so any edit re-renders the table (redraw-on-drop, E.4.3).
-let view (model : Model) (dispatch : Msg -> unit) : IView =
+/// The shared rotation-controls bar's state (Spec 0027, task 008). It operates on the ACTIVE
+/// ELEMENT — so it is enabled only when an element is selected (a plain table selection has
+/// nothing for it to rotate), replacing the old element-menu rotation items.
+let rotationBarState (model : Model) : RotationControls.State =
+    match activeElement model with
+    | Some p ->
+        { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+          r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
+    | None ->
+        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+
+let private rotationBarHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+    {
+        rotate = fun axis d -> dispatch (RotateActiveBy (axis, d))
+        setAngle = fun axis v -> dispatch (SetActiveAxis (axis, v))
+        toggleR3Lock = fun () -> dispatch (MenuToggleLock AxisR3)
+        requestReset = fun () -> dispatch RotRequestReset
+        requestResetAll = fun () -> dispatch RotRequestResetAll
+        confirm = fun () -> dispatch RotConfirm
+        cancel = fun () -> dispatch RotCancel
+    }
+
+/// The constructor `Canvas` surface (§E / §C). Renders the grey plate, the central ray, each
+/// element drawer, and the active-element indicator, and translates pointer/wheel/key events into
+/// the pure messages through the one `Commands` registry. The view is a pure function of the
+/// model, so any edit re-renders the table (redraw-on-drop, E.4.3). `view` stacks the shared
+/// rotation-controls bar beneath this (Spec 0027, task 008).
+let private canvasSurface (model : Model) (dispatch : Msg -> unit) : IView =
     let children =
         plateView model
         @ (drawnRaySegments model |> List.map (raySegmentView model))
@@ -1376,4 +1453,18 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
             match keyOf e.Key with
             | Some k -> dispatch (KeyPress { key = k; modifiers = Set.ofList (modifiersOf e.KeyModifiers) })
             | None -> ())
+    ] :> IView
+
+/// The constructor page: the canvas surface with the shared rotation-controls bar beneath it
+/// (Spec 0027, task 008 — replacing the old element-menu rotation items with the bar). The bar
+/// operates on the active element and is disabled when no element is selected.
+let view (model : Model) (dispatch : Msg -> unit) : IView =
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [
+                Border.dock Dock.Bottom
+                Border.child (RotationControls.view (rotationBarState model) (rotationBarHandlers dispatch))
+            ]
+            canvasSurface model dispatch
+        ]
     ] :> IView

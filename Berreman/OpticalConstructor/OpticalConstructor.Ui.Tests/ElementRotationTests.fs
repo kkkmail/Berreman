@@ -10,6 +10,7 @@ open Avalonia.FuncUI
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
@@ -95,19 +96,40 @@ module ElementRotationTests =
                     "all elements zoomed")
 
     [<Fact>]
-    let ``reset restores the selected element AND the table view to defaults`` () =
+    let ``setting an axis to an exact non-integer angle works, lock-respecting`` () =
+        let m = ElementRotationView.update (RotSetAxis (RotationControls.R1, 42.5)) (ElementRotationView.init ())
+        Assert.True(close (deg (elem 1 m).placement.r1) 42.5, $"R1 = {deg (elem 1 m).placement.r1}")
+        // R3 is locked by default, so setting it is inert until unlocked.
+        let r3 = ElementRotationView.update (RotSetAxis (RotationControls.R3, 30.0)) (ElementRotationView.init ())
+        Assert.True(close (deg (elem 1 r3).placement.r3) 0.0, "setting a locked R3 must be inert")
+
+    [<Fact>]
+    let ``Reset (confirmed) zeros ONLY the selected element's rotations (not its zoom)`` () =
         let dirtied =
             ElementRotationView.init ()
             |> ElementRotationView.update (RotateR1By 30.0)
             |> ElementRotationView.update ToggleR3Lock
             |> ElementRotationView.update (RotateR3By 20.0)
             |> ElementRotationView.update (ZoomSelectedBy 3)
-            |> ElementRotationView.update (Wheel (Set.empty, 2))   // also zoom the table view
-        let m = ElementRotationView.update ResetSelected dirtied
+        let armed = ElementRotationView.update RotRequestReset dirtied
+        Assert.Equal(RotationControls.ConfirmReset, armed.rotationConfirm)
+        Assert.True(close (deg (elem 1 armed).placement.r1) 30.0, "not reset until confirmed")
+        let m = ElementRotationView.update RotConfirm armed
         let e = elem 1 m
-        Assert.True(close (deg e.placement.r1) 0.0 && close (deg e.placement.r2) 0.0 && close (deg e.placement.r3) 0.0)
-        Assert.True(e.placement.r3Locked && close e.zoom defaultElementZoom)
-        Assert.True(close m.view.zoom 1.0 && close m.view.panX 0.0 && close m.view.panY 0.0, "the table view is reset too")
+        Assert.True(close (deg e.placement.r1) 0.0 && close (deg e.placement.r2) 0.0 && close (deg e.placement.r3) 0.0, "rotations zeroed")
+        Assert.True(e.zoom > defaultElementZoom, "Reset must not touch the element's zoom")
+
+    [<Fact>]
+    let ``Reset All (confirmed) zeros every element's rotations`` () =
+        let m =
+            ElementRotationView.init ()
+            |> ElementRotationView.update (RotateR1By 30.0)                          // element 1 (selected)
+            |> ElementRotationView.update (PointerDown { sx = 310.0; sy = 280.0 })   // select element 0
+            |> ElementRotationView.update (PointerUp { sx = 310.0; sy = 280.0 })
+            |> ElementRotationView.update (RotateR2By 25.0)                          // element 0
+            |> ElementRotationView.update RotRequestResetAll
+            |> ElementRotationView.update RotConfirm
+        Assert.True(m.elements |> List.forall (fun e -> close (deg e.placement.r1) 0.0 && close (deg e.placement.r2) 0.0 && close (deg e.placement.r3) 0.0))
 
     [<Fact>]
     let ``rotation and zoom act on whichever element is selected`` () =
@@ -198,7 +220,7 @@ module ElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = UiIds.rotateR2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->

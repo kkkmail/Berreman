@@ -9,6 +9,7 @@ open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
@@ -137,13 +138,51 @@ module TableRotationTests =
         Assert.False(isTopDown tumbled, "the selected table should have tumbled before the reset")
         Assert.True(isTopDown (TableRotationView.update ResetView tumbled))
 
+    // --- rotation-controls bar behaviours (task 008) ---
+
+    [<Fact>]
+    let ``the table R3 is unlocked by default and the toggle flips it`` () =
+        Assert.False((init ()).r3Locked)
+        Assert.True((update ToggleR3Lock (init ())).r3Locked)
+
+    [<Fact>]
+    let ``locking R3 keeps its current value and then ignores rotation`` () =
+        let m = selectedModel () |> update (RotateR3By 30.0)
+        Assert.True(close m.view.r3.degrees 30.0)
+        let locked = update ToggleR3Lock m
+        Assert.True(locked.r3Locked && close locked.view.r3.degrees 30.0, "locking must not reset R3")
+        Assert.True(close (update (RotateR3By 15.0) locked).view.r3.degrees 30.0, "a locked R3 ignores rotation")
+
+    [<Fact>]
+    let ``an axis can be set to an exact non-integer angle`` () =
+        let m = update (RotSetAxis (RotationControls.R1, 42.5)) (selectedModel ())
+        Assert.True(close m.view.r1.degrees 42.5, $"R1 = {m.view.r1.degrees}")
+        // The degree-field parser accepts non-integers and rejects garbage.
+        Assert.Equal(Some 12.5, RotationControls.parseDegrees "12.5")
+        Assert.Equal(None, RotationControls.parseDegrees "abc")
+
+    [<Fact>]
+    let ``Reset is confirmation-gated and zeros the rotations only on confirm`` () =
+        let rotated = selectedModel () |> update (RotateR1By 30.0) |> update (RotateR2By 20.0)
+        let armed = update RotRequestReset rotated
+        Assert.Equal(RotationControls.ConfirmReset, armed.rotationConfirm)
+        Assert.True(close armed.view.r1.degrees 30.0, "not reset until confirmed")
+        Assert.True(close (update RotCancel armed).view.r1.degrees 30.0, "cancel leaves the rotation")
+        let reset = update RotConfirm armed
+        Assert.True(isTopDown reset && reset.rotationConfirm = RotationControls.NoConfirm, "confirm zeros the rotations")
+
+    [<Fact>]
+    let ``Reset All also zeros the table's rotations (after confirm)`` () =
+        let reset = selectedModel () |> update (RotateR2By 25.0) |> update RotRequestResetAll |> update RotConfirm
+        Assert.True(isTopDown reset)
+
     // ================== real headless pointer injection ==================
 
     /// Build the real FuncUI view over a manual MVU loop (mutable model + capturing dispatch),
     /// show it headlessly, run `inject` (real pointer events), and return the final model. The
     /// handlers carry no model state, so they stay valid across a gesture without re-rendering.
-    let private withMouseHarness (inject : Window -> unit) : Model =
-        let mutable model = TableRotationView.init ()
+    let private withMouseHarnessFrom (initial : Model) (inject : Window -> unit) : Model =
+        let mutable model = initial
         let dispatch (m : Msg) = model <- TableRotationView.update m model
         let window = Window(Width = 920.0, Height = 760.0)
         window.Content <- Component(fun _ -> TableRotationView.view model dispatch)
@@ -153,6 +192,9 @@ module TableRotationTests =
         Dispatcher.UIThread.RunJobs()
         window.Close()
         model
+
+    let private withMouseHarness (inject : Window -> unit) : Model =
+        withMouseHarnessFrom (TableRotationView.init ()) inject
 
     let private at (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 
@@ -223,12 +265,13 @@ module TableRotationTests =
     [<Trait("Category", "ui-smoke")>]
     let ``Shift + a real button click rotates by 5 degrees, not 15`` () =
         HeadlessSession.run (fun () ->
+            // Start with the table selected so the rotation-controls bar renders enabled (the static
+            // harness does not re-render, so the bar's enabled state must be right at build time).
             let model =
-                withMouseHarness (fun w ->
-                    selectTable w
+                withMouseHarnessFrom (selectedModel ()) (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = UiIds.rotateR2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->

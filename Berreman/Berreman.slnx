@@ -29,6 +29,9 @@
   <Project Path="OpticalConstructor/OpticalConstructor.Optimization/OpticalConstructor.Optimization.fsproj">
     <Platform Project="x64" />
   </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Controls/OpticalConstructor.Controls.fsproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj">
     <Platform Project="x64" />
   </Project>
