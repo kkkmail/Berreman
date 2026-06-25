@@ -132,7 +132,12 @@ module RotationControls =
                     TextBlock.fontWeight (if active then FontWeight.Bold else FontWeight.Normal)
                     TextBlock.foreground (brush textForeground)
                 ])
-            Border.onPointerPressed (fun e -> e.Handled <- true; onClick e)
+            // FuncUI keeps the FIRST subscription forever by default (SubPatchOptions.Never). The two
+            // reset buttons change their ACTION in place (Reset→confirm, Reset All→cancel) when the
+            // confirmation arms, so re-subscribe whenever the label flips — otherwise "Yes"/"No" would
+            // still run the original Reset/Reset All (re-arming, and crossing over). Stable-label buttons
+            // (+/- , the angle steps) are unaffected, so they keep their cheap one-time subscription.
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box label))
         ] :> IView
 
     let private stepButton (handlers : Handlers) (id : string) (label : string) (axis : Axis) (sign : float) (enabled : bool) (active : bool) : IView =

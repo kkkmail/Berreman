@@ -158,3 +158,60 @@ module RotationControlsTests =
             Assert.Equal("Reset", buttonLabel window RotationControls.UiIds.reset)
 
             window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``clicking the armed buttons runs confirm (Yes) / cancel (No), not the original Reset actions`` () =
+        // Reproduces the reported bug: after arming, the SAME reused button must run the NEW action.
+        // FuncUI keeps the first handler by default, so without re-subscribing, "Yes" re-ran requestReset
+        // (dialog stuck) and "No" ran requestResetAll (Reset / Reset All crossing over).
+        HeadlessSession.run (fun () ->
+            let mutable resets = 0
+            let mutable cancels = 0
+            let host =
+                Component(fun ctx ->
+                    let confirm = ctx.useState RotationControls.NoConfirm
+                    let handlers : RotationControls.Handlers =
+                        { rotate = fun _ _ -> ()
+                          setAngle = fun _ _ -> ()
+                          toggleR3Lock = fun () -> ()
+                          requestReset = fun () -> confirm.Set RotationControls.ConfirmReset
+                          requestResetAll = fun () -> confirm.Set RotationControls.ConfirmResetAll
+                          confirm = fun () -> resets <- resets + 1; confirm.Set RotationControls.NoConfirm
+                          cancel = fun () -> cancels <- cancels + 1; confirm.Set RotationControls.NoConfirm }
+                    RotationControls.view { enabledState with confirm = confirm.Current } handlers)
+            // Wide enough that the reset buttons (far right of the bar) are actually on-screen to click.
+            let window = Window(Width = 1500.0, Height = 200.0)
+            window.Content <- host
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+
+            let click (name : string) : unit =
+                match borderNamed window name with
+                | Some b ->
+                    let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+                    if c.HasValue then
+                        window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                        window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                    else Assert.Fail(sprintf "%s has no on-screen position" name)
+                | None -> Assert.Fail(sprintf "%s not found" name)
+
+            // Reset → arms; the SAME button now reads "Yes" and clicking it CONFIRMS (one reset, no cancel).
+            click RotationControls.UiIds.reset
+            Assert.Equal("Yes", buttonLabel window RotationControls.UiIds.reset)
+            click RotationControls.UiIds.reset
+            Assert.Equal(1, resets)
+            Assert.Equal(0, cancels)
+            Assert.Equal("Reset", buttonLabel window RotationControls.UiIds.reset)
+
+            // Reset All → arms; the OTHER button now reads "No" and clicking it CANCELS (no extra reset).
+            click RotationControls.UiIds.resetAll
+            Assert.Equal("No", buttonLabel window RotationControls.UiIds.resetAll)
+            click RotationControls.UiIds.resetAll
+            Assert.Equal(1, cancels)
+            Assert.Equal(1, resets)
+            Assert.Equal("Reset All", buttonLabel window RotationControls.UiIds.resetAll)
+
+            window.Close())

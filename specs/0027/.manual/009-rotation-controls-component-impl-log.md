@@ -204,9 +204,20 @@ on an already-styled element. Fix: the confirmation now happens **in place** —
 (`reset` / `resetAll`) keep their ids and only change label/action ("Reset"/"Reset All" ⇄ "Yes"/"No"),
 with a prompt `TextBlock` that is simply shown/hidden. No control is renamed, so the swap renders cleanly.
 
-Tests: `OpticalConstructor.Ui.Tests` **172/172** — a headless reproduction that a parent flipping
-`r3Locked` updates the lock label (props are live again), and one that arming Reset turns the buttons into
-Yes/No in place without the rename exception; the existing highlight test still passes against the pure
-bar. Full solution builds clean on Avalonia 12 / FuncUI 2.0.0-preview1. Files: `RotationControls.fs` (pure
-bar + imperative highlight + in-place confirm), the two test windows (N2 flip), `MaterialsView.fs` /
+**(d) "Yes"/"No" did nothing and Reset/Reset All crossed over.** The in-place confirm from (c) reuses the
+same Border for both modes, but FuncUI's event subscriptions default to `SubPatchOptions.Never` — the
+FIRST handler is kept forever, even though the button's action changed. So the armed "Yes" button still
+ran `requestReset` (re-arming → the prompt never cleared) and "No" ran `requestResetAll` (so Reset's
+cancel armed Reset All — the "mixing"). Fix: `clickBox`'s `onPointerPressed` now uses
+`SubPatchOptions.OnChangeOf (box label)`, so a button re-subscribes its handler exactly when its label
+flips (`Reset`↔`Yes`, `Reset All`↔`No`); the stable-label +/- and angle-step buttons keep their cheap
+one-time subscription. Now "Yes" confirms and "No" cancels, and the two are independent.
+
+Tests: `OpticalConstructor.Ui.Tests` **173/173** — headless reproductions that (i) a parent flipping
+`r3Locked` updates the lock label (props are live again), (ii) arming Reset turns the buttons into Yes/No
+in place without the rename exception, and (iii) **real clicks** through the armed buttons run
+confirm/cancel (one reset, no cancel; then one cancel, no extra reset) rather than the original Reset
+actions; the existing highlight test still passes against the pure bar. Full solution builds clean on
+Avalonia 12 / FuncUI 2.0.0-preview1. Files: `RotationControls.fs` (pure bar + imperative highlight +
+in-place confirm + per-label subscription), the two test windows (N2 flip), `MaterialsView.fs` /
 `Program.fs` (Avalonia 12 APIs), the four `.fsproj`s (versions), `RotationControlsTests.fs` (new tests).
