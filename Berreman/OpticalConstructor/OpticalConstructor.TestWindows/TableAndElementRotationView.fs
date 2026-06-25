@@ -405,8 +405,10 @@ let private elementView (i : int) (model : Model) (e : TestElement) : IView list
     let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
     let centreScr = projectPt model.view (v3 cx cy 0.0)
     let along (n : Vector3) (len : float) = projectPt model.view (v3 (cx + len * n.x) (cy + len * n.y) (len * n.z))
+    // The secondary (roll) normal is drawn toward −N2 so the yellow marker points UP on screen rather
+    // than down (a drawing convention only — the element's actual orientation is unchanged).
     edges @ [ line centreScr (along n1 (1.8 * half)) n1Color (if selected then 3.0 else 2.0)
-              line centreScr (along n2 (1.3 * half)) n2Color (if selected then 3.0 else 2.0) ]
+              line centreScr (along n2 (-(1.3 * half))) n2Color (if selected then 3.0 else 2.0) ]
 
 let private elementViews (model : Model) : IView list =
     model.elements |> List.mapi (fun i e -> elementView i model e) |> List.concat

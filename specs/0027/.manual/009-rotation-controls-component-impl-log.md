@@ -155,3 +155,44 @@ stays idle) and releasing reverts it — i.e. the key → TopLevel → state →
 
 Files: only `OpticalConstructor.Controls/RotationControls.fs` (the control) and the new
 `OpticalConstructor.Ui.Tests/RotationControlsTests.fs` (+ its `.fsproj` entry). No screen was touched.
+
+## Package update — Avalonia 11.3.4 → 12.0.5, FuncUI 1.6.0 → 2.0.0-preview1
+
+The packages were bumped to Avalonia 12. Stable FuncUI 1.6.0 is locked to Avalonia 11 (its DSL
+references a type removed in v12), so FuncUI + FuncUI.Elmish moved to **2.0.0-preview1** (the only FuncUI
+that targets Avalonia 12.0.0) across Controls / Ui / App / TestWindows. That surfaced two real Avalonia 12
+breaking API changes, both migrated:
+
+- **Drag-and-drop** (`MaterialsView.fs`): the old `IDataObject` model became the typed `DataTransfer`
+  API — `DataObject().Set` + `DragDrop.DoDragDrop` → `DataTransfer().Add(DataTransferItem.Create(fmt,id))`
+  + `DragDrop.DoDragDropAsync`; the `"oc-material-id"` key is now a `DataFormat<string>`
+  (`DataFormat.CreateStringApplicationFormat`); reading uses `e.DataTransfer` + the `Contains` /
+  `TryGetValue` extensions.
+- **Clipboard** (`App/Program.fs`): `IClipboard.SetTextAsync` moved to the `ClipboardExtensions` extension.
+
+## Bug fixes (post-migration)
+
+**(a) Yellow roll-normal pointed down.** In the two test windows that draw the N1/N2 axes
+(`ElementRotationView`, `TableAndElementRotationView`) the secondary (roll) normal N2 — the table normal,
+"up out of the table" — projects downward once the view/element is tilted. Per the request ("just the
+drawing thing — make it point up") the N2 marker is now drawn toward **−N2** (`along n2 (-(1.3*half))`),
+so the yellow arrow points up on screen. Drawing only; the element's actual orientation is unchanged.
+
+**(b) R3 Lock/Unlock was not element-specific (a task-009 regression).** Selecting a different element
+showed the previous element's lock state. Cause: task 009 wrapped the bar in a FuncUI `Component`, and a
+FuncUI component **re-renders only on its own state** — the `state` value captured in its render closure
+*freezes at the first render*, so new host props (a different element's `r3Locked`, and the angles) never
+reached it. The keyboard highlight still worked because that is the component's own `useState`. The model
+code was always per-element (`setR3Locked` on the placement); only the *display* was stale.
+
+Fix: `view` now pushes the host state into a module-level FuncUI store (`State<State>`), and the component
+reads it via `ctx.usePassed`, which re-renders the bar whenever the host supplies new state. `handlers`
+stay captured per-instance (stable per screen). A headless test reproduces the regression — a parent
+component flips `r3Locked` and asserts the lock button's label follows ("Lock R3" ⇄ "Unlock R3") — and now
+passes. (One shared store ⇒ the app drives one rotation bar at a time; the armed-axis highlight is global
+keyboard state anyway, so a second simultaneously-visible bar would mirror this one's display state.)
+
+Tests: `OpticalConstructor.Ui.Tests` **171/171** (added the lock-tracks-prop reproduction); full solution
+builds clean on Avalonia 12 / FuncUI 2.0.0-preview1. Files: `RotationControls.fs` (store), the two test
+windows (N2 flip), `MaterialsView.fs` / `Program.fs` (Avalonia 12 APIs), the four `.fsproj`s (versions),
+`RotationControlsTests.fs` (new test).

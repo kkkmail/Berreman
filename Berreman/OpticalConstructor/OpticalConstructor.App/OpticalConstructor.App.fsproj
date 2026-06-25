@@ -36,10 +36,10 @@
         <PackageReference Include="Avalonia" Version="12.0.5" />
         <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
-        <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <!-- spec 0024 §U1.1 / R-1: the Elmish host packages so the composition root
-             mounts the MVU program. Version-aligned with FuncUI 1.6.0; MIT NuGet. -->
-        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.6.0" />
+             mounts the MVU program. Version-aligned with FuncUI 2.0.0-preview1 (Avalonia 12); MIT NuGet. -->
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
     </ItemGroup>
 

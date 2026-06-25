@@ -84,3 +84,40 @@ module RotationControlsTests =
             Assert.NotEqual(Some accent, backgroundColor window RotationControls.UiIds.r1Plus)
 
             window.Close())
+
+    /// The "Lock R3" / "Unlock R3" button's current label.
+    let private lockLabel (window : Window) : string =
+        match borderNamed window RotationControls.UiIds.lockR3 with
+        | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
+        | None -> "<not found>"
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the bar reflects a changed r3Locked prop from the host (no stale per-element lock)`` () =
+        // Reproduces the task-009 regression: the bar is a stateful Component, so it must still pick
+        // up new props when the host re-renders (e.g. selecting a different element with its OWN R3
+        // lock). A parent component flips `r3Locked`; the lock button label must follow.
+        HeadlessSession.run (fun () ->
+            let setLocked : (bool -> unit) ref = ref (fun _ -> ())
+            let host =
+                Component(fun ctx ->
+                    let locked = ctx.useState false
+                    setLocked.Value <- locked.Set
+                    RotationControls.view { enabledState with r3Locked = locked.Current } noopHandlers)
+            let window = Window(Width = 760.0, Height = 200.0)
+            window.Content <- host
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+
+            // Unlocked element → "Lock R3".
+            Assert.Equal("Lock R3", lockLabel window)
+            // The host now supplies a LOCKED element (as if a different element were selected).
+            setLocked.Value true
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal("Unlock R3", lockLabel window)
+            // And back to unlocked.
+            setLocked.Value false
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal("Lock R3", lockLabel window)
+
+            window.Close())

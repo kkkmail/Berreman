@@ -165,10 +165,10 @@
         <PackageReference Include="Avalonia" Version="12.0.5" />
         <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
-        <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <!-- spec 0024 §U1.1 / R-1: the Elmish host packages, version-aligned with
-             the pinned FuncUI 1.6.0 / Avalonia 11.3.4. Public MIT NuGet only. -->
-        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.6.0" />
+             FuncUI 2.0.0-preview1 / Avalonia 12.0.5. Public MIT NuGet only. -->
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
         <PackageReference Include="Plotly.NET" Version="5.1.0" />

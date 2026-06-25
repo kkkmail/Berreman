@@ -201,12 +201,29 @@ module RotationControls =
                  @ resetArea)
         ] :> IView
 
+    /// A FuncUI store carrying the host's latest DISPLAY state into the (otherwise memoized) bar
+    /// component. A FuncUI component re-renders only on its OWN state — a value captured in its render
+    /// closure freezes at the first render. The bar must stay a component (for the keyboard highlight's
+    /// internal state), so to still reflect new host props — e.g. selecting a different element with
+    /// its OWN R3-lock — `view` pushes the state into this store and the component reads it via
+    /// `usePassed`, which re-renders on change. (`handlers` need no store: they are stable per screen,
+    /// so the per-instance closure capture is correct.) NOTE: one shared store ⇒ the app drives ONE
+    /// rotation bar at a time; the armed-axis highlight is global keyboard state anyway.
+    let private disabledState : State =
+        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = NoConfirm }
+
+    let private stateStore : IWritable<State> = Avalonia.FuncUI.State<State>(disabledState) :> IWritable<State>
+
     /// The bar. A stateful component that mirrors `state`/`handlers` and, on its own, tracks the live
     /// keyboard so an axis lights up while its rotate modifier is held — see `renderBar`. The key
     /// tracking is wired at the window's TopLevel (tunnel phase) so it works no matter which control
     /// holds focus, and it is torn down with the component; the host screens stay untouched.
     let view (state : State) (handlers : Handlers) : IView =
+        // Push the latest host state into the store BEFORE building the component, so the first render
+        // (and every later host render) reflects the current selection's lock / angles / confirm state.
+        stateStore.Set state
         Component.create ("rotation-controls", fun ctx ->
+            let state = (ctx.usePassed stateStore).Current
             let activeAxis = ctx.useState (None : Axis option)
             ctx.useEffect (
                 handler = (fun () ->

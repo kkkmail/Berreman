@@ -67,7 +67,9 @@ type private LocalizationErrorWindow(message : string) as this =
         copy.Click.Add(fun _ ->
             match this.Clipboard with
             | null -> ()
-            | clip -> clip.SetTextAsync message |> ignore)
+            // Avalonia 12 moved `SetTextAsync` to an extension on `IClipboard` (ClipboardExtensions),
+            // called statically since this file does not `open Avalonia.Input.Platform`.
+            | clip -> Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clip, message) |> ignore)
         let panel = StackPanel(Margin = Thickness 12.0)
         panel.Children.Add box
         panel.Children.Add copy

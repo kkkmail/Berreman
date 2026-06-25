@@ -400,7 +400,9 @@ let private elementView (i : int) (model : Model) (e : TestElement) : IView list
     let centreScr = projectPt model.view (v3 cx cy 0.0)
     let along (n : Vector3) (len : float) = projectPt model.view (v3 (cx + len * n.x) (cy + len * n.y) (len * n.z))
     let n1Axis = line centreScr (along n1 (1.8 * half)) n1Color (if selected then 3.0 else 2.0)
-    let n2Axis = line centreScr (along n2 (1.3 * half)) n2Color (if selected then 3.0 else 2.0)
+    // Draw the secondary (roll) normal toward −N2 so the yellow marker points UP on screen rather than
+    // down (a drawing convention only — the element's actual orientation is unchanged).
+    let n2Axis = line centreScr (along n2 (-(1.3 * half))) n2Color (if selected then 3.0 else 2.0)
     edges @ [ n1Axis; n2Axis ]
 
 let private elementViews (model : Model) : IView list =

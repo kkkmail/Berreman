@@ -106,9 +106,10 @@ let referenceWavelength : WaveLength = Templates.defaultLight.waveLength
 // the resulting `Construction (EditStack …)`. The view resolves nothing itself.
 // ---------------------------------------------------------------------------
 
-/// The drag payload format key carrying a dragged material's stable id.
-[<Literal>]
-let MaterialDataFormat = "oc-material-id"
+/// The typed drag payload format carrying a dragged material's stable id. Avalonia 12 replaced the
+/// old string-keyed `DataObject`/`IDataObject` with the typed `DataTransfer` / `DataFormat` API.
+let MaterialDataFormat : Avalonia.Input.DataFormat<string> =
+    Avalonia.Input.DataFormat.CreateStringApplicationFormat "oc-material-id"
 
 /// Apply a material drop on the layer at `index` of the node at `path` (R-3 /
 /// AC-U3.2). Builds the edit via `StackEditor.layerMaterialDrop` at
@@ -191,9 +192,9 @@ let private entryRow (dispatch : MaterialsMsg -> unit) (selected : string option
         // (§A.7); resolution happens on drop through `layerMaterialDrop` (R-3). Never
         // fires headlessly (no pointer), so the smoke/view tests are unaffected.
         Border.onPointerPressed (fun e ->
-            let data = Avalonia.Input.DataObject()
-            data.Set(MaterialDataFormat, entry.id)
-            Avalonia.Input.DragDrop.DoDragDrop(e, data, Avalonia.Input.DragDropEffects.Copy) |> ignore)
+            let data = new Avalonia.Input.DataTransfer()
+            data.Add(Avalonia.Input.DataTransferItem.Create(MaterialDataFormat, entry.id))
+            Avalonia.Input.DragDrop.DoDragDropAsync(e, data, Avalonia.Input.DragDropEffects.Copy) |> ignore)
         Border.child (
             Button.create [
                 Button.content entry.name
@@ -273,8 +274,11 @@ let private dropRow
         Border.padding 4.0
         Control.allowDrop true
         Control.onDrop (fun (e : Avalonia.Input.DragEventArgs) ->
-            if e.Data.Contains MaterialDataFormat then
-                match e.Data.Get MaterialDataFormat with
+            // `Contains` / `TryGetValue` are extension methods on `IDataTransfer` (Avalonia 12), called
+            // statically here since this file does not `open Avalonia.Input`.
+            let dt = e.DataTransfer
+            if Avalonia.Input.DataTransferExtensions.Contains(dt, MaterialDataFormat) then
+                match box (Avalonia.Input.DataTransferExtensions.TryGetValue(dt, MaterialDataFormat)) with
                 | :? string as id -> materialDrop lib referenceWavelength path dispatchC index id
                 | _ -> ())
         Border.child (TextBlock.create [ TextBlock.text label ])
