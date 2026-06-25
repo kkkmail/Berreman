@@ -413,9 +413,38 @@ module CommandRegistryTests =
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
-    let ``the rotation bar is enabled only when an element is active`` () =
+    let ``the rotation bar is enabled for both the table and an element`` () =
         Assert.True((ConstructorView.rotationBarState (select 0 (model [ sampleAt 0.0 0.0 ]))).enabled, "enabled with an element")
-        Assert.False((ConstructorView.rotationBarState (model [ sampleAt 0.0 0.0 ])).enabled, "disabled with only the table selected")
+        Assert.True((ConstructorView.rotationBarState (model [ sampleAt 0.0 0.0 ])).enabled, "enabled with the table selected (the table is rotatable)")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``with the table selected, the bar rotates the table VIEW (not an element) and reads its angle`` () =
+        let m0 = model [ sampleAt 0.0 0.0 ]   // TableSelected by default
+        let rotated = ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R1, 15.0)) m0
+        Assert.True(abs (rotated.view.r1.degrees - 15.0) < 1e-9, "the table view R1 rotated")
+        Assert.True((placementAt 0 rotated).r1.value = 0.0, "the element is NOT rotated while the table is selected")
+        Assert.True(abs ((ConstructorView.rotationBarState rotated).r1 - 15.0) < 1e-9, "the bar reads the view's angle")
+        let set = ConstructorView.update (ConstructorView.SetActiveAxis (RotationControls.R2, 42.5)) m0
+        Assert.True(abs (set.view.r2.degrees - 42.5) < 1e-9, "set-axis targets the view")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a Shift+wheel notch rotates the table view when the table is selected`` () =
+        let m0 = model [ sampleAt 0.0 0.0 ]   // table selected
+        let rotated = ConstructorView.update (ConstructorView.WheelAt ([ Shift ], 1, at 0.0 0.0)) m0
+        Assert.True(rotated.view.r1.degrees > 0.0, "Shift+wheel rotated the table view R1")
+        Assert.True((placementAt 0 rotated).r1.value = 0.0, "the element is not rotated")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the bar's R3 lock targets the table when the table is selected`` () =
+        let m0 = model [ sampleAt 0.0 0.0 ]   // table selected; tableR3Locked = false by default
+        Assert.False((ConstructorView.rotationBarState m0).r3Locked, "the table R3 is unlocked by default")
+        let locked = ConstructorView.update ConstructorView.RotBarToggleR3Lock m0
+        Assert.True((ConstructorView.rotationBarState locked).r3Locked, "toggling locks the table R3")
+        let tryRotate = ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R3, 30.0)) locked
+        Assert.True(abs (tryRotate.view.r3.degrees) < 1e-9, "a locked table R3 ignores rotation")
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]

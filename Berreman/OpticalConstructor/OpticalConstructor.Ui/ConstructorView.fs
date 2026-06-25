@@ -135,6 +135,10 @@ type Model =
         lastCommand : Command option
         /// The shared rotation-controls bar's reset-confirmation state (Spec 0027, task 008).
         rotationConfirm : RotationControls.ResetConfirm
+        /// The table VIEW's R3 lock (Spec 0027): the bar's R3 controls act on the view when the table
+        /// is selected, so the table needs its own R3 lock (elements carry their own `r3Locked`).
+        /// Unlocked by default — the table is free to tip about R3 (the button reads "Lock R3").
+        tableR3Locked : bool
     }
 
 let private placementExists (placement : ElementPlacement) (project : OpticalConstructorProject) : bool =
@@ -179,6 +183,7 @@ let initWithGroups
         saveRequests = 0
         lastCommand = None
         rotationConfirm = RotationControls.NoConfirm
+        tableR3Locked = false
     }
 
 /// Build the page model for an environment + project (the host seeds both; slice 006
@@ -477,6 +482,87 @@ let private resetAllRotations (model : Model) : Model =
     let ps = placements model |> List.map (fun p -> { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero })
     commitIfChanged (setPlacements ps model)
 
+// ---------------------------------------------------------------------------
+// Selection-aware rotation (Spec 0027). The rotation-controls bar AND the wheel/keyboard rotation
+// gestures act on WHATEVER is selected — the ephemeral table VIEW when the table is selected, or the
+// active element when an element is selected — matching the "Test Table + Element Rotations" window.
+// The view is NOT in the project `EditHistory`, so its rotations are plain (ephemeral) state edits,
+// never undo steps; element rotations stay undoable through the existing element setters.
+// ---------------------------------------------------------------------------
+
+/// Rotate the table VIEW about an axis by a degree delta (the bar's +/- buttons). R3 respects the
+/// table's R3 lock.
+let private rotateViewByDeg (axis : RotationControls.Axis) (deg : float) (model : Model) : Model =
+    let step = Angle.degree deg
+    let v = model.view
+    let v' =
+        match axis with
+        | RotationControls.R1 -> { v with r1 = v.r1 + step }
+        | RotationControls.R2 -> { v with r2 = v.r2 + step }
+        | RotationControls.R3 -> if model.tableR3Locked then v else { v with r3 = v.r3 + step }
+    { model with view = v' }
+
+/// Set the table VIEW's axis to an exact angle (the bar's editable field), lock-respecting for R3.
+let private setViewAxis (axis : RotationControls.Axis) (value : float) (model : Model) : Model =
+    let a = Angle.degree value
+    let v = model.view
+    let v' =
+        match axis with
+        | RotationControls.R1 -> { v with r1 = a }
+        | RotationControls.R2 -> { v with r2 = a }
+        | RotationControls.R3 -> if model.tableR3Locked then v else { v with r3 = a }
+    { model with view = v' }
+
+/// Reset the table VIEW's rotations to zero, keeping pan / zoom (ephemeral — not an undo step).
+let private resetViewRotations (model : Model) : Model =
+    { model with view = { model.view with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
+
+/// Rotate the SELECTION about an axis by a degree delta: the table view, or the active element.
+let private rotateSelectedByDeg (axis : RotationControls.Axis) (deg : float) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> rotateViewByDeg axis deg model
+    | ElementSelected _ -> rotateActiveBy axis deg model
+
+/// Set the SELECTION's axis to an exact angle: the table view, or the active element.
+let private setSelectedAxis (axis : RotationControls.Axis) (value : float) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> setViewAxis axis value model
+    | ElementSelected _ -> setActiveAxis axis value model
+
+/// Rotate the table VIEW by `notches` wheel/keyboard steps (the configured step, default 5°).
+let private rotateViewByNotches (axis : RotationAxis) (notches : int) (model : Model) : Model =
+    let step = Angle.degree (float notches * model.keyMap.rotationStepDegrees)
+    let v = model.view
+    let v' =
+        match axis with
+        | AxisR1 -> { v with r1 = v.r1 + step }
+        | AxisR2 -> { v with r2 = v.r2 + step }
+        | AxisR3 -> if model.tableR3Locked then v else { v with r3 = v.r3 + step }
+    { model with view = v' }
+
+/// Rotate the SELECTION by `notches` steps (wheel / keyboard): the table view, or the active element.
+let private rotateSelectedNotches (axis : RotationAxis) (notches : int) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> rotateViewByNotches axis notches model
+    | ElementSelected _ -> rotateActive axis notches model
+
+/// Toggle the SELECTION's R3 lock: the table's `tableR3Locked`, or the active element's `r3Locked`.
+let private toggleSelectedR3Lock (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
+    | ElementSelected _ -> toggleLock AxisR3 model
+
+/// Reset the SELECTION's rotations (the bar's Reset): the table view, or the active element.
+let private resetSelectedRotation (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> resetViewRotations model
+    | ElementSelected _ -> resetActiveRotation model
+
+/// Reset ALL rotations (the bar's Reset All): the table view AND every element (one undoable snapshot
+/// for the elements; the view reset is ephemeral).
+let private resetAllSelected (model : Model) : Model =
+    resetViewRotations (resetAllRotations model)
+
 let private appendPlacement (p : ElementPlacement) (model : Model) : Model =
     let ps = placements model @ [ p ]
     commit
@@ -704,9 +790,9 @@ let private applyCommand (cmd : Command) (model : Model) : Model =
     | LocalHelp -> { m with helpOpen = true }
     | NextElement -> cycleActive true m
     | PreviousElement -> cycleActive false m
-    | RotateR1 -> rotateActive AxisR1 1 m
-    | RotateR2 -> rotateActive AxisR2 1 m
-    | RotateR3 -> rotateActive AxisR3 1 m
+    | RotateR1 -> rotateSelectedNotches AxisR1 1 m
+    | RotateR2 -> rotateSelectedNotches AxisR2 1 m
+    | RotateR3 -> rotateSelectedNotches AxisR3 1 m
     // Reset view is ephemeral view state, NOT captured by the project-snapshot EditHistory, so K.2
     // requires it be confirmation-gated rather than undoable: arm a pending confirm (resolved by
     // ConfirmPending, rendered as the same-row Confirm/Cancel gate).
@@ -879,10 +965,13 @@ type Msg =
     | GroupSwap of int * int
     /// Create a one-member group from the active element (a small workspace group-creation path).
     | GroupActiveElement
-    /// Shared rotation-controls bar (Spec 0027, task 008): rotate the active element by a degree
-    /// delta, set an axis to an exact angle, and the confirmation-gated Reset / Reset All.
+    /// Shared rotation-controls bar (Spec 0027): rotate the SELECTION (the table view, or the active
+    /// element) by a degree delta, set an axis to an exact angle, toggle the selection's R3 lock, and
+    /// the confirmation-gated Reset / Reset All. The bar targets whatever is selected, so on the main
+    /// screen — like the test window — the table is rotatable when selected and elements when selected.
     | RotateActiveBy of RotationControls.Axis * float
     | SetActiveAxis of RotationControls.Axis * float
+    | RotBarToggleR3Lock
     | RotRequestReset
     | RotRequestResetAll
     | RotConfirm
@@ -906,9 +995,9 @@ let update (msg : Msg) (model : Model) : Model =
     | WheelAt (mods, notches, _point) ->
         match lookupMouse (WheelGesture (Set.ofList mods)) with
         | Some ZoomView -> zoomBy notches model
-        | Some RotateR1 -> rotateActive AxisR1 notches model
-        | Some RotateR2 -> rotateActive AxisR2 notches model
-        | Some RotateR3 -> rotateActive AxisR3 notches model
+        | Some RotateR1 -> rotateSelectedNotches AxisR1 notches model
+        | Some RotateR2 -> rotateSelectedNotches AxisR2 notches model
+        | Some RotateR3 -> rotateSelectedNotches AxisR3 notches model
         | _ -> model
 
     | BeginDrag (mods, point) ->
@@ -1025,16 +1114,17 @@ let update (msg : Msg) (model : Model) : Model =
     | GroupSwap (gi, mi) -> applyGroupChange gi (Groups.ElementGroup.swapTo mi) model
     | GroupActiveElement -> groupActiveElementNow model
 
-    // Shared rotation-controls bar (Spec 0027, task 008).
-    | RotateActiveBy (axis, d) -> rotateActiveBy axis d model
-    | SetActiveAxis (axis, v) -> setActiveAxis axis v model
+    // Shared rotation-controls bar (Spec 0027) — selection-aware (the table view, or the active element).
+    | RotateActiveBy (axis, d) -> rotateSelectedByDeg axis d model
+    | SetActiveAxis (axis, v) -> setSelectedAxis axis v model
+    | RotBarToggleR3Lock -> toggleSelectedR3Lock model
     | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
     | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
     | RotConfirm ->
         let m =
             match model.rotationConfirm with
-            | RotationControls.ConfirmReset -> resetActiveRotation model
-            | RotationControls.ConfirmResetAll -> resetAllRotations model
+            | RotationControls.ConfirmReset -> resetSelectedRotation model
+            | RotationControls.ConfirmResetAll -> resetAllSelected model
             | RotationControls.NoConfirm -> model
         { m with rotationConfirm = RotationControls.NoConfirm }
     | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
@@ -1355,22 +1445,28 @@ let private keyOf (k : Avalonia.Input.Key) : Key option =
         | Avalonia.Input.Key.F1 -> Some F1
         | _ -> None
 
-/// The shared rotation-controls bar's state (Spec 0027, task 008). It operates on the ACTIVE
-/// ELEMENT — so it is enabled only when an element is selected (a plain table selection has
-/// nothing for it to rotate), replacing the old element-menu rotation items.
+/// The shared rotation-controls bar's state (Spec 0027). It operates on the SELECTION — the table
+/// VIEW when the table is selected (showing the view's R1/R2/R3 and the table R3 lock), or the active
+/// element when an element is selected — so the table is rotatable on the main screen exactly as in
+/// the "Test Table + Element Rotations" window. Always enabled (the main screen always has a selection).
 let rotationBarState (model : Model) : RotationControls.State =
-    match activeElement model with
-    | Some p ->
-        { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
-          r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
-    | None ->
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+    match model.selection with
+    | TableSelected ->
+        { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+          r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
+    | ElementSelected _ ->
+        match activeElement model with
+        | Some p ->
+            { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+              r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
+        | None ->
+            { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
 
 let private rotationBarHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
         rotate = fun axis d -> dispatch (RotateActiveBy (axis, d))
         setAngle = fun axis v -> dispatch (SetActiveAxis (axis, v))
-        toggleR3Lock = fun () -> dispatch (MenuToggleLock AxisR3)
+        toggleR3Lock = fun () -> dispatch RotBarToggleR3Lock
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
         confirm = fun () -> dispatch RotConfirm
@@ -1456,8 +1552,9 @@ let private canvasSurface (model : Model) (dispatch : Msg -> unit) : IView =
     ] :> IView
 
 /// The constructor page: the canvas surface with the shared rotation-controls bar beneath it
-/// (Spec 0027, task 008 — replacing the old element-menu rotation items with the bar). The bar
-/// operates on the active element and is disabled when no element is selected.
+/// (Spec 0027 — replacing the old element-menu rotation items with the bar). The bar is
+/// selection-aware: it rotates the table view when the table is selected, or the active element when
+/// an element is selected (the wheel gestures route the same way — see `rotateSelectedNotches`).
 let view (model : Model) (dispatch : Msg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [

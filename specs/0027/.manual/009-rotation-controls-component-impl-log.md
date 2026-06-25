@@ -221,3 +221,30 @@ actions; the existing highlight test still passes against the pure bar. Full sol
 Avalonia 12 / FuncUI 2.0.0-preview1. Files: `RotationControls.fs` (pure bar + imperative highlight +
 in-place confirm + per-label subscription), the two test windows (N2 flip), `MaterialsView.fs` /
 `Program.fs` (Avalonia 12 APIs), the four `.fsproj`s (versions), `RotationControlsTests.fs` (new tests).
+
+## Main screen — rotation now selection-aware (table OR element)
+
+Reported: on the main screen (the full Shell, opened by **Main**) the rotation controls "completely do
+not work," even though "Test Table + Element Rotations" works. Diagnosis (Shell→`ConstructorView`
+wiring is correct; the bar is rendered and its messages route through `RootMsg.Constructor`): the main
+screen's rotation only ever targeted the **active element**, while the table is selected by default on
+open — so the bar was disabled, the wheel-rotate gestures (`RotateR1/R2/R3`, scoped `ActiveElement`)
+did nothing, and the table view was never rotatable. (Zoom on plain/Ctrl wheel and pan on drag already
+worked — `ZoomView`/`PanView` are `TableOrView`-scoped.)
+
+Fix — make `ConstructorView` selection-aware exactly like the test window, **without touching the test
+screens**: added `tableR3Locked` to the model and selection-aware helpers (`rotateViewByDeg`/`ByNotches`,
+`setViewAxis`, `resetViewRotations`, and `rotateSelectedByDeg`/`Notches`, `setSelectedAxis`,
+`toggleSelectedR3Lock`, `resetSelectedRotation`, `resetAllSelected`) that route to the ephemeral table
+VIEW when the table is selected, or the active element when an element is selected. The wheel/keyboard
+`RotateR1/R2/R3` now call `rotateSelectedNotches`; the bar's messages (`RotateActiveBy`/`SetActiveAxis`,
+new `RotBarToggleR3Lock`, `RotConfirm`) are selection-aware; and `rotationBarState` shows the view's
+angles + table R3-lock when the table is selected (always enabled now). The table view is ephemeral
+(not in `EditHistory`), so its rotations/resets are plain state edits, not undo steps; element
+rotations stay undoable. No test-window file or the `RotationControls` control was changed.
+
+Tests: `OpticalConstructor.Ui.Tests` **176/176** — added: the bar is enabled for both table and element;
+with the table selected the bar (and a Shift+wheel notch) rotate the table VIEW, not an element, and the
+bar reads the view's angle; and the bar's R3 lock targets the table (a locked table R3 ignores
+rotation). Existing element-rotation, zoom (`AC-C2`), and real-wheel-injection tests still pass. Files:
+`OpticalConstructor.Ui/ConstructorView.fs`, `OpticalConstructor.Ui.Tests/CommandRegistryTests.fs`.
