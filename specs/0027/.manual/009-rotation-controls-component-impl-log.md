@@ -121,3 +121,37 @@ when nothing is selected (consistent with task 008's "nothing selected ⇒ contr
 existing click test now also asserts an on-plate empty click selects the table and an off-plate click
 yields `NothingSelected`, plus a new test that rotation gestures are inert while unselected
 (`OpticalConstructor.Ui.Tests` 168/168).
+
+## Task 009 — an axis lights up while its rotate modifier is held
+
+Requested next: make the R1/R2/R3 +/- buttons stand out (bold + a changed background) when their
+relevant modifier combo is held — and tweak only the control, not the screens.
+
+**The map.** An axis is "armed" by exactly the combo that the wheel uses to rotate it:
+`Shift → R1`, `Ctrl+Shift → R2`, `Alt → R3` (anything else — including the `Ctrl+Alt(+Shift)` zoom
+combos — arms nothing). This is the pure function `RotationControls.activeAxisForModifiers`.
+
+**The colour.** An armed button uses the standard Windows "selected/active" treatment — the **light
+accent fill `#CCE8FF`** outlined by the Fluent / WinUI **system accent `#0078D4`** (sensible since the
+app may move to WinForms/Windows, where `#0078D4` is the native accent). Per the request the text **only
+goes bold** — it is not recoloured — and stays legible on the light fill; the idle button keeps the
+neutral light grey. Only the `+/-` buttons light up (not the degree field), and only while their group
+is actually live (a locked R3 won't light).
+
+**Self-contained, no screen changes.** The bar was a pure `view : State -> Handlers -> IView`. To know
+the live modifier state without each screen feeding it in, `view` now returns a small stateful FuncUI
+`Component` that, on mount, finds its `TopLevel` and adds **tunnel-phase** `KeyDown`/`KeyUp` handlers
+(`handledEventsToo`) — tunnel always starts at the TopLevel, so the bar sees every modifier press/release
+regardless of which control holds focus. It stores the armed axis in `ctx.useState`, re-renders the
+buttons, and tears the subscription down with the component (`useEffect AfterInit` returning an
+`IDisposable`; re-subscribes across `AttachedToVisualTree`/`DetachedFromVisualTree`). The visible tree is
+still the pure `renderBar state handlers activeAxis`. Because it is one shared control, **all three test
+windows and the Main screen get the highlight for free** — no host code changed.
+
+Tests (`OpticalConstructor.Ui.Tests` **170/170**): a pure test pinning `activeAxisForModifiers` to the
+wheel map (including the zoom combos arming nothing), and a **headless** proof that a real `Shift`
+key-press routed through the live input pipeline turns the R1 buttons' `Background` to the accent (R3
+stays idle) and releasing reverts it — i.e. the key → TopLevel → state → re-render path works end to end.
+
+Files: only `OpticalConstructor.Controls/RotationControls.fs` (the control) and the new
+`OpticalConstructor.Ui.Tests/RotationControlsTests.fs` (+ its `.fsproj` entry). No screen was touched.

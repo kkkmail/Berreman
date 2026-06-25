@@ -62,6 +62,9 @@
         <Compile Include="ElementRotationTests.fs" />
         <!-- Spec 0027 task 006 #3: the combined table + element rotation test window. -->
         <Compile Include="TableAndElementRotationTests.fs" />
+        <!-- Spec 0027 task 009: the shared rotation-controls bar's modifier-driven highlight
+             (pure armed-axis map + a headless key-press render proof). -->
+        <Compile Include="RotationControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
