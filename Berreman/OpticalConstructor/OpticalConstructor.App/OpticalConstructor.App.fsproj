@@ -32,15 +32,15 @@
          unreferenced until the §A.9 audit passes (AC-A8). Versions mirror
          OpticalConstructor.Ui. -->
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.300" />
-        <PackageReference Include="Avalonia" Version="11.3.4" />
-        <PackageReference Include="Avalonia.Desktop" Version="11.3.4" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
+        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Include="Avalonia" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
         <PackageReference Include="Avalonia.FuncUI" Version="1.6.0" />
         <!-- spec 0024 §U1.1 / R-1: the Elmish host packages so the composition root
              mounts the MVU program. Version-aligned with FuncUI 1.6.0; MIT NuGet. -->
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="1.6.0" />
-        <PackageReference Include="Elmish" Version="4.3.0" />
+        <PackageReference Include="Elmish" Version="5.0.2" />
     </ItemGroup>
 
     <ItemGroup>
