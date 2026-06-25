@@ -178,21 +178,35 @@ breaking API changes, both migrated:
 drawing thing — make it point up") the N2 marker is now drawn toward **−N2** (`along n2 (-(1.3*half))`),
 so the yellow arrow points up on screen. Drawing only; the element's actual orientation is unchanged.
 
-**(b) R3 Lock/Unlock was not element-specific (a task-009 regression).** Selecting a different element
-showed the previous element's lock state. Cause: task 009 wrapped the bar in a FuncUI `Component`, and a
-FuncUI component **re-renders only on its own state** — the `state` value captured in its render closure
-*freezes at the first render*, so new host props (a different element's `r3Locked`, and the angles) never
-reached it. The keyboard highlight still worked because that is the component's own `useState`. The model
-code was always per-element (`setR3Locked` on the placement); only the *display* was stale.
+**(b) The bar froze on the first-selected element, and lost per-window isolation.** Task 009 wrapped the
+bar in a FuncUI `Component` for the keyboard highlight. A FuncUI component **re-renders only on its own
+state** — the `state` captured in its render closure *freezes at the first render*, so a different
+element's `r3Locked`/angles never reached it (the highlight still worked, being the component's own
+`useState`). The model was always per-element; only the display was stale. A first fix pushed the state
+through a **module-level** store, which fixed the staleness but (i) was shared across windows — breaking
+the "only the active window changes" requirement — and (ii) re-entered the renderer mid-render (the
+`Set` during build) and threw on the Reset swap.
 
-Fix: `view` now pushes the host state into a module-level FuncUI store (`State<State>`), and the component
-reads it via `ctx.usePassed`, which re-renders the bar whenever the host supplies new state. `handlers`
-stay captured per-instance (stable per screen). A headless test reproduces the regression — a parent
-component flips `r3Locked` and asserts the lock button's label follows ("Lock R3" ⇄ "Unlock R3") — and now
-passes. (One shared store ⇒ the app drives one rotation bar at a time; the armed-axis highlight is global
-keyboard state anyway, so a second simultaneously-visible bar would mirror this one's display state.)
+**Final fix — make the bar PURE again.** `RotationControls.view` is once more a plain
+`State -> Handlers -> IView`, so it re-renders on every host update and always shows the host's current
+selection — per-window by construction (each window renders its own model), no frozen props, no
+re-entrancy. The keyboard highlight is re-implemented WITHOUT component state: a module-level `armedAxis`
+(the held modifier's axis — global, since modifier keys are global) that the bar reads at **build** time
+(so a host re-render while a key is held keeps the highlight), plus a **per-window** TopLevel key hook
+(`ensureKeyHook`, guarded by a `ConditionalWeakTable` so each window is hooked once) that recomputes
+`armedAxis` and imperatively restyles that window's live buttons on key down/up. Key events only reach the
+focused window, so the live restyle is naturally per-window; only the display state is read globally.
 
-Tests: `OpticalConstructor.Ui.Tests` **171/171** (added the lock-tracks-prop reproduction); full solution
-builds clean on Avalonia 12 / FuncUI 2.0.0-preview1. Files: `RotationControls.fs` (store), the two test
-windows (N2 flip), `MaterialsView.fs` / `Program.fs` (Avalonia 12 APIs), the four `.fsproj`s (versions),
-`RotationControlsTests.fs` (new test).
+**(c) Reset threw "Cannot set Name : styled element already styled".** The confirm gate replaced
+`[Reset, Reset All]` with `[prompt, Yes, No]`. At the shared position, FuncUI **reused** the existing
+`Reset All` Border and tried to **rename** it to the confirm button — Avalonia forbids re-setting `Name`
+on an already-styled element. Fix: the confirmation now happens **in place** — the same two named buttons
+(`reset` / `resetAll`) keep their ids and only change label/action ("Reset"/"Reset All" ⇄ "Yes"/"No"),
+with a prompt `TextBlock` that is simply shown/hidden. No control is renamed, so the swap renders cleanly.
+
+Tests: `OpticalConstructor.Ui.Tests` **172/172** — a headless reproduction that a parent flipping
+`r3Locked` updates the lock label (props are live again), and one that arming Reset turns the buttons into
+Yes/No in place without the rename exception; the existing highlight test still passes against the pure
+bar. Full solution builds clean on Avalonia 12 / FuncUI 2.0.0-preview1. Files: `RotationControls.fs` (pure
+bar + imperative highlight + in-place confirm), the two test windows (N2 flip), `MaterialsView.fs` /
+`Program.fs` (Avalonia 12 APIs), the four `.fsproj`s (versions), `RotationControlsTests.fs` (new tests).

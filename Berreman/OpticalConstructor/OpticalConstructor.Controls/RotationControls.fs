@@ -8,7 +8,7 @@ open Avalonia.Input
 open Avalonia.Interactivity
 open Avalonia.Layout
 open Avalonia.Media
-open Avalonia.FuncUI
+open Avalonia.VisualTree
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -70,10 +70,10 @@ module RotationControls =
         let r2Field = "RotationR2Field"
         let r3Field = "RotationR3Field"
         let lockR3 = "RotationLockR3Button"
+        // The two reset buttons keep these stable ids in BOTH modes: "Reset"/"Reset All" when idle,
+        // and the confirmation "Yes"/"No" when a reset is armed (the label/action changes, not the id).
         let reset = "RotationResetButton"
         let resetAll = "RotationResetAllButton"
-        let resetConfirm = "RotationResetConfirmButton"
-        let resetCancel = "RotationResetCancelButton"
 
     /// The rotation step a +/- button applies: 15°, or 5° with Shift held.
     let buttonStepDegrees (shiftHeld : bool) : float = if shiftHeld then 5.0 else 15.0
@@ -168,6 +168,58 @@ module RotationControls =
             ]
         ] :> IView
 
+    // -----------------------------------------------------------------------------------------------
+    // Keyboard highlight (task 009), layered on the PURE bar imperatively so it needs no component
+    // state (which would otherwise freeze the host's props — the bar must re-render per host update to
+    // stay per-window correct). `armedAxis` is the globally-held modifier's axis; the bar reads it at
+    // BUILD time (so a host re-render while a key is held keeps the highlight), and a per-window key
+    // hook restyles the live buttons between renders (so pressing/releasing a key with nothing else
+    // happening still lights up). Key events only reach the FOCUSED window, so the live restyle is
+    // naturally per-window.
+    // -----------------------------------------------------------------------------------------------
+
+    let mutable private armedAxis : Axis option = None
+
+    let private axisOfButtonName (name : string) : Axis option =
+        if name = UiIds.r1Minus || name = UiIds.r1Plus then Some R1
+        elif name = UiIds.r2Minus || name = UiIds.r2Plus then Some R2
+        elif name = UiIds.r3Minus || name = UiIds.r3Plus then Some R3
+        else None
+
+    /// Paint one axis +/- button (a `clickBox` Border with a `TextBlock` child) armed or idle.
+    let private styleButton (b : Border) (isArmed : bool) : unit =
+        b.Background <- brush (if isArmed then activeBackground else idleBackground)
+        b.BorderBrush <- brush (if isArmed then activeBorder else idleBorder)
+        match b.Child with
+        | :? TextBlock as t -> t.FontWeight <- (if isArmed then FontWeight.Bold else FontWeight.Normal)
+        | _ -> ()
+
+    /// Restyle every axis button currently in a window for the current `armedAxis`.
+    let private restyleBar (top : TopLevel) : unit =
+        for v in top.GetVisualDescendants() do
+            match v with
+            | :? Border as b when not (isNull b.Name) ->
+                match axisOfButtonName b.Name with
+                | Some axis -> styleButton b (b.IsEnabled && armedAxis = Some axis)
+                | None -> ()
+            | _ -> ()
+
+    // One keyboard subscription per window (never two, even though the pure bar is rebuilt often).
+    let private hooked = System.Runtime.CompilerServices.ConditionalWeakTable<TopLevel, obj>()
+
+    /// Hook a window's keyboard ONCE: tunnel-phase Key handlers (so focus does not matter) recompute
+    /// `armedAxis` and restyle that window's bar live.
+    let private ensureKeyHook (top : TopLevel) : unit =
+        match hooked.TryGetValue top with
+        | true, _ -> ()
+        | _ ->
+            hooked.Add(top, obj ())
+            let onKey = EventHandler<KeyEventArgs>(fun _ e ->
+                armedAxis <- activeAxisForModifiers e.KeyModifiers
+                restyleBar top)
+            top.AddHandler(InputElement.KeyDownEvent, onKey, RoutingStrategies.Tunnel, true)
+            top.AddHandler(InputElement.KeyUpEvent, onKey, RoutingStrategies.Tunnel, true)
+
     /// The bar's visible tree: a pure projection of `state` plus which axis (if any) is armed.
     let private renderBar (state : State) (handlers : Handlers) (activeAxis : Axis option) : IView =
         let r3Enabled = state.enabled && not state.r3Locked
@@ -175,21 +227,34 @@ module RotationControls =
         let armed (axis : Axis) (groupEnabled : bool) : bool = groupEnabled && activeAxis = Some axis
         let lockButton =
             clickBox UiIds.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleR3Lock ())
-        // Reset / Reset All collapse into a Yes / No gate while a reset is awaiting confirmation.
-        let resetArea : IView list =
+        // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two named buttons (plus a
+        // prompt) keep their `Name` across the swap — only the label / action / prompt change. A
+        // structural swap to differently-named buttons made FuncUI reuse a Border and re-set its Name,
+        // which Avalonia forbids once it is styled ("Cannot set Name : styled element already styled").
+        let armedConfirm = state.confirm <> NoConfirm
+        let prompt =
             match state.confirm with
-            | NoConfirm ->
-                [ clickBox UiIds.reset "Reset" state.enabled false (fun _ -> handlers.requestReset ())
-                  clickBox UiIds.resetAll "Reset All" state.enabled false (fun _ -> handlers.requestResetAll ()) ]
-            | ConfirmReset | ConfirmResetAll ->
-                let prompt = if state.confirm = ConfirmReset then "Reset the selection's rotations?" else "Reset ALL rotations?"
-                [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt ] :> IView
-                  clickBox UiIds.resetConfirm "Yes" state.enabled false (fun _ -> handlers.confirm ())
-                  clickBox UiIds.resetCancel "No" state.enabled false (fun _ -> handlers.cancel ()) ]
+            | ConfirmReset -> "Reset the selection's rotations?"
+            | ConfirmResetAll -> "Reset ALL rotations?"
+            | NoConfirm -> ""
+        let resetLabel, resetAllLabel = if armedConfirm then "Yes", "No" else "Reset", "Reset All"
+        let onReset () = match state.confirm with NoConfirm -> handlers.requestReset () | _ -> handlers.confirm ()
+        let onResetAll () = match state.confirm with NoConfirm -> handlers.requestResetAll () | _ -> handlers.cancel ()
+        let resetArea : IView list =
+            [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt; TextBlock.isVisible armedConfirm ] :> IView
+              clickBox UiIds.reset resetLabel state.enabled false (fun _ -> onReset ())
+              clickBox UiIds.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 10.0
             StackPanel.margin (Thickness 8.0)
+            // Hook this window's keyboard once (guarded), so holding a rotate modifier lights up its axis.
+            StackPanel.onLoaded (fun e ->
+                match e.Source with
+                | :? Visual as v ->
+                    let top = TopLevel.GetTopLevel v
+                    if not (isNull (box top)) then ensureKeyHook top
+                | _ -> ())
             // The whole bar is disabled (and dimmed) when nothing is selected.
             StackPanel.isEnabled state.enabled
             StackPanel.opacity (if state.enabled then 1.0 else 0.5)
@@ -201,54 +266,12 @@ module RotationControls =
                  @ resetArea)
         ] :> IView
 
-    /// A FuncUI store carrying the host's latest DISPLAY state into the (otherwise memoized) bar
-    /// component. A FuncUI component re-renders only on its OWN state — a value captured in its render
-    /// closure freezes at the first render. The bar must stay a component (for the keyboard highlight's
-    /// internal state), so to still reflect new host props — e.g. selecting a different element with
-    /// its OWN R3-lock — `view` pushes the state into this store and the component reads it via
-    /// `usePassed`, which re-renders on change. (`handlers` need no store: they are stable per screen,
-    /// so the per-instance closure capture is correct.) NOTE: one shared store ⇒ the app drives ONE
-    /// rotation bar at a time; the armed-axis highlight is global keyboard state anyway.
-    let private disabledState : State =
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = NoConfirm }
-
-    let private stateStore : IWritable<State> = Avalonia.FuncUI.State<State>(disabledState) :> IWritable<State>
-
-    /// The bar. A stateful component that mirrors `state`/`handlers` and, on its own, tracks the live
-    /// keyboard so an axis lights up while its rotate modifier is held — see `renderBar`. The key
-    /// tracking is wired at the window's TopLevel (tunnel phase) so it works no matter which control
-    /// holds focus, and it is torn down with the component; the host screens stay untouched.
+    /// The bar — a PURE projection of `state`/`handlers`, so it always reflects the host's CURRENT
+    /// selection. Being pure, it re-renders on every host update (per-window: a different window's bar
+    /// is a different render of a different model) and never freezes stale props — which is why the
+    /// lock/angles track the selected element and why the Reset confirm-swap no longer re-enters the
+    /// renderer. The keyboard highlight is layered on imperatively (`ensureKeyHook` / `renderBar`'s
+    /// build-time read of `armedAxis`), so no component state is needed and the host screens stay
+    /// untouched.
     let view (state : State) (handlers : Handlers) : IView =
-        // Push the latest host state into the store BEFORE building the component, so the first render
-        // (and every later host render) reflects the current selection's lock / angles / confirm state.
-        stateStore.Set state
-        Component.create ("rotation-controls", fun ctx ->
-            let state = (ctx.usePassed stateStore).Current
-            let activeAxis = ctx.useState (None : Axis option)
-            ctx.useEffect (
-                handler = (fun () ->
-                    let ctrl = ctx.control
-                    let onKey = EventHandler<KeyEventArgs>(fun _ e -> activeAxis.Set (activeAxisForModifiers e.KeyModifiers))
-                    let mutable top : TopLevel = null
-                    let hookTop () =
-                        top <- TopLevel.GetTopLevel ctrl
-                        if not (isNull (box top)) then
-                            top.AddHandler(InputElement.KeyDownEvent, onKey, RoutingStrategies.Tunnel, true)
-                            top.AddHandler(InputElement.KeyUpEvent, onKey, RoutingStrategies.Tunnel, true)
-                    let unhookTop () =
-                        if not (isNull (box top)) then
-                            top.RemoveHandler(InputElement.KeyDownEvent, onKey)
-                            top.RemoveHandler(InputElement.KeyUpEvent, onKey)
-                            top <- null
-                    let onAttached = EventHandler<VisualTreeAttachmentEventArgs>(fun _ _ -> hookTop ())
-                    let onDetached = EventHandler<VisualTreeAttachmentEventArgs>(fun _ _ -> unhookTop (); activeAxis.Set None)
-                    ctrl.AttachedToVisualTree.AddHandler onAttached
-                    ctrl.DetachedFromVisualTree.AddHandler onDetached
-                    hookTop ()   // already attached on first render → subscribe now
-                    { new IDisposable with
-                        member _.Dispose() =
-                            ctrl.AttachedToVisualTree.RemoveHandler onAttached
-                            ctrl.DetachedFromVisualTree.RemoveHandler onDetached
-                            unhookTop () }),
-                triggers = [ EffectTrigger.AfterInit ])
-            renderBar state handlers activeAxis.Current)
+        renderBar state handlers armedAxis

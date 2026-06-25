@@ -121,3 +121,40 @@ module RotationControlsTests =
             Assert.Equal("Lock R3", lockLabel window)
 
             window.Close())
+
+    let private buttonLabel (window : Window) (name : string) : string =
+        match borderNamed window name with
+        | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
+        | None -> "<not found>"
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``arming Reset turns the two buttons into the Yes/No confirmation in place (no rename exception)`` () =
+        // Regression: a structural swap to differently-named confirm buttons made FuncUI reuse a Border
+        // and re-set its Name, throwing "Cannot set Name : styled element already styled". The two reset
+        // buttons now keep their ids and just change label/action, so the confirm flow renders cleanly.
+        HeadlessSession.run (fun () ->
+            let setConfirm : (RotationControls.ResetConfirm -> unit) ref = ref (fun _ -> ())
+            let host =
+                Component(fun ctx ->
+                    let confirm = ctx.useState RotationControls.NoConfirm
+                    setConfirm.Value <- confirm.Set
+                    RotationControls.view { enabledState with confirm = confirm.Current } noopHandlers)
+            let window = Window(Width = 760.0, Height = 200.0)
+            window.Content <- host
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+
+            Assert.Equal("Reset", buttonLabel window RotationControls.UiIds.reset)
+            Assert.Equal("Reset All", buttonLabel window RotationControls.UiIds.resetAll)
+            // Arm the confirmation — must not throw, and the same buttons become Yes / No.
+            setConfirm.Value RotationControls.ConfirmReset
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal("Yes", buttonLabel window RotationControls.UiIds.reset)
+            Assert.Equal("No", buttonLabel window RotationControls.UiIds.resetAll)
+            // Cancelling back returns them to Reset / Reset All.
+            setConfirm.Value RotationControls.NoConfirm
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal("Reset", buttonLabel window RotationControls.UiIds.reset)
+
+            window.Close())
