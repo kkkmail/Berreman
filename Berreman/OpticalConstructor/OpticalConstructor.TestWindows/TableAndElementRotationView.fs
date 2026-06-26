@@ -100,23 +100,45 @@ type Model =
         tableR3Locked : bool
         /// Which reset (if any) the rotation-controls bar is awaiting confirmation for.
         rotationConfirm : RotationControls.ResetConfirm
+        /// The catalogue kinds the user can ADD to the scene (the "Lego" palette). EMPTY for the static
+        /// test windows (no add/remove UI, identical behaviour); the dynamic Main screen seeds it, which
+        /// is the ONLY difference between the test scene and the Main scene — same table/zoom/selection/
+        /// rotation logic, the Main screen just adds and removes elements at runtime.
+        palette : CatalogueKind list
     }
 
 let defaultElementZoom : float = 5.0
 
-/// A live table view plus three optical elements on the central ray; the table is selected first.
-let init () : Model =
-    let mk (x : float) (kind : CatalogueKind) : TestElement =
-        { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
+    { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+
+/// The shared scene seed: the standard table, the straight top-down view, the given elements, the
+/// table selected first, and an add/remove `palette`. `init` (the test window) passes an empty palette;
+/// `initMain` (the Main screen) passes a non-empty one — that is the ONLY difference between them.
+let initWith (elements : TestElement list) (palette : CatalogueKind list) : Model =
     {
         table = Table.defaultTable
         view = Table.defaultView
-        elements = [ mk -0.5 LinearPolarizer; mk 0.0 Sample; mk 0.5 FlatMirror ]
+        elements = elements
         selection = TableSelected
         drag = NotPressed
         tableR3Locked = false
         rotationConfirm = RotationControls.NoConfirm
+        palette = palette
     }
+
+/// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
+/// the central ray, no add/remove palette. Behaviour is unchanged from before — the palette is empty.
+let init () : Model =
+    initWith [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
+
+/// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
+/// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
+/// "Lego constructor"). This is the Main screen — identical scene logic, elements added/removed at runtime.
+let initMain () : Model =
+    initWith
+        [ mkElement -0.8 LightSource; mkElement 0.8 Detector ]
+        [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
 
 type Msg =
     | RotateR1By of float
@@ -135,6 +157,10 @@ type Msg =
     | PointerMove of ScreenPoint
     | PointerUp of ScreenPoint
     | Wheel of Set<WheelModifier> * int
+    /// Lego constructor (Main screen): add a catalogue element to the scene (selected on add), or
+    /// remove the currently-selected element. Never dispatched by the test windows (empty palette).
+    | AddElement of CatalogueKind
+    | RemoveSelected
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -266,6 +292,32 @@ let private resetSelectionRotations (m : Model) : Model =
 let private resetAllRotations (m : Model) : Model =
     { (resetViewRotations m) with elements = m.elements |> List.map (fun e -> { e with placement = resetPlacementRotations e.placement }) }
 
+// ---------------------------------------------------------------------------
+// Lego constructor (Main screen): add / remove elements at runtime. The scene logic is otherwise
+// identical to the static test scene — these just grow / shrink the `elements` list.
+// ---------------------------------------------------------------------------
+
+/// Append a catalogue element to the scene and select it. New elements are spread along the beam so
+/// they do not land exactly on top of one another; the user then rotates / configures the selection.
+let private addElement (kind : CatalogueKind) (m : Model) : Model =
+    let middleCount =
+        m.elements
+        |> List.filter (fun e -> e.placement.catalogueKind <> LightSource && e.placement.catalogueKind <> Detector)
+        |> List.length
+    let x = -0.3 + 0.2 * float middleCount
+    let e = { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+    let elements' = m.elements @ [ e ]
+    { m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
+
+/// Remove the currently-selected element (inert when the table or nothing is selected). Selection
+/// drops to nothing so the bar disables until the user picks another object.
+let private removeSelected (m : Model) : Model =
+    match m.selection with
+    | ElementSelected i when i >= 0 && i < List.length m.elements ->
+        let elements' = m.elements |> List.mapi (fun j e -> j, e) |> List.filter (fun (j, _) -> j <> i) |> List.map snd
+        { m with elements = elements'; selection = NothingSelected }
+    | _ -> m
+
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotateSelected 1 d model
@@ -287,6 +339,8 @@ let update (msg : Msg) (model : Model) : Model =
             | RotationControls.NoConfirm -> model
         { m with rotationConfirm = RotationControls.NoConfirm }
     | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
+    | AddElement kind -> addElement kind model
+    | RemoveSelected -> removeSelected model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -456,19 +510,43 @@ let private readoutText (model : Model) : string =
             (if p.r3Locked then "R3 locked" else "R3 free") e.zoom
     | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
+/// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
+/// screen). The static test windows pass an empty palette, so this row is absent and their UI is
+/// unchanged. "+ Kind" adds (and selects) an element; "Remove selected" removes the selected element.
+let private addRemoveBar (model : Model) (dispatch : Msg -> unit) : IView list =
+    if List.isEmpty model.palette then []
+    else
+        let addButtons =
+            model.palette
+            |> List.map (fun kind ->
+                Button.create [
+                    Button.content (sprintf "+ %s" (kindName kind))
+                    Button.onClick (fun _ -> dispatch (AddElement kind))
+                ] :> IView)
+        let removeButton =
+            Button.create [
+                Button.content "Remove selected"
+                Button.isEnabled (match model.selection with ElementSelected _ -> true | _ -> false)
+                Button.onClick (fun _ -> dispatch RemoveSelected)
+            ] :> IView
+        [ WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children (addButtons @ [ removeButton ])
+          ] :> IView ]
+
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0
         StackPanel.margin (Thickness 8.0)
-        StackPanel.children [
-            RotationControls.view (rotationState model) (rotationHandlers dispatch)
-            TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model) ]
-            TextBlock.create [
-                TextBlock.foreground (brush (color 100 100 100))
-                TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
-            ]
-        ]
+        StackPanel.children
+            (addRemoveBar model dispatch
+             @ [ RotationControls.view (rotationState model) (rotationHandlers dispatch)
+                 TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model) ]
+                 TextBlock.create [
+                     TextBlock.foreground (brush (color 100 100 100))
+                     TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
+                 ] ])
     ] :> IView
 
 let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =

@@ -105,6 +105,22 @@ type MainWindow() as this =
         |> Program.withHost this
         |> Program.run
 
+/// The Main screen (Spec 0027): the dynamic "Lego constructor". It is the SAME table + element scene
+/// as "Test Table + Element Rotations" (`TableAndElementRotationView` — same table, same initial zoom,
+/// same select/unselect + rotation/zoom/pan logic), seeded with a light source and a detector and given
+/// an add/remove palette so elements can be added and removed at runtime. The ONLY difference from the
+/// test scene is that palette (`initMain`); the scene logic is shared. (The old constructor shell —
+/// `MainWindow` above — is kept but no longer opened by the launcher's Main button.)
+type MainConstructorWindow() as this =
+    inherit HostWindow()
+    do
+        this.Title <- "Optical Constructor — Main"
+        this.Width <- TableAndElementRotationView.canvasWidth
+        this.Height <- TableAndElementRotationView.canvasHeight + 170.0
+        Program.mkSimple TableAndElementRotationView.initMain TableAndElementRotationView.update TableAndElementRotationView.view
+        |> Program.withHost this
+        |> Program.run
+
 /// The simple launcher form (Spec 0027): `Main` opens the existing Optical Constructor window
 /// (the `MainWindow` above, unchanged); the test buttons open the diagnostic test windows
 /// (`OpticalConstructor.TestWindows`). This is the app's startup window so every path is one
@@ -129,7 +145,7 @@ type LauncherWindow() as this =
                 Content = "Main",
                 HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
                 Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        mainButton.Click.Add(fun _ -> MainWindow().Show())
+        mainButton.Click.Add(fun _ -> MainConstructorWindow().Show())
         let tableTestButton =
             Button(
                 Name = "OpenTableRotationTestButton",

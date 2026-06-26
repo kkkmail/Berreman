@@ -248,3 +248,33 @@ with the table selected the bar (and a Shift+wheel notch) rotate the table VIEW,
 bar reads the view's angle; and the bar's R3 lock targets the table (a locked table R3 ignores
 rotation). Existing element-rotation, zoom (`AC-C2`), and real-wheel-injection tests still pass. Files:
 `OpticalConstructor.Ui/ConstructorView.fs`, `OpticalConstructor.Ui.Tests/CommandRegistryTests.fs`.
+
+## Main screen rebuilt ON the test scene — a dynamic "Lego constructor"
+
+Direction correction: patching `ConstructorView` to *behave like* the test window was the wrong approach.
+The "Test Table + Element Rotations" scene (`TableAndElementRotationView`) is the good one — same table,
+same initial zoom, same select/unselect + rotation/zoom/pan logic — and the **Main screen must BE that
+scene**, the only difference being that elements are added/removed dynamically (the test scene does it
+statically). So the Main button now opens that shared scene, not the old constructor shell.
+
+Generalised `TableAndElementRotationView` **additively** (so the test windows are behaviourally
+unchanged): added a `palette : CatalogueKind list` to the model (EMPTY for the test scene → no add/remove
+UI, identical behaviour; non-empty for Main), `AddElement`/`RemoveSelected` messages with `addElement`
+(append on the beam, spread, select it) / `removeSelected` (drop the selected element), an `addRemoveBar`
+row shown only when the palette is non-empty, and seeds: `init` (the static three elements, empty
+palette) and `initMain` (a light source + a detector, with the catalogue palette). The whole
+scene/update/draw is shared — `init` vs `initMain` is the only difference.
+
+The Main button (`OpticalConstructor.App/Program.fs`) now opens a new `MainConstructorWindow` hosting
+`TableAndElementRotationView.view` seeded by `initMain` (canvas size/zoom identical to the test window).
+The old shell (`MainWindow` + `ConstructorView`/`Shell`) is left intact but no longer opened by Main, so
+the previous selection-aware `ConstructorView` work is superseded for the Main button (kept, not deleted).
+
+Tests: `OpticalConstructor.Ui.Tests` **181/181** — the static scene has an empty palette (unchanged);
+`initMain` seeds a light source + detector + palette at the same zoom; `AddElement` appends-and-selects a
+beam element that then rotates; `RemoveSelected` removes the selection and is inert on the table; and a
+headless smoke proves the Main scene renders its add/remove `Button`s (the static scene renders none). No
+test-window behaviour changed; the `RotationControls` control is untouched. Files:
+`OpticalConstructor.TestWindows/TableAndElementRotationView.fs` (generalised scene),
+`OpticalConstructor.App/Program.fs` (`MainConstructorWindow` + Main button),
+`OpticalConstructor.Ui.Tests/TableAndElementRotationTests.fs` (Lego tests).

@@ -50,6 +50,43 @@ module TableAndElementRotationTests =
             Assert.True(close (e.placement.placementPoint.y / 1.0<meter>) 0.0)
             Assert.True(close e.zoom defaultElementZoom && e.placement.r3Locked)
 
+    // ===================== Lego constructor (Main scene) =====================
+    // The Main screen is the SAME scene as the test window, seeded differently (`initMain`) with an
+    // add/remove palette. The static test scene (`init`) has an empty palette and is unchanged.
+
+    [<Fact>]
+    let ``the static test scene has no palette (add/remove is off), behaviour unchanged`` () =
+        Assert.True(List.isEmpty (init ()).palette)
+
+    [<Fact>]
+    let ``initMain: a light source and a detector on the beam, table selected, same zoom, with a palette`` () =
+        let m = initMain ()
+        Assert.Equal(TableSelected, m.selection)
+        Assert.Equal(2, List.length m.elements)
+        Assert.Equal(LightSource, (elem 0 m).placement.catalogueKind)
+        Assert.Equal(Detector, (elem 1 m).placement.catalogueKind)
+        Assert.False(List.isEmpty m.palette, "the Main scene exposes an add palette")
+        Assert.True(close m.view.zoom 1.0 && close m.view.r1.degrees 0.0, "same table / initial zoom as the test scene")
+
+    [<Fact>]
+    let ``AddElement appends a catalogue element on the beam and selects it (so the bar acts on it)`` () =
+        let m1 = update (AddElement Sample) (initMain ())
+        Assert.Equal(3, List.length m1.elements)
+        Assert.Equal(ElementSelected 2, m1.selection)
+        Assert.Equal(Sample, (elem 2 m1).placement.catalogueKind)
+        Assert.True(close ((elem 2 m1).placement.placementPoint.y / 1.0<meter>) 0.0, "the new element sits on the beam")
+        let rotated = update (RotateR1By 15.0) m1
+        Assert.True(close (deg (elem 2 rotated).placement.r1) 15.0, "the added, selected element rotates")
+
+    [<Fact>]
+    let ``RemoveSelected removes the selected element; it is inert when the table is selected`` () =
+        let withSample = update (AddElement Sample) (initMain ())   // 3 elements, element 2 selected
+        let removed = update RemoveSelected withSample
+        Assert.Equal(2, List.length removed.elements)
+        Assert.Equal(NothingSelected, removed.selection)
+        let tableSel = { (initMain ()) with selection = TableSelected }
+        Assert.Equal<Model>(tableSel, update RemoveSelected tableSel)
+
     [<Fact>]
     let ``the wheel map sends each modifier combo to one action`` () =
         Assert.Equal(RotateSel1, wheelAction (Set.ofList [ ModShift ]))
@@ -268,4 +305,19 @@ module TableAndElementRotationTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Main scene renders its add/remove palette (the only UI difference from the test scene)`` () =
+        HeadlessSession.run (fun () ->
+            let mutable model = initMain ()
+            let dispatch (m : Msg) = model <- update m model
+            let window = Window(Width = canvasWidth, Height = canvasHeight + 170.0)
+            window.Content <- Component(fun _ -> view model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // The palette row renders real `Button`s; the static test scene (empty palette) renders none.
+            let buttons = window.GetVisualDescendants() |> Seq.choose (function :? Button as b -> Some b | _ -> None) |> Seq.toList
+            Assert.True(List.length buttons >= 1, "the Main scene shows add/remove buttons")
             window.Close())
