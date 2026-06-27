@@ -131,7 +131,7 @@ type LauncherWindow() as this =
     do
         this.Title <- "Optical Constructor — Launcher"
         this.Width <- 380.0
-        this.Height <- 300.0
+        this.Height <- 420.0
         this.CanResize <- false
         let title =
             TextBlock(
@@ -164,14 +164,30 @@ type LauncherWindow() as this =
             Button(
                 Name = "OpenTableAndElementRotationTestButton",
                 Content = "Test Table + Element Rotations",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
         tableElementTestButton.Click.Add(fun _ -> TableAndElementRotationWindow().Show())
+        let elementMovementTestButton =
+            Button(
+                Name = "OpenElementMovementTestButton",
+                Content = "Test Element Movement",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        elementMovementTestButton.Click.Add(fun _ -> ElementMovementWindow().Show())
+        let rendererTestButton =
+            Button(
+                Name = "OpenRendererTestButton",
+                Content = "Test Renderers",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+        rendererTestButton.Click.Add(fun _ -> RendererTestWindow().Show())
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         panel.Children.Add mainButton
         panel.Children.Add tableTestButton
         panel.Children.Add elementTestButton
         panel.Children.Add tableElementTestButton
+        panel.Children.Add elementMovementTestButton
+        panel.Children.Add rendererTestButton
         this.Content <- panel
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant

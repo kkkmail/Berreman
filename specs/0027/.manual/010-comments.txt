@@ -1,0 +1,22 @@
+Here are the comments.
+Main Screen
+When the main screen loads, then the light source is left snapped to the table left side (CORRECT) but the detector is NOT 
+right snapped to the table right side (WRONG).
+The buttons `+ Linear polarizer`, `+ Circular polarizer`, etc… look differently from buttons on rotation control. But we should 
+use the same style. Let’s wrap them all into a control (similar to rotations control).
+
+General
+The “expected” placement of controls is at the top, not at the bottom (as it is now). Tweak main screen and all test screens so 
+that the controls appear at the top.
+
+More tests
+Add another test screen where we test the element movement. Look up the specs for the keys / mouse / display data / controls. Put a 
+single element in the middle of the table for that test. Do NOT change the main screen to support that yet. We work out the quirks 
+in that test first.
+
+Add another test screen where we test the renderers. Currently we only draw the bounding box (CORRECT) but we want to also draw nicer, 
+round forms, which show the element “nature” AND show the element code near the element (like S for source, LP for Linear polarizer and so on). 
+All this must be done by swapping the renderer. We can call the current renderer a wire frame renderer (or whatever the name we decide to use) 
+and we can swap the renderer to draw things differently. Currently only this test will expose that swap until we iron out the quirks.
+
+Write an implementation log into C:\GitHub\Berreman\specs\0027\.manual\011-<description>.md.

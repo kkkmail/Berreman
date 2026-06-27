@@ -26,6 +26,7 @@
          the main Ui. Public MIT Avalonia + FuncUI NuGet only. -->
     <ItemGroup>
         <Compile Include="RotationControls.fs" />
+        <Compile Include="ElementPaletteControls.fs" />
     </ItemGroup>
 
     <ItemGroup>

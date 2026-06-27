@@ -317,7 +317,11 @@ module TableAndElementRotationTests =
             window.Content <- Component(fun _ -> view model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            // The palette row renders real `Button`s; the static test scene (empty palette) renders none.
-            let buttons = window.GetVisualDescendants() |> Seq.choose (function :? Button as b -> Some b | _ -> None) |> Seq.toList
-            Assert.True(List.length buttons >= 1, "the Main scene shows add/remove buttons")
+            // The shared palette control renders its "Remove selected" button (a styled Border with a
+            // stable id); the static test scene (empty palette) renders none.
+            let removeButtons =
+                window.GetVisualDescendants()
+                |> Seq.choose (function :? Border as b when b.Name = ElementPaletteControls.UiIds.removeSelected -> Some b | _ -> None)
+                |> Seq.toList
+            Assert.Equal(1, List.length removeButtons)
             window.Close())

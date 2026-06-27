@@ -33,6 +33,13 @@
         <Compile Include="ElementRotationWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
+        <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
+        <Compile Include="ElementMovementView.fs" />
+        <Compile Include="ElementMovementWindow.fs" />
+        <!-- Spec 0027 task 010: the renderer test (swappable wireframe ⇄ shapes+codes renderer).
+             After TableAndElementRotationView — it reuses its public `kindCode`. -->
+        <Compile Include="RendererTestView.fs" />
+        <Compile Include="RendererTestWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -136,8 +136,12 @@ let init () : Model =
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
 /// "Lego constructor"). This is the Main screen — identical scene logic, elements added/removed at runtime.
 let initMain () : Model =
+    // The light source snaps to the table's LEFT edge and the detector to the RIGHT edge — i.e. the
+    // central-ray endpoints, which sit exactly on the plate edges (`defaultSourceDetectorDistance` = the
+    // table length). Added elements land between them on the beam.
     initWith
-        [ mkElement -0.8 LightSource; mkElement 0.8 Detector ]
+        [ { placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
+          { placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
         [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
 
 type Msg =
@@ -492,10 +496,18 @@ let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handler
         cancel = fun () -> dispatch RotCancel
     }
 
-let private kindName (k : CatalogueKind) : string =
+let kindName (k : CatalogueKind) : string =
     match k with
     | LightSource -> "Light source" | LinearPolarizer -> "Linear polarizer" | CircularPolarizer -> "Circular polarizer"
     | Sample -> "Sample" | Lens -> "Lens" | FlatMirror -> "Flat mirror" | CurvedMirror -> "Curved mirror" | Detector -> "Detector"
+
+/// A short element code shown near an element and used as the palette button / add id (task 010):
+/// S = source, LP/CP = linear/circular polarizer, Sa = sample, L = lens, FM/CM = flat/curved mirror,
+/// D = detector.
+let kindCode (k : CatalogueKind) : string =
+    match k with
+    | LightSource -> "S" | LinearPolarizer -> "LP" | CircularPolarizer -> "CP"
+    | Sample -> "Sa" | Lens -> "L" | FlatMirror -> "FM" | CurvedMirror -> "CM" | Detector -> "D"
 
 let private readoutText (model : Model) : string =
     match model.selection with
@@ -512,27 +524,22 @@ let private readoutText (model : Model) : string =
 
 /// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
 /// screen). The static test windows pass an empty palette, so this row is absent and their UI is
-/// unchanged. "+ Kind" adds (and selects) an element; "Remove selected" removes the selected element.
+/// unchanged. It is the shared `ElementPaletteControls` bar, styled to match the rotation bar.
+let private paletteState (model : Model) : ElementPaletteControls.State =
+    {
+        addItems = model.palette |> List.map (fun k -> { ElementPaletteControls.AddItem.id = kindCode k; label = kindName k })
+        canRemove = (match model.selection with ElementSelected _ -> true | _ -> false)
+    }
+
+let private paletteHandlers (model : Model) (dispatch : Msg -> unit) : ElementPaletteControls.Handlers =
+    {
+        add = fun id -> model.palette |> List.tryFind (fun k -> kindCode k = id) |> Option.iter (fun k -> dispatch (AddElement k))
+        removeSelected = fun () -> dispatch RemoveSelected
+    }
+
 let private addRemoveBar (model : Model) (dispatch : Msg -> unit) : IView list =
     if List.isEmpty model.palette then []
-    else
-        let addButtons =
-            model.palette
-            |> List.map (fun kind ->
-                Button.create [
-                    Button.content (sprintf "+ %s" (kindName kind))
-                    Button.onClick (fun _ -> dispatch (AddElement kind))
-                ] :> IView)
-        let removeButton =
-            Button.create [
-                Button.content "Remove selected"
-                Button.isEnabled (match model.selection with ElementSelected _ -> true | _ -> false)
-                Button.onClick (fun _ -> dispatch RemoveSelected)
-            ] :> IView
-        [ WrapPanel.create [
-            WrapPanel.orientation Orientation.Horizontal
-            WrapPanel.children (addButtons @ [ removeButton ])
-          ] :> IView ]
+    else [ ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) ]
 
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
@@ -571,7 +578,7 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
         { sx = p.X; sy = p.Y }
     DockPanel.create [
         DockPanel.children [
-            Border.create [ Border.dock Dock.Bottom; Border.child (controlBar model dispatch) ]
+            Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
             Border.create [
                 Border.background (brush (color 250 250 250))
                 Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))

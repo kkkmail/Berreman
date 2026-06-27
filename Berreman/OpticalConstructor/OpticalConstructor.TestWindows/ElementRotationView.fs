@@ -499,7 +499,7 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [
-                Border.dock Dock.Bottom
+                Border.dock Dock.Top
                 Border.child (controlBar model dispatch)
             ]
             Border.create [
