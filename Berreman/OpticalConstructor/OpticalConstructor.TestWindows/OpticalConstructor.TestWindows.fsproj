@@ -27,6 +27,8 @@
          that renders it. Public MIT Avalonia + FuncUI NuGet only (matching Ui); the
          audit-gated clone stays UNREFERENCED. -->
     <ItemGroup>
+        <!-- Spec 0027 task 012: the ONE reusable optical-table scene (projection, gestures, plate). -->
+        <Compile Include="TableScene.fs" />
         <!-- Spec 0027 task 010 fix: shared pointer→canvas-local mapping (controls are above the canvas). -->
         <Compile Include="SceneInput.fs" />
         <Compile Include="TableRotationView.fs" />
@@ -45,6 +47,10 @@
         <!-- Spec 0027 task 010: the snap-to-beam test (rotate the source, elements snap to the beam). -->
         <Compile Include="SnapToBeamView.fs" />
         <Compile Include="SnapToBeamWindow.fs" />
+        <!-- Spec 0027 task 012: the snap-to-REFLECTED-light test (source, flat mirror R2=45, detector;
+             the light is reflected, not transmitted, and the detector snaps to the reflected beam). -->
+        <Compile Include="SnapToReflectedView.fs" />
+        <Compile Include="SnapToReflectedWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>

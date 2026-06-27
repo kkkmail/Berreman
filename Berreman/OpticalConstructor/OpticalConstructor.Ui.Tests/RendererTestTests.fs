@@ -29,6 +29,20 @@ module RendererTestTests =
         let m = init ()
         Assert.True(List.length m.elements >= 4, "at least a few elements of different kinds")
         Assert.Equal(Some 1, m.selected)
+        // A convex AND a concave lens, and a concave AND a convex curved mirror, so both spherical-cap
+        // signs are visible at once (the cap bulge follows `opticalSign`).
+        let signsFor (k : OpticalConstructor.Domain.Placement.CatalogueKind) =
+            m.elements |> List.filter (fun e -> e.placement.catalogueKind = k) |> List.map (fun e -> e.opticalSign) |> List.sort
+        Assert.Equal<int list>([ -1; 1 ], signsFor OpticalConstructor.Domain.Placement.Lens)
+        Assert.Equal<int list>([ -1; 1 ], signsFor OpticalConstructor.Domain.Placement.CurvedMirror)
+
+    [<Fact>]
+    let ``the cylinder rail count defaults to 12 and is clamped to [4, 60]`` () =
+        let m = init ()
+        Assert.Equal(12, m.rails)
+        Assert.Equal(railsMin, (update (SetRails 1) m).rails)        // below min clamps up to 4
+        Assert.Equal(railsMax, (update (SetRails 200) m).rails)      // above max clamps down to 60
+        Assert.Equal(20, (update (SetRails 20) m).rails)             // an in-range value is taken as-is
 
     [<Fact>]
     let ``a clean click far from every element deselects; the renderer stays`` () =

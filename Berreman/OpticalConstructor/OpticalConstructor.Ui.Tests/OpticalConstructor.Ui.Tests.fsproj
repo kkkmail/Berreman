@@ -71,6 +71,8 @@
         <Compile Include="RendererTestTests.fs" />
         <!-- Spec 0027 task 010: the snap-to-beam test window. -->
         <Compile Include="SnapToBeamTests.fs" />
+        <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->
+        <Compile Include="SnapToReflectedTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

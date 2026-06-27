@@ -131,7 +131,7 @@ type LauncherWindow() as this =
     do
         this.Title <- "Optical Constructor — Launcher"
         this.Width <- 380.0
-        this.Height <- 470.0
+        this.Height <- 520.0
         this.CanResize <- false
         let title =
             TextBlock(
@@ -185,8 +185,15 @@ type LauncherWindow() as this =
             Button(
                 Name = "OpenSnapToBeamTestButton",
                 Content = "Test Snap to Beam",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
         snapTestButton.Click.Add(fun _ -> SnapToBeamWindow().Show())
+        let snapReflectedTestButton =
+            Button(
+                Name = "OpenSnapToReflectedTestButton",
+                Content = "Test Snap to Reflected Light",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+        snapReflectedTestButton.Click.Add(fun _ -> SnapToReflectedWindow().Show())
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         panel.Children.Add mainButton
@@ -196,6 +203,7 @@ type LauncherWindow() as this =
         panel.Children.Add elementMovementTestButton
         panel.Children.Add rendererTestButton
         panel.Children.Add snapTestButton
+        panel.Children.Add snapReflectedTestButton
         this.Content <- panel
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
