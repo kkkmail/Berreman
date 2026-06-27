@@ -6,6 +6,7 @@ open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI
 open Xunit
+open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.RendererTestView
 
@@ -30,12 +31,35 @@ module RendererTestTests =
         Assert.Equal(Some 1, m.selected)
 
     [<Fact>]
-    let ``clicking far from every element deselects; the renderer stays`` () =
+    let ``a clean click far from every element deselects; the renderer stays`` () =
         let m0 = init ()
-        // A point well outside the elements' projected centres (top-left corner) selects nothing.
-        let m1 = update (SelectAt { sx = 2.0; sy = 2.0 }) m0
+        // A clean click (press + release, no drag) well outside the elements selects nothing.
+        let far = { sx = 2.0; sy = 2.0 }
+        let m1 = m0 |> update (PointerDown far) |> update (PointerUp far)
         Assert.Equal(None, m1.selected)
         Assert.Equal(m0.renderer, m1.renderer)
+
+    [<Fact>]
+    let ``the wheel zooms the table and rotates the selection`` () =
+        let m0 = init ()   // an element is selected (index 1)
+        // Plain wheel zooms the view.
+        Assert.True((update (Wheel (Set.empty, 1)) m0).view.zoom > m0.view.zoom, "plain wheel zooms in")
+        // Shift+wheel rotates the SELECTED element's R1 (not the table view).
+        let rotated = update (Wheel (Set.ofList [ ModShift ], 1)) m0
+        Assert.True((List.item 1 rotated.elements).placement.r1.degrees > 0.0, "Shift+wheel rotated the selected element R1")
+        Assert.True(abs (rotated.view.r1.degrees) < 1e-9, "the table view did not rotate while an element was selected")
+        // With nothing selected, Shift+wheel rotates the TABLE view instead.
+        let tableTurned = update (Wheel (Set.ofList [ ModShift ], 1)) { m0 with selected = None }
+        Assert.True(tableTurned.view.r1.degrees > 0.0, "Shift+wheel rotates the table view when nothing is selected")
+
+    [<Fact>]
+    let ``a drag pans the table; a clean click selects the nearest element`` () =
+        let m0 = init ()
+        let dragged =
+            m0
+            |> update (PointerDown { sx = 100.0; sy = 100.0 })
+            |> update (PointerMove { sx = 160.0; sy = 130.0 })
+        Assert.True(abs (dragged.view.panX - 60.0) < 1e-9 && abs (dragged.view.panY - 30.0) < 1e-9, "a drag pans the view")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

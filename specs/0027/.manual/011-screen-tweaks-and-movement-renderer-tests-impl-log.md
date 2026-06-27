@@ -70,3 +70,66 @@ does not; and a window-open smoke.
   controls→top), `TableRotationView.fs` / `ElementRotationView.fs` (controls→top), the three `.fsproj`s
   (new files + the `Controls` palette file), `OpticalConstructor.App/Program.fs` (two launcher buttons +
   window hosts), `TableAndElementRotationTests.fs` (palette smoke updated to the new control's id).
+
+## Follow-up fixes (review feedback)
+
+Three regressions/gaps reported after the above:
+
+**Selection broke in every scene (and the main screen).** Moving the controls to `Dock.Top` pushed the
+canvas DOWN within the window, but the pointer handlers used `e.GetPosition null` (top-level coordinates),
+so clicks/hit-tests landed below where the projection expected them — off by the control-bar height. (Pan
+still worked because it uses deltas; the pure unit tests pass because they feed canvas coordinates
+directly.) Fix: a shared `SceneInput.canvasPoint canvasName e` (new `OpticalConstructor.TestWindows/
+SceneInput.fs`) that locates the named canvas in the visual tree and returns the pointer **relative to
+it**; every scene's `toScreen` now uses it. One headless injection test (`clicking an element then
+Shift+wheel…`) injected at a fixed window point that the new layout shifted — it now targets the
+element's real window position via the canvas offset (`atCanvas`).
+
+**The renderer test lacked table zoom / drag / rotations.** It now carries the same gesture model as the
+combined scene: a drag pans the view, a clean click selects the nearest element, a plain/Ctrl wheel zooms,
+and Shift/Ctrl+Shift/Alt+wheel rotates the SELECTION (the selected element, else the table view). Its
+elements seed with R3 **unlocked** so you can tip them and watch the shape renderer respond.
+
+**(critical) The shape renderer drew elements as if R3 = 90 (facing up).** It drew a face-on disc sized
+from the face extent, which reads as the element tipped toward the top-down viewer. An optical element at
+rest has its face perpendicular to the beam, so it should appear **edge-on / along the beam**. Fix: the
+shape is now an ellipse sampled IN the element's oriented depth×face plane (semi-axes along N1 = the beam
+and N3 = across the face) and projected — so at rest it is thin/edge-on (a source, being long along the
+beam, reads as a wide oval; a thin polarizer as a narrow one), and it opens into a disc only as the
+element is tipped about R3. Colour still conveys nature; the code label still sits beside it.
+
+Tests: `OpticalConstructor.Ui.Tests` **192/192** (renderer gesture tests added: wheel zoom/rotate-selection,
+drag-pan; the renderer `SelectAt` test became a clean-click test). Full solution builds clean. Files:
+new `SceneInput.fs`; `TableRotationView.fs` / `ElementRotationView.fs` / `TableAndElementRotationView.fs` /
+`ElementMovementView.fs` (use `SceneInput.canvasPoint`); `RendererTestView.fs` (gestures + oriented shape);
+`RendererTestTests.fs` / `TableAndElementRotationTests.fs` (test updates); the TestWindows `.fsproj`
+(`SceneInput.fs`).
+
+## Second review round — correct shapes + snap-to-beam test
+
+**The alternative renderer's shapes were wrong.** A flat optical element must read as a CYLINDER whose
+axis is the blue N1 normal; lenses / curved mirrors must show their +/- nature; both normals must always
+be drawn. Rework of the shape renderer (`RendererTestView.fs`):
+- flat elements (light source, polarizer, sample, flat mirror, detector) → a 3-D **cylinder**: two end-cap
+  circles in the N2–N3 face plane (radius = the face extent) at ±half the depth along N1, joined by side
+  rails. A source (long along the beam) reads as a rod, a thin polarizer as a coin — edge-on at rest,
+  opening as it tips.
+- **lens** → biconvex (fat centre) for a converging sign, biconcave (pinched centre) for diverging, drawn
+  in the N1–N3 plane; **curved mirror** → a concave (focusing) / convex arc with a thin backing line.
+  Schematic only — not curved to a real focal length. The sign comes from a seeded `opticalSign` on the
+  test element (a bare placement carries no signed radius of curvature), so the scene now seeds a convex
+  and a concave lens and a concave and a convex mirror alongside the cylinders.
+- **both normals** (blue N1, yellow N2) are now drawn by the shape renderer too (extracted `normalsViews`).
+
+**New test screen — snap to beam** (`SnapToBeamView` + window + launcher button, built via a context-
+forked agent and integrated). A light source plus a polarizer / sample / detector at fixed along-ray gaps.
+Rotating the source's R2 (buttons or wheel, Shift = larger) re-aims the emitted direction (its oriented
+N1 = `Placement.r1Axis`), and `RayModel.snapChain` re-snaps every downstream element along the new beam,
+preserving along-ray spacing — i.e. all elements snap to the beam (spec B.3). Untilted pass-through stops
+keep the beam straight, so the whole chain swings about the source. Tests prove the rest chain lies on the
++X ray and that after a rotation each element is the same distance from the source but off the old ray.
+
+Tests: `OpticalConstructor.Ui.Tests` **196/196**. Full solution builds clean. Files: `RendererTestView.fs`
+(cylinder/lens/mirror geometry + `opticalSign` + both normals), `RendererTestTests.fs` (seed); new
+`SnapToBeamView.fs` / `SnapToBeamWindow.fs` / `SnapToBeamTests.fs`; the TestWindows / Ui.Tests `.fsproj`s;
+`OpticalConstructor.App/Program.fs` (the snap-to-beam launcher button).

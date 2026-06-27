@@ -239,6 +239,16 @@ module TableAndElementRotationTests =
 
     let private pt (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 
+    /// A canvas point in WINDOW coordinates — the controls are docked above the canvas, so the canvas is
+    /// offset down by the control-bar height; a selecting click must target the element's real position.
+    let private atCanvas (w : Window) (sp : ScreenPoint) : Point =
+        let off =
+            w.GetVisualDescendants()
+            |> Seq.tryPick (function :? Canvas as c -> Some c | _ -> None)
+            |> Option.bind (fun c -> c.TranslatePoint(Point(0.0, 0.0), w) |> Option.ofNullable)
+            |> Option.defaultValue (Point(0.0, 0.0))
+        Point(off.X + sp.sx, off.Y + sp.sy)
+
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``a real Shift+wheel rotates the table (table selected at start)`` () =
@@ -252,9 +262,9 @@ module TableAndElementRotationTests =
         HeadlessSession.run (fun () ->
             let m =
                 withMouseHarness (fun w ->
-                    w.MouseDown(pt center, MouseButton.Left, RawInputModifiers.None)
+                    w.MouseDown(atCanvas w center, MouseButton.Left, RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-                    w.MouseUp(pt center, MouseButton.Left, RawInputModifiers.None)
+                    w.MouseUp(atCanvas w center, MouseButton.Left, RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
                     w.MouseWheel(pt center, Vector(0.0, 1.0), RawInputModifiers.Shift))
             Assert.Equal(ElementSelected 1, m.selection)

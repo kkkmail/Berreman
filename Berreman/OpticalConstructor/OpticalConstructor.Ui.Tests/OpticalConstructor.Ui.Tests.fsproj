@@ -69,6 +69,8 @@
         <Compile Include="ElementMovementTests.fs" />
         <!-- Spec 0027 task 010: the renderer test window (swappable element renderer). -->
         <Compile Include="RendererTestTests.fs" />
+        <!-- Spec 0027 task 010: the snap-to-beam test window. -->
+        <Compile Include="SnapToBeamTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -405,9 +405,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 /// the content origin, a top-level pointer position equals a canvas coordinate. `e.Handled <-
 /// true` drops FuncUI's duplicate Tunnel|Bubble pass, so a wheel notch is exactly one step.
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint =
-        let p = e.GetPosition null
-        { sx = p.X; sy = p.Y }
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [

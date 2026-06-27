@@ -27,6 +27,8 @@
          that renders it. Public MIT Avalonia + FuncUI NuGet only (matching Ui); the
          audit-gated clone stays UNREFERENCED. -->
     <ItemGroup>
+        <!-- Spec 0027 task 010 fix: shared pointer→canvas-local mapping (controls are above the canvas). -->
+        <Compile Include="SceneInput.fs" />
         <Compile Include="TableRotationView.fs" />
         <Compile Include="TableRotationWindow.fs" />
         <Compile Include="ElementRotationView.fs" />
@@ -40,6 +42,9 @@
              After TableAndElementRotationView — it reuses its public `kindCode`. -->
         <Compile Include="RendererTestView.fs" />
         <Compile Include="RendererTestWindow.fs" />
+        <!-- Spec 0027 task 010: the snap-to-beam test (rotate the source, elements snap to the beam). -->
+        <Compile Include="SnapToBeamView.fs" />
+        <Compile Include="SnapToBeamWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>

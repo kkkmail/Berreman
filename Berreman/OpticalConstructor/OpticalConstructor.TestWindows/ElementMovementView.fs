@@ -203,9 +203,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     ] :> IView
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint =
-        let p = e.GetPosition null
-        { sx = p.X; sy = p.Y }
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
