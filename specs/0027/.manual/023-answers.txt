@@ -1,0 +1,20 @@
+Here are the answers.
+Q1. Let’s use Library and use the word Materials to describe infinite material, e.g. glass, quartz, etc.. The user chooses an element, 
+the system constraints by element kind, the user chooses from the available elements of that kind. We definitely need a separate 
+tree-like “search” window. This is especially true for the samples as you might have, e.g. glass => some kind of glass => then 5 real 
+samples of the same glass with different thickness. This naturally brings us to the sample editor (we will do this later; the mock is enough for now). 
+Basically, then sample must be in the library to be chosen. Additional functionality, like choosing a sample, then modifying it will be also done later. 
+We also need to distinguish between the actual materials (e.g. infinite glass, or just glass) and the cut-out plate. Thus the separation 
+of the library and the materials.
+Q2. There are often non-ideal LPs and CPs or non-ideal D, so all elements should be changeable. We just start from one ideal LP and CPs.
+Q3. Let’s start simple and stick with Mueller Matrix (MM) / Stokes Vector (SV) propagation + wavelength. The source defines a wavelength, 
+then LP or CP defines the input SV, incidence angle and rotation of the sample + wavelength allows calculation of MM of the sample => SV 
+propagates (T, R or both) => analyzer multiplies by its MM, detector then records what it is supposed to record => we get chart(s) + data.
+Q4. Let’s start simple: The experiment is a choice of which element’s R1 makes a circle. Model that as a single case DU (for now) so that 
+we can easily add other experiments and the compiler will tell us where to fix.
+Q5. Detector type fixes what it can measure. 
+Q6. The analyzer is LP / CP (or LP + CP / CP + LP) placed after the sample. If the sample support both R and T, then there will be two analyzers.
+Q7. Out of scope of the current task. 
+Q8. See Q4. We start with 1D experiment, then add another DU cases when needed. Compiles will tell us what to fix.
+
+Write updated version into 024. Do not change any other files.
