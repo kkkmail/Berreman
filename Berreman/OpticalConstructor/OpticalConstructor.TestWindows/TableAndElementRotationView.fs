@@ -731,17 +731,40 @@ let private mainTableViews (model : Model) : IView list =
         |> List.map (fun (a, b) -> line a b rayColor 2.0)
     (face :: edges) @ beam
 
-/// The elements drawn through the chosen renderer at their SNAPPED positions (so they sit on the bent
-/// beam). Orientation / zoom are the element's own; only the centre is the snapped one.
+/// Whether an element AUTO-ORIENTS to the beam it sits on. A transmissive element faces its incoming beam
+/// (so it stays perpendicular to the beam after a reflection); the SOURCE emits along its own aim and a
+/// MIRROR's orientation DEFINES its reflection, so those keep their own (dialled) orientation.
+let autoOrientsToBeam (kind : CatalogueKind) : bool =
+    match kind with
+    | LightSource | FlatMirror | CurvedMirror -> false
+    | LinearPolarizer | CircularPolarizer | Sample | Lens | Detector -> true
+
+/// The placement each Main element is DRAWN with: its snapped centre, plus — for a transmissive downstream
+/// element — auto-orientation to face the beam (the beam's absolute R2/R3 from `RayModel.beamOrientation`
+/// plus the element's own dialled R2/R3, exactly as the snap-to-reflected test). The source / mirrors keep
+/// their own orientation.
+let drawnPlacement (m : Model) (i : int) : ElementPlacement =
+    let e = List.item i m.elements
+    let node = (fst (mainSnap m)).[i]
+    let centred = { e.placement with placementPoint = { x = node.position.x * 1.0<meter>; y = node.position.y * 1.0<meter> } }
+    match node.incoming with
+    | Some dir when autoOrientsToBeam e.placement.catalogueKind ->
+        let beamR2, beamR3 = RayModel.beamOrientation dir
+        { centred with r2 = beamR2 + e.placement.r2; r3 = beamR3 + e.placement.r3 }
+    | _ -> centred
+
+/// The elements drawn through the chosen renderer at their snapped, auto-oriented placements (zoom is the
+/// element's own).
 let private mainElementViews (model : Model) : IView list =
     let renderer = ElementRenderer.rendererOf model.render
     let project = projectPt model.view
-    let centres = snappedCentres model
+    let nodes = fst (mainSnap model)
     model.elements
     |> List.mapi (fun i e ->
-        let pos = centres.[i]
-        let placed = { e.placement with placementPoint = { x = pos.x * 1.0<meter>; y = pos.y * 1.0<meter> } }
-        renderer.draw project (model.selection = ElementSelected i) { placement = placed; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind })
+        // The CENTRE is the full 3-D snapped position (so an element snapped out of the table plane after an
+        // R3-tilted mirror is drawn off the plane); `drawnPlacement` carries the orientation.
+        renderer.draw project (model.selection = ElementSelected i)
+            { placement = drawnPlacement model i; centre = nodes.[i].position; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind })
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is

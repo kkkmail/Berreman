@@ -127,6 +127,36 @@ module TableAndElementRotationTests =
         Assert.True(abs ((snappedCentres straight).[1]).y < 1.0e-9, "a polarizer keeps the beam straight")
 
     [<Fact>]
+    let ``Main: tilting a mirror's R3 snaps downstream elements OUT of the table plane (z changes)`` () =
+        // A flat mirror tilted out of plane (R3 = 30°) sends the reflected beam out of the table plane, so
+        // the downstream detector snaps to a position with a non-zero z (perpendicular to the table). R3
+        // starts locked on a fresh element, so unlock it first (as the user does).
+        let m =
+            initMain ()
+            |> update (AddElement FlatMirror)                            // mirror (index 2) selected, R3 locked
+            |> update ToggleR3Lock                                       // unlock the mirror's R3
+            |> update (RotSetAxis (RotationControls.R3, 30.0))
+        let det = (snappedCentres m).[1]
+        Assert.True(abs det.z > 1.0e-3, $"the detector snapped out of the table plane (z = {det.z})")
+        // In plane (no R3) the detector stays on the table (z = 0).
+        let flat = initMain () |> update (AddElement FlatMirror) |> update (RotSetAxis (RotationControls.R2, 45.0))
+        Assert.True(abs ((snappedCentres flat).[1]).z < 1.0e-9, "an in-plane reflection keeps z = 0")
+
+    [<Fact>]
+    let ``Main: a transmissive downstream element auto-orients to face the reflected beam`` () =
+        let m = initMain () |> update (AddElement FlatMirror) |> update (RotSetAxis (RotationControls.R2, 45.0))
+        let incoming = ((fst (mainSnap m)).[1]).incoming |> Option.get   // the reflected beam at the detector
+        Assert.True(abs incoming.y > 1.0e-3, "the beam at the detector is reflected (bent off +X)")
+        // The detector is drawn FACING that reflected beam (its N1 = the incoming direction), as in the test.
+        let (n1, _, _) = orientedBasis (drawnPlacement m 1)
+        Assert.True(abs (n1.x - incoming.x) < 1.0e-6 && abs (n1.y - incoming.y) < 1.0e-6 && abs (n1.z - incoming.z) < 1.0e-6,
+                    $"the detector faces the reflected beam (n1 = {n1.x}, {n1.y}, {n1.z})")
+        // A mirror is NOT auto-oriented (its orientation defines the reflection); the source neither.
+        Assert.False(autoOrientsToBeam FlatMirror)
+        Assert.False(autoOrientsToBeam LightSource)
+        Assert.True(autoOrientsToBeam Detector && autoOrientsToBeam LinearPolarizer)
+
+    [<Fact>]
     let ``the ribbon offers every large control as a Bay; selecting one is pure state`` () =
         let m = initMain ()
         Assert.Equal(BayNames.rotation, m.ribbon)                      // Rotation shown first

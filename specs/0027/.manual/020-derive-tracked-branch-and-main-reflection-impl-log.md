@@ -42,11 +42,34 @@ nothing. It now SNAPS, following the same approach:
   the source and detector are elements and draw themselves); `mainElementViews` draws each element at its
   snapped centre through the shared renderer.
 - Rotating the source (its R2) re-aims the beam and the whole chain re-snaps; rotating a mirror re-aims its
-  reflection. The Move bay slides a selected element's along-beam position (its gap). Element ORIENTATION is
-  the element's own (the user rotates it) — only the position snaps; the constructor stays explicit.
+  reflection. The Move bay slides a selected element's along-beam position (its gap).
 
-New test: on the Main screen, adding a flat mirror tilted to R2 = 45° puts the downstream detector OFF the
-straight ray (the beam reflected); adding a polarizer instead keeps it straight.
+**Downstream elements AUTO-ORIENT to the beam (as in the snap-to-reflected test).** A transmissive element
+(polarizer / sample / lens / detector) is drawn facing its incoming beam: `RayModel.beamOrientation` (the
+absolute R2/R3 that point N1 along a direction — promoted from the snap-to-reflected view into the shared
+domain) plus the element's OWN dialled R2/R3. So at dialled 0 it is perpendicular to the (possibly
+reflected) beam, and a dialled value tilts it relative to the beam. The SOURCE (it emits along its own aim)
+and MIRRORS (their orientation defines the reflection) keep their own orientation — `autoOrientsToBeam`
+encodes this. The drawn placement is the public `drawnPlacement`.
+
+New tests: on the Main screen, adding a flat mirror tilted to R2 = 45° puts the downstream detector OFF the
+straight ray (the beam reflected) while a polarizer keeps it straight; and the detector downstream of that
+mirror is drawn FACING the reflected beam (its N1 = the incoming direction), with the source / mirror not
+auto-oriented.
+
+## Follow-up fix — out-of-plane (R3) snapping was flattened to the table
+
+Reported: with the mirror's R3 changed, downstream orientation was right but the PLACEMENT z (perpendicular
+to the table) never changed. `RayModel.snapChain` does produce a full 3-D position (an R3-tilted mirror
+reflects the beam OUT of the table plane), but the Main drawing stuffed that position into the 2-D
+`placementPoint` (x, y only), so z was dropped and the elements stayed flat — while the snap-to-reflected
+test draws at the full 3-D snapped position. Fix: `ElementRenderer.Drawable` now carries an explicit 3-D
+`centre : Vector3` (with `centreOfPlacement` = the 2-D point at z = 0 for on-table elements), and every
+renderer helper offsets from that centre's x/y/**z**. The renderer test passes `centreOfPlacement` (z = 0,
+unchanged); the Main screen passes the full snapped `node.position`. So an element snapped off the plane is
+drawn off the plane (revealed when the table view is tilted — at top-down the projection drops z, as it
+must). New test: tilting a mirror's R3 (after unlocking it) snaps the downstream detector to a non-zero z;
+an in-plane (R2-only) reflection keeps z = 0. `OpticalConstructor.Ui.Tests` **224/224**.
 
 ## Files
 
