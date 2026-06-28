@@ -1,0 +1,25 @@
+I think that it works in principle. The question is if works correctly. I need more functionality to compare what 
+FSX produces and what I will see in the optical constructor. Do the following.
+
+The charts that the experiments generate should have axes, labels, and major gridlines. Double click on the chart 
+should open a separate chart view window. This window should allow tweaking font sizes, export into PNG and CSV, 
+minor and major gridlines, zoom, etc. must be present and under the chart there should be a description of what it 
+is about (based on the elements and what we rotate). Mouse movement should have a dot snapped to the chart line moving 
+along with the mouse AND showing x and y values. This is fairly standard, so do not guess, just look up and choose 
+the most suitable / convenient. We already use some interactive chart engine – so just use it there.
+
+Library. The element should be assigned with the confirmation AND full description of what it is should be visible. 
+E.g. `Quarter-wave multilayer` makes no sense unless we know what it is AND we can’t make a decent description out of 
+e.g. 100 layer thin film. We do need an element view screen to show detailed information about the element in the library. 
+This scree will show what it is along with all the materials and thicknesses if there is more than one layer. The V1 version 
+of the app (add a button to the ribbon after Experiments to load it) had some nice multilayer representations. Borrow some 
+ideas from there but remember that we are working with reusable “Lego-style” components, whereas V1 was a “soup” of ideas 
+just to see what works and how it does it.
+
+Add all useful samples from C:\GitHub\Berreman\Berreman\Analytics\Examples\ except wedges, what’s in Work_01.fsx and 
+in case there are repetitions and / or the samples are useless. Look at the legacy Mathematica examples as well: 
+C:\GitHub\Berreman\legacy\examples\ to see if any useful samples and materials could be extracted from there.
+
+We need R2 and lambda 1D experiments. That’s the experiments where we vary R2 or wavelength. R2 is limited to 0 – 90 but 
+90 cannot be calculated, so we use 89 but draw the chart to 90. Use wavelength range whatever is in the examples 
+(I think something around 200 to 800 nm) but let the user change the range as needed.
