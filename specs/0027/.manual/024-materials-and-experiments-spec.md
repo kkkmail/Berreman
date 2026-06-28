@@ -30,8 +30,15 @@ Detector          ── records what its TYPE permits (intensity = S0; ellipsom
 - **T / R / both** reuse the existing `Emission` DU (`EmitReflectedOnly | EmitTransmittedOnly | EmitBoth`,
   `Placement.fs`) and the snap-chain branch work: a sample that emits **both** drives **two** analyzer +
   detector arms (Q6) — one on the transmitted branch, one on the reflected.
+- **Any number of elements of any kind** may be present — because everything is MM/SV, the chain simply
+  composes them in beam order (R2). Equally, elements may be **MISSING**: real runs often omit some or all
+  elements (no input polarizer, no analyzer, sometimes not even a source or detector), so an absent element
+  just leaves a gap in the chain — **nothing is synthesized in its place** (R1).
 - The element's `valueId : string option` (`Placement.fs:188`, already present, `None` by default) is the
   binding key from a table element to its stored spec.
+- Each table element also carries its own stable, **serializable identity — an `id : ElementId`** (an
+  elevated single-case DU, distinct from `valueId`). Experiments and setup steps reference an element by this
+  **id**, never by an in-memory element reference (which cannot be serialized).
 
 **For reference, the underlying engine path** (unchanged): `IncidentLightInfo` + `OpticalSystem`
 (`films`/`substrate`) + `RangedVariable` → `Analytics.Variables.calculate` → `Solution.emSys` →
@@ -62,9 +69,10 @@ only entries valid for that kind; the user picks one, which sets the element's `
 bound name). A `Sample` element shows samples; a `Detector` shows detector types; a polarizer shows LP/CP
 specs; the source shows source presets.
 
-**Tree-like search window.** The Library is a **tree**, not a flat list — essential for samples, e.g.
-`Samples → Glass → (a kind of glass) → {0.5 mm, 1 mm, 2 mm, …}`. The bay presents a searchable tree; the mock
-proxy returns that tree.
+**Tree-like search window (one of several representations).** A **tree** is essential for samples — e.g.
+`Samples → Glass → (a kind of glass) → {0.5 mm, 1 mm, 2 mm, …}` — but a tree is just **one representation**;
+there may be **more than one** (different groupings: by category, by element kind, by recently-used, …), and
+the bay can offer flat/search views too (R3). The mock proxy returns one or more trees.
 
 **Changeability (Q2).** Real LPs/CPs and detectors are often **non-ideal**, so these specs are Library
 entries that can be **swapped**. We **start** with one **ideal LP** and two **ideal CP** (left / right) and
@@ -106,13 +114,14 @@ type LibraryEntry =                   // the choosable, kind-constrained, tree-o
 
 ### 2b. The **Experiments** bay
 
-**An experiment (Q4): a choice of WHICH element's R1 makes a full circle.** Model it as a **single-case DU
-now**, so adding experiment kinds later is compiler-guided:
+**An experiment (Q4): a choice of WHICH element's R1 makes a full circle** — the element named by its
+serializable **`id`**. Model it as a **single-case DU now**, so adding experiment kinds later is
+compiler-guided:
 
 ```fsharp
 type Experiment =
-    | RotateR1FullCircle of ElementRef        // sweep this element's R1 over 0 … 360°  (1-D)
-    // future cases (compiler will flag the match sites): RotateR1 of ElementRef * Range<Angle>,
+    | RotateR1FullCircle of ElementId         // sweep THIS element's (by id) R1 over 0 … 360°  (1-D)
+    // future cases (compiler will flag the match sites): RotateR1 of ElementId * Range<Angle>,
     //   SweepWaveLength of …, SweepIncidenceAngle of …, a 2-D pair, …
 ```
 
@@ -134,8 +143,8 @@ since nothing is stored (Q7: real persistence out of scope):
 ```fsharp
 type LibraryProxy =
     { entriesForKind : CatalogueKind -> Result<LibraryEntry list, LibraryError>     // kind-constrained
-      libraryTree    : unit -> Result<LibraryNode, LibraryError>                    // the searchable tree
-      tryGetEntry    : string -> Result<LibraryEntry option, LibraryError> }        // by valueId
+      libraryTrees   : unit -> Result<LibraryTree list, LibraryError>               // one OR MORE tree representations (R3)
+      tryGetEntry    : string -> Result<LibraryEntry option, LibraryError> }        // by valueId (= the entry id)
 
 type MaterialProxy =                                                                // the infinite materials
     { listMaterials  : unit -> Result<Material list, MaterialError>
@@ -173,9 +182,11 @@ type ExperimentProxy =
 
 ## 5. What this touches (when we build it — NOT in this task)
 
-- `OpticalConstructor.Domain`: `Material` (keep `MaterialEntry`), `Sample` (cut-out plate), `LibraryEntry` +
-  tree, `Experiment` / `ExperimentSet` (single-case DUs), the `*Proxy` + `*Error` types, and the MM/SV
-  propagation pipeline (compose ideal-polarizer MMs with the engine sample MM, read out per detector type).
+- `OpticalConstructor.Domain`: an elevated **`ElementId`** + a stable `id` on each table element; `Material`
+  (keep `MaterialEntry`), `Sample` (cut-out plate), `LibraryEntry` + **one-or-more tree representations**,
+  `Experiment` / `ExperimentSet` (single-case DUs keyed by `ElementId`), the `*Proxy` + `*Error` types, and
+  the MM/SV propagation pipeline (compose ideal-polarizer MMs around the engine sample MM, read out per
+  detector type; **absent elements simply skipped**).
 - `OpticalConstructor.Controls`: two Bays (`LibraryControls` with a tree-search view; `ExperimentControls`)
   in the `State` + `Handlers` shape.
 - `OpticalConstructor.TestWindows` (Main scene): two more `Ribbon.Bay`s; bind `valueId` on select.
@@ -211,14 +222,17 @@ type ExperimentProxy =
 - **Q6 — analyzer:** an **LP/CP after the sample** (not a distinct element); **two** analyzers if the sample
   emits both R and T.
 - **Q7 — persistence:** **out of scope** now (mocks only).
+- **Element identity:** elements are referenced by a stable, **serializable `id : ElementId`**, never by an
+  in-memory reference (so experiments / setup steps survive save-load).
+- **R1 — no required elements:** the table need not contain any particular element; real runs may omit some
+  or all, and an absent element is simply not in the MM/SV chain — **nothing is synthesized** in its place.
+- **R2 — any number / any kind:** since everything is MM/SV, any number of elements of any kind may be
+  present and are composed in beam order; an experiment's swept element may be **any present element** (by id).
+- **R3 — representations:** the tree is just **one** Library representation; there may be **more than one**
+  tree (different groupings) plus flat / search views.
 
-**Residual (small, can decide as we build):**
-- **R1.** Input polarizer / analyzer placement: do we *require* an LP/CP table element before the sample
-  (input) and after it (analyzer), or synthesize ideal ones when absent?
-- **R2.** Sample ↔ table: does one `Sample` table element map to one `OpticalSystem` (its samples may already
-  be multilayer), and how is the swept-element list (for "which element's R1") presented (only
-  analyzers/polarizers, or any element)?
-- **R3.** Tree shape for the mock Library (categories/levels) — fine to fix pragmatically in Phase 1.
+**Residual (none blocking; settle while building):** the mock Library's concrete tree groupings, and the
+exact ellipsometer (Ψ/Δ) readout wiring.
 
 ---
 
