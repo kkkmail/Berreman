@@ -69,6 +69,16 @@
         <!-- Spec 0027 (002-rotate-table-task): the pure 3-D table rotation + orthographic
              projection + selection hit-test (Domain `TableView.fs`). Avalonia-free. -->
         <Compile Include="TableViewTests.fs" />
+        <!-- Spec 0027 (024) Phase 1: the Library domain — ElementId, kind-constrained entriesForKind,
+             tryGetEntry, the grouping trees, forKinds, and the mock/stub LibraryProxy seam. -->
+        <Compile Include="LibraryProxyTests.fs" />
+        <!-- Spec 0027 (024) Phase 2: the Experiments domain — the single-case Experiment DU
+             (RotateR1FullCircle by ElementId), the ExperimentSet shape, and the mock/stub ExperimentProxy. -->
+        <Compile Include="ExperimentProxyTests.fs" />
+        <!-- Spec 0027 (024) Phase 3/4: the pure MM/SV propagation pipeline — the Malus proof (rotating
+             ideal analyzer after an ideal input over an identity sample), the ideal-polarizer Stokes/
+             Mueller constants, the engine sample-MM sanity bound, and the ellipsometer Ψ/Δ round-trip. -->
+        <Compile Include="PropagationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

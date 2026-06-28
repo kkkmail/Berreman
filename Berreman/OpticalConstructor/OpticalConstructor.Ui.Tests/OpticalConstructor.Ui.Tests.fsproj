@@ -77,6 +77,12 @@
         <Compile Include="SnapToBeamTests.fs" />
         <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->
         <Compile Include="SnapToReflectedTests.fs" />
+        <!-- Spec 0027 (024) Phase 1: the Library bay — pure control contract + host kind-constrained
+             flattening + the BindValueId binding + a headless render/click proof. -->
+        <Compile Include="LibraryControlsTests.fs" />
+        <!-- Spec 0027 (024) Phase 2: the Experiments bay — pure control contract + host candidate
+             flattening + the ChooseSweptElement binding + a headless render/click proof. -->
+        <Compile Include="ExperimentControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

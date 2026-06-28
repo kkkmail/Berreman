@@ -32,6 +32,14 @@
         <!-- Spec 0027 (018): the renderer "large control" and the main-screen ribbon of "Bays". -->
         <Compile Include="RendererControls.fs" />
         <Compile Include="Ribbon.fs" />
+        <!-- Spec 0027 (024): the Library bay — a kind-constrained list/tree of choosable entries
+             (Samples / Sources / Detectors / Polarizers); selecting an entry binds the element's
+             valueId. Domain-free (rows are host-flattened). -->
+        <Compile Include="LibraryControls.fs" />
+        <!-- Spec 0027 (024) Phase 2: the Experiments bay — choose WHICH present element's R1 sweeps a
+             full circle (the rotating-analyzer experiment). Build / edit only (no solve yet).
+             Domain-free (candidates are host-flattened). -->
+        <Compile Include="ExperimentControls.fs" />
     </ItemGroup>
 
     <ItemGroup>

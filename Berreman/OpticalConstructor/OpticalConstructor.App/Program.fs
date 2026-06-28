@@ -119,7 +119,12 @@ type MainConstructorWindow() as this =
         // Spec 0027 task 018: the Main screen is now the ribbon of "large controls" (`mainView`) — the
         // ribbon's tab strip + the tallest bay (Render, three rows) need more headroom than the flat bar.
         this.Height <- TableAndElementRotationView.canvasHeight + 210.0
-        Program.mkSimple TableAndElementRotationView.initMain TableAndElementRotationView.update TableAndElementRotationView.mainView
+        // Spec 0027 (024): build the mock Library + Experiments proxies at the composition root and inject
+        // them into the Main scene. Real, disk-backed proxies would later be built here instead (in
+        // `OpticalConstructor.Storage`), leaving the scene/bay logic unchanged.
+        let library = OpticalConstructor.Domain.Library.createInMemory ()
+        let experiments = OpticalConstructor.Domain.Experiments.createInMemory ()
+        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments) TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 

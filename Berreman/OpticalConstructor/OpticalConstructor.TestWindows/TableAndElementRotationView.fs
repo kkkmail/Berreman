@@ -18,6 +18,8 @@ open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Berreman.Constants
 open Berreman.Geometry
+open Berreman.MaterialProperties
+open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
@@ -74,6 +76,10 @@ let wheelAction (mods : Set<WheelModifier>) : WheelAction =
 
 type TestElement =
     {
+        /// Spec 0027 (024) §1/§5: each table element carries its own stable, serializable identity,
+        /// distinct from `placement.valueId` (the binding key to a Library entry). Experiments and
+        /// setup steps reference an element by this id, never by an in-memory reference.
+        id : Library.ElementId
         placement : ElementPlacement
         zoom : float
     }
@@ -115,6 +121,17 @@ type Model =
         /// root, downstream elements snap onto the beam reflecting at mirrors). `false` for the static test
         /// windows (free placement, unchanged). Set by `initMain`.
         snapChain : bool
+        /// Spec 0027 (024): the injected mock Library IO seam (the functional-proxy convention). Used by
+        /// the Main-screen Library bay to constrain the choosable entries by the selected element's kind
+        /// and to resolve the bound entry name. Defaulted to the in-memory mock for the test scenes.
+        library : Library.LibraryProxy
+        /// Spec 0027 (024) Phase 2: the injected mock Experiments IO seam (the functional-proxy
+        /// convention). Holds the editable / listable experiment-set templates; the bay itself lets the
+        /// user pick which present element is the swept one. Defaulted to the in-memory mock.
+        experiments : Experiments.ExperimentProxy
+        /// Spec 0027 (024) Phase 2: the element whose R1 the experiment sweeps a full circle (the
+        /// rotating-analyzer measurement). Referenced by its serializable id (so it survives save-load).
+        chosenSwept : Library.ElementId option
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -123,17 +140,26 @@ module BayNames =
     let move = "Move"
     let add = "Add"
     let render = "Render"
-    let all = [ rotation; move; add; render ]
+    /// Spec 0027 (024): the Library bay — pick the choosable spec for the selected element.
+    let library = "Library"
+    /// Spec 0027 (024) Phase 2: the Experiments bay — pick which element's R1 sweeps a full circle.
+    let experiments = "Experiments"
+    let all = [ rotation; move; add; render; library; experiments ]
 
 let defaultElementZoom : float = 5.0
 
+/// Mint a fresh, serializable element id (spec §1/§5). Added elements get a GUID; the seeded
+/// source/detector get deterministic ids (see `initMain`) so wiring/experiment tests can name them.
+let private freshId () : Library.ElementId = Library.elementId (System.Guid.NewGuid().ToString())
+
 let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
-    { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+    { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
 
 /// The shared scene seed: the standard table, the straight top-down view, the given elements, the
-/// table selected first, and an add/remove `palette`. `init` (the test window) passes an empty palette;
-/// `initMain` (the Main screen) passes a non-empty one — that is the ONLY difference between them.
-let initWith (elements : TestElement list) (palette : CatalogueKind list) : Model =
+/// table selected first, an add/remove `palette`, and the injected Library proxy. `init` (the test
+/// window) passes an empty palette; `initMain` (the Main screen) passes a non-empty one — that is the
+/// ONLY behavioural difference between them.
+let initWith (library : Library.LibraryProxy) (experiments : Experiments.ExperimentProxy) (elements : TestElement list) (palette : CatalogueKind list) : Model =
     {
         table = Table.defaultTable
         view = Table.defaultView
@@ -146,25 +172,37 @@ let initWith (elements : TestElement list) (palette : CatalogueKind list) : Mode
         render = RendererControls.defaultState
         ribbon = BayNames.rotation
         snapChain = false
+        library = library
+        experiments = experiments
+        chosenSwept = None
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
 /// the central ray, no add/remove palette. Behaviour is unchanged from before — the palette is empty.
+/// The Library proxy defaults to the in-memory mock (the test scene never shows the Library bay).
 let init () : Model =
-    initWith [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
+    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
-/// "Lego constructor"). This is the Main screen — identical scene logic, elements added/removed at runtime.
-let initMain () : Model =
+/// "Lego constructor"). The Library proxy is injected at the composition root. This is the Main screen —
+/// identical scene logic, elements added/removed at runtime.
+let initMainWith (library : Library.LibraryProxy) (experiments : Experiments.ExperimentProxy) : Model =
     // The light source snaps to the table's LEFT edge and the detector to the RIGHT edge — i.e. the
     // central-ray endpoints, which sit exactly on the plate edges (`defaultSourceDetectorDistance` = the
-    // table length). Added elements land between them on the beam.
+    // table length). Added elements land between them on the beam. The source/detector get DETERMINISTIC
+    // ids so wiring/experiment tests can name them.
     { initWith
-        [ { placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
-          { placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
+        library
+        experiments
+        [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
+          { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
         [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
         with snapChain = true }
+
+/// The Main scene with the default in-memory mock proxies (the test default; the composition root
+/// injects its own proxies via `initMainWith`).
+let initMain () : Model = initMainWith (Library.createInMemory ()) (Experiments.createInMemory ())
 
 type Msg =
     | RotateR1By of float
@@ -201,6 +239,12 @@ type Msg =
     | RenderSetLineOpacity of float
     /// Main-screen ribbon: show this Bay (large control) by name.
     | SelectBay of string
+    /// Main-screen LIBRARY bay (task 024): bind this Library entry id to the selected element's
+    /// `valueId` (inert when the table or nothing is selected).
+    | BindValueId of string
+    /// Main-screen EXPERIMENTS bay (task 024 Phase 2): pick which present element's R1 the experiment
+    /// sweeps a full circle (by its serializable id).
+    | ChooseSweptElement of string
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -387,7 +431,7 @@ let private addElement (kind : CatalogueKind) (m : Model) : Model =
         |> List.filter (fun e -> e.placement.catalogueKind <> LightSource && e.placement.catalogueKind <> Detector)
         |> List.length
     let x = -0.3 + 0.2 * float middleCount
-    let e = { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+    let e = { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
     let elements' = m.elements @ [ e ]
     { m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
 
@@ -461,6 +505,11 @@ let update (msg : Msg) (model : Model) : Model =
     | RenderSetFaceOpacity v -> { model with render = RendererControls.withFaceOpacity v model.render }
     | RenderSetLineOpacity v -> { model with render = RendererControls.withLineOpacity v model.render }
     | SelectBay name -> { model with ribbon = name }
+    | BindValueId entryId ->
+        match model.selection with
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) model
+        | TableSelected | NothingSelected -> model
+    | ChooseSweptElement idStr -> { model with chosenSwept = Some (Library.elementId idStr) }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -625,9 +674,17 @@ let private readoutText (model : Model) : string =
     | ElementSelected i ->
         let e = List.item i model.elements
         let p = e.placement
-        sprintf "Selected: Element %d (%s)   R1 %.0f°   R2 %.0f°   R3 %.0f° (%s)   zoom %.1f×"
+        // Spec 0027 (024): show the bound Library entry (resolved through the Library proxy), or "unbound".
+        let boundName =
+            match p.valueId with
+            | Some id ->
+                match model.library.tryGetEntry id with
+                | Ok (Some entry) -> entry.displayName
+                | Ok None | Error _ -> "unbound"
+            | None -> "unbound"
+        sprintf "Selected: Element %d (%s)   R1 %.0f°   R2 %.0f°   R3 %.0f° (%s)   zoom %.1f×   bound: %s"
             (i + 1) (kindName p.catalogueKind) p.r1.degrees p.r2.degrees p.r3.degrees
-            (if p.r3Locked then "R3 locked" else "R3 free") e.zoom
+            (if p.r3Locked then "R3 locked" else "R3 free") e.zoom boundName
     | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
 /// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
@@ -793,13 +850,222 @@ let private renderHandlers (dispatch : Msg -> unit) : RendererControls.Handlers 
         setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v)
     }
 
+// ---------------------------------------------------------------------------
+// Main-screen LIBRARY bay (task 024): pick the choosable spec for the selected element. The Library is
+// constrained by the selected element's catalogue kind, and selecting an entry binds the element's
+// `valueId`. The bay is domain-free, so the host flattens the chosen grouping tree to `Row`s here.
+// ---------------------------------------------------------------------------
+
+/// The Library entry ids valid for `kind` (the kind-constrained set; `[]` on a proxy error).
+let private allowedEntryIds (model : Model) (kind : CatalogueKind) : Set<string> =
+    match model.library.entriesForKind kind with
+    | Ok entries -> entries |> List.map (fun e -> e.entryId) |> Set.ofList
+    | Error _ -> Set.empty
+
+/// Flatten one grouping tree to `LibraryControls.Row`s, KIND-CONSTRAINED: emit a leaf row only when its
+/// entry id is in `allowed`, and a group header only if it has a surviving descendant leaf (§2a — keep
+/// the tree shape but show only entries valid for the selected element). `boundId` highlights the bound
+/// leaf.
+let rec private flattenNode (allowed : Set<string>) (boundId : string option) (depth : int) (node : Library.LibraryTreeNode) : LibraryControls.Row list =
+    match node with
+    | Library.Leaf (label, entryId) ->
+        if Set.contains entryId allowed then
+            [ { label = label.value; depth = depth; entryId = entryId; isBound = (boundId = Some entryId) } ]
+        else []
+    | Library.Group (label, children) ->
+        let childRows = children |> List.collect (flattenNode allowed boundId (depth + 1))
+        if List.isEmpty childRows then []
+        else { label = label.value; depth = depth; entryId = ""; isBound = false } :: childRows
+
+/// The Library bay state for the current selection: an `ElementSelected` shows the kind-constrained
+/// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
+let private libraryState (model : Model) : LibraryControls.State =
+    match model.selection with
+    | ElementSelected i ->
+        let e = List.item i model.elements
+        let kind = e.placement.catalogueKind
+        let allowed = allowedEntryIds model kind
+        let boundId = e.placement.valueId
+        let rows =
+            match model.library.libraryTrees () with
+            | Ok (tree :: _) -> flattenNode allowed boundId 0 tree.root
+            | Ok [] | Error _ -> []
+        let boundName =
+            match boundId with
+            | Some id ->
+                match model.library.tryGetEntry id with
+                | Ok (Some entry) -> Some entry.displayName
+                | Ok None | Error _ -> None
+            | None -> None
+        { rows = rows; kindLabel = kindName kind; boundName = boundName; enabled = true }
+    | TableSelected | NothingSelected -> LibraryControls.empty
+
+let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers =
+    {
+        chooseEntry = fun entryId -> dispatch (BindValueId entryId)
+    }
+
+// ---------------------------------------------------------------------------
+// Main-screen EXPERIMENTS bay (task 024 Phase 2): pick which present element's R1 the experiment sweeps
+// a full circle. The swept element is referenced by its serializable id (so the experiment survives
+// save-load); the bay offers every present element as a candidate (the proxy holds the editable / listable
+// experiment-set templates — no solve yet). The bay is domain-free, so the host flattens the live scene
+// into `SweepCandidate`s here.
+// ---------------------------------------------------------------------------
+
+/// One present element as a sweep candidate — its serializable id plus a human-readable label
+/// ("<kind> #<n>", 1-based, in scene order).
+let private sweepCandidates (model : Model) : ExperimentControls.SweepCandidate list =
+    model.elements
+    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = sprintf "%s #%d" (kindName e.placement.catalogueKind) (i + 1) })
+
+/// The built experiment's readout for the chosen swept element (resolved BY id against the present
+/// elements, so a stale chosen id — e.g. a removed element — yields no readout). Empty when nothing is
+/// chosen or the chosen element is no longer present. Uses the domain `Experiment` so the readout and
+/// the experiment stay in lock-step.
+let private experimentReadout (model : Model) : string =
+    match model.chosenSwept with
+    | Some chosen ->
+        match model.elements |> List.mapi (fun i e -> i, e) |> List.tryFind (fun (_, e) -> e.id = chosen) with
+        | Some (i, e) ->
+            let exp = Experiments.RotateR1FullCircle e.id
+            sprintf "Experiment: rotate %s #%d R1 0…360°  (%s)" (kindName e.placement.catalogueKind) (i + 1) exp.description
+        | None -> ""
+    | None -> ""
+
+// ---------------------------------------------------------------------------
+// Spec 0027 (024) Phase 3/4: run ONE experiment end-to-end from the LIVE scene. The host resolves the
+// physical run from the present elements (source → λ, input polarizer → SV_in, sample → MM_sample, the
+// chosen analyzer → its polarizer kind, detector → Intensity vs Ellipsometer), then drives the pure
+// `Propagation` pipeline. Absent elements are SKIPPED (nothing synthesized; spec R1): no source → 600 nm,
+// no input polarizer → unpolarized light, no sample → identity MM. The result is an (angleDeg, intensity)
+// curve for an intensity detector, or a Ψ/Δ readout for an ellipsometer.
+// ---------------------------------------------------------------------------
+
+/// Resolve an element's bound Library entry (through the Library proxy), if it has a `valueId` that binds.
+let private boundEntry (model : Model) (e : TestElement) : Library.LibraryEntry option =
+    match e.placement.valueId with
+    | Some id ->
+        match model.library.tryGetEntry id with
+        | Ok (Some entry) -> Some entry
+        | Ok None | Error _ -> None
+    | None -> None
+
+/// The source wavelength from the first light-source element bound to a source preset (else 600 nm — an
+/// absent / unbound source is not synthesized, just defaulted; spec R1).
+let private runWaveLength (model : Model) : WaveLength =
+    model.elements
+    |> List.tryPick (fun e ->
+        match boundEntry model e with
+        | Some (Library.SourceItem s) -> Some s.waveLength
+        | _ -> None)
+    |> Option.defaultValue (WaveLength.nm 600.0<nm>)
+
+/// The input Stokes vector from the FIRST polarizer element bound to an ideal-polarizer preset (its R1 is
+/// the polarizer's orientation). No input polarizer → unpolarized natural light (spec R1).
+let private runInputStokes (model : Model) : StokesVector =
+    model.elements
+    |> List.tryPick (fun e ->
+        match boundEntry model e with
+        | Some (Library.PolarizerItem p) -> Some (Propagation.inputStokes p.kind e.placement.r1)
+        | _ -> None)
+    |> Option.defaultValue Propagation.unpolarizedStokes
+
+/// The sample's Mueller matrix from the FIRST sample element bound to a sample preset (via the engine), at
+/// the run wavelength and normal incidence. No sample → the identity MM (a transparent pass-through; the
+/// Malus law then holds exactly).
+let private runSampleMueller (model : Model) : MuellerMatrix =
+    let w = runWaveLength model
+    model.elements
+    |> List.tryPick (fun e ->
+        match boundEntry model e with
+        | Some (Library.SampleItem s) -> Some (Propagation.sampleMuellerT s w IncidenceAngle.normal)
+        | _ -> None)
+    |> Option.defaultValue Propagation.identityMueller
+
+/// The analyzer's polarizer kind: the CHOSEN swept element if it is bound to a polarizer preset, else the
+/// first polarizer AFTER any sample, else an ideal linear analyzer (so the sweep is always well-defined).
+let private runAnalyzerKind (model : Model) : Library.PolarizerKind =
+    let chosenKind =
+        match model.chosenSwept with
+        | Some chosen ->
+            model.elements
+            |> List.tryFind (fun e -> e.id = chosen)
+            |> Option.bind (fun e ->
+                match boundEntry model e with
+                | Some (Library.PolarizerItem p) -> Some p.kind
+                | _ -> None)
+        | None -> None
+    match chosenKind with
+    | Some k -> k
+    | None ->
+        model.elements
+        |> List.choose (fun e ->
+            match boundEntry model e with
+            | Some (Library.PolarizerItem p) -> Some p.kind
+            | _ -> None)
+        |> List.tryLast
+        |> Option.defaultValue Library.IdealLinear
+
+/// Whether the scene's detector (the first detector element bound to a detector preset) is an ellipsometer.
+let private runDetectorKind (model : Model) : Library.DetectorKind =
+    model.elements
+    |> List.tryPick (fun e ->
+        match boundEntry model e with
+        | Some (Library.DetectorItem d) -> Some d.kind
+        | _ -> None)
+    |> Option.defaultValue Library.Intensity
+
+/// The number of samples in the rotating-analyzer sweep (0…360° inclusive).
+let experimentCurvePoints : int = 73
+
+/// The inline result for the Experiments bay: the rotating-analyzer intensity curve for an intensity
+/// detector, or the ellipsometer Ψ/Δ (in degrees) for an ellipsometer. Shown only when an experiment is
+/// built (an element is chosen as the swept one). Public so the host's detector-kind branch (Phase 4 —
+/// `Intensity` ⇒ a curve and no Ψ/Δ; `Ellipsometer` ⇒ Ψ/Δ and no curve) is unit-testable without a window.
+let experimentResult (model : Model) : (float * float) list * (float * float) option =
+    match model.chosenSwept with
+    | Some chosen when model.elements |> List.exists (fun e -> e.id = chosen) ->
+        let svIn = runInputStokes model
+        let mmSample = runSampleMueller model
+        match runDetectorKind model with
+        | Library.Ellipsometer ->
+            let svDet = mmSample * svIn
+            let pd = Propagation.ellipsometerReadout svDet
+            [], Some (pd.psi.degrees, pd.delta.degrees)
+        | Library.Intensity ->
+            let curve = Propagation.rotatingAnalyzerCurve svIn mmSample (runAnalyzerKind model) experimentCurvePoints
+            curve.points, None
+    | _ -> [], None
+
+/// The Experiments bay state for the current scene: every present element is a candidate; the chosen
+/// swept element (if any) is highlighted; the readout reflects the built experiment; the inline result is
+/// the intensity curve (or Ψ/Δ) of the end-to-end run. Disabled when the scene has no elements.
+let private experimentState (model : Model) : ExperimentControls.State =
+    let chart, psiDelta = experimentResult model
+    {
+        candidates = sweepCandidates model
+        chosenId = model.chosenSwept |> Option.map (fun id -> id.value)
+        experimentName = experimentReadout model
+        enabled = not (List.isEmpty model.elements)
+        chart = chart
+        psiDelta = psiDelta
+    }
+
+let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Handlers =
+    {
+        chooseSwept = fun id -> dispatch (ChooseSweptElement id)
+    }
+
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
 let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
     [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch) }
       { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch) }
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
-      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) } ]
+      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) }
+      { name = BayNames.library; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
+      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) } ]
 
 let private mainControlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [

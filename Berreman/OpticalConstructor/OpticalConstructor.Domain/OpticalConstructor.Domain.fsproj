@@ -45,6 +45,16 @@
         <Compile Include="CurvedElements.fs" />
         <Compile Include="DispersionModels.fs" />
         <Compile Include="MaterialLibrary.fs" />
+        <!-- Spec 0027 (024): elevated ElementId + the Library (Sample/Source/Detector/Polarizer
+             presets), the grouping-tree representations, and the mock LibraryProxy (functional-proxy
+             seam). Depends on MaterialLibrary, Placement.CatalogueKind, and the engine
+             WaveLength/Thickness. -->
+        <Compile Include="ElementId.fs" />
+        <!-- Spec 0027 (024) Phase 3/4: the pure MM/SV propagation pipeline — ideal-polarizer Mueller
+             matrices (constants), the sample's Mueller matrix from the EXISTING engine, SV propagation,
+             the rotating-analyzer intensity curve (the Malus proof), and the ellipsometer Ψ/Δ readout.
+             Depends on the engine Fields/Media/Solvers + the Library domain. -->
+        <Compile Include="Propagation.fs" />
     </ItemGroup>
 
     <ItemGroup>
