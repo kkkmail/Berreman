@@ -55,6 +55,34 @@ module RendererTestTests =
         Assert.Equal(0, railIndex 4)
 
     [<Fact>]
+    let ``cap circles default to 1 and clamp to [1, 8]; radials default to 4 and snap to presets`` () =
+        let m = init ()
+        Assert.Equal(1, m.capCircles)
+        Assert.Equal(4, m.capRadials)
+        Assert.Equal<int list>([ 4; 8; 12; 24; 36 ], radialOptions)
+        // Circles: a contiguous 1..8 clamp.
+        Assert.Equal(1, (update (SetCapCircles 0) m).capCircles)         // below min clamps up to 1
+        Assert.Equal(8, (update (SetCapCircles 99) m).capCircles)        // above max clamps to 8
+        Assert.Equal(5, (update (SetCapCircles 5) m).capCircles)
+        // Radials: snap-to-preset, and by slider index.
+        Assert.Equal(4, (update (SetCapRadials 1) m).capRadials)         // below min snaps to 4
+        Assert.Equal(36, (update (SetCapRadials 200) m).capRadials)      // above max snaps to 36
+        Assert.Equal(8, (update (SetCapRadials 9) m).capRadials)         // 9 → nearest preset 8
+        Assert.Equal(4, (update (SetCapRadialsIndex 0) m).capRadials)
+        Assert.Equal(36, (update (SetCapRadialsIndex 4) m).capRadials)
+        Assert.Equal(36, (update (SetCapRadialsIndex 99) m).capRadials)  // index clamped
+
+    [<Fact>]
+    let ``the three transparency knobs default to the current look and clamp to [0, 1]`` () =
+        let m = init ()
+        Assert.Equal(0.35, m.railOpacity)
+        Assert.Equal(0.85, m.faceOpacity)
+        Assert.Equal(0.70, m.lineOpacity)
+        Assert.Equal(0.0, (update (SetRailOpacity -1.0) m).railOpacity)   // clamps to 0
+        Assert.Equal(1.0, (update (SetFaceOpacity 2.0) m).faceOpacity)    // clamps to 1
+        Assert.Equal(0.5, (update (SetLineOpacity 0.5) m).lineOpacity)    // in-range as-is
+
+    [<Fact>]
     let ``a clean click far from every element deselects; the renderer stays`` () =
         let m0 = init ()
         // A clean click (press + release, no drag) well outside the elements selects nothing.
@@ -104,6 +132,25 @@ module RendererTestTests =
                 texts
             Assert.Contains("LP", codesUnder Shape)
             Assert.DoesNotContain("LP", codesUnder Wireframe))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the page exposes the rail count, cap detail, and transparency controls`` () =
+        HeadlessSession.run (fun () ->
+            let mutable model = init ()
+            let dispatch (m : Msg) = model <- update m model
+            let window = Window(Width = 920.0, Height = 740.0)
+            window.Content <- Component(fun _ -> view model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let names =
+                window.GetVisualDescendants()
+                |> Seq.choose (function :? Control as c when not (isNull c.Name) -> Some c.Name | _ -> None)
+                |> Set.ofSeq
+            window.Close()
+            for id in [ UiIds.railsSlider; UiIds.capCirclesSlider; UiIds.capRadialsSlider
+                        UiIds.railOpacitySlider; UiIds.faceOpacitySlider; UiIds.lineOpacitySlider ] do
+                Assert.Contains(id, names))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

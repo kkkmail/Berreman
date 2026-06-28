@@ -13,7 +13,8 @@ type RendererTestWindow() as this =
     do
         this.Title <- "Test — Renderers"
         this.Width <- RendererTestView.canvasWidth
-        this.Height <- RendererTestView.canvasHeight + 84.0
+        // Three rows of controls now (swap+rails, cap circles/radials, the three transparency knobs).
+        this.Height <- RendererTestView.canvasHeight + 150.0
         Program.mkSimple RendererTestView.init RendererTestView.update RendererTestView.view
         |> Program.withHost this
         |> Program.run
