@@ -116,8 +116,10 @@ type MainConstructorWindow() as this =
     do
         this.Title <- "Optical Constructor — Main"
         this.Width <- TableAndElementRotationView.canvasWidth
-        this.Height <- TableAndElementRotationView.canvasHeight + 170.0
-        Program.mkSimple TableAndElementRotationView.initMain TableAndElementRotationView.update TableAndElementRotationView.view
+        // Spec 0027 task 018: the Main screen is now the ribbon of "large controls" (`mainView`) — the
+        // ribbon's tab strip + the tallest bay (Render, three rows) need more headroom than the flat bar.
+        this.Height <- TableAndElementRotationView.canvasHeight + 210.0
+        Program.mkSimple TableAndElementRotationView.initMain TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 

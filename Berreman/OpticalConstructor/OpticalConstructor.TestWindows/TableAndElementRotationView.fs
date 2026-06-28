@@ -105,7 +105,21 @@ type Model =
         /// is the ONLY difference between the test scene and the Main scene — same table/zoom/selection/
         /// rotation logic, the Main screen just adds and removes elements at runtime.
         palette : CatalogueKind list
+        /// The renderer "large control" config (task 018) — how the Main screen draws the elements
+        /// (wireframe ⇄ shapes, cap detail, transparency). Used by `mainView`; the static test `view`
+        /// ignores it.
+        render : RendererControls.State
+        /// The selected Main-screen ribbon Bay, by name (task 018). Used by `mainView` only.
+        ribbon : string
     }
+
+/// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
+module BayNames =
+    let rotation = "Rotation"
+    let move = "Move"
+    let add = "Add"
+    let render = "Render"
+    let all = [ rotation; move; add; render ]
 
 let defaultElementZoom : float = 5.0
 
@@ -125,6 +139,8 @@ let initWith (elements : TestElement list) (palette : CatalogueKind list) : Mode
         tableR3Locked = false
         rotationConfirm = RotationControls.NoConfirm
         palette = palette
+        render = RendererControls.defaultState
+        ribbon = BayNames.rotation
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -165,6 +181,20 @@ type Msg =
     /// remove the currently-selected element. Never dispatched by the test windows (empty palette).
     | AddElement of CatalogueKind
     | RemoveSelected
+    /// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate.
+    | SlideSelectedBy of float
+    | SlideSelectedTo of float
+    | ResetSelectedPosition
+    /// Main-screen RENDER bay (task 018): tune how the elements are drawn.
+    | RenderSwap
+    | RenderSetRailsIndex of int
+    | RenderSetCircles of int
+    | RenderSetRadialsIndex of int
+    | RenderSetRailOpacity of float
+    | RenderSetFaceOpacity of float
+    | RenderSetLineOpacity of float
+    /// Main-screen ribbon: show this Bay (large control) by name.
+    | SelectBay of string
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -322,6 +352,35 @@ let private removeSelected (m : Model) : Model =
         { m with elements = elements'; selection = NothingSelected }
     | _ -> m
 
+// ---------------------------------------------------------------------------
+// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate.
+// ---------------------------------------------------------------------------
+
+/// The plate half-length — the clamp for along-beam motion, in metres.
+let plateHalfLength (m : Model) : float = (m.table.length / 2.0) / 1.0<meter>
+
+let elementX (e : TestElement) : float = e.placement.placementPoint.x / 1.0<meter>
+
+let private setElementX (i : int) (x : float) (m : Model) : Model =
+    let half = plateHalfLength m
+    let x' = max (-half) (min half x)
+    mapElement i (fun e -> { e with placement = { e.placement with placementPoint = { e.placement.placementPoint with x = x' * 1.0<meter> } } }) m
+
+let private slideSelectedBy (dx : float) (m : Model) : Model =
+    match m.selection with
+    | ElementSelected i -> setElementX i (elementX (List.item i m.elements) + dx) m
+    | TableSelected | NothingSelected -> m
+
+let private slideSelectedTo (x : float) (m : Model) : Model =
+    match m.selection with
+    | ElementSelected i -> setElementX i x m
+    | TableSelected | NothingSelected -> m
+
+let private resetSelectedPosition (m : Model) : Model =
+    match m.selection with
+    | ElementSelected i -> setElementX i 0.0 m
+    | TableSelected | NothingSelected -> m
+
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotateSelected 1 d model
@@ -345,6 +404,17 @@ let update (msg : Msg) (model : Model) : Model =
     | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
     | AddElement kind -> addElement kind model
     | RemoveSelected -> removeSelected model
+    | SlideSelectedBy dx -> slideSelectedBy dx model
+    | SlideSelectedTo x -> slideSelectedTo x model
+    | ResetSelectedPosition -> resetSelectedPosition model
+    | RenderSwap -> { model with render = RendererControls.swap model.render }
+    | RenderSetRailsIndex i -> { model with render = RendererControls.withRailsIndex i model.render }
+    | RenderSetCircles n -> { model with render = RendererControls.withCircles n model.render }
+    | RenderSetRadialsIndex i -> { model with render = RendererControls.withRadialsIndex i model.render }
+    | RenderSetRailOpacity v -> { model with render = RendererControls.withRailOpacity v model.render }
+    | RenderSetFaceOpacity v -> { model with render = RendererControls.withFaceOpacity v model.render }
+    | RenderSetLineOpacity v -> { model with render = RendererControls.withLineOpacity v model.render }
+    | SelectBay name -> { model with ribbon = name }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -496,18 +566,10 @@ let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handler
         cancel = fun () -> dispatch RotCancel
     }
 
-let kindName (k : CatalogueKind) : string =
-    match k with
-    | LightSource -> "Light source" | LinearPolarizer -> "Linear polarizer" | CircularPolarizer -> "Circular polarizer"
-    | Sample -> "Sample" | Lens -> "Lens" | FlatMirror -> "Flat mirror" | CurvedMirror -> "Curved mirror" | Detector -> "Detector"
-
-/// A short element code shown near an element and used as the palette button / add id (task 010):
-/// S = source, LP/CP = linear/circular polarizer, Sa = sample, L = lens, FM/CM = flat/curved mirror,
-/// D = detector.
-let kindCode (k : CatalogueKind) : string =
-    match k with
-    | LightSource -> "S" | LinearPolarizer -> "LP" | CircularPolarizer -> "CP"
-    | Sample -> "Sa" | Lens -> "L" | FlatMirror -> "FM" | CurvedMirror -> "CM" | Detector -> "D"
+// `kindName` / `kindCode` now live in the early `Catalogue` module (task 018) so the shared renderer can
+// use them too; re-exported here for the existing references (the other scenes, the tests).
+let kindName : CatalogueKind -> string = Catalogue.kindName
+let kindCode : CatalogueKind -> string = Catalogue.kindCode
 
 let private readoutText (model : Model) : string =
     match model.selection with
@@ -586,6 +648,123 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
                     e.Handled <- true
                     dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
                 Border.child (tableCanvas model)
+            ]
+        ]
+    ] :> IView
+
+// ---------------------------------------------------------------------------
+// The Main screen (Spec 0027 task 018): the SAME scene (model / update / table / elements / selection),
+// but its controls are the shared "large controls" laid out as a RIBBON of Bays (MS Word style — the top
+// strip shows the bay names, the selected bay's controls show below), the elements are drawn through the
+// shared `ElementRenderer` (so the Render bay actually changes the look), and the face-opacity knob also
+// affects the table. The static test-window `view` above is unchanged.
+// ---------------------------------------------------------------------------
+
+/// The table plate / ray / markers, with the plate FILL driven by the render face-opacity knob (task 018).
+let private mainTableViews (model : Model) : IView list =
+    let corners = TableView.plateCorners3D model.table |> List.map (projectPt model.view) |> List.toArray
+    let tableSel = (model.selection = TableSelected)
+    let topFace = corners.[0 .. 3] |> Array.map toPoint |> Array.toList
+    let face =
+        Polygon.create [
+            Polygon.points topFace
+            Polygon.fill (brushA model.render.faceOpacity (if tableSel then plateSelectedColor else plateColor))
+            Polygon.stroke (brush (if tableSel then selectedStroke else edgeColor))
+            Polygon.strokeThickness (if tableSel then 3.0 else 1.5)
+        ] :> IView
+    let edges =
+        TableView.plateEdges
+        |> List.map (fun (a, b) -> line { sx = corners.[a].sx; sy = corners.[a].sy } { sx = corners.[b].sx; sy = corners.[b].sy } edgeColor (if tableSel then 2.0 else 1.0))
+    let s = projectPt model.view (RayModel.pointToVector3 RayModel.defaultSourcePoint)
+    let d = projectPt model.view (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
+    let marker (sp : ScreenPoint) (c : Color) : IView =
+        Ellipse.create [
+            Ellipse.left (sp.sx - 6.0); Ellipse.top (sp.sy - 6.0); Ellipse.width 12.0; Ellipse.height 12.0
+            Ellipse.fill (brush c); Ellipse.stroke (brush edgeColor); Ellipse.strokeThickness 1.0
+        ] :> IView
+    (face :: edges) @ [ line s d rayColor 2.0; marker s sourceColor; marker d detectorColor ]
+
+let private toDrawable (e : TestElement) : ElementRenderer.Drawable =
+    { placement = e.placement; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind }
+
+/// The elements drawn through the chosen renderer (the Render bay's `RendererControls.State`).
+let private mainElementViews (model : Model) : IView list =
+    let renderer = ElementRenderer.rendererOf model.render
+    let project = projectPt model.view
+    model.elements
+    |> List.mapi (fun i e -> renderer.draw project (model.selection = ElementSelected i) (toDrawable e))
+    |> List.concat
+
+/// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is
+/// selected). The clamp (±half the plate) is the host's.
+let private moveState (model : Model) : RayPositionControls.State =
+    let half = plateHalfLength model
+    match model.selection with
+    | ElementSelected i -> { position = elementX (List.item i model.elements); minPosition = -half; maxPosition = half; enabled = true }
+    | TableSelected | NothingSelected -> { position = 0.0; minPosition = -half; maxPosition = half; enabled = false }
+
+let private moveHandlers (dispatch : Msg -> unit) : RayPositionControls.Handlers =
+    {
+        moveBy = fun dx -> dispatch (SlideSelectedBy dx)
+        setPosition = fun x -> dispatch (SlideSelectedTo x)
+        reset = fun () -> dispatch ResetSelectedPosition
+    }
+
+let private renderHandlers (dispatch : Msg -> unit) : RendererControls.Handlers =
+    {
+        swap = fun () -> dispatch RenderSwap
+        setRailsIndex = fun i -> dispatch (RenderSetRailsIndex i)
+        setCircles = fun n -> dispatch (RenderSetCircles n)
+        setRadialsIndex = fun i -> dispatch (RenderSetRadialsIndex i)
+        setRailOpacity = fun v -> dispatch (RenderSetRailOpacity v)
+        setFaceOpacity = fun v -> dispatch (RenderSetFaceOpacity v)
+        setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v)
+    }
+
+/// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
+/// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
+let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
+    [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch) }
+      { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch) }
+      { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
+      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) } ]
+
+let private mainControlBar (model : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 4.0
+        StackPanel.children [
+            Ribbon.view { bays = mainBays model dispatch; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
+            TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ]
+        ]
+    ] :> IView
+
+let private mainTableCanvas (model : Model) : IView =
+    Canvas.create [
+        Canvas.name UiIds.canvas
+        Canvas.width canvasWidth
+        Canvas.height canvasHeight
+        Canvas.horizontalAlignment HorizontalAlignment.Left
+        Canvas.verticalAlignment VerticalAlignment.Top
+        Canvas.children (mainTableViews model @ mainElementViews model)
+    ] :> IView
+
+/// The Main screen view: the ribbon of large controls on top, the shared table + renderer-drawn elements
+/// below. Same selection / pan / zoom / rotate gestures as the test scene.
+let mainView (model : Model) (dispatch : Msg -> unit) : IView =
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar model dispatch) ]
+            Border.create [
+                Border.background (brush (color 250 250 250))
+                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
+                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
+                Border.onPointerWheelChanged (fun e ->
+                    e.Handled <- true
+                    dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
+                Border.child (mainTableCanvas model)
             ]
         ]
     ] :> IView

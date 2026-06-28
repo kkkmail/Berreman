@@ -87,6 +87,101 @@ module TableAndElementRotationTests =
         let tableSel = { (initMain ()) with selection = TableSelected }
         Assert.Equal<Model>(tableSel, update RemoveSelected tableSel)
 
+    // ===================== Main-screen large controls: Move / Render / Ribbon (task 018) =====================
+
+    [<Fact>]
+    let ``the Move bay slides the SELECTED element along the beam, clamped to the plate; inert otherwise`` () =
+        let m = update (AddElement Sample) (initMain ())   // element 2 selected, at x = -0.3
+        let slid = update (SlideSelectedBy 0.3) m
+        Assert.True(close (elementX (elem 2 slid)) 0.0, $"slid to x = {elementX (elem 2 slid)}")
+        // Clamp to ±half the plate (default table is 2 m → ±1.0 m).
+        Assert.True(close (elementX (elem 2 (update (SlideSelectedTo 5.0) m))) 1.0, "clamps to +1.0")
+        Assert.True(close (elementX (elem 2 (update (SlideSelectedTo -5.0) m))) -1.0, "clamps to -1.0")
+        Assert.True(close (elementX (elem 2 (update ResetSelectedPosition slid))) 0.0, "reset → table centre")
+        // With the TABLE selected, sliding is a no-op (nothing on the beam is selected).
+        let tableSel = { (initMain ()) with selection = TableSelected }
+        Assert.Equal<Model>(tableSel, update (SlideSelectedBy 0.5) tableSel)
+
+    [<Fact>]
+    let ``the Render bay tunes how elements are drawn (swap + the serializable config)`` () =
+        let m = initMain ()
+        Assert.Equal(RendererControls.Wireframe, m.render.kind)
+        Assert.Equal(72, m.render.rails)
+        Assert.Equal(RendererControls.Shapes, (update RenderSwap m).render.kind)
+        Assert.Equal(4, (update (RenderSetRailsIndex 0) m).render.rails)
+        Assert.Equal(8, (update (RenderSetCircles 99) m).render.circles)       // clamps to 8
+        Assert.Equal(36, (update (RenderSetRadialsIndex 4) m).render.radials)
+        Assert.Equal(1.0, (update (RenderSetFaceOpacity 2.0) m).render.faceOpacity)   // clamps to 1
+        Assert.Equal(0.0, (update (RenderSetRailOpacity -1.0) m).render.railOpacity)  // clamps to 0
+
+    [<Fact>]
+    let ``the ribbon offers every large control as a Bay; selecting one is pure state`` () =
+        let m = initMain ()
+        Assert.Equal(BayNames.rotation, m.ribbon)                      // Rotation shown first
+        let bays = mainBays m ignore
+        Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
+        Assert.Equal(BayNames.render, (update (SelectBay BayNames.render) m).ribbon)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Main ribbon shows the bay tabs and reveals ONLY the selected bay's controls`` () =
+        HeadlessSession.run (fun () ->
+            // Every bay's pane is present (so FuncUI never recycles across bays), so we assert on EFFECTIVE
+            // visibility — only the selected bay's controls are actually shown.
+            let visibleNames (model : Model) : Set<string> =
+                let mutable m = model
+                let dispatch (msg : Msg) = m <- update msg m
+                let window = Window(Width = 980.0, Height = canvasHeight + 230.0)
+                window.Content <- Component(fun _ -> mainView m dispatch)
+                window.Show()
+                Dispatcher.UIThread.RunJobs()
+                let ns =
+                    window.GetVisualDescendants()
+                    |> Seq.choose (function :? Control as c when not (isNull c.Name) && c.IsEffectivelyVisible -> Some c.Name | _ -> None)
+                    |> Set.ofSeq
+                window.Close()
+                ns
+            // Every bay has a (visible) ribbon tab.
+            let rotationView = visibleNames (initMain ())
+            for bay in BayNames.all do
+                Assert.Contains(Ribbon.UiIds.tab bay, rotationView)
+            // The default (Rotation) bay shows the rotation buttons; the Move bay's controls are hidden.
+            Assert.Contains(RotationControls.UiIds.r2Plus, rotationView)
+            Assert.DoesNotContain(RayPositionControls.UiIds.minus, rotationView)
+            // Selecting the Render bay reveals the renderer sliders (and hides the rotation buttons).
+            let renderView = visibleNames (update (SelectBay BayNames.render) (initMain ()))
+            Assert.Contains(RendererControls.UiIds.railsSlider, renderView)
+            Assert.DoesNotContain(RotationControls.UiIds.r2Plus, renderView)
+            // Selecting the Move bay reveals the along-beam controls.
+            Assert.Contains(RayPositionControls.UiIds.minus, visibleNames (update (SelectBay BayNames.move) (initMain ()))))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``Main: Render bay, swap the renderer, then back to Rotation does not crash (ribbon recycling)`` () =
+        // Regression for "Cannot set Name : styled element already styled": swapping the single ribbon
+        // content node between two different controls made FuncUI recycle a styled, named control. Driven
+        // through the REAL Main window (its Elmish loop runs the incremental virtual-DOM patch, as in app).
+        HeadlessSession.run (fun () ->
+            let window = OpticalConstructor.App.MainConstructorWindow()
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let click (name : string) : unit =
+                match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when b.Name = name -> Some b | _ -> None) with
+                | Some b ->
+                    let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+                    if c.HasValue then
+                        window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                        window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                    else Assert.Fail(sprintf "%s has no on-screen position" name)
+                | None -> Assert.Fail(sprintf "%s not found" name)
+            click (Ribbon.UiIds.tab BayNames.render)     // show the Render bay
+            click RendererControls.UiIds.swapRenderer     // swap the renderer (wireframe → shapes)
+            click (Ribbon.UiIds.tab BayNames.rotation)    // back to Rotation — must NOT throw
+            Assert.True(window.IsVisible)
+            window.Close())
+
     [<Fact>]
     let ``the wheel map sends each modifier combo to one action`` () =
         Assert.Equal(RotateSel1, wheelAction (Set.ofList [ ModShift ]))

@@ -31,6 +31,10 @@
         <Compile Include="TableScene.fs" />
         <!-- Spec 0027 task 010 fix: shared pointer→canvas-local mapping (controls are above the canvas). -->
         <Compile Include="SceneInput.fs" />
+        <!-- Spec 0027 task 018: the catalogue names/codes and the ONE shared element renderer (used by the
+             renderer test AND the Main screen), keyed by the serializable `RendererControls` DU. -->
+        <Compile Include="Catalogue.fs" />
+        <Compile Include="ElementRenderer.fs" />
         <Compile Include="TableRotationView.fs" />
         <Compile Include="TableRotationWindow.fs" />
         <Compile Include="ElementRotationView.fs" />

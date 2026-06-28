@@ -29,6 +29,9 @@
         <Compile Include="ElementPaletteControls.fs" />
         <!-- Spec 0027 (014-more-standardization): the shared "position-on-the-ray" bar (§E.4). -->
         <Compile Include="RayPositionControls.fs" />
+        <!-- Spec 0027 (018): the renderer "large control" and the main-screen ribbon of "Bays". -->
+        <Compile Include="RendererControls.fs" />
+        <Compile Include="Ribbon.fs" />
     </ItemGroup>
 
     <ItemGroup>

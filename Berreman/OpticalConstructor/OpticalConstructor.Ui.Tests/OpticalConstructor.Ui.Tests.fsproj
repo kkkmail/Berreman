@@ -71,6 +71,8 @@
         <Compile Include="ElementMovementTests.fs" />
         <!-- Spec 0027 task 010: the renderer test window (swappable element renderer). -->
         <Compile Include="RendererTestTests.fs" />
+        <!-- Spec 0027 task 018: the shared renderer control (config DU + presets + transparency). -->
+        <Compile Include="RendererControlsTests.fs" />
         <!-- Spec 0027 task 010: the snap-to-beam test window. -->
         <Compile Include="SnapToBeamTests.fs" />
         <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->
