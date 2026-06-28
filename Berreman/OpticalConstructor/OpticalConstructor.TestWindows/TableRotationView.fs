@@ -152,13 +152,9 @@ let private zoomStep : float = 1.1
 let private zoomMin : float = 0.2
 let private zoomMax : float = 5.0
 
-[<Literal>]
-let canvasWidth = 820.0
-[<Literal>]
-let canvasHeight = 560.0
-
-let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
-let pixelsPerMeter : float = 200.0
+// The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
+let canvasWidth : float = TableScene.canvasWidth
+let canvasHeight : float = TableScene.canvasHeight
 
 // ---------------------------------------------------------------------------
 // The documented wheel-gesture map (§E.3/§E.5, mirroring Commands.fs verbatim):
@@ -244,7 +240,7 @@ let update (msg : Msg) (model : Model) : Model =
         let selection =
             match model.drag with
             | Pressed start ->
-                if TableView.tableHit pixelsPerMeter center model.view model.table start
+                if TableScene.tableHit model.view model.table start
                 then TableSelected
                 else TableUnselected
             | _ -> model.selection
@@ -288,54 +284,13 @@ let private detectorColor = color 20 20 20
 // raw events into the pure messages (no model logic in the handlers).
 // ---------------------------------------------------------------------------
 
-let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-
-let private projected (model : Model) (p : Vector3) : ScreenPoint =
-    TableView.project pixelsPerMeter center model.view p
-
+/// The plate (highlighted when the table is selected) and the source → detector central ray — both from
+/// the shared `TableScene`, so this test draws the SAME table as every other screen.
 let private plateViews (model : Model) : IView list =
-    let corners = TableView.plateCorners3D model.table |> List.map (projected model) |> List.toArray
-    let selected = model.selection = TableSelected
-    let topFacePts = corners.[0 .. 3] |> Array.map toPoint |> Array.toList
-    let face =
-        Polygon.create [
-            Polygon.points topFacePts
-            Polygon.fill (brushA (if selected then 0.55 else 0.85) (if selected then plateSelectedColor else plateColor))
-            Polygon.stroke (brush (if selected then selectedStroke else edgeColor))
-            Polygon.strokeThickness (if selected then 3.0 else 1.5)
-        ] :> IView
-    let edges =
-        TableView.plateEdges
-        |> List.map (fun (i, j) ->
-            Line.create [
-                Line.startPoint (toPoint corners.[i])
-                Line.endPoint (toPoint corners.[j])
-                Line.stroke (brush edgeColor)
-                Line.strokeThickness (if selected then 2.0 else 1.0)
-            ] :> IView)
-    face :: edges
+    TableScene.plateViews model.view model.table (model.selection = TableSelected)
 
 let private referenceViews (model : Model) : IView list =
-    let s = projected model (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-    let d = projected model (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
-    let marker (sp : ScreenPoint) (c : Color) (radius : float) : IView =
-        Ellipse.create [
-            Ellipse.left (sp.sx - radius)
-            Ellipse.top (sp.sy - radius)
-            Ellipse.width (2.0 * radius)
-            Ellipse.height (2.0 * radius)
-            Ellipse.fill (brush c)
-            Ellipse.stroke (brush edgeColor)
-            Ellipse.strokeThickness 1.0
-        ] :> IView
-    [ Line.create [
-        Line.startPoint (toPoint s)
-        Line.endPoint (toPoint d)
-        Line.stroke (brush rayColor)
-        Line.strokeThickness 2.0
-      ] :> IView
-      marker s sourceColor 7.0
-      marker d detectorColor 7.0 ]
+    TableScene.sourceDetectorRayViews model.view
 
 let private degrees (a : Angle) : float = a.degrees
 
@@ -392,7 +347,7 @@ let private tableCanvas (model : Model) : IView =
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children (referenceViews model @ plateViews model)
+        Canvas.children (plateViews model @ referenceViews model)
     ] :> IView
 
 let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =

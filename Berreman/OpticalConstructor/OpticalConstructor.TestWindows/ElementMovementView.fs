@@ -20,20 +20,18 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
+open OpticalConstructor.Controls
 
 [<RequireQualifiedAccess>]
 module UiIds =
     let canvas = "ElementMovementCanvas"
-    let readout = "ElementMovementReadout"
-    let reset = "ElementMovementResetButton"
 
-let canvasWidth = 820.0
-let canvasHeight = 560.0
-let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
-let pixelsPerMeter : float = 200.0
+// The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
+let canvasWidth : float = TableScene.canvasWidth
+let canvasHeight : float = TableScene.canvasHeight
 let private drawZoom : float = 5.0
-let stepMeters : float = 0.05
-let bigStepMeters : float = 0.20
+let stepMeters : float = RayPositionControls.stepMeters false
+let bigStepMeters : float = RayPositionControls.stepMeters true
 let private selectRadiusPx : float = 70.0
 
 type Model =
@@ -69,11 +67,11 @@ let elementX (m : Model) : float = m.element.placementPoint.x / 1.0<meter>
 let private setX (x : float) (m : Model) : Model =
     { m with element = { m.element with placementPoint = { m.element.placementPoint with x = clampX m x * 1.0<meter> } } }
 
-/// Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableView.project`.
-let private tableXOfScreen (sx : float) : float = (sx - center.sx) / pixelsPerMeter
+/// Screen x → table x for the fixed top-down view (no pan / zoom): the inverse of `TableScene.project`.
+let private tableXOfScreen (sx : float) : float = (sx - TableScene.center.sx) / TableScene.pixelsPerMeter
 
 let private elementCentreScreen (m : Model) : ScreenPoint =
-    TableView.project pixelsPerMeter center m.view (Vector3.create (elementX m) 0.0 0.0)
+    TableScene.project m.view (Vector3.create (elementX m) 0.0 0.0)
 
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
@@ -105,32 +103,7 @@ let private elementColor = color 90 140 200
 let private elementStroke = color 0 60 160
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-let private projectPt (m : Model) (p : Vector3) : ScreenPoint = TableView.project pixelsPerMeter center m.view p
-
-let private plateView (m : Model) : IView =
-    let hl = (m.table.length / 2.0) / 1.0<meter>
-    let hw = (m.table.width / 2.0) / 1.0<meter>
-    let pts =
-        [ (-hl, -hw); (hl, -hw); (hl, hw); (-hl, hw) ]
-        |> List.map (fun (x, y) -> toPoint (projectPt m (Vector3.create x y 0.0)))
-    Polygon.create [
-        Polygon.points pts
-        Polygon.fill (brushA 0.85 plateColor)
-        Polygon.stroke (brush edgeColor)
-        Polygon.strokeThickness 1.5
-    ] :> IView
-
-let private rayViews (m : Model) : IView list =
-    let s = projectPt m (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-    let d = projectPt m (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
-    let marker (sp : ScreenPoint) (c : Color) : IView =
-        Ellipse.create [
-            Ellipse.left (sp.sx - 6.0); Ellipse.top (sp.sy - 6.0); Ellipse.width 12.0; Ellipse.height 12.0
-            Ellipse.fill (brush c); Ellipse.stroke (brush edgeColor); Ellipse.strokeThickness 1.0
-        ] :> IView
-    [ Line.create [ Line.startPoint (toPoint s); Line.endPoint (toPoint d); Line.stroke (brush rayColor); Line.strokeThickness 2.0 ] :> IView
-      marker s sourceColor
-      marker d detectorColor ]
+let private projectPt (m : Model) (p : Vector3) : ScreenPoint = TableScene.project m.view p
 
 /// The element's top-down footprint (depth `b` along the beam × face `a2` across it, magnified by the
 /// draw zoom), as a filled rectangle that highlights while dragging.
@@ -155,7 +128,7 @@ let private tableCanvas (model : Model) : IView =
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children ([ plateView model ] @ rayViews model @ [ elementView model ])
+        Canvas.children (TableScene.plateViews model.view model.table false @ TableScene.sourceDetectorRayViews model.view @ [ elementView model ])
     ] :> IView
 
 let private kindName (k : CatalogueKind) : string =
@@ -163,25 +136,19 @@ let private kindName (k : CatalogueKind) : string =
     | LightSource -> "Light source" | LinearPolarizer -> "Linear polarizer" | CircularPolarizer -> "Circular polarizer"
     | Sample -> "Sample" | Lens -> "Lens" | FlatMirror -> "Flat mirror" | CurvedMirror -> "Curved mirror" | Detector -> "Detector"
 
-let private readoutText (m : Model) : string =
-    sprintf "%s   x = %+.3f m along the beam (0 = table centre)" (kindName m.element.catalogueKind) (elementX m)
-
-/// A control-styled button (matching the rotation / palette controls — a bordered clickBox, not a
-/// default Avalonia button).
-let private button (id : string) (label : string) (onClick : unit -> unit) : IView =
-    Border.create [
-        Border.name id
-        Border.background (brush (color 232 232 232))
-        Border.borderBrush (brush (color 120 120 120))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(10.0, 5.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed (fun e -> e.Handled <- true; onClick ())
-    ] :> IView
-
+/// The control bar IS the shared `RayPositionControls` (the standardized position-on-the-ray control),
+/// plus the element's name and a usage hint. The bar's − / + / field / Reset map straight onto the
+/// pure `SlideBy` / `SlideTo` / `ResetPosition` messages; the host owns the clamp (±half the plate).
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
+    let half = halfLength model
+    let state : RayPositionControls.State =
+        { position = elementX model; minPosition = -half; maxPosition = half; enabled = true }
+    let handlers : RayPositionControls.Handlers =
+        {
+            moveBy = fun dx -> dispatch (SlideBy dx)
+            setPosition = fun x -> dispatch (SlideTo x)
+            reset = fun () -> dispatch ResetPosition
+        }
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0
@@ -191,8 +158,8 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 10.0
                 StackPanel.children [
-                    button UiIds.reset "Reset position" (fun () -> dispatch ResetPosition)
-                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
+                    RayPositionControls.view state handlers
+                    TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text (kindName model.element.catalogueKind) ]
                 ]
             ]
             TextBlock.create [

@@ -65,6 +65,8 @@
         <!-- Spec 0027 task 009: the shared rotation-controls bar's modifier-driven highlight
              (pure armed-axis map + a headless key-press render proof). -->
         <Compile Include="RotationControlsTests.fs" />
+        <!-- Spec 0027 task 014: the shared position-on-the-ray control (pure contract + headless mount). -->
+        <Compile Include="RayPositionControlsTests.fs" />
         <!-- Spec 0027 task 010: the element-movement test window (slide along the beam). -->
         <Compile Include="ElementMovementTests.fs" />
         <!-- Spec 0027 task 010: the renderer test window (swappable element renderer). -->

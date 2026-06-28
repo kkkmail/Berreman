@@ -37,12 +37,22 @@ module RendererTestTests =
         Assert.Equal<int list>([ -1; 1 ], signsFor OpticalConstructor.Domain.Placement.CurvedMirror)
 
     [<Fact>]
-    let ``the cylinder rail count defaults to 12 and is clamped to [4, 60]`` () =
+    let ``the cylinder rail count defaults to 72 and snaps to the discrete presets`` () =
         let m = init ()
-        Assert.Equal(12, m.rails)
-        Assert.Equal(railsMin, (update (SetRails 1) m).rails)        // below min clamps up to 4
-        Assert.Equal(railsMax, (update (SetRails 200) m).rails)      // above max clamps down to 60
-        Assert.Equal(20, (update (SetRails 20) m).rails)             // an in-range value is taken as-is
+        Assert.Equal(72, m.rails)
+        Assert.Equal<int list>([ 4; 8; 12; 24; 36; 72 ], railOptions)
+        // SetRails snaps any value to the nearest preset.
+        Assert.Equal(4, (update (SetRails 1) m).rails)              // below min snaps up to 4
+        Assert.Equal(72, (update (SetRails 200) m).rails)           // above max snaps down to 72
+        Assert.Equal(24, (update (SetRails 20) m).rails)            // 20 → nearest preset 24
+        // SetRailsIndex (the slider) picks a preset by index, clamped.
+        Assert.Equal(4, (update (SetRailsIndex 0) m).rails)
+        Assert.Equal(12, (update (SetRailsIndex 2) m).rails)
+        Assert.Equal(72, (update (SetRailsIndex 5) m).rails)
+        Assert.Equal(72, (update (SetRailsIndex 99) m).rails)       // index clamped to last
+        // railIndex is the inverse of railsAtIndex on presets.
+        Assert.Equal(5, railIndex 72)
+        Assert.Equal(0, railIndex 4)
 
     [<Fact>]
     let ``a clean click far from every element deselects; the renderer stays`` () =

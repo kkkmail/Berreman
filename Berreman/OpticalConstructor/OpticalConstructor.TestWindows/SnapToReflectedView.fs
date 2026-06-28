@@ -147,6 +147,37 @@ let elementPositions (m : Model) : Vector3 list =
     | source :: _ -> RayModel.pointToVector3 source.placementPoint :: (snapped m |> List.map (fun s -> s.position))
     | [] -> []
 
+/// The element that REFLECTS (its branch is `Reflected`); elements AFTER it are on the reflected beam.
+/// Here the chain is [source; mirror; detector], so the mirror is index 1 and the detector (index 2) is
+/// the one downstream on the reflected beam.
+let reflectorIndex : int = 1
+
+/// The absolute (R2, R3) that orient a rest element's primary normal N1 (the central-ray direction, +X)
+/// along `dir`. With the rest basis N1 = +X and table normal = +Z, the oriented normal is
+/// `(cosR3·cosR2, cosR3·sinR2, sinR3)`, so `R2 = atan2(dir.y, dir.x)` and `R3 = asin(dir.z)`.
+let beamOrientation (dir : Vector3) : Angle * Angle =
+    let d = dir.normalized
+    Angle.radian (atan2 d.y d.x), Angle.radian (asin (max -1.0 (min 1.0 d.z)))
+
+/// The placements used to DRAW each element. An element on the REFLECTED beam (after the reflector) is
+/// oriented RELATIVE to that beam: its dialled R2/R3 are ADDED to the beam's own absolute R2/R3, so at
+/// dialled 0 it faces the reflected beam and a dialled value tilts it relative to the beam (task 014 —
+/// "anything on the reflected beam must have R2 and R3 relative to the beam; as we measure them in
+/// absolute values we adjust R2/R3 to achieve that"). The source and the mirror keep their absolute
+/// orientation — the mirror's R2 = 45 DEFINES the reflection. R1 of the mirror does not move the beam, so
+/// the downstream orientation is unaffected by it.
+let drawPlacements (m : Model) : ElementPlacement list =
+    let snaps = snapped m |> List.mapi (fun stopIndex s -> stopIndex + 1, s) |> Map.ofList
+    m.elements
+    |> List.mapi (fun i p ->
+        if i > reflectorIndex then
+            match Map.tryFind i snaps with
+            | Some s ->
+                let beamR2, beamR3 = beamOrientation s.incoming
+                { p with r2 = beamR2 + p.r2; r3 = beamR3 + p.r3 }
+            | None -> p
+        else p)
+
 // ---------------------------------------------------------------------------
 // Pure update.
 // ---------------------------------------------------------------------------
@@ -318,9 +349,10 @@ let private elementMark (m : Model) (i : int) (placement : ElementPlacement) (po
 
 let private sceneViews (m : Model) : IView list =
     let positions = elementPositions m
+    let placements = drawPlacements m
     let proj = TableScene.project m.view
     let beam = positions |> List.pairwise |> List.map (fun (a, b) -> line (proj a) (proj b) rayColor 2.5)
-    let elements = List.zip m.elements positions |> List.mapi (fun i (p, pos) -> elementMark m i p pos) |> List.concat
+    let elements = List.mapi2 (fun i p pos -> elementMark m i p pos) placements positions |> List.concat
     TableScene.plateViews m.view m.table (m.selection = TableSelected) @ beam @ elements
 
 let private tableCanvas (model : Model) : IView =

@@ -33,8 +33,8 @@ module TableRotationTests =
     /// a clean click on the plate centre selects it.
     let private selectedModel () : Model =
         TableRotationView.init ()
-        |> TableRotationView.update (PointerDown TableRotationView.center)
-        |> TableRotationView.update (PointerUp TableRotationView.center)
+        |> TableRotationView.update (PointerDown TableScene.center)
+        |> TableRotationView.update (PointerUp TableScene.center)
 
     // ============================ pure MVU ============================
 
@@ -102,7 +102,7 @@ module TableRotationTests =
 
     [<Fact>]
     let ``a plain press - drag - release PANS the table (no rotation, no selection)`` () =
-        let p0 = TableRotationView.center
+        let p0 = TableScene.center
         let p1 : ScreenPoint = { sx = p0.sx + 150.0; sy = p0.sy + 80.0 }
         let m =
             TableRotationView.init ()
@@ -118,8 +118,8 @@ module TableRotationTests =
     let ``a clean click (no drag) selects the table, a click off it deselects`` () =
         let selected =
             TableRotationView.init ()
-            |> TableRotationView.update (PointerDown TableRotationView.center)
-            |> TableRotationView.update (PointerUp TableRotationView.center)
+            |> TableRotationView.update (PointerDown TableScene.center)
+            |> TableRotationView.update (PointerUp TableScene.center)
         Assert.Equal(TableSelected, selected.selection)
         let far : ScreenPoint = { sx = 3.0; sy = 3.0 }
         let unselected =
@@ -200,9 +200,9 @@ module TableRotationTests =
 
     /// Select the table by a real click on its centre (rotation needs the table selected, #1).
     let private selectTable (w : Window) : unit =
-        w.MouseDown(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
+        w.MouseDown(at TableScene.center, MouseButton.Left, RawInputModifiers.None)
         Dispatcher.UIThread.RunJobs()
-        w.MouseUp(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
+        w.MouseUp(at TableScene.center, MouseButton.Left, RawInputModifiers.None)
         Dispatcher.UIThread.RunJobs()
 
     [<Fact>]
@@ -212,7 +212,7 @@ module TableRotationTests =
             let model =
                 withMouseHarness (fun w ->
                     selectTable w
-                    w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Shift))
+                    w.MouseWheel(at TableScene.center, Vector(0.0, 1.0), RawInputModifiers.Shift))
             // Exactly 5°, NOT 10° — proves one notch = one step (FuncUI's duplicate pass is dropped).
             Assert.True(close model.view.r1.degrees 5.0, $"R1 = {model.view.r1.degrees} (expected exactly 5)")
             Assert.True(close model.view.r2.degrees 0.0 && close model.view.r3.degrees 0.0, "only R1 should move"))
@@ -224,19 +224,19 @@ module TableRotationTests =
             let r2 =
                 withMouseHarness (fun w ->
                     selectTable w
-                    w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Control ||| RawInputModifiers.Shift))
+                    w.MouseWheel(at TableScene.center, Vector(0.0, 1.0), RawInputModifiers.Control ||| RawInputModifiers.Shift))
             Assert.True(close r2.view.r2.degrees 5.0 && close r2.view.r1.degrees 0.0 && close r2.view.r3.degrees 0.0, $"R2 = {r2.view.r2.degrees}")
             let r3 =
                 withMouseHarness (fun w ->
                     selectTable w
-                    w.MouseWheel(at TableRotationView.center, Vector(0.0, 1.0), RawInputModifiers.Alt))
+                    w.MouseWheel(at TableScene.center, Vector(0.0, 1.0), RawInputModifiers.Alt))
             Assert.True(close r3.view.r3.degrees 5.0 && close r3.view.r1.degrees 0.0 && close r3.view.r2.degrees 0.0, $"R3 = {r3.view.r3.degrees}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``a real click-and-drag PANS the table across the screen`` () =
         HeadlessSession.run (fun () ->
-            let p0 = TableRotationView.center
+            let p0 = TableScene.center
             let p1 : ScreenPoint = { sx = p0.sx + 160.0; sy = p0.sy + 70.0 }
             let model =
                 withMouseHarness (fun w ->
@@ -256,9 +256,9 @@ module TableRotationTests =
         HeadlessSession.run (fun () ->
             let model =
                 withMouseHarness (fun w ->
-                    w.MouseDown(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None)
+                    w.MouseDown(at TableScene.center, MouseButton.Left, RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-                    w.MouseUp(at TableRotationView.center, MouseButton.Left, RawInputModifiers.None))
+                    w.MouseUp(at TableScene.center, MouseButton.Left, RawInputModifiers.None))
             Assert.Equal(TableSelected, model.selection))
 
     [<Fact>]

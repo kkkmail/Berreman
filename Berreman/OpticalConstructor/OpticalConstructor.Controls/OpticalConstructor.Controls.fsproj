@@ -27,6 +27,8 @@
     <ItemGroup>
         <Compile Include="RotationControls.fs" />
         <Compile Include="ElementPaletteControls.fs" />
+        <!-- Spec 0027 (014-more-standardization): the shared "position-on-the-ray" bar (§E.4). -->
+        <Compile Include="RayPositionControls.fs" />
     </ItemGroup>
 
     <ItemGroup>

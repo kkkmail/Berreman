@@ -1,11 +1,11 @@
-/// The snap-to-beam test window (Spec 0027, task 010): a light source plus a few downstream elements
-/// on the central ray. Rotating the SOURCE (its R2, the in-plane steer) re-aims the beam, and every
-/// downstream element SNAPS to the new beam direction, preserving its along-ray distance — exactly the
+/// The snap-to-beam test window (Spec 0027, task 010; standardized in task 014): a light source plus a
+/// few downstream elements on the central ray. Rotating the SOURCE re-aims the beam, and every downstream
+/// element SNAPS to the new beam direction, preserving its along-ray distance — exactly the
 /// `RayModel.snapChain` law (B.3): each element sits a fixed gap along the CURRENT direction from the
 /// previous node, so tilting the source drags the whole straight chain around. The downstream elements
 /// are untilted pass-through stops (`BeamTree.Transmitted`), so the beam stays a straight line whose
-/// angle is set entirely by the source. The view is a fixed top-down projection. `Model`/`Msg`/`update`
-/// are pure and Avalonia-free.
+/// angle is set by the source. The table is the shared `TableScene` and the rotation bar is the shared
+/// `RotationControls` (acting on the source). `Model`/`Msg`/`update` are pure and Avalonia-free.
 module OpticalConstructor.TestWindows.SnapToBeamView
 
 open Avalonia
@@ -22,19 +22,16 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
+open OpticalConstructor.Controls
 
 [<RequireQualifiedAccess>]
 module UiIds =
     let canvas = "SnapToBeamCanvas"
     let readout = "SnapToBeamReadout"
-    let r2Minus = "SnapSourceR2MinusButton"
-    let r2Plus = "SnapSourceR2PlusButton"
-    let reset = "SnapResetButton"
 
-let canvasWidth = 820.0
-let canvasHeight = 560.0
-let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
-let pixelsPerMeter : float = 200.0
+// The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
+let canvasWidth : float = TableScene.canvasWidth
+let canvasHeight : float = TableScene.canvasHeight
 let stepDegrees : float = 5.0
 let bigStepDegrees : float = 15.0
 let private drawZoom : float = 5.0
@@ -43,11 +40,14 @@ type Model =
     {
         table : OpticalTable
         view : TableViewState        // fixed top-down (snap test, not table rotation)
-        /// The light source — rotating its R2 (in-plane steer) re-aims the beam.
+        /// The light source — rotating its R2 (in-plane steer) re-aims the beam; R3 tips it out of plane.
         source : ElementPlacement
         /// The downstream elements as (kind, along-ray gap from the previous node). Untilted pass-through
         /// stops, so the beam stays a straight line at whatever angle the source aims it.
         downstream : (CatalogueKind * float<meter>) list
+        /// The source's R3 lock state (the shared bar drives it; the source is unlocked by default).
+        sourceR3Locked : bool
+        rotationConfirm : RotationControls.ResetConfirm
     }
 
 /// A light source on the left of the table plus a polarizer, a sample and a detector spaced along the
@@ -56,26 +56,63 @@ let init () : Model =
     {
         table = Table.defaultTable
         view = Table.defaultView
-        source = ElementPlacement.create LightSource RayModel.defaultSourcePoint
+        source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r3Locked = false }
         downstream =
             [ LinearPolarizer, 0.6<meter>
               Sample, 0.6<meter>
               Detector, 0.6<meter> ]
+        sourceR3Locked = false
+        rotationConfirm = RotationControls.NoConfirm
     }
 
 type Msg =
-    | RotateSourceBy of float        // degrees, about the source's R2
-    | ResetSource
+    | RotateSourceBy of float                     // degrees about the source's R2 (the steer; kept for the wheel)
+    | RotateSourceAxisBy of int * float           // degrees about the source's axis 1/2/3
+    | SetSourceAxis of int * float                // set the source's axis 1/2/3 to exactly N degrees
+    | ToggleSourceR3Lock
+    | RotRequestReset
+    | RotRequestResetAll
+    | RotConfirm
+    | RotCancel
+    | ResetSource                                 // reset ALL source rotations to zero
 
 let sourceR2Degrees (m : Model) : float = m.source.r2.degrees
 
-let private rotateSourceBy (deg : float) (m : Model) : Model =
-    { m with source = withR2 (m.source.r2 + Angle.degree deg) m.source }
+let private bumpAxis (axis : int) (deg : float) (p : ElementPlacement) : ElementPlacement =
+    match axis with
+    | 1 -> withR1 (p.r1 + Angle.degree deg) p
+    | 2 -> withR2 (p.r2 + Angle.degree deg) p
+    | _ -> withR3 (p.r3 + Angle.degree deg) p
+
+let private setAxis (axis : int) (deg : float) (p : ElementPlacement) : ElementPlacement =
+    match axis with
+    | 1 -> withR1 (Angle.degree deg) p
+    | 2 -> withR2 (Angle.degree deg) p
+    | _ -> withR3 (Angle.degree deg) p
+
+let private resetSourceRotations (m : Model) : Model =
+    { m with source = { m.source with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
-    | RotateSourceBy d -> rotateSourceBy d model
-    | ResetSource -> { model with source = withR2 Angle.zero model.source }
+    | RotateSourceBy d -> { model with source = withR2 (model.source.r2 + Angle.degree d) model.source }
+    | RotateSourceAxisBy (axis, d) ->
+        if axis = 3 && model.sourceR3Locked then model
+        else { model with source = bumpAxis axis d model.source }
+    | SetSourceAxis (axis, v) ->
+        if axis = 3 && model.sourceR3Locked then model
+        else { model with source = setAxis axis v model.source }
+    | ToggleSourceR3Lock -> { model with sourceR3Locked = not model.sourceR3Locked }
+    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | RotConfirm ->
+        let m =
+            match model.rotationConfirm with
+            | RotationControls.ConfirmReset | RotationControls.ConfirmResetAll -> resetSourceRotations model
+            | RotationControls.NoConfirm -> model
+        { m with rotationConfirm = RotationControls.NoConfirm }
+    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
+    | ResetSource -> resetSourceRotations model
 
 // ---------------------------------------------------------------------------
 // Snapping the chain onto the beam (the spec law this screen demonstrates).
@@ -102,36 +139,19 @@ let cumulativeGaps (m : Model) : float list =
 
 let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
 let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-let private brushA (a : float) (c : Color) : IBrush =
-    SolidColorBrush(Color.FromArgb(byte (255.0 * max 0.0 (min 1.0 a)), c.R, c.G, c.B)) :> IBrush
 
-let private plateColor = color 205 205 205
 let private edgeColor = color 50 50 50
 let private rayColor = color 30 90 200
 let private sourceColor = color 230 170 30
 let private elementColor = color 70 130 200
 let private codeColor = color 20 20 30
 
-let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
-let private projectPt (m : Model) (p : Vector3) : ScreenPoint = TableView.project pixelsPerMeter center m.view p
+let private projectPt (m : Model) (p : Vector3) : ScreenPoint = TableScene.project m.view p
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
     Line.create [
-        Line.startPoint (toPoint a); Line.endPoint (toPoint b); Line.stroke (brush c); Line.strokeThickness w
-    ] :> IView
-
-let private plateView (m : Model) : IView =
-    let hl = (m.table.length / 2.0) / 1.0<meter>
-    let hw = (m.table.width / 2.0) / 1.0<meter>
-    let pts =
-        [ (-hl, -hw); (hl, -hw); (hl, hw); (-hl, hw) ]
-        |> List.map (fun (x, y) -> toPoint (projectPt m (v3 x y 0.0)))
-    Polygon.create [
-        Polygon.points pts
-        Polygon.fill (brushA 0.85 plateColor)
-        Polygon.stroke (brush edgeColor)
-        Polygon.strokeThickness 1.5
+        Line.startPoint (TableScene.toPoint a); Line.endPoint (TableScene.toPoint b); Line.stroke (brush c); Line.strokeThickness w
     ] :> IView
 
 /// The source marker plus a short arrow along the direction it currently emits (its oriented N1).
@@ -183,27 +203,31 @@ let private tableCanvas (model : Model) : IView =
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children ([ plateView model ] @ beamViews model @ sourceViews model)
+        Canvas.children (TableScene.plateViews model.view model.table false @ beamViews model @ sourceViews model)
     ] :> IView
 
 let private readoutText (m : Model) : string =
     let dists = cumulativeGaps m |> List.map (sprintf "%.1f") |> String.concat ", "
     sprintf "Source R2 = %+.0f°   ·   %d elements snapped to the beam at %s m" (sourceR2Degrees m) (List.length m.downstream) dists
 
-/// A control-styled button (matching the rotation / palette controls — a bordered clickBox).
-let private button (id : string) (label : string) (onClick : unit -> unit) : IView =
-    Border.create [
-        Border.name id
-        Border.background (brush (color 232 232 232))
-        Border.borderBrush (brush (color 120 120 120))
-        Border.borderThickness 1.0
-        Border.cornerRadius (CornerRadius 3.0)
-        Border.padding (Thickness(10.0, 5.0))
-        Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-        Border.verticalAlignment VerticalAlignment.Center
-        Border.child (TextBlock.create [ TextBlock.text label ])
-        Border.onPointerPressed (fun e -> e.Handled <- true; onClick ())
-    ] :> IView
+/// The shared rotation bar, acting on the SOURCE. Its R2 is the steer that swings the beam; R1 spins the
+/// source (no beam change) and R3 tips the beam out of the table plane.
+let private rotationState (model : Model) : RotationControls.State =
+    {
+        r1 = model.source.r1.degrees; r2 = model.source.r2.degrees; r3 = model.source.r3.degrees
+        r3Locked = model.sourceR3Locked; enabled = true; confirm = model.rotationConfirm
+    }
+
+let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+    {
+        rotate = fun axis d -> dispatch (RotateSourceAxisBy ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), d))
+        setAngle = fun axis v -> dispatch (SetSourceAxis ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), v))
+        toggleR3Lock = fun () -> dispatch ToggleSourceR3Lock
+        requestReset = fun () -> dispatch RotRequestReset
+        requestResetAll = fun () -> dispatch RotRequestResetAll
+        confirm = fun () -> dispatch RotConfirm
+        cancel = fun () -> dispatch RotCancel
+    }
 
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
@@ -211,18 +235,11 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.spacing 6.0
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.children [
-                    button UiIds.r2Minus "Source R2 −" (fun () -> dispatch (RotateSourceBy (-stepDegrees)))
-                    button UiIds.r2Plus "Source R2 +" (fun () -> dispatch (RotateSourceBy stepDegrees))
-                    button UiIds.reset "Reset" (fun () -> dispatch ResetSource)
-                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                ]
-            ]
+            RotationControls.view (rotationState model) (rotationHandlers dispatch)
+            TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
-                TextBlock.text "rotate the source (R2 ± buttons or the wheel, Shift = larger step) — the downstream elements snap to the re-aimed beam, keeping their along-ray spacing"
+                TextBlock.text "rotate the source with the bar (or the wheel = R2, Shift = larger step) — the downstream elements snap to the re-aimed beam, keeping their along-ray spacing"
             ]
         ]
     ] :> IView

@@ -170,13 +170,9 @@ let private zoomMin : float = 1.0
 let private zoomMax : float = 50.0
 let private dragThresholdPx : float = 3.0
 
-[<Literal>]
-let canvasWidth = 820.0
-[<Literal>]
-let canvasHeight = 560.0
-
-let center : ScreenPoint = { sx = canvasWidth / 2.0; sy = canvasHeight / 2.0 }
-let pixelsPerMeter : float = 200.0
+// The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
+let canvasWidth : float = TableScene.canvasWidth
+let canvasHeight : float = TableScene.canvasHeight
 
 // ---------------------------------------------------------------------------
 // Pure update. Angles wrap mod 360.
@@ -220,22 +216,21 @@ let private zoomSelectedBy (notches : int) (model : Model) : Model =
 let private zoomAllBy (notches : int) (model : Model) : Model =
     { model with elements = model.elements |> List.map (fun e -> { e with zoom = clampZoom (e.zoom * (zoomStep ** float notches)) }) }
 
-/// Pan the table by the screen delta (#2) — a pure screen-space translation of the view.
+/// Pan the table by the screen delta (#2) — a pure screen-space translation of the view, via TableScene.
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (model : Model) : Model =
     { model with
-        view = { model.view with panX = model.view.panX + (pt.sx - refPt.sx); panY = model.view.panY + (pt.sy - refPt.sy) }
+        view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) model.view
         drag = Panning pt }
 
-/// Zoom the table view (#2). Table zoom is bounded [0.2, 5] like the table test (distinct from the
-/// per-element draw zoom).
+/// Zoom the table view (#2), bounded [0.2, 5] like the table test (distinct from the per-element draw
+/// zoom), via the shared `TableScene`.
 let private zoomTableBy (notches : int) (model : Model) : Model =
-    let z = model.view.zoom * (zoomStep ** float notches)
-    { model with view = { model.view with zoom = max 0.2 (min 5.0 z) } }
+    { model with view = TableScene.zoomViewBy notches model.view }
 
 /// The projected centre of an element (its placement point) under the current view, for click
 /// hit-testing.
 let private projectedCenter (view : TableViewState) (e : TestElement) : ScreenPoint =
-    TableView.project pixelsPerMeter center view
+    TableScene.project view
         (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
 
 /// The index of the element whose projected centre is nearest the click (there are always a few
@@ -336,7 +331,7 @@ let private n1Color = color 30 90 200      // beam-facing primary normal
 let private n2Color = color 210 120 0      // roll marker (secondary normal)
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
-let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableView.project pixelsPerMeter center view p
+let private projectPt (view : TableViewState) (p : Vector3) : ScreenPoint = TableScene.project view p
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
@@ -347,35 +342,12 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
         Line.strokeThickness w
     ] :> IView
 
-/// The top-down table under the current (pannable / zoomable) view: the grey plate, the central
-/// ray, and the source / detector markers.
+/// The top-down table under the current (pannable / zoomable) view — the shared `TableScene` plate +
+/// central ray + source / detector markers. The table is not separately selectable in this test, so the
+/// plate is drawn unhighlighted.
 let private tableViews (model : Model) : IView list =
-    let hl = (model.table.length / 2.0) / 1.0<meter>
-    let hw = (model.table.width / 2.0) / 1.0<meter>
-    let plate =
-        [ v3 (-hl) (-hw) 0.0; v3 hl (-hw) 0.0; v3 hl hw 0.0; v3 (-hl) hw 0.0 ]
-        |> List.map (projectPt model.view >> toPoint)
-    let s = projectPt model.view (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-    let d = projectPt model.view (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
-    let marker (sp : ScreenPoint) (c : Color) : IView =
-        Ellipse.create [
-            Ellipse.left (sp.sx - 6.0)
-            Ellipse.top (sp.sy - 6.0)
-            Ellipse.width 12.0
-            Ellipse.height 12.0
-            Ellipse.fill (brush c)
-            Ellipse.stroke (brush edgeColor)
-            Ellipse.strokeThickness 1.0
-        ] :> IView
-    [ Polygon.create [
-        Polygon.points plate
-        Polygon.fill (brush plateColor)
-        Polygon.stroke (brush edgeColor)
-        Polygon.strokeThickness 1.0
-      ] :> IView
-      line s d rayColor 2.0
-      marker s sourceColor
-      marker d detectorColor ]
+    TableScene.plateViews model.view model.table false
+    @ TableScene.sourceDetectorRayViews model.view
 
 /// One element: its oriented box (12 edges), the N1 (beam-facing) axis and the N2 (roll) marker.
 /// The selected element is drawn heavier and in the selection colour.

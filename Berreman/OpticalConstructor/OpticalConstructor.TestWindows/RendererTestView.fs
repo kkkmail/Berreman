@@ -101,8 +101,21 @@ type Model =
         rails : int
     }
 
-let railsMin : int = 4
-let railsMax : int = 60
+/// The cylinder side-rail count is DISCRETE — these presets only (task 014). The nicely-looking count
+/// depends on the cylinder diameter, so it is a live choice on screen; 72 is the default.
+let railOptions : int list = [ 4; 8; 12; 24; 36; 72 ]
+let railsMin : int = List.min railOptions
+let railsMax : int = List.max railOptions
+let defaultRails : int = 72
+
+/// Snap an arbitrary rail count to the nearest allowed preset (so the value is always one of `railOptions`).
+let snapRails (n : int) : int = railOptions |> List.minBy (fun o -> abs (o - n))
+
+/// The slider index (0..n-1) of a rail count — the position of its nearest preset in `railOptions`.
+let railIndex (n : int) : int = railOptions |> List.findIndex (fun o -> o = snapRails n)
+
+/// The rail count at a slider index, clamped into range.
+let railsAtIndex (i : int) : int = List.item (max 0 (min (List.length railOptions - 1) i)) railOptions
 
 let defaultElementZoom : float = 5.0
 
@@ -140,14 +153,16 @@ let init () : Model =
         selected = Some 1
         renderer = Wireframe
         drag = NotPressed
-        rails = 12
+        rails = defaultRails
     }
 
 type Msg =
     /// Swap the active renderer (Wireframe ⇄ Shape).
     | SwapRenderer
-    /// Set how many side rails join a cylinder's caps (clamped to [railsMin, railsMax]).
+    /// Set how many side rails join a cylinder's caps (snapped to the nearest preset).
     | SetRails of int
+    /// Set the rail count by its slider PRESET INDEX (0..5 → railOptions).
+    | SetRailsIndex of int
     | PointerDown of ScreenPoint
     | PointerMove of ScreenPoint
     | PointerUp of ScreenPoint
@@ -203,7 +218,8 @@ let private rotateSelected (axis : int) (notches : int) (m : Model) : Model =
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | SwapRenderer -> { model with renderer = nextRenderer model.renderer }
-    | SetRails n -> { model with rails = max railsMin (min railsMax n) }
+    | SetRails n -> { model with rails = snapRails n }
+    | SetRailsIndex i -> { model with rails = railsAtIndex i }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -347,36 +363,52 @@ let private normalsViews (project : Vector3 -> ScreenPoint) (selected : bool) (e
 let private lineT (a : ScreenPoint) (b : ScreenPoint) (c : Color) (alpha : float) (w : float) : IView =
     Line.create [ Line.startPoint (toPoint a); Line.endPoint (toPoint b); Line.stroke (brushA alpha c); Line.strokeThickness w ] :> IView
 
+/// How many CURVED meridian lines a spherical cap (lens / curved mirror) is drawn with. Kept modest
+/// (independent of the rail count — at 72 rails matching meridians would be far too busy on a cap).
+let private capMeridians : int = 8
+
 /// A flat cap circle of radius `r` in the N2–N3 face plane, `d` along N1 (24 points).
 let private capPts (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (cx : float) (cy : float) (d : float) (r : float) : Point list =
     [ for k in 0 .. 23 ->
         let t = 2.0 * System.Math.PI * float k / 24.0
         toPoint (project (offset cx cy n1 n2 n3 d (r * cos t) (r * sin t))) ]
 
-/// The `rails` partially-transparent side rails connecting the two cap rims at ±`halfLen` along N1
-/// (configurable, 4..60).
-let private railViews (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (cx : float) (cy : float) (halfLen : float) (r : float) (rails : int) (w : float) : IView list =
+/// The `rails` partially-transparent side rails of a cylinder, connecting the rim circle on plane `dA`
+/// (along N1) to the rim circle on plane `dB`. `dA`/`dB` need not be symmetric — a curved mirror joins
+/// its (possibly inset) cap rim to its flat back.
+let private railViews (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (cx : float) (cy : float) (dA : float) (dB : float) (r : float) (rails : int) (w : float) : IView list =
     [ for i in 0 .. rails - 1 ->
         let t = 2.0 * System.Math.PI * float i / float rails
-        let a = project (offset cx cy n1 n2 n3 halfLen (r * cos t) (r * sin t))
-        let b = project (offset cx cy n1 n2 n3 (-halfLen) (r * cos t) (r * sin t))
-        lineT a b edgeColor 0.35 w ]
+        let a = project (offset cx cy n1 n2 n3 dA (r * cos t) (r * sin t))
+        let b = project (offset cx cy n1 n2 n3 dB (r * cos t) (r * sin t))
+        // The rail at t = π sits along −N2 — exactly where the yellow normal points — so paint THAT rail
+        // yellow: it then visibly follows the yellow normal as the element spins about R1 (the rails are a
+        // symmetric set, so one marked rail is what makes the roll direction readable). Task 014.
+        if rails % 2 = 0 && i = rails / 2 then lineT a b n2Color 0.85 (w * 1.6)
+        else lineT a b edgeColor 0.35 w ]
 
-/// A SPHERICAL cap (a part of a sphere) of base radius `r` at `baseD` along N1, bulging by `bulge`
-/// (apex at `baseD + bulge`; positive = away from the element, negative = into it) — drawn as the rim,
-/// an inner latitude ring and meridians, lightly filled. This is what makes a lens / curved mirror a
-/// cylinder with curved (spherical) caps rather than flat circular ones.
-let private domeViews (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (cx : float) (cy : float) (baseD : float) (r : float) (bulge : float) (fillC : Color) (strokeC : Color) (w : float) : IView list =
-    let zAt (rho : float) : float = bulge * sqrt (max 0.0 (1.0 - (rho / r) ** 2.0))
-    let ring (rho : float) : Point list =
+/// A SPHERICAL cap (a part of a sphere) — what makes a lens / curved mirror a cylinder with curved caps
+/// instead of flat circles. The cap spans from the RIM (radius `r` at distance `rimD` along N1) to the
+/// APEX (radius 0 at `apexD`); a point at radius ρ sits at the sphere sagitta height
+/// `d(ρ) = apexD + (rimD − apexD)·(1 − √(1 − (ρ/r)²))`, so the meridians are drawn as POLYLINES that
+/// follow that curve — genuinely CURVED, not straight rim→apex segments. Both `rimD` and `apexD` are
+/// supplied within ±halfLen by the caller, so nothing bulges out of the element's bounding box.
+let private capSurface (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (cx : float) (cy : float) (r : float) (rimD : float) (apexD : float) (fillC : Color) (strokeC : Color) (w : float) : IView list =
+    let dAt (rho : float) : float = apexD + (rimD - apexD) * (1.0 - sqrt (max 0.0 (1.0 - (rho / r) ** 2.0)))
+    let ringPts (rho : float) : Point list =
         [ for k in 0 .. 23 ->
             let t = 2.0 * System.Math.PI * float k / 24.0
-            toPoint (project (offset cx cy n1 n2 n3 (baseD + zAt rho) (rho * cos t) (rho * sin t))) ]
-    let rim = ring r
-    let apex = toPoint (project (offset cx cy n1 n2 n3 (baseD + bulge) 0.0 0.0))
-    [ Polygon.create [ Polygon.points rim; Polygon.fill (brushA 0.55 fillC); Polygon.stroke (brush strokeC); Polygon.strokeThickness w ] :> IView
-      Polygon.create [ Polygon.points (ring (0.6 * r)); Polygon.fill (brushA 0.0 fillC); Polygon.stroke (brush strokeC); Polygon.strokeThickness (w * 0.6) ] :> IView ]
-    @ [ for k in [ 0; 6; 12; 18 ] -> lineP rim.[k] apex strokeC (w * 0.6) ]
+            toPoint (project (offset cx cy n1 n2 n3 (dAt rho) (rho * cos t) (rho * sin t))) ]
+    let meridianSteps = 12
+    let meridian (t : float) : IView =
+        let pts =
+            [ for j in 0 .. meridianSteps ->
+                let rho = r * (1.0 - float j / float meridianSteps)
+                toPoint (project (offset cx cy n1 n2 n3 (dAt rho) (rho * cos t) (rho * sin t))) ]
+        Polyline.create [ Polyline.points pts; Polyline.stroke (brushA 0.7 strokeC); Polyline.strokeThickness (w * 0.6) ] :> IView
+    [ Polygon.create [ Polygon.points (ringPts r); Polygon.fill (brushA 0.45 fillC); Polygon.stroke (brush strokeC); Polygon.strokeThickness w ] :> IView
+      Polygon.create [ Polygon.points (ringPts (0.6 * r)); Polygon.fill (brushA 0.0 fillC); Polygon.stroke (brush strokeC); Polygon.strokeThickness (w * 0.5) ] :> IView ]
+    @ [ for i in 0 .. capMeridians - 1 -> meridian (2.0 * System.Math.PI * float i / float capMeridians) ]
 
 /// A flat optical element as a 3-D CYLINDER whose axis is N1 (the blue normal): two FLAT end-cap circles
 /// joined by the side rails. A source (long along the beam) reads as a rod; a thin polarizer / detector
@@ -390,40 +422,49 @@ let private cylinderViews (project : Vector3 -> ScreenPoint) (selected : bool) (
     let sc = strokeOf selected
     let w = if selected then 2.5 else 1.5
     [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 cx cy (-halfLen) r); Polygon.fill (brushA 0.0 plateColor); Polygon.stroke (brush sc); Polygon.strokeThickness (w * 0.7) ] :> IView ]
-    @ railViews project n1 n2 n3 cx cy halfLen r rails (w * 0.7)
+    @ railViews project n1 n2 n3 cx cy halfLen (-halfLen) r rails (w * 0.7)
     @ [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 cx cy halfLen r); Polygon.fill (brushA 0.85 (kindColor e.placement.catalogueKind)); Polygon.stroke (brush sc); Polygon.strokeThickness w ] :> IView ]
 
-/// A lens: the same cylinder, but its two caps are SPHERICAL — both bulging OUTWARD for a converging
-/// (convex) sign, both curving INWARD for a diverging (concave) sign. Schematic — not a real focal length.
+/// A lens: the same cylinder, but its two caps are SPHERICAL and FIT THE BOUNDING BOX. Biconvex (both
+/// apexes pushed out to the box faces ±halfLen, rims inset) for a converging sign; biconcave (rims at the
+/// box faces, apexes receding inward) for diverging. Schematic — not a real focal length — but nothing
+/// sticks out of the box when the renderer is swapped.
 let private lensViews (project : Vector3 -> ScreenPoint) (selected : bool) (rails : int) (e : Element) : IView list =
     let (n1, n2, n3) = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
     let r = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
-    let amp = 0.6 * r
-    let sgn = float e.opticalSign     // +1 convex (caps bulge out), −1 concave (caps curve in)
+    let sag = 0.7 * halfLen                            // how deep the caps curve (kept < halfLen → in-box)
+    let convex = e.opticalSign >= 0
+    // Convex: apex out at the box face (±halfLen), rim inset. Concave: rim at the box face, apex inset.
+    let rimD, apexD = if convex then (halfLen - sag, halfLen) else (halfLen, halfLen - sag)
     let sc = strokeOf selected
     let w = if selected then 2.5 else 1.5
-    domeViews project n1 n2 n3 cx cy halfLen r (sgn * amp) (kindColor Lens) sc w
-    @ domeViews project n1 n2 n3 cx cy (-halfLen) r (-sgn * amp) (kindColor Lens) sc w
-    @ railViews project n1 n2 n3 cx cy halfLen r rails (w * 0.7)
+    let kc = kindColor Lens
+    capSurface project n1 n2 n3 cx cy r rimD apexD kc sc w
+    @ capSurface project n1 n2 n3 cx cy r (-rimD) (-apexD) kc sc w
+    @ railViews project n1 n2 n3 cx cy rimD (-rimD) r rails (w * 0.7)
 
-/// A curved mirror: a cylinder with ONE spherical cap — the reflective face, concave for a converging
-/// (focusing) sign, convex for diverging — plus a flat back cap. Schematic only.
+/// A curved mirror: a cylinder with ONE spherical reflective cap (concave for a converging / focusing
+/// sign, convex for diverging) plus a flat back cap. The cap is kept inside the bounding box (its apex /
+/// rim never exceed ±halfLen). Schematic only.
 let private mirrorViews (project : Vector3 -> ScreenPoint) (selected : bool) (rails : int) (e : Element) : IView list =
     let (n1, n2, n3) = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
     let r = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
-    let amp = 0.6 * r
-    let sgn = float e.opticalSign     // +1 concave (focusing) mirror, −1 convex
+    let sag = 0.7 * halfLen
+    let concave = e.opticalSign >= 0
+    // Concave: rim at the front face, apex receding inward. Convex: apex at the front face, rim inset.
+    let rimD, apexD = if concave then (halfLen, halfLen - sag) else (halfLen - sag, halfLen)
     let sc = strokeOf selected
     let w = if selected then 2.5 else 1.5
-    [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 cx cy (-halfLen) r); Polygon.fill (brushA 0.0 (kindColor CurvedMirror)); Polygon.stroke (brush sc); Polygon.strokeThickness (w * 0.7) ] :> IView ]
-    @ railViews project n1 n2 n3 cx cy halfLen r rails (w * 0.7)
-    @ domeViews project n1 n2 n3 cx cy halfLen r (-sgn * amp) (kindColor CurvedMirror) sc w
+    let kc = kindColor CurvedMirror
+    [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 cx cy (-halfLen) r); Polygon.fill (brushA 0.0 kc); Polygon.stroke (brush sc); Polygon.strokeThickness (w * 0.7) ] :> IView ]
+    @ railViews project n1 n2 n3 cx cy rimD (-halfLen) r rails (w * 0.7)
+    @ capSurface project n1 n2 n3 cx cy r rimD apexD kc sc w
 
 let private codeLabel (project : Vector3 -> ScreenPoint) (selected : bool) (e : Element) : IView =
     let cx = e.placement.placementPoint.x / 1.0<meter>
@@ -516,8 +557,10 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
                         TextBlock.verticalAlignment VerticalAlignment.Center
                         TextBlock.text (sprintf "Renderer: %s" active.name)
                     ]
-                    // The cylinder side-rail count — a live control (min 4, max 60). Drag to see how the
-                    // cylinders / spherical caps read; the rails are partially transparent.
+                    // The cylinder side-rail count — a DISCRETE slider snapping to the presets
+                    // (4 / 8 / 12 / 24 / 36 / 72). The slider rides over the preset INDEX (0..5) and snaps
+                    // to whole ticks, so it only ever lands on a preset. The rails are partially
+                    // transparent; the nice count depends on the cylinder diameter, so it is a live choice.
                     TextBlock.create [
                         TextBlock.verticalAlignment VerticalAlignment.Center
                         TextBlock.margin (Thickness(16.0, 0.0, 6.0, 0.0))
@@ -526,15 +569,16 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
                     Slider.create [
                         Slider.name UiIds.railsSlider
                         Slider.width 180.0
-                        Slider.minimum (float railsMin)
-                        Slider.maximum (float railsMax)
+                        Slider.minimum 0.0
+                        Slider.maximum (float (List.length railOptions - 1))
                         Slider.smallChange 1.0
-                        Slider.largeChange 4.0
+                        Slider.largeChange 1.0
                         Slider.isSnapToTickEnabled true
                         Slider.tickFrequency 1.0
+                        Slider.tickPlacement Avalonia.Controls.TickPlacement.BottomRight
                         Slider.verticalAlignment VerticalAlignment.Center
-                        Slider.value (float model.rails)
-                        Slider.onValueChanged (fun v -> dispatch (SetRails (int (System.Math.Round v))))
+                        Slider.value (float (railIndex model.rails))
+                        Slider.onValueChanged (fun v -> dispatch (SetRailsIndex (int (System.Math.Round v))))
                     ]
                     TextBlock.create [
                         TextBlock.name UiIds.railsReadout

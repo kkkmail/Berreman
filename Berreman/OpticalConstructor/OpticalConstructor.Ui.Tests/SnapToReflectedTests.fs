@@ -3,6 +3,7 @@ namespace OpticalConstructor.Ui.Tests
 open Avalonia.Controls
 open Avalonia.Threading
 open Xunit
+open Berreman.Geometry
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.TestWindows
@@ -80,6 +81,50 @@ module SnapToReflectedTests =
         let b = (detectorSnap spun).position
         Assert.True(close a.x b.x && close a.y b.y && close a.z b.z,
                     $"R1 left the reflected detector unchanged (got {b.x}, {b.y}, {b.z} vs {a.x}, {a.y}, {a.z})")
+
+    // ----- Part C: elements on the reflected beam are oriented RELATIVE to that beam -----
+
+    let private closeVec (a : Vector3) (b : Vector3) : bool =
+        abs (a.x - b.x) <= 1.0e-6 && abs (a.y - b.y) <= 1.0e-6 && abs (a.z - b.z) <= 1.0e-6
+
+    let private dot (a : Vector3) (b : Vector3) : float = a.x * b.x + a.y * b.y + a.z * b.z
+
+    /// The detector's DRAWN primary normal N1 (it is element 2, the one on the reflected beam).
+    let private detectorDrawN1 (m : Model) : Vector3 =
+        let p = List.item 2 (drawPlacements m)
+        let (n1, _, _) = orientedBasis p
+        n1
+
+    /// The reflected beam direction (the mirror's outgoing ray).
+    let private reflectedDir (m : Model) : Vector3 = (snapped m |> List.head).outgoing
+
+    [<Fact>]
+    let ``the detector on the reflected beam faces it at rest (R2/R3 relative to the beam)`` () =
+        let m = init ()
+        Assert.True(closeVec (detectorDrawN1 m) (reflectedDir m), "the detector (dialled 0) faces the reflected beam")
+        // At mirror R2 = 45 the reflected beam is −Y, so the detector faces −Y.
+        Assert.True(close (detectorDrawN1 m).x 0.0 && close (detectorDrawN1 m).y -1.0, "the detector faces −Y")
+
+    [<Fact>]
+    let ``rotating the mirror R2 keeps the detector facing the new reflected beam`` () =
+        let m = update (RotateR2By 25.0) (init ())     // the mirror is selected by default
+        Assert.True(closeVec (detectorDrawN1 m) (reflectedDir m), "the detector re-aims to the new reflected beam")
+
+    [<Fact>]
+    let ``rotating the mirror R1 leaves the detector orientation unchanged`` () =
+        let baseM = init ()
+        let spun = update (RotateR1By 35.0) baseM
+        Assert.True(closeVec (detectorDrawN1 baseM) (detectorDrawN1 spun),
+                    "R1 of the mirror does not move the beam, so the detector orientation is unchanged")
+
+    [<Fact>]
+    let ``the detector's own dialled R2 tilts it relative to the beam, not the table`` () =
+        let m = { (init ()) with selection = ElementSelected 2 } |> update (RotateR2By 30.0)   // dial the DETECTOR
+        let n1 = detectorDrawN1 m
+        let beam = reflectedDir m
+        Assert.False(closeVec n1 beam, "the detector is now tilted off the beam")
+        let ang = acos (max -1.0 (min 1.0 (dot n1 beam))) * 180.0 / System.Math.PI
+        Assert.True(abs (ang - 30.0) < 1.0e-3, $"the detector is tilted 30° RELATIVE to the reflected beam (got {ang})")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
