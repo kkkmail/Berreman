@@ -115,6 +115,18 @@ module TableAndElementRotationTests =
         Assert.Equal(0.0, (update (RenderSetRailOpacity -1.0) m).render.railOpacity)  // clamps to 0
 
     [<Fact>]
+    let ``Main: adding a flat mirror reflects the beam, so a downstream element leaves the straight ray`` () =
+        // initMain = [source(0); detector(1)]. Add a flat mirror (index 2, selected) and tilt it to R2 = 45°.
+        let m = initMain () |> update (AddElement FlatMirror) |> update (RotSetAxis (RotationControls.R2, 45.0))
+        let centres = snappedCentres m
+        // The DETECTOR (index 1) is now OFF the straight +X ray (y ≠ 0) — the beam reflected off the mirror,
+        // figured out from the mirror tracking REFLECTED light (not hardcoded).
+        Assert.True(abs (centres.[1]).y > 1.0e-3, $"the detector snapped off the straight ray (y = {(centres.[1]).y})")
+        // A transmissive element (a polarizer) instead keeps the beam straight.
+        let straight = initMain () |> update (AddElement LinearPolarizer)
+        Assert.True(abs ((snappedCentres straight).[1]).y < 1.0e-9, "a polarizer keeps the beam straight")
+
+    [<Fact>]
     let ``the ribbon offers every large control as a Bay; selecting one is pure state`` () =
         let m = initMain ()
         Assert.Equal(BayNames.rotation, m.ribbon)                      // Rotation shown first

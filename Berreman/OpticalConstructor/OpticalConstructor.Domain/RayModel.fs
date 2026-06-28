@@ -198,6 +198,28 @@ module RayModel =
         | Transmitted -> Some BeamTree.Transmitted
         | Incident -> None
 
+    /// The SINGLE outgoing branch the downstream chain follows past an element on one beam (B.3) —
+    /// DERIVED from what the element emits (`outgoingGroups`, i.e. its kind + A.7 emission), never
+    /// hardcoded: a mirror tracks the REFLECTED beam (its only outgoing group); every transmissive element
+    /// — and the terminal detector — tracks the TRANSMITTED beam. So a snap chain "knows" to reflect off a
+    /// flat mirror and pass through a polarizer without the caller telling it which. (A beam splitter that
+    /// emits BOTH would fork the tree; the linear chain follows the transmitted beam where it exists.)
+    let primaryBranch (p : ElementPlacement) : BeamTree.BeamBranch =
+        let groups = outgoingGroups p
+        if List.contains Transmitted groups then BeamTree.Transmitted
+        elif List.contains Reflected groups then BeamTree.Reflected
+        else BeamTree.Transmitted     // a detector emits nothing; its (unused) branch is transmitted
+
+    /// The absolute `(R2, R3)` that orient a rest element's primary normal N1 (the +X central-ray
+    /// direction) along `dir` — so an element with these angles FACES the beam travelling in `dir`. With
+    /// the rest basis (N1 = +X, table normal = +Z) the oriented normal is
+    /// `(cosR3·cosR2, cosR3·sinR2, sinR3)`, hence `R2 = atan2(dir.y, dir.x)`, `R3 = asin(dir.z)`. Used to
+    /// auto-orient an element to the (possibly reflected) beam it sits on: add the element's own dialled
+    /// R2/R3 on top, so at dialled 0 it faces the beam and a dialled value tilts it relative to the beam.
+    let beamOrientation (dir : Vector3) : Angle * Angle =
+        let d = dir.normalized
+        Angle.radian (atan2 d.y d.x), Angle.radian (asin (max -1.0 (min 1.0 d.z)))
+
     // --- Schematic Snell tracing (B.6) ---------------------------------------
 
     /// The element's face normal (N1) in the world frame, given the actual incident

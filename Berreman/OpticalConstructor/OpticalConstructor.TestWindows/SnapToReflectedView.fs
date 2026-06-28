@@ -133,10 +133,13 @@ let snapped (m : Model) : RayModel.SnappedElement list =
     | source :: stops ->
         let specs =
             List.zip stops m.gaps
-            |> List.mapi (fun i (placement, gap) ->
+            |> List.map (fun (placement, gap) ->
+                // The branch is DERIVED from the element (task: a flat mirror tracks REFLECTED light, a
+                // detector tracks TRANSMITTED) — NOT hardcoded by position. So the chain figures out from
+                // the mirror's emission that it must reflect.
                 ({ placement = placement
                    gap = gap
-                   branch = (if i = 0 then BeamTree.Reflected else BeamTree.Transmitted) } : RayModel.RaySegmentSpec))
+                   branch = RayModel.primaryBranch placement } : RayModel.RaySegmentSpec))
         RayModel.snapChain (RayModel.pointToVector3 source.placementPoint) (r1Axis source) specs
     | [] -> []
 
@@ -147,17 +150,17 @@ let elementPositions (m : Model) : Vector3 list =
     | source :: _ -> RayModel.pointToVector3 source.placementPoint :: (snapped m |> List.map (fun s -> s.position))
     | [] -> []
 
-/// The element that REFLECTS (its branch is `Reflected`); elements AFTER it are on the reflected beam.
-/// Here the chain is [source; mirror; detector], so the mirror is index 1 and the detector (index 2) is
-/// the one downstream on the reflected beam.
-let reflectorIndex : int = 1
+/// The first element that REFLECTS the beam (its primary branch is `Reflected`) — DERIVED from the
+/// elements, not hardcoded. Elements AFTER it are on the reflected beam (here the flat mirror), so they
+/// are oriented relative to that beam. `MaxValue` when nothing reflects (a straight transmitted chain).
+let reflectorIndex (m : Model) : int =
+    m.elements
+    |> List.tryFindIndex (fun p -> RayModel.primaryBranch p = BeamTree.Reflected)
+    |> Option.defaultValue System.Int32.MaxValue
 
-/// The absolute (R2, R3) that orient a rest element's primary normal N1 (the central-ray direction, +X)
-/// along `dir`. With the rest basis N1 = +X and table normal = +Z, the oriented normal is
-/// `(cosR3·cosR2, cosR3·sinR2, sinR3)`, so `R2 = atan2(dir.y, dir.x)` and `R3 = asin(dir.z)`.
-let beamOrientation (dir : Vector3) : Angle * Angle =
-    let d = dir.normalized
-    Angle.radian (atan2 d.y d.x), Angle.radian (asin (max -1.0 (min 1.0 d.z)))
+/// The absolute (R2, R3) orienting an element to face the beam in `dir` — now the shared domain helper
+/// (`RayModel.beamOrientation`), used by the Main screen too.
+let beamOrientation (dir : Vector3) : Angle * Angle = RayModel.beamOrientation dir
 
 /// The placements used to DRAW each element. An element on the REFLECTED beam (after the reflector) is
 /// oriented RELATIVE to that beam: its dialled R2/R3 are ADDED to the beam's own absolute R2/R3, so at
@@ -168,9 +171,10 @@ let beamOrientation (dir : Vector3) : Angle * Angle =
 /// the downstream orientation is unaffected by it.
 let drawPlacements (m : Model) : ElementPlacement list =
     let snaps = snapped m |> List.mapi (fun stopIndex s -> stopIndex + 1, s) |> Map.ofList
+    let reflector = reflectorIndex m
     m.elements
     |> List.mapi (fun i p ->
-        if i > reflectorIndex then
+        if i > reflector then
             match Map.tryFind i snaps with
             | Some s ->
                 let beamR2, beamR3 = beamOrientation s.incoming

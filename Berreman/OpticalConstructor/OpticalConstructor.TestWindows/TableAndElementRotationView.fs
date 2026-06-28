@@ -111,6 +111,10 @@ type Model =
         render : RendererControls.State
         /// The selected Main-screen ribbon Bay, by name (task 018). Used by `mainView` only.
         ribbon : string
+        /// Whether the elements SNAP onto the beam (the Main "Lego constructor": the source is the ray
+        /// root, downstream elements snap onto the beam reflecting at mirrors). `false` for the static test
+        /// windows (free placement, unchanged). Set by `initMain`.
+        snapChain : bool
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -141,6 +145,7 @@ let initWith (elements : TestElement list) (palette : CatalogueKind list) : Mode
         palette = palette
         render = RendererControls.defaultState
         ribbon = BayNames.rotation
+        snapChain = false
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -155,10 +160,11 @@ let initMain () : Model =
     // The light source snaps to the table's LEFT edge and the detector to the RIGHT edge — i.e. the
     // central-ray endpoints, which sit exactly on the plate edges (`defaultSourceDetectorDistance` = the
     // table length). Added elements land between them on the beam.
-    initWith
+    { initWith
         [ { placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
           { placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
         [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
+        with snapChain = true }
 
 type Msg =
     | RotateR1By of float
@@ -285,16 +291,58 @@ let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : Model) : Model
         view = { m.view with panX = m.view.panX + (pt.sx - refPt.sx); panY = m.view.panY + (pt.sy - refPt.sy) }
         drag = Panning pt }
 
-let private elementCentreScreen (view : TableViewState) (e : TestElement) : ScreenPoint =
-    TableView.project pixelsPerMeter center view
-        (Vector3.create (e.placement.placementPoint.x / 1.0<meter>) (e.placement.placementPoint.y / 1.0<meter>) 0.0)
+/// The element's along-beam parameter (its x), in metres.
+let elementX (e : TestElement) : float = e.placement.placementPoint.x / 1.0<meter>
 
-/// A click selects the nearest element within the select radius; else the table if the click landed
-/// on the plate; else nothing — clicking outside the table unselects it, exactly like the table test.
+/// The Main-screen snap (task — the Main window "follows the same approach" as the snap-to-reflected test):
+/// the source is the ray root and every downstream element SNAPS onto the (possibly reflected) beam. The
+/// non-source elements are ordered along the beam (by x); consecutive x-distances are the gaps; each
+/// element's branch is DERIVED (`RayModel.primaryBranch` — a flat mirror REFLECTS, a polarizer / sample /
+/// lens TRANSMITS). Returns each element's drawn table-frame position BY INDEX and the beam polyline
+/// (source → each node in beam order). For the free-placement test scene (`snapChain = false`) it is just
+/// each element at its own placement point, so selection / drawing are unchanged there.
+/// One element's Main-screen draw info: its snapped table-frame centre and the beam direction ARRIVING at
+/// it (the source — the ray root — has no incoming).
+type MainNode =
+    {
+        position : Vector3
+        incoming : Vector3 option
+    }
+
+let mainSnap (m : Model) : Map<int, MainNode> * Vector3 list =
+    let freePos (e : TestElement) : Vector3 = Vector3.create (elementX e) (e.placement.placementPoint.y / 1.0<meter>) 0.0
+    if not m.snapChain then
+        (m.elements |> List.mapi (fun i e -> i, { position = freePos e; incoming = None }) |> Map.ofList), []
+    else
+        match m.elements with
+        | [] -> Map.empty, []
+        | source :: rest ->
+            let sourceV = RayModel.pointToVector3 source.placement.placementPoint
+            let ordered = rest |> List.mapi (fun j e -> j + 1, e) |> List.sortBy (fun (_, e) -> elementX e)
+            let _, specsRev =
+                ordered
+                |> List.fold (fun (prev, acc) (i, e) ->
+                    let s = elementX e
+                    let gap = (max 0.0 (s - prev)) * 1.0<meter>
+                    let spec : RayModel.RaySegmentSpec = { placement = e.placement; gap = gap; branch = RayModel.primaryBranch e.placement }
+                    (s, (i, spec) :: acc)) (elementX source, [])
+            let specs = List.rev specsRev
+            let snaps = RayModel.snapChain sourceV (r1Axis source.placement) (specs |> List.map snd)
+            let downstream = List.map2 (fun (i, _) (s : RayModel.SnappedElement) -> i, { position = s.position; incoming = Some s.incoming }) specs snaps
+            let nodes = (0, { position = sourceV; incoming = None }) :: downstream |> Map.ofList
+            let beamPath = sourceV :: (snaps |> List.map (fun s -> s.position))
+            nodes, beamPath
+
+/// Each element's drawn table-frame position by index (the Main scene snaps; the test scene is free).
+let snappedCentres (m : Model) : Map<int, Vector3> = fst (mainSnap m) |> Map.map (fun _ n -> n.position)
+
+/// A click selects the nearest element (by its DRAWN position) within the select radius; else the table if
+/// the click landed on the plate; else nothing — clicking outside the table unselects it.
 let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
+    let centres = snappedCentres m
     let nearest =
         m.elements
-        |> List.mapi (fun i e -> i, dist pt (elementCentreScreen m.view e))
+        |> List.mapi (fun i _ -> i, dist pt (TableView.project pixelsPerMeter center m.view centres.[i]))
         |> List.sortBy snd
         |> List.tryHead
     match nearest with
@@ -358,8 +406,6 @@ let private removeSelected (m : Model) : Model =
 
 /// The plate half-length — the clamp for along-beam motion, in metres.
 let plateHalfLength (m : Model) : float = (m.table.length / 2.0) / 1.0<meter>
-
-let elementX (e : TestElement) : float = e.placement.placementPoint.x / 1.0<meter>
 
 let private setElementX (i : int) (x : float) (m : Model) : Model =
     let half = plateHalfLength m
@@ -660,7 +706,10 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
 // affects the table. The static test-window `view` above is unchanged.
 // ---------------------------------------------------------------------------
 
-/// The table plate / ray / markers, with the plate FILL driven by the render face-opacity knob (task 018).
+/// The table plate (FILL driven by the render face-opacity knob, task 018) plus the SNAPPED beam — the
+/// polyline from the source through every downstream element, bending at mirrors (task — the Main window
+/// follows the snap approach, so adding a mirror reflects the beam). The elements (incl. source / detector)
+/// draw themselves through the renderer, so no separate source / detector markers here.
 let private mainTableViews (model : Model) : IView list =
     let corners = TableView.plateCorners3D model.table |> List.map (projectPt model.view) |> List.toArray
     let tableSel = (model.selection = TableSelected)
@@ -675,24 +724,24 @@ let private mainTableViews (model : Model) : IView list =
     let edges =
         TableView.plateEdges
         |> List.map (fun (a, b) -> line { sx = corners.[a].sx; sy = corners.[a].sy } { sx = corners.[b].sx; sy = corners.[b].sy } edgeColor (if tableSel then 2.0 else 1.0))
-    let s = projectPt model.view (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-    let d = projectPt model.view (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
-    let marker (sp : ScreenPoint) (c : Color) : IView =
-        Ellipse.create [
-            Ellipse.left (sp.sx - 6.0); Ellipse.top (sp.sy - 6.0); Ellipse.width 12.0; Ellipse.height 12.0
-            Ellipse.fill (brush c); Ellipse.stroke (brush edgeColor); Ellipse.strokeThickness 1.0
-        ] :> IView
-    (face :: edges) @ [ line s d rayColor 2.0; marker s sourceColor; marker d detectorColor ]
+    let beam =
+        snd (mainSnap model)
+        |> List.map (projectPt model.view)
+        |> List.pairwise
+        |> List.map (fun (a, b) -> line a b rayColor 2.0)
+    (face :: edges) @ beam
 
-let private toDrawable (e : TestElement) : ElementRenderer.Drawable =
-    { placement = e.placement; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind }
-
-/// The elements drawn through the chosen renderer (the Render bay's `RendererControls.State`).
+/// The elements drawn through the chosen renderer at their SNAPPED positions (so they sit on the bent
+/// beam). Orientation / zoom are the element's own; only the centre is the snapped one.
 let private mainElementViews (model : Model) : IView list =
     let renderer = ElementRenderer.rendererOf model.render
     let project = projectPt model.view
+    let centres = snappedCentres model
     model.elements
-    |> List.mapi (fun i e -> renderer.draw project (model.selection = ElementSelected i) (toDrawable e))
+    |> List.mapi (fun i e ->
+        let pos = centres.[i]
+        let placed = { e.placement with placementPoint = { x = pos.x * 1.0<meter>; y = pos.y * 1.0<meter> } }
+        renderer.draw project (model.selection = ElementSelected i) { placement = placed; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind })
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is

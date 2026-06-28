@@ -29,6 +29,18 @@ module SnapToReflectedTests =
         sqrt (dx * dx + dy * dy + dz * dz)
 
     [<Fact>]
+    let ``the tracked branch is DERIVED from the element (mirror tracks reflected, others transmitted)`` () =
+        let mk (k : CatalogueKind) : ElementPlacement = ElementPlacement.create k TablePoint.origin
+        Assert.Equal(BeamTree.Reflected, RayModel.primaryBranch (mk FlatMirror))
+        Assert.Equal(BeamTree.Reflected, RayModel.primaryBranch (mk CurvedMirror))
+        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk LinearPolarizer))
+        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk CircularPolarizer))
+        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk LightSource))
+        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk Detector))
+        // The scene figures out (from the flat mirror, index 1) which element reflects — not hardcoded.
+        Assert.Equal(1, reflectorIndex (init ()))
+
+    [<Fact>]
     let ``the scene is source, flat mirror at R2 = 45, detector`` () =
         let m = init ()
         let kinds = m.elements |> List.map (fun e -> e.catalogueKind)
