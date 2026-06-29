@@ -36,6 +36,10 @@
              (Samples / Sources / Detectors / Polarizers); selecting an entry binds the element's
              valueId. Domain-free (rows are host-flattened). -->
         <Compile Include="LibraryControls.fs" />
+        <!-- Spec 0027 (026): the reusable layer-stack BAND view (the Details bay) — a vertical stack of
+             coloured rectangles sized by thickness, labelled with material + thickness. Domain-free (the
+             host flattens a sample's system into bands). -->
+        <Compile Include="LayerBandsControls.fs" />
         <!-- Spec 0027 (024) Phase 2: the Experiments bay — choose WHICH present element's R1 sweeps a
              full circle (the rotating-analyzer experiment). Build / edit only (no solve yet).
              Domain-free (candidates are host-flattened). -->

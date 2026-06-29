@@ -112,6 +112,7 @@ module PropagationTests =
             materialId = "glass-1.52"
             thickness = Thickness.mm 1.0<mm>
             substrate = Library.Plate
+            description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
         }
 
     [<Fact>]
@@ -153,14 +154,157 @@ module PropagationTests =
         Assert.InRange(pd.delta.degrees, -180.0, 180.0)
 
     [<Fact>]
-    let ``the multilayer sample maps to a real three-film stack`` () =
+    let ``the multilayer sample maps to a real 41-film stack`` () =
         let multilayer : Sample =
             {
                 id = "sample-multilayer-qw"
-                name = "Quarter-wave glass multilayer"
+                name = "Quarter-wave glass/vacuum multilayer (41 layers)"
                 materialId = "glass-1.52"
                 thickness = Thickness.nm 100.0<nm>
                 substrate = Library.ThinFilm
+                description = "41-layer quarter-wave stack."
             }
-        let system = sampleToSystem multilayer
-        Assert.Equal(3, List.length system.films)
+        let system = sampleToSystem multilayer (WaveLength.nm 600.0<nm>)
+        Assert.Equal(41, List.length system.films)
+
+    // ============================ Spec 0027 (026) Part 1 — curated samples ============================
+
+    /// Every seeded `SampleItem` (so the test auto-covers new samples added to the Library).
+    let private seededSamples : Sample list =
+        Library.seedEntries
+        |> List.choose (function SampleItem s -> Some s | _ -> None)
+
+    /// The wavelength a given sample is exercised at (EUV samples live at ~10 nm; everything else 600 nm).
+    let private runWaveLengthFor (s : Sample) : WaveLength =
+        if s.id = "sample-euv-mosi" then WaveLength.nm 10.0<nm> else WaveLength.nm 600.0<nm>
+
+    [<Fact>]
+    let ``the curated Library seeds the expected new samples`` () =
+        let ids = seededSamples |> List.map (fun s -> s.id) |> Set.ofList
+        let expected =
+            [
+                "sample-glass-1mm"; "sample-glass-2mm"; "sample-glass-film-600"
+                "sample-glass-vacuum"; "sample-glass-film-200"; "sample-multilayer-qw"
+                "sample-euv-mosi"; "sample-uniaxial"; "sample-biaxial"
+                "sample-active-crystal"; "sample-langasite-silicon"
+            ]
+        for id in expected do
+            Assert.True(Set.contains id ids, sprintf "missing seeded sample %s" id)
+
+    [<Fact>]
+    let ``every seeded sample maps to a finite, energy-conserving sample Mueller matrix`` () =
+        for s in seededSamples do
+            let w = runWaveLengthFor s
+            let mm = sampleMuellerT s w IncidenceAngle.normal
+            let out = s0 (mm * unpolarizedStokes)
+            Assert.False(System.Double.IsNaN out, sprintf "%s produced NaN S0" s.id)
+            Assert.False(System.Double.IsInfinity out, sprintf "%s produced infinite S0" s.id)
+            Assert.True(out >= -1.0e-9, sprintf "%s transmitted a negative S0: %g" s.id out)
+            Assert.True(out <= 1.0 + 1.0e-9, sprintf "%s transmitted S0 > input: %g" s.id out)
+
+    [<Fact>]
+    let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
+        for s in seededSamples do
+            let w = runWaveLengthFor s
+            let system = sampleToSystem s w
+            match s.id with
+            | "sample-multilayer-qw" -> Assert.Equal(41, List.length system.films)
+            | "sample-euv-mosi" -> Assert.Equal(200, List.length system.films)
+            | "sample-active-crystal"
+            | "sample-glass-vacuum"
+            | "sample-glass-1mm"
+            | "sample-glass-2mm" ->
+                Assert.Empty system.films
+                Assert.True(Option.isSome system.substrate, sprintf "%s should be a substrate plate" s.id)
+            | _ ->
+                // The remaining seeded samples are single-film systems.
+                Assert.Equal(1, List.length system.films)
+
+    [<Fact>]
+    let ``every seeded sample carries a non-empty description`` () =
+        for s in seededSamples do
+            Assert.False(System.String.IsNullOrWhiteSpace s.description, sprintf "%s has an empty description" s.id)
+
+    [<Fact>]
+    let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
+        let langasite = seededSamples |> List.find (fun s -> s.id = "sample-langasite-silicon")
+        // Silicon's dispersion makes the transmitted intensity wavelength-dependent; the dispersive seam
+        // (getSystem w v) is therefore actually being evaluated at the run wavelength.
+        let i400 = s0 (sampleMuellerT langasite (WaveLength.nm 400.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
+        let i800 = s0 (sampleMuellerT langasite (WaveLength.nm 800.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
+        Assert.False(Double.IsNaN i400)
+        Assert.False(Double.IsNaN i800)
+        Assert.True(abs (i400 - i800) > 1.0e-9, sprintf "dispersion not observed: I(400)=%g I(800)=%g" i400 i800)
+
+    // ============================ Spec 0027 (026) Part 2 — R2 / λ sweeps ============================
+
+    open OpticalConstructor.Domain.Experiments
+
+    let private linear45 : StokesVector = inputStokes IdealLinear (deg 45.0)
+
+    [<Fact>]
+    let ``r2SweepCurve returns n points whose x runs 0..89 monotone with finite y`` () =
+        let n = 31
+        let curve = r2SweepCurve linear45 glassSample (WaveLength.nm 600.0<nm>) None n
+        Assert.Equal(n, List.length curve)
+        let xs = curve |> List.map fst
+        Assert.True(close 0.0 (List.head xs))
+        Assert.True(close r2SweepMaxDegrees (List.last xs), sprintf "last x = %g, expected 89" (List.last xs))
+        Assert.True(close 89.0 (List.last xs))
+        Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
+        for (_, y) in curve do
+            Assert.False(Double.IsNaN y)
+            Assert.False(Double.IsInfinity y)
+
+    [<Fact>]
+    let ``intensityThroughAnalyzerOpt None equals S0 of the raw sample output`` () =
+        let mm = sampleMuellerT glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let withNone = intensityThroughAnalyzerOpt linear45 mm None
+        let direct = s0 (mm * linear45)
+        Assert.True(close direct withNone)
+
+    [<Fact>]
+    let ``intensityThroughAnalyzerOpt Some passes through the analyzer Mueller matrix`` () =
+        let mm = sampleMuellerT glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let analyzer = Some (IdealLinear, deg 90.0)
+        let withAnalyzer = intensityThroughAnalyzerOpt linear45 mm analyzer
+        let expected = intensity (propagate linear45 mm (analyzerMueller IdealLinear (deg 90.0)))
+        Assert.True(close expected withAnalyzer)
+
+    [<Fact>]
+    let ``waveLengthSweepIntensity spans the chosen range with finite y`` () =
+        let n = 21
+        let curve = waveLengthSweepIntensity linear45 glassSample IncidenceAngle.normal None 200.0 800.0 n
+        Assert.Equal(n, List.length curve)
+        let xs = curve |> List.map fst
+        Assert.True(close 200.0 (List.head xs))
+        Assert.True(close 800.0 (List.last xs))
+        for (_, y) in curve do
+            Assert.False(Double.IsNaN y)
+
+    [<Fact>]
+    let ``r2SweepPsiDelta returns two equal-length Psi / Delta curves`` () =
+        let n = 19
+        let psi, delta = r2SweepPsiDelta linear45 glassSample (WaveLength.nm 600.0<nm>) n
+        Assert.Equal(n, List.length psi)
+        Assert.Equal(List.length psi, List.length delta)
+        Assert.True(close 89.0 (List.last (psi |> List.map fst)))
+
+    [<Fact>]
+    let ``waveLengthSweepPsiDelta returns two equal-length Psi / Delta curves over the range`` () =
+        let n = 17
+        let psi, delta = waveLengthSweepPsiDelta linear45 glassSample IncidenceAngle.normal 300.0 700.0 n
+        Assert.Equal(n, List.length psi)
+        Assert.Equal(List.length psi, List.length delta)
+        Assert.True(close 300.0 (List.head (psi |> List.map fst)))
+        Assert.True(close 700.0 (List.last (delta |> List.map fst)))
+
+    [<Fact>]
+    let ``the new Experiment cases expose their swept element and description`` () =
+        let id = ElementId.create "swept"
+        let r2 = SweepR2 id
+        let lam = SweepWaveLength id
+        Assert.Equal<ElementId>(id, r2.sweptElement)
+        Assert.Equal<ElementId>(id, lam.sweptElement)
+        Assert.Contains("R2", r2.description)
+        Assert.Contains("wavelength", lam.description)

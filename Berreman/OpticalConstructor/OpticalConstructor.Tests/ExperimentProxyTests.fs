@@ -44,12 +44,11 @@ module ExperimentProxyTests =
         match proxy.listExperimentSets () with
         | Ok sets ->
             Assert.All(sets, fun s -> Assert.NotEmpty s.steps)
-            // Every step's experiment is a RotateR1FullCircle (the only kind now); its swept element is a
-            // non-empty id.
+            // Every step's experiment names a swept element by a non-empty id (the seeded sets are all
+            // RotateR1FullCircle, but the assertion holds for every `Experiment` kind via `sweptElement`).
             for s in sets do
                 for (_, exp) in s.steps do
-                    match exp with
-                    | RotateR1FullCircle id -> Assert.False(System.String.IsNullOrEmpty id.value)
+                    Assert.False(System.String.IsNullOrEmpty exp.sweptElement.value)
         | Error err -> Assert.Fail(sprintf "%A" err)
 
     [<Fact>]

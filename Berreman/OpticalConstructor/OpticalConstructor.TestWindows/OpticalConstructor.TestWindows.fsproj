@@ -39,6 +39,12 @@
         <Compile Include="TableRotationWindow.fs" />
         <Compile Include="ElementRotationView.fs" />
         <Compile Include="ElementRotationWindow.fs" />
+        <!-- Spec 0027 (026): the renderer-neutral chart data the Experiments bay produces (before the scene
+             that builds it). -->
+        <Compile Include="ExperimentChart.fs" />
+        <!-- Spec 0027 (026) Part 3: the pop-out interactive ScottPlot chart window (after ExperimentChart,
+             before the scene that opens it). -->
+        <Compile Include="ChartWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
         <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
@@ -65,6 +71,8 @@
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
+        <!-- Spec 0027 (026) Part 3: the interactive chart-window host (the pop-out ScottPlot window). -->
+        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
     </ItemGroup>
 
     <ItemGroup>

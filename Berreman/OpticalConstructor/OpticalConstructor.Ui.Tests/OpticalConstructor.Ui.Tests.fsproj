@@ -83,6 +83,9 @@
         <!-- Spec 0027 (024) Phase 2: the Experiments bay — pure control contract + host candidate
              flattening + the ChooseSweptElement binding + a headless render/click proof. -->
         <Compile Include="ExperimentControlsTests.fs" />
+        <!-- Spec 0027 (026) Part 4: the Details bay — the reusable LayerBandsControls band component
+             (pure contract + headless render) + the host detailsState band-builder + the seven-bay ribbon. -->
+        <Compile Include="LayerBandsControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -47,6 +47,10 @@ module Library =
             materialId : string
             thickness : Thickness
             substrate : SubstrateKind
+            /// A human-readable description of what the sample IS — materials + thicknesses + stack —
+            /// shown in the Details element-view and the Library confirm step. Multilayer samples spell
+            /// out the repeating unit and layer count rather than a per-layer list.
+            description : string
         }
 
     /// A monochromatic source preset — defines λ (spec Q3: source = wavelength).
@@ -106,6 +110,26 @@ module Library =
             | SourceItem s -> s.name
             | DetectorItem d -> d.name
             | PolarizerItem p -> p.name
+
+        /// The FULL, human-readable description of what this entry IS (spec 0027 / 026 — the Library
+        /// confirm step and the Details element-view show it before / after binding). A sample carries its
+        /// own curated `description` (materials + thicknesses + stack); the other presets get prose built
+        /// from their kind / wavelength so a bare "Ideal linear polarizer" is never the whole story.
+        member this.fullDescription : string =
+            match this with
+            | SampleItem s -> s.description
+            | SourceItem s ->
+                let wNm = s.waveLength.value / nmToMeter / oneNanometer
+                sprintf "Monochromatic light source at %g nm." wNm
+            | DetectorItem d ->
+                match d.kind with
+                | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
+                | Ellipsometer -> "Ellipsometer — records the ellipsometric angles Ψ and Δ."
+            | PolarizerItem p ->
+                match p.kind with
+                | IdealLinear -> "Ideal linear polarizer — transmits the linear component along its R1 orientation."
+                | IdealCircularLeft -> "Ideal circular polarizer (left-handed) — transmits left-circular light."
+                | IdealCircularRight -> "Ideal circular polarizer (right-handed) — transmits right-circular light."
 
         /// The catalogue kinds this entry is valid for (kind-constrained selection, §2a). A polarizer
         /// entry serves either the LinearPolarizer role (the ideal LP) or the CircularPolarizer role
@@ -171,6 +195,7 @@ module Library =
                     materialId = "glass-1.52"
                     thickness = Thickness.mm 1.0<mm>
                     substrate = Plate
+                    description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
                 }
             SampleItem
                 {
@@ -179,6 +204,7 @@ module Library =
                     materialId = "glass-1.52"
                     thickness = Thickness.mm 2.0<mm>
                     substrate = Plate
+                    description = "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
                 }
             SampleItem
                 {
@@ -187,14 +213,79 @@ module Library =
                     materialId = "glass-1.75"
                     thickness = Thickness.nm 600.0<nm>
                     substrate = ThinFilm
+                    description = "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
+                }
+            SampleItem
+                {
+                    id = "sample-glass-vacuum"
+                    name = "Glass / vacuum interface (n=1.50)"
+                    materialId = "glass-1.50"
+                    thickness = Thickness.mm 1.0<mm>
+                    substrate = Plate
+                    description = "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
+                }
+            SampleItem
+                {
+                    id = "sample-glass-film-200"
+                    name = "Glass thin film (n=1.52, 200 nm)"
+                    materialId = "glass-1.52"
+                    thickness = Thickness.nm 200.0<nm>
+                    substrate = ThinFilm
+                    description = "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
                 }
             SampleItem
                 {
                     id = "sample-multilayer-qw"
-                    name = "Quarter-wave glass multilayer"
+                    name = "Quarter-wave glass/vacuum multilayer (41 layers)"
                     materialId = "glass-1.52"
                     thickness = Thickness.nm 100.0<nm>
                     substrate = ThinFilm
+                    description = "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
+                }
+            SampleItem
+                {
+                    id = "sample-euv-mosi"
+                    name = "EUV Mo/Si multilayer (100 pairs)"
+                    materialId = "euv-mo-si"
+                    thickness = Thickness.nm 2.65<nm>
+                    substrate = ThinFilm
+                    description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
+                }
+            SampleItem
+                {
+                    id = "sample-uniaxial"
+                    name = "Uniaxial crystal film (1 µm)"
+                    materialId = "uniaxial-crystal"
+                    thickness = Thickness.nm 1000.0<nm>
+                    substrate = ThinFilm
+                    description = "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
+                }
+            SampleItem
+                {
+                    id = "sample-biaxial"
+                    name = "Biaxial crystal film (1 µm)"
+                    materialId = "biaxial-crystal"
+                    thickness = Thickness.nm 1000.0<nm>
+                    substrate = ThinFilm
+                    description = "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
+                }
+            SampleItem
+                {
+                    id = "sample-active-crystal"
+                    name = "Active gyrotropic crystal plate (1 cm)"
+                    materialId = "active-crystal"
+                    thickness = Thickness.oneCentiMeter
+                    substrate = Plate
+                    description = "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
+                }
+            SampleItem
+                {
+                    id = "sample-langasite-silicon"
+                    name = "Langasite film on silicon (10 µm, dispersive)"
+                    materialId = "langasite-on-silicon"
+                    thickness = Thickness.mm 0.01<mm>
+                    substrate = ThinFilm
+                    description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
                 }
             DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity }
             DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer }
@@ -220,11 +311,30 @@ module Library =
                                       Group
                                           (TreeLabel "Glass (n=1.52)",
                                            [
-                                               Leaf (TreeLabel "1 mm", "sample-glass-1mm")
-                                               Leaf (TreeLabel "2 mm", "sample-glass-2mm")
+                                               Leaf (TreeLabel "1 mm plate", "sample-glass-1mm")
+                                               Leaf (TreeLabel "2 mm plate", "sample-glass-2mm")
+                                               Leaf (TreeLabel "200 nm film", "sample-glass-film-200")
                                            ])
                                       Leaf (TreeLabel "Glass film (n=1.75)", "sample-glass-film-600")
-                                      Leaf (TreeLabel "Quarter-wave multilayer", "sample-multilayer-qw")
+                                      Leaf (TreeLabel "Glass / vacuum interface (n=1.50)", "sample-glass-vacuum")
+                                      Group
+                                          (TreeLabel "Multilayers",
+                                           [
+                                               Leaf (TreeLabel "Quarter-wave glass/vacuum (41)", "sample-multilayer-qw")
+                                               Leaf (TreeLabel "EUV Mo/Si (100 pairs)", "sample-euv-mosi")
+                                           ])
+                                      Group
+                                          (TreeLabel "Crystals",
+                                           [
+                                               Leaf (TreeLabel "Uniaxial film", "sample-uniaxial")
+                                               Leaf (TreeLabel "Biaxial film", "sample-biaxial")
+                                               Leaf (TreeLabel "Active gyrotropic plate", "sample-active-crystal")
+                                           ])
+                                      Group
+                                          (TreeLabel "Dispersive",
+                                           [
+                                               Leaf (TreeLabel "Langasite on silicon", "sample-langasite-silicon")
+                                           ])
                                   ])
                              Group (TreeLabel "Sources", [ Leaf (TreeLabel "600 nm", "src-600") ])
                              Group
@@ -267,21 +377,28 @@ module Experiments =
 
     open Library
 
-    /// An experiment (spec §2b / Q4): WHICH element's R1 makes a full circle, named by its serializable
-    /// `ElementId`. A single-case DU NOW so future experiment kinds (`RotateR1 of ElementId * Range`,
-    /// `SweepWaveLength`, a 2-D pair, …) are added compiler-guided.
+    /// An experiment (spec §2b / Q4): WHICH element makes a 1-D sweep, named by its serializable
+    /// `ElementId`. The three kinds (added spec 0027 / 026): rotate the swept element's R1 a full circle
+    /// (the rotating-analyzer / Malus measurement); vary the swept element's R2 (incidence) over 0…89°
+    /// (drawn to 90 — 90 itself is not computable, spec 026); vary the wavelength over a user range.
     type Experiment =
         | RotateR1FullCircle of ElementId
+        | SweepR2 of ElementId
+        | SweepWaveLength of ElementId
 
         /// The element this experiment sweeps (by id).
         member this.sweptElement : ElementId =
             match this with
-            | RotateR1FullCircle id -> id
+            | RotateR1FullCircle id
+            | SweepR2 id
+            | SweepWaveLength id -> id
 
         /// A short, human-readable description (the bay readout uses this).
         member this.description : string =
             match this with
             | RotateR1FullCircle id -> sprintf "rotate %s R1 over 0…360°" id.value
+            | SweepR2 id -> sprintf "sweep %s incidence (R2) over 0…90°" id.value
+            | SweepWaveLength id -> sprintf "sweep wavelength for %s" id.value
 
     /// A setup step applied before an experiment (spec §2b). A single-case DU so steps grow
     /// compiler-guided (swap LP→CP, set incidence, … are future cases): set an element's R1 angle.

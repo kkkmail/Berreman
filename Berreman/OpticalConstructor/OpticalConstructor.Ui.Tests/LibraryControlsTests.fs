@@ -92,28 +92,83 @@ module LibraryControlsTests =
         let bays = mainBays m ignore
         Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
 
+    // ============================ Spec 0027 (026) confirm-gated bind (pure) ============================
+
+    [<Fact>]
+    let ``RequestBindValueId sets a pending entry WITHOUT binding the valueId`` () =
+        let m = withSampleSelected ()                          // element 2 (a Sample) selected
+        let pending = update (RequestBindValueId "sample-glass-1mm") m
+        // The pending choice is recorded, but no valueId is bound yet.
+        Assert.Equal(Some "sample-glass-1mm", pending.pendingEntry)
+        Assert.Equal(None, (elem 2 pending).placement.valueId)
+
+    [<Fact>]
+    let ``ConfirmBindValueId commits the pending entry to the selected element's valueId and clears pending`` () =
+        let m =
+            withSampleSelected ()
+            |> update (RequestBindValueId "sample-glass-1mm")
+            |> update ConfirmBindValueId
+        Assert.Equal(Some "sample-glass-1mm", (elem 2 m).placement.valueId)
+        Assert.Equal(None, m.pendingEntry)
+
+    [<Fact>]
+    let ``CancelBindValueId clears the pending entry and does NOT bind`` () =
+        let m =
+            withSampleSelected ()
+            |> update (RequestBindValueId "sample-glass-1mm")
+            |> update CancelBindValueId
+        Assert.Equal(None, m.pendingEntry)
+        Assert.Equal(None, (elem 2 m).placement.valueId)
+
+    [<Fact>]
+    let ``a confirm with no pending entry binds nothing`` () =
+        let m = withSampleSelected () |> update ConfirmBindValueId
+        Assert.Equal(None, (elem 2 m).placement.valueId)
+
+    [<Fact>]
+    let ``libraryState surfaces the pending entry's name and FULL description before confirm`` () =
+        let m = withSampleSelected () |> update (RequestBindValueId "sample-multilayer-qw")
+        // The host's libraryState fills the pending fields from the proxy; mirror that resolution here.
+        match m.library.tryGetEntry "sample-multilayer-qw" with
+        | Ok (Some entry) ->
+            Assert.False(System.String.IsNullOrWhiteSpace entry.fullDescription)
+            // A multilayer's description spells out the stack, not just its short name.
+            Assert.Contains("layer", entry.fullDescription)
+        | other -> Assert.Fail(sprintf "expected the quarter-wave multilayer entry, got %A" other)
+        Assert.Equal(Some "sample-multilayer-qw", m.pendingEntry)
+
     // ============================ headless render proof (ui-smoke) ============================
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Library bay renders kind-constrained entries and a click binds the element's valueId`` () =
+    let ``the Library bay shows the pending description, then a Confirm click binds the valueId`` () =
         HeadlessSession.run (fun () ->
-            // A Sample is selected, the Library bay is shown.
-            let mutable model = withSampleSelected () |> update (SelectBay BayNames.library)
+            // A Sample is selected, an entry is already PENDING (selected-not-confirmed), the Library bay is
+            // shown — so the confirm panel (the entry's full description + Confirm / Cancel) renders up front.
+            let mutable model =
+                withSampleSelected ()
+                |> update (SelectBay BayNames.library)
+                |> update (RequestBindValueId "sample-glass-1mm")
             let dispatch (msg : Msg) = model <- update msg model
-            let window = Window(Width = 980.0, Height = canvasHeight + 260.0)
+            let window = Window(Width = 980.0, Height = canvasHeight + 320.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            // The Library tree is effectively visible.
-            let leafName = LibraryControls.UiIds.entry "sample-glass-1mm"
-            let findLeaf () : Border option =
+            // The pending entry's full description is shown (and the element is NOT bound yet).
+            Assert.Equal(None, (elem 2 model).placement.valueId)
+            let descriptionShown () : bool =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = leafName && b.IsEffectivelyVisible -> Some b | _ -> None)
-            match findLeaf () with
-            | None -> Assert.Fail("the sample-glass-1mm leaf was not visible in the Library bay")
+                |> Seq.exists (function
+                    | :? TextBlock as t -> t.Name = LibraryControls.UiIds.description && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
+                    | _ -> false)
+            Assert.True(descriptionShown (), "the pending entry's full description was not shown")
+            // Click Confirm — now it binds the selected element's valueId.
+            let findConfirm () : Border option =
+                window.GetVisualDescendants()
+                |> Seq.tryPick (function :? Border as b when b.Name = LibraryControls.UiIds.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
+            match findConfirm () with
+            | None -> Assert.Fail("the Confirm button was not visible in the Library bay")
             | Some b ->
-                // Click the leaf — it must bind the selected element's valueId.
                 let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
                 if c.HasValue then
                     window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
@@ -121,5 +176,5 @@ module LibraryControlsTests =
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
                     Assert.Equal(Some "sample-glass-1mm", (elem 2 model).placement.valueId)
-                else Assert.Fail("the leaf has no on-screen position")
+                else Assert.Fail("the Confirm button has no on-screen position")
             window.Close())

@@ -92,13 +92,37 @@ module LibraryProxyTests =
         let cpR = PolarizerItem { id = "z"; name = "cpR"; kind = IdealCircularRight }
         let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm> }
         let det = DetectorItem { id = "d"; name = "d"; kind = Intensity }
-        let smp = SampleItem { id = "p"; name = "p"; materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm>; substrate = Plate }
+        let smp = SampleItem { id = "p"; name = "p"; materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm>; substrate = Plate; description = "a glass plate" }
         Assert.Equal<CatalogueKind list>([ LinearPolarizer ], lp.forKinds)
         Assert.Equal<CatalogueKind list>([ CircularPolarizer ], cpL.forKinds)
         Assert.Equal<CatalogueKind list>([ CircularPolarizer ], cpR.forKinds)
         Assert.Equal<CatalogueKind list>([ LightSource ], src.forKinds)
         Assert.Equal<CatalogueKind list>([ Detector ], det.forKinds)
         Assert.Equal<CatalogueKind list>([ CatalogueKind.Sample ], smp.forKinds)
+
+    [<Fact>]
+    let ``every seeded entry has a non-empty fullDescription`` () =
+        Assert.NotEmpty seedEntries
+        Assert.All(seedEntries, fun e ->
+            Assert.False(System.String.IsNullOrWhiteSpace e.fullDescription, e.displayName))
+
+    [<Fact>]
+    let ``a Sample entry's fullDescription is exactly its curated description`` () =
+        let sampleDescriptions =
+            seedEntries
+            |> List.choose (function SampleItem s -> Some (s, (SampleItem s).fullDescription) | _ -> None)
+        Assert.NotEmpty sampleDescriptions
+        Assert.All(sampleDescriptions, fun (s, full) -> Assert.Equal(s.description, full))
+
+    [<Fact>]
+    let ``a non-Sample entry's fullDescription is prose built from its kind`` () =
+        // The detectors / polarizers / source describe what they DO (so a bare name is never the whole story).
+        let det = DetectorItem { id = "d"; name = "d"; kind = Ellipsometer }
+        Assert.Contains("Ψ", det.fullDescription)
+        let lp = PolarizerItem { id = "x"; name = "lp"; kind = IdealLinear }
+        Assert.Contains("linear", lp.fullDescription)
+        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm> }
+        Assert.Contains("500", src.fullDescription)
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =

@@ -132,6 +132,14 @@ type Model =
         /// Spec 0027 (024) Phase 2: the element whose R1 the experiment sweeps a full circle (the
         /// rotating-analyzer measurement). Referenced by its serializable id (so it survives save-load).
         chosenSwept : Library.ElementId option
+        /// Spec 0027 (026): the experiment KIND to run on the swept element (rotate R1 / sweep R2 / sweep λ).
+        experimentKind : ExperimentControls.ExperimentKindChoice
+        /// Spec 0027 (026): the user-editable wavelength sweep range (min nm, max nm).
+        lambdaRange : float * float
+        /// Spec 0027 (026): the Library entry the user has SELECTED but not yet confirmed (the pending
+        /// bind). Clicking a Library entry sets this and shows its full description; Confirm commits it to
+        /// the selected element's `valueId`, Cancel clears it.
+        pendingEntry : string option
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -144,7 +152,10 @@ module BayNames =
     let library = "Library"
     /// Spec 0027 (024) Phase 2: the Experiments bay — pick which element's R1 sweeps a full circle.
     let experiments = "Experiments"
-    let all = [ rotation; move; add; render; library; experiments ]
+    /// Spec 0027 (026): the Details bay — the selected element's bound Library entry (what it is, its full
+    /// description, and a layer-stack band view for a multilayer sample).
+    let details = "Details"
+    let all = [ rotation; move; add; render; library; experiments; details ]
 
 let defaultElementZoom : float = 5.0
 
@@ -175,6 +186,9 @@ let initWith (library : Library.LibraryProxy) (experiments : Experiments.Experim
         library = library
         experiments = experiments
         chosenSwept = None
+        experimentKind = ExperimentControls.RotateR1
+        lambdaRange = (200.0, 800.0)
+        pendingEntry = None
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -242,9 +256,22 @@ type Msg =
     /// Main-screen LIBRARY bay (task 024): bind this Library entry id to the selected element's
     /// `valueId` (inert when the table or nothing is selected).
     | BindValueId of string
+    /// Spec 0027 (026): the confirm-gated Library bind. `RequestBindValueId` SELECTS an entry as pending
+    /// (shows its full description, no bind yet); `ConfirmBindValueId` COMMITS the pending entry to the
+    /// selected element's `valueId`; `CancelBindValueId` clears the pending choice.
+    | RequestBindValueId of string
+    | ConfirmBindValueId
+    | CancelBindValueId
     /// Main-screen EXPERIMENTS bay (task 024 Phase 2): pick which present element's R1 the experiment
     /// sweeps a full circle (by its serializable id).
     | ChooseSweptElement of string
+    /// Spec 0027 (026): pick the experiment kind (rotate R1 / sweep R2 / sweep λ).
+    | ChooseExperimentKind of ExperimentControls.ExperimentKindChoice
+    /// Spec 0027 (026): set the wavelength sweep range (min / max, nm).
+    | SetLambdaLo of float
+    | SetLambdaHi of float
+    /// Spec 0027 (026): open the pop-out interactive chart window (double-click on the inline chart).
+    | OpenExperimentChartWindow
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -471,6 +498,12 @@ let private resetSelectedPosition (m : Model) : Model =
     | ElementSelected i -> setElementX i 0.0 m
     | TableSelected | NothingSelected -> m
 
+/// Spec 0027 (026) Part 3: the side-effecting "open the pop-out chart window" action, injected as a forward
+/// reference so `update` can invoke it before `experimentResult` (and the `ChartWindow` host) are defined
+/// further down the module. The real implementation is assigned right after `experimentResult`; under a
+/// headless test host (which never dispatches `OpenExperimentChartWindow`) the default no-op is harmless.
+let mutable private openChartWindowHook : Model -> unit = fun _ -> ()
+
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotateSelected 1 d model
@@ -507,9 +540,36 @@ let update (msg : Msg) (model : Model) : Model =
     | SelectBay name -> { model with ribbon = name }
     | BindValueId entryId ->
         match model.selection with
-        | ElementSelected i -> mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) model
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) { model with pendingEntry = None }
         | TableSelected | NothingSelected -> model
+    | RequestBindValueId entryId ->
+        // Spec 0027 (026): select the entry as PENDING (its full description is shown) without binding yet —
+        // inert unless an element is selected (the Library bay is only enabled for an element).
+        match model.selection with
+        | ElementSelected _ -> { model with pendingEntry = Some entryId }
+        | TableSelected | NothingSelected -> model
+    | ConfirmBindValueId ->
+        // Spec 0027 (026): commit the pending entry to the selected element's valueId, then clear pending.
+        match model.pendingEntry, model.selection with
+        | Some entryId, ElementSelected i ->
+            mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) { model with pendingEntry = None }
+        | _ -> { model with pendingEntry = None }
+    | CancelBindValueId -> { model with pendingEntry = None }
     | ChooseSweptElement idStr -> { model with chosenSwept = Some (Library.elementId idStr) }
+    | ChooseExperimentKind kind -> { model with experimentKind = kind }
+    | SetLambdaLo lo ->
+        let _, hi = model.lambdaRange
+        { model with lambdaRange = (lo, hi) }
+    | SetLambdaHi hi ->
+        let lo, _ = model.lambdaRange
+        { model with lambdaRange = (lo, hi) }
+    | OpenExperimentChartWindow ->
+        // Spec 0027 (026) Part 3: a double-click on the inline chart opens the pop-out interactive ScottPlot
+        // window for the current experiment chart. Opening a `Window` is a side effect, matching the existing
+        // imperative-window pattern (`MainConstructorWindow().Show()`); it is guarded behind a non-empty chart
+        // and is never reached under the headless `ui-smoke` gate (which renders frames but never double-clicks).
+        openChartWindowHook model
+        model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -522,7 +582,10 @@ let update (msg : Msg) (model : Model) : Model =
             match model.drag with
             | Pressed start -> selectionAt start model
             | _ -> model.selection
-        { model with selection = selection; drag = NotPressed }
+        // Spec 0027 (026): a changed selection clears any pending (unconfirmed) Library bind, so a stale
+        // pending choice never carries across elements.
+        let pending = if selection = model.selection then model.pendingEntry else None
+        { model with selection = selection; drag = NotPressed; pendingEntry = pending }
     | Wheel (mods, notches) ->
         match wheelAction mods with
         | RotateSel1 -> rotateSelected 1 (wheelStepDegrees * float notches) model
@@ -897,12 +960,31 @@ let private libraryState (model : Model) : LibraryControls.State =
                 | Ok (Some entry) -> Some entry.displayName
                 | Ok None | Error _ -> None
             | None -> None
-        { rows = rows; kindLabel = kindName kind; boundName = boundName; enabled = true }
+        // Spec 0027 (026): the pending (selected-not-confirmed) entry's name + full description, resolved
+        // through the proxy (so a stale pending id yields no panel).
+        let pendingName, pendingDescription =
+            match model.pendingEntry with
+            | Some id ->
+                match model.library.tryGetEntry id with
+                | Ok (Some entry) -> Some entry.displayName, entry.fullDescription
+                | Ok None | Error _ -> None, ""
+            | None -> None, ""
+        {
+            rows = rows
+            kindLabel = kindName kind
+            boundName = boundName
+            enabled = true
+            pendingEntryId = model.pendingEntry
+            pendingName = pendingName
+            pendingDescription = pendingDescription
+        }
     | TableSelected | NothingSelected -> LibraryControls.empty
 
 let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers =
     {
-        chooseEntry = fun entryId -> dispatch (BindValueId entryId)
+        selectEntry = fun entryId -> dispatch (RequestBindValueId entryId)
+        confirmEntry = fun () -> dispatch ConfirmBindValueId
+        cancelEntry = fun () -> dispatch CancelBindValueId
     }
 
 // ---------------------------------------------------------------------------
@@ -923,13 +1005,21 @@ let private sweepCandidates (model : Model) : ExperimentControls.SweepCandidate 
 /// elements, so a stale chosen id — e.g. a removed element — yields no readout). Empty when nothing is
 /// chosen or the chosen element is no longer present. Uses the domain `Experiment` so the readout and
 /// the experiment stay in lock-step.
+/// The domain `Experiment` for the chosen element under the current experiment kind (spec 026: the three
+/// kinds mirror `ExperimentControls.ExperimentKindChoice`).
+let private experimentFor (kind : ExperimentControls.ExperimentKindChoice) (id : Library.ElementId) : Experiments.Experiment =
+    match kind with
+    | ExperimentControls.RotateR1 -> Experiments.RotateR1FullCircle id
+    | ExperimentControls.SweepR2 -> Experiments.SweepR2 id
+    | ExperimentControls.SweepLambda -> Experiments.SweepWaveLength id
+
 let private experimentReadout (model : Model) : string =
     match model.chosenSwept with
     | Some chosen ->
         match model.elements |> List.mapi (fun i e -> i, e) |> List.tryFind (fun (_, e) -> e.id = chosen) with
         | Some (i, e) ->
-            let exp = Experiments.RotateR1FullCircle e.id
-            sprintf "Experiment: rotate %s #%d R1 0…360°  (%s)" (kindName e.placement.catalogueKind) (i + 1) exp.description
+            let exp = experimentFor model.experimentKind e.id
+            sprintf "Experiment: %s #%d — %s" (kindName e.placement.catalogueKind) (i + 1) exp.description
         | None -> ""
     | None -> ""
 
@@ -1016,46 +1106,320 @@ let private runDetectorKind (model : Model) : Library.DetectorKind =
         | _ -> None)
     |> Option.defaultValue Library.Intensity
 
+/// The FIRST sample element bound to a sample preset (the sample the R2 / λ sweeps re-solve), if any. No
+/// sample present ⇒ `None` (an R2 / λ sweep has nothing to re-solve, so the chart is empty; spec R1).
+let private runSampleOpt (model : Model) : Library.Sample option =
+    model.elements
+    |> List.tryPick (fun e ->
+        match boundEntry model e with
+        | Some (Library.SampleItem s) -> Some s
+        | _ -> None)
+
+/// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
+/// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
+/// then reads the raw sample output, spec R1).
+let private runAnalyzerOpt (model : Model) : (Library.PolarizerKind * Angle) option =
+    model.elements
+    |> List.tryPick (fun e ->
+        match boundEntry model e with
+        | Some (Library.PolarizerItem p) -> Some (p.kind, e.placement.r1)
+        | _ -> None)
+
 /// The number of samples in the rotating-analyzer sweep (0…360° inclusive).
 let experimentCurvePoints : int = 73
 
-/// The inline result for the Experiments bay: the rotating-analyzer intensity curve for an intensity
-/// detector, or the ellipsometer Ψ/Δ (in degrees) for an ellipsometer. Shown only when an experiment is
-/// built (an element is chosen as the swept one). Public so the host's detector-kind branch (Phase 4 —
-/// `Intensity` ⇒ a curve and no Ψ/Δ; `Ellipsometer` ⇒ Ψ/Δ and no curve) is unit-testable without a window.
-let experimentResult (model : Model) : (float * float) list * (float * float) option =
+/// The number of samples in an R2 (incidence) or wavelength sweep.
+let experimentSweepPoints : int = 91
+
+/// A `ChartSeries` from named (x, y) points.
+let private series (name : string) (points : (float * float) list) : ExperimentChart.ChartSeries =
+    { name = name; points = points }
+
+/// A prose description of the run: which source / input / sample / detector are bound, and what is swept.
+let private describeRun (model : Model) (sweptLabel : string) (sweepText : string) : string =
+    let wNm = (runWaveLength model).value / nmToMeter / oneNanometer
+    let sampleText =
+        match runSampleOpt model with
+        | Some s -> s.name
+        | None -> "no sample (identity pass-through)"
+    let detectorText =
+        match runDetectorKind model with
+        | Library.Ellipsometer -> "ellipsometer (Ψ/Δ)"
+        | Library.Intensity -> "intensity detector (S₀)"
+    sprintf "Source %.0f nm → %s → %s; %s. Sweeping %s." wNm sampleText detectorText (sprintf "swept element: %s" sweptLabel) sweepText
+
+/// The label for the chosen swept element ("<kind> #<n>", 1-based), or "(none)".
+let private sweptLabel (model : Model) : string =
+    match model.chosenSwept with
+    | Some chosen ->
+        model.elements
+        |> List.mapi (fun i e -> i, e)
+        |> List.tryFind (fun (_, e) -> e.id = chosen)
+        |> Option.map (fun (i, e) -> sprintf "%s #%d" (kindName e.placement.catalogueKind) (i + 1))
+        |> Option.defaultValue "(none)"
+    | None -> "(none)"
+
+/// The end-to-end experiment result as a renderer-neutral `ExperimentChart` (spec 026): RotateR1 ⇒ the
+/// existing intensity-vs-R1 Malus curve (or a single-point Ψ/Δ for an ellipsometer); SweepR2 ⇒ value-vs-R2
+/// with the sample re-solved at each incidence; SweepWaveLength ⇒ value-vs-λ. An ellipsometer detector
+/// yields two series (Ψ and Δ vs the swept variable). Empty when no experiment is built (or an R2 / λ sweep
+/// has no bound sample to re-solve). Public so the host's branches are unit-testable without a window.
+let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
     match model.chosenSwept with
     | Some chosen when model.elements |> List.exists (fun e -> e.id = chosen) ->
         let svIn = runInputStokes model
-        let mmSample = runSampleMueller model
-        match runDetectorKind model with
-        | Library.Ellipsometer ->
-            let svDet = mmSample * svIn
-            let pd = Propagation.ellipsometerReadout svDet
-            [], Some (pd.psi.degrees, pd.delta.degrees)
-        | Library.Intensity ->
-            let curve = Propagation.rotatingAnalyzerCurve svIn mmSample (runAnalyzerKind model) experimentCurvePoints
-            curve.points, None
-    | _ -> [], None
+        let w = runWaveLength model
+        let detector = runDetectorKind model
+        let label = sweptLabel model
+        match model.experimentKind with
+        | ExperimentControls.RotateR1 ->
+            let mmSample = runSampleMueller model
+            match detector with
+            | Library.Ellipsometer ->
+                {
+                    series = []
+                    xLabel = ""
+                    yLabel = ""
+                    title = "Ellipsometer readout"
+                    description = describeRun model label "(single-point Ψ/Δ — rotate the analyzer or use a 1-D sweep for a curve)"
+                }
+            | Library.Intensity ->
+                let curve = Propagation.rotatingAnalyzerCurve svIn mmSample (runAnalyzerKind model) experimentCurvePoints
+                {
+                    series = [ series "Intensity" curve.points ]
+                    xLabel = "Analyzer R1 (°)"
+                    yLabel = "Intensity (S₀)"
+                    title = "Rotating analyzer (Malus)"
+                    description = describeRun model label "the analyzer R1 over 0…360°"
+                }
+        | ExperimentControls.SweepR2 ->
+            match runSampleOpt model with
+            | Some sample ->
+                match detector with
+                | Library.Ellipsometer ->
+                    let psi, delta = Propagation.r2SweepPsiDelta svIn sample w experimentSweepPoints
+                    {
+                        series = [ series "Ψ" psi; series "Δ" delta ]
+                        xLabel = "Incidence angle R2 (°)"
+                        yLabel = "Ψ, Δ (°)"
+                        title = "Ellipsometric Ψ/Δ vs incidence"
+                        description = describeRun model label "the incidence angle (R2) over 0…90° (89° computed, drawn to 90°)"
+                    }
+                | Library.Intensity ->
+                    let curve = Propagation.r2SweepCurve svIn sample w (runAnalyzerOpt model) experimentSweepPoints
+                    {
+                        series = [ series "Intensity" curve ]
+                        xLabel = "Incidence angle R2 (°)"
+                        yLabel = "Intensity (S₀)"
+                        title = "Intensity vs incidence"
+                        description = describeRun model label "the incidence angle (R2) over 0…90° (89° computed, drawn to 90°)"
+                    }
+            | None -> ExperimentChart.empty
+        | ExperimentControls.SweepLambda ->
+            match runSampleOpt model with
+            | Some sample ->
+                let lo, hi = model.lambdaRange
+                let inc = IncidenceAngle.normal
+                let rangeText = sprintf "the wavelength over %.0f…%.0f nm" (min lo hi) (max lo hi)
+                match detector with
+                | Library.Ellipsometer ->
+                    let psi, delta = Propagation.waveLengthSweepPsiDelta svIn sample inc lo hi experimentSweepPoints
+                    {
+                        series = [ series "Ψ" psi; series "Δ" delta ]
+                        xLabel = "Wavelength (nm)"
+                        yLabel = "Ψ, Δ (°)"
+                        title = "Ellipsometric Ψ/Δ vs wavelength"
+                        description = describeRun model label rangeText
+                    }
+                | Library.Intensity ->
+                    let curve = Propagation.waveLengthSweepIntensity svIn sample inc (runAnalyzerOpt model) lo hi experimentSweepPoints
+                    {
+                        series = [ series "Intensity" curve ]
+                        xLabel = "Wavelength (nm)"
+                        yLabel = "Intensity (S₀)"
+                        title = "Intensity vs wavelength"
+                        description = describeRun model label rangeText
+                    }
+            | None -> ExperimentChart.empty
+    | _ -> ExperimentChart.empty
 
-/// The Experiments bay state for the current scene: every present element is a candidate; the chosen
-/// swept element (if any) is highlighted; the readout reflects the built experiment; the inline result is
-/// the intensity curve (or Ψ/Δ) of the end-to-end run. Disabled when the scene has no elements.
+// Spec 0027 (026) Part 3: now that `experimentResult` exists, wire the forward-referenced hook so a
+// double-click on the inline chart opens the pop-out ScottPlot `ChartWindow` for the current chart (guarded
+// behind a non-empty chart; never reached under the headless `ui-smoke` gate).
+openChartWindowHook <-
+    fun model ->
+        let chart = experimentResult model
+        if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
+
+/// The single-point Ψ/Δ readout for the RotateR1 + ellipsometer case (the inline bay shows it as text). Kept
+/// separate from `experimentResult` (which carries no Ψ/Δ for that case — there is no curve) so the bay can
+/// still show the numeric reading. `None` for an intensity detector or any sweep that produces series.
+let private experimentPsiDelta (model : Model) : (float * float) option =
+    match model.chosenSwept with
+    | Some chosen when model.elements |> List.exists (fun e -> e.id = chosen) ->
+        match model.experimentKind, runDetectorKind model with
+        | ExperimentControls.RotateR1, Library.Ellipsometer ->
+            let svIn = runInputStokes model
+            let mmSample = runSampleMueller model
+            let pd = Propagation.ellipsometerReadout (mmSample * svIn)
+            Some (pd.psi.degrees, pd.delta.degrees)
+        | _ -> None
+    | _ -> None
+
+/// The Experiments bay state for the current scene: every present element is a candidate; the chosen swept
+/// element (if any) is highlighted; the readout reflects the built experiment; the inline result is the
+/// chart (series + labels + description) of the end-to-end run. Disabled when the scene has no elements.
 let private experimentState (model : Model) : ExperimentControls.State =
-    let chart, psiDelta = experimentResult model
+    let chart = experimentResult model
+    let lo, hi = model.lambdaRange
     {
         candidates = sweepCandidates model
         chosenId = model.chosenSwept |> Option.map (fun id -> id.value)
         experimentName = experimentReadout model
         enabled = not (List.isEmpty model.elements)
-        chart = chart
-        psiDelta = psiDelta
+        kind = model.experimentKind
+        lambdaLoNm = lo
+        lambdaHiNm = hi
+        series = chart.series |> List.map (fun s -> { ExperimentControls.ChartSeries.name = s.name; points = s.points })
+        xLabel = chart.xLabel
+        yLabel = chart.yLabel
+        description = chart.description
+        psiDelta = experimentPsiDelta model
     }
 
 let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Handlers =
     {
         chooseSwept = fun id -> dispatch (ChooseSweptElement id)
+        chooseKind = fun kind -> dispatch (ChooseExperimentKind kind)
+        setLambdaLo = fun v -> dispatch (SetLambdaLo v)
+        setLambdaHi = fun v -> dispatch (SetLambdaHi v)
+        openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
+
+// ---------------------------------------------------------------------------
+// Spec 0027 (026) — the DETAILS bay: the selected element's bound Library entry shown as "what it is" (the
+// heading + full description) and, for a layered sample, a layer-stack BAND view (the reusable
+// `LayerBandsControls`). The host flattens the sample's engine `OpticalSystem` (`Propagation.sampleToSystem`)
+// into `Band`s — borrowing the V1 `Schematic.fs` colour / height idea (replicated here as a few inline
+// helpers, since TestWindows does not reference the Ui project) — collapsing runs of identical-thickness
+// films into a single "×N" band so the 41-layer / 100-pair multilayers stay readable.
+// ---------------------------------------------------------------------------
+
+/// A deterministic, process-independent hash of a string (FNV-1a fold; NOT `GetHashCode`, whose seed is
+/// per-process randomised). Used to colour a band whose material has no curated colour.
+let private stableHashStr (s : string) : int =
+    (s |> Seq.fold (fun acc ch -> (acc ^^^ int ch) * 16777619) (int 2166136261u)) &&& 0x7fffffff
+
+/// A small `#RRGGBB` palette for unknown band materials (mirrors the Schematic fallback palette).
+let private bandPalette : string[] =
+    [| "#1F77B4"; "#FF7F0E"; "#2CA02C"; "#D62728"; "#9467BD"; "#8C564B"; "#E377C2"; "#BCBD22" |]
+
+/// A curated `#RRGGBB` colour for a known band material name (mirrors `Schematic.curated`), else a stable
+/// palette slot from the name's hash. Pure and total.
+let private bandColorHex (material : string) : string =
+    match material with
+    | "Glass (n=1.52)" -> "#C8E1F5"
+    | "Glass (n=1.50)" -> "#CDE6FA"
+    | "Glass (n=1.75)" -> "#AACDEB"
+    | "Vacuum" -> "#F2F2F2"
+    | "Molybdenum (Mo)" -> "#5A5A6E"
+    | "Silicon (Si)" -> "#5A5A6E"
+    | "Langasite" -> "#78C8DC"
+    | "Uniaxial crystal" -> "#AFE1AF"
+    | "Biaxial crystal" -> "#96D296"
+    | "Active crystal" -> "#C8B4E6"
+    | _ -> bandPalette.[stableHashStr material % bandPalette.Length]
+
+/// A band's thickness for the Details view — finite layers carry their thickness in metres; a half-space /
+/// plate carries none (drawn as "semi-infinite"). This keeps the engine's `Thickness` DU (which collides
+/// with `Avalonia.Thickness`) out of the UI layer — the metres come from `Propagation.thicknessMeters`.
+type private BandThickness =
+    | FiniteMeters of float
+    | SemiInfinite
+
+/// A human thickness label for a band (nm under 1 µm, µm under 1 mm, else mm). The SOLE display conversion
+/// (a band label, never written back).
+let private bandThicknessLabel (t : BandThickness) : string =
+    match t with
+    | SemiInfinite -> "semi-infinite"
+    | FiniteMeters meters ->
+        let nm = meters * 1.0e9
+        if nm < 1000.0 then sprintf "%.1f nm" nm
+        elif nm < 1.0e6 then sprintf "%.3g µm" (nm / 1000.0)
+        else sprintf "%.3g mm" (nm / 1.0e6)
+
+/// The relative height weight of a band (log-compressed thickness in metres, so a 2.65 nm EUV layer and a
+/// 1 cm plate are both visible). A half-space / plate gets a fixed mid weight.
+let private bandWeight (t : BandThickness) : float =
+    match t with
+    | SemiInfinite -> 1.0
+    | FiniteMeters m ->
+        let meters = max 1.0e-12 m
+        // log10 of nanometres, floored — a 1 nm layer ⇒ 0, a 1 µm layer ⇒ 3, a 1 mm layer ⇒ 6.
+        max 0.1 (log10 (meters * 1.0e9))
+
+/// The thickness of a Library `Sample` as a `BandThickness` (via `Propagation.thicknessMeters`, so the
+/// engine `Thickness` DU never reaches this file).
+let private sampleBandThickness (sample : Library.Sample) : BandThickness =
+    match Propagation.thicknessMeters sample.thickness with
+    | Some m -> FiniteMeters m
+    | None -> SemiInfinite
+
+/// The per-sample, material-labelled layer list for the band view (collapsed to repeating units): each band
+/// is (material name, thickness, repeat count). Keyed off the sample id so the labels match the seeded
+/// composition; the default thin-film / plate samples yield a single band of their resolved material.
+let private sampleBandSpecs (sample : Library.Sample) : (string * BandThickness * int) list =
+    let qwGlass = FiniteMeters ((600.0 / 1.52 / 4.0) * 1.0e-9)
+    let qwVacuum = FiniteMeters ((600.0 / 1.00 / 4.0) * 1.0e-9)
+    let euv = FiniteMeters (10.6 / 4.0 * 1.0e-9)
+    match sample.id with
+    | "sample-multilayer-qw" ->
+        [ "Glass (n=1.52)", qwGlass, 21
+          "Vacuum", qwVacuum, 20 ]
+    | "sample-euv-mosi" ->
+        [ "Molybdenum (Mo)", euv, 100
+          "Silicon (Si)", euv, 100 ]
+    | "sample-uniaxial" -> [ "Uniaxial crystal", sampleBandThickness sample, 1 ]
+    | "sample-biaxial" -> [ "Biaxial crystal", sampleBandThickness sample, 1 ]
+    | "sample-active-crystal" -> [ "Active crystal", sampleBandThickness sample, 1 ]
+    | "sample-langasite-silicon" ->
+        [ "Langasite", sampleBandThickness sample, 1
+          "Silicon (Si)", SemiInfinite, 1 ]
+    | "sample-glass-vacuum" -> [ "Glass (n=1.50)", sampleBandThickness sample, 1 ]
+    | _ ->
+        let material =
+            match sample.materialId with
+            | "glass-1.50" -> "Glass (n=1.50)"
+            | "glass-1.52" -> "Glass (n=1.52)"
+            | "glass-1.75" -> "Glass (n=1.75)"
+            | _ -> sample.name
+        [ material, sampleBandThickness sample, 1 ]
+
+/// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
+/// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
+/// title + full description; nothing selected / unbound yields a hint title and no bands.
+let private detailsState (model : Model) : LayerBandsControls.State =
+    match model.selection with
+    | ElementSelected i ->
+        let e = List.item i model.elements
+        match boundEntry model e with
+        | Some (Library.SampleItem s) ->
+            let bands =
+                sampleBandSpecs s
+                |> List.map (fun (material, thickness, count) ->
+                    let countText = if count > 1 then sprintf " ×%d" count else ""
+                    ({
+                        label = sprintf "%s — %s%s" material (bandThicknessLabel thickness) countText
+                        heightWeight = bandWeight thickness
+                        colorHex = bandColorHex material
+                     } : LayerBandsControls.Band))
+            ({ title = sprintf "%s — %s" s.name s.description; bands = bands } : LayerBandsControls.State)
+        | Some entry ->
+            ({ title = sprintf "%s — %s" entry.displayName entry.fullDescription; bands = [] } : LayerBandsControls.State)
+        | None ->
+            ({ title = "No Library entry bound — pick one in the Library bay to see its details."; bands = [] } : LayerBandsControls.State)
+    | TableSelected | NothingSelected ->
+        ({ title = "Select an element to see what it is."; bands = [] } : LayerBandsControls.State)
 
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
@@ -1065,7 +1429,8 @@ let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) }
       { name = BayNames.library; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
-      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) } ]
+      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) }
+      { name = BayNames.details; content = LayerBandsControls.view (detailsState model) } ]
 
 let private mainControlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
