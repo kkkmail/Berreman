@@ -1,0 +1,9 @@
+It looks like it is coming together. Let’s make some small tweaks to the rotation tests before we move on.
+
+#1 Test Optical Table Rotations – the table is rotatable regardless of if it is selected or not. But it MUST be ONLY rotatable when it is selected.
+#2 Test Optical Element Rotations. Add the ability to zoom and move the table as in test #1. Let’s not overcomplicate this one. This change 
+is enough for this test. It was a good idea to add three elements to the table instead of one.
+#3. Add one more test, which will test the ability to rotate table AND elements. Basically, it is test #2 and test #1 together. Remember 
+that when we rotate the table, then the elements are snapped to it. Their rotations angles do not change but, obviously, how we draw them does.
+
+Write an implementation log into C:\GitHub\Berreman\specs\0027\.manual\007-<description>.md.

@@ -1,0 +1,20 @@
+Before we proceed further, let’s work on the architecture first.
+Controls. We have main screen “control” (I am NOT talking about the screen that is opened by a button Main, rather 
+I am talking about a general concept of the main screen where everything happens), rotations controls, move control, 
+etc… Let’s ensure that everything is standardized so that we can easily add / remove large controls to the main screen dynamically.
+We need to come up with a short name for these "large controls". Component comes to mind but the meaning is slightly different.
+
+Proxies. F# and our code is heavily using the notion of functional proxies. See, C:\GitHub\Softellect\ and search for `*Proxy`. 
+This allows us to unit test all IO without even having any IO implemented by injecting some special mock proxies.
+
+Renderers. Make all individual rendered shapes / codes / etc. control a single line control so that we can put it anywhere. 
+Face opacity should affect the table as well. Our code also uses the notion of functional values. As functions cannot be 
+serialized, we map the most important functions to DU cases (one DU per similar set of functions). Here we talk about renderer functions. 
+This allows passing or even serializing the DU cases, while easily extracting the necessary function when needed.
+
+Finally, let’s update the `Main` screen (the one that is opened by button Main) to use this Lego style constructor as described 
+above. First (if not done yet), the buttons `+ Lineal polarizer`, `+ Circular polarizer`, etc. must become a combined control, 
+then place all our controls on the screen and wire them all through. Let’s follow MS Word ribbon approach where the top “menu” 
+just shows the appropriate “large” control name. The UI tests now cover all the necessary UI table functionality as far as 
+placement of the elements is concerned, so make sure that everything is wired through. Since everything is based on “large” 
+controls after this is complete, then any change to any control will automatically appear on all affected screens.

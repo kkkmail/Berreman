@@ -66,6 +66,19 @@
              (member modes, lossless swap) and the separate groups/collections library
              round-trip + schema validation. Pure Domain + Storage (Avalonia-free). -->
         <Compile Include="GroupsRoundTripTests.fs" />
+        <!-- Spec 0027 (002-rotate-table-task): the pure 3-D table rotation + orthographic
+             projection + selection hit-test (Domain `TableView.fs`). Avalonia-free. -->
+        <Compile Include="TableViewTests.fs" />
+        <!-- Spec 0027 (024) Phase 1: the Library domain — ElementId, kind-constrained entriesForKind,
+             tryGetEntry, the grouping trees, forKinds, and the mock/stub LibraryProxy seam. -->
+        <Compile Include="LibraryProxyTests.fs" />
+        <!-- Spec 0027 (024) Phase 2: the Experiments domain — the single-case Experiment DU
+             (RotateR1FullCircle by ElementId), the ExperimentSet shape, and the mock/stub ExperimentProxy. -->
+        <Compile Include="ExperimentProxyTests.fs" />
+        <!-- Spec 0027 (024) Phase 3/4: the pure MM/SV propagation pipeline — the Malus proof (rotating
+             ideal analyzer after an ideal input over an identity sample), the ideal-polarizer Stokes/
+             Mueller constants, the engine sample-MM sanity bound, and the ellipsometer Ψ/Δ round-trip. -->
+        <Compile Include="PropagationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -78,8 +91,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.300" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

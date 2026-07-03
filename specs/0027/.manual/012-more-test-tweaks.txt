@@ -1,0 +1,13 @@
+Various tests use slightly different approaches to the table. Let’s standardize that so that the table can be reused instead 
+of creating it from scratch over and over again. The table must be selectable / un-selectable rotatable, zoomable, and draggable, 
+as in most of the tests.
+
+Test Renderers: S, LP, and D are correct. L and CM are NOT. Currently L and CM are simply flat 2D figures. However, everything is 
+basically a cylinder and the only difference is that L and CM use a part of the sphere instead of flat circles. Also, I see that 
+you used 4 lines to connect two opposite circular sides of the cylinder. Make this a configurable parameter, put it on the 
+screen (min 4, max 60) so that I can change and see how it looks and set it to 12 and we will see how it looks. Make these lines 
+partially transparent.
+
+Add test to snap to reflected light. The table must have 3 elements: source, flat mirror R2 = 45, detector. The light does 
+not go through mirror, but it is only reflected. The detector must snap to the reflected beam when the mirror is rotated over 
+R2 or R3 and R1 does not affect the beam. 

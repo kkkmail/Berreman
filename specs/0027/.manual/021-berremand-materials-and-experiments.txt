@@ -1,0 +1,22 @@
+This is a discussion only until we agree.
+We need to work out how to “marry” the optical constructor table layout with the Berreman code (BC). The BC works by specifying the light source, 
+then placing some sample. It then expect a 1D or 2D variable ranges (anything can be varied) and then produces a collection of one (no thick plate is used) 
+or more than one (thick plate is used) R and T EM fields, which can then be fed to some optical functions to produce chart data. 
+
+We need to add two more ribbon controls and some IO proxies (as we do not have anything stored yet) to the Main screen.
+One ribbon is to choose the light source / materials, etc. for the elements on the table out of the stored collection of such things 
+(come up with a one word name for this ribbon). As we do not have anything stored yet, thit is the point where we wire a test mock proxy, 
+which will simply return some collection from memory. Pick up some but not all examples from C:\GitHub\Berreman\Berreman\Analytics\Examples\ . 
+We definitely want something very simple, like glass and then going to multilayer thin film examples. Let’s use 3-4 examples, two types of 
+detectors (intensity measurement and ellipsometer), one ideal LP, and two ideal CP (left and right)
+
+The second ribbon can be called the Experiments. This is where we specify what we are going to measure. Usually a single element is 
+rotated (e.g. an analyzer is rotated full circle) and the detector records the intensity. There might be also more complex detectors, 
+like ellipsometer, and so they will record some other information. The experiments also come in groups, e.g. rotate polarizer 
+45 degrees / swap LP by CP, then make full circle with the analyzer. Sometimes there could be 2D experiments, but they are rare.
+
+Read the specs as some of these ideas were already discussed: materials, experiments, experiment sets / collections, etc.
+Write small preliminary spec / feature list, which covers all of the above into the next NNN in C:\GitHub\Berreman\specs\0027\.manual\ folder. 
+Check the web for the standards and ideas. 
+
+Make no other changes.

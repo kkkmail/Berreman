@@ -1,0 +1,17 @@
+Let’s keep standardizing. We now have a reusable table and reusable rotation control. Great. Let’s make sure that we use it 
+consistently on all screens. This way if any of those breaks, then there will be just one control to fix. We also need a 
+standardized position on the ray control. Look up the spec the make this control. I think that we have one or two tests 
+with this control. Do not waste time an tokens on the main screen until we iron out all the controls.
+
+Test Renderer. Cylinder rails. Make the number of rails discrete with the values 4, 8, 12, 24, 36, 72 (default 72). 
+The “nicely looking” number of rails depends on the cylinder diameter. I will play around and advise. R1 rotation moves 
+the yellow normal in one direction but cylinder rails go into opposite direction. They must follow the yellow normal rotation 
+direction. The L and CM look weird, likely due to small number of curved lines (4 now). If we go with the number matching 
+the number of cylinder rails, then at 72 it could be too much. Let’s start with 8 curves and see how it looks Also, 
+the curved lines are NOT curved but straight (WRONG). The `+` and `-` lens must fit into their binding box when rendered 
+is swapped but the + lens sticks out (WRONG). Look HOW to render lenses on the web. The rendering of L and CM is very wrong 
+but is also VERY HARD to explain in words what’s wrong. The bottom line is that nothing must stick out of the bounding box 
+when the renderer is swapped and that the curved lines must be curved, not straight.
+
+Test Snap to Reflected light. When the mirror is rotated, then anything on the reflected beam must have R2 and R3 relative 
+to the beam. As we measure R2 and R3 in the absolute values, this means that we must adjust relevant R2 and R3 to achieve that.

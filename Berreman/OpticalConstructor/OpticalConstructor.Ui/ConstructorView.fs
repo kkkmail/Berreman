@@ -27,6 +27,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Input
+open Avalonia.Interactivity
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Media.Imaging
@@ -34,6 +35,7 @@ open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Project
@@ -131,6 +133,12 @@ type Model =
         saveRequests : int
         /// The last command the surface invoked (the ribbon/menu of slice 006 reads it).
         lastCommand : Command option
+        /// The shared rotation-controls bar's reset-confirmation state (Spec 0027, task 008).
+        rotationConfirm : RotationControls.ResetConfirm
+        /// The table VIEW's R3 lock (Spec 0027): the bar's R3 controls act on the view when the table
+        /// is selected, so the table needs its own R3 lock (elements carry their own `r3Locked`).
+        /// Unlocked by default — the table is free to tip about R3 (the button reads "Lock R3").
+        tableR3Locked : bool
     }
 
 let private placementExists (placement : ElementPlacement) (project : OpticalConstructorProject) : bool =
@@ -174,6 +182,8 @@ let initWithGroups
         groups = syncGroupsWithProject project groups
         saveRequests = 0
         lastCommand = None
+        rotationConfirm = RotationControls.NoConfirm
+        tableR3Locked = false
     }
 
 /// Build the page model for an environment + project (the host seeds both; slice 006
@@ -388,6 +398,25 @@ let private rotateActive (axis : RotationAxis) (notches : int) (model : Model) :
         | AxisR2 -> withR2 (p.r2 + step) p
         | AxisR3 -> withR3 (p.r3 + step) p) model
 
+/// Rotate the active element about an axis by an exact degree DELTA — the rotation-controls bar's
+/// +/- buttons supply the 15°/5° step (Spec 0027, task 008). Lock-respecting via the §A.4.5 setters.
+let private rotateActiveBy (axis : RotationControls.Axis) (deg : float) (model : Model) : Model =
+    let step = Angle.degree deg
+    editActive (fun p ->
+        match axis with
+        | RotationControls.R1 -> withR1 (p.r1 + step) p
+        | RotationControls.R2 -> withR2 (p.r2 + step) p
+        | RotationControls.R3 -> withR3 (p.r3 + step) p) model
+
+/// Set the active element's axis to an exact angle — the bar's editable fields (task 008).
+let private setActiveAxis (axis : RotationControls.Axis) (v : float) (model : Model) : Model =
+    let a = Angle.degree v
+    editActive (fun p ->
+        match axis with
+        | RotationControls.R1 -> withR1 a p
+        | RotationControls.R2 -> withR2 a p
+        | RotationControls.R3 -> withR3 a p) model
+
 /// Lock/unlock a rotation axis of the active element (§E.2 — a context-menu element edit).
 let private toggleLock (axis : RotationAxis) (model : Model) : Model =
     editActive (fun p ->
@@ -443,6 +472,96 @@ let private resetRotationNow (i : int) (model : Model) : Model =
     match tryPlacement i model with
     | Some p -> commitIfChanged (setPlacement i { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } model)
     | None -> model
+
+/// Reset the active element's rotations to zero — the rotation-controls bar's Reset (task 008).
+let private resetActiveRotation (model : Model) : Model =
+    editActive (fun p -> { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }) model
+
+/// Reset EVERY element's rotations to zero — the bar's Reset All (task 008), one undoable snapshot.
+let private resetAllRotations (model : Model) : Model =
+    let ps = placements model |> List.map (fun p -> { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero })
+    commitIfChanged (setPlacements ps model)
+
+// ---------------------------------------------------------------------------
+// Selection-aware rotation (Spec 0027). The rotation-controls bar AND the wheel/keyboard rotation
+// gestures act on WHATEVER is selected — the ephemeral table VIEW when the table is selected, or the
+// active element when an element is selected — matching the "Test Table + Element Rotations" window.
+// The view is NOT in the project `EditHistory`, so its rotations are plain (ephemeral) state edits,
+// never undo steps; element rotations stay undoable through the existing element setters.
+// ---------------------------------------------------------------------------
+
+/// Rotate the table VIEW about an axis by a degree delta (the bar's +/- buttons). R3 respects the
+/// table's R3 lock.
+let private rotateViewByDeg (axis : RotationControls.Axis) (deg : float) (model : Model) : Model =
+    let step = Angle.degree deg
+    let v = model.view
+    let v' =
+        match axis with
+        | RotationControls.R1 -> { v with r1 = v.r1 + step }
+        | RotationControls.R2 -> { v with r2 = v.r2 + step }
+        | RotationControls.R3 -> if model.tableR3Locked then v else { v with r3 = v.r3 + step }
+    { model with view = v' }
+
+/// Set the table VIEW's axis to an exact angle (the bar's editable field), lock-respecting for R3.
+let private setViewAxis (axis : RotationControls.Axis) (value : float) (model : Model) : Model =
+    let a = Angle.degree value
+    let v = model.view
+    let v' =
+        match axis with
+        | RotationControls.R1 -> { v with r1 = a }
+        | RotationControls.R2 -> { v with r2 = a }
+        | RotationControls.R3 -> if model.tableR3Locked then v else { v with r3 = a }
+    { model with view = v' }
+
+/// Reset the table VIEW's rotations to zero, keeping pan / zoom (ephemeral — not an undo step).
+let private resetViewRotations (model : Model) : Model =
+    { model with view = { model.view with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
+
+/// Rotate the SELECTION about an axis by a degree delta: the table view, or the active element.
+let private rotateSelectedByDeg (axis : RotationControls.Axis) (deg : float) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> rotateViewByDeg axis deg model
+    | ElementSelected _ -> rotateActiveBy axis deg model
+
+/// Set the SELECTION's axis to an exact angle: the table view, or the active element.
+let private setSelectedAxis (axis : RotationControls.Axis) (value : float) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> setViewAxis axis value model
+    | ElementSelected _ -> setActiveAxis axis value model
+
+/// Rotate the table VIEW by `notches` wheel/keyboard steps (the configured step, default 5°).
+let private rotateViewByNotches (axis : RotationAxis) (notches : int) (model : Model) : Model =
+    let step = Angle.degree (float notches * model.keyMap.rotationStepDegrees)
+    let v = model.view
+    let v' =
+        match axis with
+        | AxisR1 -> { v with r1 = v.r1 + step }
+        | AxisR2 -> { v with r2 = v.r2 + step }
+        | AxisR3 -> if model.tableR3Locked then v else { v with r3 = v.r3 + step }
+    { model with view = v' }
+
+/// Rotate the SELECTION by `notches` steps (wheel / keyboard): the table view, or the active element.
+let private rotateSelectedNotches (axis : RotationAxis) (notches : int) (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> rotateViewByNotches axis notches model
+    | ElementSelected _ -> rotateActive axis notches model
+
+/// Toggle the SELECTION's R3 lock: the table's `tableR3Locked`, or the active element's `r3Locked`.
+let private toggleSelectedR3Lock (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
+    | ElementSelected _ -> toggleLock AxisR3 model
+
+/// Reset the SELECTION's rotations (the bar's Reset): the table view, or the active element.
+let private resetSelectedRotation (model : Model) : Model =
+    match model.selection with
+    | TableSelected -> resetViewRotations model
+    | ElementSelected _ -> resetActiveRotation model
+
+/// Reset ALL rotations (the bar's Reset All): the table view AND every element (one undoable snapshot
+/// for the elements; the view reset is ephemeral).
+let private resetAllSelected (model : Model) : Model =
+    resetViewRotations (resetAllRotations model)
 
 let private appendPlacement (p : ElementPlacement) (model : Model) : Model =
     let ps = placements model @ [ p ]
@@ -671,9 +790,9 @@ let private applyCommand (cmd : Command) (model : Model) : Model =
     | LocalHelp -> { m with helpOpen = true }
     | NextElement -> cycleActive true m
     | PreviousElement -> cycleActive false m
-    | RotateR1 -> rotateActive AxisR1 1 m
-    | RotateR2 -> rotateActive AxisR2 1 m
-    | RotateR3 -> rotateActive AxisR3 1 m
+    | RotateR1 -> rotateSelectedNotches AxisR1 1 m
+    | RotateR2 -> rotateSelectedNotches AxisR2 1 m
+    | RotateR3 -> rotateSelectedNotches AxisR3 1 m
     // Reset view is ephemeral view state, NOT captured by the project-snapshot EditHistory, so K.2
     // requires it be confirmation-gated rather than undoable: arm a pending confirm (resolved by
     // ConfirmPending, rendered as the same-row Confirm/Cancel gate).
@@ -846,6 +965,17 @@ type Msg =
     | GroupSwap of int * int
     /// Create a one-member group from the active element (a small workspace group-creation path).
     | GroupActiveElement
+    /// Shared rotation-controls bar (Spec 0027): rotate the SELECTION (the table view, or the active
+    /// element) by a degree delta, set an axis to an exact angle, toggle the selection's R3 lock, and
+    /// the confirmation-gated Reset / Reset All. The bar targets whatever is selected, so on the main
+    /// screen — like the test window — the table is rotatable when selected and elements when selected.
+    | RotateActiveBy of RotationControls.Axis * float
+    | SetActiveAxis of RotationControls.Axis * float
+    | RotBarToggleR3Lock
+    | RotRequestReset
+    | RotRequestResetAll
+    | RotConfirm
+    | RotCancel
 
 let update (msg : Msg) (model : Model) : Model =
     match msg with
@@ -865,9 +995,9 @@ let update (msg : Msg) (model : Model) : Model =
     | WheelAt (mods, notches, _point) ->
         match lookupMouse (WheelGesture (Set.ofList mods)) with
         | Some ZoomView -> zoomBy notches model
-        | Some RotateR1 -> rotateActive AxisR1 notches model
-        | Some RotateR2 -> rotateActive AxisR2 notches model
-        | Some RotateR3 -> rotateActive AxisR3 notches model
+        | Some RotateR1 -> rotateSelectedNotches AxisR1 notches model
+        | Some RotateR2 -> rotateSelectedNotches AxisR2 notches model
+        | Some RotateR3 -> rotateSelectedNotches AxisR3 notches model
         | _ -> model
 
     | BeginDrag (mods, point) ->
@@ -984,6 +1114,21 @@ let update (msg : Msg) (model : Model) : Model =
     | GroupSwap (gi, mi) -> applyGroupChange gi (Groups.ElementGroup.swapTo mi) model
     | GroupActiveElement -> groupActiveElementNow model
 
+    // Shared rotation-controls bar (Spec 0027) — selection-aware (the table view, or the active element).
+    | RotateActiveBy (axis, d) -> rotateSelectedByDeg axis d model
+    | SetActiveAxis (axis, v) -> setSelectedAxis axis v model
+    | RotBarToggleR3Lock -> toggleSelectedR3Lock model
+    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | RotConfirm ->
+        let m =
+            match model.rotationConfirm with
+            | RotationControls.ConfirmReset -> resetSelectedRotation model
+            | RotationControls.ConfirmResetAll -> resetAllSelected model
+            | RotationControls.NoConfirm -> model
+        { m with rotationConfirm = RotationControls.NoConfirm }
+    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
+
 // ---------------------------------------------------------------------------
 // Avalonia-free presentation helpers (the menu/ribbon of slice 006 read these).
 // ---------------------------------------------------------------------------
@@ -1065,37 +1210,32 @@ let private placementCursor (kind : CatalogueKind) : Cursor =
             with _ ->
                 new Cursor(StandardCursorType.Cross)))
 
-/// In-plane screen rotation of a vector by `a` (§C.2.4 — the view's R1 is measured
-/// relative to the screen). The 2-D top-down surface realises R1 as an in-plane spin
-/// about the canvas centre, so the whole table — plate, elements, rays — rotates
-/// together (all geometry goes through `projectToCanvas`). R2/R3 (out-of-plane tilt)
-/// keep the top-down approximation, consistent with the schematic-not-physical mandate
-/// (constraint 0.5) and the slice-004 top-down `project`.
-let private rotateInPlane (a : Angle) (px : float, py : float) : float * float =
-    let c = cos a.value
-    let s = sin a.value
-    (px * c - py * s, px * s + py * c)
+/// The constructor canvas centre the table projects around (a `TableView.ScreenPoint`).
+let private canvasCentre : TableView.ScreenPoint = { sx = centerX; sy = centerY }
 
-/// Project a table-frame point to canvas coordinates (a pure float pair — no Avalonia):
-/// the slice-004 transform (scale + Y-flip + pan), the view's in-plane R1 rotation about
-/// the canvas centre (so elements travel with the table, C.2.4), then the centre offset.
+/// Project a table-frame point to canvas coordinates (a pure float pair — no Avalonia): the
+/// table's full 3-D view rotation (R1/R2/R3 measured relative to the screen) and orthographic
+/// projection, taken from the single source of truth `TableView` (Spec 0027), at the constructor
+/// canvas centre and base scale. At the default `(0,0,0)` view this is the straight top-down
+/// layout; R1 spins it in-plane and R2/R3 tilt it out of plane, with the whole table — plate,
+/// elements, rays — travelling together (C.2.4).
 let projectToCanvas (view : Table.TableViewState) (p : TablePoint) : float * float =
-    let d = ConstructorTable.project view p
-    let (rx, ry) = rotateInPlane view.r1 (d.dx, d.dy)
-    (centerX + rx, centerY + ry)
+    let v = Vector3.create (p.x / 1.0<meter>) (p.y / 1.0<meter>) 0.0
+    let sp = TableView.project ConstructorTable.basePixelsPerMeter canvasCentre view v
+    (sp.sx, sp.sy)
 
 /// Project a table-frame point to an Avalonia canvas point.
 let private toScreen (view : Table.TableViewState) (p : TablePoint) : Point =
     let (x, y) = projectToCanvas view p
     Point(x, y)
 
-/// The inverse of `projectToCanvas` — a canvas point back to a table-frame point (the R1
-/// view rotation is undone first, then the pan/zoom/Y-flip).
+/// The inverse of `projectToCanvas` — a canvas point back to its table-frame point on the table
+/// plane (z = 0), via `TableView.unprojectToTablePlane`. Falls back to the table origin when the
+/// view is edge-on (the plane projects to a line), so a click is never lost.
 let private fromScreen (view : Table.TableViewState) (sx : float) (sy : float) : TablePoint =
-    let s = ConstructorTable.basePixelsPerMeter * view.zoom
-    let (dx, dy) = rotateInPlane (- view.r1) (sx - centerX, sy - centerY)
-    { x = ((dx - view.panX) / s) * 1.0<meter>
-      y = ((view.panY - dy) / s) * 1.0<meter> }
+    match TableView.unprojectToTablePlane ConstructorTable.basePixelsPerMeter canvasCentre view { sx = sx; sy = sy } with
+    | Some tp -> tp
+    | None -> TablePoint.origin
 
 let private toTablePoint (v : Vector3) : TablePoint =
     { x = v.x * 1.0<meter>; y = v.y * 1.0<meter> }
@@ -1216,33 +1356,23 @@ let private capView (model : Model) (fill : Drawer.Fill) (stroke : ConstructorTa
     ] :> IView
 
 let private plateView (model : Model) : IView list =
-    let corners =
-        ConstructorTable.plateCorners model.project.table model.view
-        |> List.map (fun d -> let (rx, ry) = rotateInPlane model.view.r1 (d.dx, d.dy) in (centerX + rx, centerY + ry))
-    let xs = corners |> List.map fst
-    let ys = corners |> List.map snd
-    let left = List.min xs
-    let top = List.min ys
-    let fill =
-        Rectangle.create [
-            Rectangle.left left
-            Rectangle.top top
-            Rectangle.width (List.max xs - left)
-            Rectangle.height (List.max ys - top)
-            Rectangle.fill (toBrush ConstructorTable.tablePlateColor)
-            Rectangle.stroke (toBrush ConstructorTable.elementFrameColor)
-            Rectangle.strokeThickness 1.0
-        ] :> IView
+    // The grey plate as its four corners projected through the 3-D view transform, so it tilts
+    // with the table (a single filled quad — under an R2/R3 tilt the rectangle becomes the
+    // correctly-projected parallelogram, which an axis-aligned rectangle could not show).
     let halfL = model.project.table.length / 2.0
     let halfW = model.project.table.width / 2.0
-    let plateCorners =
+    let pts =
         [ { x = -halfL; y = -halfW }
           { x =  halfL; y = -halfW }
           { x =  halfL; y =  halfW }
-          { x = -halfL; y =  halfW }
-          { x = -halfL; y = -halfW } ]
-    let outlineStroke = { Drawer.frameStroke with opacity = 1.0 }
-    fill :: (plateCorners |> List.pairwise |> List.map (fun (a, b) -> viewLine model outlineStroke a b))
+          { x = -halfL; y =  halfW } ]
+        |> List.map (fun c -> let (x, y) = projectToCanvas model.view c in Point(x, y))
+    [ Polygon.create [
+        Polygon.points pts
+        Polygon.fill (toBrush ConstructorTable.tablePlateColor)
+        Polygon.stroke (toBrush ConstructorTable.elementFrameColor)
+        Polygon.strokeThickness 1.0
+      ] :> IView ]
 
 let private raySegmentView (model : Model) (segment : DrawnRaySegment) : IView =
     viewLine model (ConstructorTable.rayStroke segment.group segment.isCentral) segment.startPoint segment.endPoint
@@ -1315,11 +1445,40 @@ let private keyOf (k : Avalonia.Input.Key) : Key option =
         | Avalonia.Input.Key.F1 -> Some F1
         | _ -> None
 
-/// The constructor `Canvas` MVU page (§E / §C). Renders the grey plate, the central ray,
-/// each element drawer, and the active-element indicator, and translates pointer/wheel/key
-/// events into the pure messages through the one `Commands` registry. The view is a pure
-/// function of the model, so any edit re-renders the table (redraw-on-drop, E.4.3).
-let view (model : Model) (dispatch : Msg -> unit) : IView =
+/// The shared rotation-controls bar's state (Spec 0027). It operates on the SELECTION — the table
+/// VIEW when the table is selected (showing the view's R1/R2/R3 and the table R3 lock), or the active
+/// element when an element is selected — so the table is rotatable on the main screen exactly as in
+/// the "Test Table + Element Rotations" window. Always enabled (the main screen always has a selection).
+let rotationBarState (model : Model) : RotationControls.State =
+    match model.selection with
+    | TableSelected ->
+        { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+          r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
+    | ElementSelected _ ->
+        match activeElement model with
+        | Some p ->
+            { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+              r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
+        | None ->
+            { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+
+let private rotationBarHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+    {
+        rotate = fun axis d -> dispatch (RotateActiveBy (axis, d))
+        setAngle = fun axis v -> dispatch (SetActiveAxis (axis, v))
+        toggleR3Lock = fun () -> dispatch RotBarToggleR3Lock
+        requestReset = fun () -> dispatch RotRequestReset
+        requestResetAll = fun () -> dispatch RotRequestResetAll
+        confirm = fun () -> dispatch RotConfirm
+        cancel = fun () -> dispatch RotCancel
+    }
+
+/// The constructor `Canvas` surface (§E / §C). Renders the grey plate, the central ray, each
+/// element drawer, and the active-element indicator, and translates pointer/wheel/key events into
+/// the pure messages through the one `Commands` registry. The view is a pure function of the
+/// model, so any edit re-renders the table (redraw-on-drop, E.4.3). `view` stacks the shared
+/// rotation-controls bar beneath this (Spec 0027, task 008).
+let private canvasSurface (model : Model) (dispatch : Msg -> unit) : IView =
     let children =
         plateView model
         @ (drawnRaySegments model |> List.map (raySegmentView model))
@@ -1342,40 +1501,67 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
             | None -> new Cursor(StandardCursorType.Arrow))
         Border.background (Brushes.White :> IBrush)
         Border.child canvas
+        // FuncUI subscribes every pointer handler for the event's full Tunnel|Bubble routing, so the
+        // handler fires TWICE for the target (tunnel down, then bubble up). Each handler below runs
+        // its logic ONLY on the bubble pass, so it happens exactly once. For press / move / release
+        // this dedup does NOT mark the event handled — focus, pointer capture, and ancestor handling
+        // stay exactly as before; only the duplicate dispatch is removed (Spec 0027).
         Border.onPointerPressed (fun e ->
-            let pt = e.GetPosition null
-            let tp = fromScreen model.view pt.X pt.Y
-            let mods = modifiersOf e.KeyModifiers
-            if e.GetCurrentPoint(null).Properties.IsRightButtonPressed then
-                if Option.isSome model.placementDraft then dispatch (Invoke CancelOrDeselect)
-                else dispatch (ContextMenuAt tp)
-            elif Option.isSome model.placementDraft then
-                dispatch (DropPendingPlacement tp)
-            else
-                lastPointer <- Some pt
-                if e.ClickCount >= 2 then dispatch (OpenDialogAt tp)
+            if e.Route = RoutingStrategies.Bubble then
+                let pt = e.GetPosition null
+                let tp = fromScreen model.view pt.X pt.Y
+                let mods = modifiersOf e.KeyModifiers
+                if e.GetCurrentPoint(null).Properties.IsRightButtonPressed then
+                    if Option.isSome model.placementDraft then dispatch (Invoke CancelOrDeselect)
+                    else dispatch (ContextMenuAt tp)
+                elif Option.isSome model.placementDraft then
+                    dispatch (DropPendingPlacement tp)
                 else
-                    dispatch (SelectAt tp)
-                    dispatch (BeginDrag (mods, tp)))
+                    lastPointer <- Some pt
+                    if e.ClickCount >= 2 then dispatch (OpenDialogAt tp)
+                    else
+                        dispatch (SelectAt tp)
+                        dispatch (BeginDrag (mods, tp)))
         Border.onPointerMoved (fun e ->
-            let pt = e.GetPosition null
-            if Option.isSome model.placementDraft then
-                dispatch (PreviewPlacementAt (fromScreen model.view pt.X pt.Y))
-            match lastPointer with
-            | Some last ->
-                dispatch (PanByScreen (pt.X - last.X, pt.Y - last.Y))
-                dispatch (SlideTo (fromScreen model.view pt.X pt.Y))
-                lastPointer <- Some pt
-            | None -> ())
-        Border.onPointerReleased (fun _ ->
-            lastPointer <- None
-            dispatch EndDrag)
+            if e.Route = RoutingStrategies.Bubble then
+                let pt = e.GetPosition null
+                if Option.isSome model.placementDraft then
+                    dispatch (PreviewPlacementAt (fromScreen model.view pt.X pt.Y))
+                match lastPointer with
+                | Some last ->
+                    dispatch (PanByScreen (pt.X - last.X, pt.Y - last.Y))
+                    dispatch (SlideTo (fromScreen model.view pt.X pt.Y))
+                    lastPointer <- Some pt
+                | None -> ())
+        Border.onPointerReleased (fun e ->
+            if e.Route = RoutingStrategies.Bubble then
+                lastPointer <- None
+                dispatch EndDrag)
         Border.onPointerWheelChanged (fun e ->
-            let pt = e.GetPosition null
-            let notches = if e.Delta.Y >= 0.0 then 1 else -1
-            dispatch (WheelAt (modifiersOf e.KeyModifiers, notches, fromScreen model.view pt.X pt.Y)))
+            // Run once on the bubble pass so a notch applies ONE rotation/zoom step, and ALSO mark it
+            // handled so the wheel is consumed by the canvas rather than scrolling an ancestor too.
+            if e.Route = RoutingStrategies.Bubble then
+                e.Handled <- true
+                let pt = e.GetPosition null
+                let notches = if e.Delta.Y >= 0.0 then 1 else -1
+                dispatch (WheelAt (modifiersOf e.KeyModifiers, notches, fromScreen model.view pt.X pt.Y)))
         Border.onKeyDown (fun e ->
             match keyOf e.Key with
             | Some k -> dispatch (KeyPress { key = k; modifiers = Set.ofList (modifiersOf e.KeyModifiers) })
             | None -> ())
+    ] :> IView
+
+/// The constructor page: the canvas surface with the shared rotation-controls bar beneath it
+/// (Spec 0027 — replacing the old element-menu rotation items with the bar). The bar is
+/// selection-aware: it rotates the table view when the table is selected, or the active element when
+/// an element is selected (the wheel gestures route the same way — see `rotateSelectedNotches`).
+let view (model : Model) (dispatch : Msg -> unit) : IView =
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [
+                Border.dock Dock.Bottom
+                Border.child (RotationControls.view (rotationBarState model) (rotationBarHandlers dispatch))
+            ]
+            canvasSurface model dispatch
+        ]
     ] :> IView

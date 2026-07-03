@@ -53,11 +53,44 @@
         <Compile Include="FitPanelTests.fs" />
         <Compile Include="LifecycleTests.fs" />
         <Compile Include="SystemView3DTests.fs" />
+        <!-- Spec 0027 (002-rotate-table-task): the table-rotation test window — pure MVU
+             (rotations, reset, select/unselect; `ui-tests`) plus two headless render proofs
+             of the FuncUI view + window host (`ui-smoke`). -->
+        <Compile Include="TableRotationTests.fs" />
+        <!-- Spec 0027: the optical-element-rotation test window — pure MVU (rotations, R3 lock,
+             per-element + all-element zoom, selection) plus real headless pointer-injection. -->
+        <Compile Include="ElementRotationTests.fs" />
+        <!-- Spec 0027 task 006 #3: the combined table + element rotation test window. -->
+        <Compile Include="TableAndElementRotationTests.fs" />
+        <!-- Spec 0027 task 009: the shared rotation-controls bar's modifier-driven highlight
+             (pure armed-axis map + a headless key-press render proof). -->
+        <Compile Include="RotationControlsTests.fs" />
+        <!-- Spec 0027 task 014: the shared position-on-the-ray control (pure contract + headless mount). -->
+        <Compile Include="RayPositionControlsTests.fs" />
+        <!-- Spec 0027 task 010: the element-movement test window (slide along the beam). -->
+        <Compile Include="ElementMovementTests.fs" />
+        <!-- Spec 0027 task 010: the renderer test window (swappable element renderer). -->
+        <Compile Include="RendererTestTests.fs" />
+        <!-- Spec 0027 task 018: the shared renderer control (config DU + presets + transparency). -->
+        <Compile Include="RendererControlsTests.fs" />
+        <!-- Spec 0027 task 010: the snap-to-beam test window. -->
+        <Compile Include="SnapToBeamTests.fs" />
+        <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->
+        <Compile Include="SnapToReflectedTests.fs" />
+        <!-- Spec 0027 (024) Phase 1: the Library bay — pure control contract + host kind-constrained
+             flattening + the BindValueId binding + a headless render/click proof. -->
+        <Compile Include="LibraryControlsTests.fs" />
+        <!-- Spec 0027 (024) Phase 2: the Experiments bay — pure control contract + host candidate
+             flattening + the ChooseSweptElement binding + a headless render/click proof. -->
+        <Compile Include="ExperimentControlsTests.fs" />
+        <!-- Spec 0027 (026) Part 4: the Details bay — the reusable LayerBandsControls band component
+             (pure contract + headless render) + the host detailsState band-builder + the seven-bay ribbon. -->
+        <Compile Include="LayerBandsControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.300" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -72,8 +105,8 @@
              lives ONLY here, never in the pure OpticalConstructor.Tests project. The
              .XUnit helper is intentionally omitted: it binds to xUnit v2, while this
              project stays on xunit.v3 (see TestApp.fs). Versions track Avalonia 11.3.4. -->
-        <PackageReference Include="Avalonia.Headless" Version="11.3.4" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.4" />
+        <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
     </ItemGroup>
 
     <ItemGroup>
@@ -81,6 +114,9 @@
         <!-- The App reference lets the smoke test boot the real composition root
              (MainWindow) headlessly; the test never runs the Exe entry point. -->
         <ProjectReference Include="..\OpticalConstructor.App\OpticalConstructor.App.fsproj" />
+        <!-- Spec 0027 (002-rotate-table-task): the project under test for the
+             table-rotation test window. -->
+        <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
     </ItemGroup>
 
 </Project>

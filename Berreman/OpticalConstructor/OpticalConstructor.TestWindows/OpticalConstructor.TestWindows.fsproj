@@ -1,0 +1,84 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.TestWindows</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <!-- Spec 0027 (002-rotate-table-task): the separate home for the diagnostic test
+         windows. The pure rotation/projection/selection logic lives in
+         OpticalConstructor.Domain (TableView.fs); this project is the thin FuncUI shell
+         that renders it. Public MIT Avalonia + FuncUI NuGet only (matching Ui); the
+         audit-gated clone stays UNREFERENCED. -->
+    <ItemGroup>
+        <!-- Spec 0027 task 012: the ONE reusable optical-table scene (projection, gestures, plate). -->
+        <Compile Include="TableScene.fs" />
+        <!-- Spec 0027 task 010 fix: shared pointer→canvas-local mapping (controls are above the canvas). -->
+        <Compile Include="SceneInput.fs" />
+        <!-- Spec 0027 task 018: the catalogue names/codes and the ONE shared element renderer (used by the
+             renderer test AND the Main screen), keyed by the serializable `RendererControls` DU. -->
+        <Compile Include="Catalogue.fs" />
+        <Compile Include="ElementRenderer.fs" />
+        <Compile Include="TableRotationView.fs" />
+        <Compile Include="TableRotationWindow.fs" />
+        <Compile Include="ElementRotationView.fs" />
+        <Compile Include="ElementRotationWindow.fs" />
+        <!-- Spec 0027 (026): the renderer-neutral chart data the Experiments bay produces (before the scene
+             that builds it). -->
+        <Compile Include="ExperimentChart.fs" />
+        <!-- Spec 0027 (026) Part 3: the pop-out interactive ScottPlot chart window (after ExperimentChart,
+             before the scene that opens it). -->
+        <Compile Include="ChartWindow.fs" />
+        <Compile Include="TableAndElementRotationView.fs" />
+        <Compile Include="TableAndElementRotationWindow.fs" />
+        <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
+        <Compile Include="ElementMovementView.fs" />
+        <Compile Include="ElementMovementWindow.fs" />
+        <!-- Spec 0027 task 010: the renderer test (swappable wireframe ⇄ shapes+codes renderer).
+             After TableAndElementRotationView — it reuses its public `kindCode`. -->
+        <Compile Include="RendererTestView.fs" />
+        <Compile Include="RendererTestWindow.fs" />
+        <!-- Spec 0027 task 010: the snap-to-beam test (rotate the source, elements snap to the beam). -->
+        <Compile Include="SnapToBeamView.fs" />
+        <Compile Include="SnapToBeamWindow.fs" />
+        <!-- Spec 0027 task 012: the snap-to-REFLECTED-light test (source, flat mirror R2=45, detector;
+             the light is reflected, not transmitted, and the detector snaps to the reflected beam). -->
+        <Compile Include="SnapToReflectedView.fs" />
+        <Compile Include="SnapToReflectedWindow.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Include="Avalonia" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
+        <PackageReference Include="Elmish" Version="5.0.2" />
+        <!-- Spec 0027 (026) Part 3: the interactive chart-window host (the pop-out ScottPlot window). -->
+        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <!-- Spec 0027 (008-task): the shared rotation-controls bar. -->
+        <ProjectReference Include="..\OpticalConstructor.Controls\OpticalConstructor.Controls.fsproj" />
+    </ItemGroup>
+
+</Project>

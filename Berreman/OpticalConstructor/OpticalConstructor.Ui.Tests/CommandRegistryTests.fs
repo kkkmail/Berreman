@@ -19,13 +19,17 @@
 ///   * AC-C3 — clicking empty table selects the table; clicking an element selects it.
 namespace OpticalConstructor.Ui.Tests
 
+open Avalonia
 open Avalonia.Controls
+open Avalonia.Input
+open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.FuncUI
 open Avalonia.FuncUI.Types
 open Xunit
 open Berreman.Constants
 open Berreman.Geometry
+open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Project
@@ -360,8 +364,10 @@ module CommandRegistryTests =
         let vecFrom (v : Table.TableViewState) (p : TablePoint) =
             let (x, y) = ConstructorView.projectToCanvas v p
             (x - fst center, y - snd center)
-        // A +90° in-plane rotation sends (vx, vy) -> (-vy, vx).
-        let rot90 (vx, vy) = (-vy, vx)
+        // Through TableView's single-source-of-truth 3-D projection (Spec 0027), a +90° view R1
+        // (about the table up-axis) maps a screen vector (vx, vy) -> (vy, -vx). The table — and
+        // every element on it — still travels together, which is what this AC asserts.
+        let rot90 (vx, vy) = (vy, -vx)
         for p in [ at 0.5 0.0; at 0.0 0.5; at -0.3 0.2 ] do
             let (ex, ey) = rot90 (vecFrom v0 p)
             let (rx, ry) = vecFrom vRot p
@@ -393,6 +399,74 @@ module CommandRegistryTests =
         Assert.True(abs ((placementAt 0 rotated).r1.degrees - 5.0) < 1e-9)
 
     // =======================================================================
+    // Spec 0027 task 008 — the shared rotation-controls bar on the main screen.
+    // =======================================================================
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the rotation bar rotates the active element by a delta and sets an exact angle`` () =
+        let m0 = select 0 (model [ sampleAt 0.0 0.0 ])
+        let rotated = ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R1, 15.0)) m0
+        Assert.True(abs ((placementAt 0 rotated).r1.degrees - 15.0) < 1e-9)
+        let set = ConstructorView.update (ConstructorView.SetActiveAxis (RotationControls.R2, 42.5)) m0
+        Assert.True(abs ((placementAt 0 set).r2.degrees - 42.5) < 1e-9)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the rotation bar is enabled for both the table and an element`` () =
+        Assert.True((ConstructorView.rotationBarState (select 0 (model [ sampleAt 0.0 0.0 ]))).enabled, "enabled with an element")
+        Assert.True((ConstructorView.rotationBarState (model [ sampleAt 0.0 0.0 ])).enabled, "enabled with the table selected (the table is rotatable)")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``with the table selected, the bar rotates the table VIEW (not an element) and reads its angle`` () =
+        let m0 = model [ sampleAt 0.0 0.0 ]   // TableSelected by default
+        let rotated = ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R1, 15.0)) m0
+        Assert.True(abs (rotated.view.r1.degrees - 15.0) < 1e-9, "the table view R1 rotated")
+        Assert.True((placementAt 0 rotated).r1.value = 0.0, "the element is NOT rotated while the table is selected")
+        Assert.True(abs ((ConstructorView.rotationBarState rotated).r1 - 15.0) < 1e-9, "the bar reads the view's angle")
+        let set = ConstructorView.update (ConstructorView.SetActiveAxis (RotationControls.R2, 42.5)) m0
+        Assert.True(abs (set.view.r2.degrees - 42.5) < 1e-9, "set-axis targets the view")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a Shift+wheel notch rotates the table view when the table is selected`` () =
+        let m0 = model [ sampleAt 0.0 0.0 ]   // table selected
+        let rotated = ConstructorView.update (ConstructorView.WheelAt ([ Shift ], 1, at 0.0 0.0)) m0
+        Assert.True(rotated.view.r1.degrees > 0.0, "Shift+wheel rotated the table view R1")
+        Assert.True((placementAt 0 rotated).r1.value = 0.0, "the element is not rotated")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the bar's R3 lock targets the table when the table is selected`` () =
+        let m0 = model [ sampleAt 0.0 0.0 ]   // table selected; tableR3Locked = false by default
+        Assert.False((ConstructorView.rotationBarState m0).r3Locked, "the table R3 is unlocked by default")
+        let locked = ConstructorView.update ConstructorView.RotBarToggleR3Lock m0
+        Assert.True((ConstructorView.rotationBarState locked).r3Locked, "toggling locks the table R3")
+        let tryRotate = ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R3, 30.0)) locked
+        Assert.True(abs (tryRotate.view.r3.degrees) < 1e-9, "a locked table R3 ignores rotation")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the rotation bar Reset (confirmed) zeros the active element; Reset All zeros every element`` () =
+        // Reset is confirmation-gated and resets only the active element.
+        let armed =
+            select 0 (model [ sampleAt -0.3 0.0; sampleAt 0.3 0.0 ])
+            |> ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R1, 20.0))
+            |> ConstructorView.update ConstructorView.RotRequestReset
+        Assert.Equal(RotationControls.ConfirmReset, armed.rotationConfirm)
+        Assert.True(abs ((placementAt 0 armed).r1.degrees - 20.0) < 1e-9, "not reset until confirmed")
+        let reset = ConstructorView.update ConstructorView.RotConfirm armed
+        Assert.True(abs ((placementAt 0 reset).r1.degrees) < 1e-9 && reset.rotationConfirm = RotationControls.NoConfirm)
+        // Reset All zeros every element's rotations.
+        let allReset =
+            select 1 (model [ sampleAt -0.3 0.0; sampleAt 0.3 0.0 ])
+            |> ConstructorView.update (ConstructorView.RotateActiveBy (RotationControls.R2, 30.0))
+            |> ConstructorView.update ConstructorView.RotRequestResetAll
+            |> ConstructorView.update ConstructorView.RotConfirm
+        Assert.True(allReset.project.placements |> List.forall (fun p -> p.r1.value = 0.0 && p.r2.value = 0.0 && p.r3.value = 0.0))
+
+    // =======================================================================
     // ui-smoke — the constructor surface mounts and renders one frame.
     // =======================================================================
 
@@ -407,3 +481,47 @@ module CommandRegistryTests =
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible)
             window.Close())
+
+    // =======================================================================
+    // Spec 0027 — a REAL Shift+wheel notch rotates the active element by EXACTLY one step.
+    // The pure AC-E2 cases above feed one `WheelAt` message to `update`; this drives a real
+    // pointer event through the live input pipeline, so it catches the FuncUI Tunnel|Bubble
+    // double-fire that `e.Handled <- true` (ConstructorView wheel handler) suppresses —
+    // without the fix the same notch would rotate 10°.
+    // =======================================================================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a real Shift+wheel notch rotates the active element by exactly one 5 degree step`` () =
+        HeadlessSession.run (fun () ->
+            let mutable m = select 0 (model [ sampleAt 0.0 0.0 ])
+            let dispatch (msg : ConstructorView.Msg) = m <- ConstructorView.update msg m
+            // The constructor canvas is 760x480; size the host to it and inject at its centre.
+            let window = Window(Width = 760.0, Height = 480.0)
+            window.Content <- Component(fun _ -> ConstructorView.view m dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            window.MouseWheel(Point(380.0, 240.0), Vector(0.0, 1.0), RawInputModifiers.Shift)
+            Dispatcher.UIThread.RunJobs()
+            window.Close()
+            let r1 = (List.item 0 m.project.placements).r1.degrees
+            Assert.True(abs (r1 - 5.0) < 1e-9, sprintf "one Shift+wheel notch rotated R1 to %f° (expected exactly 5°; 10° means the double-fire is back)" r1))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a real click dispatches its select exactly once (pressed handler is deduped)`` () =
+        HeadlessSession.run (fun () ->
+            // The pressed/moved/released handlers run their logic only on the bubble pass. This
+            // proves the dedup AND that the bubble pass actually fires: a count of 0 would mean the
+            // logic never ran, a count of 2 would mean the FuncUI Tunnel|Bubble double-fire is back.
+            let captured = System.Collections.Generic.List<ConstructorView.Msg>()
+            let m = model [ sampleAt 0.0 0.0 ]
+            let window = Window(Width = 760.0, Height = 480.0)
+            window.Content <- Component(fun _ -> ConstructorView.view m (fun msg -> captured.Add msg))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            window.MouseDown(Point(380.0, 240.0), MouseButton.Left, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.Close()
+            let selects = captured |> Seq.filter (function ConstructorView.SelectAt _ -> true | _ -> false) |> Seq.length
+            Assert.Equal(1, selects))

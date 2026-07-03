@@ -24,6 +24,7 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Ui
+open OpticalConstructor.TestWindows
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
@@ -66,7 +67,9 @@ type private LocalizationErrorWindow(message : string) as this =
         copy.Click.Add(fun _ ->
             match this.Clipboard with
             | null -> ()
-            | clip -> clip.SetTextAsync message |> ignore)
+            // Avalonia 12 moved `SetTextAsync` to an extension on `IClipboard` (ClipboardExtensions),
+            // called statically since this file does not `open Avalonia.Input.Platform`.
+            | clip -> Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clip, message) |> ignore)
         let panel = StackPanel(Margin = Thickness 12.0)
         panel.Children.Add box
         panel.Children.Add copy
@@ -102,6 +105,114 @@ type MainWindow() as this =
         |> Program.withHost this
         |> Program.run
 
+/// The Main screen (Spec 0027): the dynamic "Lego constructor". It is the SAME table + element scene
+/// as "Test Table + Element Rotations" (`TableAndElementRotationView` — same table, same initial zoom,
+/// same select/unselect + rotation/zoom/pan logic), seeded with a light source and a detector and given
+/// an add/remove palette so elements can be added and removed at runtime. The ONLY difference from the
+/// test scene is that palette (`initMain`); the scene logic is shared. (The old constructor shell —
+/// `MainWindow` above — is kept but no longer opened by the launcher's Main button.)
+type MainConstructorWindow() as this =
+    inherit HostWindow()
+    do
+        this.Title <- "Optical Constructor — Main"
+        this.Width <- TableAndElementRotationView.canvasWidth
+        // Spec 0027 task 018: the Main screen is now the ribbon of "large controls" (`mainView`) — the
+        // ribbon's tab strip + the tallest bay (Render, three rows) need more headroom than the flat bar.
+        this.Height <- TableAndElementRotationView.canvasHeight + 210.0
+        // Spec 0027 (024): build the mock Library + Experiments proxies at the composition root and inject
+        // them into the Main scene. Real, disk-backed proxies would later be built here instead (in
+        // `OpticalConstructor.Storage`), leaving the scene/bay logic unchanged.
+        let library = OpticalConstructor.Domain.Library.createInMemory ()
+        let experiments = OpticalConstructor.Domain.Experiments.createInMemory ()
+        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments) TableAndElementRotationView.update TableAndElementRotationView.mainView
+        |> Program.withHost this
+        |> Program.run
+
+/// The simple launcher form (Spec 0027): `Main` opens the existing Optical Constructor window
+/// (the `MainWindow` above, unchanged); the test buttons open the diagnostic test windows
+/// (`OpticalConstructor.TestWindows`). This is the app's startup window so every path is one
+/// click away; further test windows are added as buttons here and live in the TestWindows project.
+type LauncherWindow() as this =
+    inherit Window()
+
+    do
+        this.Title <- "Optical Constructor — Launcher"
+        this.Width <- 380.0
+        this.Height <- 520.0
+        this.CanResize <- false
+        let title =
+            TextBlock(
+                Text = "Optical Constructor",
+                FontSize = 18.0,
+                FontWeight = FontWeight.SemiBold,
+                Margin = Thickness(0.0, 0.0, 0.0, 14.0))
+        let mainButton =
+            Button(
+                Name = "OpenMainButton",
+                Content = "Main",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        mainButton.Click.Add(fun _ -> MainConstructorWindow().Show())
+        let tableTestButton =
+            Button(
+                Name = "OpenTableRotationTestButton",
+                Content = "Test Optical Table Rotations",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        tableTestButton.Click.Add(fun _ -> TableRotationWindow().Show())
+        let elementTestButton =
+            Button(
+                Name = "OpenElementRotationTestButton",
+                Content = "Test Optical Element Rotations",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        elementTestButton.Click.Add(fun _ -> ElementRotationWindow().Show())
+        let tableElementTestButton =
+            Button(
+                Name = "OpenTableAndElementRotationTestButton",
+                Content = "Test Table + Element Rotations",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        tableElementTestButton.Click.Add(fun _ -> TableAndElementRotationWindow().Show())
+        let elementMovementTestButton =
+            Button(
+                Name = "OpenElementMovementTestButton",
+                Content = "Test Element Movement",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        elementMovementTestButton.Click.Add(fun _ -> ElementMovementWindow().Show())
+        let rendererTestButton =
+            Button(
+                Name = "OpenRendererTestButton",
+                Content = "Test Renderers",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        rendererTestButton.Click.Add(fun _ -> RendererTestWindow().Show())
+        let snapTestButton =
+            Button(
+                Name = "OpenSnapToBeamTestButton",
+                Content = "Test Snap to Beam",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
+                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
+        snapTestButton.Click.Add(fun _ -> SnapToBeamWindow().Show())
+        let snapReflectedTestButton =
+            Button(
+                Name = "OpenSnapToReflectedTestButton",
+                Content = "Test Snap to Reflected Light",
+                HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
+        snapReflectedTestButton.Click.Add(fun _ -> SnapToReflectedWindow().Show())
+        let panel = StackPanel(Margin = Thickness 20.0)
+        panel.Children.Add title
+        panel.Children.Add mainButton
+        panel.Children.Add tableTestButton
+        panel.Children.Add elementTestButton
+        panel.Children.Add tableElementTestButton
+        panel.Children.Add elementMovementTestButton
+        panel.Children.Add rendererTestButton
+        panel.Children.Add snapTestButton
+        panel.Children.Add snapReflectedTestButton
+        this.Content <- panel
+
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).
 type App() =
@@ -114,7 +225,10 @@ type App() =
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
         | :? IClassicDesktopStyleApplicationLifetime as desktop ->
-            desktop.MainWindow <- MainWindow()
+            // The launcher is the startup window. Closing it after opening Main / a test
+            // window must NOT quit the app, so shut down only when the last window closes.
+            desktop.ShutdownMode <- ShutdownMode.OnLastWindowClose
+            desktop.MainWindow <- LauncherWindow()
         | _ -> ()
 
 module Program =

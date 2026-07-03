@@ -1,0 +1,12 @@
+Test Renderers. BUG – the cylinder rails now do not rotate when R1 changes (WRONG). They were rotating in the opposite direction 
+before (also wrong but they were at least rotating). The rails must rotate in sync with R1 rotation. 
+
+Now, this is getting interesting. Let’s put some more stuff into controls on this test page. The whole purpose of this test is 
+to see “how it looks”. The lenses and curved mirrors wireframe have smaller circles (currently just one) and radials – we counted 
+them as 8, but there are 4 on each side, 45 degrees apart. Add controls on the page to control the number of circles and radials. 
+The circles control should have values from 1 (current, default) to 8, and the radials should have values 4 (current, default), 8, 12, 24, 36.
+
+Transparency. I want to play around with transparency as current view often flips in the eye due to incorrect transparency. 
+This must be tried. Here are the guidelines. The yellow and blue normals are always visible. I think that there should be somewhere 
+between one to three transparency controls (check what we have now and look up the web for the recommendations). Put the controls 
+on the page (with the current values as defaults and the full range). I will play around and advise.
