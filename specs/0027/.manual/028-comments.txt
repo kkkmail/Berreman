@@ -1,0 +1,23 @@
+Here are the comments regarding the optical constructor.
+
+Experiments tab. There is a `Rotate R1` but `Sweep R2` and there is also `Sweep <Lambda>`. This makes no sense, 
+especially, the word `sweep` makes no sense. The choice of the experiment should be a multi-step process: 
+1. Choose the setup: all the elements, including the choice of actual materials, geometry, etc. 
+2. Choose the element that we want to vary: e.g. light source, … The choice of the element determines what we can vary in the element. 
+The light source MUST allow only varying the wavelength, the polarizers must only allow varying R1, the sample allows varying 
+R1 and R2 (for now) and so on. All this must NOT be hard coded but attached to the element. 
+3. Finally, the user confirms the choice, after which the experiment is added (the `Add` button is missing). 
+Once the experiment was added, then it stays in the collection of the experiments. Which means that the user 
+can re-edit anything but this must not add an already added experiment. If the user choses an experiment, then 
+the user can change anything in he experiment.
+
+There must be a way to edit and remove the experiment.
+
+There must be a way to edit the information if we want to capture T, R, or both. Currently the mirrors have 
+R partially hardcoded while the rest of the elements have T hardcoded. This is all in the specs. The collection 
+of the experiments must allow removing he experiments from the collection.
+
+View chart screen. `Font –` and `Font +` only affect legends. But there is a header and tick labels. It should 
+be possible to change their size. We should make them selectable. Also the actual font size must be shown.
+
+Fix the issues and write an implementation log into the next NNN. Make sure to add the tests.
