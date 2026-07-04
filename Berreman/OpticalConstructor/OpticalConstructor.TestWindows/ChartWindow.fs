@@ -22,6 +22,9 @@ module ChartWindowIds =
     let plot = "ChartWindowPlot"
     let fontMinus = "ChartWindowFontMinus"
     let fontPlus = "ChartWindowFontPlus"
+    /// Spec 0027 (028): the font-target selector (which text Font +/- resizes) and the size readout.
+    let fontTarget = "ChartWindowFontTarget"
+    let fontSize = "ChartWindowFontSize"
     let majorGrid = "ChartWindowMajorGrid"
     let minorGrid = "ChartWindowMinorGrid"
     let exportPng = "ChartWindowExportPng"
@@ -93,26 +96,49 @@ type ChartWindow(chart : ExperimentChart) as this =
                         ava.Refresh()
                 with _ -> ())
 
-        // -- The toolbar: font-size +/-, gridline toggles, PNG + CSV export. --
-        let mutable axisFontSize = 13.0f
+        // -- Font controls (spec 028): a TARGET SELECTOR (header / axis labels / tick labels / legend), the
+        // Font +/- that resize the SELECTED target (not just one kind of text as before), and a numeric
+        // readout of that target's current size. The pure size / selection / clamp logic is `ChartFont`. --
+        let mutable fontState = ChartFont.defaultState
 
-        let setAxisFontSize (size : float32) : unit =
-            axisFontSize <- size
-            plot.Axes.Title.Label.FontSize <- size + 2.0f
-            match plot.Axes.Bottom with
-            | :? ScottPlot.AxisPanels.AxisBase as b -> b.Label.FontSize <- size
-            | _ -> ()
-            match plot.Axes.Left with
-            | :? ScottPlot.AxisPanels.AxisBase as l -> l.Label.FontSize <- size
-            | _ -> ()
+        /// Push every target's size onto the ScottPlot plot (title, both axis labels + tick labels, legend).
+        let applyFonts () : unit =
+            plot.Axes.Title.Label.FontSize <- float32 fontState.title
+            let setAxis (panel : obj) : unit =
+                match panel with
+                | :? ScottPlot.AxisPanels.AxisBase as a ->
+                    a.Label.FontSize <- float32 fontState.axisLabels
+                    a.TickLabelStyle.FontSize <- float32 fontState.tickLabels
+                | _ -> ()
+            setAxis plot.Axes.Bottom
+            setAxis plot.Axes.Left
+            plot.Legend.FontSize <- System.Nullable (float32 fontState.legend)
             ava.Refresh()
 
-        setAxisFontSize axisFontSize
+        let fontSizeReadout =
+            TextBlock(
+                Name = ChartWindowIds.fontSize,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = Thickness(8.0, 0.0, 0.0, 0.0))
+        let refreshFontReadout () : unit = fontSizeReadout.Text <- ChartFont.readout fontState
+
+        // The target selector: one item per font target, in display order; switching it re-points Font +/-.
+        let fontTarget = ComboBox(Name = ChartWindowIds.fontTarget, Margin = Thickness(8.0, 0.0, 0.0, 0.0))
+        for t in ChartFont.allTargets do fontTarget.Items.Add(ComboBoxItem(Content = t.label)) |> ignore
+        fontTarget.SelectedIndex <- List.findIndex (fun t -> t = fontState.selected) ChartFont.allTargets
+        fontTarget.SelectionChanged.Add(fun _ ->
+            let i = fontTarget.SelectedIndex
+            if i >= 0 && i < List.length ChartFont.allTargets then
+                fontState <- ChartFont.withSelected (List.item i ChartFont.allTargets) fontState
+                refreshFontReadout ())
 
         let fontMinus = Button(Name = ChartWindowIds.fontMinus, Content = "Font -")
-        fontMinus.Click.Add(fun _ -> setAxisFontSize (max 6.0f (axisFontSize - 1.0f)))
+        fontMinus.Click.Add(fun _ -> fontState <- ChartFont.bumpSelected -1.0 fontState; applyFonts (); refreshFontReadout ())
         let fontPlus = Button(Name = ChartWindowIds.fontPlus, Content = "Font +", Margin = Thickness(6.0, 0.0, 0.0, 0.0))
-        fontPlus.Click.Add(fun _ -> setAxisFontSize (min 40.0f (axisFontSize + 1.0f)))
+        fontPlus.Click.Add(fun _ -> fontState <- ChartFont.bumpSelected 1.0 fontState; applyFonts (); refreshFontReadout ())
+
+        applyFonts ()
+        refreshFontReadout ()
 
         // Track the grid toggles locally (the ScottPlot line-width properties are write-only here), so the
         // overall `Grid.IsVisible` reflects whether EITHER tier is on.
@@ -151,6 +177,8 @@ type ChartWindow(chart : ExperimentChart) as this =
         let toolbar = StackPanel(Orientation = Orientation.Horizontal, Margin = Thickness(8.0))
         toolbar.Children.Add fontMinus
         toolbar.Children.Add fontPlus
+        toolbar.Children.Add fontTarget
+        toolbar.Children.Add fontSizeReadout
         toolbar.Children.Add majorGrid
         toolbar.Children.Add minorGrid
         toolbar.Children.Add exportPng

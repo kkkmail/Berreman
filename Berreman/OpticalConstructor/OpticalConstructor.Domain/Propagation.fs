@@ -209,11 +209,31 @@ module Propagation =
         | Thickness.Infinity -> None
         | Thickness.Thickness d -> Some (d / 1.0<meter>)
 
+    /// Which branch of the sample an experiment captures (spec 028): the transmitted or the reflected
+    /// Mueller matrix from the engine. `Experiments.MeasurementMode.CaptureBoth` drives one curve per
+    /// branch at the host.
+    type Branch =
+        | BranchTransmitted
+        | BranchReflected
+
+    /// The sample's Mueller matrix for a branch, from the EXISTING engine (no new physics): the same solve
+    /// as before, reading the transmitted or the reflected Mueller matrix.
+    let sampleMueller (branch : Branch) (sample : Sample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
+        let info = { (IncidentLightInfo.createInclined w inc) with refractionIndex = RefractionIndex.vacuum }
+        let solver = OpticalSystemSolver(info, sampleToSystem sample w)
+        match branch with
+        | BranchTransmitted -> solver.muellerMatrixT ()
+        | BranchReflected -> solver.muellerMatrixR ()
+
     /// The sample's transmitted-branch Mueller matrix from the EXISTING engine (no new physics). Solves the
     /// mapped `OpticalSystem` at the given wavelength / incidence angle in vacuum.
     let sampleMuellerT (sample : Sample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
-        let info = { (IncidentLightInfo.createInclined w inc) with refractionIndex = RefractionIndex.vacuum }
-        OpticalSystemSolver(info, sampleToSystem sample w).muellerMatrixT ()
+        sampleMueller BranchTransmitted sample w inc
+
+    /// The sample's reflected-branch Mueller matrix from the EXISTING engine (spec 028 — the reflected
+    /// capture, the counterpart of `sampleMuellerT`).
+    let sampleMuellerR (sample : Sample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
+        sampleMueller BranchReflected sample w inc
 
     /// The full SV propagation: SV_out = MM_sample · SV_in, then SV_det = MM_analyzer · SV_out (spec §1/§4).
     let propagate (svIn : StokesVector) (mmSample : MuellerMatrix) (mmAnalyzer : MuellerMatrix) : StokesVector =
@@ -229,6 +249,26 @@ module Propagation =
             points : (float * float) list
         }
 
+    /// Sweep the analyzer's R1 across an explicit angle range [loDeg, hiDeg] (inclusive) and record S0 at
+    /// each angle (spec 028 — the varied R1 range is user-editable). `rotatingAnalyzerCurve` is the
+    /// full-circle 0…360° special case.
+    let rotatingAnalyzerCurveRange
+        (svIn : StokesVector)
+        (mmSample : MuellerMatrix)
+        (analyzerKind : PolarizerKind)
+        (loDeg : float)
+        (hiDeg : float)
+        (numPoints : int) : IntensityCurve =
+        let n = max 2 numPoints
+        let points =
+            [
+                for k in 0 .. n - 1 ->
+                    let deg = loDeg + (hiDeg - loDeg) * float k / float (n - 1)
+                    let mm = analyzerMueller analyzerKind (Angle.degree deg)
+                    deg, intensity (propagate svIn mmSample mm)
+            ]
+        { points = points }
+
     /// Sweep the analyzer's R1 across 0…360° (inclusive) and record S0 at each angle. With an identity
     /// sample, an ideal-LP input, and an ideal-LP analyzer this traces Malus' law I = I₀ cos²θ.
     let rotatingAnalyzerCurve
@@ -236,15 +276,7 @@ module Propagation =
         (mmSample : MuellerMatrix)
         (analyzerKind : PolarizerKind)
         (numPoints : int) : IntensityCurve =
-        let n = max 2 numPoints
-        let points =
-            [
-                for k in 0 .. n - 1 ->
-                    let deg = 360.0 * float k / float (n - 1)
-                    let mm = analyzerMueller analyzerKind (Angle.degree deg)
-                    deg, intensity (propagate svIn mmSample mm)
-            ]
-        { points = points }
+        rotatingAnalyzerCurveRange svIn mmSample analyzerKind 0.0 360.0 numPoints
 
     /// Intensity through an OPTIONAL analyzer: with an analyzer, S0 of MM_analyzer·(MM_sample·SV_in); without
     /// one, S0 of MM_sample·SV_in (no analyzer present — nothing synthesized; spec R1).
@@ -260,21 +292,27 @@ module Propagation =
     /// computable; the chart axis is drawn to 90 by the UI layer, spec 026).
     let r2SweepMaxDegrees : float = 89.0
 
-    /// One incidence (R2) sweep: at each incidence 0…89° (n points) re-solve the sample Mueller matrix and
-    /// read the intensity through the optional analyzer. The angle in DEGREES is the x-value; the chart
-    /// layer extends the x-axis to 90 (90° itself is not computed, spec 026).
+    /// One incidence (R2) sweep over [loDeg, hiDeg] (n points; spec 028 — the range is user-editable, and
+    /// the branch selects the transmitted or reflected sample Mueller matrix): at each incidence re-solve
+    /// the sample Mueller matrix and read the intensity through the optional analyzer. The angle in DEGREES
+    /// is the x-value; the caller clamps the top below 90° (90° itself is not computable, spec 026).
     let r2SweepCurve
+        (branch : Branch)
         (svIn : StokesVector)
         (sample : Sample)
         (w : WaveLength)
         (analyzer : (PolarizerKind * Angle) option)
+        (loDeg : float)
+        (hiDeg : float)
         (numPoints : int) : (float * float) list =
         let n = max 2 numPoints
+        let lo = min loDeg hiDeg
+        let hi = max loDeg hiDeg
         [
             for k in 0 .. n - 1 ->
-                let deg = r2SweepMaxDegrees * float k / float (n - 1)
+                let deg = lo + (hi - lo) * float k / float (n - 1)
                 let inc = IncidenceAngle.create (Angle.degree deg)
-                let mm = sampleMuellerT sample w inc
+                let mm = sampleMueller branch sample w inc
                 deg, intensityThroughAnalyzerOpt svIn mm analyzer
         ]
 
@@ -310,26 +348,32 @@ module Propagation =
     // (in DEGREES) or, for the intensity wavelength branch, one (wNm, intensity) curve.
     // -----------------------------------------------------------------------------------------------------
 
-    /// One incidence (R2) sweep for an ELLIPSOMETER: Ψ and Δ (in DEGREES) of the sample output at each
-    /// incidence 0…89°, returned as two parallel (angleDeg, value) curves.
+    /// One incidence (R2) sweep for an ELLIPSOMETER over [loDeg, hiDeg] (spec 028 — user range + branch):
+    /// Ψ and Δ (in DEGREES) of the sample output at each incidence, as two parallel (angleDeg, value) curves.
     let r2SweepPsiDelta
+        (branch : Branch)
         (svIn : StokesVector)
         (sample : Sample)
         (w : WaveLength)
+        (loDeg : float)
+        (hiDeg : float)
         (numPoints : int) : (float * float) list * (float * float) list =
         let n = max 2 numPoints
+        let lo = min loDeg hiDeg
+        let hi = max loDeg hiDeg
         [
             for k in 0 .. n - 1 ->
-                let deg = r2SweepMaxDegrees * float k / float (n - 1)
+                let deg = lo + (hi - lo) * float k / float (n - 1)
                 let inc = IncidenceAngle.create (Angle.degree deg)
-                let pd = ellipsometerReadout (sampleMuellerT sample w inc * svIn)
+                let pd = ellipsometerReadout (sampleMueller branch sample w inc * svIn)
                 (deg, pd.psi.degrees), (deg, pd.delta.degrees)
         ]
         |> List.unzip
 
-    /// One wavelength sweep over [loNm, hiNm] (n points; x in NM): re-solve the sample Mueller matrix at
-    /// each wavelength and read the intensity through the optional analyzer.
+    /// One wavelength sweep over [loNm, hiNm] (n points; x in NM; spec 028 — branch selects T / R): re-solve
+    /// the sample Mueller matrix at each wavelength and read the intensity through the optional analyzer.
     let waveLengthSweepIntensity
+        (branch : Branch)
         (svIn : StokesVector)
         (sample : Sample)
         (inc : IncidenceAngle)
@@ -344,13 +388,14 @@ module Propagation =
             for k in 0 .. n - 1 ->
                 let wNm = lo + (hi - lo) * float k / float (n - 1)
                 let w = WaveLength.nm (wNm * 1.0<nm>)
-                let mm = sampleMuellerT sample w inc
+                let mm = sampleMueller branch sample w inc
                 wNm, intensityThroughAnalyzerOpt svIn mm analyzer
         ]
 
-    /// One wavelength sweep for an ELLIPSOMETER: Ψ and Δ (in DEGREES) of the sample output over [loNm, hiNm]
-    /// (x in NM), returned as two parallel (wNm, value) curves.
+    /// One wavelength sweep for an ELLIPSOMETER over [loNm, hiNm] (x in NM; spec 028 — branch selects T / R):
+    /// Ψ and Δ (in DEGREES) of the sample output, returned as two parallel (wNm, value) curves.
     let waveLengthSweepPsiDelta
+        (branch : Branch)
         (svIn : StokesVector)
         (sample : Sample)
         (inc : IncidenceAngle)
@@ -364,7 +409,7 @@ module Propagation =
             for k in 0 .. n - 1 ->
                 let wNm = lo + (hi - lo) * float k / float (n - 1)
                 let w = WaveLength.nm (wNm * 1.0<nm>)
-                let pd = ellipsometerReadout (sampleMuellerT sample w inc * svIn)
+                let pd = ellipsometerReadout (sampleMueller branch sample w inc * svIn)
                 (wNm, pd.psi.degrees), (wNm, pd.delta.degrees)
         ]
         |> List.unzip

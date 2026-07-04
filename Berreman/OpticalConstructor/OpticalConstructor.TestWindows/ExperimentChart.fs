@@ -54,3 +54,81 @@ module ExperimentChart =
                             | None -> ""))
                 cells |> String.concat ",")
         header :: rows |> String.concat "\n"
+
+/// Spec 0027 (028) — the pure, renderer-neutral font-size state for the pop-out chart window. The old
+/// Font +/- affected only one text kind; the redesign lets the user SELECT which text to resize — the
+/// header (title), the axis labels, the tick labels, or the legend — each with its OWN size, and Font +/-
+/// applies to the SELECTED target, whose size is shown numerically. Kept pure (sizes are plain `float`, the
+/// window converts to ScottPlot's `float32` at the boundary) so the selection / clamp logic is unit-testable
+/// without opening a native window.
+module ChartFont =
+
+    /// Which text of the chart the Font +/- currently resizes.
+    type ChartFontTarget =
+        | Title
+        | AxisLabels
+        | TickLabels
+        | Legend
+
+        /// A human-readable label (the selector item text and the size readout prefix).
+        member this.label : string =
+            match this with
+            | Title -> "Header"
+            | AxisLabels -> "Axis labels"
+            | TickLabels -> "Tick labels"
+            | Legend -> "Legend"
+
+    /// The four selectable targets, in display order.
+    let allTargets : ChartFontTarget list = [ Title; AxisLabels; TickLabels; Legend ]
+
+    /// The per-target font sizes (points) plus which target the Font +/- currently acts on.
+    type ChartFontState =
+        {
+            title : float
+            axisLabels : float
+            tickLabels : float
+            legend : float
+            selected : ChartFontTarget
+        }
+
+    /// The allowed font-size band (points).
+    let minSize : float = 6.0
+    let maxSize : float = 40.0
+
+    /// The default sizes (a readable header, slightly smaller axis labels / legend, smaller tick labels).
+    let defaultState : ChartFontState =
+        { title = 16.0; axisLabels = 13.0; tickLabels = 11.0; legend = 12.0; selected = Title }
+
+    /// The current size of a given target.
+    let sizeOf (target : ChartFontTarget) (s : ChartFontState) : float =
+        match target with
+        | Title -> s.title
+        | AxisLabels -> s.axisLabels
+        | TickLabels -> s.tickLabels
+        | Legend -> s.legend
+
+    /// The size of the currently-selected target (what the readout shows and Font +/- changes).
+    let selectedSize (s : ChartFontState) : float = sizeOf s.selected s
+
+    /// Select a different target (leaves every size unchanged; the readout then shows this target's size).
+    let withSelected (target : ChartFontTarget) (s : ChartFontState) : ChartFontState =
+        { s with selected = target }
+
+    let private clamp (v : float) : float = max minSize (min maxSize v)
+
+    /// Set a target's size (clamped to the band).
+    let withSize (target : ChartFontTarget) (v : float) (s : ChartFontState) : ChartFontState =
+        let v = clamp v
+        match target with
+        | Title -> { s with title = v }
+        | AxisLabels -> { s with axisLabels = v }
+        | TickLabels -> { s with tickLabels = v }
+        | Legend -> { s with legend = v }
+
+    /// Change the SELECTED target's size by `delta` points (clamped). Font + is +1, Font − is −1.
+    let bumpSelected (delta : float) (s : ChartFontState) : ChartFontState =
+        withSize s.selected (selectedSize s + delta) s
+
+    /// The size readout text (e.g. "Tick labels: 11 pt").
+    let readout (s : ChartFontState) : string =
+        sprintf "%s: %g pt" s.selected.label (selectedSize s)
