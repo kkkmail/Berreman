@@ -1,0 +1,16 @@
+Let’s work to improve charting (the chart view screen). Say I did a wavelength experiment from 400 to 800. 
+When the page loads the range of x axis is from 0 to 1000 and you can zoom so that it would show large 
+negative / positive values well beyond what’s available in the data. The x range must be initialized to 
+what’s in the data. The axis, axis labels, legend, header, actual chart lines must be selectable. Once selected, 
+then you can change what’s applicable to that part of the chart. E.g. axis – change range (or auto), number of 
+digits, number format, etc… Legend – change placement, whatever else. Chart lines – change thickness, color, 
+show / hide dots. I am just giving you hints, but you must perform web research. Basically look at Excel functionality 
+as it is fairly robust.
+
+The experiments where we rotate something 360 degrees must have two representations: current XY one 
+and polar one. This does not change the experiment, just visual representation. This should be a simple button to toggle back and forth.
+
+The sample must have the experiment to vary incidence angle. It goes from 0 to 90 but 90 cannot be 
+calculated, so we limit at 89. Let’s “allow” such experiment to have polar representation as well. I wonder how it will look like.
+
+Write an implementation log into 031.

@@ -1230,6 +1230,7 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                     yLabel = ""
                     title = "Ellipsometer readout"
                     description = describeRun model label captureText (varyText + " (single-point Ψ/Δ — use an R2 / λ vary for a curve)")
+                    angular = true
                 }
             | Library.Intensity ->
                 let analyzerKind = runAnalyzerKind model (Some chosen)
@@ -1246,6 +1247,7 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                     yLabel = "Intensity (S₀)"
                     title = "Rotating analyzer (Malus)"
                     description = describeRun model label captureText varyText
+                    angular = true
                 }
         | Experiments.VaryR2 ->
             match runSampleOpt model with
@@ -1267,6 +1269,7 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                         yLabel = "Ψ, Δ (°)"
                         title = "Ellipsometric Ψ/Δ vs incidence"
                         description = describeRun model label captureText varyText
+                        angular = true
                     }
                 | Library.Intensity ->
                     let seriesList =
@@ -1280,6 +1283,7 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                         yLabel = "Intensity (S₀)"
                         title = "Intensity vs incidence"
                         description = describeRun model label captureText varyText
+                        angular = true
                     }
             | None -> ExperimentChart.empty
         | Experiments.VaryWaveLength ->
@@ -1302,6 +1306,7 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                         yLabel = "Ψ, Δ (°)"
                         title = "Ellipsometric Ψ/Δ vs wavelength"
                         description = describeRun model label captureText varyText
+                        angular = false
                     }
                 | Library.Intensity ->
                     let seriesList =
@@ -1315,6 +1320,7 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                         yLabel = "Intensity (S₀)"
                         title = "Intensity vs wavelength"
                         description = describeRun model label captureText varyText
+                        angular = false
                     }
             | None -> ExperimentChart.empty
     | _ -> ExperimentChart.empty

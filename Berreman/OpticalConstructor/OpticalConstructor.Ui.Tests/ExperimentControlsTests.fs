@@ -267,13 +267,17 @@ module ExperimentControlsTests =
     // ============================ ChartWindow ids ============================
 
     [<Fact>]
-    let ``ChartWindow ids are stable and distinct incl the font target + size`` () =
-        Assert.Equal("ChartWindowFontTarget", ChartWindowIds.fontTarget)
-        Assert.Equal("ChartWindowFontSize", ChartWindowIds.fontSize)
+    let ``ChartWindow ids are stable and distinct incl the element picker + polar toggle`` () =
+        Assert.Equal("ChartWindowElement", ChartWindowIds.elementSelector)
+        Assert.Equal("ChartWindowPolar", ChartWindowIds.polarToggle)
         let ids =
-            [ ChartWindowIds.plot; ChartWindowIds.fontMinus; ChartWindowIds.fontPlus; ChartWindowIds.fontTarget
-              ChartWindowIds.fontSize; ChartWindowIds.majorGrid; ChartWindowIds.minorGrid; ChartWindowIds.exportPng
-              ChartWindowIds.exportCsv; ChartWindowIds.description ]
+            [ ChartWindowIds.plot; ChartWindowIds.elementSelector; ChartWindowIds.propertiesPanel
+              ChartWindowIds.fontMinus; ChartWindowIds.fontPlus; ChartWindowIds.fontSize
+              ChartWindowIds.axisAuto; ChartWindowIds.axisMin; ChartWindowIds.axisMax; ChartWindowIds.axisFormat
+              ChartWindowIds.axisDecimals; ChartWindowIds.legendVisible; ChartWindowIds.legendPlacement
+              ChartWindowIds.seriesVisible; ChartWindowIds.seriesThickness; ChartWindowIds.seriesColor
+              ChartWindowIds.seriesMarkers; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
+              ChartWindowIds.minorGrid; ChartWindowIds.exportPng; ChartWindowIds.exportCsv; ChartWindowIds.description ]
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
 
     /// A small sample chart with two series, axis labels, a title, and a description.
@@ -288,21 +292,51 @@ module ExperimentControlsTests =
             yLabel = "Ψ, Δ (°)"
             title = "Ellipsometric Ψ/Δ vs incidence"
             description = "A two-series ellipsometer sweep used by the pop-out chart-window smoke test."
+            angular = true
         }
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the ChartWindow opens and renders with the font target selector and size readout`` () =
+    let ``the ChartWindow opens with the element picker, properties panel and polar toggle`` () =
         HeadlessSession.run (fun () ->
-            let window = ChartWindow(sampleChart)
+            let window = ChartWindow(sampleChart)     // angular = true ⇒ the polar toggle is offered
             try window.Show() with _ -> ()
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let hasNamed (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name | _ -> false)
             Assert.True(hasNamed ChartWindowIds.plot, "the ScottPlot host control was not present")
-            Assert.True(hasNamed ChartWindowIds.fontTarget, "the font-target selector was not present")
-            Assert.True(hasNamed ChartWindowIds.fontSize, "the font-size readout was not present")
+            Assert.True(hasNamed ChartWindowIds.elementSelector, "the element picker was not present")
+            Assert.True(hasNamed ChartWindowIds.propertiesPanel, "the properties panel was not present")
+            Assert.True(hasNamed ChartWindowIds.polarToggle, "the polar toggle was not present for an angular chart")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the ChartWindow polar toggle and axis editing run without throwing`` () =
+        HeadlessSession.run (fun () ->
+            let window = ChartWindow(sampleChart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ctrl (name : string) : Control option =
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+            // Toggle polar ON (exercises the PolarAxis + GetCoordinates rebuild) and back to XY.
+            match ctrl ChartWindowIds.polarToggle with
+            | Some c ->
+                let b = c :?> Button
+                b.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
+                (try Dispatcher.UIThread.RunJobs() with _ -> ())
+                b.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
+                (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            | None -> Assert.Fail("no polar toggle")
+            // Pick the X axis and turn Auto off (exercises the axis panel + SetLimitsX path).
+            match ctrl ChartWindowIds.elementSelector with
+            | Some c -> (c :?> ComboBox).SelectedIndex <- 1
+            | None -> Assert.Fail("no element selector")
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match ctrl ChartWindowIds.axisAuto with
+            | Some c -> (c :?> CheckBox).IsChecked <- System.Nullable false; (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            | None -> Assert.Fail("the X-axis panel (Auto checkbox) was not shown after selecting X axis")
             window.Close())
 
     // ============================ headless render proofs (ui-smoke) ============================

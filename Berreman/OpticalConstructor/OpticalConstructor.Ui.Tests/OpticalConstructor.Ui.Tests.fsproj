@@ -85,6 +85,9 @@
         <Compile Include="ExperimentControlsTests.fs" />
         <!-- Spec 0027 (028): the pop-out chart window's per-target font-size state (pure `ui-tests`). -->
         <Compile Include="ChartFontTests.fs" />
+        <!-- Spec 0027 (030): the chart-window style model — selectable elements, axis range / number format,
+             legend placement, per-series look, and the polar conversion (pure `ui-tests`). -->
+        <Compile Include="ChartStyleTests.fs" />
         <!-- Spec 0027 (026) Part 4: the Details bay — the reusable LayerBandsControls band component
              (pure contract + headless render) + the host detailsState band-builder + the seven-bay ribbon. -->
         <Compile Include="LayerBandsControlsTests.fs" />
