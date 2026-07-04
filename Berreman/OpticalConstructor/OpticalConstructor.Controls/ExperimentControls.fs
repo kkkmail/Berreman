@@ -1,11 +1,13 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -219,10 +221,16 @@ module ExperimentControls =
     let private editingBackground = color 255 224 160
     let private idleBorder = color 120 120 120
 
-    /// A clickable, styled, named Border, highlighted when it is the chosen option.
-    let private optionBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+    /// A clickable, styled, named Border, highlighted when it is the chosen option. `visible` toggles the
+    /// box in place (rather than adding / removing it from the list): a named Avalonia control's `Name`
+    /// cannot be changed once styled, so a bounded selector whose MEMBERS change (e.g. the variable set
+    /// per element kind) must keep every box present with a STABLE name and only flip visibility — otherwise
+    /// FuncUI recycles a named box into a differently-named one and throws "Cannot set Name : … already
+    /// styled" (the same reason the Ribbon keeps all panes present). See `variableRow`.
+    let private optionBoxV (id : string) (label : string) (chosen : bool) (enabled : bool) (visible : bool) (onClick : unit -> unit) : IView =
         Border.create [
             Border.name id
+            Border.isVisible visible
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush (if chosen then chosenBackground else idleBackground))
@@ -235,7 +243,37 @@ module ExperimentControls =
             Border.child (TextBlock.create [ TextBlock.text label ])
             // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
             // chosen flag flips so a reused box can't keep a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box chosen))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (chosen, visible)))
+        ] :> IView
+
+    /// An always-visible clickable option box (measurements — a fixed set, so a stable `Name` is safe).
+    let private optionBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+        optionBoxV id label chosen enabled true onClick
+
+    /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
+    /// control onto a different item's slot when an item is removed; Avalonia forbids changing a styled
+    /// control's `Name`, so these carry an `AutomationProperties.AutomationId` (freely mutable, and the
+    /// automation contract CLAUDE.md prescribes) instead of `Border.name`. Tests query it via
+    /// `AutomationProperties.GetAutomationId`.
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`)
+    /// through FuncUI's attr builder, so a reused control in a reorderable list can take a new id.
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+    let private idOptionBox (autoId : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+        Border.create [
+            automationId autoId
+            Border.isEnabled enabled
+            Border.opacity (if enabled then 1.0 else 0.4)
+            Border.background (brush (if chosen then chosenBackground else idleBackground))
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(10.0, 5.0))
+            Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
         ] :> IView
 
     /// A section heading (the numbered step labels).
@@ -413,7 +451,7 @@ module ExperimentControls =
             WrapPanel.children (
                 state.candidates
                 |> List.map (fun c ->
-                    optionBox
+                    idOptionBox
                         (UiIds.candidate c.elementId)
                         c.label
                         (state.chosenId = Some c.elementId)
@@ -421,27 +459,39 @@ module ExperimentControls =
                         (fun () -> handlers.chooseElement c.elementId)))
         ] :> IView
 
-    /// The variable-selection row (step 2), constrained to the chosen element's allowed variables.
+    /// Every variable, in a fixed order (so the selector boxes keep stable names / positions).
+    let private allVariables : VariableChoice list = [ VaryWaveLength; VaryR1; VaryR2 ]
+
+    /// The variable-selection row (step 2). ALL variable boxes are always present (stable names) and only
+    /// the ones the chosen element permits are shown — see `optionBoxV` for why the set is toggled by
+    /// visibility rather than by adding / removing boxes.
     let private variableRow (state : State) (handlers : Handlers) : IView =
-        match state.variableChoices with
-        | [] ->
-            TextBlock.create [
-                TextBlock.text "(this element has nothing to vary — pick a source, polarizer, or sample)"
-                TextBlock.foreground (brush (color 120 120 120))
-            ] :> IView
-        | choices ->
-            WrapPanel.create [
-                WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children (
-                    choices
-                    |> List.map (fun v ->
-                        optionBox
-                            (UiIds.variable (variableCode v))
-                            (variableLabel v)
-                            (state.chosenVariable = Some v)
-                            state.enabled
-                            (fun () -> handlers.chooseVariable v)))
-            ] :> IView
+        let hasChoices = not (List.isEmpty state.variableChoices)
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children [
+                TextBlock.create [
+                    TextBlock.text "(this element has nothing to vary — pick a source, polarizer, or sample)"
+                    TextBlock.foreground (brush (color 120 120 120))
+                    TextBlock.isVisible (not hasChoices)
+                ]
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.isVisible hasChoices
+                    WrapPanel.children (
+                        allVariables
+                        |> List.map (fun v ->
+                            let allowed = List.contains v state.variableChoices
+                            optionBoxV
+                                (UiIds.variable (variableCode v))
+                                (variableLabel v)
+                                (state.chosenVariable = Some v)
+                                (state.enabled && allowed)
+                                allowed
+                                (fun () -> handlers.chooseVariable v)))
+                ]
+            ]
+        ] :> IView
 
     /// The capture-mode selection row (step 3a: T / R / both).
     let private measurementRow (state : State) (handlers : Handlers) : IView =
@@ -479,34 +529,32 @@ module ExperimentControls =
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
 
-    /// The range inputs (step 3b): min / max (in the variable's unit) and the point count. Shown only when
-    /// a variable is chosen.
-    let private rangeRow (state : State) (handlers : Handlers) : IView list =
-        match state.chosenVariable with
-        | None -> []
-        | Some _ ->
-            let commitFloat (onCommit : float -> unit) (src : obj) : unit =
-                match src with
-                | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter onCommit
-                | _ -> ()
-            let commitInt (onCommit : int -> unit) (src : obj) : unit =
-                match src with
-                | :? TextBox as tb when not (isNull tb.Text) -> parseInt tb.Text |> Option.iter onCommit
-                | _ -> ()
-            [
-                StackPanel.create [
-                    StackPanel.orientation Orientation.Horizontal
-                    StackPanel.spacing 6.0
-                    StackPanel.children [
-                        TextBlock.create [ TextBlock.text (sprintf "min (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        numberField UiIds.rangeMin (sprintf "%g" state.rangeMin) state.enabled (commitFloat handlers.setRangeMin)
-                        TextBlock.create [ TextBlock.text (sprintf "max (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        numberField UiIds.rangeMax (sprintf "%g" state.rangeMax) state.enabled (commitFloat handlers.setRangeMax)
-                        TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        numberField UiIds.rangePoints (sprintf "%d" state.rangePoints) state.enabled (commitInt handlers.setRangePoints)
-                    ]
-                ] :> IView
+    /// The range inputs (step 3b): min / max (in the variable's unit) and the point count. Always present
+    /// (its visibility toggles with whether a variable is chosen) so the bay's child list length stays
+    /// stable — a varying list length would shift named controls onto one another's slots (see `optionBoxV`).
+    let private rangeRow (state : State) (handlers : Handlers) : IView =
+        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
+        let commitFloat (onCommit : float -> unit) (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter onCommit
+            | _ -> ()
+        let commitInt (onCommit : int -> unit) (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> parseInt tb.Text |> Option.iter onCommit
+            | _ -> ()
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 6.0
+            StackPanel.isVisible hasVariable
+            StackPanel.children [
+                TextBlock.create [ TextBlock.text (sprintf "min (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangeMin (sprintf "%g" state.rangeMin) state.enabled (commitFloat handlers.setRangeMin)
+                TextBlock.create [ TextBlock.text (sprintf "max (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangeMax (sprintf "%g" state.rangeMax) state.enabled (commitFloat handlers.setRangeMax)
+                TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangePoints (sprintf "%d" state.rangePoints) state.enabled (commitInt handlers.setRangePoints)
             ]
+        ] :> IView
 
     // -- A plain action button (Add / Update / New). --
     let private actionButton (id : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
@@ -544,7 +592,7 @@ module ExperimentControls =
             StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
             StackPanel.children [
                 Border.create [
-                    Border.name (UiIds.editButton r.id)
+                    automationId (UiIds.editButton r.id)
                     Border.background (brush (if r.isEditing then editingBackground else idleBackground))
                     Border.borderBrush (brush idleBorder)
                     Border.borderThickness 1.0
@@ -556,7 +604,7 @@ module ExperimentControls =
                     Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
                 ] :> IView
                 Border.create [
-                    Border.name (UiIds.removeButton r.id)
+                    automationId (UiIds.removeButton r.id)
                     Border.background (brush idleBackground)
                     Border.borderBrush (brush idleBorder)
                     Border.borderThickness 1.0
@@ -602,7 +650,7 @@ module ExperimentControls =
                     heading "3. Capture:"
                     measurementRow state handlers
                 ]
-                @ rangeRow state handlers
+                @ [ rangeRow state handlers ]
                 @ [ actionRow state handlers ]
                 @ collectionBlock state handlers
                 @ resultBlock state handlers)

@@ -20,6 +20,11 @@ open OpticalConstructor.TestWindows.TableAndElementRotationView
 /// branches, the MVU bindings, and a few headless render proofs.
 module ExperimentControlsTests =
 
+    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (candidate / collection
+    /// items carry an AutomationId — a mutable attached property — so they survive reordering; see the bay).
+    let private matchesId (id : string) (c : Control) : bool =
+        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
+
     let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
 
     /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
@@ -340,7 +345,7 @@ module ExperimentControlsTests =
             let candName = ExperimentControls.UiIds.candidate "src"
             let findCand () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = candName && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when matchesId candName b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findCand () with
             | None -> Assert.Fail("the src candidate was not visible in the Experiments bay")
             | Some b ->
@@ -383,4 +388,139 @@ module ExperimentControlsTests =
                     Dispatcher.UIThread.RunJobs()
                     Assert.Equal(1, List.length model.experimentCollection.experiments)
                 else Assert.Fail("the Add button has no on-screen position")
+            window.Close())
+
+    let private liveComponent (seed : Model) : Window =
+        let comp =
+            Component(fun ctx ->
+                let st = ctx.useState seed
+                mainView st.Current (fun msg -> st.Set(update msg st.Current)))
+        Window(Width = 1000.0, Height = 980.0, Content = comp)
+
+    let private clickIn (window : Window) (name : string) : unit =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId name b -> Some b | _ -> None) with
+        | Some b ->
+            match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
+            | v when v.HasValue ->
+                window.MouseDown(v.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                window.MouseUp(v.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            | _ -> Assert.Fail(sprintf "%s off-screen" name)
+        | None -> Assert.Fail(sprintf "%s not found" name)
+
+    // ============================ FuncUI recycling regressions (spec 028) ============================
+    // The real app re-renders `mainView` on EVERY message (Elmish), so FuncUI diffs the tree. A styled
+    // Avalonia control cannot change its `Name`, so a named control recycled onto a different item's slot
+    // throws "Cannot set Name : … already styled" (the reason the Ribbon keeps all panes present, and why
+    // the bay's variable selector toggles visibility and its candidate / collection items carry a mutable
+    // AutomationId). These drive the bay through a REAL re-rendering Component to guard those paths.
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``removing a collected experiment re-renders without a name-collision crash`` () =
+        HeadlessSession.run (fun () ->
+            let baseM = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseM
+            let seed =
+                baseM
+                |> update (ExpChooseElement pid) |> update ExpCommit      // exp #1
+                |> update ExpNew
+                |> update (ExpChooseElement "src") |> update ExpCommit     // exp #2
+                |> update (SelectBay BayNames.experiments)
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.removeButton "1")   // remove the FIRST (list shifts)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``removing a scene element re-renders the Experiments bay without a crash`` () =
+        HeadlessSession.run (fun () ->
+            // Elements: src(0), det(1), Sample(2), Polarizer(3). Select the sample and remove it (a MIDDLE
+            // element) while the Experiments bay's candidate list is present.
+            let seed =
+                initMain ()
+                |> update (AddElement Sample)
+                |> update (AddElement LinearPolarizer)
+                |> (fun m -> { m with selection = ElementSelected 2 })
+                |> update (SelectBay BayNames.experiments)
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // The Remove control lives in the Add bay: switch to it and click Remove selected. The
+            // Experiments pane (kept present by the ribbon) re-renders its candidate list on the change.
+            clickIn window (Ribbon.UiIds.tab BayNames.add)
+            clickIn window ElementPaletteControls.UiIds.removeSelected
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``switching the varied element's kind re-renders without a name-collision crash`` () =
+        // Switching the chosen element between kinds changes the VARIABLE selector — a source's [wavelength]
+        // box vs a polarizer's [r1] box at the same slot. Before the fix (fixed boxes toggled by visibility)
+        // this recycled a named box into a differently-named one and threw.
+        HeadlessSession.run (fun () ->
+            let seed =
+                initMain () |> update (AddElement LinearPolarizer)     // idx 2
+                |> update (ExpChooseElement "src")                     // source ⇒ variable boxes = [wavelength]
+                |> update (SelectBay BayNames.experiments)
+            let pid = idOf 2 seed
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.candidate pid)     // → polarizer ([r1])
+            clickIn window (ExperimentControls.UiIds.candidate "src")   // → source ([wavelength])
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``toggling the T-R-both capture (series count) re-renders without a crash`` () =
+        HeadlessSession.run (fun () ->
+            let seed =
+                initMain () |> update (AddElement Sample)
+                |> (fun m -> { m with selection = ElementSelected 2 })
+                |> update (BindValueId "sample-glass-film-200")
+                |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
+                |> update (ExpChooseVariable ExperimentControls.VaryR2)
+                |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)
+                |> update (SelectBay BayNames.experiments)
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.measurement "t")      // 2 series → 1
+            clickIn window (ExperimentControls.UiIds.measurement "both")   // 1 → 2
+            clickIn window (ExperimentControls.UiIds.measurement "r")      // 2 → 1
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``selecting a previously added experiment loads it for editing`` () =
+        // The reported bug: clicking a previously added experiment did nothing (an Avalonia error swallowed
+        // the click's re-render). Drive it through a live re-render and assert the edit actually takes.
+        HeadlessSession.run (fun () ->
+            let baseModel = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseModel
+            let seed =
+                baseModel
+                |> update (ExpChooseElement pid) |> update ExpCommit          // exp #1 (polarizer)
+                |> update ExpNew
+                |> update (ExpChooseElement "src") |> update ExpCommit         // exp #2 (source) → editing #2
+                |> update (SelectBay BayNames.experiments)
+            let latest = ref seed
+            let comp =
+                Component(fun ctx ->
+                    let st = ctx.useState seed
+                    mainView st.Current (fun msg ->
+                        let m' = update msg st.Current
+                        latest.Value <- m'
+                        st.Set m'))
+            let window = Window(Width = 1000.0, Height = 980.0, Content = comp)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.editButton "1")          // select the FIRST experiment
+            Assert.Equal(Some 1, latest.Value.experimentCollection.draft.editingId |> Option.map (fun i -> i.value))
+            // The editor loaded experiment #1's element (the polarizer), not the source it was on.
+            Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
             window.Close())

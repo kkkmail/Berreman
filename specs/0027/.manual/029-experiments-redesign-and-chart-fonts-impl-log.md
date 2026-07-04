@@ -138,3 +138,34 @@ label helpers), an `ExperimentRow`, and a `Handlers` record (`chooseElement`, `c
 - **Deferred (unchanged from before):** real disk-backed Storage proxies, the sample editor (Material →
   Sample), non-ideal LP/CP/detectors, dual R+T analyzer *arms* in the scene, and 2-D experiments — all
   future, compiler-guided additions on top of this.
+
+## Follow-up fix — FuncUI control recycling ("Cannot set Name : … already styled")
+
+**Symptom (reported):** in the real app you could Add an experiment, but clicking a **previously added**
+experiment did nothing, and an Avalonia error flashed by.
+
+**Root cause.** The real app hosts `mainView` through Elmish (`Program.withHost`), so FuncUI **re-renders
+and diffs** the tree on every message — a path the first round of headless tests never exercised (they
+mutated an external `model` ref and asserted on it, so no re-render/diff ever ran). An Avalonia control's
+`Name` is immutable once styled, so when FuncUI **recycles** a same-typed named control onto a *different*
+item's slot it throws `System.InvalidOperationException : Cannot set Name : styled element already styled`
+(the exact hazard the `Ribbon` comment documents). Reproduced headlessly by driving the bay through a real
+re-rendering `Component` (a `useState` hook): switching the varied element's kind — e.g. a source's
+`[wavelength]` variable box vs a polarizer's `[r1]` box at the same slot — threw; so did **Remove**-ing a
+collected experiment and removing a scene element (the candidate/collection lists shift a named control onto
+another's slot). The thrown re-render is what made "select a previous experiment" silently fail.
+
+**Fix** (in `ExperimentControls.fs`, following the codebase's own patterns):
+- **Bounded selectors** (the variable set, the range row) now keep **all boxes present with stable names**
+  and toggle **visibility** — the Ribbon's "keep every pane present" pattern — so a named box is never
+  recycled into a differently-named one when the element kind changes.
+- **Unbounded, reorderable lists** (the element candidates, the collection Edit/Remove rows) now carry
+  **`AutomationProperties.AutomationId`** (a freely-mutable attached property, set via FuncUI's `AttrBuilder`)
+  instead of `Control.Name` — exactly the automation contract CLAUDE.md prescribes — so a control reused at a
+  shifted slot can take the new id without throwing. Tests match either `Name` or `AutomationId`.
+
+**Tests (+5, +1 helper).** New live-re-render regressions in `ExperimentControlsTests` (each mounts the bay
+in a `useState` `Component` so FuncUI actually diffs): switching the varied element's kind; toggling the
+T/R/both capture (series-count change); removing a collected experiment; removing a scene element; and
+**selecting a previously added experiment loads it for editing** (the reported bug, now asserted to take
+effect). Before the fix these threw the recycling exception; after, they pass.
