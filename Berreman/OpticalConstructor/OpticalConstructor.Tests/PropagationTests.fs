@@ -245,7 +245,7 @@ module PropagationTests =
     [<Fact>]
     let ``r2SweepCurve returns n points whose x runs 0..89 monotone with finite y`` () =
         let n = 31
-        let curve = r2SweepCurve linear45 glassSample (WaveLength.nm 600.0<nm>) None n
+        let curve = r2SweepCurve BranchTransmitted linear45 glassSample (WaveLength.nm 600.0<nm>) None 0.0 r2SweepMaxDegrees n
         Assert.Equal(n, List.length curve)
         let xs = curve |> List.map fst
         Assert.True(close 0.0 (List.head xs))
@@ -274,7 +274,7 @@ module PropagationTests =
     [<Fact>]
     let ``waveLengthSweepIntensity spans the chosen range with finite y`` () =
         let n = 21
-        let curve = waveLengthSweepIntensity linear45 glassSample IncidenceAngle.normal None 200.0 800.0 n
+        let curve = waveLengthSweepIntensity BranchTransmitted linear45 glassSample IncidenceAngle.normal None 200.0 800.0 n
         Assert.Equal(n, List.length curve)
         let xs = curve |> List.map fst
         Assert.True(close 200.0 (List.head xs))
@@ -285,7 +285,7 @@ module PropagationTests =
     [<Fact>]
     let ``r2SweepPsiDelta returns two equal-length Psi / Delta curves`` () =
         let n = 19
-        let psi, delta = r2SweepPsiDelta linear45 glassSample (WaveLength.nm 600.0<nm>) n
+        let psi, delta = r2SweepPsiDelta BranchTransmitted linear45 glassSample (WaveLength.nm 600.0<nm>) 0.0 r2SweepMaxDegrees n
         Assert.Equal(n, List.length psi)
         Assert.Equal(List.length psi, List.length delta)
         Assert.True(close 89.0 (List.last (psi |> List.map fst)))
@@ -293,18 +293,48 @@ module PropagationTests =
     [<Fact>]
     let ``waveLengthSweepPsiDelta returns two equal-length Psi / Delta curves over the range`` () =
         let n = 17
-        let psi, delta = waveLengthSweepPsiDelta linear45 glassSample IncidenceAngle.normal 300.0 700.0 n
+        let psi, delta = waveLengthSweepPsiDelta BranchTransmitted linear45 glassSample IncidenceAngle.normal 300.0 700.0 n
         Assert.Equal(n, List.length psi)
         Assert.Equal(List.length psi, List.length delta)
         Assert.True(close 300.0 (List.head (psi |> List.map fst)))
         Assert.True(close 700.0 (List.last (delta |> List.map fst)))
 
+    // ============================ Spec 0027 (028) — T / R branches + range rotate ============================
+
     [<Fact>]
-    let ``the new Experiment cases expose their swept element and description`` () =
-        let id = ElementId.create "swept"
-        let r2 = SweepR2 id
-        let lam = SweepWaveLength id
-        Assert.Equal<ElementId>(id, r2.sweptElement)
-        Assert.Equal<ElementId>(id, lam.sweptElement)
-        Assert.Contains("R2", r2.description)
-        Assert.Contains("wavelength", lam.description)
+    let ``sampleMuellerR reflects a physical (0 < S0 <= 1) intensity`` () =
+        let mm = sampleMuellerR glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let out = s0 (mm * unpolarizedStokes)
+        Assert.False(Double.IsNaN out)
+        Assert.True(out >= -1.0e-9, sprintf "reflected S0 was negative: %g" out)
+        Assert.True(out <= 1.0 + 1.0e-9, sprintf "reflected S0 exceeded the input: %g" out)
+
+    [<Fact>]
+    let ``sampleMueller selects the transmitted vs reflected engine matrix by branch`` () =
+        let w = WaveLength.nm 600.0<nm>
+        let byBranchT = sampleMueller BranchTransmitted glassSample w IncidenceAngle.normal
+        let byBranchR = sampleMueller BranchReflected glassSample w IncidenceAngle.normal
+        let t = sampleMuellerT glassSample w IncidenceAngle.normal
+        let r = sampleMuellerR glassSample w IncidenceAngle.normal
+        // The branch selector agrees with the dedicated T / R helpers (same S0 for unpolarized input).
+        Assert.True(close (s0 (byBranchT * unpolarizedStokes)) (s0 (t * unpolarizedStokes)))
+        Assert.True(close (s0 (byBranchR * unpolarizedStokes)) (s0 (r * unpolarizedStokes)))
+
+    [<Fact>]
+    let ``rotatingAnalyzerCurveRange over a sub-range starts and ends at the chosen angles`` () =
+        let svIn = inputStokes IdealLinear (deg 0.0)
+        let curve = rotatingAnalyzerCurveRange svIn identityMueller IdealLinear 30.0 150.0 25
+        let xs = curve.points |> List.map fst
+        Assert.True(close 30.0 (List.head xs))
+        Assert.True(close 150.0 (List.last xs))
+        Assert.True((xs = List.sort xs), "rotate x-values must be sorted ascending")
+
+    [<Fact>]
+    let ``rotatingAnalyzerCurve is the 0..360 special case of the range rotate`` () =
+        let svIn = inputStokes IdealLinear (deg 20.0)
+        let full = rotatingAnalyzerCurve svIn identityMueller IdealLinear 37
+        let range = rotatingAnalyzerCurveRange svIn identityMueller IdealLinear 0.0 360.0 37
+        Assert.Equal(List.length full.points, List.length range.points)
+        for ((xa, ya), (xb, yb)) in List.zip full.points range.points do
+            Assert.True(close xa xb)
+            Assert.True(close ya yb)

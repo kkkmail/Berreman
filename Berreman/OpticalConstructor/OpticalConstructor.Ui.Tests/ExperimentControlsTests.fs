@@ -14,12 +14,25 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.TableAndElementRotationView
 
-/// Spec 0027 (024) Phase 2 — the Experiments bay: the pure control contract, the host's
-/// `experimentState` candidate flattening, the `ChooseSweptElement` MVU binding, and one headless render
-/// proof that the bay lists the present elements and a click picks the swept element.
+/// Spec 0027 (028) — the redesigned Experiments bay: the multi-step, editable experiment builder (choose
+/// element → element-constrained variable → T/R/both capture → range → Add) and the persistent collection
+/// (edit / remove). Covers the pure control contract, the host's `experimentState` / `experimentResult`
+/// branches, the MVU bindings, and a few headless render proofs.
 module ExperimentControlsTests =
 
+    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (candidate / collection
+    /// items carry an AutomationId — a mutable attached property — so they survive reordering; see the bay).
+    let private matchesId (id : string) (c : Control) : bool =
+        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
+
     let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
+
+    /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
+    let private bind (i : int) (entryId : string) (m : Model) : Model =
+        { m with selection = ElementSelected i } |> update (BindValueId entryId)
+
+    /// The live id of the element at index `i`.
+    let private idOf (i : int) (m : Model) : string = (elem i m).id.value
 
     // ============================ pure control contract ============================
 
@@ -29,18 +42,30 @@ module ExperimentControlsTests =
         Assert.False(s.enabled)
         Assert.Empty(s.candidates)
         Assert.Equal(None, s.chosenId)
+        Assert.False(s.canAdd)
+        Assert.Empty(s.collection)
 
     [<Fact>]
-    let ``the Experiments UiIds prefix candidate ids and are stable`` () =
+    let ``the Experiments UiIds prefix ids and are stable`` () =
         Assert.Equal("ExperimentCandidate_src", ExperimentControls.UiIds.candidate "src")
+        Assert.Equal("ExperimentVariable_r1", ExperimentControls.UiIds.variable "r1")
+        Assert.Equal("ExperimentMeasurement_both", ExperimentControls.UiIds.measurement "both")
         Assert.Equal("ExperimentReadout", ExperimentControls.UiIds.readout)
-        Assert.Equal("ExperimentCandidates", ExperimentControls.UiIds.candidates)
-
-    // ============================ host experimentState (pure) ============================
+        Assert.Equal("ExperimentAddButton", ExperimentControls.UiIds.addButton)
+        Assert.Equal("ExperimentEdit_3", ExperimentControls.UiIds.editButton "3")
+        Assert.Equal("ExperimentRemove_3", ExperimentControls.UiIds.removeButton "3")
 
     [<Fact>]
-    let ``the ribbon now offers seven bays including Experiments and Details`` () =
-        // Spec 0027 (026) Part 4 added the Details bay AFTER Experiments, so the ribbon now offers seven.
+    let ``the variable / measurement codes and labels are the mirror mapping`` () =
+        Assert.Equal("wavelength", ExperimentControls.variableCode ExperimentControls.VaryWaveLength)
+        Assert.Equal("r1", ExperimentControls.variableCode ExperimentControls.VaryR1)
+        Assert.Equal("r2", ExperimentControls.variableCode ExperimentControls.VaryR2)
+        Assert.Equal("t", ExperimentControls.measurementCode ExperimentControls.CaptureT)
+        Assert.Equal("r", ExperimentControls.measurementCode ExperimentControls.CaptureR)
+        Assert.Equal("both", ExperimentControls.measurementCode ExperimentControls.CaptureBoth)
+
+    [<Fact>]
+    let ``the ribbon still offers seven bays including Experiments and Details`` () =
         Assert.Equal<string list>(
             [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.library; BayNames.experiments; BayNames.details ],
             BayNames.all)
@@ -48,126 +73,136 @@ module ExperimentControlsTests =
         let bays = mainBays m ignore
         Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
 
-    [<Fact>]
-    let ``ChooseSweptElement sets the chosen swept element by id`` () =
-        let m = initMain ()                              // seeded with src + det
-        let m1 = update (ChooseSweptElement "src") m
-        Assert.Equal(Some "src", m1.chosenSwept |> Option.map (fun id -> id.value))
-        // Re-choosing overwrites.
-        let m2 = update (ChooseSweptElement "det") m1
-        Assert.Equal(Some "det", m2.chosenSwept |> Option.map (fun id -> id.value))
+    // ============================ host MVU: choose / vary / capture / range ============================
 
     [<Fact>]
-    let ``the Experiments bay state lists every present element as a candidate`` () =
-        // Add a Sample so the scene has src, det, and the Sample.
+    let ``choosing the source constrains the variable to wavelength (data-driven)`` () =
+        let m = initMain () |> update (ExpChooseElement "src")
+        Assert.Equal(Some (Library.elementId "src"), m.experimentCollection.draft.elementId)
+        Assert.Equal(Some Experiments.VaryWaveLength, m.experimentCollection.draft.variable)
+
+    [<Fact>]
+    let ``choosing a sample allows R1 and R2 and can then switch variable`` () =
         let m = initMain () |> update (AddElement Sample)
-        let bays = mainBays m ignore
-        Assert.Contains(BayNames.experiments, bays |> List.map (fun b -> b.name))
-        // The candidate id set is exactly the present elements' ids (the host flattens `model.elements`).
-        let candidateIds =
-            m.elements |> List.map (fun e -> e.id.value) |> Set.ofList
-        Assert.Equal(List.length m.elements, Set.count candidateIds)
-        Assert.Contains("src", candidateIds)
-        Assert.Contains("det", candidateIds)
+        let sid = idOf 2 m
+        let m1 = m |> update (ExpChooseElement sid)
+        // The sample bay state offers exactly the sample's allowed variables (R1, R2).
+        let st = experimentState m1
+        Assert.Equal<ExperimentControls.VariableChoice list>([ ExperimentControls.VaryR1; ExperimentControls.VaryR2 ], st.variableChoices)
+        Assert.Equal(Some Experiments.VaryR1, m1.experimentCollection.draft.variable)
+        let m2 = m1 |> update (ExpChooseVariable ExperimentControls.VaryR2)
+        Assert.Equal(Some Experiments.VaryR2, m2.experimentCollection.draft.variable)
 
     [<Fact>]
-    let ``choosing a present element reflects it in the experiment readout`` () =
-        // Choose the seeded source as the swept element; the readout must mention it and 360.
-        let m = initMain () |> update (ChooseSweptElement "src")
-        // Re-derive the readout the way the host does, by mounting the bay is overkill — assert the model
-        // carries the choice and that the chosen element is still present.
-        Assert.Equal(Some "src", m.chosenSwept |> Option.map (fun id -> id.value))
-        Assert.True(m.elements |> List.exists (fun e -> e.id.value = "src"))
-
-    // ============================ Phase 3/4 inline result (pure) ============================
-
-    /// Select the element at index `i`, then bind it to a Library entry id (the `BindValueId` MVU path).
-    let private bind (i : int) (entryId : string) (m : Model) : Model =
-        { m with selection = ElementSelected i } |> update (BindValueId entryId)
+    let ``choosing a mirror defaults the capture to reflected (not hard-coded)`` () =
+        let m = initMain () |> update (AddElement FlatMirror)
+        let mid = idOf 2 m
+        let m1 = m |> update (ExpChooseElement mid)
+        Assert.Equal(Experiments.CaptureReflected, m1.experimentCollection.draft.measurement)
 
     [<Fact>]
-    let ``the Experiments bay shows an intensity curve when a swept element is chosen`` () =
-        // initMain seeds src + det; the detector is unbound → defaults to an intensity detector, so the
-        // bay state carries the rotating-analyzer intensity curve once a swept element is chosen.
-        let m = initMain () |> update (ChooseSweptElement "src")
-        let bays = mainBays m ignore
-        Assert.Contains(BayNames.experiments, bays |> List.map (fun b -> b.name))
-        // Mount the bay state through the public ExperimentControls contract by re-deriving it the way the
-        // host does is internal; instead assert via the rendered bay below (ui-smoke). Here assert the model
-        // is in the chart-producing configuration.
-        Assert.Equal(Some "src", m.chosenSwept |> Option.map (fun id -> id.value))
-
-    [<Fact>]
-    let ``binding the detector to the ellipsometer selects the Psi/Delta readout branch`` () =
-        // Bind the seeded detector (index 1) to the ellipsometer preset, then choose a swept element.
+    let ``the measurement and range round-trip through the model`` () =
         let m =
             initMain ()
-            |> bind 1 "det-ellipsometer"
-            |> update (ChooseSweptElement "src")
-        // The detector element now carries the ellipsometer valueId.
-        let det = elem 1 m
-        Assert.Equal(Some "det-ellipsometer", det.placement.valueId)
+            |> update (ExpChooseElement "src")
+            |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)
+            |> update (ExpSetRangeMin 250.0)
+            |> update (ExpSetRangeMax 650.0)
+            |> update (ExpSetRangePoints 51)
+        let d = m.experimentCollection.draft
+        Assert.Equal(Experiments.CaptureBoth, d.measurement)
+        Assert.Equal(250.0, d.range.min)
+        Assert.Equal(650.0, d.range.max)
+        Assert.Equal(51, d.range.points)
+
+    // ============================ host MVU: Add / edit / remove collection ============================
 
     [<Fact>]
-    let ``an ellipsometer detector with RotateR1 drives the Psi/Delta single-point readout and no chart`` () =
-        // det bound to the ellipsometer + a swept element chosen (default kind RotateR1) ⇒ a single-point
-        // Ψ/Δ readout: the chart carries no series, but a finite Ψ/Δ readout is shown by the bay.
+    let ``Add appends to the collection and re-Add does not duplicate`` () =
+        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        Assert.Equal(1, List.length m.experimentCollection.experiments)
+        let m2 = m |> update ExpCommit
+        Assert.Equal(1, List.length m2.experimentCollection.experiments)
+
+    [<Fact>]
+    let ``New then Add appends a distinct second experiment`` () =
         let m =
             initMain ()
-            |> bind 1 "det-ellipsometer"
-            |> update (ChooseSweptElement "src")
-        let chart = experimentResult m
-        Assert.Empty(chart.series)
-        Assert.Equal("Ellipsometer readout", chart.title)
-        Assert.False(System.String.IsNullOrEmpty chart.description)
+            |> update (ExpChooseElement "src") |> update ExpCommit
+            |> update ExpNew
+            |> update (ExpChooseElement "det")           // detector has nothing to vary → cannot commit
+        // The detector exposes nothing to vary, so a second Add is inert.
+        let m2 = m |> update ExpCommit
+        Assert.Equal(1, List.length m2.experimentCollection.experiments)
+        // Choose a varyable element instead and Add — now there are two.
+        let m3 = m |> update (AddElement Sample)
+        let sid = idOf 2 m3
+        let m4 = m3 |> update (ExpChooseElement sid) |> update ExpCommit
+        Assert.Equal(2, List.length m4.experimentCollection.experiments)
 
     [<Fact>]
-    let ``an intensity detector with RotateR1 drives the intensity series and labelled axes`` () =
-        // initMain's detector is UNBOUND → an intensity detector; a swept element chosen ⇒ one intensity series.
-        let m = initMain () |> update (ChooseSweptElement "src")
-        let chart = experimentResult m
+    let ``Edit loads an experiment and Remove deletes it`` () =
+        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let exp = List.head m.experimentCollection.experiments
+        let idStr = string exp.id.value
+        let mEdit = m |> update (ExpEdit idStr)
+        Assert.Equal(Some exp.id, mEdit.experimentCollection.draft.editingId)
+        let mRemove = m |> update (ExpRemove idStr)
+        Assert.Empty(mRemove.experimentCollection.experiments)
+
+    [<Fact>]
+    let ``the bay state exposes the collection rows and the editing highlight`` () =
+        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let st = experimentState m
+        Assert.Single(st.collection) |> ignore
+        let row = List.head st.collection
+        Assert.Contains("Light source", row.description)
+        Assert.True(row.isEditing, "the just-added experiment should be the one being edited")
+        Assert.True(st.isEditing)
+
+    // ============================ host experimentResult branches ============================
+
+    /// initMain + a LinearPolarizer at index 2, chosen to vary (default VaryR1).
+    let private withChosenPolarizer () : Model =
+        let m = initMain () |> update (AddElement LinearPolarizer)
+        m |> update (ExpChooseElement (idOf 2 m))
+
+    /// initMain + a bound Sample at index 2, chosen, on the given variable, capture T.
+    let private withChosenSample (v : ExperimentControls.VariableChoice) : Model =
+        let m = initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200"
+        m
+        |> update (ExpChooseElement (idOf 2 m))
+        |> update (ExpChooseVariable v)
+        |> update (ExpChooseMeasurement ExperimentControls.CaptureT)
+
+    [<Fact>]
+    let ``with no element chosen the chart is empty`` () =
+        Assert.Empty((experimentResult (initMain ())).series)
+
+    [<Fact>]
+    let ``varying a polarizer R1 with an intensity detector yields an intensity series`` () =
+        let chart = experimentResult (withChosenPolarizer ())
         Assert.Single(chart.series) |> ignore
         Assert.NotEmpty((List.head chart.series).points)
-        Assert.Equal("Analyzer R1 (°)", chart.xLabel)
+        Assert.Equal("Rotation R1 (°)", chart.xLabel)
         Assert.Equal("Intensity (S₀)", chart.yLabel)
 
     [<Fact>]
-    let ``with no swept element chosen the chart is empty`` () =
-        // No experiment built yet (nothing chosen) ⇒ an empty chart regardless of the detector.
-        let m = initMain () |> bind 1 "det-ellipsometer"
-        let chart = experimentResult m
-        Assert.Empty(chart.series)
-
-    // ============================ Spec 0027 (026) — R2 / λ sweeps ============================
-
-    /// initMain seeded with a Sample bound, an intensity detector, and the given experiment kind chosen.
-    let private withSample (kind : ExperimentControls.ExperimentKindChoice) : Model =
-        initMain ()
-        |> update (AddElement Sample)                 // a third element, index 2
-        |> bind 2 "sample-glass-film-200"
-        |> update (ChooseExperimentKind kind)
-        |> update (ChooseSweptElement "src")
-
-    [<Fact>]
-    let ``a SweepR2 intensity experiment yields one incidence series with x running to 89`` () =
-        let m = withSample ExperimentControls.SweepR2
-        let chart = experimentResult m
+    let ``a VaryR2 intensity experiment yields one incidence series with x running to 89`` () =
+        let chart = experimentResult (withChosenSample ExperimentControls.VaryR2)
         Assert.Single(chart.series) |> ignore
-        let pts = (List.head chart.series).points
-        Assert.NotEmpty(pts)
+        let xs = (List.head chart.series).points |> List.map fst
+        Assert.NotEmpty(xs)
         Assert.Equal("Incidence angle R2 (°)", chart.xLabel)
-        // The x-values are monotone non-decreasing and the last computed x is 89 (drawn to 90).
-        let xs = pts |> List.map fst
         Assert.True(abs (89.0 - List.last xs) < 1e-6, sprintf "last x = %g, expected 89" (List.last xs))
-        Assert.True(List.head xs <= List.last xs)
         Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
 
     [<Fact>]
-    let ``a SweepLambda intensity experiment spans the chosen wavelength range`` () =
+    let ``a VaryWaveLength intensity experiment spans the chosen wavelength range`` () =
         let m =
-            withSample ExperimentControls.SweepLambda
-            |> update (SetLambdaLo 300.0)
-            |> update (SetLambdaHi 700.0)
+            withChosenSample ExperimentControls.VaryWaveLength
+            |> update (ExpSetRangeMin 300.0)
+            |> update (ExpSetRangeMax 700.0)
         let chart = experimentResult m
         Assert.Single(chart.series) |> ignore
         let xs = (List.head chart.series).points |> List.map fst
@@ -176,41 +211,39 @@ module ExperimentControlsTests =
         Assert.Equal("Wavelength (nm)", chart.xLabel)
 
     [<Fact>]
-    let ``an ellipsometer SweepR2 experiment yields two series (Psi and Delta)`` () =
+    let ``capturing BOTH branches yields two series (T and R)`` () =
+        // A bound sample, VaryR2, capture Both ⇒ a transmitted AND a reflected intensity series.
         let m =
-            initMain ()
-            |> update (AddElement Sample)
-            |> bind 2 "sample-glass-film-200"
-            |> bind 1 "det-ellipsometer"
-            |> update (ChooseExperimentKind ExperimentControls.SweepR2)
-            |> update (ChooseSweptElement "src")
+            initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200"
+            |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
+            |> update (ExpChooseVariable ExperimentControls.VaryR2)
+            |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)
         let chart = experimentResult m
         Assert.Equal(2, List.length chart.series)
-        Assert.Equal<string list>([ "Ψ"; "Δ" ], chart.series |> List.map (fun s -> s.name))
-        // Both series share the same x-grid length.
-        match chart.series with
-        | [ a; b ] -> Assert.Equal(List.length a.points, List.length b.points)
-        | _ -> Assert.Fail("expected exactly two series")
+        Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], chart.series |> List.map (fun s -> s.name))
 
     [<Fact>]
-    let ``a SweepR2 experiment with no bound sample yields an empty chart`` () =
-        // src + det only, no sample ⇒ an R2 sweep has nothing to re-solve.
+    let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
         let m =
-            initMain ()
-            |> update (ChooseExperimentKind ExperimentControls.SweepR2)
-            |> update (ChooseSweptElement "src")
+            initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200" |> bind 1 "det-ellipsometer"
+            |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
+            |> update (ExpChooseVariable ExperimentControls.VaryR2)
+            |> update (ExpChooseMeasurement ExperimentControls.CaptureT)
         let chart = experimentResult m
-        Assert.Empty(chart.series)
+        Assert.Equal<string list>([ "Ψ"; "Δ" ], chart.series |> List.map (fun s -> s.name))
 
     [<Fact>]
-    let ``ChooseExperimentKind and the lambda range round-trip through the model`` () =
-        let m =
-            initMain ()
-            |> update (ChooseExperimentKind ExperimentControls.SweepLambda)
-            |> update (SetLambdaLo 250.0)
-            |> update (SetLambdaHi 650.0)
-        Assert.Equal(ExperimentControls.SweepLambda, m.experimentKind)
-        Assert.Equal((250.0, 650.0), m.lambdaRange)
+    let ``a VaryR2 experiment with no bound sample yields an empty chart`` () =
+        // A polarizer varied on R2 is impossible (polarizers only vary R1); use a sample element but do NOT
+        // bind it — an R2 vary then has no sample to re-solve.
+        let m = initMain () |> update (AddElement Sample)
+        let m1 =
+            m
+            |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
+            |> update (ExpChooseVariable ExperimentControls.VaryR2)
+        Assert.Empty((experimentResult m1).series)
+
+    // ============================ ExperimentChart CSV (unchanged data model) ============================
 
     [<Fact>]
     let ``ExperimentChart toCsv writes a header and one row per x for two series`` () =
@@ -223,7 +256,7 @@ module ExperimentControlsTests =
                     ] }
         let lines = (ExperimentChart.toCsv chart).Split('\n')
         Assert.Equal("x,Ψ,Δ", lines.[0])
-        Assert.Equal(3, lines.Length)               // header + 2 rows
+        Assert.Equal(3, lines.Length)
         Assert.Equal("0,10,20", lines.[1])
         Assert.Equal("1,11,21", lines.[2])
 
@@ -231,31 +264,20 @@ module ExperimentControlsTests =
     let ``ExperimentChart toCsv of the empty chart is just the header`` () =
         Assert.Equal("x", ExperimentChart.toCsv ExperimentChart.empty)
 
-    // ============================ Spec 0027 (026) Part 3 — charts ============================
+    // ============================ ChartWindow ids ============================
 
     [<Fact>]
-    let ``the inline Experiments bay carries the ExperimentChart axis labels and description`` () =
-        // The bay state (the inline chart's data) takes its axis labels + description straight from the
-        // ExperimentChart `experimentResult` produces; an intensity R2 sweep labels the incidence axis.
-        let m = withSample ExperimentControls.SweepR2
-        let chart = experimentResult m
-        let bays = mainBays m ignore
-        Assert.Contains(BayNames.experiments, bays |> List.map (fun b -> b.name))
-        // The chart's labels are the ones the bay draws (the inline chart reads xLabel / yLabel / description).
-        Assert.Equal("Incidence angle R2 (°)", chart.xLabel)
-        Assert.Equal("Intensity (S₀)", chart.yLabel)
-        Assert.False(System.String.IsNullOrEmpty chart.description)
-
-    [<Fact>]
-    let ``ChartWindow ids are stable and distinct`` () =
-        Assert.Equal("ChartWindowPlot", ChartWindowIds.plot)
-        Assert.Equal("ChartWindowExportPng", ChartWindowIds.exportPng)
-        Assert.Equal("ChartWindowExportCsv", ChartWindowIds.exportCsv)
-        Assert.Equal("ChartWindowDescription", ChartWindowIds.description)
+    let ``ChartWindow ids are stable and distinct incl the element picker + polar toggle`` () =
+        Assert.Equal("ChartWindowElement", ChartWindowIds.elementSelector)
+        Assert.Equal("ChartWindowPolar", ChartWindowIds.polarToggle)
         let ids =
-            [ ChartWindowIds.plot; ChartWindowIds.fontMinus; ChartWindowIds.fontPlus
-              ChartWindowIds.majorGrid; ChartWindowIds.minorGrid; ChartWindowIds.exportPng
-              ChartWindowIds.exportCsv; ChartWindowIds.description ]
+            [ ChartWindowIds.plot; ChartWindowIds.elementSelector; ChartWindowIds.propertiesPanel
+              ChartWindowIds.fontMinus; ChartWindowIds.fontPlus; ChartWindowIds.fontSize
+              ChartWindowIds.axisAuto; ChartWindowIds.axisMin; ChartWindowIds.axisMax; ChartWindowIds.axisFormat
+              ChartWindowIds.axisDecimals; ChartWindowIds.legendVisible; ChartWindowIds.legendPlacement
+              ChartWindowIds.seriesVisible; ChartWindowIds.seriesThickness; ChartWindowIds.seriesColor
+              ChartWindowIds.seriesMarkers; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
+              ChartWindowIds.minorGrid; ChartWindowIds.exportPng; ChartWindowIds.exportCsv; ChartWindowIds.description ]
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
 
     /// A small sample chart with two series, axis labels, a title, and a description.
@@ -270,45 +292,67 @@ module ExperimentControlsTests =
             yLabel = "Ψ, Δ (°)"
             title = "Ellipsometric Ψ/Δ vs incidence"
             description = "A two-series ellipsometer sweep used by the pop-out chart-window smoke test."
+            angular = true
         }
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the ChartWindow opens and renders for a sample ExperimentChart`` () =
+    let ``the ChartWindow opens with the element picker, properties panel and polar toggle`` () =
         HeadlessSession.run (fun () ->
-            // The pop-out window hosts a native ScottPlot AvaPlot; under the headless platform its native
-            // rendering may be unavailable, so the Show()/RunJobs() is guarded — the contract under test is
-            // that the window CONSTRUCTS, carries its named controls (plot host + description), and shows
-            // without throwing through the construction path.
-            let window = ChartWindow(sampleChart)
+            let window = ChartWindow(sampleChart)     // angular = true ⇒ the polar toggle is offered
             try window.Show() with _ -> ()
             try Dispatcher.UIThread.RunJobs() with _ -> ()
-            // The window carries the named plot host and the description text (non-render properties).
             let hasNamed (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name | _ -> false)
             Assert.True(hasNamed ChartWindowIds.plot, "the ScottPlot host control was not present")
-            let descriptionShown () : bool =
-                window.GetVisualDescendants()
-                |> Seq.exists (function
-                    | :? TextBox as t -> t.Name = ChartWindowIds.description && t.Text = sampleChart.description
-                    | _ -> false)
-            Assert.True(descriptionShown (), "the chart description was not shown in the window")
+            Assert.True(hasNamed ChartWindowIds.elementSelector, "the element picker was not present")
+            Assert.True(hasNamed ChartWindowIds.propertiesPanel, "the properties panel was not present")
+            Assert.True(hasNamed ChartWindowIds.polarToggle, "the polar toggle was not present for an angular chart")
             window.Close())
-
-    // ============================ headless render proof (ui-smoke) ============================
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Experiments bay shows the intensity polyline for an intensity detector`` () =
+    let ``the ChartWindow polar toggle and axis editing run without throwing`` () =
         HeadlessSession.run (fun () ->
-            // src + det (det unbound → intensity detector); choose src as the swept element and show the bay.
+            let window = ChartWindow(sampleChart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ctrl (name : string) : Control option =
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+            // Toggle polar ON (exercises the PolarAxis + GetCoordinates rebuild) and back to XY.
+            match ctrl ChartWindowIds.polarToggle with
+            | Some c ->
+                let b = c :?> Button
+                b.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
+                (try Dispatcher.UIThread.RunJobs() with _ -> ())
+                b.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
+                (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            | None -> Assert.Fail("no polar toggle")
+            // Pick the X axis and turn Auto off (exercises the axis panel + SetLimitsX path).
+            match ctrl ChartWindowIds.elementSelector with
+            | Some c -> (c :?> ComboBox).SelectedIndex <- 1
+            | None -> Assert.Fail("no element selector")
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match ctrl ChartWindowIds.axisAuto with
+            | Some c -> (c :?> CheckBox).IsChecked <- System.Nullable false; (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            | None -> Assert.Fail("the X-axis panel (Auto checkbox) was not shown after selecting X axis")
+            window.Close())
+
+    // ============================ headless render proofs (ui-smoke) ============================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Experiments bay shows the intensity polyline for a varied polarizer`` () =
+        HeadlessSession.run (fun () ->
+            let baseModel = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseModel
             let mutable model =
-                initMain ()
-                |> update (ChooseSweptElement "src")
+                baseModel
+                |> update (ExpChooseElement pid)
                 |> update (SelectBay BayNames.experiments)
             let dispatch (msg : Msg) = model <- update msg model
-            let window = Window(Width = 980.0, Height = canvasHeight + 320.0)
+            let window = Window(Width = 980.0, Height = canvasHeight + 360.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -320,46 +364,22 @@ module ExperimentControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Experiments bay shows the ellipsometer readout for an ellipsometer detector`` () =
+    let ``the Experiments bay lists candidates and a click picks the element`` () =
         HeadlessSession.run (fun () ->
-            // Bind the detector to the ellipsometer, choose a swept element, and show the bay.
-            let mutable model =
-                { (initMain ()) with selection = ElementSelected 1 }
-                |> update (BindValueId "det-ellipsometer")
-                |> update (ChooseSweptElement "src")
-                |> update (SelectBay BayNames.experiments)
-            let dispatch (msg : Msg) = model <- update msg model
-            let window = Window(Width = 980.0, Height = canvasHeight + 320.0)
-            window.Content <- Component(fun _ -> mainView model dispatch)
-            window.Show()
-            Dispatcher.UIThread.RunJobs()
-            let readoutVisible () : bool =
-                window.GetVisualDescendants()
-                |> Seq.exists (function :? TextBlock as t when t.Name = ExperimentControls.UiIds.psiDelta && t.IsEffectivelyVisible -> true | _ -> false)
-            Assert.True(readoutVisible (), "the ellipsometer Ψ/Δ readout was not visible")
-            window.Close())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the Experiments bay lists candidates and a click picks the swept element`` () =
-        HeadlessSession.run (fun () ->
-            // The Experiments bay is shown; the scene has src + det.
             let mutable model = initMain () |> update (SelectBay BayNames.experiments)
             let dispatch (msg : Msg) = model <- update msg model
-            let window = Window(Width = 980.0, Height = canvasHeight + 260.0)
+            let window = Window(Width = 980.0, Height = canvasHeight + 300.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            // The readout is effectively visible.
             let readoutVisible () : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? TextBlock as t when t.Name = ExperimentControls.UiIds.readout && t.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(readoutVisible (), "the Experiment readout was not visible")
-            // The 'src' candidate is offered; click it to pick the swept element.
             let candName = ExperimentControls.UiIds.candidate "src"
             let findCand () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = candName && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when matchesId candName b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findCand () with
             | None -> Assert.Fail("the src candidate was not visible in the Experiments bay")
             | Some b ->
@@ -369,6 +389,293 @@ module ExperimentControlsTests =
                     Dispatcher.UIThread.RunJobs()
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-                    Assert.Equal(Some "src", model.chosenSwept |> Option.map (fun id -> id.value))
+                    Assert.Equal(Some "src", model.experimentCollection.draft.elementId |> Option.map (fun id -> id.value))
                 else Assert.Fail("the candidate has no on-screen position")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``clicking Add in the Experiments bay adds the experiment to the collection`` () =
+        HeadlessSession.run (fun () ->
+            let baseModel = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseModel
+            let mutable model =
+                baseModel
+                |> update (ExpChooseElement pid)
+                |> update (SelectBay BayNames.experiments)
+            let dispatch (msg : Msg) = model <- update msg model
+            let window = Window(Width = 980.0, Height = canvasHeight + 360.0)
+            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let findAdd () : Border option =
+                window.GetVisualDescendants()
+                |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.addButton && b.IsEffectivelyVisible -> Some b | _ -> None)
+            match findAdd () with
+            | None -> Assert.Fail("the Add button was not visible")
+            | Some b ->
+                let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+                if c.HasValue then
+                    window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+                    Assert.Equal(1, List.length model.experimentCollection.experiments)
+                else Assert.Fail("the Add button has no on-screen position")
+            window.Close())
+
+    let private liveComponent (seed : Model) : Window =
+        let comp =
+            Component(fun ctx ->
+                let st = ctx.useState seed
+                mainView st.Current (fun msg -> st.Set(update msg st.Current)))
+        Window(Width = 1000.0, Height = 980.0, Content = comp)
+
+    let private clickIn (window : Window) (name : string) : unit =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId name b -> Some b | _ -> None) with
+        | Some b ->
+            match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
+            | v when v.HasValue ->
+                window.MouseDown(v.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                window.MouseUp(v.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            | _ -> Assert.Fail(sprintf "%s off-screen" name)
+        | None -> Assert.Fail(sprintf "%s not found" name)
+
+    // ============================ FuncUI recycling regressions (spec 028) ============================
+    // The real app re-renders `mainView` on EVERY message (Elmish), so FuncUI diffs the tree. A styled
+    // Avalonia control cannot change its `Name`, so a named control recycled onto a different item's slot
+    // throws "Cannot set Name : … already styled" (the reason the Ribbon keeps all panes present, and why
+    // the bay's variable selector toggles visibility and its candidate / collection items carry a mutable
+    // AutomationId). These drive the bay through a REAL re-rendering Component to guard those paths.
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``removing a collected experiment re-renders without a name-collision crash`` () =
+        HeadlessSession.run (fun () ->
+            let baseM = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseM
+            let seed =
+                baseM
+                |> update (ExpChooseElement pid) |> update ExpCommit      // exp #1
+                |> update ExpNew
+                |> update (ExpChooseElement "src") |> update ExpCommit     // exp #2
+                |> update (SelectBay BayNames.experiments)
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.removeButton "1")   // remove the FIRST (list shifts)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``removing a scene element re-renders the Experiments bay without a crash`` () =
+        HeadlessSession.run (fun () ->
+            // Elements: src(0), det(1), Sample(2), Polarizer(3). Select the sample and remove it (a MIDDLE
+            // element) while the Experiments bay's candidate list is present.
+            let seed =
+                initMain ()
+                |> update (AddElement Sample)
+                |> update (AddElement LinearPolarizer)
+                |> (fun m -> { m with selection = ElementSelected 2 })
+                |> update (SelectBay BayNames.experiments)
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // The Remove control lives in the Add bay: switch to it and click Remove selected. The
+            // Experiments pane (kept present by the ribbon) re-renders its candidate list on the change.
+            clickIn window (Ribbon.UiIds.tab BayNames.add)
+            clickIn window ElementPaletteControls.UiIds.removeSelected
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``switching the varied element's kind re-renders without a name-collision crash`` () =
+        // Switching the chosen element between kinds changes the VARIABLE selector — a source's [wavelength]
+        // box vs a polarizer's [r1] box at the same slot. Before the fix (fixed boxes toggled by visibility)
+        // this recycled a named box into a differently-named one and threw.
+        HeadlessSession.run (fun () ->
+            let seed =
+                initMain () |> update (AddElement LinearPolarizer)     // idx 2
+                |> update (ExpChooseElement "src")                     // source ⇒ variable boxes = [wavelength]
+                |> update (SelectBay BayNames.experiments)
+            let pid = idOf 2 seed
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.candidate pid)     // → polarizer ([r1])
+            clickIn window (ExperimentControls.UiIds.candidate "src")   // → source ([wavelength])
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``toggling the T-R-both capture (series count) re-renders without a crash`` () =
+        HeadlessSession.run (fun () ->
+            let seed =
+                initMain () |> update (AddElement Sample)
+                |> (fun m -> { m with selection = ElementSelected 2 })
+                |> update (BindValueId "sample-glass-film-200")
+                |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
+                |> update (ExpChooseVariable ExperimentControls.VaryR2)
+                |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)
+                |> update (SelectBay BayNames.experiments)
+            let window = liveComponent seed
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.measurement "t")      // 2 series → 1
+            clickIn window (ExperimentControls.UiIds.measurement "both")   // 1 → 2
+            clickIn window (ExperimentControls.UiIds.measurement "r")      // 2 → 1
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``selecting a previously added experiment loads it for editing`` () =
+        // The reported bug: clicking a previously added experiment did nothing (an Avalonia error swallowed
+        // the click's re-render). Drive it through a live re-render and assert the edit actually takes.
+        HeadlessSession.run (fun () ->
+            let baseModel = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseModel
+            let seed =
+                baseModel
+                |> update (ExpChooseElement pid) |> update ExpCommit          // exp #1 (polarizer)
+                |> update ExpNew
+                |> update (ExpChooseElement "src") |> update ExpCommit         // exp #2 (source) → editing #2
+                |> update (SelectBay BayNames.experiments)
+            let latest = ref seed
+            let comp =
+                Component(fun ctx ->
+                    let st = ctx.useState seed
+                    mainView st.Current (fun msg ->
+                        let m' = update msg st.Current
+                        latest.Value <- m'
+                        st.Set m'))
+            let window = Window(Width = 1000.0, Height = 980.0, Content = comp)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickIn window (ExperimentControls.UiIds.editButton "1")          // select the FIRST experiment
+            Assert.Equal(Some 1, latest.Value.experimentCollection.draft.editingId |> Option.map (fun i -> i.value))
+            // The editor loaded experiment #1's element (the polarizer), not the source it was on.
+            Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``returning from polar to XY restores the cartesian axes and data-fit limits`` () =
+        // Regression (spec 030): `Add.PolarAxis` hides the rectangular axes for a clean polar grid; switching
+        // back must restore them (and the data-fit limits) or the XY view renders with no axes / ticks.
+        HeadlessSession.run (fun () ->
+            let window = ChartWindow(sampleChart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ctrl (name : string) : Control option =
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+            let ava = (ctrl ChartWindowIds.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let lim0 = ava.Plot.Axes.GetLimits()
+            let btn = (ctrl ChartWindowIds.polarToggle |> Option.get) :?> Button
+            let click () = btn.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            click ()   // → polar (hides the cartesian axes)
+            click ()   // → XY (must restore them)
+            let axisVisible (a : obj) : bool = match a with :? ScottPlot.AxisPanels.AxisBase as ax -> ax.IsVisible | _ -> false
+            Assert.True(axisVisible ava.Plot.Axes.Bottom, "the X axis was not restored after leaving polar")
+            Assert.True(axisVisible ava.Plot.Axes.Left, "the Y axis was not restored after leaving polar")
+            let lim1 = ava.Plot.Axes.GetLimits()
+            Assert.True(abs (lim0.Left - lim1.Left) < 1e-6 && abs (lim0.Right - lim1.Right) < 1e-6, "the XY x-limits were not restored")
+            Assert.True(abs (lim0.Bottom - lim1.Bottom) < 1e-6 && abs (lim0.Top - lim1.Top) < 1e-6, "the XY y-limits were not restored")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``ChartWindow constructs and really renders a live experiment chart`` () =
+        // The double-click hook does `ChartWindow(experimentResult model).Show()`. This drives that exact
+        // path AND forces ScottPlot's real Skia rasterization (headless Avalonia never rasterizes), so a
+        // construction- or render-time throw would surface here rather than silently failing in the app.
+        HeadlessSession.run (fun () ->
+            let m = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 m
+            let chart = experimentResult (m |> update (ExpChooseElement pid))
+            Assert.False(List.isEmpty chart.series, "precondition: the R1 intensity chart has a series")
+            let window = ChartWindow(chart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ava = window.GetVisualDescendants() |> Seq.pick (function :? ScottPlot.Avalonia.AvaPlot as a -> Some a | _ -> None)
+            let img = ava.Plot.GetImage(700, 500)
+            Assert.True(img.GetImageBytes().Length > 0, "the chart rendered no image bytes")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``dispatching OpenExperimentChartWindow actually constructs a ChartWindow`` () =
+        // Proves the full host path — update → openChartWindowHook → ChartWindow — actually fires (the hook
+        // is a mutable assigned by a module-level statement; this guards against it staying the no-op stub).
+        HeadlessSession.run (fun () ->
+            let m = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 m
+            let m1 = m |> update (ExpChooseElement pid)      // draft ⇒ a non-empty R1 intensity chart
+            Assert.False(List.isEmpty (experimentResult m1).series, "precondition: the draft chart has a series")
+            let before = ChartWindow.ConstructedCount
+            update OpenExperimentChartWindow m1 |> ignore
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            Assert.True(ChartWindow.ConstructedCount > before, "OpenExperimentChartWindow did not open a ChartWindow (hook not firing)"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the per-experiment View button opens a ChartWindow`` () =
+        // The user's requested design: a "View" action on each collected experiment (next to Remove) opens
+        // the chart window for THAT experiment; a row double-click calls the same action. This drives the
+        // full path button → dispatch → update → viewExperimentHook → ChartWindow.
+        HeadlessSession.run (fun () ->
+            let baseM = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseM
+            let seed =
+                baseM
+                |> update (ExpChooseElement pid) |> update ExpCommit          // add the experiment
+                |> update (SelectBay BayNames.experiments)
+            let expIdStr = string (List.head seed.experimentCollection.experiments).id.value
+            let mutable model = seed
+            let dispatch (msg : Msg) = model <- update msg model
+            let window = Window(Width = 1000.0, Height = 980.0)
+            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let before = ChartWindow.ConstructedCount
+            clickIn window (ExperimentControls.UiIds.viewButton expIdStr)
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            Assert.True(ChartWindow.ConstructedCount > before, "the View button did not open a ChartWindow")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Open chart button triggers openChartWindow`` () =
+        // Regression: the pop-out window opened only on a hand-rolled double-click that could miss. There is
+        // now an explicit, always-present button (plus a proper DoubleTapped gesture). This proves a click on
+        // the button fires the `openChartWindow` handler that the host maps to opening the ChartWindow.
+        HeadlessSession.run (fun () ->
+            let mutable opened = 0
+            let handlers : ExperimentControls.Handlers =
+                {
+                    chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
+                    setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore
+                    addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                    viewExperiment = ignore
+                    openChartWindow = fun () -> opened <- opened + 1
+                }
+            let state =
+                { ExperimentControls.empty with
+                    enabled = true
+                    series = [ { ExperimentControls.ChartSeries.name = "I"; points = [ 0.0, 1.0; 1.0, 0.5 ] } ]
+                    xLabel = "x"; yLabel = "y" }
+            let window = Window(Width = 420.0, Height = 560.0)
+            window.Content <- Component(fun _ -> ExperimentControls.view state handlers)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.openChart -> Some b | _ -> None) with
+            | Some b ->
+                match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
+                | p when p.HasValue ->
+                    window.MouseDown(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
+                    window.MouseUp(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
+                | _ -> Assert.Fail("the Open chart button is off-screen")
+            | None -> Assert.Fail("the Open chart button was not rendered")
+            Assert.True(opened >= 1, "clicking Open chart did not trigger openChartWindow")
             window.Close())

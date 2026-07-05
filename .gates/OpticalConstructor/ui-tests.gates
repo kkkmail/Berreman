@@ -4,7 +4,10 @@ kind: command
 command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConstructor.Ui.Tests.fsproj -c Release --filter Category!=ui-smoke
 pass_when:
   exit_code: 0
-runtime_estimate_seconds: 600
+  count_at_least:
+    capture: "Passed:\\s*(\\d+)"
+    baseline_key: ui_tests
+runtime_estimate_seconds: 180
 tags:
 - test
 - ui
@@ -14,5 +17,3 @@ applies_to:
   - 'Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/**'
   - 'Berreman/OpticalConstructor/OpticalConstructor.App/**'
 qualifier: unit
-filter: none
-descriptor_version: 1

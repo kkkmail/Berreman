@@ -338,3 +338,10 @@ ASALocalRun/
 # Optical Constructor (Spec 0022, Part I §I.5): autosave sidewrite files are
 # transient recovery copies kept distinct from the committed `.ocproj` document.
 *.autosave
+
+# ASG arc-runner v7 (spec 0075 F.2/D.3): per-attempt console streams and
+# finalize-commit diagnostics are bulky per-run scratch -- keep them out of
+# the arc's final bookkeeping commit. The rest of specs/*/.artifacts (task
+# files, judge MDs, cost ledger) stays committable as the audit trail.
+/specs/*/.artifacts/*console*.log
+/specs/*/.artifacts/finalize-commit.log

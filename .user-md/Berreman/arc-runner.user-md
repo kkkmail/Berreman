@@ -90,28 +90,23 @@ this project yet. If a slice introduces one, propose a new
 
 ## Gates
 
-The arc-runner reads each slice's gate set from the manifest's
-`slice_gates:` block. For Berreman, the default set is:
+(Data version 7.) The arc-runner reads each step's gate roster from
+the per-step snapshot `specs/<NNN>/.slices/<step>.gates`, which the
+step-compiler regenerates at boot from the spec's frozen
+`.spec-gates`. For Berreman, the default set is:
 
-- `impl-log-structure` (root) -- structural check on the impl-log MD.
-- `state-of-world-structure` (root) -- structural check on the SoW MD.
 - `build` (`Berreman/`) -- `dotnet build` of the solution.
 - `unit-tests` (`Berreman/`) -- `dotnet test` against `BerremanTests`.
 
 What you need to know while implementing:
 
-- **Every slice runs every gate in its set**, in the order
+- **Every step runs every gate in its roster**, in the order
   declared. First failure short-circuits.
 - **`count_at_least` gates** (unit tests) pass when the captured
-  count is at least the baseline from the prior slice's
-  state-of-the-world YAML block. For the first slice of an arc,
-  the baseline is 0, so any passing count works.
-- **The `state-of-world-structure` gate** is an arc-runner-side
-  check that your state-of-the-world file exists and contains
-  the required ATX section headings: `Where we are`,
-  `What's working`, `Tests`, `Architecture`, `Deferred`,
-  `Gotchas`, `Changelog`. Omitting this file or any required
-  heading fails the gate.
+  count is at least the baseline from the prior green step's
+  checkpoint record (`.checkpoints-json`, maintained by the
+  arc-runner). For the first step of an arc, the baseline is 0,
+  so any passing count works. You never author baselines yourself.
 
 ---
 

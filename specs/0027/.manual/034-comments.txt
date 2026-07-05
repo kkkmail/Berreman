@@ -1,0 +1,38 @@
+Here are the comments.
+`3.1 The id-elevation seam (decided)`. All ids MUST BE guid, not string internally. There is simply no other clean way. 
+The mock proxies MUST NOT deal with elevation / de-elevation as it makes no sense to do that and wastes time to tokens. 
+This is the job for the actual real IO proxies (once we get there, NOT NOW, MUST BE OUT OF spec). `MaterialId` is as good 
+as a key in F# structures that we use in mocks. Do not mention `Later (Storage) … deferred …`. Nothing is deferred in this 
+spec, and we simply DO NOT do what’s NOT in the spec. So, we DO NOT mention what we DO NOT do.
+
+`6.1 Absorbing & Dispersive` and how to serialize the dispersive data.
+We need to address EpsWithDisp, MuWithDisp, RhoWithDisp because they cannot be serialized. We do not change these but add 
+some functionality that can produce them AND be serializable. The only consistent way to do that is to represent function 
+by so called func values. The dispersion is usually functions, which are a sum of polynomials and inverse polynomials of 
+wavelength. And a polynomial / inverse polynomial is easily represented by an array of coefficients (a0+ a1*x + a2*x^2 + …) 
+and a power of the whole polynomial, e.g. `(x-a)^(-2)`. The dispersion formulas often take this (x-a) expressions, where this 
+a is `lambda_i` – some critical wavelength of that term. So, a term in the expression is that lambda, then array of coefficients, 
+and then the power of the overall polynomial and finally a multiplier (e.g.: `-2.5 * (x – 0.0012345)^(-2)`) and the expression 
+is simply a sum of the terms, which is the modeled as an arrayof such expressions. This is fully serializable. Then we can create 
+the real dispersive functions using the formulas. Finally, if the material is anisotropic, then we model it as a DU: 
+Isotropic / Uniaxial / Biaxial / etc. (rho is more complicated) – just make sure that DU cases are globally unique (not already 
+used and adjust if necessary). This should go into `C:\GitHub\Berreman\Berreman\Berreman\Dispersion.fs` along with the toEpsWithDisp 
+and other members so that to produce the actual dispersive materials used in the system. Perhaps the proposed DispersionModel DU 
+could simplify this even further. Perform web research, analyze the code and extend this section to actually cover all these models in detail.
+
+`11. Decisions & open questions`
+Q1 – Materials is only about optical materials (glass, quartz, vacuum, etc…), NOT samples. What we now call Library is actually 
+a picker or selector. So we should rename it into something else, so that the word Library could be used solely for working with 
+samples, NOT assigning them to the elements on the optical table.
+Q2 – Once the layered sample is created, then nothing should prohibit the user to edit it further. There must be convenience 
+multi-select controls, e.g. choose all material <n> layers and then perform some actions with the chosen layers, e.g. set height, 
+change material, remove, etc.
+Q3 – yes use hard block.
+Q4 – there is no Q4.
+Q5. The segments are what they are. The order in the segment list determines which one to use (higher up the list) in case of overlaps. 
+No clamps, no validation. The segment are what they are.
+Q6. We do all known dispersion models. But remember that the models will sit BEFORE, e.g. EpsWithDisp and just expose the appropriate functions.
+Q7 – Extend MaterialImport.
+Q8. Elevate now. See `3.1 The id-elevation seam (decided)`. No legacy, no fall back, no migration.
+
+Write an updated preliinary spec into 035. Make no other changes.

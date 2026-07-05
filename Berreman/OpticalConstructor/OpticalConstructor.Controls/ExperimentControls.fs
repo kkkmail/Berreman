@@ -1,25 +1,31 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
-/// The reusable EXPERIMENTS control (Spec 0027 — the "Experiments" bay). The user picks WHICH element
-/// currently present on the table is the swept element, AND which 1-D experiment to run on it: rotate its
-/// R1 a full circle (the rotating-analyzer / Malus measurement), sweep its R2 (incidence) 0…90°, or sweep
-/// the wavelength over an editable range. A readout shows the built experiment and an inline chart shows
-/// the result (one intensity series, or two Ψ/Δ series for an ellipsometer detector).
-/// This control is DOMAIN-FREE (matching `RendererControls` / `LibraryControls`): the host pre-flattens the
-/// present elements into selectable `SweepCandidate`s, pre-builds the chart series + labels + description,
-/// and injects the behaviour as a `Handlers` function record (the functional-proxy seam; tests pass stubs).
+/// The reusable EXPERIMENTS control (Spec 0027 / 028 — the "Experiments" bay), redesigned as a multi-step,
+/// EDITABLE experiment builder over the live setup:
+///   1. the SETUP is the scene (the present elements + their bound materials / geometry);
+///   2. the user picks WHICH element to vary — and the element determines what CAN be varied (the host
+///      supplies the allowed `VariableChoice`s per the element's kind; the bay never hard-codes them);
+///   3. the user picks what to CAPTURE (transmitted / reflected / both), sets the numeric range, and clicks
+///      Add — which appends the experiment to a COLLECTION that persists. Existing experiments can be
+///      Edited (re-adding updates in place, never duplicates) and Removed.
+/// This control is DOMAIN-FREE (matching `LibraryControls` / `RendererControls`): the host flattens the
+/// present elements into `SweepCandidate`s, the allowed variables into `VariableChoice`s, the collection
+/// into `ExperimentRow`s, pre-builds the inline chart series + labels + description, and injects the
+/// behaviour as a `Handlers` function record (the functional-proxy seam; tests pass stubs).
 module ExperimentControls =
 
-    /// One present, sweepable table element offered to the user (the host flattens the live scene into
+    /// One present, varyable table element offered to the user (the host flattens the live scene into
     /// these; Controls carries no domain types). `elementId` is the element's serializable id; `label`
     /// is a human-readable display (e.g. "Linear polarizer #2").
     type SweepCandidate =
@@ -28,12 +34,46 @@ module ExperimentControls =
             label : string
         }
 
-    /// The experiment KIND the user picks — a domain-free mirror of the three `Experiment` cases (a DU, not
-    /// an enum). The host maps it back to the domain `Experiment` for the chosen element.
-    type ExperimentKindChoice =
-        | RotateR1
-        | SweepR2
-        | SweepLambda
+    /// The quantity to vary — a domain-free mirror of the domain `VariableParameter` (a DU, not an enum).
+    /// The host maps it back to the domain type for the chosen element.
+    type VariableChoice =
+        | VaryWaveLength
+        | VaryR1
+        | VaryR2
+
+    /// What the experiment captures — a domain-free mirror of the domain `MeasurementMode`.
+    type MeasurementChoice =
+        | CaptureT
+        | CaptureR
+        | CaptureBoth
+
+    /// The stable code for a variable choice (drives its automation id and the host's mapping).
+    let variableCode (v : VariableChoice) : string =
+        match v with
+        | VaryWaveLength -> "wavelength"
+        | VaryR1 -> "r1"
+        | VaryR2 -> "r2"
+
+    /// A short label for a variable choice (the selector button text).
+    let variableLabel (v : VariableChoice) : string =
+        match v with
+        | VaryWaveLength -> "Wavelength"
+        | VaryR1 -> "Rotation R1"
+        | VaryR2 -> "Incidence R2"
+
+    /// The stable code for a measurement choice (drives its automation id and the host's mapping).
+    let measurementCode (m : MeasurementChoice) : string =
+        match m with
+        | CaptureT -> "t"
+        | CaptureR -> "r"
+        | CaptureBoth -> "both"
+
+    /// A short label for a measurement choice (the selector button text).
+    let measurementLabel (m : MeasurementChoice) : string =
+        match m with
+        | CaptureT -> "Transmitted (T)"
+        | CaptureR -> "Reflected (R)"
+        | CaptureBoth -> "Both (T + R)"
 
     /// One drawn chart series: a display name (legend) and its (x, y) points in axis-display units.
     type ChartSeries =
@@ -42,29 +82,54 @@ module ExperimentControls =
             points : (float * float) list
         }
 
+    /// One added experiment shown in the collection (the host flattens the domain `Experiment`s to these).
+    type ExperimentRow =
+        {
+            /// The experiment's stable id, rendered as a string (the host maps it back to `ExperimentId`).
+            id : string
+            /// A human-readable one-line description of the experiment.
+            description : string
+            /// Whether this experiment is the one currently loaded in the editor (highlighted).
+            isEditing : bool
+        }
+
     /// The bay's pure, serializable state.
     type State =
         {
-            /// The present elements, each offered as a candidate swept element.
+            /// The present elements, each offered as a candidate element-to-vary.
             candidates : SweepCandidate list
-            /// The currently-chosen swept element's id (the one whose R1 sweeps the full circle), if any.
+            /// The currently-chosen element-to-vary (by id), if any.
             chosenId : string option
-            /// The built experiment's readout text ("Experiment: rotate <label> R1 0…360°" or empty).
-            experimentName : string
-            /// `false` when there are no elements to sweep.
+            /// The variables the CHOSEN element permits varying (host-supplied per its kind; empty when the
+            /// element exposes nothing to vary).
+            variableChoices : VariableChoice list
+            /// The chosen variable, if any.
+            chosenVariable : VariableChoice option
+            /// The chosen capture mode (transmitted / reflected / both).
+            measurement : MeasurementChoice
+            /// The variation range (in the variable's display unit) and its point count.
+            rangeMin : float
+            rangeMax : float
+            rangePoints : int
+            /// The variable's display unit ("nm" / "°"), shown next to the range inputs.
+            rangeUnitLabel : string
+            /// Whether the draft can be committed (an element + a variable are chosen).
+            canAdd : bool
+            /// Whether the editor is UPDATING an existing experiment (the button reads "Update" not "Add").
+            isEditing : bool
+            /// The added experiments (the persistent collection).
+            collection : ExperimentRow list
+            /// The built-experiment readout text.
+            readout : string
+            /// `false` when there are no elements to vary.
             enabled : bool
-            /// Spec 0027 (026): the chosen experiment kind (rotate R1 / sweep R2 / sweep λ).
-            kind : ExperimentKindChoice
-            /// Spec 0027 (026): the editable wavelength range (nm), shown only for the SweepLambda kind.
-            lambdaLoNm : float
-            lambdaHiNm : float
-            /// Spec 0027 (026): the inline chart's series (one intensity series, or two Ψ/Δ series), drawn
-            /// as polylines. Empty when there is no run to show.
+            /// The inline chart's series (one intensity series, two Ψ/Δ series, or two T/R series for a
+            /// both-capture intensity run), drawn as polylines. Empty when there is no run to show.
             series : ChartSeries list
             /// Axis labels for the inline chart (and the pop-out window).
             xLabel : string
             yLabel : string
-            /// A prose description of what the chart is about (the bound elements + what is swept).
+            /// A prose description of what the chart is about (the bound elements + what is varied).
             description : string
             /// The ellipsometer Ψ/Δ single-point readout (in DEGREES) for the RotateR1 kind; `None` for an
             /// intensity detector or a sweep that produces series instead.
@@ -75,11 +140,18 @@ module ExperimentControls =
         {
             candidates = []
             chosenId = None
-            experimentName = ""
+            variableChoices = []
+            chosenVariable = None
+            measurement = CaptureT
+            rangeMin = 0.0
+            rangeMax = 360.0
+            rangePoints = 73
+            rangeUnitLabel = "°"
+            canAdd = false
+            isEditing = false
+            collection = []
+            readout = ""
             enabled = false
-            kind = RotateR1
-            lambdaLoNm = 200.0
-            lambdaHiNm = 800.0
             series = []
             xLabel = ""
             yLabel = ""
@@ -90,15 +162,29 @@ module ExperimentControls =
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs).
     type Handlers =
         {
-            /// Pick which present element's R1 sweeps the full circle (by its id).
-            chooseSwept : string -> unit
-            /// Pick the experiment kind (rotate R1 / sweep R2 / sweep λ).
-            chooseKind : ExperimentKindChoice -> unit
-            /// Set the wavelength-range minimum (nm).
-            setLambdaLo : float -> unit
-            /// Set the wavelength-range maximum (nm).
-            setLambdaHi : float -> unit
-            /// Open the pop-out interactive chart window (double-click on the inline chart).
+            /// Pick which present element to vary (by its id).
+            chooseElement : string -> unit
+            /// Pick the varied quantity.
+            chooseVariable : VariableChoice -> unit
+            /// Pick the capture mode.
+            chooseMeasurement : MeasurementChoice -> unit
+            /// Set the range minimum / maximum (in the variable's display unit) and the point count.
+            setRangeMin : float -> unit
+            setRangeMax : float -> unit
+            setRangePoints : int -> unit
+            /// Confirm the draft: Add a new experiment, or Update the one being edited.
+            addOrUpdate : unit -> unit
+            /// Start a brand-new experiment (clears the editor).
+            newExperiment : unit -> unit
+            /// Load an experiment (by id) into the editor for editing.
+            editExperiment : string -> unit
+            /// Remove an experiment (by id) from the collection.
+            removeExperiment : string -> unit
+            /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
+            /// per-row "View" button and a double-click on the row both call this — the same testable action.
+            viewExperiment : string -> unit
+            /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart
+            /// or the "Open chart" button).
             openChartWindow : unit -> unit
         }
 
@@ -107,19 +193,31 @@ module ExperimentControls =
     module UiIds =
         let readout = "ExperimentReadout"
         let candidates = "ExperimentCandidates"
-        /// A candidate's clickable id — the element id, prefixed so it cannot collide with other ids.
+        /// A candidate element's clickable id — the element id, prefixed so it cannot collide.
         let candidate (elementId : string) : string = "ExperimentCandidate_" + elementId
+        /// A variable-choice selector, by its code ("wavelength" / "r1" / "r2").
+        let variable (code : string) : string = "ExperimentVariable_" + code
+        /// A measurement-choice selector, by its code ("t" / "r" / "both").
+        let measurement (code : string) : string = "ExperimentMeasurement_" + code
+        /// The range inputs.
+        let rangeMin = "ExperimentRangeMin"
+        let rangeMax = "ExperimentRangeMax"
+        let rangePoints = "ExperimentRangePoints"
+        /// The Add / Update and New actions.
+        let addButton = "ExperimentAddButton"
+        let newButton = "ExperimentNewButton"
+        /// The collection list and a row's Edit / Remove actions.
+        let collection = "ExperimentCollection"
+        let editButton (id : string) : string = "ExperimentEdit_" + id
+        let removeButton (id : string) : string = "ExperimentRemove_" + id
+        /// A row's "View" action — open the pop-out chart window for that experiment.
+        let viewButton (id : string) : string = "ExperimentView_" + id
+        /// The explicit "open the pop-out chart window" action (also opened by double-clicking the chart).
+        let openChart = "ExperimentOpenChart"
         /// The inline result polyline (the first series — the intensity / Ψ curve).
         let chart = "ExperimentChart"
         /// The ellipsometer Ψ/Δ single-point readout text.
         let psiDelta = "EllipsometerReadout"
-        /// The three experiment-kind selector borders.
-        let kindRotateR1 = "ExperimentKindRotateR1"
-        let kindSweepR2 = "ExperimentKindSweepR2"
-        let kindSweepLambda = "ExperimentKindSweepLambda"
-        /// The wavelength-range inputs (nm).
-        let lambdaLo = "ExperimentLambdaLo"
-        let lambdaHi = "ExperimentLambdaHi"
         /// The chart description text shown under the inline chart.
         let description = "ExperimentChartDescription"
 
@@ -128,12 +226,19 @@ module ExperimentControls =
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
     let private idleBackground = color 232 232 232
     let private chosenBackground = color 150 185 235
+    let private editingBackground = color 255 224 160
     let private idleBorder = color 120 120 120
 
-    /// A clickable candidate (a styled, named Border), highlighted when it is the chosen swept element.
-    let private candidateBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+    /// A clickable, styled, named Border, highlighted when it is the chosen option. `visible` toggles the
+    /// box in place (rather than adding / removing it from the list): a named Avalonia control's `Name`
+    /// cannot be changed once styled, so a bounded selector whose MEMBERS change (e.g. the variable set
+    /// per element kind) must keep every box present with a STABLE name and only flip visibility — otherwise
+    /// FuncUI recycles a named box into a differently-named one and throws "Cannot set Name : … already
+    /// styled" (the same reason the Ribbon keeps all panes present). See `variableRow`.
+    let private optionBoxV (id : string) (label : string) (chosen : bool) (enabled : bool) (visible : bool) (onClick : unit -> unit) : IView =
         Border.create [
             Border.name id
+            Border.isVisible visible
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush (if chosen then chosenBackground else idleBackground))
@@ -146,12 +251,42 @@ module ExperimentControls =
             Border.child (TextBlock.create [ TextBlock.text label ])
             // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
             // chosen flag flips so a reused box can't keep a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box chosen))
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (chosen, visible)))
         ] :> IView
 
-    /// A clickable kind selector (the same styled Border look), highlighted when it is the chosen kind.
-    let private kindBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-        candidateBox id label chosen enabled onClick
+    /// An always-visible clickable option box (measurements — a fixed set, so a stable `Name` is safe).
+    let private optionBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+        optionBoxV id label chosen enabled true onClick
+
+    /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
+    /// control onto a different item's slot when an item is removed; Avalonia forbids changing a styled
+    /// control's `Name`, so these carry an `AutomationProperties.AutomationId` (freely mutable, and the
+    /// automation contract CLAUDE.md prescribes) instead of `Border.name`. Tests query it via
+    /// `AutomationProperties.GetAutomationId`.
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`)
+    /// through FuncUI's attr builder, so a reused control in a reorderable list can take a new id.
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+    let private idOptionBox (autoId : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+        Border.create [
+            automationId autoId
+            Border.isEnabled enabled
+            Border.opacity (if enabled then 1.0 else 0.4)
+            Border.background (brush (if chosen then chosenBackground else idleBackground))
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(10.0, 5.0))
+            Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
+        ] :> IView
+
+    /// A section heading (the numbered step labels).
+    let private heading (text : string) : IView =
+        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0)) ] :> IView
 
     // -- The inline result area: axes, major gridlines, multi-series polylines, and a description. --
     let private chartWidth = 240.0
@@ -227,8 +362,6 @@ module ExperimentControls =
     /// One series as a coloured polyline; the FIRST series carries the stable chart automation id.
     let private seriesPolyline (xr : float * float) (yr : float * float) (index : int) (s : ChartSeries) : IView =
         let pts = s.points |> List.map (fun (x, y) -> toPlot xr yr x y)
-        // The FIRST series carries the stable chart automation id; the rest reuse the same name (it locates
-        // the chart group; the named-id lookup matches the first such polyline).
         Polyline.create [
             Polyline.name UiIds.chart
             Polyline.points pts
@@ -276,7 +409,7 @@ module ExperimentControls =
             Canvas.children children
         ] :> IView
 
-    /// The result block under the candidates: the ellipsometer single-point Ψ/Δ text when present, plus the
+    /// The result block under the editor: the ellipsometer single-point Ψ/Δ text when present, plus the
     /// inline chart (double-click opens the pop-out window) and the prose description.
     let private resultBlock (state : State) (handlers : Handlers) : IView list =
         let psiBlock =
@@ -292,6 +425,21 @@ module ExperimentControls =
             | [] -> []
             | _ ->
                 [
+                    // An explicit, always-reliable way to open the pop-out interactive window — the earlier
+                    // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
+                    Border.create [
+                        Border.name UiIds.openChart
+                        Border.isEnabled state.enabled
+                        Border.background (brush chosenBackground)
+                        Border.borderBrush (brush idleBorder)
+                        Border.borderThickness 1.0
+                        Border.cornerRadius (CornerRadius 3.0)
+                        Border.padding (Thickness(12.0, 5.0))
+                        Border.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+                        Border.horizontalAlignment HorizontalAlignment.Left
+                        Border.child (TextBlock.create [ TextBlock.text "Open chart window ↗" ])
+                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
+                    ] :> IView
                     Border.create [
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
@@ -300,13 +448,9 @@ module ExperimentControls =
                         Border.height chartHeight
                         Border.horizontalAlignment HorizontalAlignment.Left
                         Border.child (chartCanvas state)
-                        // Double-click → open the pop-out interactive chart window (Part 3). `ClickCount = 2`
-                        // is the second press of a double-click; `e.Handled <- true` drops the duplicate pass.
-                        Border.onPointerPressed (
-                            (fun e ->
-                                e.Handled <- true
-                                if e.ClickCount >= 2 then handlers.openChartWindow ()),
-                            SubPatchOptions.Always)
+                        // Double-click ALSO opens the pop-out window — via Avalonia's built-in DoubleTapped
+                        // gesture (more reliable than a hand-rolled PointerPressed ClickCount check).
+                        Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
                     ] :> IView
                     TextBlock.create [
                         TextBlock.name UiIds.description
@@ -318,84 +462,224 @@ module ExperimentControls =
                 ]
         psiBlock @ chartBlock
 
-    /// The kind selector row (rotate R1 / sweep R2 / sweep λ).
-    let private kindRow (state : State) (handlers : Handlers) : IView =
+    /// The element-selection row (step 1 of the editor).
+    let private elementRow (state : State) (handlers : Handlers) : IView =
         WrapPanel.create [
+            WrapPanel.name UiIds.candidates
             WrapPanel.orientation Orientation.Horizontal
-            WrapPanel.children [
-                kindBox UiIds.kindRotateR1 "Rotate R1" (state.kind = RotateR1) state.enabled (fun () -> handlers.chooseKind RotateR1)
-                kindBox UiIds.kindSweepR2 "Sweep R2" (state.kind = SweepR2) state.enabled (fun () -> handlers.chooseKind SweepR2)
-                kindBox UiIds.kindSweepLambda "Sweep λ" (state.kind = SweepLambda) state.enabled (fun () -> handlers.chooseKind SweepLambda)
+            WrapPanel.children (
+                state.candidates
+                |> List.map (fun c ->
+                    idOptionBox
+                        (UiIds.candidate c.elementId)
+                        c.label
+                        (state.chosenId = Some c.elementId)
+                        state.enabled
+                        (fun () -> handlers.chooseElement c.elementId)))
+        ] :> IView
+
+    /// Every variable, in a fixed order (so the selector boxes keep stable names / positions).
+    let private allVariables : VariableChoice list = [ VaryWaveLength; VaryR1; VaryR2 ]
+
+    /// The variable-selection row (step 2). ALL variable boxes are always present (stable names) and only
+    /// the ones the chosen element permits are shown — see `optionBoxV` for why the set is toggled by
+    /// visibility rather than by adding / removing boxes.
+    let private variableRow (state : State) (handlers : Handlers) : IView =
+        let hasChoices = not (List.isEmpty state.variableChoices)
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children [
+                TextBlock.create [
+                    TextBlock.text "(this element has nothing to vary — pick a source, polarizer, or sample)"
+                    TextBlock.foreground (brush (color 120 120 120))
+                    TextBlock.isVisible (not hasChoices)
+                ]
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.isVisible hasChoices
+                    WrapPanel.children (
+                        allVariables
+                        |> List.map (fun v ->
+                            let allowed = List.contains v state.variableChoices
+                            optionBoxV
+                                (UiIds.variable (variableCode v))
+                                (variableLabel v)
+                                (state.chosenVariable = Some v)
+                                (state.enabled && allowed)
+                                allowed
+                                (fun () -> handlers.chooseVariable v)))
+                ]
             ]
         ] :> IView
 
-    /// Parse a wavelength text (nm), accepting a plain decimal (invariant culture).
-    let private parseNm (text : string) : float option =
+    /// The capture-mode selection row (step 3a: T / R / both).
+    let private measurementRow (state : State) (handlers : Handlers) : IView =
+        let one (m : MeasurementChoice) : IView =
+            optionBox
+                (UiIds.measurement (measurementCode m))
+                (measurementLabel m)
+                (state.measurement = m)
+                state.enabled
+                (fun () -> handlers.chooseMeasurement m)
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children [ one CaptureT; one CaptureR; one CaptureBoth ]
+        ] :> IView
+
+    /// Parse a plain decimal (invariant culture).
+    let private parseFloat (text : string) : float option =
         match System.Double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) with
-        | true, v when v > 0.0 -> Some v
+        | true, v -> Some v
         | _ -> None
 
-    /// A wavelength text field (nm); commits on Enter / blur, like the rotation bar's angle field.
-    let private lambdaField (id : string) (value : float) (enabled : bool) (onCommit : float -> unit) : IView =
-        let commit (src : obj) =
-            match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> parseNm tb.Text |> Option.iter onCommit
-            | _ -> ()
+    let private parseInt (text : string) : int option =
+        match System.Int32.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+        | true, v when v >= 2 -> Some v
+        | _ -> None
+
+    /// A numeric text field; commits on Enter / blur.
+    let private numberField (id : string) (text : string) (enabled : bool) (commit : obj -> unit) : IView =
         TextBox.create [
             TextBox.name id
-            TextBox.width 80.0
+            TextBox.width 70.0
             TextBox.isEnabled enabled
-            TextBox.text (sprintf "%g" value)
+            TextBox.text text
             TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commit e.Source)
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
 
-    /// The wavelength-range inputs (nm), shown only for the SweepLambda kind.
-    let private lambdaRow (state : State) (handlers : Handlers) : IView list =
-        match state.kind with
-        | SweepLambda ->
-            [
-                StackPanel.create [
-                    StackPanel.orientation Orientation.Horizontal
-                    StackPanel.spacing 6.0
-                    StackPanel.children [
-                        TextBlock.create [ TextBlock.text "λ min (nm):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        lambdaField UiIds.lambdaLo state.lambdaLoNm state.enabled handlers.setLambdaLo
-                        TextBlock.create [ TextBlock.text "λ max (nm):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                        lambdaField UiIds.lambdaHi state.lambdaHiNm state.enabled handlers.setLambdaHi
-                    ]
-                ] :> IView
+    /// The range inputs (step 3b): min / max (in the variable's unit) and the point count. Always present
+    /// (its visibility toggles with whether a variable is chosen) so the bay's child list length stays
+    /// stable — a varying list length would shift named controls onto one another's slots (see `optionBoxV`).
+    let private rangeRow (state : State) (handlers : Handlers) : IView =
+        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
+        let commitFloat (onCommit : float -> unit) (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter onCommit
+            | _ -> ()
+        let commitInt (onCommit : int -> unit) (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> parseInt tb.Text |> Option.iter onCommit
+            | _ -> ()
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 6.0
+            StackPanel.isVisible hasVariable
+            StackPanel.children [
+                TextBlock.create [ TextBlock.text (sprintf "min (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangeMin (sprintf "%g" state.rangeMin) state.enabled (commitFloat handlers.setRangeMin)
+                TextBlock.create [ TextBlock.text (sprintf "max (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangeMax (sprintf "%g" state.rangeMax) state.enabled (commitFloat handlers.setRangeMax)
+                TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangePoints (sprintf "%d" state.rangePoints) state.enabled (commitInt handlers.setRangePoints)
             ]
-        | RotateR1 | SweepR2 -> []
+        ] :> IView
 
-    /// The Experiments bay — a wrapping row of candidate elements (highlighted when chosen), an experiment-
-    /// kind selector, the wavelength-range inputs (for the λ sweep), a readout of the built experiment, and
-    /// the inline chart (axes + gridlines + series) with its description.
+    // -- A plain action button (Add / Update / New). --
+    let private actionButton (id : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+        Border.create [
+            Border.name id
+            Border.isEnabled enabled
+            Border.opacity (if enabled then 1.0 else 0.4)
+            Border.background (brush (if accent then chosenBackground else idleBackground))
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(12.0, 5.0))
+            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label, enabled)))
+        ] :> IView
+
+    /// The Add / Update + New action row.
+    let private actionRow (state : State) (handlers : Handlers) : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.children [
+                actionButton UiIds.addButton (if state.isEditing then "Update experiment" else "Add experiment") true state.canAdd handlers.addOrUpdate
+                actionButton UiIds.newButton "New" false state.enabled handlers.newExperiment
+            ]
+        ] :> IView
+
+    // A small row action button (View / Remove), styled to stand out (accent) or plain.
+    let private rowActionButton (autoId : string) (label : string) (accent : bool) (onClick : unit -> unit) : IView =
+        Border.create [
+            automationId autoId
+            Border.background (brush (if accent then chosenBackground else idleBackground))
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(10.0, 4.0))
+            Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label)))
+        ] :> IView
+
+    /// One collection row: the experiment description (single-click Edit, highlighted while editing;
+    /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
+    let private collectionRow (handlers : Handlers) (r : ExperimentRow) : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 0.0
+            StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+            StackPanel.children [
+                Border.create [
+                    automationId (UiIds.editButton r.id)
+                    Border.background (brush (if r.isEditing then editingBackground else idleBackground))
+                    Border.borderBrush (brush idleBorder)
+                    Border.borderThickness 1.0
+                    Border.cornerRadius (CornerRadius 3.0)
+                    Border.padding (Thickness(10.0, 4.0))
+                    Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                    Border.maxWidth 300.0
+                    Border.child (TextBlock.create [ TextBlock.text r.description; TextBlock.textWrapping TextWrapping.Wrap ])
+                    // Single-click edits; double-click opens the chart window for this experiment (the same
+                    // "View" action as the button beside it — Avalonia's DoubleTapped gesture).
+                    Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
+                    Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
+                ] :> IView
+                rowActionButton (UiIds.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
+                rowActionButton (UiIds.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
+            ]
+        ] :> IView
+
+    /// The collection block: a heading and the added-experiment rows (or a hint when empty).
+    let private collectionBlock (state : State) (handlers : Handlers) : IView list =
+        [
+            heading "Experiments:"
+            (match state.collection with
+             | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView
+             | rows ->
+                 StackPanel.create [
+                     StackPanel.name UiIds.collection
+                     StackPanel.orientation Orientation.Vertical
+                     StackPanel.children (rows |> List.map (collectionRow handlers))
+                 ] :> IView)
+        ]
+
+    /// The Experiments bay — a multi-step editor (choose element → variable → capture → range → Add) and
+    /// the persistent collection of added experiments, with the inline chart of the current editor's run.
     let view (state : State) (handlers : Handlers) : IView =
         let readoutText =
-            if state.experimentName = "" then "Experiment: (choose the element to sweep and the kind)"
-            else state.experimentName
+            if state.readout = "" then "Experiment: (choose an element, a variable to vary, and click Add)"
+            else state.readout
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
                     TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text readoutText ] :> IView
-                    WrapPanel.create [
-                        WrapPanel.name UiIds.candidates
-                        WrapPanel.orientation Orientation.Horizontal
-                        WrapPanel.children (
-                            state.candidates
-                            |> List.map (fun c ->
-                                candidateBox
-                                    (UiIds.candidate c.elementId)
-                                    c.label
-                                    (state.chosenId = Some c.elementId)
-                                    state.enabled
-                                    (fun () -> handlers.chooseSwept c.elementId)))
-                    ] :> IView
-                    kindRow state handlers
+                    heading "1. Element to vary:"
+                    elementRow state handlers
+                    heading "2. Vary:"
+                    variableRow state handlers
+                    heading "3. Capture:"
+                    measurementRow state handlers
                 ]
-                @ lambdaRow state handlers
+                @ [ rangeRow state handlers ]
+                @ [ actionRow state handlers ]
+                @ collectionBlock state handlers
                 @ resultBlock state handlers)
         ] :> IView

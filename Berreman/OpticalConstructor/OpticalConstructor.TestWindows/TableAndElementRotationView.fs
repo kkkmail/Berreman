@@ -129,13 +129,11 @@ type Model =
         /// convention). Holds the editable / listable experiment-set templates; the bay itself lets the
         /// user pick which present element is the swept one. Defaulted to the in-memory mock.
         experiments : Experiments.ExperimentProxy
-        /// Spec 0027 (024) Phase 2: the element whose R1 the experiment sweeps a full circle (the
-        /// rotating-analyzer measurement). Referenced by its serializable id (so it survives save-load).
-        chosenSwept : Library.ElementId option
-        /// Spec 0027 (026): the experiment KIND to run on the swept element (rotate R1 / sweep R2 / sweep λ).
-        experimentKind : ExperimentControls.ExperimentKindChoice
-        /// Spec 0027 (026): the user-editable wavelength sweep range (min nm, max nm).
-        lambdaRange : float * float
+        /// Spec 0027 (028): the editable EXPERIMENT COLLECTION and its multi-step draft — choose the element
+        /// to vary, the (element-constrained) variable, the T/R/both capture, the range; Add / edit / remove.
+        /// Replaces the old single swept-element + experiment-kind + λ-range fields. An experiment references
+        /// its element by the serializable id, so the collection survives save-load.
+        experimentCollection : Experiments.ExperimentCollection
         /// Spec 0027 (026): the Library entry the user has SELECTED but not yet confirmed (the pending
         /// bind). Clicking a Library entry sets this and shows its full description; Confirm commits it to
         /// the selected element's `valueId`, Cancel clears it.
@@ -185,9 +183,7 @@ let initWith (library : Library.LibraryProxy) (experiments : Experiments.Experim
         snapChain = false
         library = library
         experiments = experiments
-        chosenSwept = None
-        experimentKind = ExperimentControls.RotateR1
-        lambdaRange = (200.0, 800.0)
+        experimentCollection = Experiments.ExperimentCollection.empty
         pendingEntry = None
     }
 
@@ -262,16 +258,25 @@ type Msg =
     | RequestBindValueId of string
     | ConfirmBindValueId
     | CancelBindValueId
-    /// Main-screen EXPERIMENTS bay (task 024 Phase 2): pick which present element's R1 the experiment
-    /// sweeps a full circle (by its serializable id).
-    | ChooseSweptElement of string
-    /// Spec 0027 (026): pick the experiment kind (rotate R1 / sweep R2 / sweep λ).
-    | ChooseExperimentKind of ExperimentControls.ExperimentKindChoice
-    /// Spec 0027 (026): set the wavelength sweep range (min / max, nm).
-    | SetLambdaLo of float
-    | SetLambdaHi of float
-    /// Spec 0027 (026): open the pop-out interactive chart window (double-click on the inline chart).
+    /// Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step experiment editor + collection.
+    /// Choose the element to vary (by id), the varied quantity, the T/R/both capture, and the range;
+    /// commit (Add / Update), start a New draft, or Edit / Remove a collected experiment (by id string).
+    | ExpChooseElement of string
+    | ExpChooseVariable of ExperimentControls.VariableChoice
+    | ExpChooseMeasurement of ExperimentControls.MeasurementChoice
+    | ExpSetRangeMin of float
+    | ExpSetRangeMax of float
+    | ExpSetRangePoints of int
+    | ExpCommit
+    | ExpNew
+    | ExpEdit of string
+    | ExpRemove of string
+    /// Spec 0027 (026): open the pop-out interactive chart window for the current DRAFT (double-click on the
+    /// inline chart, or the "Open chart" button).
     | OpenExperimentChartWindow
+    /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
+    /// button, and a double-click on the experiment row).
+    | ViewExperiment of string
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -504,6 +509,45 @@ let private resetSelectedPosition (m : Model) : Model =
 /// headless test host (which never dispatches `OpenExperimentChartWindow`) the default no-op is harmless.
 let mutable private openChartWindowHook : Model -> unit = fun _ -> ()
 
+/// Spec 0027 (030 follow-up): the side-effecting "open the chart window for a COLLECTED experiment (by id)"
+/// action — the per-row "View" button and a row double-click both invoke it. Same forward-reference seam.
+let mutable private viewExperimentHook : Model -> string -> unit = fun _ _ -> ()
+
+/// Spec 0027 (028): the Controls-layer ⇄ domain mirror maps for the experiment variable / measurement DUs
+/// (the bay is domain-free, so it mirrors the domain cases and the host maps them back).
+let private ofVariableChoice (v : ExperimentControls.VariableChoice) : Experiments.VariableParameter =
+    match v with
+    | ExperimentControls.VaryWaveLength -> Experiments.VaryWaveLength
+    | ExperimentControls.VaryR1 -> Experiments.VaryR1
+    | ExperimentControls.VaryR2 -> Experiments.VaryR2
+
+let private toVariableChoice (v : Experiments.VariableParameter) : ExperimentControls.VariableChoice =
+    match v with
+    | Experiments.VaryWaveLength -> ExperimentControls.VaryWaveLength
+    | Experiments.VaryR1 -> ExperimentControls.VaryR1
+    | Experiments.VaryR2 -> ExperimentControls.VaryR2
+
+let private ofMeasurementChoice (m : ExperimentControls.MeasurementChoice) : Experiments.MeasurementMode =
+    match m with
+    | ExperimentControls.CaptureT -> Experiments.CaptureTransmitted
+    | ExperimentControls.CaptureR -> Experiments.CaptureReflected
+    | ExperimentControls.CaptureBoth -> Experiments.CaptureBoth
+
+let private toMeasurementChoice (m : Experiments.MeasurementMode) : ExperimentControls.MeasurementChoice =
+    match m with
+    | Experiments.CaptureTransmitted -> ExperimentControls.CaptureT
+    | Experiments.CaptureReflected -> ExperimentControls.CaptureR
+    | Experiments.CaptureBoth -> ExperimentControls.CaptureBoth
+
+/// Spec 0027 (028): the human label of a present element ("<kind> #<n>", 1-based, in scene order), captured
+/// onto an experiment so its collection row survives the element's removal.
+let private experimentElementLabel (model : Model) (id : Library.ElementId) : string =
+    model.elements
+    |> List.mapi (fun i e -> i, e)
+    |> List.tryFind (fun (_, e) -> e.id = id)
+    |> Option.map (fun (i, e) -> sprintf "%s #%d" (Catalogue.kindName e.placement.catalogueKind) (i + 1))
+    |> Option.defaultValue "(element)"
+
 let update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotateSelected 1 d model
@@ -555,20 +599,43 @@ let update (msg : Msg) (model : Model) : Model =
             mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) { model with pendingEntry = None }
         | _ -> { model with pendingEntry = None }
     | CancelBindValueId -> { model with pendingEntry = None }
-    | ChooseSweptElement idStr -> { model with chosenSwept = Some (Library.elementId idStr) }
-    | ChooseExperimentKind kind -> { model with experimentKind = kind }
-    | SetLambdaLo lo ->
-        let _, hi = model.lambdaRange
-        { model with lambdaRange = (lo, hi) }
-    | SetLambdaHi hi ->
-        let lo, _ = model.lambdaRange
-        { model with lambdaRange = (lo, hi) }
+    | ExpChooseElement idStr ->
+        // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
+        // variables (data via `variablesFor`, never hard-coded here) and the default capture (from its
+        // emission — a mirror ⇒ R, everything else both).
+        match model.elements |> List.tryFind (fun e -> e.id.value = idStr) with
+        | Some e ->
+            let allowed = Experiments.variablesFor e.placement.catalogueKind
+            let defaultMeasurement = Experiments.MeasurementMode.ofEmission e.placement.emission
+            let label = experimentElementLabel model e.id
+            { model with experimentCollection = Experiments.chooseElement e.id label allowed defaultMeasurement model.experimentCollection }
+        | None -> model
+    | ExpChooseVariable v -> { model with experimentCollection = Experiments.chooseVariable (ofVariableChoice v) model.experimentCollection }
+    | ExpChooseMeasurement m -> { model with experimentCollection = Experiments.chooseMeasurement (ofMeasurementChoice m) model.experimentCollection }
+    | ExpSetRangeMin v -> { model with experimentCollection = Experiments.setRangeMin v model.experimentCollection }
+    | ExpSetRangeMax v -> { model with experimentCollection = Experiments.setRangeMax v model.experimentCollection }
+    | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n model.experimentCollection }
+    | ExpCommit -> { model with experimentCollection = Experiments.commit model.experimentCollection }
+    | ExpNew -> { model with experimentCollection = Experiments.newDraft model.experimentCollection }
+    | ExpEdit idStr ->
+        match System.Int32.TryParse idStr with
+        | true, i -> { model with experimentCollection = Experiments.edit (Experiments.ExperimentId i) model.experimentCollection }
+        | _ -> model
+    | ExpRemove idStr ->
+        match System.Int32.TryParse idStr with
+        | true, i -> { model with experimentCollection = Experiments.remove (Experiments.ExperimentId i) model.experimentCollection }
+        | _ -> model
     | OpenExperimentChartWindow ->
         // Spec 0027 (026) Part 3: a double-click on the inline chart opens the pop-out interactive ScottPlot
         // window for the current experiment chart. Opening a `Window` is a side effect, matching the existing
         // imperative-window pattern (`MainConstructorWindow().Show()`); it is guarded behind a non-empty chart
         // and is never reached under the headless `ui-smoke` gate (which renders frames but never double-clicks).
         openChartWindowHook model
+        model
+    | ViewExperiment idStr ->
+        // Spec 0027 (030 follow-up): open the chart window for the collected experiment `idStr` (the "View"
+        // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
+        viewExperimentHook model idStr
         model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
@@ -988,40 +1055,28 @@ let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers 
     }
 
 // ---------------------------------------------------------------------------
-// Main-screen EXPERIMENTS bay (task 024 Phase 2): pick which present element's R1 the experiment sweeps
-// a full circle. The swept element is referenced by its serializable id (so the experiment survives
-// save-load); the bay offers every present element as a candidate (the proxy holds the editable / listable
-// experiment-set templates — no solve yet). The bay is domain-free, so the host flattens the live scene
-// into `SweepCandidate`s here.
+// Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step, editable experiment builder + collection.
+// The SETUP is the live scene; the user picks the element to vary (the element's kind — via
+// `Experiments.variablesFor` DATA — determines the allowed variables), the T/R/both capture, and the
+// range, then Adds to a persistent collection (edit / remove supported). The bay is domain-free, so the
+// host flattens the scene into candidates, the draft into the editor state, and the collection into rows.
 // ---------------------------------------------------------------------------
 
-/// One present element as a sweep candidate — its serializable id plus a human-readable label
+/// One present element as a candidate-to-vary — its serializable id plus a human-readable label
 /// ("<kind> #<n>", 1-based, in scene order).
 let private sweepCandidates (model : Model) : ExperimentControls.SweepCandidate list =
     model.elements
     |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = sprintf "%s #%d" (kindName e.placement.catalogueKind) (i + 1) })
 
-/// The built experiment's readout for the chosen swept element (resolved BY id against the present
-/// elements, so a stale chosen id — e.g. a removed element — yields no readout). Empty when nothing is
-/// chosen or the chosen element is no longer present. Uses the domain `Experiment` so the readout and
-/// the experiment stay in lock-step.
-/// The domain `Experiment` for the chosen element under the current experiment kind (spec 026: the three
-/// kinds mirror `ExperimentControls.ExperimentKindChoice`).
-let private experimentFor (kind : ExperimentControls.ExperimentKindChoice) (id : Library.ElementId) : Experiments.Experiment =
-    match kind with
-    | ExperimentControls.RotateR1 -> Experiments.RotateR1FullCircle id
-    | ExperimentControls.SweepR2 -> Experiments.SweepR2 id
-    | ExperimentControls.SweepLambda -> Experiments.SweepWaveLength id
-
+/// The current draft experiment's readout (spec 028), or "" when the draft is incomplete / its element is
+/// no longer present.
 let private experimentReadout (model : Model) : string =
-    match model.chosenSwept with
-    | Some chosen ->
-        match model.elements |> List.mapi (fun i e -> i, e) |> List.tryFind (fun (_, e) -> e.id = chosen) with
-        | Some (i, e) ->
-            let exp = experimentFor model.experimentKind e.id
-            sprintf "Experiment: %s #%d — %s" (kindName e.placement.catalogueKind) (i + 1) exp.description
-        | None -> ""
-    | None -> ""
+    let draft = model.experimentCollection.draft
+    match draft.elementId, draft.variable with
+    | Some id, Some v when model.elements |> List.exists (fun e -> e.id = id) ->
+        sprintf "Experiment: %s — vary %s over %g…%g %s (%d pts), capture %s"
+            draft.elementLabel v.label draft.range.min draft.range.max v.unitLabel draft.range.points draft.measurement.label
+    | _ -> ""
 
 // ---------------------------------------------------------------------------
 // Spec 0027 (024) Phase 3/4: run ONE experiment end-to-end from the LIVE scene. The host resolves the
@@ -1061,23 +1116,12 @@ let private runInputStokes (model : Model) : StokesVector =
         | _ -> None)
     |> Option.defaultValue Propagation.unpolarizedStokes
 
-/// The sample's Mueller matrix from the FIRST sample element bound to a sample preset (via the engine), at
-/// the run wavelength and normal incidence. No sample → the identity MM (a transparent pass-through; the
-/// Malus law then holds exactly).
-let private runSampleMueller (model : Model) : MuellerMatrix =
-    let w = runWaveLength model
-    model.elements
-    |> List.tryPick (fun e ->
-        match boundEntry model e with
-        | Some (Library.SampleItem s) -> Some (Propagation.sampleMuellerT s w IncidenceAngle.normal)
-        | _ -> None)
-    |> Option.defaultValue Propagation.identityMueller
-
-/// The analyzer's polarizer kind: the CHOSEN swept element if it is bound to a polarizer preset, else the
-/// first polarizer AFTER any sample, else an ideal linear analyzer (so the sweep is always well-defined).
-let private runAnalyzerKind (model : Model) : Library.PolarizerKind =
-    let chosenKind =
-        match model.chosenSwept with
+/// The analyzer's polarizer kind for the rotate-R1 experiment: the VARIED element if it is bound to a
+/// polarizer preset, else the first polarizer bound in the scene, else an ideal linear analyzer (so the
+/// rotate is always well-defined).
+let private runAnalyzerKind (model : Model) (varied : Library.ElementId option) : Library.PolarizerKind =
+    let variedKind =
+        match varied with
         | Some chosen ->
             model.elements
             |> List.tryFind (fun e -> e.id = chosen)
@@ -1086,7 +1130,7 @@ let private runAnalyzerKind (model : Model) : Library.PolarizerKind =
                 | Some (Library.PolarizerItem p) -> Some p.kind
                 | _ -> None)
         | None -> None
-    match chosenKind with
+    match variedKind with
     | Some k -> k
     | None ->
         model.elements
@@ -1125,18 +1169,39 @@ let private runAnalyzerOpt (model : Model) : (Library.PolarizerKind * Angle) opt
         | Some (Library.PolarizerItem p) -> Some (p.kind, e.placement.r1)
         | _ -> None)
 
-/// The number of samples in the rotating-analyzer sweep (0…360° inclusive).
-let experimentCurvePoints : int = 73
-
-/// The number of samples in an R2 (incidence) or wavelength sweep.
-let experimentSweepPoints : int = 91
-
 /// A `ChartSeries` from named (x, y) points.
 let private series (name : string) (points : (float * float) list) : ExperimentChart.ChartSeries =
     { name = name; points = points }
 
-/// A prose description of the run: which source / input / sample / detector are bound, and what is swept.
-let private describeRun (model : Model) (sweptLabel : string) (sweepText : string) : string =
+/// The Propagation branches an experiment captures, each with a short tag for its series name (spec 028).
+let private branchesFor (m : Experiments.MeasurementMode) : (Propagation.Branch * string) list =
+    match m with
+    | Experiments.CaptureTransmitted -> [ Propagation.BranchTransmitted, "T" ]
+    | Experiments.CaptureReflected -> [ Propagation.BranchReflected, "R" ]
+    | Experiments.CaptureBoth -> [ Propagation.BranchTransmitted, "T"; Propagation.BranchReflected, "R" ]
+
+/// A series display name: the base name, suffixed with the branch tag only when capturing BOTH branches.
+let private seriesName (m : Experiments.MeasurementMode) (branchTag : string) (baseName : string) : string =
+    match m with
+    | Experiments.CaptureBoth -> sprintf "%s (%s)" baseName branchTag
+    | _ -> baseName
+
+/// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound sample re-solved at
+/// the run wavelength / normal incidence on that branch, or — with NO sample — the identity MM for the
+/// transmitted branch (a transparent pass-through; the Malus law then holds exactly) and `None` for the
+/// reflected branch (there is nothing to reflect).
+let private rotateSampleMueller (model : Model) (branch : Propagation.Branch) : MuellerMatrix option =
+    let w = runWaveLength model
+    match runSampleOpt model with
+    | Some s -> Some (Propagation.sampleMueller branch s w IncidenceAngle.normal)
+    | None ->
+        match branch with
+        | Propagation.BranchTransmitted -> Some Propagation.identityMueller
+        | Propagation.BranchReflected -> None
+
+/// A prose description of the run: which source / sample / detector are bound, the varied element, the
+/// capture mode, and what is varied.
+let private describeRun (model : Model) (label : string) (captureText : string) (varyText : string) : string =
     let wNm = (runWaveLength model).value / nmToMeter / oneNanometer
     let sampleText =
         match runSampleOpt model with
@@ -1146,34 +1211,35 @@ let private describeRun (model : Model) (sweptLabel : string) (sweepText : strin
         match runDetectorKind model with
         | Library.Ellipsometer -> "ellipsometer (Ψ/Δ)"
         | Library.Intensity -> "intensity detector (S₀)"
-    sprintf "Source %.0f nm → %s → %s; %s. Sweeping %s." wNm sampleText detectorText (sprintf "swept element: %s" sweptLabel) sweepText
+    sprintf "Source %.0f nm → %s → %s; varied element: %s; capture %s. Varying %s."
+        wNm sampleText detectorText label captureText varyText
 
-/// The label for the chosen swept element ("<kind> #<n>", 1-based), or "(none)".
-let private sweptLabel (model : Model) : string =
-    match model.chosenSwept with
-    | Some chosen ->
-        model.elements
-        |> List.mapi (fun i e -> i, e)
-        |> List.tryFind (fun (_, e) -> e.id = chosen)
-        |> Option.map (fun (i, e) -> sprintf "%s #%d" (kindName e.placement.catalogueKind) (i + 1))
-        |> Option.defaultValue "(none)"
-    | None -> "(none)"
-
-/// The end-to-end experiment result as a renderer-neutral `ExperimentChart` (spec 026): RotateR1 ⇒ the
-/// existing intensity-vs-R1 Malus curve (or a single-point Ψ/Δ for an ellipsometer); SweepR2 ⇒ value-vs-R2
-/// with the sample re-solved at each incidence; SweepWaveLength ⇒ value-vs-λ. An ellipsometer detector
-/// yields two series (Ψ and Δ vs the swept variable). Empty when no experiment is built (or an R2 / λ sweep
-/// has no bound sample to re-solve). Public so the host's branches are unit-testable without a window.
-let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
-    match model.chosenSwept with
-    | Some chosen when model.elements |> List.exists (fun e -> e.id = chosen) ->
+/// The end-to-end experiment result as a renderer-neutral `ExperimentChart` (spec 028), computed from the
+/// current DRAFT: VaryR1 ⇒ the rotating-analyzer intensity curve over the chosen R1 range (or a single-point
+/// Ψ/Δ for an ellipsometer); VaryR2 ⇒ value-vs-incidence with the sample re-solved at each angle; VaryWave-
+/// Length ⇒ value-vs-λ. The CAPTURE mode (T / R / both) selects the sample branch — "both" yields one series
+/// per branch — and an ellipsometer detector yields Ψ/Δ series. Empty when the draft is incomplete, its
+/// element is gone, or an R2 / λ vary has no bound sample. Public so the host's branches are unit-testable.
+/// The chart for an EXPLICIT experiment configuration (element id + variable + capture + range + label),
+/// used by both the live draft preview (`experimentResult`) and the per-experiment "View" action
+/// (`chartForExperiment`). Empty when the element is no longer present.
+let chartForParams
+    (model : Model)
+    (chosen : Library.ElementId)
+    (variable : Experiments.VariableParameter)
+    (measurement : Experiments.MeasurementMode)
+    (range : Experiments.VariableRange)
+    (label : string) : ExperimentChart.ExperimentChart =
+    if not (model.elements |> List.exists (fun e -> e.id = chosen)) then ExperimentChart.empty
+    else
         let svIn = runInputStokes model
         let w = runWaveLength model
         let detector = runDetectorKind model
-        let label = sweptLabel model
-        match model.experimentKind with
-        | ExperimentControls.RotateR1 ->
-            let mmSample = runSampleMueller model
+        let captureText = measurement.label
+        let n = max 2 range.points
+        match variable with
+        | Experiments.VaryR1 ->
+            let varyText = sprintf "the rotation R1 over %g…%g°" range.min range.max
             match detector with
             | Library.Ellipsometer ->
                 {
@@ -1181,105 +1247,183 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                     xLabel = ""
                     yLabel = ""
                     title = "Ellipsometer readout"
-                    description = describeRun model label "(single-point Ψ/Δ — rotate the analyzer or use a 1-D sweep for a curve)"
+                    description = describeRun model label captureText (varyText + " (single-point Ψ/Δ — use an R2 / λ vary for a curve)")
+                    angular = true
                 }
             | Library.Intensity ->
-                let curve = Propagation.rotatingAnalyzerCurve svIn mmSample (runAnalyzerKind model) experimentCurvePoints
+                let analyzerKind = runAnalyzerKind model (Some chosen)
+                let seriesList =
+                    branchesFor measurement
+                    |> List.choose (fun (branch, tag) ->
+                        rotateSampleMueller model branch
+                        |> Option.map (fun mm ->
+                            let curve = Propagation.rotatingAnalyzerCurveRange svIn mm analyzerKind range.min range.max n
+                            series (seriesName measurement tag "Intensity") curve.points))
                 {
-                    series = [ series "Intensity" curve.points ]
-                    xLabel = "Analyzer R1 (°)"
+                    series = seriesList
+                    xLabel = "Rotation R1 (°)"
                     yLabel = "Intensity (S₀)"
                     title = "Rotating analyzer (Malus)"
-                    description = describeRun model label "the analyzer R1 over 0…360°"
+                    description = describeRun model label captureText varyText
+                    angular = true
                 }
-        | ExperimentControls.SweepR2 ->
+        | Experiments.VaryR2 ->
             match runSampleOpt model with
             | Some sample ->
+                // The engine cannot solve exactly 90° incidence, so the top is clamped below it (drawn to 90).
+                let lo = max 0.0 (min range.min range.max)
+                let hi = min Propagation.r2SweepMaxDegrees (max range.min range.max)
+                let varyText = sprintf "the incidence angle R2 over %g…%g° (%g° computed, drawn to 90°)" range.min range.max hi
                 match detector with
                 | Library.Ellipsometer ->
-                    let psi, delta = Propagation.r2SweepPsiDelta svIn sample w experimentSweepPoints
+                    let seriesList =
+                        branchesFor measurement
+                        |> List.collect (fun (branch, tag) ->
+                            let psi, delta = Propagation.r2SweepPsiDelta branch svIn sample w lo hi n
+                            [ series (seriesName measurement tag "Ψ") psi; series (seriesName measurement tag "Δ") delta ])
                     {
-                        series = [ series "Ψ" psi; series "Δ" delta ]
+                        series = seriesList
                         xLabel = "Incidence angle R2 (°)"
                         yLabel = "Ψ, Δ (°)"
                         title = "Ellipsometric Ψ/Δ vs incidence"
-                        description = describeRun model label "the incidence angle (R2) over 0…90° (89° computed, drawn to 90°)"
+                        description = describeRun model label captureText varyText
+                        angular = true
                     }
                 | Library.Intensity ->
-                    let curve = Propagation.r2SweepCurve svIn sample w (runAnalyzerOpt model) experimentSweepPoints
+                    let seriesList =
+                        branchesFor measurement
+                        |> List.map (fun (branch, tag) ->
+                            let curve = Propagation.r2SweepCurve branch svIn sample w (runAnalyzerOpt model) lo hi n
+                            series (seriesName measurement tag "Intensity") curve)
                     {
-                        series = [ series "Intensity" curve ]
+                        series = seriesList
                         xLabel = "Incidence angle R2 (°)"
                         yLabel = "Intensity (S₀)"
                         title = "Intensity vs incidence"
-                        description = describeRun model label "the incidence angle (R2) over 0…90° (89° computed, drawn to 90°)"
+                        description = describeRun model label captureText varyText
+                        angular = true
                     }
             | None -> ExperimentChart.empty
-        | ExperimentControls.SweepLambda ->
+        | Experiments.VaryWaveLength ->
             match runSampleOpt model with
             | Some sample ->
-                let lo, hi = model.lambdaRange
+                let lo = min range.min range.max
+                let hi = max range.min range.max
                 let inc = IncidenceAngle.normal
-                let rangeText = sprintf "the wavelength over %.0f…%.0f nm" (min lo hi) (max lo hi)
+                let varyText = sprintf "the wavelength over %g…%g nm" lo hi
                 match detector with
                 | Library.Ellipsometer ->
-                    let psi, delta = Propagation.waveLengthSweepPsiDelta svIn sample inc lo hi experimentSweepPoints
+                    let seriesList =
+                        branchesFor measurement
+                        |> List.collect (fun (branch, tag) ->
+                            let psi, delta = Propagation.waveLengthSweepPsiDelta branch svIn sample inc lo hi n
+                            [ series (seriesName measurement tag "Ψ") psi; series (seriesName measurement tag "Δ") delta ])
                     {
-                        series = [ series "Ψ" psi; series "Δ" delta ]
+                        series = seriesList
                         xLabel = "Wavelength (nm)"
                         yLabel = "Ψ, Δ (°)"
                         title = "Ellipsometric Ψ/Δ vs wavelength"
-                        description = describeRun model label rangeText
+                        description = describeRun model label captureText varyText
+                        angular = false
                     }
                 | Library.Intensity ->
-                    let curve = Propagation.waveLengthSweepIntensity svIn sample inc (runAnalyzerOpt model) lo hi experimentSweepPoints
+                    let seriesList =
+                        branchesFor measurement
+                        |> List.map (fun (branch, tag) ->
+                            let curve = Propagation.waveLengthSweepIntensity branch svIn sample inc (runAnalyzerOpt model) lo hi n
+                            series (seriesName measurement tag "Intensity") curve)
                     {
-                        series = [ series "Intensity" curve ]
+                        series = seriesList
                         xLabel = "Wavelength (nm)"
                         yLabel = "Intensity (S₀)"
                         title = "Intensity vs wavelength"
-                        description = describeRun model label rangeText
+                        description = describeRun model label captureText varyText
+                        angular = false
                     }
             | None -> ExperimentChart.empty
+
+/// The live DRAFT's chart (the inline bay preview + the draft "Open chart" action). Public so the host's
+/// branches are unit-testable without a window.
+let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
+    let draft = model.experimentCollection.draft
+    match draft.elementId, draft.variable with
+    | Some chosen, Some variable -> chartForParams model chosen variable draft.measurement draft.range draft.elementLabel
     | _ -> ExperimentChart.empty
 
-// Spec 0027 (026) Part 3: now that `experimentResult` exists, wire the forward-referenced hook so a
-// double-click on the inline chart opens the pop-out ScottPlot `ChartWindow` for the current chart (guarded
-// behind a non-empty chart; never reached under the headless `ui-smoke` gate).
+/// The chart of a specific COLLECTED experiment — the per-row "View" action.
+let chartForExperiment (model : Model) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
+    chartForParams model exp.elementId exp.variable exp.measurement exp.range exp.elementLabel
+
+// Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
+// "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
+// behind a non-empty chart; never reached under the headless `ui-smoke` gate's frame render).
 openChartWindowHook <-
     fun model ->
         let chart = experimentResult model
         if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
 
-/// The single-point Ψ/Δ readout for the RotateR1 + ellipsometer case (the inline bay shows it as text). Kept
+viewExperimentHook <-
+    fun model idStr ->
+        match System.Int32.TryParse idStr with
+        | true, i ->
+            match model.experimentCollection.experiments |> List.tryFind (fun e -> e.id.value = i) with
+            | Some exp ->
+                let chart = chartForExperiment model exp
+                if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
+            | None -> ()
+        | _ -> ()
+
+/// The single-point Ψ/Δ readout for the VaryR1 + ellipsometer case (the inline bay shows it as text). Kept
 /// separate from `experimentResult` (which carries no Ψ/Δ for that case — there is no curve) so the bay can
-/// still show the numeric reading. `None` for an intensity detector or any sweep that produces series.
+/// still show the numeric reading. `None` for an intensity detector or any vary that produces series.
 let private experimentPsiDelta (model : Model) : (float * float) option =
-    match model.chosenSwept with
-    | Some chosen when model.elements |> List.exists (fun e -> e.id = chosen) ->
-        match model.experimentKind, runDetectorKind model with
-        | ExperimentControls.RotateR1, Library.Ellipsometer ->
+    let draft = model.experimentCollection.draft
+    match draft.elementId, draft.variable with
+    | Some chosen, Some Experiments.VaryR1 when model.elements |> List.exists (fun e -> e.id = chosen) ->
+        match runDetectorKind model with
+        | Library.Ellipsometer ->
             let svIn = runInputStokes model
-            let mmSample = runSampleMueller model
-            let pd = Propagation.ellipsometerReadout (mmSample * svIn)
+            let branch = branchesFor draft.measurement |> List.head |> fst
+            let mm = rotateSampleMueller model branch |> Option.defaultValue Propagation.identityMueller
+            let pd = Propagation.ellipsometerReadout (mm * svIn)
             Some (pd.psi.degrees, pd.delta.degrees)
-        | _ -> None
+        | Library.Intensity -> None
     | _ -> None
 
-/// The Experiments bay state for the current scene: every present element is a candidate; the chosen swept
-/// element (if any) is highlighted; the readout reflects the built experiment; the inline result is the
-/// chart (series + labels + description) of the end-to-end run. Disabled when the scene has no elements.
-let private experimentState (model : Model) : ExperimentControls.State =
+/// The Experiments bay state for the current scene (spec 028): the present elements as candidates, the
+/// element-constrained variable choices, the current draft (chosen element / variable / capture / range),
+/// whether it can be committed and whether it is editing, the collection of added experiments, and the
+/// inline chart of the draft's run. Disabled when the scene has no elements. Public so the host's bay
+/// projection is unit-testable without mounting a window.
+let experimentState (model : Model) : ExperimentControls.State =
+    let col = model.experimentCollection
+    let draft = col.draft
     let chart = experimentResult model
-    let lo, hi = model.lambdaRange
+    let variableChoices =
+        match draft.elementId with
+        | Some id ->
+            match model.elements |> List.tryFind (fun e -> e.id = id) with
+            | Some e -> Experiments.variablesFor e.placement.catalogueKind |> List.map toVariableChoice
+            | None -> []
+        | None -> []
     {
         candidates = sweepCandidates model
-        chosenId = model.chosenSwept |> Option.map (fun id -> id.value)
-        experimentName = experimentReadout model
+        chosenId = draft.elementId |> Option.map (fun id -> id.value)
+        variableChoices = variableChoices
+        chosenVariable = draft.variable |> Option.map toVariableChoice
+        measurement = toMeasurementChoice draft.measurement
+        rangeMin = draft.range.min
+        rangeMax = draft.range.max
+        rangePoints = draft.range.points
+        rangeUnitLabel = (match draft.variable with Some v -> v.unitLabel | None -> "°")
+        canAdd = Experiments.canCommit col
+        isEditing = (match draft.editingId with Some _ -> true | None -> false)
+        collection =
+            col.experiments
+            |> List.map (fun e ->
+                { ExperimentControls.ExperimentRow.id = string e.id.value; description = e.description; isEditing = (draft.editingId = Some e.id) })
+        readout = experimentReadout model
         enabled = not (List.isEmpty model.elements)
-        kind = model.experimentKind
-        lambdaLoNm = lo
-        lambdaHiNm = hi
         series = chart.series |> List.map (fun s -> { ExperimentControls.ChartSeries.name = s.name; points = s.points })
         xLabel = chart.xLabel
         yLabel = chart.yLabel
@@ -1289,10 +1433,17 @@ let private experimentState (model : Model) : ExperimentControls.State =
 
 let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Handlers =
     {
-        chooseSwept = fun id -> dispatch (ChooseSweptElement id)
-        chooseKind = fun kind -> dispatch (ChooseExperimentKind kind)
-        setLambdaLo = fun v -> dispatch (SetLambdaLo v)
-        setLambdaHi = fun v -> dispatch (SetLambdaHi v)
+        chooseElement = fun id -> dispatch (ExpChooseElement id)
+        chooseVariable = fun v -> dispatch (ExpChooseVariable v)
+        chooseMeasurement = fun m -> dispatch (ExpChooseMeasurement m)
+        setRangeMin = fun v -> dispatch (ExpSetRangeMin v)
+        setRangeMax = fun v -> dispatch (ExpSetRangeMax v)
+        setRangePoints = fun n -> dispatch (ExpSetRangePoints n)
+        addOrUpdate = fun () -> dispatch ExpCommit
+        newExperiment = fun () -> dispatch ExpNew
+        editExperiment = fun idStr -> dispatch (ExpEdit idStr)
+        removeExperiment = fun idStr -> dispatch (ExpRemove idStr)
+        viewExperiment = fun idStr -> dispatch (ViewExperiment idStr)
         openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
 
