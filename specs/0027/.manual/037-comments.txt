@@ -1,0 +1,19 @@
+There are still missing DU cases and these are isotropic absorptive non-dispersive (dispersive handles absorption) and 
+the DU tree to build non-dispersive uniaxial and biaxial non-absorptive and absorptive media. Remember that eps is 
+isotropic / uniaxial / biaxial. Each can be non-dispersive, in which case it splits into non-absorbing (transparent) 
+and absorbing OR dispersive, in which case it splits into isotropic / uniaxial / biaxial (and absorption is handled by 
+dispersion formulas). This whole tree is what we need to support.
+ 
+Note that `type EpsDispersion` is WRONG because `Eps` is already a 3x3 complex matrix and so it cannot be used as a description 
+of what kind is this eps.
+Note that *WithDisp types CANNOT and DO NOT become serializable because they already use a func inside. Rather, the func-values 
+are serializable because they carry only data and that data allows us to perform closure to construct the relevant functions.
+I believe that the serializable types that carry func values and / or just value should carry suffix Value (check the convention) 
+with otherwise matching what they are for. E.g. if we want to construct `EpsWithDisp`, then the underlying “value” type, e.g. 
+`EpsWithDispValue` and its non-dispersive DU case EpsWithDisp.EpsWithoutDisp => ` EpsWithDispValue.EpsWithoutDispValue` contains 
+all DU cases that allow us to build that `Eps`. There are tons of functions that do that, e.g. `Eps.fromRefractionIndex`.
+
+Also note that uniaxial and biaxial samples have rotations of the axes. The media is always in primary axes but when we get 
+to the samples, then we may want to rotate the media. Again, there are tons of examples in the code that do that.
+
+Update 035.
