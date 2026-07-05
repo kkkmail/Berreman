@@ -26,13 +26,9 @@
     "include_co_author_trailer": true,
     "missing_ticket_token": "NO-TICKET"
   },
-  "user_files": {
-    "splitter": ".user-md/splitter.user-md",
-    "arc-runner": ".user-md/arc-runner.user-md"
-  },
   "gate_policy": {
     "retry_budget": 1,
-    "baseline_source": "state_of_the_world"
+    "baseline_source": "checkpoint_record"
   },
   "gate_keeper": {
     "confidence_threshold": "default"
@@ -44,7 +40,7 @@
   "gates_curator": {
     "auto_offer_exclusions": []
   },
-  "data_version": 5,
+  "data_version": 7,
 
   "max_arc_wall_seconds": 172800
 }

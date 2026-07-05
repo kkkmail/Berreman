@@ -98,7 +98,7 @@
       "port":    7351,
       "command": "python",
       "args": [
-        "C:/GitHub/AI-Strategy-Generator-UPGRADE/.yolo/.tool-server/server.py"
+        "C:/GitHub/AI-Strategy-Generator/.yolo/.tool-server/server.py"
       ]
     }
   ],
