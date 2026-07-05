@@ -12,3 +12,9 @@ That’s two options and under the hood each of them is similar two case DU as for
 MUST be elevated to their `Eps<Something>`, `Mu<Something>`, `Rho<Something>`, so that they can never be mixed.
 
 Update 035 as the changes seems small enough so that not to justify an extra file.
+
+There are still missing DU cases and these are isotropic absorptive non-dispersive (dispersive handles absorption) 
+and the DU tree to build non-dispersive uniaxial and biaxial non-absorptive and absorptive media. Remember that eps 
+is isotropic / uniaxial / biaxial. Each can be non-dispersive, in which case it splits into non-absorbing (transparent) 
+and absorbing OR dispersive, in which case it splits into isotropic / uniaxial / biaxial (and absorption is handled by 
+dispersion formulas). This whole tree is what we need to support. Update 035.

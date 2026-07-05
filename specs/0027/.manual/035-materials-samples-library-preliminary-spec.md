@@ -1,11 +1,22 @@
-# 0027-035 — Materials, Samples & the serializable dispersion model (preliminary spec, rev. 2)
+# 0027-035 — Materials, Samples & the serializable dispersion model (preliminary spec, rev. 3)
 
-**Status: preliminary — feature list / mini-spec, no code yet.** Revises `033` to incorporate the `034`
-comments. Key changes vs `033`: (1) **ids are `Guid`, elevated now** — no wrap/unwrap, no deferral (§3.1);
-(2) a **serializable "func-value" dispersion model added to the engine `Dispersion.fs`** with
-`toEpsWithDisp`/`toMuWithDisp`/`toRhoWithDisp` and a globally-unique anisotropy DU (§6.1); (3) **naming**:
-**Materials** is materials only, **Library** is samples, and the old element-binding "Library" bay is renamed
-**Selector** (§2, Q1); (4) layered samples stay **fully editable with multi-select bulk layer ops** (§7, Q2).
+**Status: preliminary — feature list / mini-spec, no code yet.** Revises `033`→`034`, then refines the
+dispersion model per `036`. Key changes vs `033`: (1) **ids are `Guid`, elevated now** — no wrap/unwrap, no
+deferral (§3.1); (2) a **serializable "func-value" dispersion model added to the engine `Dispersion.fs`**
+with `toEpsWithDisp`/`toMuWithDisp`/`toRhoWithDisp` (§6.1); (3) **naming**: **Materials** is materials only,
+**Library** is samples, and the old element-binding "Library" bay is renamed **Selector** (§2, Q1);
+(4) layered samples stay **fully editable with multi-select bulk layer ops** (§7, Q2).
+
+**`036` dispersion refinements (this rev.):** every dispersion expression is **elevated per tensor**
+(`EpsDispersionExpression` / `MuDispersionExpression` / `RhoDispersionExpression` — never mixed), while a
+genuinely-generic thing stays generic (a `WaveLengthInterval` is *just* an interval); **real models stay
+real** with **separate n and k formulas** (complex is used *only* where a model is inherently complex, e.g.
+Lorentz/Drude ε); the wavelength band is **one per segment, shared across the principal axes** (fixing the
+per-axis-interval error), giving **three segment flavors** (isotropic / uniaxial / biaxial) elevated into a
+collection; `validity` is renamed **`wavelengthInterval`**; and the medium is a **DU option tree** — eps is
+always present as a two-case `EpsDispersion` (non-dispersive | dispersive), while magnetic (`MuDispersion`)
+and optical-activity (`RhoDispersion`) are **optional**, each itself a two-case DU. §6 carries the full model.
+
 §11 records the now-**decided** answers; §12 the phasing. Every type named below already exists at the cited
 path unless flagged **NEW** / **MOVE** / **extend**. No files are changed by this document.
 
@@ -200,154 +211,152 @@ anisotropy, no activity, no magnetism). Every richer feature is **unlocked** by 
 vacuum/scalar default; unchecking restores the default losslessly. This is *net-new UI + a small domain
 edit-model over already-existing physics types* — not a solver change.
 
+The edit model is a **DU option tree** (036): a medium **always** has an `eps` (which is itself a two-case
+`EpsDispersion` — non-dispersive or dispersive), and **may** additionally be magnetic and/or optically
+active — each an *optional* property that, when present, is again a two-case DU:
+
 ```fsharp
-type MaterialComplexity =                 // NEW (OpticalConstructor.Domain)
+type MaterialComplexity =                 // NEW (OpticalConstructor.Domain) — the option tree
     {
-        eps       : MediumDispersion      // anisotropy × dispersion × absorption → epsWithDisp   (§6.1)
-        activity  : RhoDispersion         // optical activity (gyration)          → rhoWithDisp    (§6.2)
-        magnetism : MuDispersion          // magnetic permeability                → muWithDisp     (§6.3)
+        eps      : EpsDispersion          // ALWAYS present; two-case (non-dispersive | dispersive) → epsWithDisp (§6.1)
+        magnetic : MuDispersion option    // OPTIONAL; when Some, two-case                          → muWithDisp  (§6.3)
+        active   : RhoDispersion option   // OPTIONAL; when Some, two-case                          → rhoWithDisp (§6.2)
     }
-    member toProperties : OpticalPropertiesWithDisp   // = { eps.toEpsWithDisp; magnetism.toMuWithDisp; activity.toRhoWithDisp }
+    member toProperties : OpticalPropertiesWithDisp
+    // = { epsWithDisp = eps.toEpsWithDisp
+    //     muWithDisp  = match magnetic with Some m -> m.toMuWithDisp  | None -> Mu.vacuum.dispersive
+    //     rhoWithDisp = match active   with Some a -> a.toRhoWithDisp | None -> Rho.vacuum.dispersive }
 ```
 
-`toProperties` is a pure map (unit-tested in `OpticalConstructor.Tests`, no window) that just calls the
-engine's three `to…WithDisp` members (§6.1). The **isotropic / uniaxial / biaxial** selector is a 3-way
-editor-MVU toggle that chooses which `MediumDispersion` case is built; it lives in the editor's message DU,
-never in the stored `MaterialComplexity`, and it also constrains the gyration-class picker (§6.2).
+`toProperties` is a pure map (unit-tested in `OpticalConstructor.Tests`, no window) that calls the engine's
+`to…WithDisp` members (§6.1) and supplies the `Mu.vacuum` / `Rho.vacuum` defaults for absent properties. The
+**isotropic / uniaxial / biaxial** choice is *inside* `EpsDispersion` (§6.1); the editor's 3-way toggle
+chooses which case is built and constrains the gyration-class picker (§6.2). `EpsDispersion`, `MuDispersion`
+and `RhoDispersion` are **distinct elevated types** — the compiler makes it impossible to pass an eps
+dispersion where a μ or ρ one is expected.
 
-### 6.1 Serializable dispersion — a "func-value" model in the engine `Dispersion.fs` (Q6)
+### 6.1 Serializable dispersion — elevated, real-first, in the engine `Dispersion.fs` (Q6, 036)
 
 `EpsWithDisp`/`MuWithDisp`/`RhoWithDisp` (`Berreman/Dispersion.fs:9,24,38`) each wrap a raw
 `WaveLength -> Eps/Mu/Rho` **closure** — a function value that **cannot be serialized**. We do **not** change
-those types. Instead we **add, in the same file, a serializable representation that PRODUCES them**, plus
-`toEpsWithDisp`/`toMuWithDisp`/`toRhoWithDisp`. Q6: these sit strictly **before** `EpsWithDisp` &c. and merely
-expose the appropriate function — no solver change.
+those types. We **add, in the same file, elevated serializable representations that PRODUCE them**, plus
+`toEpsWithDisp`/`toMuWithDisp`/`toRhoWithDisp`. Q6: these sit strictly **before** the WithDisp types and merely
+expose the `WaveLength -> Eps/Mu/Rho` function — no solver change.
 
-**Why a term array.** Across essentially every published dispersion model, an optical constant is a **sum of
-polynomial and inverse-polynomial terms in the wavelength** (or in a monotone abscissa of it). This is
-literally how the standard catalogues store data (§13): the **Schott/general glass** form
-`n² = A₁ + A₂λ² + A₃λ⁻² + A₄λ⁻⁴ + A₅λ⁻⁶ + A₆λ⁻⁸` (a Laurent polynomial), and the **refractiveindex.info
-"formula 4"** — a general sum `n² = c₁ + Σ cᵢ λ^{pᵢ}/(λ^{qᵢ} − rᵢ^{sᵢ}) + Σ cⱼ λ^{pⱼ}` of rational and
-polynomial terms. A single term is captured by an array of coefficients + one integer power of the whole
-polynomial; a resonant term additionally carries its **critical wavelength** `λ_i` (the `(λ − λ_i)` shift) and
-a **multiplier**. Absorbing/oscillator models require **complex** coefficients (the imaginary damping term),
-so coefficients and multiplier are complex — a purely-real formula just carries zero imaginary parts.
+**Generic building blocks — a formula is just a formula, an interval just an interval (036).** Across the
+standard catalogues an optical constant is a **sum of polynomial and inverse-polynomial terms in the
+wavelength** (§13: the Schott/Laurent glass form `n² = Σ Aᵢλ^{2i}`; the refractiveindex.info "formula 3/4"
+sum of `cᵢλ^{pᵢ}/(λ^{qᵢ} − rᵢ^{sᵢ})` terms). A single term is `multiplier · (Σ_k cₖ·(λ − λᵢ)^k)^power`. These
+are **tensor-agnostic** and therefore stay generic (like a `WaveLengthInterval` — *just* an interval — they
+are not "eps" or "mu" anything); they are only ever held *inside* an elevated Eps/Mu/Rho expression below.
 
 ```fsharp
-// NEW in Berreman/Berreman/Dispersion.fs — fully serializable (no closures, no engine-external deps).
+type WaveLengthInterval = { lower : WaveLength; upper : WaveLength }         // GENERIC — an interval is just an interval
 
-/// One term:  multiplier · ( Σ_k coefficients[k] · (λ − lambda)^k ) ^ power
-/// Polynomial evaluated in (λ − lambda); `power` is the integer exponent of the WHOLE polynomial
-/// (negative ⇒ inverse polynomial, e.g. (λ − a)^(−2)). Complex so absorbing/oscillator terms are
-/// expressible; a real formula has im = 0. λ is taken in the expression's `wavelengthScale` units.
-/// Example  −2.5·(λ − 0.0012345)^(−2)  is  { lambda = 0.0012345; coefficients = [|0;1|]; power = −2; multiplier = −2.5 }.
-type DispersionTerm =
-    {
-        lambda       : double
-        coefficients : System.Numerics.Complex []
-        power        : int
-        multiplier   : System.Numerics.Complex
-    }
+/// One REAL term:  multiplier · ( Σ_k coefficients[k]·(λ − lambda)^k ) ^ power.   (real coefficients)
+/// Example  −2.5·(λ − 0.0012345)^(−2)  =  { lambda = 0.0012345; coefficients = [|0;1|]; power = −2; multiplier = −2.5 }.
+type DispersionTerm = { lambda : double; coefficients : double[]; power : int; multiplier : double }
 
-/// What the summed terms yield, so `toEpsWithDisp` knows how to reach n + ik.
-type DispersionQuantity =
-    | AsIndex           // Σ terms = n (+ ik)        — Cauchy, tabulated, constant
-    | AsIndexSquared    // Σ terms = n² = ε_axis     — Sellmeier (1 + Σ …)
-    | AsPermittivity    // Σ terms = ε_axis          — Lorentz / Drude
-
-/// A serializable dispersion expression = an ordered SUM of terms + the quantity + the abscissa scale.
-type DispersionExpression =
-    {
-        quantity       : DispersionQuantity
-        terms          : DispersionTerm list
-        wavelengthScale : double            // metres per coefficient-unit (e.g. 1e−6 for µm); no unit DU in the engine
-    }
-    member this.complexIndex : WaveLength -> ComplexRefractionIndex     // sum at x = w.value / wavelengthScale, convert by quantity
+/// A REAL func-value: an ordered sum of real terms + the abscissa scale (metres per coefficient-unit, so the
+/// engine needs no Units DU). GENERIC — a real function of λ; never held bare, always inside an elevated type.
+type DispersionFormula =
+    { terms : DispersionTerm list; wavelengthScale : double }
+    member this.evaluate : WaveLength -> double     // Σ terms at x = w.value / wavelengthScale
 ```
 
-`complexIndex` sums the terms at `x = w.value / wavelengthScale` and converts by `quantity`
-(`AsIndexSquared`/`AsPermittivity` → `Complex.Sqrt`; `AsIndex` → identity), returning the engine
-`ComplexRefractionIndex` (`MaterialProperties.fs:43`). Using a plain `double` scale (rather than the
-constructor's `Units.UnitOfMeasure` DU) keeps this new engine code free of any `OpticalConstructor`
-dependency — the editor/import layer converts a chosen unit to the scale when it builds the expression.
-
-**Range segments (Q5).** Formulas change across bands, so a principal axis is an **ordered list of segments**;
-overlap and coverage are resolved **purely by list order — the segment higher in the list wins** — with **no
-clamps and no validation** ("the segments are what they are"):
+**Real-first n / k; complex only where needed (036).** Some models are *explicitly real* with **separate
+formulas for n and k** (Cauchy, tabulated, transparent Sellmeier where k ≡ 0) — forcing them through complex
+is needless complexity. Others (Lorentz, Drude) are *inherently complex* in ε. So one principal axis is a
+small DU that keeps the real path real and reaches for complex only when a model demands it:
 
 ```fsharp
-type WaveLengthInterval = { lower : WaveLength; upper : WaveLength }          // NEW — a closed validity band
-type DispersionSegment  = { validity : WaveLengthInterval; expression : DispersionExpression }   // NEW
-// a principal axis = DispersionSegment list :  evaluation walks top→bottom and returns the FIRST segment whose
-// validity contains λ; if none contains λ, the topmost segment is evaluated (the formula simply extrapolates).
+type EpsAxisDispersion =
+    | RealNK     of n : DispersionFormula * k : DispersionFormula    // real n(λ), k(λ) — k = the zero formula for transparent
+    | ComplexEps of ComplexDispersionFormula                         // ε(λ) directly, only where complex is genuine (Lorentz/Drude); n + ik = √ε
+    member this.complexIndex : WaveLength -> ComplexRefractionIndex
 ```
 
-**The anisotropy DU (globally-unique case names).** The material's principal-axis structure is one DU whose
-cases are **`IsotropicMedium` / `UniaxialMedium` / `BiaxialMedium`** — names chosen to be globally unique (the
-existing `DispersionModels.AnisotropicModel` `Uniaxial`/`Biaxial`, `DispersionModels.fs:242`, is **superseded
-by this engine type and removed**, so no clash). `rho` (gyration) is *not* modelled here — it is more
-complicated and uses the symmetry-class DU of §6.2.
+`ComplexDispersionFormula` / `ComplexDispersionTerm` mirror the real pair with `System.Numerics.Complex`
+coefficients and are used **only** by `ComplexEps`. `RealNK.complexIndex` → `n + i·k` (two real evaluations);
+`ComplexEps.complexIndex` → `Complex.Sqrt ε`. Both yield the engine `ComplexRefractionIndex`
+(`MaterialProperties.fs:43`).
+
+**Three segment flavors, a band shared across the axes, elevated into a collection (036).** A medium's
+anisotropy is uniform, and a wavelength band applies to **all** its principal axes at once — so the band is
+**one per segment, shared across the axes** (fixing rev.2's per-axis-interval error) and is renamed the
+self-describing **`wavelengthInterval`** (the old `validity` said *nothing about what* was valid). That gives
+exactly three segment shapes, which anisotropy elevates into a **collection** (Q5 — the segment **higher in
+the list wins** on overlap; no clamps, no validation):
 
 ```fsharp
-type MediumDispersion =                    // NEW — the epsWithDisp source
-    | IsotropicMedium of DispersionSegment list
-    | UniaxialMedium  of ordinary : DispersionSegment list * extraordinary : DispersionSegment list
-    | BiaxialMedium   of x : DispersionSegment list * y : DispersionSegment list * z : DispersionSegment list
+type IsotropicEpsSegment = { wavelengthInterval : WaveLengthInterval; eps : EpsAxisDispersion }                                        // NEW
+type UniaxialEpsSegment  = { wavelengthInterval : WaveLengthInterval; ordinary : EpsAxisDispersion; extraordinary : EpsAxisDispersion }// NEW
+type BiaxialEpsSegment   = { wavelengthInterval : WaveLengthInterval; x : EpsAxisDispersion; y : EpsAxisDispersion; z : EpsAxisDispersion } // NEW
 
+/// The eps dispersion, elevated: anisotropy flavor × a HOMOGENEOUS ordered collection of its segments.
+type EpsDispersionExpression =                                       // NEW — globally-unique cases
+    | IsotropicEps of IsotropicEpsSegment list
+    | UniaxialEps  of UniaxialEpsSegment list
+    | BiaxialEps   of BiaxialEpsSegment list
+```
+
+**The two-case, per-tensor elevated properties (036).** eps is always present; μ and ρ are optional (§6).
+Each is a **distinct** two-case DU, so the compiler can never let an eps dispersion stand in for a μ or ρ one:
+
+```fsharp
+type EpsDispersion =                                                 // NEW — "eps: dispersive or non-dispersive"
+    | EpsNonDispersive of Eps                                        // constant tensor (Eps already encodes anisotropy)
+    | EpsDispersive    of EpsDispersionExpression
     member this.toEpsWithDisp : EpsWithDisp
 ```
 
-`toEpsWithDisp` builds the `WaveLength -> Eps` closure, per axis selecting the covering segment (top-of-list)
-and calling its `expression.complexIndex`, then the engine's index constructors:
-`IsotropicMedium` → `Eps.fromComplexRefractionIndex n`; `UniaxialMedium (o,e)` →
-`Eps.fromComplexRefractionIndex (n_o, n_e, n_o)`; `BiaxialMedium (x,y,z)` → the three-index constructor
-(`MaterialProperties.fs:87`). A **non-dispersive** axis (a single segment with one `power = 0` constant term)
-is emitted as `EpsWithoutDisp` (zero closure overhead), mirroring today's `ConstantNK` short-circuit
-(`DispersionModels.fs:230`). `Absorbing` is simply a non-zero imaginary part in the coefficients; `Dispersive`
-is simply more than the one constant term.
+`toEpsWithDisp`: `EpsNonDispersive e` → `EpsWithoutDisp e` (zero closure overhead); `EpsDispersive x` builds
+the `WaveLength -> Eps` closure — per medium selecting the covering segment (top-of-list, else the topmost,
+extrapolating, Q5), evaluating each `EpsAxisDispersion` to n+ik, and calling the engine index constructors:
+isotropic → `Eps.fromComplexRefractionIndex n`; uniaxial → `(n_o, n_e, n_o)`; biaxial → the three-index
+constructor (`MaterialProperties.fs:87`). **Absorbing** is just a non-zero k; **Dispersive** is just more than
+one constant term.
 
-**`muWithDisp` / `rhoWithDisp` get the identical treatment** so all three are serializable — this is the whole
-of "we address EpsWithDisp, MuWithDisp, RhoWithDisp":
+**μ and ρ get the identical elevated treatment** so all three WithDisp types become serializable — this is the
+whole of "we address EpsWithDisp, MuWithDisp, RhoWithDisp":
 
 ```fsharp
-type MuDispersion  = ...  // §6.3 — scalar, or a Polder tensor whose entries are DispersionExpressions;  member toMuWithDisp : MuWithDisp
-type RhoDispersion = ...  // §6.2 — a gyration-class DU whose surviving components are DispersionExpressions; member toRhoWithDisp : RhoWithDisp
+type MuDispersion  = MuNonDispersive of Mu | MuDispersive of MuDispersionExpression       // NEW; member toMuWithDisp  (§6.3)
+type RhoDispersion = RhoNonDispersive of Rho | RhoDispersive of RhoDispersionExpression    // NEW; member toRhoWithDisp (§6.2)
 ```
 
-each building its `WaveLength -> Mu/Rho` closure through `Mu.create` / `Rho.fromIm`
-(`MaterialProperties.fs:112,139`); constant tensors emit the `…WithoutDisp` case.
+`MuDispersionExpression` (the Polder-tensor entries, §6.3) and `RhoDispersionExpression` (the gyration-class
+components, §6.2) hold **real** `DispersionFormula`s — the magnitudes are real and the engine places them into
+the *imaginary* off-diagonals at assembly through `Mu.create` / `Rho.fromIm` (`MaterialProperties.fs:112,139`),
+so no complex appears in the stored gyration/Polder data either. Constant tensors emit the `…WithoutDisp` case.
 
-**The named formulas are a convenience layer that lowers to this (Q6 — "all known dispersion models").** The
-existing catalogue DU `DispersionModels.DispersionModel` (`DispersionModels.fs:120`:
-`Sellmeier | Cauchy | Lorentz | Drude | TaucLorentz | GaussianOscillator | ConstantNK`) stays the
-**editor-facing** picker (each case a serializable coefficient record + `wavelengthUnit`), and gains a
-`toExpression : DispersionModel -> DispersionExpression` that **compiles** each analytic form into the engine
-term array, plus **two new members** `ForouhiBloomer` and `BrendelBormann` (§13) and a raw escape hatch
-`SumOfTerms of DispersionExpression`. This is the "the DispersionModel DU could simplify this even further"
-the comment anticipates: the DU is the catalogue, `DispersionExpression` is the serialized payload, one
-`evaluate`/`toEpsWithDisp` consumes either. Detail of the mapping (`x` = abscissa in the model's unit):
+**The named formulas are a convenience catalogue that lowers to this (Q6 — "all known dispersion models").**
+Keep the editor-facing `DispersionModels.DispersionModel` DU (`DispersionModels.fs:120`:
+`Sellmeier | Cauchy | Lorentz | Drude | TaucLorentz | GaussianOscillator | ConstantNK`), **add**
+`ForouhiBloomer` / `BrendelBormann` (§13) and a raw `SumOfTerms` escape hatch, and give each case a
+`toEpsAxis : DispersionModel -> EpsAxisDispersion` that **compiles** the analytic form into the elevated axis
+expression (`x` = abscissa in the model's unit):
 
-- **Constant `n + ik`** → `AsIndex`, one term `{ lambda = 0; coefficients = [| n + ik |]; power = 0; multiplier = 1 }`.
-- **Cauchy `n = A + B/λ² + C/λ⁴`** (`:51`) → `AsIndex`, terms `A·λ⁰`, `B·(λ)^(−2)`, `C·(λ)^(−4)`
-  (`lambda = 0`, `coefficients = [|0;1|]`, `power = −2 / −4`, `multiplier = B / C`). Generalizes to any
-  Laurent polynomial — RII "formula 3/5", §13.
-- **Sellmeier `n² = 1 + Σ Bᵢ λ²/(λ² − λᵢ²)`** (`:42`) → `AsIndexSquared`; the `1` is one constant term, and
-  each oscillator uses the identity `λ²/(λ²−λᵢ²) = 1 + λᵢ²/(λ²−λᵢ²)` to become a constant `Bᵢ` **plus** an
-  inverse term `{ lambda = 0; coefficients = [| −λᵢ²; 0; 1 |]; power = −1; multiplier = Bᵢ·λᵢ² }`. So each
-  oscillator is exactly two single-polynomial terms — no rational-of-two-polynomials needed.
-- **Lorentz `ε = ε∞ + Σ sⱼ/(rⱼ² − E² − i·dⱼ·E)`** (`:63`, abscissa E) → `AsPermittivity`; `ε∞` a constant
-  term, each oscillator an inverse term with the **complex** linear coefficient `−i·dⱼ`:
-  `{ lambda = 0; coefficients = [| rⱼ²; −i·dⱼ; −1 |]; power = −1; multiplier = sⱼ }` — the imaginary
-  coefficient is exactly why coefficients are `Complex`.
-- **Drude `ε = ε∞ − ωp²/(E² + i·γ·E)`** (`:74`) → `AsPermittivity`; one inverse term
-  `{ coefficients = [| 0; i·γ; 1 |]; power = −1; multiplier = −ωp² }` plus the `ε∞` constant.
-- **Tauc–Lorentz** (`:85`), **Gaussian oscillator** (`:96`), **Forouhi–Bloomer**, **Brendel–Bormann** —
-  piecewise/transcendental (a band-gap step, an `exp`, a √-argument, a Voigt convolution), i.e. **not** a
-  finite rational term sum. They stay **named `DispersionModel` cases evaluated directly** (their coefficient
-  record is already serializable); their `toExpression` is not defined and `toEpsWithDisp` routes them
-  through the existing `DispersionModels.evaluate` closure (`:206`). The term array is the serializable
-  *lingua franca* for the rational family; the transcendental cases serialize as their record. Both routes
-  end at the same `WaveLength -> ComplexRefractionIndex`, consumed by `MediumDispersion.toEpsWithDisp`.
+- **Constant `n + ik`**, **Cauchy `n = A + B/λ² + C/λ⁴`** (`:51`), **transparent Sellmeier
+  `n² = 1 + Σ Bᵢλ²/(λ²−λᵢ²)`** (`:42`) → **`RealNK`** (real n; k the zero formula, or a second real Cauchy for
+  an absorbing dielectric). Cauchy is a Laurent polynomial (real terms `A·λ⁰`, `B·λ^(−2)`, `C·λ^(−4)`);
+  Sellmeier uses `λ²/(λ²−λᵢ²) = 1 + λᵢ²/(λ²−λᵢ²)` so each oscillator is a real constant `Bᵢ` **plus** a real
+  inverse term `{ coefficients = [| −λᵢ²; 0; 1 |]; power = −1; multiplier = Bᵢλᵢ² }` — all real, the n formula
+  evaluating `√(1 + Σ)`.
+- **Lorentz `ε = ε∞ + Σ sⱼ/(rⱼ²−E²−i·dⱼ·E)`** (`:63`), **Drude `ε = ε∞ − ωp²/(E²+i·γE)`** (`:74`) →
+  **`ComplexEps`** (complex is genuinely needed — the `−i·dⱼE` / `i·γE` damping): a complex inverse term per
+  oscillator, e.g. Lorentz `{ coefficients = [| rⱼ²; −i·dⱼ; −1 |]; power = −1; multiplier = sⱼ }` plus the
+  `ε∞` constant; then `n + ik = √ε`.
+- **Tauc–Lorentz** (`:85`), **Gaussian** (`:96`), **Forouhi–Bloomer**, **Brendel–Bormann** — piecewise /
+  transcendental (band-gap step, `exp`, √-argument, Voigt). Not a finite term sum; they stay **named cases
+  evaluated directly** (their coefficient record is already serializable) and `toEpsAxis` wraps
+  `DispersionModels.evaluate` (`:206`) as a `ComplexEps`. The term array is the serializable *lingua franca*
+  for the rational family; the transcendental ones serialize as their record. Both routes end at
+  `WaveLength -> ComplexRefractionIndex`, consumed by `EpsDispersion.toEpsWithDisp`.
+
+`DispersionModels.AnisotropicModel` (`Uniaxial`/`Biaxial`, `:242`) is **removed** — superseded by
+`EpsDispersionExpression`; `toAnisotropicOpticalProperties`/`toOpticalProperties` re-point at
+`EpsDispersion.toEpsWithDisp`.
 
 ### 6.2 Optically active → `rhoWithDisp` (gyration, symmetry-driven)
 
@@ -355,29 +364,35 @@ Optical activity is a rank-2 **axial** gyration tensor `g_ij`; only its **symmet
 polarization, it is **zero for every centrosymmetric class**, and of the optically-active point groups the
 editor never needs more than **6 components — usually 1 or 2** (§13). **Never expose a free 3×3.** Drive it
 from a symmetry-class DU whose *each case carries exactly its allowed components*, so "only a handful are
-non-zero" is a compile-time guarantee. Each surviving component is a `DispersionExpression` (§6.1) so
-gyration can itself disperse and serialize; a non-dispersive component is a single constant term.
+non-zero" is a compile-time guarantee. Each surviving component is a **real** `DispersionFormula` (§6.1 — the
+gyration magnitude is real; the engine places it into the imaginary off-diagonals at assembly) so gyration can
+itself disperse and serialize; a non-dispersive component is a single constant term. Whether ρ is present at
+all is the `active : RhoDispersion option` of §6; whether present ρ disperses is the two-case `RhoDispersion`:
 
 ```fsharp
 type Handedness = LeftHanded | RightHanded                       // enantiomorph = one overall sign flip (g → −g)
 
 type GyrationClass =                                             // NEW — offer ONLY the rotation-producing classes
-    | CubicActive        of g   : DispersionExpression                                    // 23, 432  → diag(g,g,g)
-    | UniaxialActive     of g11 : DispersionExpression * g33 : DispersionExpression       // 3,32,4,422,6,622 → diag(g11,g11,g33)
-    | PlanarActive       of g12 : DispersionExpression                                    // mm2 (off-diagonal only)
-    | Orthorhombic222    of g11 : DispersionExpression * g22 : DispersionExpression * g33 : DispersionExpression
-    | Monoclinic2        of g11 : DispersionExpression * g22 : DispersionExpression * g33 : DispersionExpression * g13 : DispersionExpression
-    | MonoclinicM        of g12 : DispersionExpression * g23 : DispersionExpression
-    | Triclinic1         of g11:DispersionExpression * g22:DispersionExpression * g33:DispersionExpression * g23:DispersionExpression * g13:DispersionExpression * g12:DispersionExpression
+    | CubicActive        of g   : DispersionFormula                                    // 23, 432  → diag(g,g,g)
+    | UniaxialActive     of g11 : DispersionFormula * g33 : DispersionFormula          // 3,32,4,422,6,622 → diag(g11,g11,g33)
+    | PlanarActive       of g12 : DispersionFormula                                    // mm2 (off-diagonal only)
+    | Orthorhombic222    of g11 : DispersionFormula * g22 : DispersionFormula * g33 : DispersionFormula
+    | Monoclinic2        of g11 : DispersionFormula * g22 : DispersionFormula * g33 : DispersionFormula * g13 : DispersionFormula
+    | MonoclinicM        of g12 : DispersionFormula * g23 : DispersionFormula
+    | Triclinic1         of g11:DispersionFormula * g22:DispersionFormula * g33:DispersionFormula * g23:DispersionFormula * g13:DispersionFormula * g12:DispersionFormula
 
-type RhoDispersion =                                            // NEW — the rhoWithDisp source (§6.1)
-    | NotActive
-    | OpticallyActive of gyration : GyrationClass * hand : Handedness
+/// The elevated ρ dispersion expression — a gyration class + the enantiomorph sign. Distinct from Eps/Mu.
+type RhoDispersionExpression = { gyration : GyrationClass; hand : Handedness }    // NEW
+
+type RhoDispersion =                                            // NEW — the rhoWithDisp source (§6.1); two-case
+    | RhoNonDispersive of Rho                                   // a constant gyrotropic tensor
+    | RhoDispersive    of RhoDispersionExpression
     member this.toRhoWithDisp : RhoWithDisp
 ```
 
-`toRhoWithDisp` builds the `WaveLength -> Rho` closure, evaluating each component's `DispersionExpression`
-and assembling the **imaginary** gyrotropic matrix through the existing `Rho.fromIm` (`MaterialProperties.fs:139`),
+`toRhoWithDisp` builds the `WaveLength -> Rho` closure (`RhoNonDispersive` short-circuits to `RhoWithoutDisp`),
+evaluating each component's `DispersionFormula` and assembling the **imaginary** gyrotropic matrix through the
+existing `Rho.fromIm` (`MaterialProperties.fs:139`),
 reusing the crystal-class `Rho` constructors in `OpticalProperties/Active.fs`:
 - `CubicActive` → `Rho.cubicCrystal` (`Active.fs:30`, `diag(g,g,g)`).
 - `UniaxialActive` → the **diagonal** `Rho.type_3_4_6_Crystal` (`Active.fs:46`, `(g11,g33) → diag(g11,g11,g33)`)
@@ -387,30 +402,35 @@ reusing the crystal-class `Rho` constructors in `OpticalProperties/Active.fs`:
 - `PlanarActive` → `Rho.planarCrystal` (`Active.fs:38`, single `g12`).
 - **222 / monoclinic / triclinic** have no constructor yet — **extend `Active.fs`** with `Rho.fromIm`
   builders (small, well-bounded).
-- The anisotropy choice (`MediumDispersion` case, §6.1) constrains the picker: `IsotropicMedium ⇒ {23,432}`;
-  `UniaxialMedium ⇒ {3,32,4,422,6,622}`; `BiaxialMedium ⇒ triclinic/monoclinic/orthorhombic`. For a
+- The anisotropy choice (the `EpsDispersionExpression` case / non-dispersive `Eps` shape, §6.1) constrains the
+  picker: `IsotropicEps ⇒ {23,432}`; `UniaxialEps ⇒ {3,32,4,422,6,622}`;
+  `BiaxialEps ⇒ triclinic/monoclinic/orthorhombic`. For a
   centrosymmetric / non-rotating class the toggle is **removed** (not greyed — §13). Quartz (class 32) is the
   worked example: `g = diag(g11,g11,g33)`, measured `g11 ≈ +5.9×10⁻⁵`, `g33 ≈ −10.1×10⁻⁵` at 24 °C (§13),
   sign flipping with handedness.
 
 ### 6.3 Magnetic → `muWithDisp`
 
-For natural media at optical frequencies `μ = 1` is correct (§13), so the default is scalar `Mu.vacuum`
-(`MaterialProperties.fs:114`) and most entries never open the tensor. **Magnetic** unlocks a small
-**gyromagnetic (Polder) tensor** whose entries are `DispersionExpression`s (§6.1):
+For natural media at optical frequencies `μ = 1` is correct (§13), so `magnetic = None` (§6) for almost every
+entry (`toProperties` then supplies `Mu.vacuum`). Whether μ is present is the `magnetic : MuDispersion option`
+of §6; whether present μ disperses is the two-case `MuDispersion`. Its dispersive expression is a small
+**gyromagnetic (Polder) tensor** whose entries are **real** `DispersionFormula`s (§6.1):
 
 ```fsharp
 type GyrationAxis = AlongX | AlongY | AlongZ                    // default AlongZ (Faraday); transverse = Voigt
-type PolderMu = { muDiagonal : DispersionExpression; muParallel : DispersionExpression
-                  gyration : DispersionExpression; axis : GyrationAxis }        // NEW
-type MuDispersion = NonMagnetic | Magnetic of PolderMu                          // NEW — the muWithDisp source (§6.1)
+/// The elevated μ dispersion expression — a Polder tensor with real entries. Distinct from Eps/Rho.
+type MuDispersionExpression = { muDiagonal : DispersionFormula; muParallel : DispersionFormula     // NEW
+                                gyration : DispersionFormula; axis : GyrationAxis }
+type MuDispersion =                                            // NEW — the muWithDisp source (§6.1); two-case
+    | MuNonDispersive of Mu                                    // a constant (scalar or Polder) tensor
+    | MuDispersive    of MuDispersionExpression
     member this.toMuWithDisp : MuWithDisp
 ```
 
 `toMuWithDisp` assembles `[[μ, +ig, 0]; [−ig, μ, 0]; [0, 0, μ_par]]` (permuted by axis, off-diagonals
-imaginary) through `Mu.create` (`MaterialProperties.fs:112`), evaluating each entry's expression at λ. **No
-solver work** — `BerremanMatrix.fs` already reads off-diagonal `μ`. The only new engine code is the
-`toMuWithDisp` assembly (mirroring `Rho.planarCrystal`).
+imaginary) through `Mu.create` (`MaterialProperties.fs:112`), evaluating each real entry at λ
+(`MuNonDispersive` short-circuits to `MuWithoutDisp`). **No solver work** — `BerremanMatrix.fs` already reads
+off-diagonal `μ`. The only new engine code is the `toMuWithDisp` assembly (mirroring `Rho.planarCrystal`).
 
 ---
 
@@ -503,19 +523,20 @@ edits **structure**; it never edits tensors — it *composes* materials (resolve
 
 ## 10. What this touches (when built — not in this task)
 
-- **`Berreman/Berreman/Dispersion.fs`** — NEW serializable `DispersionTerm` / `DispersionExpression` /
-  `DispersionQuantity`, `WaveLengthInterval` / `DispersionSegment`, the globally-unique anisotropy DU
-  `MediumDispersion` (Isotropic/Uniaxial/Biaxial) with `toEpsWithDisp`, and `MuDispersion` /
-  `RhoDispersion` with `toMuWithDisp` / `toRhoWithDisp`. (The `…WithDisp`/`…WithoutDisp` union types are
-  unchanged.)
+- **`Berreman/Berreman/Dispersion.fs`** — NEW serializable, **generic** `WaveLengthInterval` /
+  `DispersionTerm` / `DispersionFormula` (real) + `ComplexDispersionFormula` (complex, only where needed);
+  the **elevated** per-tensor `EpsAxisDispersion`, the three segment flavors + the anisotropy collection
+  `EpsDispersionExpression` (IsotropicEps/UniaxialEps/BiaxialEps), and the two-case `EpsDispersion` /
+  `MuDispersion` / `RhoDispersion` (each with `MuDispersionExpression` / `RhoDispersionExpression`) carrying
+  `toEpsWithDisp` / `toMuWithDisp` / `toRhoWithDisp`. (The `…WithDisp`/`…WithoutDisp` union types are unchanged.)
 - **`Berreman/OpticalProperties/Active.fs`** — extend the crystal-class → `Rho` constructors (222 /
   monoclinic / triclinic); add the Polder-μ assembly. (`UniaxialActive` reuses the existing diagonal
   `Rho.type_3_4_6_Crystal`.)
 - **`OpticalConstructor.Domain/DispersionModels.fs`** — keep the editor-facing `DispersionModel` catalogue;
-  add `ForouhiBloomer` / `BrendelBormann` cases + a `SumOfTerms` escape hatch, and a `toExpression` lowering
-  each analytic case to the engine `DispersionExpression`; **remove** `AnisotropicModel` (superseded by the
-  engine `MediumDispersion`) and re-point `toOpticalProperties`/`toAnisotropicOpticalProperties` at the engine
-  members.
+  add `ForouhiBloomer` / `BrendelBormann` cases + a `SumOfTerms` escape hatch, and a `toEpsAxis` lowering
+  each analytic case to the elevated `EpsAxisDispersion` (`RealNK` for real models, `ComplexEps` for
+  Lorentz/Drude); **remove** `AnisotropicModel` (superseded by `EpsDispersionExpression`) and re-point
+  `toOpticalProperties`/`toAnisotropicOpticalProperties` at `EpsDispersion.toEpsWithDisp`.
 - **`OpticalConstructor.Domain`** — `MaterialLibrary.fs`: `MaterialId` (Guid), elevate `MaterialEntry.id`,
   `MaterialProxy` (mutating), labelled `MaterialError`, `MaterialQuery`/`DispersionFilter`. `ElementId.fs`
   (`Library`): `SampleId` (Guid), elevate `Sample.id`/`Sample.materialId`, `SampleProxy`, `SampleError`,
@@ -528,13 +549,13 @@ edits **structure**; it never edits tensors — it *composes* materials (resolve
   `Charts/ChartSettings.fs`; the `StackEditor.StackMsg` bulk/period ops; wire `RepeatBuilder` /
   `validateRepeatCount`. **`OpticalConstructor.Storage/MaterialImport.fs`** — extend
   `importRefractiveIndexInfo` (`:109`) beyond formula 1 + tabulated to the other RII formula numbers, each
-  lowered to a `DispersionExpression`/`DispersionModel` (Q7).
+  lowered to an `EpsAxisDispersion` via a `DispersionModel` (Q7).
 - **`OpticalConstructor.TestWindows`** — rename `BayNames.library`→`selector`; add `materials`/`library` bay
   rows; drop the moved chart compile items.
 - **`OpticalConstructor.App`** — build the mock `MaterialProxy`/`SampleProxy` at the composition root.
 - **Tests** — proxy add/remove/edit/search round-trips (stateful mock; `Guid` keys); `removeMaterial` hard-block;
-  `DispersionExpression.complexIndex` per formula (Sellmeier/Cauchy/Lorentz/Drude term lowerings equal the
-  analytic value); `MediumDispersion.toEpsWithDisp` per anisotropy; segment top-of-list selection;
+  `EpsAxisDispersion.complexIndex` per formula (Sellmeier/Cauchy `RealNK`, Lorentz/Drude `ComplexEps` lowerings
+  equal the analytic value); `EpsDispersion.toEpsWithDisp` per anisotropy; segment top-of-list selection;
   `RhoDispersion`/`MuDispersion` → `Rho`/`Mu`; `MakeRepeatBlock`/`SelectByMaterial`/bulk ops; headless
   `ui-smoke` (unlock Anisotropic ⇒ Biaxial fields; n-left/k-right; repeat 2 layers ×K ⇒ 2K films;
   select-by-material bulk set-thickness).
@@ -550,15 +571,16 @@ edits **structure**; it never edits tensors — it *composes* materials (resolve
 - **Q3 — referential integrity:** `removeMaterial` **hard-blocks** when a Sample references the material
   (typed `MaterialStillReferenced`); no cascade, no silent delete. §3.1 / §4.
 - **Q4 —** does not exist.
-- **Q5 — dispersion segments:** an ordered `DispersionSegment list`; **the segment higher in the list wins**
-  on overlap; **no clamps, no validation** — the segments are what they are. Out-of-all-ranges evaluates the
-  topmost segment (the formula extrapolates). §6.1.
+- **Q5 — dispersion segments:** an ordered collection of same-flavor segments (each carrying one shared
+  `wavelengthInterval`, §6.1); **the segment higher in the list wins** on overlap; **no clamps, no
+  validation** — the segments are what they are. Out-of-all-ranges evaluates the topmost segment (the formula
+  extrapolates). §6.1.
 - **Q6 — all known dispersion models:** in scope now (incl. Forouhi–Bloomer & Brendel–Bormann). The models
   sit **before** `EpsWithDisp`/`MuWithDisp`/`RhoWithDisp` and merely expose the `WaveLength -> Eps/Mu/Rho`
-  functions; the rational family lowers to the serializable `DispersionExpression`, the transcendental ones
-  serialize as their coefficient records. §6.1.
+  functions; the rational family lowers to the serializable (real `RealNK` or complex `ComplexEps`)
+  `EpsAxisDispersion`, the transcendental ones serialize as their coefficient records. §6.1.
 - **Q7 — import:** **extend `MaterialImport`** (`importRefractiveIndexInfo`, `MaterialImport.fs:109`) to the
-  other RII formula numbers, each lowered to a `DispersionModel`/`DispersionExpression`. §10.
+  other RII formula numbers, each lowered to a `DispersionModel` → `EpsAxisDispersion`. §10.
 - **Q8 — ids:** **elevate now** — `MaterialId`/`SampleId` are `Guid`-backed single-case DUs and are the record
   fields themselves; used directly as `Map` keys in the mock. No raw string, no wrap/unwrap in the proxy, no
   legacy/fallback/migration. §3.1.
@@ -571,17 +593,19 @@ edits **structure**; it never edits tensors — it *composes* materials (resolve
    `SampleProxy` (`createInMemory` over a `Map`) + `MaterialQuery`/`SampleQuery`/`DispersionFilter` + labelled
    errors + `removeMaterial` hard-block; update all `MaterialEntry`/`Sample` construction/lookup sites and
    drop `sampleToSystem` string-id branching. Pure round-trip tests. No UI.
-2. **Serializable dispersion in the engine** — `DispersionTerm`/`DispersionExpression`/`DispersionQuantity`,
-   `WaveLengthInterval`/`DispersionSegment`, `MediumDispersion` + `toEpsWithDisp`; `toExpression` lowerings
-   for Sellmeier/Cauchy/Lorentz/Drude with equality tests vs the analytic values; segment top-of-list
-   selection. No UI.
+2. **Serializable dispersion in the engine** — generic `WaveLengthInterval`/`DispersionTerm`/
+   `DispersionFormula` (+ complex variant); elevated `EpsAxisDispersion`, the three segment flavors,
+   `EpsDispersionExpression`, and the two-case `EpsDispersion` + `toEpsWithDisp`; `toEpsAxis` lowerings for
+   Sellmeier/Cauchy (`RealNK`) and Lorentz/Drude (`ComplexEps`) with equality tests vs the analytic values;
+   segment top-of-list selection. No UI.
 3. **Bays** — rename to Selector; add `MaterialsControls` (Materials) + `SampleLibraryControls` (Library)
    wired to the proxies; headless "search filters, remove hard-blocks when referenced".
 4. **Sample editor + multilayer/bulk ops** — single-material add/edit; `PeriodGroup`; `MakeRepeatBlock` +
    `SelectByMaterial` + bulk set-thickness/change-material/remove on `StackEditor.StackMsg`; "2 layers ×K ⇒
    2K films", "select material *m* ⇒ set height".
-5. **Material editor — complexity ladder** — `MaterialComplexity` + `toProperties`; absorbing/dispersive/
-   anisotropic unlock over `MediumDispersion` + the segment/`DispersionModel` picker (+ `SumOfTerms`).
+5. **Material editor — complexity ladder** — `MaterialComplexity` (the option tree) + `toProperties`;
+   absorbing/dispersive/anisotropic unlock over `EpsDispersion` + the segment/`DispersionModel` picker
+   (+ `SumOfTerms`).
 6. **Optically active + magnetic** — `GyrationClass`/`RhoDispersion` → `Active.fs` `Rho` (new 222/mono/tri
    builders; `UniaxialActive` → `type_3_4_6_Crystal`); `MuDispersion` → Polder-μ; symmetry-constrained picker.
 7. **Extract the shared chart control** — MOVE `ExperimentChart`/`ChartFont`/`ChartStyle`/`ChartWindow` into
