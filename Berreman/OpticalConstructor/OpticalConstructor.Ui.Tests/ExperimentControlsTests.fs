@@ -605,6 +605,47 @@ module ExperimentControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``dispatching OpenExperimentChartWindow actually constructs a ChartWindow`` () =
+        // Proves the full host path — update → openChartWindowHook → ChartWindow — actually fires (the hook
+        // is a mutable assigned by a module-level statement; this guards against it staying the no-op stub).
+        HeadlessSession.run (fun () ->
+            let m = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 m
+            let m1 = m |> update (ExpChooseElement pid)      // draft ⇒ a non-empty R1 intensity chart
+            Assert.False(List.isEmpty (experimentResult m1).series, "precondition: the draft chart has a series")
+            let before = ChartWindow.ConstructedCount
+            update OpenExperimentChartWindow m1 |> ignore
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            Assert.True(ChartWindow.ConstructedCount > before, "OpenExperimentChartWindow did not open a ChartWindow (hook not firing)"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the per-experiment View button opens a ChartWindow`` () =
+        // The user's requested design: a "View" action on each collected experiment (next to Remove) opens
+        // the chart window for THAT experiment; a row double-click calls the same action. This drives the
+        // full path button → dispatch → update → viewExperimentHook → ChartWindow.
+        HeadlessSession.run (fun () ->
+            let baseM = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 baseM
+            let seed =
+                baseM
+                |> update (ExpChooseElement pid) |> update ExpCommit          // add the experiment
+                |> update (SelectBay BayNames.experiments)
+            let expIdStr = string (List.head seed.experimentCollection.experiments).id.value
+            let mutable model = seed
+            let dispatch (msg : Msg) = model <- update msg model
+            let window = Window(Width = 1000.0, Height = 980.0)
+            window.Content <- Component(fun _ -> mainView model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let before = ChartWindow.ConstructedCount
+            clickIn window (ExperimentControls.UiIds.viewButton expIdStr)
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            Assert.True(ChartWindow.ConstructedCount > before, "the View button did not open a ChartWindow")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``the Open chart button triggers openChartWindow`` () =
         // Regression: the pop-out window opened only on a hand-rolled double-click that could miss. There is
         // now an explicit, always-present button (plus a proper DoubleTapped gesture). This proves a click on
@@ -616,6 +657,7 @@ module ExperimentControlsTests =
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                     setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore
                     addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                    viewExperiment = ignore
                     openChartWindow = fun () -> opened <- opened + 1
                 }
             let state =

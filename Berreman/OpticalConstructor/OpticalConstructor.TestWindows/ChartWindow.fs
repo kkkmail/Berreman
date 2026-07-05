@@ -65,6 +65,7 @@ type ChartWindow(chart : ExperimentChart) as this =
     let seriesName (i : int) : string = match List.tryItem i chart.series with Some s -> s.name | None -> sprintf "series %d" i
 
     do
+        ChartWindow.ConstructedCount <- ChartWindow.ConstructedCount + 1
         this.Title <- (if chart.title = "" then "Experiment chart" else chart.title)
         this.Width <- 980.0
         this.Height <- 680.0
@@ -438,3 +439,7 @@ type ChartWindow(chart : ExperimentChart) as this =
 
         applyGrid ()
         ava.Refresh()
+
+    /// A test seam: how many `ChartWindow`s have been constructed (bumped in the `do` block). Lets a headless
+    /// test verify that the "View" / "Open chart" / double-click path actually reaches here (opens a window).
+    static member val ConstructedCount : int = 0 with get, set

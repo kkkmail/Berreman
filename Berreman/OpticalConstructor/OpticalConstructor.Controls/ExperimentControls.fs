@@ -180,7 +180,11 @@ module ExperimentControls =
             editExperiment : string -> unit
             /// Remove an experiment (by id) from the collection.
             removeExperiment : string -> unit
-            /// Open the pop-out interactive chart window (double-click on the inline chart).
+            /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
+            /// per-row "View" button and a double-click on the row both call this — the same testable action.
+            viewExperiment : string -> unit
+            /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart
+            /// or the "Open chart" button).
             openChartWindow : unit -> unit
         }
 
@@ -206,6 +210,8 @@ module ExperimentControls =
         let collection = "ExperimentCollection"
         let editButton (id : string) : string = "ExperimentEdit_" + id
         let removeButton (id : string) : string = "ExperimentRemove_" + id
+        /// A row's "View" action — open the pop-out chart window for that experiment.
+        let viewButton (id : string) : string = "ExperimentView_" + id
         /// The explicit "open the pop-out chart window" action (also opened by double-clicking the chart).
         let openChart = "ExperimentOpenChart"
         /// The inline result polyline (the first series — the intensity / Ψ curve).
@@ -596,8 +602,23 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    /// One collection row: the experiment description (click to Edit, highlighted while editing) and a
-    /// Remove action.
+    // A small row action button (View / Remove), styled to stand out (accent) or plain.
+    let private rowActionButton (autoId : string) (label : string) (accent : bool) (onClick : unit -> unit) : IView =
+        Border.create [
+            automationId autoId
+            Border.background (brush (if accent then chosenBackground else idleBackground))
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(10.0, 4.0))
+            Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label)))
+        ] :> IView
+
+    /// One collection row: the experiment description (single-click Edit, highlighted while editing;
+    /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
     let private collectionRow (handlers : Handlers) (r : ExperimentRow) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
@@ -612,21 +633,15 @@ module ExperimentControls =
                     Border.cornerRadius (CornerRadius 3.0)
                     Border.padding (Thickness(10.0, 4.0))
                     Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    Border.maxWidth 320.0
+                    Border.maxWidth 300.0
                     Border.child (TextBlock.create [ TextBlock.text r.description; TextBlock.textWrapping TextWrapping.Wrap ])
+                    // Single-click edits; double-click opens the chart window for this experiment (the same
+                    // "View" action as the button beside it — Avalonia's DoubleTapped gesture).
                     Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
+                    Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
                 ] :> IView
-                Border.create [
-                    automationId (UiIds.removeButton r.id)
-                    Border.background (brush idleBackground)
-                    Border.borderBrush (brush idleBorder)
-                    Border.borderThickness 1.0
-                    Border.cornerRadius (CornerRadius 3.0)
-                    Border.padding (Thickness(10.0, 4.0))
-                    Border.verticalAlignment VerticalAlignment.Center
-                    Border.child (TextBlock.create [ TextBlock.text "Remove" ])
-                    Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.removeExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
-                ] :> IView
+                rowActionButton (UiIds.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
+                rowActionButton (UiIds.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
             ]
         ] :> IView
 

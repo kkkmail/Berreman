@@ -271,8 +271,12 @@ type Msg =
     | ExpNew
     | ExpEdit of string
     | ExpRemove of string
-    /// Spec 0027 (026): open the pop-out interactive chart window (double-click on the inline chart).
+    /// Spec 0027 (026): open the pop-out interactive chart window for the current DRAFT (double-click on the
+    /// inline chart, or the "Open chart" button).
     | OpenExperimentChartWindow
+    /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
+    /// button, and a double-click on the experiment row).
+    | ViewExperiment of string
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -505,6 +509,10 @@ let private resetSelectedPosition (m : Model) : Model =
 /// headless test host (which never dispatches `OpenExperimentChartWindow`) the default no-op is harmless.
 let mutable private openChartWindowHook : Model -> unit = fun _ -> ()
 
+/// Spec 0027 (030 follow-up): the side-effecting "open the chart window for a COLLECTED experiment (by id)"
+/// action — the per-row "View" button and a row double-click both invoke it. Same forward-reference seam.
+let mutable private viewExperimentHook : Model -> string -> unit = fun _ _ -> ()
+
 /// Spec 0027 (028): the Controls-layer ⇄ domain mirror maps for the experiment variable / measurement DUs
 /// (the bay is domain-free, so it mirrors the domain cases and the host maps them back).
 let private ofVariableChoice (v : ExperimentControls.VariableChoice) : Experiments.VariableParameter =
@@ -623,6 +631,11 @@ let update (msg : Msg) (model : Model) : Model =
         // imperative-window pattern (`MainConstructorWindow().Show()`); it is guarded behind a non-empty chart
         // and is never reached under the headless `ui-smoke` gate (which renders frames but never double-clicks).
         openChartWindowHook model
+        model
+    | ViewExperiment idStr ->
+        // Spec 0027 (030 follow-up): open the chart window for the collected experiment `idStr` (the "View"
+        // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
+        viewExperimentHook model idStr
         model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
@@ -1207,17 +1220,22 @@ let private describeRun (model : Model) (label : string) (captureText : string) 
 /// Length ⇒ value-vs-λ. The CAPTURE mode (T / R / both) selects the sample branch — "both" yields one series
 /// per branch — and an ellipsometer detector yields Ψ/Δ series. Empty when the draft is incomplete, its
 /// element is gone, or an R2 / λ vary has no bound sample. Public so the host's branches are unit-testable.
-let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
-    let draft = model.experimentCollection.draft
-    match draft.elementId, draft.variable with
-    | Some chosen, Some variable when model.elements |> List.exists (fun e -> e.id = chosen) ->
+/// The chart for an EXPLICIT experiment configuration (element id + variable + capture + range + label),
+/// used by both the live draft preview (`experimentResult`) and the per-experiment "View" action
+/// (`chartForExperiment`). Empty when the element is no longer present.
+let chartForParams
+    (model : Model)
+    (chosen : Library.ElementId)
+    (variable : Experiments.VariableParameter)
+    (measurement : Experiments.MeasurementMode)
+    (range : Experiments.VariableRange)
+    (label : string) : ExperimentChart.ExperimentChart =
+    if not (model.elements |> List.exists (fun e -> e.id = chosen)) then ExperimentChart.empty
+    else
         let svIn = runInputStokes model
         let w = runWaveLength model
         let detector = runDetectorKind model
-        let label = draft.elementLabel
-        let measurement = draft.measurement
         let captureText = measurement.label
-        let range = draft.range
         let n = max 2 range.points
         match variable with
         | Experiments.VaryR1 ->
@@ -1323,15 +1341,37 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
                         angular = false
                     }
             | None -> ExperimentChart.empty
+
+/// The live DRAFT's chart (the inline bay preview + the draft "Open chart" action). Public so the host's
+/// branches are unit-testable without a window.
+let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
+    let draft = model.experimentCollection.draft
+    match draft.elementId, draft.variable with
+    | Some chosen, Some variable -> chartForParams model chosen variable draft.measurement draft.range draft.elementLabel
     | _ -> ExperimentChart.empty
 
-// Spec 0027 (026) Part 3: now that `experimentResult` exists, wire the forward-referenced hook so a
-// double-click on the inline chart opens the pop-out ScottPlot `ChartWindow` for the current chart (guarded
-// behind a non-empty chart; never reached under the headless `ui-smoke` gate).
+/// The chart of a specific COLLECTED experiment — the per-row "View" action.
+let chartForExperiment (model : Model) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
+    chartForParams model exp.elementId exp.variable exp.measurement exp.range exp.elementLabel
+
+// Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
+// "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
+// behind a non-empty chart; never reached under the headless `ui-smoke` gate's frame render).
 openChartWindowHook <-
     fun model ->
         let chart = experimentResult model
         if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
+
+viewExperimentHook <-
+    fun model idStr ->
+        match System.Int32.TryParse idStr with
+        | true, i ->
+            match model.experimentCollection.experiments |> List.tryFind (fun e -> e.id.value = i) with
+            | Some exp ->
+                let chart = chartForExperiment model exp
+                if not (List.isEmpty chart.series) then ChartWindow(chart).Show()
+            | None -> ()
+        | _ -> ()
 
 /// The single-point Ψ/Δ readout for the VaryR1 + ellipsometer case (the inline bay shows it as text). Kept
 /// separate from `experimentResult` (which carries no Ψ/Δ for that case — there is no curve) so the bay can
@@ -1403,6 +1443,7 @@ let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Han
         newExperiment = fun () -> dispatch ExpNew
         editExperiment = fun idStr -> dispatch (ExpEdit idStr)
         removeExperiment = fun idStr -> dispatch (ExpRemove idStr)
+        viewExperiment = fun idStr -> dispatch (ViewExperiment idStr)
         openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
 

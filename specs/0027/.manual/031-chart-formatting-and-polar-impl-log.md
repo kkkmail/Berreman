@@ -125,11 +125,18 @@ round-trip and asserts both axes are visible again and the data-fit limits are r
 headlessly (a new test renders a live chart via `Plot.GetImage`), so the window itself was fine — the
 double-click *gesture* just wasn't firing reliably.
 
-**Fix** (in `ExperimentControls.fs`):
-- Added an explicit, always-present **"Open chart window ↗" button** above the inline chart — a reliable,
-  discoverable trigger that calls the same `openChartWindow` handler.
-- Replaced the manual click-count detection with Avalonia's built-in **`DoubleTapped`** gesture, so
-  double-clicking the chart still works and is more robust.
+**Fix (first pass, in `ExperimentControls.fs`):** an explicit **"Open chart window ↗" button** above the
+inline draft chart, and the manual click-count check replaced with Avalonia's built-in **`DoubleTapped`**.
 
-A headless test clicks the button and asserts `openChartWindow` fires; the render test proves the pop-out
-window constructs and rasterizes for a live experiment chart.
+**Fix (second pass — the design the user asked for): a per-experiment "View" action.** Each collected
+experiment row now has a **"View ↗" button** next to Remove that opens the chart window **for that
+experiment**, and a **double-click on the row** invokes the same action. This makes the "open the chart"
+behaviour a first-class, headless-testable action rather than relying on an easy-to-miss gesture.
+- `experimentResult` was refactored to `chartForParams` (element + variable + capture + range → chart) so a
+  specific collected experiment can be charted (`chartForExperiment`), not just the live draft.
+- New `ViewExperiment of string` message + `viewExperimentHook` (the same forward-referenced side-effect
+  seam as `openChartWindowHook`), wired through `ExperimentControls.Handlers.viewExperiment`.
+- A `ChartWindow.ConstructedCount` test seam proves the **full** path fires: a test dispatches
+  `OpenExperimentChartWindow` and asserts a `ChartWindow` is actually constructed (ruling out a dead hook —
+  it fires, so the original break was purely the gesture), and another clicks the row's **View** button and
+  asserts a `ChartWindow` opens end-to-end. Plus the earlier button/render tests.
