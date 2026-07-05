@@ -144,6 +144,13 @@ type ChartWindow(chart : ExperimentChart) as this =
                 sc.MarkerShape <- (if st.showMarkers then ScottPlot.MarkerShape.FilledCircle else ScottPlot.MarkerShape.None)
                 sc.MarkerSize <- 5.0f)
 
+        /// Show / hide the rectangular (cartesian) axes. `Plot.Add.PolarAxis` HIDES them so the polar grid
+        /// reads cleanly; returning to XY must show them again or the plot renders with no axes / ticks /
+        /// frame (spec 030 fix — switching back from polar broke the XY view).
+        let setCartesianAxesVisible (v : bool) : unit =
+            (match plot.Axes.Bottom with :? ScottPlot.AxisPanels.AxisBase as a -> a.IsVisible <- v | _ -> ())
+            (match plot.Axes.Left with :? ScottPlot.AxisPanels.AxisBase as a -> a.IsVisible <- v | _ -> ())
+
         /// Push the whole style onto the plot: series look, legend, fonts, and (cartesian only) the axis
         /// number format + limits (polar auto-fits its circular grid instead).
         let applyStyle () : unit =
@@ -151,6 +158,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             applyLegendAndFonts ()
             if polar then plot.Axes.AutoScale()
             else
+                setCartesianAxesVisible true
                 applyAxisFormat ()
                 applyAxisLimits ()
             ava.Refresh()

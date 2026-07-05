@@ -101,3 +101,17 @@ Rebuilt around the style model:
   frameless polar look is a small future polish.
 - The number-format formatter for `General` uses a clean `0.######` (trims trailing zeros); fine for the
   wavelength / angle / intensity ranges in play.
+
+## Follow-up fix — switching polar → XY blanked the axes
+
+**Symptom (reported):** toggling back from polar to XY broke the XY view.
+
+**Cause.** `Plot.Add.PolarAxis` HIDES the rectangular axes (`Axes.Bottom/Left.IsVisible = false`) so the
+polar grid reads cleanly — a nice side effect for the polar look, but the cartesian rebuild never turned
+them back on, so the XY view rendered the curve with no axes / ticks / frame. Confirmed headlessly by
+reading `Axes.Bottom/Left.IsVisible` after a polar round-trip (`false`, while the limits / labels / tick
+generator were all intact).
+
+**Fix.** The cartesian branch of `applyStyle` now calls `setCartesianAxesVisible true` before re-applying
+the format + limits, so returning to XY always restores the axes. A regression test drives the polar
+round-trip and asserts both axes are visible again and the data-fit limits are restored.

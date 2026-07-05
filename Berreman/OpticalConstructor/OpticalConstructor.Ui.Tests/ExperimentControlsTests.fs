@@ -558,3 +558,28 @@ module ExperimentControlsTests =
             // The editor loaded experiment #1's element (the polarizer), not the source it was on.
             Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
             window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``returning from polar to XY restores the cartesian axes and data-fit limits`` () =
+        // Regression (spec 030): `Add.PolarAxis` hides the rectangular axes for a clean polar grid; switching
+        // back must restore them (and the data-fit limits) or the XY view renders with no axes / ticks.
+        HeadlessSession.run (fun () ->
+            let window = ChartWindow(sampleChart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ctrl (name : string) : Control option =
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+            let ava = (ctrl ChartWindowIds.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let lim0 = ava.Plot.Axes.GetLimits()
+            let btn = (ctrl ChartWindowIds.polarToggle |> Option.get) :?> Button
+            let click () = btn.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            click ()   // → polar (hides the cartesian axes)
+            click ()   // → XY (must restore them)
+            let axisVisible (a : obj) : bool = match a with :? ScottPlot.AxisPanels.AxisBase as ax -> ax.IsVisible | _ -> false
+            Assert.True(axisVisible ava.Plot.Axes.Bottom, "the X axis was not restored after leaving polar")
+            Assert.True(axisVisible ava.Plot.Axes.Left, "the Y axis was not restored after leaving polar")
+            let lim1 = ava.Plot.Axes.GetLimits()
+            Assert.True(abs (lim0.Left - lim1.Left) < 1e-6 && abs (lim0.Right - lim1.Right) < 1e-6, "the XY x-limits were not restored")
+            Assert.True(abs (lim0.Bottom - lim1.Bottom) < 1e-6 && abs (lim0.Top - lim1.Top) < 1e-6, "the XY y-limits were not restored")
+            window.Close())
