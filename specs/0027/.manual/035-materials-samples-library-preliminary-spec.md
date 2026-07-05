@@ -327,15 +327,17 @@ uniaxial → `(n_o, n_e, n_o)`; biaxial → the three-index form, `MaterialPrope
 become serializable). The gyration class is generic over its component so the same shape serves both:
 
 ```fsharp
-type GyrationClass<'g> = ...                                  // §6.2; 'g = RhoValue (constant) or DispersionFormula (dispersive)
+type GyrationClass<'g> = ...                                  // §6.2; each multi-component case a named record; 'g = RhoValue | DispersionFormula
+type GyrotropicValue<'g> = { gyration : GyrationClass<'g>; hand : Handedness }   // §6.2; ONE record, reused by both cases below
 type RhoWithDispValue =                                       // NEW; §6.2
-    | RhoWithDispValue    of gyration : GyrationClass<DispersionFormula> * hand : Handedness
-    | RhoWithoutDispValue of gyration : GyrationClass<RhoValue> * hand : Handedness
+    | RhoWithDispValue    of GyrotropicValue<DispersionFormula>
+    | RhoWithoutDispValue of GyrotropicValue<RhoValue>
     member this.toRhoWithDisp : RhoWithDisp
 
+type PolderValue<'g> = { muDiagonal : 'g; muParallel : 'g; gyration : 'g; axis : GyrationAxis }   // §6.3; ONE record, reused by both cases
 type MuWithDispValue =                                        // NEW; §6.3
-    | MuWithDispValue    of MuDispersiveValue                 // Polder tensor of DispersionFormulas
-    | MuWithoutDispValue of ConstantMuValue                  // scalar or constant Polder (MuValues)
+    | MuWithDispValue    of PolderValue<DispersionFormula>    // Polder tensor of DispersionFormulas
+    | MuWithoutDispValue of ConstantMuValue                  // scalar or constant Polder (PolderValue<MuValue>)
     member this.toMuWithDisp : MuWithDisp
 ```
 
@@ -368,11 +370,13 @@ dispersion models").** Keep the editor-facing `DispersionModels.DispersionModel`
 Optical activity is a rank-2 **axial** gyration tensor `g_ij`; only its **symmetric** part rotates
 polarization, it is **zero for every centrosymmetric class**, and of the optically-active point groups the
 editor never needs more than **6 components — usually 1 or 2** (§13). **Never expose a free 3×3.** Drive it
-from a symmetry-class DU whose *each case carries exactly its allowed components*, so "only a handful are
-non-zero" is a compile-time guarantee. The class is **generic over its component type** `GyrationClass<'g>`, so
-one shape serves both value flavors: `'g = DispersionFormula` when gyration disperses (a **real** formula —
-§6.1; the magnitude is real and the engine places it into the imaginary off-diagonals at assembly), and
-`'g = RhoValue` (the engine's real scalar, `MaterialProperties.fs:127`) when it is constant. Whether ρ is
+from a symmetry-class DU whose *each case carries exactly its allowed components* (each multi-component case a
+**named generic record**, not an anonymous tuple), so "only a handful are non-zero" is a compile-time
+guarantee. The class is **generic over its component type** `GyrationClass<'g>`, so one shape serves both value
+flavors: `'g = DispersionFormula` when gyration disperses (a **real** formula — §6.1; the magnitude is real and
+the engine places it into the imaginary off-diagonals at assembly), and `'g = RhoValue` (the engine's real
+scalar, `MaterialProperties.fs:127`) when it is constant. The class pairs with the enantiomorph sign in **one
+generic record `GyrotropicValue<'g>`** (`{ gyration; hand }`), reused verbatim by both value cases. Whether ρ is
 present at all is the `active : RhoWithDispValue option` of §6; whether present ρ disperses is the two-case
 serializable `RhoWithDispValue` (§6.1) — which mirrors the engine's `RhoWithDisp` / `RhoWithoutDisp` and
 **builds** it (`RhoWithDisp` itself holds a func and stays non-serializable):
@@ -380,19 +384,31 @@ serializable `RhoWithDispValue` (§6.1) — which mirrors the engine's `RhoWithD
 ```fsharp
 type Handedness = LeftHanded | RightHanded                       // enantiomorph = one overall sign flip (g → −g)
 
-type GyrationClass<'g> =                                         // NEW — offer ONLY the rotation-producing classes; 'g = DispersionFormula | RhoValue
-    | CubicActive        of g   : 'g                                    // 23, 432  → diag(g,g,g)
-    | UniaxialActive     of g11 : 'g * g33 : 'g                         // 3,32,4,422,6,622 → diag(g11,g11,g33)
-    | PlanarActive       of g12 : 'g                                    // mm2 (off-diagonal only)
-    | Orthorhombic222    of g11 : 'g * g22 : 'g * g33 : 'g
-    | Monoclinic2        of g11 : 'g * g22 : 'g * g33 : 'g * g13 : 'g
-    | MonoclinicM        of g12 : 'g * g23 : 'g
-    | Triclinic1         of g11 : 'g * g22 : 'g * g33 : 'g * g23 : 'g * g13 : 'g * g12 : 'g
+// Each MULTI-component class is a NAMED generic record (never an anonymous tuple); single-component classes
+// carry one named field. 'g = DispersionFormula (dispersive) | RhoValue (constant). Each record is only ever
+// built as a typed DU payload, so the shared g?? field names resolve type-directed.
+type UniaxialGyration<'g>        = { g11 : 'g; g33 : 'g }                                    // diag(g11,g11,g33)
+type Orthorhombic222Gyration<'g> = { g11 : 'g; g22 : 'g; g33 : 'g }
+type Monoclinic2Gyration<'g>     = { g11 : 'g; g22 : 'g; g33 : 'g; g13 : 'g }
+type MonoclinicMGyration<'g>     = { g12 : 'g; g23 : 'g }
+type Triclinic1Gyration<'g>      = { g11 : 'g; g22 : 'g; g33 : 'g; g23 : 'g; g13 : 'g; g12 : 'g }
+
+type GyrationClass<'g> =                                          // NEW — offer ONLY the rotation-producing classes
+    | CubicActive     of g : 'g                                   // 23, 432  → diag(g,g,g)
+    | UniaxialActive  of UniaxialGyration<'g>                     // 3,32,4,422,6,622
+    | PlanarActive    of g12 : 'g                                 // mm2 (single off-diagonal)
+    | Orthorhombic222 of Orthorhombic222Gyration<'g>
+    | Monoclinic2     of Monoclinic2Gyration<'g>
+    | MonoclinicM     of MonoclinicMGyration<'g>
+    | Triclinic1      of Triclinic1Gyration<'g>
+
+/// The gyration class + enantiomorph sign as ONE generic record — reused by BOTH RhoWithDispValue cases (037).
+type GyrotropicValue<'g> = { gyration : GyrationClass<'g>; hand : Handedness }               // NEW
 
 /// The serializable ρ value that BUILDS RhoWithDisp — two cases mirroring RhoWithDisp / RhoWithoutDisp (037).
-type RhoWithDispValue =                                         // NEW; the rhoWithDisp source (§6.1)
-    | RhoWithDispValue    of gyration : GyrationClass<DispersionFormula> * hand : Handedness   // → RhoWithDisp (func)
-    | RhoWithoutDispValue of gyration : GyrationClass<RhoValue>          * hand : Handedness   // → RhoWithoutDisp (constant)
+type RhoWithDispValue =                                          // NEW; the rhoWithDisp source (§6.1)
+    | RhoWithDispValue    of GyrotropicValue<DispersionFormula>   // → RhoWithDisp (func)
+    | RhoWithoutDispValue of GyrotropicValue<RhoValue>            // → RhoWithoutDisp (constant)
     member this.toRhoWithDisp : RhoWithDisp
 ```
 
@@ -422,24 +438,24 @@ entry (`toProperties` then supplies `Mu.vacuum`). Whether μ is present is the `
 of §6; whether present μ disperses is the two-case serializable `MuWithDispValue` (§6.1) — which mirrors the
 engine's `MuWithDisp` / `MuWithoutDisp` and **builds** it (`MuWithDisp` holds a func and stays
 non-serializable). The non-dispersive value is a **scalar or a constant Polder tensor** of real `MuValue`s
-(`MaterialProperties.fs:101`); the dispersive value is the same **gyromagnetic (Polder) tensor** with **real**
-`DispersionFormula` entries (§6.1):
+(`MaterialProperties.fs:101`); the dispersive value is **the same generic Polder record `PolderValue<'g>`** with
+**real** `DispersionFormula` entries (§6.1) — one record shape, reused across both cases just like ρ's
+`GyrotropicValue<'g>`:
 
 ```fsharp
 type GyrationAxis = AlongX | AlongY | AlongZ                    // default AlongZ (Faraday); transverse = Voigt
 
+/// The Polder (gyromagnetic) tensor as ONE generic record — reused by BOTH the constant and dispersive μ values
+/// (mirrors GyrotropicValue). 'g = MuValue (constant) | DispersionFormula (dispersive).  [[μ,+ig,0];[−ig,μ,0];[0,0,μ_par]]
+type PolderValue<'g> = { muDiagonal : 'g; muParallel : 'g; gyration : 'g; axis : GyrationAxis }   // NEW
+
 /// The NON-DISPERSIVE μ value — scalar or a constant Polder tensor. Builds a constant Mu via Mu.create.
 type ConstantMuValue =                                         // NEW
-    | ScalarMu     of MuValue                                                          // μ·I (the usual case)
-    | GyromagneticMu of muDiagonal : MuValue * muParallel : MuValue                     // constant Polder…
-                      * gyration : MuValue * axis : GyrationAxis                        // …[[μ,+ig,0];[−ig,μ,0];[0,0,μ_par]]
-
-/// The DISPERSIVE μ value — a Polder tensor with real dispersion-formula entries. Distinct from Eps/Rho.
-type MuDispersiveValue = { muDiagonal : DispersionFormula; muParallel : DispersionFormula     // NEW
-                           gyration : DispersionFormula; axis : GyrationAxis }
+    | ScalarMu       of MuValue                               // μ·I (the usual case)
+    | GyromagneticMu of PolderValue<MuValue>                  // constant Polder
 
 type MuWithDispValue =                                         // NEW — the muWithDisp source (§6.1)
-    | MuWithDispValue    of MuDispersiveValue                 // → MuWithDisp (func)
+    | MuWithDispValue    of PolderValue<DispersionFormula>    // → MuWithDisp (func)
     | MuWithoutDispValue of ConstantMuValue                   // → MuWithoutDisp (constant)
     member this.toMuWithDisp : MuWithDisp
 ```
@@ -562,8 +578,9 @@ edits **structure**; it never edits tensors — it *composes* materials (resolve
   the **elevated** per-axis `EpsAxisDispersion`, the descriptive non-dispersive `ConstantEpsValue` (six cases:
   {iso,uni,bi}×{transparent,absorbing}), the three segment flavors + the anisotropy collection
   `EpsDispersiveValue` (Isotropic/Uniaxial/Biaxial), and the two-case **`…Value`** builders `EpsWithDispValue` /
-  `MuWithDispValue` (with `ConstantMuValue` / `MuDispersiveValue`) / `RhoWithDispValue` (with the generic
-  `GyrationClass<'g>`) carrying `toEpsWithDisp` / `toMuWithDisp` / `toRhoWithDisp`. (The `…WithDisp` /
+  `MuWithDispValue` (over the generic `PolderValue<'g>` record + `ConstantMuValue`) / `RhoWithDispValue` (over the
+  generic `GyrotropicValue<'g>` record wrapping `GyrationClass<'g>`, whose multi-component cases are named
+  records) carrying `toEpsWithDisp` / `toMuWithDisp` / `toRhoWithDisp`. (The `…WithDisp` /
   `…WithoutDisp` engine union types hold a func and are **unchanged and non-serializable** — the `…Value` types
   build them.)
 - **`Berreman/OpticalProperties/Active.fs`** — extend the crystal-class → `Rho` constructors (222 /
