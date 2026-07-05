@@ -1,0 +1,36 @@
+Let’s work on the library content. This will be the new tab on the ribbon. Use the name Materials. 
+We keep using mocked versions of IO proxies. The library should have the following functionality.
+1. Maintain the materials (add / remove / edit / view / search).
+2. Maintain the samples (add / remove / edit / view / search).
+
+Some of the samples are multilayer thin films. The UI should make it convenient to create them. 
+E.g. if the user needs to create a 2*N interleaved multilayer coating, then the user should NOT 
+specify each layer by hand 2*N times. Perhaps select two or more layers and then instruct the UI 
+to repeat them some K times (specify that K) will do the trick.
+
+The dispersive materials should allow viewing dispersive information (refraction index and absorption 
+coefficient on the same chart page but with two Y axis). This chart should have similar functionality 
+that current experiment view chart page has. So, we need to extract common pieces into reusable controls.
+
+The materials may have different complexity (but currently all are homogeneous). The simplest is 
+transparent isotropic non-dispersive. This is an idealization but it is convenient in some cases 
+or if the wavelength is fixed. To edit more, the user must “unlock” the “features” by checking 
+the relevant check box and / or manipulating other controls. Once “unlocked” the user then must 
+specify what the complexity requires. Check box anisotropic “unlocks” Uniaxial or Biaxial (the choice of one, 
+default uniaxial), absorbing “unlocks” absorption coefficient(s), dispersive unlocks dispersion formulas 
+and range of wavelength applicability. There might be multiple ranges as the formulas may change. 
+Optically active unlocks gyration tensor editing. Check the web as this is a 3 x 3 matrix but only 
+a handful of the elements are non-zero depending on the symmetry group or something like that. 
+Magnetic unlocks mu. Check the web for that as well.
+
+We should probably make that as two different windows as some of the functionality is similar while 
+some is very different. Current Library ribbon uses locked IO proxies, which store the samples into some 
+internal list. Editing the samples should update that list. That will also allow us to write unit test against that.
+
+Look at the Berreman code and see the materials and samples, look up the web for similar functionality, 
+look up the web if there are publicly accessible libraries of optical material properties, including 
+dispersion information, then come up with the preliminary spec, which covers that functionality.
+
+Write the preliminary spec into C:\GitHub\Berreman\specs\0027\.manual\033-<description>.md. 
+
+Make no other changes.
