@@ -84,8 +84,8 @@ Today a sample's multilayer shape is faked by string-id branching:
 and the material map `propertiesOf` silently falls back to transparent glass
 (`Propagation.fs:104-111`). Ids are raw strings (`MaterialEntry.id`,
 `…Domain/MaterialLibrary.fs:33`; `Sample.id` / `Sample.materialId`,
-`…Domain/ElementId.fs:45,47`) and the only proxy is the read-only picker
-`LibraryProxy` (`ElementId.fs:179`). Part A makes the stack DATA — a
+`…Domain/ElementId.fs:45,47`) and the only catalogue proxy is the read-only
+picker `LibraryProxy` (`ElementId.fs:179`). Part A makes the stack DATA — a
 `SampleStructure` with first-class, re-editable period groups — elevates ids
 to `Guid`-backed DUs, and adds the mutating `MaterialProxy` / `SampleProxy`
 write-seams so add / remove / edit / view / search are all unit-testable
