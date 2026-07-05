@@ -583,3 +583,57 @@ module ExperimentControlsTests =
             Assert.True(abs (lim0.Left - lim1.Left) < 1e-6 && abs (lim0.Right - lim1.Right) < 1e-6, "the XY x-limits were not restored")
             Assert.True(abs (lim0.Bottom - lim1.Bottom) < 1e-6 && abs (lim0.Top - lim1.Top) < 1e-6, "the XY y-limits were not restored")
             window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``ChartWindow constructs and really renders a live experiment chart`` () =
+        // The double-click hook does `ChartWindow(experimentResult model).Show()`. This drives that exact
+        // path AND forces ScottPlot's real Skia rasterization (headless Avalonia never rasterizes), so a
+        // construction- or render-time throw would surface here rather than silently failing in the app.
+        HeadlessSession.run (fun () ->
+            let m = initMain () |> update (AddElement LinearPolarizer)
+            let pid = idOf 2 m
+            let chart = experimentResult (m |> update (ExpChooseElement pid))
+            Assert.False(List.isEmpty chart.series, "precondition: the R1 intensity chart has a series")
+            let window = ChartWindow(chart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ava = window.GetVisualDescendants() |> Seq.pick (function :? ScottPlot.Avalonia.AvaPlot as a -> Some a | _ -> None)
+            let img = ava.Plot.GetImage(700, 500)
+            Assert.True(img.GetImageBytes().Length > 0, "the chart rendered no image bytes")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Open chart button triggers openChartWindow`` () =
+        // Regression: the pop-out window opened only on a hand-rolled double-click that could miss. There is
+        // now an explicit, always-present button (plus a proper DoubleTapped gesture). This proves a click on
+        // the button fires the `openChartWindow` handler that the host maps to opening the ChartWindow.
+        HeadlessSession.run (fun () ->
+            let mutable opened = 0
+            let handlers : ExperimentControls.Handlers =
+                {
+                    chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
+                    setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore
+                    addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
+                    openChartWindow = fun () -> opened <- opened + 1
+                }
+            let state =
+                { ExperimentControls.empty with
+                    enabled = true
+                    series = [ { ExperimentControls.ChartSeries.name = "I"; points = [ 0.0, 1.0; 1.0, 0.5 ] } ]
+                    xLabel = "x"; yLabel = "y" }
+            let window = Window(Width = 420.0, Height = 560.0)
+            window.Content <- Component(fun _ -> ExperimentControls.view state handlers)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.openChart -> Some b | _ -> None) with
+            | Some b ->
+                match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
+                | p when p.HasValue ->
+                    window.MouseDown(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
+                    window.MouseUp(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
+                | _ -> Assert.Fail("the Open chart button is off-screen")
+            | None -> Assert.Fail("the Open chart button was not rendered")
+            Assert.True(opened >= 1, "clicking Open chart did not trigger openChartWindow")
+            window.Close())

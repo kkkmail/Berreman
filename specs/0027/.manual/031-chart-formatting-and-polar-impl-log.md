@@ -115,3 +115,21 @@ generator were all intact).
 **Fix.** The cartesian branch of `applyStyle` now calls `setCartesianAxesVisible true` before re-applying
 the format + limits, so returning to XY always restores the axes. A regression test drives the polar
 round-trip and asserts both axes are visible again and the data-fit limits are restored.
+
+## Follow-up fix — double-clicking the inline chart didn't open the pop-out window
+
+**Symptom (reported):** double-clicking the experiment (inline chart) stopped opening the chart window.
+
+**Cause.** The only trigger was a hand-rolled `PointerPressed` + `e.ClickCount >= 2` check on the chart
+`Border`. Construction + real ScottPlot rasterization of the pop-out window were verified to succeed
+headlessly (a new test renders a live chart via `Plot.GetImage`), so the window itself was fine — the
+double-click *gesture* just wasn't firing reliably.
+
+**Fix** (in `ExperimentControls.fs`):
+- Added an explicit, always-present **"Open chart window ↗" button** above the inline chart — a reliable,
+  discoverable trigger that calls the same `openChartWindow` handler.
+- Replaced the manual click-count detection with Avalonia's built-in **`DoubleTapped`** gesture, so
+  double-clicking the chart still works and is more robust.
+
+A headless test clicks the button and asserts `openChartWindow` fires; the render test proves the pop-out
+window constructs and rasterizes for a live experiment chart.

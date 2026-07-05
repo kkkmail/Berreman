@@ -206,6 +206,8 @@ module ExperimentControls =
         let collection = "ExperimentCollection"
         let editButton (id : string) : string = "ExperimentEdit_" + id
         let removeButton (id : string) : string = "ExperimentRemove_" + id
+        /// The explicit "open the pop-out chart window" action (also opened by double-clicking the chart).
+        let openChart = "ExperimentOpenChart"
         /// The inline result polyline (the first series — the intensity / Ψ curve).
         let chart = "ExperimentChart"
         /// The ellipsometer Ψ/Δ single-point readout text.
@@ -417,6 +419,21 @@ module ExperimentControls =
             | [] -> []
             | _ ->
                 [
+                    // An explicit, always-reliable way to open the pop-out interactive window — the earlier
+                    // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
+                    Border.create [
+                        Border.name UiIds.openChart
+                        Border.isEnabled state.enabled
+                        Border.background (brush chosenBackground)
+                        Border.borderBrush (brush idleBorder)
+                        Border.borderThickness 1.0
+                        Border.cornerRadius (CornerRadius 3.0)
+                        Border.padding (Thickness(12.0, 5.0))
+                        Border.margin (Thickness(0.0, 2.0, 0.0, 4.0))
+                        Border.horizontalAlignment HorizontalAlignment.Left
+                        Border.child (TextBlock.create [ TextBlock.text "Open chart window ↗" ])
+                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
+                    ] :> IView
                     Border.create [
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
@@ -425,13 +442,9 @@ module ExperimentControls =
                         Border.height chartHeight
                         Border.horizontalAlignment HorizontalAlignment.Left
                         Border.child (chartCanvas state)
-                        // Double-click → open the pop-out interactive chart window. `ClickCount = 2` is the
-                        // second press of a double-click; `e.Handled <- true` drops the duplicate pass.
-                        Border.onPointerPressed (
-                            (fun e ->
-                                e.Handled <- true
-                                if e.ClickCount >= 2 then handlers.openChartWindow ()),
-                            SubPatchOptions.Always)
+                        // Double-click ALSO opens the pop-out window — via Avalonia's built-in DoubleTapped
+                        // gesture (more reliable than a hand-rolled PointerPressed ClickCount check).
+                        Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
                     ] :> IView
                     TextBlock.create [
                         TextBlock.name UiIds.description
