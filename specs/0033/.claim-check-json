@@ -1,6 +1,6 @@
 {
   "data_version": 7,
-  "spec_md_sha": "ed4f3a1252634863203ba36c5856737fa6fc4366af646ed0da617b4507a036c8",
+  "spec_md_sha": "56731fb21b62842c8fa9beb798a70286c928b66c546c4e806a86584cbad9b5e4",
   "claims": [
     {
       "id": 1,
@@ -20,266 +20,245 @@
       "id": 3,
       "phrase": "following the existing `Library.LibraryProxy` shape (`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:178-184`)",
       "spec_location": "§0.3",
-      "evidence": "Read ElementId.fs:178-184 -> `[<ReferenceEquality>]` at :178, `type LibraryProxy` at :179, record of camelCase Result-returning function fields ends at :184. `module Library` at ElementId.fs:16, so the `Library.LibraryProxy` qualifier resolves.",
+      "evidence": "Read ElementId.fs:178-184 -> `[<ReferenceEquality>]` at :178, `type LibraryProxy` at :179, record of camelCase Result-returning function fields (entriesForKind / libraryTrees / tryGetEntry) closes at :184.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 4,
       "phrase": "the linear filters stay, `…Domain/MaterialLibrary.fs:53,57`",
       "spec_location": "§0.4",
-      "evidence": "Phrase inferred as assumption-shape ('stay' ~ unchanged). Read MaterialLibrary.fs -> `byCategory` (List.filter, no index) at :53, `byNameContains` (linear case-insensitive List.filter) at :57.",
+      "evidence": "Phrase inferred as assumption-shape ('stay' ~ unchanged; not in the default trigger list). Read MaterialLibrary.fs -> `byCategory` (List.filter, no index) at :53, `byNameContains` (linear case-insensitive List.filter) at :57.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 5,
       "phrase": "the existing element-binding bay (`BayNames.library = \"Library\"`, `…TestWindows/TableAndElementRotationView.fs:150`) is renamed Selector",
       "spec_location": "§0.5",
-      "evidence": "Read TableAndElementRotationView.fs:150 -> `let library = \"Library\"` inside `module BayNames` (declared at :144).",
+      "evidence": "Read TableAndElementRotationView.fs:150 -> `let library = \"Library\"` inside `module BayNames` (declared at :144). Matched exactly.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 6,
-      "phrase": "`LibraryControls` / `LibraryProxy` keep their names; a cosmetic rename is NOT in scope",
-      "spec_location": "§0.5",
-      "evidence": "Class-anchored. `module LibraryControls` exists at OpticalConstructor.Controls/LibraryControls.fs:20; `type LibraryProxy` exists at OpticalConstructor.Domain/ElementId.fs:179. Both artefacts exist under the names the spec says are kept.",
+      "phrase": "Today a sample's multilayer shape is faked by string-id branching: `Propagation.sampleToSystem` matches `sample.id` against `\"sample-multilayer-qw\"` / `\"sample-euv-mosi\"` / `\"sample-active-crystal\"` / `\"sample-langasite-silicon\"` (`…Domain/Propagation.fs:139-141,157,172,180`)",
+      "spec_location": "§A.0",
+      "evidence": "Read Propagation.fs -> `sampleToSystem` at :139, `match sample.id with` at :140, `\"sample-multilayer-qw\"` at :141, `\"sample-euv-mosi\"` at :157, `\"sample-active-crystal\"` at :172, `\"sample-langasite-silicon\"` at :180. All cited lines match.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 7,
-      "phrase": "Today a sample's multilayer shape is faked by string-id branching: `Propagation.sampleToSystem` matches `sample.id` against `\"sample-multilayer-qw\"` / `\"sample-euv-mosi\"` / `\"sample-active-crystal\"` / `\"sample-langasite-silicon\"` (`…Domain/Propagation.fs:139-141,157,172,180`)",
+      "phrase": "the material map `propertiesOf` silently falls back to transparent glass (`Propagation.fs:104-111`)",
       "spec_location": "§A.0",
-      "evidence": "Read Propagation.fs -> `sampleToSystem` at :139, `match sample.id with` at :140, `\"sample-multilayer-qw\"` at :141, `\"sample-euv-mosi\"` at :157, `\"sample-active-crystal\"` at :172, `\"sample-langasite-silicon\"` at :180. All cited anchors match.",
+      "evidence": "Read Propagation.fs:104-111 -> `let private propertiesOf (materialId : string)` at :104; wildcard fallback `| _ -> OpticalProperties.transparentGlass` at :111. Matched exactly.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 8,
-      "phrase": "the material map `propertiesOf` silently falls back to transparent glass (`Propagation.fs:104-111`)",
+      "phrase": "Ids are raw strings (`MaterialEntry.id`, `…Domain/MaterialLibrary.fs:33`; `Sample.id` / `Sample.materialId`, `…Domain/ElementId.fs:45,47`)",
       "spec_location": "§A.0",
-      "evidence": "Read Propagation.fs:104-111 -> `let private propertiesOf` at :104; fallback case `| _ -> OpticalProperties.transparentGlass` at :111.",
+      "evidence": "Read MaterialLibrary.fs:33 -> `id : string` in MaterialEntry. Read ElementId.fs:45,47 -> `id : string` and `materialId : string` in `type Sample` (declared :43). All three fields are raw strings at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 9,
-      "phrase": "Ids are raw strings (`MaterialEntry.id`, `…Domain/MaterialLibrary.fs:33`; `Sample.id` / `Sample.materialId`, `…Domain/ElementId.fs:45,47`)",
+      "phrase": "the only catalogue proxy is the read-only picker `LibraryProxy` (`ElementId.fs:179`)",
       "spec_location": "§A.0",
-      "evidence": "Read MaterialLibrary.fs:33 -> `id : string` in MaterialEntry. Read ElementId.fs:45,47 -> `id : string` and `materialId : string` in Sample. All three fields are bare strings as claimed.",
+      "evidence": "Read ElementId.fs:179 -> `type LibraryProxy` with three read-only functions (entriesForKind / libraryTrees / tryGetEntry), no mutating verbs. Grep `type \\w*Proxy` across OpticalConstructor -> only LibraryProxy (:179) and ExperimentProxy (:665, the Experiments seam, not a catalogue proxy). 'Only catalogue proxy' holds.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 10,
-      "phrase": "the only proxy is the read-only picker `LibraryProxy` (`ElementId.fs:179`)",
-      "spec_location": "§A.0",
-      "evidence": "The pointer resolves: `type LibraryProxy` at ElementId.fs:179, all fields read verbs (entriesForKind / libraryTrees / tryGetEntry). But the quantifier 'the only proxy' re-derives to 2, not 1: Grep 'Proxy' over OpticalConstructor.Domain also finds `type ExperimentProxy` at ElementId.fs:665 (with its own createInMemory at :688). Cheap fix: qualify (e.g. 'the only catalogue proxy') or drop 'only'.",
-      "verdict": "REFUTED-COUNT-STALE"
+      "phrase": "This REVERSES the spec-010 decision that only expanded films exist (recorded in the `RepeatBuilder` module doc, `…Ui/RepeatBuilder.fs:1-8`)",
+      "spec_location": "§A.0 recorded decisions",
+      "evidence": "Read RepeatBuilder.fs:1-8 -> module doc states 'there is NO new \"super-layer\"/\"period\" domain type; the project persists only the expanded `films` (§A.7), never the unfactored period'. The recorded decision exists at the cited lines.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 11,
-      "phrase": "This REVERSES the spec-010 decision that only expanded films exist (recorded in the `RepeatBuilder` module doc, `…Ui/RepeatBuilder.fs:1-8`)",
+      "phrase": "The pure expansion primitive to mirror is `RepeatBuilder.expand` (`…Ui/RepeatBuilder.fs:24`)",
       "spec_location": "§A.0 recorded decisions",
-      "evidence": "Read RepeatBuilder.fs:1-8 -> module doc states 'there is NO new \"super-layer\"/\"period\" domain type; the project persists only the expanded `films` (§A.7), never the unfactored period' (lines 6-8). The recorded decision exists where cited.",
+      "evidence": "Read RepeatBuilder.fs:24 -> `let expand (cell : Layer list) (count : int) : Layer list = List.replicate count cell |> List.concat` (body at :25). Pure, matches the claim.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 12,
-      "phrase": "The pure expansion primitive to mirror is `RepeatBuilder.expand` (`…Ui/RepeatBuilder.fs:24`)",
-      "spec_location": "§A.0 recorded decisions",
-      "evidence": "Read RepeatBuilder.fs:24 -> `let expand (cell : Layer list) (count : int) : Layer list = List.replicate count cell |> List.concat`.",
+      "phrase": "Assembly reuses the existing engine constructors (`Eps.fromRefractionIndex` / `Eps.fromComplexRefractionIndex`, `MaterialProperties.fs:76,87`; `Mu.create`, `:112`; `Rho.fromIm`, `:139`)",
+      "spec_location": "§B.0",
+      "evidence": "Read MaterialProperties.fs -> `static member fromRefractionIndex` at :76, `static member fromComplexRefractionIndex` at :87, `Mu.create` at :112, `Rho.fromIm` at :139. All four constructors exist at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 13,
-      "phrase": "Assembly reuses the existing engine constructors (`Eps.fromRefractionIndex` / `Eps.fromComplexRefractionIndex`, `MaterialProperties.fs:76,87`; `Mu.create`, `:112`; `Rho.fromIm`, `:139`)",
+      "phrase": "the crystal-class `Rho` builders in `Berreman/OpticalProperties/Active.fs:30,38,46` — `Active.fs` gains the missing 222 / monoclinic / triclinic builders",
       "spec_location": "§B.0",
-      "evidence": "Read MaterialProperties.fs -> `Eps.fromRefractionIndex` overloads at :76 (and :79), `Eps.fromComplexRefractionIndex` at :87 (and :95), `Mu.create` at :112, `Rho.fromIm` at :139. All cited constructors exist at the cited lines.",
+      "evidence": "Read Active.fs -> `Rho.cubicCrystal` at :30, `Rho.planarCrystal` at :38, `Rho.type_3_4_6_Crystal` at :46. Grep '222|monoclinic|triclinic' (case-insensitive variants) in Active.fs -> 0 hits, so those builders are indeed missing today.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 14,
-      "phrase": "the crystal-class `Rho` builders in `Berreman/OpticalProperties/Active.fs:30,38,46`",
+      "phrase": "`RhoWithDispValue.toRhoWithDisp` lives there as a type extension because the core project cannot reference `OpticalProperties`",
       "spec_location": "§B.0",
-      "evidence": "Read Active.fs -> `Rho.cubicCrystal` at :30, `Rho.planarCrystal` at :38, `Rho.type_3_4_6_Crystal` at :46 (plus `type_32_42_62_Crystal` at :54).",
+      "evidence": "Phrase inferred as assumption-shape (current project wiring). Grep ProjectReference -> OpticalProperties.fsproj:48 references ..\\Berreman\\Berreman.fsproj; Berreman.fsproj references only MathNetNumerics projects. The dependency direction is OpticalProperties -> core, so the core cannot reference OpticalProperties without a cycle.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 15,
-      "phrase": "`Active.fs` gains the missing 222 / monoclinic / triclinic builders",
+      "phrase": "The editor-facing `DispersionModels.DispersionModel` catalogue (`…Domain/DispersionModels.fs:120`) is kept",
       "spec_location": "§B.0",
-      "evidence": "Phrase inferred as assumption-shape ('the missing X' asserts current absence). Grep '222|monoclinic|triclinic' (case-insensitive variants included) over Active.fs -> 0 hits; the builders are indeed absent today.",
+      "evidence": "Read DispersionModels.fs:120 -> `type DispersionModel` DU (Sellmeier / Cauchy / Lorentz / Drude / TaucLorentz / GaussianOscillator / ConstantNK). Matched exactly.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 16,
-      "phrase": "The editor-facing `DispersionModels.DispersionModel` catalogue (`…Domain/DispersionModels.fs:120`) is kept and LOWERED to the new per-axis `EpsAxisDispersion`",
+      "phrase": "`AnisotropicModel` (`DispersionModels.fs:242`) is removed as superseded",
       "spec_location": "§B.0",
-      "evidence": "Read DispersionModels.fs:120 -> `type DispersionModel` DU (Sellmeier / Cauchy / Lorentz / Drude / TaucLorentz / GaussianOscillator / ConstantNK) at the cited line.",
+      "evidence": "Read DispersionModels.fs:242 -> `type AnisotropicModel = Uniaxial ... | Biaxial ...` exists today at the cited line (the removal target is real).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 17,
-      "phrase": "`AnisotropicModel` (`DispersionModels.fs:242`) is removed as superseded",
+      "phrase": "`silicon` / `langasite` (dispersion coded in `Berreman/OpticalProperties/Dispersive.fs:98-99`) stay preset-backed",
       "spec_location": "§B.0",
-      "evidence": "Phrase inferred as assumption-shape ('is removed' presumes the artefact exists today). Read DispersionModels.fs:242 -> `type AnisotropicModel` (Uniaxial / Biaxial) at the cited line.",
+      "evidence": "Read Dispersive.fs:98-99 -> `let siliconOpticalProperties = Silicon().opticalProperties` and `let langasiteOpticalProperties = Langasite().opticalProperties`, the dispersive preset bindings, at exactly the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 18,
-      "phrase": "`silicon` / `langasite` (dispersion coded in `Berreman/OpticalProperties/Dispersive.fs:98-99`) stay preset-backed and are view-only",
-      "spec_location": "§B.0",
-      "evidence": "Read Dispersive.fs:98-99 -> `let siliconOpticalProperties = Silicon().opticalProperties` at :98 and `let langasiteOpticalProperties = Langasite().opticalProperties` at :99 (the dispersive preset classes are defined immediately above in the same file).",
+      "phrase": "The Main screen is a generic ribbon of bays (`Ribbon.Bay`, `…Controls/Ribbon.fs:25`)",
+      "spec_location": "§C",
+      "evidence": "Read Ribbon.fs:25 -> `type Bay = { name : string; content : IView }` inside `module Ribbon` (:21). Matched exactly.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 19,
-      "phrase": "The Main screen is a generic ribbon of bays (`Ribbon.Bay`, `…Controls/Ribbon.fs:25`)",
-      "spec_location": "Part C",
-      "evidence": "Read Ribbon.fs:25 -> `type Bay = { name : string; content : IView }` inside `module Ribbon` (declared at :21).",
+      "phrase": "each change is one `BayNames` constant plus one `mainBays` row (`…TestWindows/TableAndElementRotationView.fs:144,1577`)",
+      "spec_location": "§C",
+      "evidence": "Read TableAndElementRotationView.fs -> `module BayNames` at :144, `let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list` at :1577. Both at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 20,
-      "phrase": "each change is one `BayNames` constant plus one `mainBays` row (`…TestWindows/TableAndElementRotationView.fs:144,1577`)",
-      "spec_location": "Part C",
-      "evidence": "Read TableAndElementRotationView.fs -> `module BayNames` at :144, `let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list` at :1577; each bay is one row in the list at :1578-1584.",
+      "phrase": "The old picker bay is renamed Selector (behaviour unchanged)",
+      "spec_location": "§C",
+      "evidence": "Anchored via §0.5's pointer: BayNames.library = \"Library\" at TableAndElementRotationView.fs:150, wired as a mainBays row at :1582 (`{ name = BayNames.library; content = LibraryControls.view ... }`). The bay being renamed exists as described.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 21,
-      "phrase": "The old picker bay is renamed Selector (behaviour unchanged)",
-      "spec_location": "Part C",
-      "evidence": "The old picker bay exists as claimed: `BayNames.library = \"Library\"` at TableAndElementRotationView.fs:150 with its mainBays row (`LibraryControls.view (libraryState model) (libraryHandlers dispatch)`) at :1582. 'Behaviour unchanged' is a forward-looking constraint on the rename; the underlying existing artefact resolves.",
+      "phrase": "the new `MaterialsControls` / `SampleLibraryControls` copy the domain-free `LibraryControls` shape (`…Controls/LibraryControls.fs:25,34,64,76`)",
+      "spec_location": "§C",
+      "evidence": "Read LibraryControls.fs -> `type Row` at :25, `type State` at :34, `type Handlers` at :64, `[<RequireQualifiedAccess>]` + `module UiIds` at :76-77. All cited anchors of the shape exist.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 22,
-      "phrase": "the new `MaterialsControls` / `SampleLibraryControls` copy the domain-free `LibraryControls` shape (`…Controls/LibraryControls.fs:25,34,64,76`) — pure `Row` / `State`, a `Handlers` record of unit-returning functions, one `[<RequireQualifiedAccess>] module UiIds` of `[<Literal>]` intent-named ids",
-      "spec_location": "Part C",
-      "evidence": "Read LibraryControls.fs -> `type Row` at :25, `type State` at :34, `type Handlers` at :64, `[<RequireQualifiedAccess>]` at :76 with `module UiIds` at :77. All four anchors resolve. Note: the existing UiIds bindings are plain `let` strings (plus one function `entry`), not `[<Literal>]`-annotated — the `[<Literal>]` wording is a prescription for the new modules, not a property of the existing file.",
+      "phrase": "The host flattens proxy results into rows exactly as `libraryState` / `flattenNode` do today (`TableAndElementRotationView.fs:1012,999`)",
+      "spec_location": "§C",
+      "evidence": "Read TableAndElementRotationView.fs -> `let rec private flattenNode` at :999 (emits LibraryControls.Row list), `let private libraryState (model : Model) : LibraryControls.State` at :1012. Both at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 23,
-      "phrase": "The host flattens proxy results into rows exactly as `libraryState` / `flattenNode` do today (`TableAndElementRotationView.fs:1012,999`)",
-      "spec_location": "Part C",
-      "evidence": "Read TableAndElementRotationView.fs -> `let private libraryState (model : Model) : LibraryControls.State` at :1012, `let rec private flattenNode` at :999. Both exist at the cited lines and flatten tree nodes to LibraryControls.Row lists.",
+      "phrase": "The chart model and pop-out window are REAL-MOVED ... from `…TestWindows/ExperimentChart.fs` and `…TestWindows/ChartWindow.fs` into `OpticalConstructor.Controls`",
+      "spec_location": "§D",
+      "evidence": "Both source files exist: Read OpticalConstructor.TestWindows/ExperimentChart.fs and OpticalConstructor.TestWindows/ChartWindow.fs (contents verified in claims 26).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 24,
-      "phrase": "The chart model and pop-out window are REAL-MOVED (no file-linking …) from `…TestWindows/ExperimentChart.fs` and `…TestWindows/ChartWindow.fs` into `OpticalConstructor.Controls`",
-      "spec_location": "Part D",
-      "evidence": "Phrase inferred as assumption-shape ('moved from' presumes the source files exist today). Both files exist and were read: OpticalConstructor.TestWindows/ExperimentChart.fs and OpticalConstructor.TestWindows/ChartWindow.fs.",
+      "phrase": "the same `ScottPlot.Avalonia` 5.1.59 package both hosts already use (`…TestWindows/OpticalConstructor.TestWindows.fsproj:75`, `…Ui/OpticalConstructor.Ui.fsproj:173`)",
+      "spec_location": "§D",
+      "evidence": "Read OpticalConstructor.TestWindows.fsproj:75 -> `<PackageReference Include=\"ScottPlot.Avalonia\" Version=\"5.1.59\" />`; OpticalConstructor.Ui.fsproj:173 -> identical PackageReference. Both at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 25,
-      "phrase": "gains the same `ScottPlot.Avalonia` 5.1.59 package both hosts already use (`…TestWindows/OpticalConstructor.TestWindows.fsproj:75`, `…Ui/OpticalConstructor.Ui.fsproj:173`)",
-      "spec_location": "Part D",
-      "evidence": "Read OpticalConstructor.TestWindows.fsproj:75 -> `<PackageReference Include=\"ScottPlot.Avalonia\" Version=\"5.1.59\" />`; read OpticalConstructor.Ui.fsproj:173 -> `<PackageReference Include=\"ScottPlot.Avalonia\" Version=\"5.1.59\" />`. Same package, same version, both cited lines exact.",
+      "phrase": "the Ui-native `Charts/ChartSettings.fs` is reconciled onto the one shared model — no third settings type",
+      "spec_location": "§D",
+      "evidence": "Glob -> Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/ChartSettings.fs exists (the reconciliation target is real).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 26,
-      "phrase": "the Ui-native `Charts/ChartSettings.fs` is reconciled onto the one shared model",
-      "spec_location": "Part D",
-      "evidence": "Phrase inferred as assumption-shape (presumes the Ui-native file exists today). Glob confirms Berreman/OpticalConstructor/OpticalConstructor.Ui/Charts/ChartSettings.fs exists.",
+      "phrase": "A second Y axis (ScottPlot `plot.Axes.Right`, currently unused) is added through the existing style spine (`ChartElement`, `ExperimentChart.fs:152`; `AxisStyle`, `:199`; `SeriesStyle`, `:229`; `dataBounds` / `defaultState`, `:261,281`; `rebuildPlot` / `applyAxisLimits` / `setCartesianAxesVisible`, `ChartWindow.fs:178,133,151`)",
+      "spec_location": "§D",
+      "evidence": "Grep 'Axes\\.Right' repo-wide -> 0 hits in source (only spec documents), so it is currently unused. Read ExperimentChart.fs -> ChartElement:152, AxisStyle:199, SeriesStyle:229, dataBounds:261, defaultState:281. Read ChartWindow.fs -> rebuildPlot:178, applyAxisLimits:133, setCartesianAxesVisible:151. All eight symbols at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 27,
-      "phrase": "A second Y axis (ScottPlot `plot.Axes.Right`, currently unused) is added",
-      "spec_location": "Part D",
-      "evidence": "Grep 'Axes\\.Right' across the repo -> hits only in specs/0033 spec files and specs/0027/.manual preliminary-spec prose; 0 hits in any production source file. 'Currently unused' holds.",
+      "phrase": "reusing the existing pure series builders (`plotN11Series` / `plotXi11Series`, `…Ui/Charts/SeriesData.fs:103-104`, backed by `Analytics.Variables`, `Analytics/Variables.fs:321`)",
+      "spec_location": "§D",
+      "evidence": "Read SeriesData.fs:103-104 -> `let plotN11Series` / `let plotXi11Series`. Read Analytics/Variables.fs:321 -> `let calculateN11Re = calculateOpticalProp EpsComp SquareRoot (One, One) UseRe`. All at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 28,
-      "phrase": "through the existing style spine (`ChartElement`, `ExperimentChart.fs:152`; `AxisStyle`, `:199`; `SeriesStyle`, `:229`; `dataBounds` / `defaultState`, `:261,281`; `rebuildPlot` / `applyAxisLimits` / `setCartesianAxesVisible`, `ChartWindow.fs:178,133,151`)",
-      "spec_location": "Part D",
-      "evidence": "Grep over ExperimentChart.fs -> ChartElement:152, AxisStyle:199, SeriesStyle:229, dataBounds:261, defaultState:281 (chart-style one; a separate font defaultState exists at :104). Grep over ChartWindow.fs -> rebuildPlot:178, applyAxisLimits:133, setCartesianAxesVisible:151. All eight anchors exact.",
+      "phrase": "the spectral-axis helpers (`…Ui/MaterialPreview.fs:18,31,40`), which move to the Domain project so the TestWindows host can reach them",
+      "spec_location": "§D",
+      "evidence": "Read MaterialPreview.fs -> `axisLabel` at :18, `spectralRange` at :31, `axisTicks` at :40. All three helpers at the cited lines; TestWindows not referencing Ui is verified in claim 33.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 29,
-      "phrase": "reusing the existing pure series builders (`plotN11Series` / `plotXi11Series`, `…Ui/Charts/SeriesData.fs:103-104`, backed by `Analytics.Variables`, `Analytics/Variables.fs:321`)",
-      "spec_location": "Part D",
-      "evidence": "Read SeriesData.fs:103-104 -> `plotN11Series` at :103, `plotXi11Series` at :104. Read Analytics/Variables.fs:321 -> `let calculateN11Re = calculateOpticalProp EpsComp SquareRoot (One, One) UseRe` (with calculateXi11Im at :322), which back the series builders.",
+      "phrase": "a serializable `CrystalOrientation` that BUILDS a `Rotation` (`Berreman/Berreman/Geometry.fs:601,604`; conventions `:578`; shortcuts `rotatePiX` / `rotateHalfPiY`, `:616,622`)",
+      "spec_location": "§E",
+      "evidence": "Read Geometry.fs -> `type Rotation` at :601, `static member create convention phi theta psi` at :604, `type RotationConvention` at :578, `rotatePiX` at :616, `rotateHalfPiY` at :622. All at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 30,
-      "phrase": "the spectral-axis helpers (`…Ui/MaterialPreview.fs:18,31,40`), which move to the Domain project so the TestWindows host can reach them",
-      "spec_location": "Part D",
-      "evidence": "Read MaterialPreview.fs -> `axisLabel` at :18, `spectralRange` at :31, `axisTicks` at :40. All three helpers exist at the cited lines in the Ui project (i.e. currently NOT reachable from TestWindows, consistent with the stated need to move them).",
+      "phrase": "applied at system-build time via `Layer.rotate` (`Berreman/Berreman/Media.fs:30`) → `OpticalProperties.rotate` (`MaterialProperties.fs:187`)",
+      "spec_location": "§E",
+      "evidence": "Read Media.fs:30 -> `member this.rotate (r : Rotation) : Layer = { this with properties = this.properties.rotate r }`. Read MaterialProperties.fs:187 -> `member this.rotate (Rotation r)` on OpticalProperties. Both at the cited lines and chained as described.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 31,
-      "phrase": "each stack layer carries a serializable `CrystalOrientation` that BUILDS a `Rotation` (`Berreman/Berreman/Geometry.fs:601,604`; conventions `:578`; shortcuts `rotatePiX` / `rotateHalfPiY`, `:616,622`)",
-      "spec_location": "Part E",
-      "evidence": "Read Geometry.fs -> `type Rotation` at :601, `Rotation.create` at :604, `type RotationConvention` at :578, `rotatePiX` at :616, `rotateHalfPiY` at :622. All cited anchors exact.",
+      "phrase": "worked example: `Berreman/Analytics/Examples/ActiveCrystalComparison.fsx:136`",
+      "spec_location": "§E",
+      "evidence": "Read ActiveCrystalComparison.fsx:136 -> `opticalSystem = (OpticalSystem.plateSystem planar d thickness).rotateHalfPiY.dispersive` — rotation applied at system build, nothing stored rotated. Matched.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 32,
-      "phrase": "applied at system-build time via `Layer.rotate` (`Berreman/Berreman/Media.fs:30`) → `OpticalProperties.rotate` (`MaterialProperties.fs:187`)",
-      "spec_location": "Part E",
-      "evidence": "Read Media.fs:30 -> `member this.rotate (r : Rotation) : Layer = { this with properties = this.properties.rotate r}`. Read MaterialProperties.fs:187 -> `member this.rotate (Rotation r)` on OpticalProperties. The Layer.rotate body delegates to OpticalProperties.rotate as claimed.",
+      "phrase": "`StackEditor.applyStackMsg` transforms a resolved engine `OpticalSystem` (`…Ui/StackEditor.fs:161,176`) that has no material ids to select by; The existing `StackEditor` (including `groupLayers`, `StackEditor.fs:69`) is untouched",
+      "spec_location": "§E recorded decisions",
+      "evidence": "Read StackEditor.fs -> `type StackMsg` at :161, `let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem` at :176 (operates on engine OpticalSystem, layers carry resolved OpticalProperties, no material ids), `let groupLayers` at :69. All at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 33,
-      "phrase": "nothing is stored rotated (worked example: `Berreman/Analytics/Examples/ActiveCrystalComparison.fsx:136`)",
-      "spec_location": "Part E",
-      "evidence": "Read ActiveCrystalComparison.fsx:136 -> `opticalSystem = (OpticalSystem.plateSystem planar d thickness).rotateHalfPiY.dispersive` — rotation applied at system-build time, matching the worked-example claim.",
+      "phrase": "both editor windows land in `OpticalConstructor.TestWindows` beside the existing pop-out `ChartWindow` — the Main-screen host lives there and that project references only Domain and Controls (`…TestWindows/OpticalConstructor.TestWindows.fsproj:79,81`), not Ui",
+      "spec_location": "§E recorded decisions",
+      "evidence": "Read OpticalConstructor.TestWindows.fsproj:78-82 -> ProjectReference to OpticalConstructor.Domain at :79 and OpticalConstructor.Controls at :81; the ItemGroup holds only those two project references (no Ui). ChartWindow.fs exists in the TestWindows project.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 34,
-      "phrase": "because `StackEditor.applyStackMsg` transforms a resolved engine `OpticalSystem` (`…Ui/StackEditor.fs:161,176`) that has no material ids to select by",
-      "spec_location": "Part E recorded decision",
-      "evidence": "Read StackEditor.fs -> `type StackMsg` at :161, `let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem` at :176. StackMsg cases carry resolved `Layer` / `OpticalProperties` values and int indices — no material ids — supporting the stated rationale.",
+      "phrase": "Validation reuses `…Ui/Validation.fs` (`validateThickness:46`, `validateRepeatCount:56`, `validateWavelengthRange:64`, `imaginaryIndexGainWarning:92`) — these helpers move with the editors where project layering requires",
+      "spec_location": "§F",
+      "evidence": "Read Validation.fs -> `validateThickness` at :46, `validateRepeatCount` at :56, `validateWavelengthRange` at :64, `imaginaryIndexGainWarning` at :92. All four at the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 35,
-      "phrase": "The existing `StackEditor` (including `groupLayers`, `StackEditor.fs:69`) is untouched",
-      "spec_location": "Part E recorded decision",
-      "evidence": "Read StackEditor.fs:69 -> `let groupLayers (indices : int list) (sys : OpticalSystem) : OpticalSystem` at the cited line inside the existing StackEditor module.",
+      "phrase": "`MaterialImport.importRefractiveIndexInfo` (`…Storage/MaterialImport.fs:109`) today reads only `tabulated n/nk` and `formula 1`",
+      "spec_location": "§G",
+      "evidence": "Read MaterialImport.fs:109 -> `let importRefractiveIndexInfo (yamlText : string) : Result<MaterialEntry, ImportError>`; body branches only on `isFormula1` (Sellmeier coefficients) else `tabulatedRows` (:111-138). No other formula is handled today. Matched.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 36,
-      "phrase": "both editor windows land in `OpticalConstructor.TestWindows` beside the existing pop-out `ChartWindow`",
-      "spec_location": "Part E recorded decision",
-      "evidence": "OpticalConstructor.TestWindows/ChartWindow.fs exists and was read (rebuildPlot/applyAxisLimits/setCartesianAxesVisible at :178/:133/:151); the existing pop-out ChartWindow resolves.",
+      "phrase": "formulas 8 and 9 return a typed unsupported-formula `ImportError` (`MaterialImport.fs:29`)",
+      "spec_location": "§G",
+      "evidence": "Read MaterialImport.fs:29 -> `type ImportError = MalformedYaml | MalformedCsv | NoData` (each `of string`) exists at the cited line; the unsupported-formula case is the planned addition to this existing error DU.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 37,
-      "phrase": "that project references only Domain and Controls (`…TestWindows/OpticalConstructor.TestWindows.fsproj:79,81`), not Ui",
-      "spec_location": "Part E recorded decision",
-      "evidence": "Read OpticalConstructor.TestWindows.fsproj:78-82 -> exactly two ProjectReference entries: OpticalConstructor.Domain at :79 and OpticalConstructor.Controls at :81; no Ui reference anywhere in the file.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 38,
-      "phrase": "Validation reuses `…Ui/Validation.fs` (`validateThickness:46`, `validateRepeatCount:56`, `validateWavelengthRange:64`, `imaginaryIndexGainWarning:92`) — these helpers move with the editors where project layering requires, never duplicated",
-      "spec_location": "Part F",
-      "evidence": "Grep over OpticalConstructor.Ui/Validation.fs -> validateThickness:46, validateRepeatCount:56, validateWavelengthRange:64, imaginaryIndexGainWarning:92. All four helpers exact.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 39,
-      "phrase": "`MaterialImport.importRefractiveIndexInfo` (`…Storage/MaterialImport.fs:109`) today reads only `tabulated n/nk` and `formula 1`",
-      "spec_location": "Part G",
-      "evidence": "Read MaterialImport.fs:104-129 -> `let importRefractiveIndexInfo` at :109; its doc comment (:104-108) and body support exactly the `tabulated n`/`tabulated nk` layout and a `formula 1` Sellmeier block (isFormula1 branch at :112-114); no other formula handling exists.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 40,
-      "phrase": "formulas 8 and 9 return a typed unsupported-formula `ImportError` (`MaterialImport.fs:29`) — an honest negative scope, not a stub",
-      "spec_location": "Part G",
-      "evidence": "Read MaterialImport.fs:29 -> `type ImportError` (MalformedYaml / MalformedCsv / NoData) at the cited line; the existing error DU the new unsupported-formula case extends resolves exactly.",
+      "phrase": "Full spec authored from the operator's preliminary spec `specs/0027/.manual/035-materials-samples-library-preliminary-spec.md` (rev. 4, incorporating the 036/037 dispersion refinements)",
+      "spec_location": "preamble",
+      "evidence": "Phrase inferred as assumption-shape (existing-artifact provenance pointer, not in the trigger list). Glob -> specs/0027/.manual/035-materials-samples-library-preliminary-spec.md exists.",
       "verdict": "CONFIRMED"
     }
   ],
