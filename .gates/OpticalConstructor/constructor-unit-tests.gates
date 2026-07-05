@@ -4,12 +4,13 @@ kind: command
 command: dotnet test Berreman/OpticalConstructor/OpticalConstructor.Tests/OpticalConstructor.Tests.fsproj -c Release
 pass_when:
   exit_code: 0
-runtime_estimate_seconds: 600
+  count_at_least:
+    capture: "Passed:\\s*(\\d+)"
+    baseline_key: constructor_unit_tests
+runtime_estimate_seconds: 180
 tags:
 - test
 applies_to:
 - paths:
   - 'Berreman/OpticalConstructor/**'
 qualifier: unit
-filter: none
-descriptor_version: 1
