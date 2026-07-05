@@ -1,0 +1,14 @@
+Here are some comments. DispersionExpression must be elevated for eps , mu, and rho, e.g. EpsDispersionExpression 
+so that to never mix them up. This apply to all similar things: e.g. a wavelength interval is just an interval, 
+but a dispersion expression is always specific to something.
+Some dispersive models are explicitly real and have separate formulas for n and k. We must keep it that way as 
+using complex numbers when the are NOT needed results in extra complexity. WaveLengthInterval is fixed for uniaxial 
+and biaxial media, which means that MediumDispersion is NOT correctly structured. This means that we need 3 flavors 
+of DispersionSegment (for isotropic, uniaxial and biaxial media) and then we elevate that further into a collection. 
+Note that validity is a bad label because it does not say what that validity is. Since a media may have some or all 
+dispersive or non-dispersive properties, then the correct model a DU option tree: all media have eps it could be 
+dispersive on non-dispersive. That’s two DU cases. The media may have magnetic and optical activity properties. 
+That’s two options and under the hood each of them is similar two case DU as for eps. Note, that all of these things 
+MUST be elevated to their `Eps<Something>`, `Mu<Something>`, `Rho<Something>`, so that they can never be mixed.
+
+Update 035 as the changes seems small enough so that not to justify an extra file.
