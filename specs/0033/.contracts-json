@@ -1,0 +1,50 @@
+{
+  "STORE_XDUO_0001": {
+    "lifecycle": "declared",
+    "declaringStep": 3,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0002": {
+    "lifecycle": "declared",
+    "declaringStep": 4,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0001": {
+    "lifecycle": "declared",
+    "declaringStep": 15,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0002": {
+    "lifecycle": "declared",
+    "declaringStep": 16,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0003": {
+    "lifecycle": "declared",
+    "declaringStep": 22,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0004": {
+    "lifecycle": "declared",
+    "declaringStep": 23,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  }
+}
