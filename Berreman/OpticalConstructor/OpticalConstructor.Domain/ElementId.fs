@@ -5,7 +5,7 @@ open Berreman.Constants         // the nm / mm units of measure
 open Berreman.Fields            // WaveLength
 open Berreman.Media             // Thickness
 open OpticalConstructor.Domain.Placement   // CatalogueKind
-open OpticalConstructor.Domain.MaterialLibrary   // MaterialId / MaterialIds (spec 0033 step 002)
+open OpticalConstructor.Domain.MaterialLibrary   // MaterialId / MaterialIds (spec 0033 step 002); the materials store seam (step 006)
 
 /// Spec 0027 (024) — the Library domain: an elevated, serializable `ElementId` (the stable
 /// table-element identity, distinct from `valueId`), the kind-constrained Library presets
@@ -94,6 +94,23 @@ module Library =
                 match item with
                 | SingleLayer l -> [ l ]
                 | Repeated g -> List.replicate g.count g.cell |> List.concat)
+
+        /// Every material id the structure references (spec 0033 step 006): each film layer's
+        /// material (a `Repeated` group's cell counted once — repetition adds no new
+        /// reference), the substrate plate's material, and the lower half-space material.
+        /// Pure — the referencing lookup `MaterialProxy.removeMaterial` consults is built
+        /// over this (`samplesReferencing`).
+        member this.referencedMaterials : Set<MaterialId> =
+            let filmMaterialIds =
+                this.films
+                |> List.collect (fun item ->
+                    match item with
+                    | SingleLayer l -> [ l.materialId ]
+                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId))
+            let substrateMaterialIds =
+                this.substrate |> Option.toList |> List.map (fun l -> l.materialId)
+            let lowerMaterialIds = this.lower |> Option.toList
+            filmMaterialIds @ substrateMaterialIds @ lowerMaterialIds |> Set.ofList
 
     /// A cut-out plate (spec §2a): a material structure cut to a plate / thin-film geometry → Layer(s)/an
     /// `OpticalSystem` (the mapping to the engine is Phase 3). The `structure` is the material facet
@@ -625,6 +642,84 @@ module Library =
                             Ok ()
                         | None -> Error (unknown id)
             }
+
+    /// The real, stateful in-memory materials store behind the write-seam (spec 0033 step 006
+    /// — IMPLEMENT_CONTRACT STORE_XDUO_0001; replaces the step-003 validate-only mock).
+    /// `createInMemory` closes over a `ref` `Map<MaterialId, MaterialEntry>` seeded from
+    /// `MaterialLibrary.builtInEntries` — the elevated `MaterialId` is the Map key directly.
+    /// Mutation stays INSIDE the closure (the IO boundary), so logic holding the proxy stays
+    /// pure: reads answer from the current map; `searchMaterials` answers through the pure
+    /// query seam (`byQuery` — the §D.8 `byNameContains`/`byCategory` filters plus the
+    /// `DispersionFilter` facet); `addMaterial` persists a fresh entry and hard-blocks an id
+    /// the store already holds (`DuplicateMaterialId`); `updateMaterial` replaces a known
+    /// entry and rejects an unknown one; `removeMaterial` consults `samplesReferencing` and
+    /// returns `MaterialStillReferenced` NAMING the referencing samples whenever any remain —
+    /// it never cascades and never silently deletes; both writes keep the step-003 blank-name
+    /// validation (`InvalidMaterial`). Deterministic under test — every entry carries its own
+    /// id, no clock, no IO. (A type augmentation HERE, not beside the type in
+    /// `MaterialLibrary.fs`: the referencing lookup is `Sample`-typed, and `Sample` compiles
+    /// after that file. At composition the lookup is `samplesReferencing` below, backed by
+    /// the step-005 `SampleProxy` store.)
+    type MaterialProxy with
+
+        static member createInMemory (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
+            let store = ref (builtInEntries |> List.map (fun e -> e.id, e) |> Map.ofList)
+            let currentEntries () : MaterialEntry list =
+                store.Value |> Map.toList |> List.map snd
+            let unknown (id : MaterialId) : MaterialError =
+                UnknownMaterialId (sprintf "unknown material id '%s'" (string id.value))
+            {
+                listMaterials = fun () -> Ok (currentEntries ())
+                searchMaterials = fun q -> Ok (byQuery q { entries = currentEntries () })
+                tryGetMaterial = fun id -> Ok (store.Value |> Map.tryFind id)
+                addMaterial =
+                    fun entry ->
+                        validateEntry entry
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind entry.id with
+                            | Some existing ->
+                                Error (DuplicateMaterialId (sprintf "material id '%s' already names '%s'" (string entry.id.value) existing.name))
+                            | None ->
+                                store.Value <- store.Value |> Map.add entry.id entry
+                                Ok ())
+                updateMaterial =
+                    fun entry ->
+                        validateEntry entry
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind entry.id with
+                            | Some _ ->
+                                store.Value <- store.Value |> Map.add entry.id entry
+                                Ok ()
+                            | None -> Error (unknown entry.id))
+                removeMaterial =
+                    fun id ->
+                        match store.Value |> Map.tryFind id with
+                        | Some entry ->
+                            match samplesReferencing id with
+                            | [] ->
+                                store.Value <- store.Value |> Map.remove id
+                                Ok ()
+                            | referencing ->
+                                let names =
+                                    referencing
+                                    |> List.map (fun s -> sprintf "'%s'" s.name)
+                                    |> List.sort
+                                    |> String.concat ", "
+                                Error (MaterialStillReferenced (sprintf "material '%s' ('%s') is still referenced by %d sample(s): %s" entry.name (string id.value) (List.length referencing) names))
+                        | None -> Error (unknown id)
+            }
+
+    /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
+    /// step 006): every sample the samples store currently holds whose structure references
+    /// the material. Backed by the LIVE step-005 `SampleProxy` store — once the referencing
+    /// samples are removed the material becomes removable; there is no snapshot to refresh.
+    /// The in-memory `listSamples` is total (always `Ok`); the signature carries no error
+    /// channel, so a future store whose listing can fail must supply its own conservative
+    /// lookup instead of this one.
+    let samplesReferencing (samples : SampleProxy) (id : MaterialId) : Sample list =
+        match samples.listSamples () with
+        | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)
+        | Error _ -> []
 
 /// Spec 0027 (028) — the Experiments domain, redesigned around a multi-step, EDITABLE experiment built
 /// from the live setup:

@@ -1,8 +1,8 @@
 {
   "STORE_XDUO_0001": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 3,
-    "implementStep": null,
+    "implementStep": 6,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []
