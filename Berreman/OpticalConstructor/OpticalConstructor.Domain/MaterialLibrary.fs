@@ -87,8 +87,15 @@ module MaterialLibrary =
     /// Net-new error channel for material resolution (errors as values, §0). Returned
     /// — never thrown — by `resolveMaterial` on an unknown id; the case carries a
     /// diagnostic `reason` (spec 0033 step 002) naming the id's Guid string form.
+    /// Extended (spec 0033 step 003, the `MaterialProxy` write-seam) with the mutating
+    /// outcomes: adding an entry under an id the library already holds, removing an
+    /// entry a sample structure still references, and rejecting a malformed entry.
+    /// Every case carries a diagnostic `reason` — a bare error case is useless in a log.
     type MaterialError =
         | UnknownMaterialId of reason : string
+        | DuplicateMaterialId of reason : string
+        | MaterialStillReferenced of reason : string
+        | InvalidMaterial of reason : string
 
     /// The in-memory, additive material library (§D.8). Persistence of an entry is the
     /// JSON `materialEntry` `$def` (§A.7); a shareable library FILE format is Part I §I.8.
@@ -225,3 +232,118 @@ module MaterialLibrary =
 
     /// The default in-memory library seeded with the built-in entries (§D.8).
     let standard : MaterialLibrary = { entries = builtInEntries }
+
+    /// The dispersion facet of a materials search (spec 0033 step 003): match every entry,
+    /// only entries whose optical properties depend on wavelength, or only
+    /// wavelength-independent entries. A three-case DU — never a `bool option` — so a match
+    /// site reads as prose and a future facet (e.g. tabulated-only) is a non-breaking
+    /// addition.
+    type DispersionFilter =
+        | AnyDispersion
+        | OnlyDispersive
+        | OnlyNonDispersive
+
+    /// A materials-library search query (spec 0033 step 003): a case-insensitive name
+    /// fragment (empty matches all — the `byNameContains` semantics), an optional
+    /// `MaterialCategory`, and the dispersion facet. The query is DATA, so the materials
+    /// panel drives one search seam (`MaterialProxy.searchMaterials`) instead of composing
+    /// ad-hoc filter calls.
+    type MaterialQuery =
+        {
+            text : string
+            category : MaterialCategory option
+            dispersion : DispersionFilter
+        }
+
+        /// The match-everything query (a search UI's initial state).
+        static member empty : MaterialQuery =
+            {
+                text = ""
+                category = None
+                dispersion = AnyDispersion
+            }
+
+    /// The mutating materials write-seam (spec 0033 step 003, contract STORE_XDUO_0001 —
+    /// DECLARED lifecycle): the functional-proxy convention `LibraryProxy` set
+    /// (`ElementId.fs`), a record of camelCase `Result`-returning functions. A test
+    /// substitutes a stub of the SAME shape. Function-valued fields have no structural
+    /// equality, so the proxy compares by reference — a host model holding one keeps its
+    /// (Elmish-required) equality. The real, persisting store behind this surface is the
+    /// later IMPLEMENT_CONTRACT step (`OpticalConstructor.Storage`); until then the only
+    /// producers are the in-memory mock below and test stubs.
+    [<ReferenceEquality>]
+    type MaterialProxy =
+        {
+            listMaterials : unit -> Result<MaterialEntry list, MaterialError>
+            searchMaterials : MaterialQuery -> Result<MaterialEntry list, MaterialError>
+            tryGetMaterial : MaterialId -> Result<MaterialEntry option, MaterialError>
+            addMaterial : MaterialEntry -> Result<unit, MaterialError>
+            updateMaterial : MaterialEntry -> Result<unit, MaterialError>
+            removeMaterial : MaterialId -> Result<unit, MaterialError>
+        }
+
+    /// Whether an entry's optical properties actually depend on wavelength — any component
+    /// still carrying a function case (`EpsWithDisp` / `MuWithDisp` / `RhoWithDisp`). The
+    /// classification `DispersionFilter` matches against; private to the mock.
+    let private hasDispersion (e : MaterialEntry) : bool =
+        match e.properties.epsWithDisp, e.properties.muWithDisp, e.properties.rhoWithDisp with
+        | EpsWithoutDisp _, MuWithoutDisp _, RhoWithoutDisp _ -> false
+        | _ -> true
+
+    /// The blank-name validation the mock's write functions share (spec 0033 step 003):
+    /// a `MaterialEntry` whose display name is empty/whitespace is `InvalidMaterial`.
+    let private validateEntry (entry : MaterialEntry) : Result<unit, MaterialError> =
+        if String.IsNullOrWhiteSpace entry.name
+        then Error (InvalidMaterial (sprintf "material '%s' has a blank name" (string entry.id.value)))
+        else Ok ()
+
+    /// The in-memory mock `MaterialProxy` (spec 0033 step 003): an inline stub record over
+    /// the FIXED built-in entry list — no IO, no mutation, deterministic for tests. The
+    /// read functions answer from the fixed list (search reuses the §D.8 linear filters);
+    /// the WRITE functions validate against it and return the typed outcome WITHOUT
+    /// persisting anything: `addMaterial` rejects an id the list already holds
+    /// (`DuplicateMaterialId`), `addMaterial`/`updateMaterial` reject a blank name
+    /// (`InvalidMaterial`), `updateMaterial`/`removeMaterial` reject an unknown id
+    /// (`UnknownMaterialId`). The real, persisting store is the later IMPLEMENT_CONTRACT
+    /// step, leaving callers of this shape unchanged.
+    let createInMemory () : MaterialProxy =
+        let lib = standard
+        let tryFind (id : MaterialId) : MaterialEntry option =
+            lib.entries |> List.tryFind (fun e -> e.id = id)
+        let unknown (id : MaterialId) : MaterialError =
+            UnknownMaterialId (sprintf "unknown material id '%s'" (string id.value))
+        {
+            listMaterials = fun () -> Ok lib.entries
+            searchMaterials =
+                fun q ->
+                    let byText = byNameContains q.text lib
+                    let byCat =
+                        match q.category with
+                        | Some c -> byText |> List.filter (fun e -> e.category = c)
+                        | None -> byText
+                    match q.dispersion with
+                    | AnyDispersion -> Ok byCat
+                    | OnlyDispersive -> Ok (byCat |> List.filter hasDispersion)
+                    | OnlyNonDispersive -> Ok (byCat |> List.filter (hasDispersion >> not))
+            tryGetMaterial = fun id -> Ok (tryFind id)
+            addMaterial =
+                fun entry ->
+                    validateEntry entry
+                    |> Result.bind (fun () ->
+                        match tryFind entry.id with
+                        | Some existing ->
+                            Error (DuplicateMaterialId (sprintf "material id '%s' already names '%s'" (string entry.id.value) existing.name))
+                        | None -> Ok ())
+            updateMaterial =
+                fun entry ->
+                    validateEntry entry
+                    |> Result.bind (fun () ->
+                        match tryFind entry.id with
+                        | Some _ -> Ok ()
+                        | None -> Error (unknown entry.id))
+            removeMaterial =
+                fun id ->
+                    match tryFind id with
+                    | Some _ -> Ok ()
+                    | None -> Error (unknown id)
+        }

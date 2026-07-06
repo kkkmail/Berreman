@@ -1169,12 +1169,17 @@ let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.
 let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSample, MaterialLibrary.MaterialError> option =
     runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials materialLibrary)
 
-/// The human-readable message a failed sample-material resolution surfaces on the chart. The error
-/// case carries a diagnostic `reason` (spec 0033 step 002) naming the offending id.
+/// The human-readable message a failed sample-material resolution surfaces on the chart. Every error
+/// case carries a diagnostic `reason` (spec 0033 steps 002/003); only `UnknownMaterialId` can actually
+/// arise from resolution — the write-seam cases (step 003) render a generic library message.
 let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
     match err with
     | MaterialLibrary.UnknownMaterialId reason ->
         sprintf "Cannot run: the sample references an unknown material (%s)." reason
+    | MaterialLibrary.DuplicateMaterialId reason
+    | MaterialLibrary.MaterialStillReferenced reason
+    | MaterialLibrary.InvalidMaterial reason ->
+        sprintf "Cannot run: material library error (%s)." reason
 
 /// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
 /// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
