@@ -34,6 +34,7 @@ module MatrixComparison =
         then (diffNorm / norm).Should().BeLessThan(allowedDiff, $"(%A{diffNorm} / %A{norm}) exceeds allowed value") |> ignore
 
     let verifyMatrixEqualityEps o (Eps (ComplexMatrix3x3 r)) (Eps (ComplexMatrix3x3 e)) = verifyMatrixEquality o r e
+    let verifyMatrixEqualityMu o (Mu (ComplexMatrix3x3 r)) (Mu (ComplexMatrix3x3 e)) = verifyMatrixEquality o r e
     let verifyMatrixEqualityRho o (Rho (ComplexMatrix3x3 r)) (Rho (ComplexMatrix3x3 e)) = verifyMatrixEquality o r e
 
 

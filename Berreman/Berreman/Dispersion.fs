@@ -535,3 +535,114 @@ module Dispersion =
     type RhoWithDispValue =
         | RhoWithDispValue of GyrotropicValue<DispersionFormula>
         | RhoWithoutDispValue of GyrotropicValue<RhoValue>
+
+
+    // ==========================================================================
+    // Serializable mu (Polder / gyromagnetic) tree (spec 0033 Part B).
+    // Pure data + assembly: ONE generic Polder record covers both the constant
+    // and dispersive cases, and toMuWithDisp BUILDS the engine's MuWithDisp
+    // above through Mu.create — the engine unions stay unchanged. No solver
+    // work: the Berreman matrix already reads off-diagonal mu.
+    // ==========================================================================
+
+
+    /// The magnetization axis of a gyromagnetic (Polder) permeability tensor.
+    /// AlongZ is the Faraday geometry (propagation along the magnetization)
+    /// and the default; the transverse axes (AlongX / AlongY) give the Voigt
+    /// geometry.
+    type GyrationAxis =
+        | AlongX
+        | AlongY
+        | AlongZ
+
+        static member defaultValue : GyrationAxis = AlongZ
+
+
+    /// The Polder (gyromagnetic) permeability components over an abstract
+    /// component 'g (MuValue for a constant tensor, DispersionFormula for a
+    /// dispersive one): muDiagonal fills the two transverse diagonal slots,
+    /// muParallel the axis slot, gyration the off-diagonal ±i·g pair. ONE
+    /// generic record reused by both MuWithDispValue cases.
+    type PolderValue<'g> =
+        {
+            muDiagonal : 'g
+            muParallel : 'g
+            gyration : 'g
+            axis : GyrationAxis
+        }
+
+        member this.map (f : 'g -> 'h) : PolderValue<'h> =
+            {
+                muDiagonal = f this.muDiagonal
+                muParallel = f this.muParallel
+                gyration = f this.gyration
+                axis = this.axis
+            }
+
+
+    /// Assembles the engine Mu for constant Polder components: in the AlongZ
+    /// (Faraday) geometry the rows are [mu, +i·g, 0], [-i·g, mu, 0],
+    /// [0, 0, muParallel]; the transverse (Voigt) axes are its cyclic
+    /// permutations, so the ±i·g pair keeps its right-handed sense about the
+    /// magnetization axis.
+    let private polderMu (p : PolderValue<MuValue>) : Mu =
+        let (MuValue mu) = p.muDiagonal
+        let (MuValue muPar) = p.muParallel
+        let (MuValue g) = p.gyration
+
+        let m = Complex (mu, 0.0)
+        let mPar = Complex (muPar, 0.0)
+        let iG = Complex (0.0, g)
+        let zero = Complex.Zero
+
+        let rows =
+            match p.axis with
+            | AlongX ->
+                [
+                    [ mPar; zero; zero ]
+                    [ zero; m; iG ]
+                    [ zero; -iG; m ]
+                ]
+            | AlongY ->
+                [
+                    [ m; zero; -iG ]
+                    [ zero; mPar; zero ]
+                    [ iG; zero; m ]
+                ]
+            | AlongZ ->
+                [
+                    [ m; iG; zero ]
+                    [ -iG; m; zero ]
+                    [ zero; zero; mPar ]
+                ]
+
+        rows |> Mu.create
+
+
+    /// A non-dispersive mu — a DESCRIPTIVE DU, never a bare Mu: either a
+    /// scalar permeability (mu times the identity) or a constant gyromagnetic
+    /// Polder tensor.
+    type ConstantMuValue =
+        | ScalarMu of MuValue
+        | GyromagneticMu of PolderValue<MuValue>
+
+        member this.toMu : Mu =
+            match this with
+            | ScalarMu (MuValue m) -> Complex (m, 0.0) * ComplexMatrix3x3.identity |> Mu
+            | GyromagneticMu p -> polderMu p
+
+
+    /// The serializable counterpart of the engine's MuWithDisp: either a
+    /// dispersive Polder tensor or a constant value. toMuWithDisp builds the
+    /// engine type — the constant cases short-circuit to MuWithoutDisp; the
+    /// dispersive case evaluates each component's formula at the wavelength
+    /// and assembles per call.
+    type MuWithDispValue =
+        | MuWithDispValue of PolderValue<DispersionFormula>
+        | MuWithoutDispValue of ConstantMuValue
+
+        member this.toMuWithDisp : MuWithDisp =
+            match this with
+            | MuWithDispValue p ->
+                MuWithDisp (fun w -> p.map (fun (f : DispersionFormula) -> f.evaluate w |> MuValue) |> polderMu)
+            | MuWithoutDispValue c -> MuWithoutDisp c.toMu
