@@ -92,6 +92,11 @@
              toMuWithDisp/toRhoWithDisp, and the re-expressed built-in seeds pinned against
              the original engine presets at reference wavelengths. -->
         <Compile Include="MaterialComplexityTests.fs" />
+        <!-- Spec 0033 step 021: the pure SampleStackEditor edit model over SampleStructure —
+             every message arm (selection, per-material selection, thickness/material/orientation
+             edits, remove, moves, MakeRepeatBlock, SetRepeatCount) without a window, plus both
+             acceptance criteria and the typed repeat-count rejections. -->
+        <Compile Include="SampleStackEditorTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
