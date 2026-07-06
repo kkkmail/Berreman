@@ -280,7 +280,7 @@ module ExperimentControlsTests =
               ChartWindowIds.axisAuto; ChartWindowIds.axisMin; ChartWindowIds.axisMax; ChartWindowIds.axisFormat
               ChartWindowIds.axisDecimals; ChartWindowIds.legendVisible; ChartWindowIds.legendPlacement
               ChartWindowIds.seriesVisible; ChartWindowIds.seriesThickness; ChartWindowIds.seriesColor
-              ChartWindowIds.seriesMarkers; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
+              ChartWindowIds.seriesMarkers; ChartWindowIds.seriesAxis; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
               ChartWindowIds.minorGrid; ChartWindowIds.exportPng; ChartWindowIds.exportCsv; ChartWindowIds.description ]
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
 
@@ -586,6 +586,41 @@ module ExperimentControlsTests =
             let lim1 = ava.Plot.Axes.GetLimits()
             Assert.True(abs (lim0.Left - lim1.Left) < 1e-6 && abs (lim0.Right - lim1.Right) < 1e-6, "the XY x-limits were not restored")
             Assert.True(abs (lim0.Bottom - lim1.Bottom) < 1e-6 && abs (lim0.Top - lim1.Top) < 1e-6, "the XY y-limits were not restored")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``flipping a series to the right axis moves its scatter to plot.Axes.Right`` () =
+        // Spec 0033 (018) acceptance: rebuildPlot/applySeriesStyle assign each scatter's Axes.YAxis to the
+        // native left or right axis from its SeriesStyle.axisSide. This drives the series panel's axis
+        // picker for the SECOND series and asserts the scatters land on their sides (reference equality on
+        // the axis objects — no pixels).
+        HeadlessSession.run (fun () ->
+            let window = ChartWindow(sampleChart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ctrl (name : string) : Control option =
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+            let ava = (ctrl ChartWindowIds.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let scatters () : ScottPlot.Plottables.Scatter list =
+                ava.Plot.GetPlottables()
+                |> Seq.choose (function :? ScottPlot.Plottables.Scatter as s -> Some s | _ -> None)
+                |> List.ofSeq
+            Assert.True(
+                scatters () |> List.forall (fun s -> obj.ReferenceEquals(s.Axes.YAxis, ava.Plot.Axes.Left)),
+                "every series should START on the left axis")
+            // The element picker: Header, X axis, Y left, Y right, Legend, series 0, series 1 → index 6.
+            (ctrl ChartWindowIds.elementSelector |> Option.get :?> ComboBox).SelectedIndex <- 6
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match ctrl ChartWindowIds.seriesAxis with
+            | Some c -> (c :?> ComboBox).SelectedIndex <- 1     // Left → Right
+            | None -> Assert.Fail("the series panel offered no axis-side picker")
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match scatters () with
+            | [ first; second ] ->
+                Assert.True(obj.ReferenceEquals(second.Axes.YAxis, ava.Plot.Axes.Right), "the flipped series did not move to the right axis")
+                Assert.True(obj.ReferenceEquals(first.Axes.YAxis, ava.Plot.Axes.Left), "the other series must stay on the left axis")
+            | other -> Assert.Fail(sprintf "expected exactly two scatters, got %d" (List.length other))
             window.Close())
 
     [<Fact>]
