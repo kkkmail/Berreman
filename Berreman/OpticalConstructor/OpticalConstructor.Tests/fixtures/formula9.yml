@@ -1,0 +1,6 @@
+REFERENCES: "Test fixture — minimal refractiveindex.info-style formula 9 (Exotic) page (NOT real data)."
+COMMENTS: "Formula 9 is outside the importer's supported set (1-7)."
+DATA:
+  - type: formula 9
+    wavelength_range: 0.4 0.8
+    coefficients: 2.3 0.056 0.06 0.213 0.354 0.113

@@ -1,0 +1,6 @@
+REFERENCES: "Test fixture — minimal refractiveindex.info-style formula 4 (RefractiveIndex.INFO formula) page (NOT real data)."
+COMMENTS: "n^2 = 1 + 0.8*L^2/(L^2 - 0.1^2) + 0.05*L^1/(L^2 - 0.2^2) + 0.01*L^2, L in micrometers."
+DATA:
+  - type: formula 4
+    wavelength_range: 0.4 2.0
+    coefficients: 1.0 0.8 2 0.1 2 0.05 1 0.2 2 0.01 2
