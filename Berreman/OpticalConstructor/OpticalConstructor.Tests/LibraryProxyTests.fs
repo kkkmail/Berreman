@@ -100,7 +100,7 @@ module LibraryProxyTests =
                     structure =
                         {
                             films = []
-                            substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm> }
+                            substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                             lower = None
                         }
                     substrate = Plate
@@ -142,9 +142,9 @@ module LibraryProxyTests =
         // Spec 0033 step 001: a Repeated period group flattens to `count` copies of its cell, in cell
         // order, before/after any single layers — the same `List.replicate count cell |> List.concat`
         // shape as `RepeatBuilder.expand`.
-        let a = { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm> }
-        let b = { materialId = MaterialLibrary.MaterialIds.vacuum; thickness = Thickness.nm 150.0<nm> }
-        let c = { materialId = MaterialLibrary.MaterialIds.silicon; thickness = Thickness.nm 25.0<nm> }
+        let a = { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes }
+        let b = { materialId = MaterialLibrary.MaterialIds.vacuum; thickness = Thickness.nm 150.0<nm>; orientation = PrimaryAxes }
+        let c = { materialId = MaterialLibrary.MaterialIds.silicon; thickness = Thickness.nm 25.0<nm>; orientation = PrimaryAxes }
         let structure =
             {
                 films = [ Repeated { cell = [ a; b ]; count = 3 }; SingleLayer c ]
@@ -178,7 +178,7 @@ module LibraryProxyTests =
                 structure =
                     {
                         films = []
-                        substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm> }
+                        substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                         lower = None
                     }
                 substrate = Plate

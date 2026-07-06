@@ -97,16 +97,34 @@ module Propagation =
               [ 0.0; 0.0; 1.0; 0.0 ]
               [ 0.0; 0.0; 0.0; 1.0 ] ]
 
+    /// One resolved layer of a sample (spec 0033 step 020): the dispersive engine layer plus the
+    /// crystal orientation the system builder applies AT BUILD TIME — nothing is stored rotated.
+    type ResolvedLayer =
+        {
+            layerWithDisp : LayerWithDisp
+            orientation : CrystalOrientation
+        }
+
+        /// The engine layer at the run wavelength with the orientation applied: `PrimaryAxes` builds
+        /// the unrotated layer (tensors exactly as stored); an `EulerRotation` rotates it via
+        /// `Layer.rotate` (→ `OpticalProperties.rotate`), exactly as rotating the layer directly
+        /// would (the `ActiveCrystalComparison.fsx` plate-rotation precedent).
+        member this.getLayer (w : WaveLength) : Layer =
+            let layer = this.layerWithDisp.getLayer w
+            match this.orientation with
+            | PrimaryAxes -> layer
+            | EulerRotation _ -> layer.rotate this.orientation.toRotation
+
     /// A Library `Sample` resolved against the material library (spec 0033 step 001): every referenced
-    /// material carried as its DISPERSIVE engine properties (`LayerWithDisp` — resolved once, evaluated
-    /// per wavelength), the film stack already expanded from its `StackItem`s, and the lower half-space
-    /// defaulting to vacuum. `sampleToSystem` over this is TOTAL — resolution (and its typed error)
-    /// happened up front in `resolveSampleMaterials`.
+    /// material carried as its DISPERSIVE engine properties (`ResolvedLayer` — resolved once, evaluated
+    /// per wavelength, its crystal orientation applied at build time), the film stack already expanded
+    /// from its `StackItem`s, and the lower half-space defaulting to vacuum. `sampleToSystem` over this
+    /// is TOTAL — resolution (and its typed error) happened up front in `resolveSampleMaterials`.
     type ResolvedSample =
         {
             name : string
-            films : LayerWithDisp list
-            substrate : LayerWithDisp option
+            films : ResolvedLayer list
+            substrate : ResolvedLayer option
             lower : OpticalPropertiesWithDisp
         }
 
@@ -115,10 +133,14 @@ module Propagation =
     /// `Error (UnknownMaterialId _)` — never a fallback. Hosts call this ONCE per run and surface the
     /// error as a message.
     let resolveSampleMaterials (lib : MaterialLibrary) (sample : Sample) : Result<ResolvedSample, MaterialError> =
-        let resolveLayer (l : SampleLayer) : Result<LayerWithDisp, MaterialError> =
+        let resolveLayer (l : SampleLayer) : Result<ResolvedLayer, MaterialError> =
             resolveMaterialWithDisp lib l.materialId
-            |> Result.map (fun p -> { propertiesWithDisp = p; thickness = l.thickness })
-        let rec resolveFilms (pending : SampleLayer list) (acc : LayerWithDisp list) : Result<LayerWithDisp list, MaterialError> =
+            |> Result.map (fun p ->
+                {
+                    layerWithDisp = { propertiesWithDisp = p; thickness = l.thickness }
+                    orientation = l.orientation
+                })
+        let rec resolveFilms (pending : SampleLayer list) (acc : ResolvedLayer list) : Result<ResolvedLayer list, MaterialError> =
             match pending with
             | [] -> Ok (List.rev acc)
             | l :: rest ->
@@ -144,9 +166,11 @@ module Propagation =
                 | Ok lower -> Ok { name = sample.name; films = films; substrate = substrate; lower = lower }
 
     /// Map a RESOLVED sample to an engine `OpticalSystem` at the run wavelength `w` (the wavelength only
-    /// matters for the dispersive materials; the rest ignore it): evaluate each material at `w` and
-    /// assemble films / substrate plate / lower half-space in vacuum. TOTAL over the expanded structure —
-    /// no per-sample-id branching (no rotation yet — step 20 adds it).
+    /// matters for the dispersive materials; the rest ignore it): evaluate each material at `w`, apply
+    /// each layer's crystal orientation (spec 0033 step 020 — `ResolvedLayer.getLayer` rotates a
+    /// non-identity orientation via `Layer.rotate`; `PrimaryAxes` builds the stored tensors), and
+    /// assemble films / substrate plate / lower half-space in vacuum. TOTAL over the expanded
+    /// structure — no per-sample-id branching.
     let sampleToSystem (sample : ResolvedSample) (w : WaveLength) : OpticalSystem =
         {
             description = Some sample.name

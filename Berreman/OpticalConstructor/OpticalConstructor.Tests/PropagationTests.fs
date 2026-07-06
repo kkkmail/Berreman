@@ -116,7 +116,7 @@ module PropagationTests =
             structure =
                 {
                     films = []
-                    substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm> }
+                    substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                     lower = None
                 }
             substrate = Library.Plate
@@ -350,7 +350,7 @@ module PropagationTests =
                 id = SampleId.create ()
                 structure =
                     {
-                        films = [ SingleLayer { materialId = missing; thickness = Thickness.nm 100.0<nm> } ]
+                        films = [ SingleLayer { materialId = missing; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
                         substrate = None
                         lower = None
                     } }
@@ -366,7 +366,7 @@ module PropagationTests =
                 id = SampleId.create ()
                 structure =
                     {
-                        films = [ SingleLayer { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm> } ]
+                        films = [ SingleLayer { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
                         substrate = None
                         lower = Some missing
                     } }
@@ -461,3 +461,85 @@ module PropagationTests =
             let w = runWaveLengthFor s
             let actual = sampleToSystem (resolveOrFail s) w
             Assert.Equal<OpticalSystem>(legacyExpectedSystem s w, { actual with description = None })
+
+    // ============================ Spec 0033 (020) — crystal orientation ============================
+
+    let private orientationRunW : WaveLength = WaveLength.nm 600.0<nm>
+
+    /// A single uniaxial-crystal film sample at the given orientation (an ANISOTROPIC material, so a
+    /// rotation is observable — an isotropic layer would rotate onto itself).
+    let private uniaxialFilm (orientation : CrystalOrientation) : Sample =
+        {
+            id = SampleId.create ()
+            name = "Uniaxial film (oriented)"
+            structure =
+                {
+                    films = [ SingleLayer { materialId = MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.nm 1000.0<nm>; orientation = orientation } ]
+                    substrate = None
+                    lower = None
+                }
+            substrate = Library.ThinFilm
+            description = "Uniaxial crystal thin film at the given crystal orientation."
+        }
+
+    /// A uniaxial-crystal PLATE sample (the substrate is a `SampleLayer` too, so it carries an
+    /// orientation of its own).
+    let private uniaxialPlate (orientation : CrystalOrientation) : Sample =
+        {
+            id = SampleId.create ()
+            name = "Uniaxial plate (oriented)"
+            structure =
+                {
+                    films = []
+                    substrate = Some { materialId = MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.mm 1.0<mm>; orientation = orientation }
+                    lower = None
+                }
+            substrate = Library.Plate
+            description = "Uniaxial crystal plate at the given crystal orientation."
+        }
+
+    [<Fact>]
+    let ``an EulerRotation layer's built system equals rotating the same layer directly`` () =
+        // Spec 0033 step 020 acceptance: the system built from an EulerRotation-oriented layer MUST
+        // equal applying `Layer.rotate` directly to the same (PrimaryAxes-built) layer.
+        let phi, theta, psi = deg 30.0, deg 40.0, deg 50.0
+        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation (ZmXpZm, phi, theta, psi)))) orientationRunW
+        let unrotated = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
+        let rotation = Rotation.create ZmXpZm phi theta psi |> Rotation
+        let expected = unrotated.films |> List.map (fun (l : Layer) -> l.rotate rotation)
+        Assert.Equal<Layer list>(expected, built.films)
+        // The rotation is non-trivial: the oriented tensors must actually differ from the stored ones.
+        Assert.False((unrotated.films = built.films), "the Euler rotation left the uniaxial tensors unchanged")
+
+    [<Fact>]
+    let ``PrimaryAxes builds unrotated tensors`` () =
+        // Spec 0033 step 020 acceptance: `PrimaryAxes` MUST leave the tensors exactly as stored —
+        // the built film is the engine's own uniaxial-crystal properties, bit for bit.
+        let system = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
+        Assert.Equal<Layer list>(
+            [ { properties = OpticalProperties.uniaxialCrystal; thickness = Thickness.nm 1000.0<nm> } ],
+            system.films)
+
+    [<Fact>]
+    let ``an EulerRotation spelling rotatePiX's angles equals the named shortcut applied directly`` () =
+        // The named engine shortcuts (Rotation.rotatePiX / rotateHalfPiY) remain available for tests:
+        // an EulerRotation carrying rotatePiX's own angles (ZmXpZm, 0, π, 0) builds the same system
+        // as `Layer.rotatePiX` on the unrotated layer.
+        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation (ZmXpZm, Angle.zero, Angle.pi, Angle.zero)))) orientationRunW
+        let unrotated = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
+        let expected = unrotated.films |> List.map (fun (l : Layer) -> l.rotatePiX)
+        Assert.Equal<Layer list>(expected, built.films)
+
+    [<Fact>]
+    let ``an EulerRotation substrate plate rotates the substrate tensors the same way`` () =
+        // The substrate is a `SampleLayer` too — its orientation goes through the same
+        // `Layer.rotate` path when the plate is assembled.
+        let phi, theta, psi = deg 30.0, deg 40.0, deg 50.0
+        let built = sampleToSystem (resolveOrFail (uniaxialPlate (EulerRotation (ZmXpZm, phi, theta, psi)))) orientationRunW
+        let unrotated = sampleToSystem (resolveOrFail (uniaxialPlate PrimaryAxes)) orientationRunW
+        let rotation = Rotation.create ZmXpZm phi theta psi |> Rotation
+        match built.substrate, unrotated.substrate with
+        | Some (Substrate.Plate b), Some (Substrate.Plate u) ->
+            Assert.Equal<Layer>(u.rotate rotation, b)
+            Assert.False((u = b), "the Euler rotation left the substrate tensors unchanged")
+        | other -> Assert.Fail(sprintf "expected two substrate plates, got %A" other)

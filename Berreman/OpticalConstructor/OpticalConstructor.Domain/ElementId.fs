@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open System                     // Guid (the SampleId backing + the fixed seed literals)
 open Berreman.Constants         // the nm / mm units of measure
+open Berreman.Geometry          // RotationConvention / Angle / Rotation (CrystalOrientation, spec 0033 step 020)
 open Berreman.Fields            // WaveLength
 open Berreman.Media             // Thickness
 open OpticalConstructor.Domain.Placement   // CatalogueKind
@@ -54,13 +55,33 @@ module Library =
         | Plate
         | Wedge
 
+    /// How a layer's crystal tensors are oriented relative to the lab frame (spec 0033 step 020):
+    /// `PrimaryAxes` keeps the material's own principal axes (the identity — tensors exactly as
+    /// stored); `EulerRotation` orients them by Euler angles under an explicit engine
+    /// `RotationConvention`. This is DATA on the layer — nothing is stored rotated; the step-1
+    /// system builder applies the rotation via `Layer.rotate` when it assembles the engine system.
+    type CrystalOrientation =
+        | PrimaryAxes
+        | EulerRotation of convention : RotationConvention * phi : Angle * theta : Angle * psi : Angle
+
+        /// The engine rotation this orientation denotes: `PrimaryAxes` is the identity;
+        /// `EulerRotation` builds `Rotation.create convention phi theta psi`. The named engine
+        /// shortcuts (`Rotation.rotatePiX`, `Rotation.rotateHalfPiY`, …) remain available for tests.
+        member this.toRotation : Rotation =
+            match this with
+            | PrimaryAxes -> RealMatrix3x3.identity |> Rotation
+            | EulerRotation (convention, phi, theta, psi) -> Rotation.create convention phi theta psi |> Rotation
+
     /// One physical layer of a sample's stack (spec 0033 step 001 — the stack is DATA): a material
-    /// reference plus a thickness. `materialId` is the elevated `MaterialLibrary.MaterialId`
+    /// reference plus a thickness, plus the crystal orientation of its tensors (spec 0033 step 020 —
+    /// `PrimaryAxes` unless the sample says otherwise; the rotation is applied at system-build time,
+    /// never stored). `materialId` is the elevated `MaterialLibrary.MaterialId`
     /// (spec 0033 step 002) — the same key `resolveMaterialWithDisp` looks up.
     type SampleLayer =
         {
             materialId : MaterialId
             thickness : Thickness
+            orientation : CrystalOrientation
         }
 
     /// A repeated unit cell (period) of layers — the DBR / Bragg / EUV-Mo–Si shape. `cell` is the
@@ -307,7 +328,7 @@ module Library =
     /// A single-layer thin-film structure between vacuum (the common seed shape).
     let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
-            films = [ SingleLayer { materialId = materialId; thickness = thickness } ]
+            films = [ SingleLayer { materialId = materialId; thickness = thickness; orientation = PrimaryAxes } ]
             substrate = None
             lower = None
         }
@@ -316,7 +337,7 @@ module Library =
     let private plateStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
             films = []
-            substrate = Some { materialId = materialId; thickness = thickness }
+            substrate = Some { materialId = materialId; thickness = thickness; orientation = PrimaryAxes }
             lower = None
         }
 
@@ -391,12 +412,12 @@ module Library =
                                     {
                                         cell =
                                             [
-                                                { materialId = MaterialIds.glass152; thickness = qwGlassThickness }
-                                                { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness }
+                                                { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 20
                                     }
-                                SingleLayer { materialId = MaterialIds.glass152; thickness = qwGlassThickness }
+                                SingleLayer { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
                             ]
                         substrate = None
                         lower = None
@@ -417,8 +438,8 @@ module Library =
                                     {
                                         cell =
                                             [
-                                                { materialId = MaterialIds.euvMolybdenum; thickness = euvLayerThickness }
-                                                { materialId = MaterialIds.euvSilicon; thickness = euvLayerThickness }
+                                                { materialId = MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 100
                                     }
@@ -463,7 +484,7 @@ module Library =
                 name = "Langasite film on silicon (10 µm, dispersive)"
                 structure =
                     {
-                        films = [ SingleLayer { materialId = MaterialIds.langasite; thickness = Thickness.mm 0.01<mm> } ]
+                        films = [ SingleLayer { materialId = MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
                         substrate = None
                         lower = Some MaterialIds.silicon
                     }
