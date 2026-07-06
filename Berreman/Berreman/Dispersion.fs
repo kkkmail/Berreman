@@ -269,3 +269,118 @@ module Dispersion =
         member this.evaluate (w : WaveLength) : Complex =
             let x = w.value / (this.wavelengthScale * 1.0<meter>)
             this.terms |> List.fold (fun acc t -> acc + t.evaluate x) Complex.Zero
+
+
+    // ==========================================================================
+    // Serializable eps tree (spec 0033 Part B).
+    // Pure data from which toEpsWithDisp BUILDS the engine's EpsWithDisp above
+    // through the existing Eps constructors; the engine unions stay unchanged.
+    // ==========================================================================
+
+
+    /// A non-dispersive eps — a DESCRIPTIVE DU, never a bare Eps: the case says
+    /// what the medium is (symmetry × transparency), and toEps builds the engine
+    /// matrix through the existing constructors. The uniaxial cases map to the
+    /// (ordinary, extraordinary, ordinary) diagonal — the epsLa3Ga5SiO14 precedent.
+    type ConstantEpsValue =
+        | IsotropicTransparent of RefractionIndex
+        | IsotropicAbsorbing of ComplexRefractionIndex
+        | UniaxialTransparent of ordinary : RefractionIndex * extraordinary : RefractionIndex
+        | UniaxialAbsorbing of ordinary : ComplexRefractionIndex * extraordinary : ComplexRefractionIndex
+        | BiaxialTransparent of nx : RefractionIndex * ny : RefractionIndex * nz : RefractionIndex
+        | BiaxialAbsorbing of nx : ComplexRefractionIndex * ny : ComplexRefractionIndex * nz : ComplexRefractionIndex
+
+        member this.toEps : Eps =
+            match this with
+            | IsotropicTransparent n -> Eps.fromRefractionIndex n
+            | IsotropicAbsorbing n -> Eps.fromComplexRefractionIndex n
+            | UniaxialTransparent (nO, nE) -> Eps.fromRefractionIndex (nO, nE, nO)
+            | UniaxialAbsorbing (nO, nE) -> Eps.fromComplexRefractionIndex (nO, nE, nO)
+            | BiaxialTransparent (n1, n2, n3) -> Eps.fromRefractionIndex (n1, n2, n3)
+            | BiaxialAbsorbing (n1, n2, n3) -> Eps.fromComplexRefractionIndex (n1, n2, n3)
+
+
+    /// The dispersion of ONE principal axis: either separate real n and k
+    /// formulas (k = the zero formula for a transparent medium), or one complex
+    /// eps formula for inherently complex models (Lorentz / Drude).
+    type EpsAxisDispersion =
+        | RealNK of n : DispersionFormula * k : DispersionFormula
+        | ComplexEps of ComplexDispersionFormula
+
+        member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
+            match this with
+            | RealNK (n, k) -> Complex (n.evaluate w, k.evaluate w) |> ComplexRefractionIndex
+            | ComplexEps eps -> eps.evaluate w |> sqrt |> ComplexRefractionIndex
+
+
+    /// One isotropic dispersion segment: a single axis over one interval.
+    type IsotropicEpsSegment =
+        {
+            wavelengthInterval : WaveLengthInterval
+            dispersion : EpsAxisDispersion
+        }
+
+
+    /// One uniaxial dispersion segment: the interval is SHARED by both axes.
+    type UniaxialEpsSegment =
+        {
+            wavelengthInterval : WaveLengthInterval
+            ordinaryDispersion : EpsAxisDispersion
+            extraordinaryDispersion : EpsAxisDispersion
+        }
+
+
+    /// One biaxial dispersion segment: the interval is SHARED by all three axes.
+    type BiaxialEpsSegment =
+        {
+            wavelengthInterval : WaveLengthInterval
+            xDispersion : EpsAxisDispersion
+            yDispersion : EpsAxisDispersion
+            zDispersion : EpsAxisDispersion
+        }
+
+
+    /// Selects the segment for a wavelength: the FIRST segment whose interval
+    /// covers it (inclusive endpoints) — top-of-list wins on overlap; when none
+    /// covers, the topmost segment extrapolates. No clamps, no validation.
+    let private selectSegment (segments : 'S list) (intervalOf : 'S -> WaveLengthInterval) (w : WaveLength) : 'S =
+        let covers s =
+            let i = intervalOf s
+            i.lower.value <= w.value && w.value <= i.upper.value
+        match segments |> List.tryFind covers with
+        | Some s -> s
+        | None -> segments |> List.head
+
+
+    /// A dispersive eps as data: a homogeneous segment list per symmetry.
+    type EpsDispersiveValue =
+        | IsotropicDispersive of IsotropicEpsSegment list
+        | UniaxialDispersive of UniaxialEpsSegment list
+        | BiaxialDispersive of BiaxialEpsSegment list
+
+        member this.getEps (w : WaveLength) : Eps =
+            match this with
+            | IsotropicDispersive segments ->
+                let s = selectSegment segments (fun e -> e.wavelengthInterval) w
+                s.dispersion.complexIndex w |> Eps.fromComplexRefractionIndex
+            | UniaxialDispersive segments ->
+                let s = selectSegment segments (fun e -> e.wavelengthInterval) w
+                let nO = s.ordinaryDispersion.complexIndex w
+                let nE = s.extraordinaryDispersion.complexIndex w
+                Eps.fromComplexRefractionIndex (nO, nE, nO)
+            | BiaxialDispersive segments ->
+                let s = selectSegment segments (fun e -> e.wavelengthInterval) w
+                Eps.fromComplexRefractionIndex (s.xDispersion.complexIndex w, s.yDispersion.complexIndex w, s.zDispersion.complexIndex w)
+
+
+    /// The serializable counterpart of the engine's EpsWithDisp: either a
+    /// dispersive segment tree or a constant value. toEpsWithDisp builds the
+    /// engine type — the constant case short-circuits to EpsWithoutDisp.
+    type EpsWithDispValue =
+        | EpsWithDispValue of EpsDispersiveValue
+        | EpsWithoutDispValue of ConstantEpsValue
+
+        member this.toEpsWithDisp : EpsWithDisp =
+            match this with
+            | EpsWithDispValue d -> EpsWithDisp (fun w -> d.getEps w)
+            | EpsWithoutDispValue c -> EpsWithoutDisp c.toEps
