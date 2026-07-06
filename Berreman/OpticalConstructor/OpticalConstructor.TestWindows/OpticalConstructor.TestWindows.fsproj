@@ -48,6 +48,24 @@
              LEFT axis and k on the RIGHT via the paired ChartStyle seed, x-axis from the Domain
              SpectralAxis helpers. -->
         <Compile Include="NkDispersionChart.fs" />
+        <!-- Spec 0033 (022): the Sample editor window (UICOMP_XDUO_0003) — name/description,
+             the SubstrateKind geometry facet, the stack table over the Domain SampleStackEditor
+             (period super-rows with rotating-triangle expanders + inline repeat-count steppers),
+             the bulk toolbar, material choice from MaterialProxy.listMaterials, the QWOT
+             derivation, and Save/Cancel through SampleProxy. View (pure MVU) + HostWindow pair.
+             Spec 0033 (024): moved BEFORE TableAndElementRotationView so the Main screen's
+             workbench Add/Edit verbs can open the editor windows without a forward reference. -->
+        <Compile Include="SampleEditorView.fs" />
+        <Compile Include="SampleEditorWindow.fs" />
+        <!-- Spec 0033 (023): the Material editor window (UICOMP_XDUO_0004) — the progressive
+             complexity ladder over the Domain MaterialComplexityEditor (anisotropy 3-way,
+             absorbing/dispersive/active/magnetic unlocks, per-segment DispersionModel picker,
+             constrained gyration-class panel, Polder-mu panel), the inline step-19 dual-axis
+             n/k preview with the advisory gain warning, and Save/Cancel through MaterialProxy.
+             View (pure MVU) + HostWindow pair. Moved before TableAndElementRotationView with
+             the sample editor (spec 0033 step 024). -->
+        <Compile Include="MaterialEditorView.fs" />
+        <Compile Include="MaterialEditorWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
         <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
@@ -64,21 +82,6 @@
              the light is reflected, not transmitted, and the detector snaps to the reflected beam). -->
         <Compile Include="SnapToReflectedView.fs" />
         <Compile Include="SnapToReflectedWindow.fs" />
-        <!-- Spec 0033 (022): the Sample editor window (UICOMP_XDUO_0003) — name/description,
-             the SubstrateKind geometry facet, the stack table over the Domain SampleStackEditor
-             (period super-rows with rotating-triangle expanders + inline repeat-count steppers),
-             the bulk toolbar, material choice from MaterialProxy.listMaterials, the QWOT
-             derivation, and Save/Cancel through SampleProxy. View (pure MVU) + HostWindow pair. -->
-        <Compile Include="SampleEditorView.fs" />
-        <Compile Include="SampleEditorWindow.fs" />
-        <!-- Spec 0033 (023): the Material editor window (UICOMP_XDUO_0004) — the progressive
-             complexity ladder over the Domain MaterialComplexityEditor (anisotropy 3-way,
-             absorbing/dispersive/active/magnetic unlocks, per-segment DispersionModel picker,
-             constrained gyration-class panel, Polder-mu panel), the inline step-19 dual-axis
-             n/k preview with the advisory gain warning, and Save/Cancel through MaterialProxy.
-             View (pure MVU) + HostWindow pair. -->
-        <Compile Include="MaterialEditorView.fs" />
-        <Compile Include="MaterialEditorWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>

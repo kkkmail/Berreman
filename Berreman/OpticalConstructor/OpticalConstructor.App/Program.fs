@@ -25,6 +25,10 @@ open Elmish
 
 open OpticalConstructor.Ui
 open OpticalConstructor.TestWindows
+// Spec 0033 (024): the samples-store module — also brings the optional
+// `MaterialProxy.createInMemory` type extension (declared in `Library`, after `Sample`)
+// into scope for the Main-scene composition below.
+open OpticalConstructor.Domain.Library
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
@@ -124,7 +128,13 @@ type MainConstructorWindow() as this =
         // `OpticalConstructor.Storage`), leaving the scene/bay logic unchanged.
         let library = OpticalConstructor.Domain.Library.createInMemory ()
         let experiments = OpticalConstructor.Domain.Experiments.createInMemory ()
-        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments) TableAndElementRotationView.update TableAndElementRotationView.mainView
+        // Spec 0033 (024): the material / sample WRITE stores (STORE_XDUO_0001/0002) join the
+        // composition — the samples store first, then the materials store whose remove-block
+        // consults the LIVE samples. Threaded mechanically; the final WIRE_UI step owns the
+        // composition acceptance.
+        let samples = SampleProxy.createInMemory ()
+        let materials = OpticalConstructor.Domain.MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
+        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples) TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 

@@ -114,6 +114,12 @@
              uniaxial gyration classes, toggle uncheck restores the default losslessly, Save
              round-trips through MaterialProxy with complexity = Some). -->
         <Compile Include="MaterialEditorWindowTests.fs" />
+        <!-- Spec 0033 (024): the Main-screen Materials + Library workbench bays — pure host
+             projections / confirm-gated verbs over the write seams, plus headless UiIds-driven
+             acceptance proofs (search filters rows, Add/Edit open the editor windows,
+             referenced-material remove surfaces MaterialStillReferenced with the store
+             unchanged, unreferenced removes update the list in the same render pass). -->
+        <Compile Include="MainWorkbenchTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

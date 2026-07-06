@@ -69,9 +69,12 @@ module ExperimentControlsTests =
         Assert.Equal("both", ExperimentControls.measurementCode ExperimentControls.CaptureBoth)
 
     [<Fact>]
-    let ``the ribbon still offers seven bays including Experiments and Details`` () =
+    let ``the ribbon offers every bay including Experiments, Details and the step-024 workbenches`` () =
+        // The step-024 workbenches sit with the Selector (the binding / collection bays);
+        // Details stays LAST (the 0027/026 pin).
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector; BayNames.experiments; BayNames.details ],
+            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector
+              BayNames.materials; BayNames.library; BayNames.experiments; BayNames.details ],
             BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore

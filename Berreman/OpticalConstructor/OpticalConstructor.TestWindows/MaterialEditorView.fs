@@ -726,74 +726,11 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
 
 // -- the live preview (the step-19 dual-axis n/k chart, inline) -------------------------------
 
-let private previewWidth = 560.0
-let private previewHeight = 190.0
-let private previewMarginLeft = 46.0
-let private previewMarginRight = 46.0
-let private previewMarginTop = 12.0
-let private previewMarginBottom = 26.0
-
-/// The inline dual-axis rendering of the step-19 chart: n on the LEFT axis, k on the RIGHT
-/// (the paired `nkDispersionStyle` seed), per-side bounds from the 018 `ChartStyle.dataBounds`
-/// so one series never flattens the other. Axis lines + the two polylines + labels — the
-/// inline-chart-canvas approach of `ExperimentControls`.
+/// The inline dual-axis rendering of the step-19 chart — the ONE shared canvas renderer
+/// (`NkDispersionChart.inlineCanvas`, spec 0033 step 024: the Materials workbench's View panel
+/// draws through it too), under this editor's stable preview id.
 let private previewCanvas (chart : ExperimentChart) : IView =
-    let style = NkDispersionChart.nkDispersionStyle chart
-    let sided = chart.series |> List.mapi (fun i s -> s, (OpticalConstructor.Controls.ChartStyle.seriesStyleOf i style).axisSide)
-    let bounds = OpticalConstructor.Controls.ChartStyle.dataBounds sided
-    let plotWidth = previewWidth - previewMarginLeft - previewMarginRight
-    let plotHeight = previewHeight - previewMarginTop - previewMarginBottom
-    let toPlot ((xlo, xhi) : float * float) ((ylo, yhi) : float * float) (x : float) (y : float) : Point =
-        Point(
-            previewMarginLeft + plotWidth * (x - xlo) / (xhi - xlo),
-            previewMarginTop + plotHeight * (1.0 - (y - ylo) / (yhi - ylo)))
-    let axisLine (x1 : float, y1 : float) (x2 : float, y2 : float) : IView =
-        Line.create [
-            Line.startPoint (Point(x1, y1))
-            Line.endPoint (Point(x2, y2))
-            Line.stroke (brush idleBorder)
-            Line.strokeThickness 1.0
-        ] :> IView
-    let axes =
-        [
-            axisLine (previewMarginLeft, previewMarginTop) (previewMarginLeft, previewMarginTop + plotHeight)
-            axisLine (previewMarginLeft + plotWidth, previewMarginTop) (previewMarginLeft + plotWidth, previewMarginTop + plotHeight)
-            axisLine (previewMarginLeft, previewMarginTop + plotHeight) (previewMarginLeft + plotWidth, previewMarginTop + plotHeight)
-        ]
-    let seriesViews =
-        sided
-        |> List.mapi (fun i (s, side) ->
-            let yRange =
-                match side with
-                | OpticalConstructor.Controls.ChartStyle.LeftAxis -> bounds.yLeft
-                | OpticalConstructor.Controls.ChartStyle.RightAxis -> bounds.yRight
-            Polyline.create [
-                Polyline.points (s.points |> List.map (fun (x, y) -> toPlot bounds.x yRange x y))
-                Polyline.stroke (brush (Color.Parse (OpticalConstructor.Controls.ChartStyle.seriesStyleOf i style).colorHex))
-                Polyline.strokeThickness 1.5
-            ] :> IView)
-    let caption (text : string) (colorHex : string option) (left : float) (top : float) : IView =
-        TextBlock.create [
-            TextBlock.text text
-            TextBlock.fontSize 10.0
-            TextBlock.foreground (match colorHex with Some hex -> brush (Color.Parse hex) | None -> brush hintColor)
-            TextBlock.left left
-            TextBlock.top top
-        ] :> IView
-    let colorOf (i : int) : string option = Some (OpticalConstructor.Controls.ChartStyle.seriesStyleOf i style).colorHex
-    Canvas.create [
-        automationId UiIds.previewChart
-        Canvas.width previewWidth
-        Canvas.height previewHeight
-        Canvas.children (
-            axes
-            @ seriesViews
-            @ [
-                caption "n (left)" (colorOf NkDispersionChart.nSeriesIndex) 2.0 0.0
-                caption "k (right)" (colorOf NkDispersionChart.kSeriesIndex) (previewWidth - 44.0) 0.0
-                caption chart.xLabel None (previewMarginLeft + plotWidth / 2.0 - 20.0) (previewHeight - 16.0)
-            ])
-    ] :> IView
+    NkDispersionChart.inlineCanvas UiIds.previewChart chart
 
 let private previewSection (m : Model) : IView * string =
     let chartOpt = previewProperties m |> Option.map (fun p -> NkDispersionChart.nkDispersionChart p Nanometer previewRange)
