@@ -56,14 +56,28 @@ module DispersionModelsTests =
 
     [<Fact>]
     let ``AC-D5 uniaxial maps to Eps.fromComplexRefractionIndex (n_o, n_e, n_o)`` () =
+        // The anisotropy lives INSIDE the serializable EpsWithDispValue (slice 011,
+        // superseding the removed AnisotropicModel): the constant uniaxial case and a
+        // per-axis dispersive segment tree both map to the engine's (n_o, n_e, n_o).
         let no = createComplex 1.5 0.0 |> ComplexRefractionIndex
         let ne = createComplex 1.65 0.0 |> ComplexRefractionIndex
-        let model = Uniaxial(cnk 1.5 0.0, cnk 1.65 0.0)
-        let op = toAnisotropicOpticalProperties model
         let w = WaveLength.nm 500.0<nm>
         let expected = Eps.fromComplexRefractionIndex (no, ne, no)
-        Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, "dispersive uniaxial closure")
+        let op = toAnisotropicOpticalProperties (EpsWithoutDispValue (UniaxialAbsorbing (no, ne)))
+        Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, "constant uniaxial value")
         Assert.True(epsClose 1e-12 (uniaxialEps no ne) expected, "direct uniaxialEps helper")
+        // Per-axis dispersive route: the same indices as one uniaxial segment tree.
+        match toEpsAxis (cnk 1.5 0.0), toEpsAxis (cnk 1.65 0.0) with
+        | Ok axisO, Ok axisE ->
+            let segment =
+                {
+                    wavelengthInterval = { lower = WaveLength.nm 400.0<nm>; upper = WaveLength.nm 700.0<nm> }
+                    ordinaryDispersion = axisO
+                    extraordinaryDispersion = axisE
+                }
+            let opDisp = toAnisotropicOpticalProperties (EpsWithDispValue (UniaxialDispersive [ segment ]))
+            Assert.True(epsClose 1e-12 (opDisp.epsWithDisp.getEps w) expected, "dispersive uniaxial segment tree")
+        | other -> Assert.Fail($"expected two lowered axes, got {other}")
 
     [<Fact>]
     let ``ConstantNK composes to EpsWithoutDisp (no closure overhead)`` () =
@@ -144,3 +158,229 @@ module DispersionModelsTests =
         | Error e -> Assert.Fail($"expected Ok, got {e}")
         Assert.Equal(Some id, MaterialId.tryCreate (string id.value))
         Assert.Equal(None, MaterialId.tryCreate "not-a-guid")
+
+    // ----------------------------------------------------------------------
+    // AC-B5 (slice 011): toEpsAxis lowers each analytic model to the
+    // serializable per-axis term data of Dispersion.fs, matching `evaluate`
+    // across a sampled wavelength grid within tolerance.
+    // ----------------------------------------------------------------------
+
+    /// 400–800 nm in 50 nm steps.
+    let private visibleGrid : WaveLength list =
+        [ 400.0 .. 50.0 .. 800.0 ] |> List.map (fun lamNm -> WaveLength.nm (lamNm * 1.0<nm>))
+
+    /// The lowered term data must reproduce `evaluate` at every grid wavelength.
+    let private assertLoweringMatchesEvaluate (tol : float) (model : DispersionModel) =
+        match toEpsAxis model with
+        | Error e -> Assert.Fail($"expected a lowering, got Error {e}")
+        | Ok axis ->
+            let f = evaluate model
+            for w in visibleGrid do
+                let got = (axis.complexIndex w).value
+                let expected = (f w).value
+                Assert.True(closeC tol got expected, $"λ={w}: lowered {got} vs evaluate {expected}")
+
+    [<Fact>]
+    let ``AC-B5 Sellmeier lowering matches evaluate on the grid (micrometer abscissa)`` () =
+        // BK7 (three oscillators, c in µm²). Lowered as ComplexEps with REAL term
+        // values: RealNK cannot express n = √(1 + Σ) — the √ lives in
+        // ComplexEps.complexIndex, which evaluates exactly √(1 + Σ).
+        let model =
+            Sellmeier
+                {
+                    b = [ 1.03961212; 0.231792344; 1.01046945 ]
+                    c = [ 0.00600069867; 0.0200179144; 103.560653 ]
+                    wavelengthUnit = Micrometer
+                    thermoOptic = None
+                }
+        match toEpsAxis model with
+        | Ok (ComplexEps _) -> ()
+        | other -> Assert.Fail($"Sellmeier must lower to ComplexEps (√ of the ε term sum), got {other}")
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 Sellmeier lowering matches evaluate on the grid (electron-volt abscissa)`` () =
+        // Reciprocal abscissa a = k/x: each oscillator collapses to the single
+        // inverse term Bᵢ·k²/(k² − cᵢ·x²).
+        let model = Sellmeier { b = [ 1.0 ]; c = [ 0.5 ]; wavelengthUnit = ElectronVolt; thermoOptic = None }
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 Cauchy lowering is RealNK Laurent terms and matches evaluate on the grid`` () =
+        let model = Cauchy { a = 1.5046; b = 0.0042; c = 0.00003; wavelengthUnit = Micrometer; thermoOptic = None }
+        match toEpsAxis model with
+        | Ok (RealNK (_, k)) -> Assert.True(List.isEmpty k.terms, "k must be the zero formula")
+        | other -> Assert.Fail($"Cauchy must lower to RealNK, got {other}")
+        assertLoweringMatchesEvaluate 1e-9 model
+
+    [<Fact>]
+    let ``AC-B5 Cauchy lowering matches evaluate on the grid (electron-volt abscissa)`` () =
+        // a = k/x turns the Laurent form A + B/a² + C/a⁴ into a plain polynomial in x.
+        let model = Cauchy { a = 1.4; b = 0.5; c = 0.02; wavelengthUnit = ElectronVolt; thermoOptic = None }
+        assertLoweringMatchesEvaluate 1e-9 model
+
+    [<Fact>]
+    let ``AC-B5 ConstantNK lowering is RealNK constants and matches evaluate on the grid`` () =
+        let model = cnk 2.0 0.1
+        match toEpsAxis model with
+        | Ok (RealNK _) -> ()
+        | other -> Assert.Fail($"ConstantNK must lower to RealNK constants, got {other}")
+        assertLoweringMatchesEvaluate 1e-12 model
+
+    [<Fact>]
+    let ``AC-B5 Lorentz lowering matches evaluate on the grid (micrometer abscissa)`` () =
+        // Linear abscissa: the literal inverse term { r²; −i·d; −1 } per oscillator.
+        let model =
+            Lorentz
+                {
+                    epsInf = 2.25
+                    strength = [ 2.0 ]
+                    resonance = [ 0.25 ]
+                    damping = [ 0.05 ]
+                    wavelengthUnit = Micrometer
+                    thermoOptic = None
+                }
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 Lorentz lowering matches evaluate on the grid (electron-volt abscissa)`` () =
+        // The conventional eV tabulation: a = k/x is reciprocal, each oscillator is
+        // s·x²/(r²·x² − i·d·k·x − k²) — lowered exactly by partial fractions.
+        let model =
+            Lorentz
+                {
+                    epsInf = 1.5
+                    strength = [ 1.5; 0.8 ]
+                    resonance = [ 4.0; 6.5 ]
+                    damping = [ 0.3; 0.6 ]
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 Lorentz eV critical damping takes the double-pole branch and matches evaluate`` () =
+        // d = 2r makes the oscillator denominator a perfect square (one double pole).
+        let model =
+            Lorentz
+                {
+                    epsInf = 2.0
+                    strength = [ 1.0 ]
+                    resonance = [ 2.0 ]
+                    damping = [ 4.0 ]
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 Drude lowering matches evaluate on the grid (electron-volt abscissa)`` () =
+        let model =
+            Drude
+                {
+                    epsInf = 1.0
+                    plasmaFrequency = 9.0
+                    dampingFrequency = 0.05
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 Drude eV with zero damping lowers to a plain polynomial and matches evaluate`` () =
+        let model =
+            Drude
+                {
+                    epsInf = 1.0
+                    plasmaFrequency = 9.0
+                    dampingFrequency = 0.0
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        assertLoweringMatchesEvaluate 1e-8 model
+
+    [<Fact>]
+    let ``AC-B5 transcendental models are a typed lowering error and evaluate directly`` () =
+        // TaucLorentz / GaussianOscillator are not finite term sums (band-gap step,
+        // exp): toEpsAxis reports the typed error, and toOpticalProperties keeps them
+        // fully working by wrapping `evaluate` in the engine EpsWithDisp closure.
+        let tl =
+            TaucLorentz
+                {
+                    epsInf = 1.5
+                    amplitude = 100.0
+                    resonance = 3.5
+                    broadening = 0.8
+                    bandGap = 2.2
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        let go =
+            GaussianOscillator
+                {
+                    epsInf = 2.0
+                    amplitude = 0.5
+                    energy = 2.5
+                    broadening = 0.4
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        for model in [ tl; go ] do
+            match toEpsAxis model with
+            | Error (NotAFiniteTermSum _) -> ()
+            | other -> Assert.Fail($"expected Error (NotAFiniteTermSum _), got {other}")
+            let f = evaluate model
+            let op = toOpticalProperties model
+            for w in visibleGrid do
+                let expected = Eps.fromComplexRefractionIndex (f w)
+                Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")
+
+    [<Fact>]
+    let ``AC-B5 SumOfTerms is the identity under toEpsAxis and evaluates through complexIndex`` () =
+        // The raw escape hatch carries term data as-is: no tabulation unit of its own
+        // (each formula embeds its wavelengthScale — the canonical Meter is reported)
+        // and no thermo-optic record.
+        let axis =
+            RealNK (
+                { terms = [ { lambda = 0.0; coefficients = [| 1.7; 0.1 |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = 1.0e-6 },
+                { terms = []; wavelengthScale = 1.0e-6 })
+        let model = SumOfTerms axis
+        Assert.Equal(Ok axis, toEpsAxis model)
+        Assert.Equal(Meter, wavelengthUnitOf model)
+        Assert.Equal(None, thermoOpticOf model)
+        let f = evaluate model
+        for w in visibleGrid do
+            Assert.Equal((axis.complexIndex w).value, (f w).value)
+
+    [<Fact>]
+    let ``AC-B5 toEpsValue short-circuits ConstantNK and builds a single-segment tree otherwise`` () =
+        match toEpsValue (cnk 2.0 0.1) with
+        | Ok (EpsWithoutDispValue (IsotropicAbsorbing _)) -> ()
+        | other -> Assert.Fail($"ConstantNK must become the constant value, got {other}")
+        let sellmeier = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
+        match toEpsValue sellmeier with
+        | Ok (EpsWithDispValue (IsotropicDispersive [ _ ])) -> ()
+        | other -> Assert.Fail($"a lowerable model must become one isotropic segment, got {other}")
+        let tl =
+            TaucLorentz
+                {
+                    epsInf = 1.5
+                    amplitude = 100.0
+                    resonance = 3.5
+                    broadening = 0.8
+                    bandGap = 2.2
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        match toEpsValue tl with
+        | Error (NotAFiniteTermSum _) -> ()
+        | other -> Assert.Fail($"a transcendental model must be a typed lowering error, got {other}")
+
+    [<Fact>]
+    let ``AC-B5 toOpticalProperties routes a lowerable model through the serializable tree`` () =
+        let model = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
+        let op = toOpticalProperties model
+        let f = evaluate model
+        for w in visibleGrid do
+            let expected = Eps.fromComplexRefractionIndex (f w)
+            Assert.True(epsClose 1e-8 (op.epsWithDisp.getEps w) expected, $"λ={w}")

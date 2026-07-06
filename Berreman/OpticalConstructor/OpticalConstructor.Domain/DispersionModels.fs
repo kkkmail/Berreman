@@ -14,10 +14,13 @@ open OpticalConstructor.Domain.Units
 /// canonical `WaveLength` to meters via `WaveLength.value` (`Fields.fs:284`),
 /// normalises against that unit through the sole `Units` seam (no literal
 /// factors, §D.11), applies the analytic formula, and returns the engine's
-/// `ComplexRefractionIndex` (`MaterialProperties.fs:43`). `toOpticalProperties`
-/// composes the closure into the engine's `OpticalPropertiesWithDisp` exactly as
-/// `Silicon`/`Langasite` build by hand (`OpticalProperties/Dispersive.fs:87,52`):
-/// no parallel tensor type, no re-derived EVD/matrix-exponential math.
+/// `ComplexRefractionIndex` (`MaterialProperties.fs:43`). `toEpsAxis` lowers each
+/// finite-term model to the serializable per-axis term data of `Dispersion.fs`
+/// (spec 0033 §B), and `toOpticalProperties` composes through
+/// `EpsWithDispValue.toEpsWithDisp` exactly as `Silicon`/`Langasite` build by hand
+/// (`OpticalProperties/Dispersive.fs:87,52`); the transcendental cases stay
+/// closure-evaluated. No parallel tensor type, no re-derived EVD/matrix-exponential
+/// math.
 module DispersionModels =
 
     /// Net-new SI temperature measure for the optional thermo-optic parameters
@@ -116,7 +119,10 @@ module DispersionModels =
 
     /// The wrapping DU enumerating the coefficient records so the editor and schema
     /// can describe a single tagged choice (§D.5). This is the realisation of the
-    /// schema `$def` `materialEntry` dispersion sub-object (§A.7).
+    /// schema `$def` `materialEntry` dispersion sub-object (§A.7). `SumOfTerms` is
+    /// the raw escape hatch (spec 0033 §B): a per-axis dispersion already expressed
+    /// in the serializable term data of `Dispersion.fs:306` — the identity under
+    /// `toEpsAxis`.
     type DispersionModel =
         | Sellmeier of SellmeierCoefficients
         | Cauchy of CauchyCoefficients
@@ -125,8 +131,12 @@ module DispersionModels =
         | TaucLorentz of TaucLorentzCoefficients
         | GaussianOscillator of GaussianOscillatorCoefficients
         | ConstantNK of ConstantNKCoefficients
+        | SumOfTerms of EpsAxisDispersion
 
-    /// The unit the model's coefficients were tabulated in (§D.5).
+    /// The unit the model's coefficients were tabulated in (§D.5). A raw
+    /// `SumOfTerms` has no tabulation unit of its own — each of its formulas embeds
+    /// its metres-per-coefficient-unit `wavelengthScale` — so it reports the
+    /// canonical SI `Meter`.
     let wavelengthUnitOf (model : DispersionModel) : UnitOfMeasure =
         match model with
         | Sellmeier c -> c.wavelengthUnit
@@ -136,8 +146,11 @@ module DispersionModels =
         | TaucLorentz c -> c.wavelengthUnit
         | GaussianOscillator c -> c.wavelengthUnit
         | ConstantNK c -> c.wavelengthUnit
+        | SumOfTerms _ -> Meter
 
-    /// The optional thermo-optic parameters carried alongside the coefficient record (§D.12).
+    /// The optional thermo-optic parameters carried alongside the coefficient record
+    /// (§D.12). The raw `SumOfTerms` escape hatch carries plain term data and no
+    /// thermo-optic record.
     let thermoOpticOf (model : DispersionModel) : ThermoOptic option =
         match model with
         | Sellmeier c -> c.thermoOptic
@@ -147,6 +160,7 @@ module DispersionModels =
         | TaucLorentz c -> c.thermoOptic
         | GaussianOscillator c -> c.thermoOptic
         | ConstantNK c -> c.thermoOptic
+        | SumOfTerms _ -> None
 
     /// The isothermal complex index at the reference temperature: the analytic
     /// formula evaluated against the model's abscissa (λ for Sellmeier/Cauchy in
@@ -183,6 +197,11 @@ module DispersionModels =
             Complex.Sqrt (Complex(c.epsInf, c.amplitude * exp (-(d * d))))
         | ConstantNK c ->
             createComplex c.n c.k
+        | SumOfTerms axis ->
+            // Raw term data evaluates through its own complexIndex; each formula
+            // carries its own wavelengthScale, so the reduced x above is unused.
+            let (ComplexRefractionIndex n) = axis.complexIndex w
+            n
 
     /// Evaluate the model at the operating temperature `T` (§D.12). With
     /// `thermoOptic = None` this is the base (isothermal) closure with NO overhead;
@@ -208,6 +227,185 @@ module DispersionModels =
         | None -> fun w -> baseIndex model w |> ComplexRefractionIndex
         | Some th -> evaluateAt th.referenceTemperature model
 
+    // ==========================================================================
+    // Lowering to the serializable eps tree (spec 0033 Part B / §6.1).
+    // toEpsAxis turns each finite-term analytic model into the per-axis term
+    // DATA of `Dispersion.fs` (`EpsAxisDispersion`), so catalogue materials
+    // become serializable and editable; `evaluate` stays the closure route. The
+    // AC-B5 grid tests in OpticalConstructor.Tests pin the two encodings of each
+    // formula together.
+    // ==========================================================================
+
+    /// Why a model resists lowering to finite term data (§6.1): the transcendental
+    /// cases (band-gap step, exp) are not finite term sums — they stay named
+    /// `DispersionModel` cases evaluated directly through `evaluate`, and
+    /// `toOpticalProperties` wraps that closure instead.
+    type EpsAxisLoweringError =
+        | NotAFiniteTermSum of reason : string
+
+    /// How a model's abscissa relates to the formula's reduced wavelength
+    /// x = λ / wavelengthScale (`Dispersion.fs:238`): a length unit reads its
+    /// abscissa as x itself; the energy-like units are reciprocal,
+    /// abscissa = numerator / x with x in nanometers.
+    type private AbscissaKind =
+        | LinearInX of wavelengthScale : double
+        | ReciprocalInX of wavelengthScale : double * numerator : double
+
+    /// Classify a tabulation unit against the formula variable. The scale and the
+    /// reciprocal numerator are derived THROUGH the `Units` seam (§D.11):
+    /// scale = `toMeters u 1.0` for length units; the reciprocal units use
+    /// x = λ[nm] and numerator = `fromMeters u (toMeters Nanometer 1.0)`
+    /// (`evNmProduct` for eV, the cm⁻¹ relation for `Wavenumber`) — no literal
+    /// factor appears here.
+    let private abscissaKindOf (u : UnitOfMeasure) : AbscissaKind =
+        match u with
+        | Meter | Millimeter | Micrometer | Nanometer | Angstrom ->
+            LinearInX (float (toMeters u 1.0))
+        | ElectronVolt | Wavenumber ->
+            let nanometer = toMeters Nanometer 1.0
+            ReciprocalInX (float nanometer, fromMeters u nanometer)
+
+    /// The zero formula — the k of a transparent medium.
+    let private zeroFormula (scale : double) : DispersionFormula =
+        { terms = []; wavelengthScale = scale }
+
+    /// A real constant term c·x⁰.
+    let private realConstTerm (c : double) : DispersionTerm =
+        { lambda = 0.0; coefficients = [| c |]; power = 1; multiplier = 1.0 }
+
+    /// A real inverse-power term m·x^(−n): the monomial xⁿ raised to power −1.
+    let private realInversePowerTerm (m : double) (n : int) : DispersionTerm =
+        { lambda = 0.0; coefficients = Array.init (n + 1) (fun i -> if i = n then 1.0 else 0.0); power = -1; multiplier = m }
+
+    /// A complex constant term c·x⁰.
+    let private complexConstTerm (c : Complex) : ComplexDispersionTerm =
+        { lambda = Complex.Zero; coefficients = [| c |]; power = 1; multiplier = Complex.One }
+
+    /// A complex term m·(c₀ + c₁·x + …)^power.
+    let private complexPolyTerm (m : Complex) (power : int) (coefficients : Complex array) : ComplexDispersionTerm =
+        { lambda = Complex.Zero; coefficients = coefficients; power = power; multiplier = m }
+
+    /// Exact terms for s·x²/(c₀ + c₁·x + c₂·x²) — the shape every
+    /// reciprocal-abscissa oscillator reduces to (abscissa = k/x multiplies the
+    /// oscillator denominator by x²). A quadratic denominator splits at its two
+    /// complex roots (simple-pole residues s·xᵢ²/q′(xᵢ)), or at one double pole
+    /// when the discriminant vanishes; a linear denominator long-divides; a
+    /// constant denominator leaves a plain polynomial. The discriminant check is
+    /// exact — a merely near-degenerate root pair stays two simple poles.
+    let private rationalXSquaredTerms (s : Complex) (c0 : Complex) (c1 : Complex) (c2 : Complex) : ComplexDispersionTerm list =
+        let two = Complex (2.0, 0.0)
+        let four = Complex (4.0, 0.0)
+        if c2 <> Complex.Zero then
+            let leading = complexConstTerm (s / c2)
+            let disc = c1 * c1 - four * c2 * c0
+            if disc = Complex.Zero then
+                // q = c₂·(x − x₀)²: x² = (x − x₀)² + 2·x₀·(x − x₀) + x₀².
+                let x0 = -c1 / (two * c2)
+                [
+                    leading
+                    complexPolyTerm (two * x0 * s / c2) (-1) [| -x0; Complex.One |]
+                    complexPolyTerm (x0 * x0 * s / c2) (-2) [| -x0; Complex.One |]
+                ]
+            else
+                let root = sqrt disc
+                let x1 = (-c1 + root) / (two * c2)
+                let x2 = (-c1 - root) / (two * c2)
+                let residueAt (x : Complex) : Complex = s * x * x / (c1 + two * c2 * x)
+                [
+                    leading
+                    complexPolyTerm (residueAt x1) (-1) [| -x1; Complex.One |]
+                    complexPolyTerm (residueAt x2) (-1) [| -x2; Complex.One |]
+                ]
+        elif c1 <> Complex.Zero then
+            // s·x²/(c₀ + c₁·x) = (s/c₁)·(x + p) + (s·p²/c₁)/(x − p) with p = −c₀/c₁.
+            let p = -c0 / c1
+            [
+                complexPolyTerm (s / c1) 1 [| p; Complex.One |]
+                complexPolyTerm (s / c1 * p * p) (-1) [| -p; Complex.One |]
+            ]
+        else
+            [ complexPolyTerm (s / c0) 1 [| Complex.Zero; Complex.Zero; Complex.One |] ]
+
+    /// Lower a model to the per-axis serializable term data (§6.1): Cauchy to
+    /// `RealNK` Laurent terms (k = the zero formula); Sellmeier — via the
+    /// oscillator identity Bᵢ·a²/(a²−cᵢ) = Bᵢ + Bᵢ·cᵢ/(a²−cᵢ) — to real-valued ε
+    /// terms carried as `ComplexEps`, because a `RealNK` n-formula is a finite
+    /// term sum and cannot take the square root, while `ComplexEps.complexIndex`
+    /// evaluates exactly the required √(1 + Σ); ConstantNK to `RealNK` constants;
+    /// Lorentz and Drude to `ComplexEps` inverse terms (complex is genuine — the
+    /// damping); `SumOfTerms` to itself. Reciprocal-abscissa tabulations (eV,
+    /// cm⁻¹ — the oscillator convention) substitute abscissa = k/x and stay exact
+    /// through `rationalXSquaredTerms`. TaucLorentz / GaussianOscillator are NOT
+    /// finite term sums — a typed error; they keep evaluating directly through
+    /// `evaluate`. The lowering is isothermal: like `evaluate`, it takes a `Some`
+    /// thermo-optic model at its reference temperature (Δn = 0); the operating
+    /// temperature enters only at the `evaluateAt` boundary (§D.12).
+    let toEpsAxis (model : DispersionModel) : Result<EpsAxisDispersion, EpsAxisLoweringError> =
+        match model with
+        | SumOfTerms axis -> Ok axis
+        | ConstantNK c ->
+            let scale =
+                match abscissaKindOf c.wavelengthUnit with
+                | LinearInX scale -> scale
+                | ReciprocalInX (scale, _) -> scale
+            Ok (RealNK (
+                { terms = [ realConstTerm c.n ]; wavelengthScale = scale },
+                { terms = [ realConstTerm c.k ]; wavelengthScale = scale }))
+        | Cauchy c ->
+            match abscissaKindOf c.wavelengthUnit with
+            | LinearInX scale ->
+                // n(x) = A + B·x⁻² + C·x⁻⁴ — a real Laurent polynomial.
+                Ok (RealNK (
+                    { terms = [ realConstTerm c.a; realInversePowerTerm c.b 2; realInversePowerTerm c.c 4 ]; wavelengthScale = scale },
+                    zeroFormula scale))
+            | ReciprocalInX (scale, k) ->
+                // abscissa = k/x: n = A + (B/k²)·x² + (C/k⁴)·x⁴ — a plain polynomial.
+                Ok (RealNK (
+                    { terms = [ { lambda = 0.0; coefficients = [| c.a; 0.0; c.b / (k * k); 0.0; c.c / (k * k * k * k) |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = scale },
+                    zeroFormula scale))
+        | Sellmeier c ->
+            match abscissaKindOf c.wavelengthUnit with
+            | LinearInX scale ->
+                // Bᵢ·x²/(x²−cᵢ) = Bᵢ + Bᵢ·cᵢ/(x²−cᵢ): ε = (1 + ΣBᵢ) + Σ inverse terms.
+                let constant = complexConstTerm (Complex (1.0 + List.sum c.b, 0.0))
+                let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
+                    complexPolyTerm (Complex (b * ci, 0.0)) (-1) [| Complex (-ci, 0.0); Complex.Zero; Complex.One |]
+                Ok (ComplexEps { terms = constant :: List.map2 oscillator c.b c.c; wavelengthScale = scale })
+            | ReciprocalInX (scale, k) ->
+                // abscissa = k/x: Bᵢ·a²/(a²−cᵢ) = Bᵢ·k²/(k² − cᵢ·x²) — one inverse term each.
+                let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
+                    complexPolyTerm (Complex (b * k * k, 0.0)) (-1) [| Complex (k * k, 0.0); Complex.Zero; Complex (-ci, 0.0) |]
+                Ok (ComplexEps { terms = complexConstTerm Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = scale })
+        | Lorentz c ->
+            let constant = complexConstTerm (Complex (c.epsInf, 0.0))
+            match abscissaKindOf c.wavelengthUnit with
+            | LinearInX scale ->
+                // ε = ε∞ + Σ sⱼ/(rⱼ² − x² − i·dⱼ·x): one literal inverse term per oscillator.
+                let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm =
+                    complexPolyTerm (Complex (s, 0.0)) (-1) [| Complex (r * r, 0.0); Complex (0.0, -d); Complex (-1.0, 0.0) |]
+                Ok (ComplexEps { terms = constant :: List.map3 oscillator c.strength c.resonance c.damping; wavelengthScale = scale })
+            | ReciprocalInX (scale, k) ->
+                // abscissa = k/x: sⱼ/(rⱼ² − a² − i·dⱼ·a) = sⱼ·x²/(rⱼ²·x² − i·dⱼ·k·x − k²).
+                let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm list =
+                    rationalXSquaredTerms (Complex (s, 0.0)) (Complex (-k * k, 0.0)) (Complex (0.0, -d * k)) (Complex (r * r, 0.0))
+                Ok (ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = scale })
+        | Drude c ->
+            let constant = complexConstTerm (Complex (c.epsInf, 0.0))
+            let negPlasmaSq = Complex (-c.plasmaFrequency * c.plasmaFrequency, 0.0)
+            match abscissaKindOf c.wavelengthUnit with
+            | LinearInX scale ->
+                // ε = ε∞ − ωp²/(x² + i·γ·x).
+                let free = complexPolyTerm negPlasmaSq (-1) [| Complex.Zero; Complex (0.0, c.dampingFrequency); Complex.One |]
+                Ok (ComplexEps { terms = [ constant; free ]; wavelengthScale = scale })
+            | ReciprocalInX (scale, k) ->
+                // abscissa = k/x: −ωp²/(a² + i·γ·a) = −ωp²·x²/(k² + i·γ·k·x).
+                let free = rationalXSquaredTerms negPlasmaSq (Complex (k * k, 0.0)) (Complex (0.0, c.dampingFrequency * k)) Complex.Zero
+                Ok (ComplexEps { terms = constant :: free; wavelengthScale = scale })
+        | TaucLorentz _ ->
+            Error (NotAFiniteTermSum "TaucLorentz is piecewise transcendental (band-gap step); it stays a named case evaluated directly")
+        | GaussianOscillator _ ->
+            Error (NotAFiniteTermSum "GaussianOscillator is transcendental (exp); it stays a named case evaluated directly")
+
     /// Wrap an `EpsWithDisp` into an isotropic `OpticalPropertiesWithDisp` with the
     /// `Mu.vacuum`/`Rho.vacuum` dispersive defaults — mirroring `Silicon`'s record
     /// (`OpticalProperties/Dispersive.fs:90-95`). This is the single site for the
@@ -220,28 +418,41 @@ module DispersionModels =
             rhoWithDisp = Rho.vacuum.dispersive
         }
 
-    /// Compose a model into the engine's `OpticalPropertiesWithDisp` (§D.6),
-    /// reusing `Eps.fromComplexRefractionIndex` (`MaterialProperties.fs:87`) and
-    /// the `isotropicProperties` vacuum-μ/ρ wrapper — mirroring `Silicon`'s record
-    /// (`OpticalProperties/Dispersive.fs:90-95`). `ConstantNK` emits `EpsWithoutDisp`
-    /// (`Dispersion.fs:11`) so a non-dispersive entry incurs no closure overhead.
-    let toOpticalProperties (model : DispersionModel) : OpticalPropertiesWithDisp =
+    /// Nominal interval for a single-segment tree: with one segment the topmost
+    /// segment extrapolates for every wavelength (`Dispersion.fs:346`), so a model
+    /// lowered whole needs no real bounds.
+    let private nominalInterval : WaveLengthInterval =
+        { lower = toWaveLength Nanometer 0.0; upper = toWaveLength Nanometer 0.0 }
+
+    /// The serializable eps value a model composes to (§D.6 / spec 0033 §B):
+    /// `ConstantNK` short-circuits to the non-dispersive constant
+    /// (`EpsWithoutDispValue`, `Dispersion.fs:379` — no closure overhead); every
+    /// other lowerable model becomes a single-segment isotropic tree over its
+    /// lowered term data; the transcendental cases carry no finite term data and
+    /// surface the typed lowering error (`toOpticalProperties` wraps `evaluate`
+    /// for them instead).
+    let toEpsValue (model : DispersionModel) : Result<EpsWithDispValue, EpsAxisLoweringError> =
         match model with
         | ConstantNK c ->
-            let n = createComplex c.n c.k |> ComplexRefractionIndex
-            Eps.fromComplexRefractionIndex n |> EpsWithoutDisp |> isotropicProperties
+            createComplex c.n c.k |> ComplexRefractionIndex |> IsotropicAbsorbing |> EpsWithoutDispValue |> Ok
         | _ ->
+            toEpsAxis model
+            |> Result.map (fun axis ->
+                EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = nominalInterval; dispersion = axis } ]))
+
+    /// Compose a model into the engine's `OpticalPropertiesWithDisp` (§D.6)
+    /// through the serializable eps tree: `toEpsValue`, then
+    /// `EpsWithDispValue.toEpsWithDisp` (`Dispersion.fs:383`), then the
+    /// `isotropicProperties` vacuum-μ/ρ wrapper. `ConstantNK` still emits
+    /// `EpsWithoutDisp` (no closure overhead), and the transcendental named cases
+    /// — which have no finite term data — wrap `evaluate` directly; both routes
+    /// end at the same engine type.
+    let toOpticalProperties (model : DispersionModel) : OpticalPropertiesWithDisp =
+        match toEpsValue model with
+        | Ok value -> value.toEpsWithDisp |> isotropicProperties
+        | Error (NotAFiniteTermSum _) ->
             let f = evaluate model
             (fun w -> Eps.fromComplexRefractionIndex (f w)) |> EpsWithDisp |> isotropicProperties
-
-    /// Anisotropic principal-axis definitions (§D.7). Each principal index may
-    /// itself be a per-axis `DispersionModel`, so a crystal can disperse differently
-    /// along each axis exactly as `Langasite` evaluates ordinary/extraordinary
-    /// separately (`OpticalProperties/Dispersive.fs:52-55`). Crystal-axis ORIENTATION
-    /// is NOT here — rotation reuses `Layer.rotate` (Part B).
-    type AnisotropicModel =
-        | Uniaxial of ordinary : DispersionModel * extraordinary : DispersionModel
-        | Biaxial of x : DispersionModel * y : DispersionModel * z : DispersionModel
 
     /// Build a uniaxial principal-axis `Eps` from (n_o, n_e) through the engine's
     /// existing three-argument constructor, mapped as `(n_o, n_e, n_o)`
@@ -254,18 +465,12 @@ module DispersionModels =
     let biaxialEps (nx : ComplexRefractionIndex) (ny : ComplexRefractionIndex) (nz : ComplexRefractionIndex) : Eps =
         Eps.fromComplexRefractionIndex (nx, ny, nz)
 
-    /// Compose a possibly-per-axis-dispersive anisotropic model into the engine's
-    /// `OpticalPropertiesWithDisp` (§D.7), reusing the three-index constructor.
-    let toAnisotropicOpticalProperties (model : AnisotropicModel) : OpticalPropertiesWithDisp =
-        let epsClosure =
-            match model with
-            | Uniaxial (mo, me) ->
-                let fo = evaluate mo
-                let fe = evaluate me
-                fun w -> uniaxialEps (fo w) (fe w)
-            | Biaxial (mx, my, mz) ->
-                let fx = evaluate mx
-                let fy = evaluate my
-                let fz = evaluate mz
-                fun w -> biaxialEps (fx w) (fy w) (fz w)
-        EpsWithDisp epsClosure |> isotropicProperties
+    /// Compose a (possibly anisotropic) serializable eps value into the engine's
+    /// `OpticalPropertiesWithDisp` (§D.7). Anisotropy lives INSIDE
+    /// `EpsWithDispValue` — the uniaxial/biaxial constant cases and the per-axis
+    /// dispersive segment trees (`Dispersion.fs:285,355`) supersede the removed
+    /// `AnisotropicModel` — so composition is `toEpsWithDisp` through the same
+    /// vacuum-μ/ρ wrapper. Crystal-axis ORIENTATION is NOT here — rotation reuses
+    /// `Layer.rotate` (Part B).
+    let toAnisotropicOpticalProperties (eps : EpsWithDispValue) : OpticalPropertiesWithDisp =
+        eps.toEpsWithDisp |> isotropicProperties
