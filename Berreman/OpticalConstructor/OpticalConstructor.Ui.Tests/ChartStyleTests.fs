@@ -2,9 +2,9 @@ namespace OpticalConstructor.Ui.Tests
 
 open System
 open Xunit
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.ExperimentChart
-open OpticalConstructor.TestWindows.ChartStyle
+open OpticalConstructor.Controls
+open OpticalConstructor.Controls.ExperimentChart
+open OpticalConstructor.Controls.ChartStyle
 
 /// Spec 0027 (030) — the pure chart-window STYLE model: the x-range is initialized to the DATA (not a
 /// default 0…1000); each chart part (header / axes / legend / series) is selectable and independently

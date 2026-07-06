@@ -1,4 +1,4 @@
-namespace OpticalConstructor.TestWindows
+namespace OpticalConstructor.Controls
 
 /// Spec 0027 (026) — the renderer-neutral chart data the Experiments bay produces and BOTH the inline
 /// scene chart and the pop-out chart window consume. Domain-neutral (no Berreman types) so it crosses the

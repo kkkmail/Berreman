@@ -1,4 +1,4 @@
-namespace OpticalConstructor.TestWindows
+namespace OpticalConstructor.Controls
 
 open System
 open System.IO
@@ -6,7 +6,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
-open OpticalConstructor.TestWindows.ExperimentChart
+open OpticalConstructor.Controls.ExperimentChart
 
 /// Spec 0027 (026/028/030) — the pop-out interactive chart window (double-click the inline Experiments
 /// chart). A plain Avalonia `Window` hosting a `ScottPlot.Avalonia.AvaPlot`. Spec 030 turns it into an
@@ -18,6 +18,15 @@ open OpticalConstructor.TestWindows.ExperimentChart
 /// range / number-format / polar-conversion logic lives in `ChartStyle`; this file is the ScottPlot IO seam.
 /// The window is never opened under the headless `ui-smoke` gate's frame render, so its native ScottPlot
 /// rendering cannot break that gate.
+
+/// Spec 0033 (017) — the shared renderer-neutral-style → ScottPlot mappings. The pop-out window below
+/// and the Ui `ChartSettings` projection (`scottPlotColor`) both delegate here, so each mapping lives in
+/// exactly ONE place beside the one shared chart model (no per-host duplicate, no third settings type).
+[<RequireQualifiedAccess>]
+module ChartRender =
+
+    /// Parse a `#RRGGBB` colour string into ScottPlot's `Color`.
+    let colorOf (hex : string) : ScottPlot.Color = ScottPlot.Color.FromHex hex
 
 /// Stable automation ids for the chart window's controls (CLAUDE.md: centralize ids).
 [<RequireQualifiedAccess>]
@@ -77,8 +86,6 @@ type ChartWindow(chart : ExperimentChart) as this =
         let mutable crosshair : ScottPlot.Plottables.Crosshair = null
         let mutable marker : ScottPlot.Plottables.Marker = null
         let mutable readout : ScottPlot.Plottables.Text = null
-
-        let colorOf (hex : string) : ScottPlot.Color = ScottPlot.Color.FromHex hex
 
         let placementAlignment (p : ChartStyle.LegendPlacement) : ScottPlot.Alignment =
             match p with
@@ -141,7 +148,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                 let st = ChartStyle.seriesStyleOf i style
                 sc.IsVisible <- st.visible
                 sc.LineWidth <- float32 st.thickness
-                sc.Color <- colorOf st.colorHex
+                sc.Color <- ChartRender.colorOf st.colorHex
                 sc.MarkerShape <- (if st.showMarkers then ScottPlot.MarkerShape.FilledCircle else ScottPlot.MarkerShape.None)
                 sc.MarkerSize <- 5.0f)
 
@@ -185,7 +192,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                     chart.series
                     |> List.mapi (fun i s ->
                         let coords = s.points |> List.map (fun (deg, v) -> pax.GetCoordinates(v, deg)) |> List.toArray
-                        let sc = plot.Add.ScatterLine(coords, System.Nullable (colorOf (ChartStyle.seriesStyleOf i style).colorHex))
+                        let sc = plot.Add.ScatterLine(coords, System.Nullable (ChartRender.colorOf (ChartStyle.seriesStyleOf i style).colorHex))
                         sc.LegendText <- s.name
                         sc)
                 else
@@ -193,7 +200,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                     |> List.mapi (fun i s ->
                         let xs = s.points |> List.map fst |> List.toArray
                         let ys = s.points |> List.map snd |> List.toArray
-                        let sc = plot.Add.Scatter(xs, ys, System.Nullable (colorOf (ChartStyle.seriesStyleOf i style).colorHex))
+                        let sc = plot.Add.Scatter(xs, ys, System.Nullable (ChartRender.colorOf (ChartStyle.seriesStyleOf i style).colorHex))
                         sc.LegendText <- s.name
                         sc)
             setupCrosshair ()

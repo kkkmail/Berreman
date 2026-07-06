@@ -39,12 +39,10 @@
         <Compile Include="TableRotationWindow.fs" />
         <Compile Include="ElementRotationView.fs" />
         <Compile Include="ElementRotationWindow.fs" />
-        <!-- Spec 0027 (026): the renderer-neutral chart data the Experiments bay produces (before the scene
-             that builds it). -->
-        <Compile Include="ExperimentChart.fs" />
-        <!-- Spec 0027 (026) Part 3: the pop-out interactive ScottPlot chart window (after ExperimentChart,
-             before the scene that opens it). -->
-        <Compile Include="ChartWindow.fs" />
+        <!-- Spec 0033 (017): the renderer-neutral chart model (ExperimentChart.fs) and the pop-out
+             ScottPlot chart window (ChartWindow.fs) are REAL-MOVED into OpticalConstructor.Controls so
+             both hosts share ONE type identity; this project reaches them through the Controls
+             project reference below. -->
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
         <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
@@ -71,8 +69,8 @@
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
-        <!-- Spec 0027 (026) Part 3: the interactive chart-window host (the pop-out ScottPlot window). -->
-        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
+        <!-- ScottPlot.Avalonia moved with the chart window to OpticalConstructor.Controls (spec 0033,
+             017); its compile/runtime assets flow here transitively through the Controls reference. -->
     </ItemGroup>
 
     <ItemGroup>
