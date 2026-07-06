@@ -1,0 +1,106 @@
+# Stats for 0033
+
+Generated: 2026-07-06T15:28:08Z (schema 7, tool 7)
+
+## TL;DR
+
+| arc_status | wall_clock_s | total_usd | slices | top_anomaly |
+| --- | --- | --- | --- | --- |
+| COMPLETE | 60325.000 | (none) | 26 | idle_gaps_over_30min, escalations |
+
+## timing
+
+| key | value |
+| --- | --- |
+| arc_started_at | 2026-07-05T22:13:53Z |
+| arc_ended_at | 2026-07-06T14:59:18Z |
+| total_wall_clock_seconds | 60325.000 |
+| spec_writer_seconds | 5879.000 |
+| splitter_seconds | (none) |
+| arc_runner_seconds | 54115.000 |
+| idle_gap_seconds | 51268.000 |
+| largest_gaps | 2026-07-06T11:55:29Z=+9142s, 2026-07-06T09:30:05Z=+2771s, 2026-07-06T10:20:17Z=+2606s, 2026-07-06T11:08:11Z=+2566s |
+
+## cost
+
+| key | value |
+| --- | --- |
+| total_usd | (none) |
+| total_tokens | (none) |
+| by_phase | (empty) |
+| by_role | splitter=(none), arc_runner_worker=(none), architecture_critic=(none), reuse_critic=(none), code_judge=(none), resolver=(none), spec_author=(none), claim_checker=(none), gate_keeper=(none), handoff_verifier=(none) |
+| by_slice | (empty) |
+| cost_per_accepted_slice | (none) |
+| review_share | (none) |
+
+## iterations
+
+| key | value |
+| --- | --- |
+| spec_writer.cycles_by_intent | spec=2, claim-check=2, gates=1, handoff=1 |
+| splitter.rounds | 0 |
+| splitter.verifier_iterations_per_round | max=0 median=0.000 |
+| arc_runner.slice_attempts_total | 28 |
+| arc_runner.slices_with_retries | 2 |
+| arc_runner.review_cycles_per_slice | max=1 median=1.000 |
+| arc_runner.resolver_invocations | 0 |
+| arc_runner.route_backs_total | 0 |
+| arc_runner.max_route_backs_per_slice | 0 |
+
+## outcomes
+
+| key | value |
+| --- | --- |
+| arc_status | COMPLETE |
+| arc_escalation_trigger | {'reason': 'health-check failed: per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\001.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\002.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\003.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\004.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\005.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\006.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\007.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\008.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\009.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\010.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\011.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\012.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\013.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\014.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\015.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\016.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\017.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\018.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\019.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\020.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\021.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\022.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\023.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\024.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\025.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\026.gates', 'failures': ['per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\001.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\002.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\003.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\004.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\005.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\006.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\007.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\008.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\009.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\010.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\011.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\012.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\013.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\014.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\015.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\016.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\017.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\018.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\019.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\020.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\021.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\022.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\023.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\024.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\025.gates', 'per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\026.gates']} |
+| gate_pass_rate | 1.000 |
+| gates_failed_top | (none) |
+| hangup_count | 0 |
+| operator_overrides | 0 |
+
+## sizes
+
+| key | value |
+| --- | --- |
+| spec_md_bytes | 15645 |
+| spec_md_lines | 241 |
+| spec_md_section_count | 13 |
+| slice_count | 26 |
+| gate_count_chosen | 130 |
+| gate_count_proposed_open | 0 |
+| per_slice | slice 001=sow:5266b impl:6735b tests:0; slice 002=sow:5786b impl:9751b tests:0; slice 003=sow:6528b impl:6444b tests:0; slice 004=sow:6935b impl:6891b tests:0; slice 005=sow:8234b impl:5938b tests:0; slice 006=sow:9969b impl:9129b tests:0; slice 007=sow:9124b impl:9264b tests:0; slice 008=sow:10421b impl:8739b tests:0; slice 009=sow:11244b impl:11502b tests:0; slice 010=sow:11540b impl:6254b tests:0; slice 011=sow:12978b impl:6502b tests:0; slice 012=sow:13052b impl:8642b tests:0; slice 013=sow:13499b impl:8339b tests:0; slice 014=sow:11803b impl:6569b tests:0; slice 015=sow:13473b impl:8833b tests:0; slice 016=sow:14755b impl:9299b tests:0; slice 017=sow:16012b impl:7116b tests:0; slice 018=sow:16466b impl:6331b tests:0; slice 019=sow:17723b impl:7531b tests:0; slice 020=sow:17632b impl:7693b tests:0; slice 021=sow:19664b impl:7006b tests:0; slice 022=sow:22064b impl:13686b tests:0; slice 023=sow:25436b impl:15686b tests:0; slice 024=sow:25847b impl:8878b tests:0; slice 025=sow:8800b impl:8761b tests:0; slice 026=sow:7047b impl:7062b tests:0 |
+| git | files_touched=307, lines_added=32791, lines_removed=1392, commit_count=33 |
+
+## agent_mix
+
+| role | agent_name | runs | escalations |
+| --- | --- | --- | --- |
+| splitter | (none) | 0 | 0 |
+| arc_runner_worker | (none) | 0 | 0 |
+| architecture_critic | (none) | 0 | 0 |
+| reuse_critic | (none) | 0 | 0 |
+| code_judge | claude-opus-4-7 | 27 | 1 |
+| resolver | (none) | 0 | 0 |
+| spec_author | (none) | 0 | 0 |
+| claim_checker | (none) | 0 | 0 |
+| gate_keeper | (none) | 0 | 0 |
+| handoff_verifier | (none) | 0 | 0 |
+| implement_worker | claude-opus-4-7 | 20 | 1 |
+| add_contract_worker | claude-opus-4-7 | 2 | 0 |
+| implement_contract_worker | claude-opus-4-7 | 2 | 0 |
+| add_component_worker | claude-opus-4-7 | 4 | 0 |
+| wire_ui_worker | claude-opus-4-7 | 1 | 0 |
+
+## anomalies
+
+| category | entries |
+| --- | --- |
+| review_cost_exceeds_worker | (none) |
+| resolver_invocations_gt_one | (none) |
+| gates_over_estimate | (none) |
+| idle_gaps_over_30min | 2026-07-06T00:51:17Z=1841.0; 2026-07-06T09:30:05Z=2771.0; 2026-07-06T10:20:17Z=2606.0; 2026-07-06T11:08:11Z=2566.0; 2026-07-06T11:55:29Z=9142.0 |
+| escalations | arc=health-check failed: per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\001.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\002.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\003.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\004.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\005.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\006.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\007.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\008.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\009.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\010.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\011.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\012.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\013.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\014.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\015.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\016.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\017.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\018.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\019.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\020.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\021.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\022.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\023.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\024.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\025.gates; per-slice gate snapshot missing: C:\GitHub\Berreman\specs\0033\.slices\026.gates |
+| hangups | (none) |
+| operator_overrides | (none) |
+
+

@@ -1,0 +1,383 @@
+{
+  "timing": {
+    "arc_started_at": "2026-07-05T22:13:53Z",
+    "arc_ended_at": "2026-07-06T14:59:18Z",
+    "total_wall_clock_seconds": 60325.0,
+    "spec_writer_seconds": 5879.0,
+    "splitter_seconds": null,
+    "arc_runner_seconds": 54115.0,
+    "idle_gap_seconds": 51268.0,
+    "largest_gaps": [
+      {
+        "at": "2026-07-06T11:55:29Z",
+        "seconds": 9142.0
+      },
+      {
+        "at": "2026-07-06T09:30:05Z",
+        "seconds": 2771.0
+      },
+      {
+        "at": "2026-07-06T10:20:17Z",
+        "seconds": 2606.0
+      },
+      {
+        "at": "2026-07-06T11:08:11Z",
+        "seconds": 2566.0
+      }
+    ]
+  },
+  "cost": {
+    "total_usd": null,
+    "total_tokens": null,
+    "by_phase": {},
+    "by_role": {
+      "splitter": null,
+      "arc_runner_worker": null,
+      "architecture_critic": null,
+      "reuse_critic": null,
+      "code_judge": null,
+      "resolver": null,
+      "spec_author": null,
+      "claim_checker": null,
+      "gate_keeper": null,
+      "handoff_verifier": null
+    },
+    "by_slice": {},
+    "cost_per_accepted_slice": null,
+    "review_share": null,
+    "row_warnings": {}
+  },
+  "iterations": {
+    "spec_writer": {
+      "cycles_by_intent": {
+        "spec": 2,
+        "claim-check": 2,
+        "gates": 1,
+        "handoff": 1
+      }
+    },
+    "splitter": {
+      "rounds": 0,
+      "verifier_iterations_per_round": {
+        "max": 0,
+        "median": 0.0
+      }
+    },
+    "arc_runner": {
+      "slice_attempts_total": 28,
+      "slices_with_retries": 2,
+      "review_cycles_per_slice": {
+        "max": 1,
+        "median": 1.0
+      },
+      "resolver_invocations": 0,
+      "route_backs_total": 0,
+      "max_route_backs_per_slice": 0
+    }
+  },
+  "outcomes": {
+    "arc_status": "COMPLETE",
+    "arc_escalation_trigger": {
+      "reason": "health-check failed: per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\001.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\002.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\003.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\004.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\005.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\006.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\007.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\008.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\009.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\010.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\011.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\012.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\013.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\014.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\015.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\016.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\017.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\018.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\019.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\020.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\021.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\022.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\023.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\024.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\025.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\026.gates",
+      "failures": [
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\001.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\002.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\003.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\004.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\005.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\006.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\007.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\008.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\009.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\010.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\011.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\012.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\013.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\014.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\015.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\016.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\017.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\018.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\019.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\020.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\021.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\022.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\023.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\024.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\025.gates",
+        "per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\026.gates"
+      ]
+    },
+    "gate_pass_rate": 1.0,
+    "gates_failed_top": [],
+    "hangup_count": 0,
+    "operator_overrides": 0
+  },
+  "sizes": {
+    "spec_md_bytes": 15645,
+    "spec_md_lines": 241,
+    "spec_md_section_count": 13,
+    "slice_count": 26,
+    "gate_count_chosen": 130,
+    "gate_count_proposed_open": 0,
+    "per_slice": {
+      "slice 001": {
+        "sow_bytes": 5266,
+        "impl_log_bytes": 6735,
+        "selected_test_classes_count": 0
+      },
+      "slice 002": {
+        "sow_bytes": 5786,
+        "impl_log_bytes": 9751,
+        "selected_test_classes_count": 0
+      },
+      "slice 003": {
+        "sow_bytes": 6528,
+        "impl_log_bytes": 6444,
+        "selected_test_classes_count": 0
+      },
+      "slice 004": {
+        "sow_bytes": 6935,
+        "impl_log_bytes": 6891,
+        "selected_test_classes_count": 0
+      },
+      "slice 005": {
+        "sow_bytes": 8234,
+        "impl_log_bytes": 5938,
+        "selected_test_classes_count": 0
+      },
+      "slice 006": {
+        "sow_bytes": 9969,
+        "impl_log_bytes": 9129,
+        "selected_test_classes_count": 0
+      },
+      "slice 007": {
+        "sow_bytes": 9124,
+        "impl_log_bytes": 9264,
+        "selected_test_classes_count": 0
+      },
+      "slice 008": {
+        "sow_bytes": 10421,
+        "impl_log_bytes": 8739,
+        "selected_test_classes_count": 0
+      },
+      "slice 009": {
+        "sow_bytes": 11244,
+        "impl_log_bytes": 11502,
+        "selected_test_classes_count": 0
+      },
+      "slice 010": {
+        "sow_bytes": 11540,
+        "impl_log_bytes": 6254,
+        "selected_test_classes_count": 0
+      },
+      "slice 011": {
+        "sow_bytes": 12978,
+        "impl_log_bytes": 6502,
+        "selected_test_classes_count": 0
+      },
+      "slice 012": {
+        "sow_bytes": 13052,
+        "impl_log_bytes": 8642,
+        "selected_test_classes_count": 0
+      },
+      "slice 013": {
+        "sow_bytes": 13499,
+        "impl_log_bytes": 8339,
+        "selected_test_classes_count": 0
+      },
+      "slice 014": {
+        "sow_bytes": 11803,
+        "impl_log_bytes": 6569,
+        "selected_test_classes_count": 0
+      },
+      "slice 015": {
+        "sow_bytes": 13473,
+        "impl_log_bytes": 8833,
+        "selected_test_classes_count": 0
+      },
+      "slice 016": {
+        "sow_bytes": 14755,
+        "impl_log_bytes": 9299,
+        "selected_test_classes_count": 0
+      },
+      "slice 017": {
+        "sow_bytes": 16012,
+        "impl_log_bytes": 7116,
+        "selected_test_classes_count": 0
+      },
+      "slice 018": {
+        "sow_bytes": 16466,
+        "impl_log_bytes": 6331,
+        "selected_test_classes_count": 0
+      },
+      "slice 019": {
+        "sow_bytes": 17723,
+        "impl_log_bytes": 7531,
+        "selected_test_classes_count": 0
+      },
+      "slice 020": {
+        "sow_bytes": 17632,
+        "impl_log_bytes": 7693,
+        "selected_test_classes_count": 0
+      },
+      "slice 021": {
+        "sow_bytes": 19664,
+        "impl_log_bytes": 7006,
+        "selected_test_classes_count": 0
+      },
+      "slice 022": {
+        "sow_bytes": 22064,
+        "impl_log_bytes": 13686,
+        "selected_test_classes_count": 0
+      },
+      "slice 023": {
+        "sow_bytes": 25436,
+        "impl_log_bytes": 15686,
+        "selected_test_classes_count": 0
+      },
+      "slice 024": {
+        "sow_bytes": 25847,
+        "impl_log_bytes": 8878,
+        "selected_test_classes_count": 0
+      },
+      "slice 025": {
+        "sow_bytes": 8800,
+        "impl_log_bytes": 8761,
+        "selected_test_classes_count": 0
+      },
+      "slice 026": {
+        "sow_bytes": 7047,
+        "impl_log_bytes": 7062,
+        "selected_test_classes_count": 0
+      }
+    },
+    "git": {
+      "files_touched": 307,
+      "lines_added": 32791,
+      "lines_removed": 1392,
+      "commit_count": 33
+    }
+  },
+  "agent_mix": {
+    "roles": {
+      "splitter": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "arc_runner_worker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "architecture_critic": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "reuse_critic": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "code_judge": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 27,
+        "escalations": 1
+      },
+      "resolver": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "spec_author": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "claim_checker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "gate_keeper": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "handoff_verifier": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "implement_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 20,
+        "escalations": 1
+      },
+      "add_contract_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 2,
+        "escalations": 0
+      },
+      "implement_contract_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 2,
+        "escalations": 0
+      },
+      "add_component_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 4,
+        "escalations": 0
+      },
+      "wire_ui_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      }
+    }
+  },
+  "anomalies": {
+    "review_cost_exceeds_worker": [],
+    "resolver_invocations_gt_one": [],
+    "gates_over_estimate": [],
+    "idle_gaps_over_30min": [
+      {
+        "entity": "2026-07-06T00:51:17Z",
+        "value": 1841.0
+      },
+      {
+        "entity": "2026-07-06T09:30:05Z",
+        "value": 2771.0
+      },
+      {
+        "entity": "2026-07-06T10:20:17Z",
+        "value": 2606.0
+      },
+      {
+        "entity": "2026-07-06T11:08:11Z",
+        "value": 2566.0
+      },
+      {
+        "entity": "2026-07-06T11:55:29Z",
+        "value": 9142.0
+      }
+    ],
+    "escalations": [
+      {
+        "entity": "arc",
+        "value": "health-check failed: per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\001.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\002.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\003.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\004.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\005.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\006.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\007.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\008.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\009.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\010.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\011.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\012.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\013.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\014.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\015.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\016.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\017.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\018.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\019.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\020.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\021.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\022.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\023.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\024.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\025.gates; per-slice gate snapshot missing: C:\\GitHub\\Berreman\\specs\\0033\\.slices\\026.gates"
+      }
+    ],
+    "hangups": [],
+    "operator_overrides": []
+  },
+  "meta": {
+    "schema_version": 7,
+    "spec_id": "0033",
+    "generated_at": "2026-07-06T15:28:08Z",
+    "tool_version": 7,
+    "warnings": []
+  }
+}
