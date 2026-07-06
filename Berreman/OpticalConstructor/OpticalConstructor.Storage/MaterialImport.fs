@@ -86,6 +86,8 @@ module MaterialImport =
             category = category
             description = Some "Imported tabulated n,k (refractiveindex.info)."
             properties = isotropicProperties (EpsWithDisp (buildTabulatedClosure points))
+            // Imports stay closure-backed (view-only) until Part G lowers them to data.
+            complexity = None
         }
 
     /// Collect tabulated `(λ in meters, n, k)` rows from data lines (those starting
@@ -132,6 +134,7 @@ module MaterialImport =
                             category = Glass
                             description = Some "Imported Sellmeier (refractiveindex.info formula 1)."
                             properties = isotropicProperties (EpsWithDisp closure)
+                            complexity = None
                         }
                 | None -> Error (MalformedYaml "formula 1 block has no coefficients line")
             else

@@ -151,6 +151,7 @@ module DispersionModelsTests =
                 category = Glass
                 description = None
                 properties = siliconOpticalProperties
+                complexity = None
             }
         let lib : MaterialLibrary = { entries = entry :: standard.entries }
         match resolveMaterialWithDisp lib id with

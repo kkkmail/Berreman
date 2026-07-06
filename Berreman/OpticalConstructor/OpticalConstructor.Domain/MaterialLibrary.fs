@@ -71,10 +71,47 @@ module MaterialLibrary =
         | Crystal
         | Vacuum
 
+    /// The editable material-complexity option tree (spec 0033 step 013, §B / the
+    /// Part F progressive ladder): the serializable edit model a material's engine
+    /// properties are BUILT from. `eps` is ALWAYS present; the magnetic (Polder μ)
+    /// and active (gyration ρ) aspects are OPTIONAL — an absent option means the
+    /// engine's vacuum default, so the simplest material stays "transparent,
+    /// isotropic, non-dispersive" and every richer feature lifts exactly one aspect
+    /// off its default.
+    type MaterialComplexity =
+        {
+            eps : EpsWithDispValue
+            magnetic : MuWithDispValue option
+            active : RhoWithDispValue option
+        }
+
+        /// Pure composition to the engine's `OpticalPropertiesWithDisp`
+        /// (`Dispersion.fs:55`): eps through `EpsWithDispValue.toEpsWithDisp`, absent
+        /// magnetic/active options defaulted to the vacuum μ/ρ through the single
+        /// vacuum-convention site (`DispersionModels.isotropicProperties`), present
+        /// options assembled through `toMuWithDisp` / `toRhoWithDisp` (the latter is
+        /// the `OpticalProperties/Active.fs` type extension, opened above).
+        member this.toProperties : OpticalPropertiesWithDisp =
+            let defaults = DispersionModels.isotropicProperties this.eps.toEpsWithDisp
+            let muWithDisp =
+                match this.magnetic with
+                | Some m -> m.toMuWithDisp
+                | None -> defaults.muWithDisp
+            let rhoWithDisp =
+                match this.active with
+                | Some a -> a.toRhoWithDisp
+                | None -> defaults.rhoWithDisp
+            { defaults with muWithDisp = muWithDisp; rhoWithDisp = rhoWithDisp }
+
     /// A library entry: a stable id (the `materialEntry` id, §A.7), a display name,
     /// a category, an optional description (mirroring the engine's `description`
-    /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), and the
-    /// engine's `OpticalPropertiesWithDisp` (`Dispersion.fs:53`).
+    /// fields, e.g. `OpticalSystemWithDisp.description`, `Dispersion.fs:141`), the
+    /// engine's `OpticalPropertiesWithDisp` (`Dispersion.fs:53`), and the optional
+    /// edit model (spec 0033 step 013): `Some complexity` is the EDITABLE source of
+    /// truth — `properties` IS `complexity.toProperties` (the seeds construct it so;
+    /// the Part F editor re-derives it at save) — while `None` marks an
+    /// engine-preset entry whose physics is coded rather than data (silicon /
+    /// langasite / the vacuum spacer), shown view-only.
     type MaterialEntry =
         {
             id : MaterialId
@@ -82,6 +119,7 @@ module MaterialLibrary =
             category : MaterialCategory
             description : string option
             properties : OpticalPropertiesWithDisp
+            complexity : MaterialComplexity option
         }
 
     /// Net-new error channel for material resolution (errors as values, §0). Returned
@@ -133,11 +171,79 @@ module MaterialLibrary =
     let resolveMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
         resolveMaterialWithDisp lib id |> Result.map (fun p -> p.getProperties w)
 
-    /// Built-in entries (§D.8). Each wraps an existing engine preset as-is; none
-    /// re-derives dispersion. `Silicon`/`Langasite` come from `Dispersive.fs:98,99`;
-    /// the glass/crystal presets from `Standard.fs:64-70` (`.dispersive` lifts a
-    /// non-dispersive `OpticalProperties` to `OpticalPropertiesWithDisp` as
-    /// `EpsWithoutDisp`).
+    /// A constant-eps complexity with no magnetic/active aspect — the shape shared by
+    /// every re-expressed transparent/absorbing built-in below.
+    let private constantComplexity (eps : ConstantEpsValue) : MaterialComplexity =
+        {
+            eps = EpsWithoutDispValue eps
+            magnetic = None
+            active = None
+        }
+
+    // ==========================================================================
+    // Complexities of the re-expressed built-ins (spec 0033 step 013). Each is the
+    // editable source of truth of its entry: the entry sets
+    // properties = complexity.toProperties, so the sync invariant holds by
+    // construction at seed time, and each construction reuses the preset constants
+    // and the preset arithmetic path so the seeded tensors stay VALUE-IDENTICAL to
+    // the original engine presets (PropagationTests pins the seeded systems with
+    // exact equality). The uniaxial and active crystals are encoded as
+    // BiaxialTransparent per-axis values, NOT UniaxialTransparent: the engine maps
+    // UniaxialTransparent to the (ordinary, extraordinary, ordinary) diagonal
+    // (Dispersion.fs:297), but Eps.uniaxialCrystal is diag(1.5², 1.65², 1.65²)
+    // (unique axis x) and planarCrystal is diag(n₁₁², n₁₁², n₃₃²) (unique axis z) —
+    // neither has the (o, e, o) shape, and the AC-B7 acceptance (reproduce the
+    // original preset's tensors) wins over the case name.
+    // ==========================================================================
+
+    let private glass152Complexity : MaterialComplexity =
+        constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass)
+
+    let private glass150Complexity : MaterialComplexity =
+        constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass150)
+
+    let private glass175Complexity : MaterialComplexity =
+        constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass175)
+
+    let private glass200Complexity : MaterialComplexity =
+        constantComplexity (IsotropicTransparent RefractionIndex.transparentGlass200)
+
+    let private uniaxialCrystalComplexity : MaterialComplexity =
+        constantComplexity (BiaxialTransparent (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.65))
+
+    let private biaxialCrystalComplexity : MaterialComplexity =
+        constantComplexity (BiaxialTransparent (RefractionIndex 1.5, RefractionIndex 1.65, RefractionIndex 1.75))
+
+    let private euvMolybdenumComplexity : MaterialComplexity =
+        Berreman.MathNetNumericsMath.createComplex (1.0 - Eps.euvMolybdenumDelta) Eps.euvMolybdenumBeta
+        |> ComplexRefractionIndex
+        |> IsotropicAbsorbing
+        |> constantComplexity
+
+    let private euvSiliconComplexity : MaterialComplexity =
+        Berreman.MathNetNumericsMath.createComplex (1.0 - Eps.euvSiliconDelta) Eps.euvSiliconBeta
+        |> ComplexRefractionIndex
+        |> IsotropicAbsorbing
+        |> constantComplexity
+
+    /// The per-axis indices go through the SAME EpsValue → sqrt round-trip the
+    /// engine's `planarCrystal` preset performs, so the rebuilt eps is
+    /// value-identical to the original (not merely within tolerance).
+    let private activeCrystalComplexity : MaterialComplexity =
+        let n11 = (RefractionIndex 2.315 |> EpsValue.fromRefractionIndex).refractionIndex
+        let n33 = (RefractionIndex 2.226 |> EpsValue.fromRefractionIndex).refractionIndex
+        {
+            eps = EpsWithoutDispValue (BiaxialTransparent (n11, n11, n33))
+            magnetic = None
+            active = Some (RhoWithoutDispValue { gyration = PlanarActive (RhoValue 1.5e-6); hand = RightHanded })
+        }
+
+    /// Built-in entries (§D.8). `Silicon`/`Langasite` wrap their engine presets as-is
+    /// (`Dispersive.fs:98,99` — dispersion coded, not data — so `complexity = None`,
+    /// view-only), as does the vacuum spacer; the nine expressible entries are
+    /// re-expressed as complexities (spec 0033 step 013) with
+    /// `properties = complexity.toProperties`, which the AC-B7 tests pin against the
+    /// original `Standard.fs`/`Active.fs` presets at reference wavelengths.
     let builtInEntries : MaterialEntry list =
         [
             {
@@ -146,6 +252,7 @@ module MaterialLibrary =
                 category = Semiconductor
                 description = Some "Crystalline silicon (engine preset Silicon)."
                 properties = siliconOpticalProperties
+                complexity = None
             }
             {
                 id = MaterialIds.langasite
@@ -153,48 +260,55 @@ module MaterialLibrary =
                 category = Crystal
                 description = Some "Langasite, optically active uniaxial crystal (engine preset Langasite)."
                 properties = langasiteOpticalProperties
+                complexity = None
             }
             {
                 id = MaterialIds.glass152
                 name = "Transparent glass (n = 1.52)"
                 category = Glass
                 description = Some "Standard transparent glass preset."
-                properties = OpticalProperties.transparentGlass.dispersive
+                properties = glass152Complexity.toProperties
+                complexity = Some glass152Complexity
             }
             {
                 id = MaterialIds.glass150
                 name = "Transparent glass (n = 1.50)"
                 category = Glass
                 description = None
-                properties = OpticalProperties.transparentGlass150.dispersive
+                properties = glass150Complexity.toProperties
+                complexity = Some glass150Complexity
             }
             {
                 id = MaterialIds.glass175
                 name = "Transparent glass (n = 1.75)"
                 category = Glass
                 description = None
-                properties = OpticalProperties.transparentGlass175.dispersive
+                properties = glass175Complexity.toProperties
+                complexity = Some glass175Complexity
             }
             {
                 id = MaterialIds.glass200
                 name = "Transparent glass (n = 2.00)"
                 category = Glass
                 description = None
-                properties = OpticalProperties.transparentGlass200.dispersive
+                properties = glass200Complexity.toProperties
+                complexity = Some glass200Complexity
             }
             {
                 id = MaterialIds.uniaxialCrystal
                 name = "Uniaxial crystal"
                 category = Crystal
                 description = Some "Standard uniaxial crystal preset."
-                properties = OpticalProperties.uniaxialCrystal.dispersive
+                properties = uniaxialCrystalComplexity.toProperties
+                complexity = Some uniaxialCrystalComplexity
             }
             {
                 id = MaterialIds.biaxialCrystal
                 name = "Biaxial crystal"
                 category = Crystal
                 description = Some "Standard biaxial crystal preset."
-                properties = OpticalProperties.biaxialCrystal.dispersive
+                properties = biaxialCrystalComplexity.toProperties
+                complexity = Some biaxialCrystalComplexity
             }
             {
                 id = MaterialIds.vacuum
@@ -202,31 +316,31 @@ module MaterialLibrary =
                 category = Vacuum
                 description = Some "Vacuum (n = 1) — the spacer material of the structural multilayer stacks."
                 properties = OpticalProperties.vacuum.dispersive
+                complexity = None
             }
             {
                 id = MaterialIds.euvMolybdenum
                 name = "Molybdenum (Mo, EUV)"
                 category = Metal
                 description = Some "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
-                properties = OpticalProperties.euvMolybdenum.dispersive
+                properties = euvMolybdenumComplexity.toProperties
+                complexity = Some euvMolybdenumComplexity
             }
             {
                 id = MaterialIds.euvSilicon
                 name = "Silicon (Si, EUV)"
                 category = Semiconductor
                 description = Some "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
-                properties = OpticalProperties.euvSilicon.dispersive
+                properties = euvSiliconComplexity.toProperties
+                complexity = Some euvSiliconComplexity
             }
             {
                 id = MaterialIds.activeCrystal
                 name = "Active (gyrotropic) crystal"
                 category = Crystal
                 description = Some "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx)."
-                properties =
-                    (OpticalProperties.planarCrystal
-                        (RefractionIndex 2.315 |> EpsValue.fromRefractionIndex)
-                        (RefractionIndex 2.226 |> EpsValue.fromRefractionIndex)
-                        (RhoValue 1.5e-6)).dispersive
+                properties = activeCrystalComplexity.toProperties
+                complexity = Some activeCrystalComplexity
             }
         ]
 

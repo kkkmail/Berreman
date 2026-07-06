@@ -98,6 +98,9 @@ module MaterialLibrary =
                     category = dto.category
                     description = dto.description
                     properties = vacuumProperties
+                    // The metadata-only library file carries no dispersion data; the
+                    // rebuilt entry is view-only until the §D.9 mapping lands.
+                    complexity = None
                 }
         | None -> Error (JsonParseError (sprintf "materialEntry id '%s' is not a Guid" dto.id))
 
