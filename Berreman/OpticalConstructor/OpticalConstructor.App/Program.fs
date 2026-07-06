@@ -128,10 +128,13 @@ type MainConstructorWindow() as this =
         // `OpticalConstructor.Storage`), leaving the scene/bay logic unchanged.
         let library = OpticalConstructor.Domain.Library.createInMemory ()
         let experiments = OpticalConstructor.Domain.Experiments.createInMemory ()
-        // Spec 0033 (024): the material / sample WRITE stores (STORE_XDUO_0001/0002) join the
+        // Spec 0033 (024/026): the material / sample WRITE stores (STORE_XDUO_0001/0002) join the
         // composition — the samples store first, then the materials store whose remove-block
-        // consults the LIVE samples. Threaded mechanically; the final WIRE_UI step owns the
-        // composition acceptance.
+        // consults the LIVE samples through `samplesReferencing`. All four proxies inject through
+        // `initMainWith` (which seeds the REAL editor launchers, `EditorLaunchers.defaults`); the
+        // step-026 ui-smoke composition acceptance (`WireUiCompositionTests`) drives THIS window
+        // headless — the Selector / Materials / Library bays render over the wired stores and
+        // Add/Edit open the real editor windows.
         let samples = SampleProxy.createInMemory ()
         let materials = OpticalConstructor.Domain.MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
         Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples) TableAndElementRotationView.update TableAndElementRotationView.mainView

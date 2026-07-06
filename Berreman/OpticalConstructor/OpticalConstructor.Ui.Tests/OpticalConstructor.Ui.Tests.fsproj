@@ -120,6 +120,13 @@
              referenced-material remove surfaces MaterialStillReferenced with the store
              unchanged, unreferenced removes update the list in the same render pass). -->
         <Compile Include="MainWorkbenchTests.fs" />
+        <!-- Spec 0033 (026): the WIRE_UI composition acceptance — headless proofs driving the
+             REAL MainConstructorWindow (the finalized composition root with its four in-memory
+             proxies and the default editor launchers): every ribbon bay renders one frame, the
+             Selector / Materials / Library bays mount over the root-wired stores, Add/Edit open
+             both real editor windows, and a referenced-material remove surfaces the typed
+             refusal from the root-coupled samples store. -->
+        <Compile Include="WireUiCompositionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
