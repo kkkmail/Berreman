@@ -65,6 +65,13 @@
              errors). Mirrors Ui's StackEditor message discipline at the material-id
              level; depends only on ElementId/MaterialLibrary above. -->
         <Compile Include="SampleStackEditor.fs" />
+        <!-- Spec 0033 (023): the pure, Avalonia-free MATERIAL edit model over
+             MaterialComplexity (the Part F progressive-unlock ladder): state +
+             message DU + Result-returning apply, toComplexity/ofComplexity onto
+             the engine's serializable value trees, the constrained gyration-class
+             offering, and the restated advisory gain rule. Depends on
+             DispersionModels/MaterialLibrary above. -->
+        <Compile Include="MaterialComplexityEditor.fs" />
     </ItemGroup>
 
     <ItemGroup>

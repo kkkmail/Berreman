@@ -71,6 +71,14 @@
              derivation, and Save/Cancel through SampleProxy. View (pure MVU) + HostWindow pair. -->
         <Compile Include="SampleEditorView.fs" />
         <Compile Include="SampleEditorWindow.fs" />
+        <!-- Spec 0033 (023): the Material editor window (UICOMP_XDUO_0004) — the progressive
+             complexity ladder over the Domain MaterialComplexityEditor (anisotropy 3-way,
+             absorbing/dispersive/active/magnetic unlocks, per-segment DispersionModel picker,
+             constrained gyration-class panel, Polder-mu panel), the inline step-19 dual-axis
+             n/k preview with the advisory gain warning, and Save/Cancel through MaterialProxy.
+             View (pure MVU) + HostWindow pair. -->
+        <Compile Include="MaterialEditorView.fs" />
+        <Compile Include="MaterialEditorWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>

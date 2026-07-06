@@ -108,6 +108,12 @@
              select-by-material bulk thickness, Save through SampleProxy add/update, Cancel
              discard, orientation editor only for anisotropic layers, QWOT derivation). -->
         <Compile Include="SampleEditorWindowTests.fs" />
+        <!-- Spec 0033 (023): the MaterialEditorWindow component (UICOMP_XDUO_0004) — pure contract
+             tests for the Domain MaterialComplexityEditor ladder + headless UiIds-driven proofs
+             (biaxial exposes three principal-index fields, activity on uniaxial offers only the
+             uniaxial gyration classes, toggle uncheck restores the default losslessly, Save
+             round-trips through MaterialProxy with complexity = Some). -->
+        <Compile Include="MaterialEditorWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
