@@ -268,14 +268,14 @@ module Library =
         | DuplicateSampleId of reason : string
         | InvalidSample of reason : string
 
-    /// The mutating samples write-seam (spec 0033 step 004, contract STORE_XDUO_0002 — DECLARED
-    /// lifecycle): the same functional-proxy shape as step 003's `MaterialProxy`
+    /// The mutating samples write-seam (spec 0033 steps 004/005, contract STORE_XDUO_0002 —
+    /// IMPLEMENTED lifecycle): the same functional-proxy shape as step 003's `MaterialProxy`
     /// (`MaterialLibrary.fs`) — a record of camelCase `Result`-returning functions; a test
     /// substitutes a stub of the SAME shape. Function-valued fields have no structural equality,
     /// so the proxy compares by reference — a host model holding one keeps its (Elmish-required)
-    /// equality. The real, persisting store behind this surface is the later IMPLEMENT_CONTRACT
-    /// step (`OpticalConstructor.Storage`); until then the only producers are the in-memory mock
-    /// (`createInMemorySampleProxy`) and test stubs.
+    /// equality. The real, stateful in-memory store behind this surface is
+    /// `SampleProxy.createInMemory` (declared as a type augmentation below `seedEntries`, which
+    /// seeds it).
     [<ReferenceEquality>]
     type SampleProxy =
         {
@@ -553,60 +553,78 @@ module Library =
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
 
-    /// The blank-name validation the sample mock's write functions share (spec 0033 step 004):
-    /// a `Sample` whose display name is empty/whitespace is `InvalidSample`.
+    /// The blank-name validation the samples store's write functions share (spec 0033
+    /// steps 004/005): a `Sample` whose display name is empty/whitespace is `InvalidSample`.
     let private validateSample (s : Sample) : Result<unit, SampleError> =
         if String.IsNullOrWhiteSpace s.name
         then Error (InvalidSample (sprintf "sample '%s' has a blank name" (string s.id.value)))
         else Ok ()
 
-    /// The in-memory mock `SampleProxy` (spec 0033 step 004): an inline stub record over the
-    /// FIXED `SeedSamples.all` list — no IO, no mutation, deterministic for tests. The read
-    /// functions answer from the fixed list (search matches the name fragment case-insensitively,
-    /// then the substrate facet); the WRITE functions validate against it and return the typed
-    /// outcome WITHOUT persisting anything: `addSample` rejects an id the list already holds
-    /// (`DuplicateSampleId`), `addSample`/`updateSample` reject a blank name (`InvalidSample`),
-    /// `updateSample`/`removeSample` reject an unknown id (`UnknownSampleId`). The real,
-    /// persisting store is the later IMPLEMENT_CONTRACT step, leaving callers of this shape
-    /// unchanged. (`createInMemory` above builds the `LibraryProxy`; this is the sample seam's
-    /// distinctly-named mock.)
-    let createInMemorySampleProxy () : SampleProxy =
-        let samples = SeedSamples.all
-        let tryFind (id : SampleId) : Sample option =
-            samples |> List.tryFind (fun s -> s.id = id)
-        let unknown (id : SampleId) : SampleError =
-            UnknownSampleId (sprintf "unknown sample id '%s'" (string id.value))
-        {
-            listSamples = fun () -> Ok samples
-            searchSamples =
-                fun q ->
-                    let byText =
-                        samples |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
-                    match q.substrate with
-                    | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
-                    | None -> Ok byText
-            tryGetSample = fun id -> Ok (tryFind id)
-            addSample =
-                fun sample ->
-                    validateSample sample
-                    |> Result.bind (fun () ->
-                        match tryFind sample.id with
-                        | Some existing ->
-                            Error (DuplicateSampleId (sprintf "sample id '%s' already names '%s'" (string sample.id.value) existing.name))
-                        | None -> Ok ())
-            updateSample =
-                fun sample ->
-                    validateSample sample
-                    |> Result.bind (fun () ->
-                        match tryFind sample.id with
-                        | Some _ -> Ok ()
-                        | None -> Error (unknown sample.id))
-            removeSample =
-                fun id ->
-                    match tryFind id with
-                    | Some _ -> Ok ()
-                    | None -> Error (unknown id)
-        }
+    /// The real, stateful in-memory samples store behind the write-seam (spec 0033 step 005 —
+    /// IMPLEMENT_CONTRACT STORE_XDUO_0002; replaces the step-004 validate-only mock).
+    /// `createInMemory` closes over a `ref` `Map<SampleId, Sample>` seeded from the samples in
+    /// `seedEntries` — the elevated `SampleId` is the Map key directly. Mutation stays INSIDE
+    /// the closure (the IO boundary), so the logic holding the proxy stays pure: reads answer
+    /// from the current map; `searchSamples` matches the name fragment case-insensitively, then
+    /// the `SubstrateKind` facet; `addSample` persists a fresh sample and rejects an id the
+    /// store already holds (`DuplicateSampleId`); `updateSample` replaces a known sample and
+    /// rejects an unknown id (`UnknownSampleId`); `removeSample` deletes a known id and rejects
+    /// an unknown one; both writes keep the step-004 blank-name validation (`InvalidSample`).
+    /// Deterministic under test — every entry carries its own id, no clock, no IO. (A static
+    /// member, not a module `let`: `createInMemory` at module level already builds the
+    /// `LibraryProxy`; the augmentation sits here because it needs `seedEntries` above.)
+    type SampleProxy with
+
+        static member createInMemory () : SampleProxy =
+            let seeded =
+                seedEntries
+                |> List.choose (fun e ->
+                    match e with
+                    | SampleItem s -> Some (s.id, s)
+                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> None)
+            let store = ref (Map.ofList seeded)
+            let currentSamples () : Sample list =
+                store.Value |> Map.toList |> List.map snd
+            let unknown (id : SampleId) : SampleError =
+                UnknownSampleId (sprintf "unknown sample id '%s'" (string id.value))
+            {
+                listSamples = fun () -> Ok (currentSamples ())
+                searchSamples =
+                    fun q ->
+                        let byText =
+                            currentSamples ()
+                            |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
+                        match q.substrate with
+                        | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
+                        | None -> Ok byText
+                tryGetSample = fun id -> Ok (store.Value |> Map.tryFind id)
+                addSample =
+                    fun sample ->
+                        validateSample sample
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind sample.id with
+                            | Some existing ->
+                                Error (DuplicateSampleId (sprintf "sample id '%s' already names '%s'" (string sample.id.value) existing.name))
+                            | None ->
+                                store.Value <- store.Value |> Map.add sample.id sample
+                                Ok ())
+                updateSample =
+                    fun sample ->
+                        validateSample sample
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind sample.id with
+                            | Some _ ->
+                                store.Value <- store.Value |> Map.add sample.id sample
+                                Ok ()
+                            | None -> Error (unknown sample.id))
+                removeSample =
+                    fun id ->
+                        match store.Value |> Map.tryFind id with
+                        | Some _ ->
+                            store.Value <- store.Value |> Map.remove id
+                            Ok ()
+                        | None -> Error (unknown id)
+            }
 
 /// Spec 0027 (028) — the Experiments domain, redesigned around a multi-step, EDITABLE experiment built
 /// from the live setup:
