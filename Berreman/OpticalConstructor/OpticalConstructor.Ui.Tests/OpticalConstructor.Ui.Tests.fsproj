@@ -103,6 +103,11 @@
              dual-axis spine — headless model tests: n→left / k→right via the paired style seed,
              the requested spectral range in the display unit, dispersive curve vs flat line. -->
         <Compile Include="NkDispersionChartTests.fs" />
+        <!-- Spec 0033 (022): the SampleEditorWindow component (UICOMP_XDUO_0003) — pure contract
+             tests + headless UiIds-driven proofs (repeat-block expansion to 2*K films,
+             select-by-material bulk thickness, Save through SampleProxy add/update, Cancel
+             discard, orientation editor only for anisotropic layers, QWOT derivation). -->
+        <Compile Include="SampleEditorWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

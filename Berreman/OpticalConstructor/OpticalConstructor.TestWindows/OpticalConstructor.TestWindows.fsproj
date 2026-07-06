@@ -64,6 +64,13 @@
              the light is reflected, not transmitted, and the detector snaps to the reflected beam). -->
         <Compile Include="SnapToReflectedView.fs" />
         <Compile Include="SnapToReflectedWindow.fs" />
+        <!-- Spec 0033 (022): the Sample editor window (UICOMP_XDUO_0003) — name/description,
+             the SubstrateKind geometry facet, the stack table over the Domain SampleStackEditor
+             (period super-rows with rotating-triangle expanders + inline repeat-count steppers),
+             the bulk toolbar, material choice from MaterialProxy.listMaterials, the QWOT
+             derivation, and Save/Cancel through SampleProxy. View (pure MVU) + HostWindow pair. -->
+        <Compile Include="SampleEditorView.fs" />
+        <Compile Include="SampleEditorWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>
