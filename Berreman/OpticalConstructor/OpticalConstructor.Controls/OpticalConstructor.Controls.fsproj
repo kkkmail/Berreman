@@ -49,6 +49,11 @@
              verbs. Domain-free (rows and facet options are host-flattened; the host owns the
              MaterialProxy search seam); view-only rows carry no Edit affordance. -->
         <Compile Include="MaterialsControls.fs" />
+        <!-- Spec 0033 (016): the samples workbench list surface (UICOMP_XDUO_0002) — search box,
+             substrate-kind facet selector, the samples list, Add / Edit / Remove / View verbs, and
+             the multilayer entry point. Domain-free (rows and facet options are host-flattened; the
+             host owns the SampleProxy search seam). -->
+        <Compile Include="SampleLibraryControls.fs" />
     </ItemGroup>
 
     <ItemGroup>

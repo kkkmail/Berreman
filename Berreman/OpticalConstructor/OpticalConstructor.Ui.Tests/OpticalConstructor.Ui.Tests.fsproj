@@ -95,6 +95,10 @@
              headless structure proof (every UiIds control exists; simulated clicks dispatch the
              matching stub handlers; a view-only selection removes the Edit verb). -->
         <Compile Include="MaterialsControlsTests.fs" />
+        <!-- Spec 0033 (016): the SampleLibraryControls component (UICOMP_XDUO_0002) — pure contract +
+             headless structure proof (every UiIds control exists; simulated clicks dispatch the
+             matching stub handlers; the row-targeted verbs are inert without a selection). -->
+        <Compile Include="SampleLibraryControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
