@@ -91,6 +91,10 @@
         <!-- Spec 0027 (026) Part 4: the Details bay — the reusable LayerBandsControls band component
              (pure contract + headless render) + the host detailsState band-builder + the seven-bay ribbon. -->
         <Compile Include="LayerBandsControlsTests.fs" />
+        <!-- Spec 0033 (015): the MaterialsControls component (UICOMP_XDUO_0001) — pure contract +
+             headless structure proof (every UiIds control exists; simulated clicks dispatch the
+             matching stub handlers; a view-only selection removes the Edit verb). -->
+        <Compile Include="MaterialsControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
