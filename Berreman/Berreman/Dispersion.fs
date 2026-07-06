@@ -384,3 +384,154 @@ module Dispersion =
             match this with
             | EpsWithDispValue d -> EpsWithDisp (fun w -> d.getEps w)
             | EpsWithoutDispValue c -> EpsWithoutDisp c.toEps
+
+
+    // ==========================================================================
+    // Serializable rho (gyration) tree (spec 0033 Part B).
+    // Pure data — symmetry-class gyration ONLY (the rotation-producing classes;
+    // deliberately no free 3x3 case). toRhoWithDisp lives in
+    // OpticalProperties/Active.fs as a type extension: assembly needs the
+    // crystal-class Rho builders there and the core cannot reference that project.
+    // ==========================================================================
+
+
+    /// The screw sense of an optically active crystal: the two enantiomorphs
+    /// differ by ONE overall sign flip of the gyration tensor. RightHanded keeps
+    /// the components as specified; LeftHanded negates the assembled tensor.
+    type Handedness =
+        | LeftHanded
+        | RightHanded
+
+        member this.sign : double =
+            match this with
+            | LeftHanded -> -1.0
+            | RightHanded -> 1.0
+
+
+    /// Uniaxial gyration components: the tensor is diag (g11, g11, g33).
+    type UniaxialGyration<'g> =
+        {
+            g11 : 'g
+            g33 : 'g
+        }
+
+        member this.map (f : 'g -> 'h) : UniaxialGyration<'h> =
+            {
+                g11 = f this.g11
+                g33 = f this.g33
+            }
+
+
+    /// Orthorhombic class 222 gyration components: diag (g11, g22, g33).
+    type Orthorhombic222Gyration<'g> =
+        {
+            g11 : 'g
+            g22 : 'g
+            g33 : 'g
+        }
+
+        member this.map (f : 'g -> 'h) : Orthorhombic222Gyration<'h> =
+            {
+                g11 = f this.g11
+                g22 = f this.g22
+                g33 = f this.g33
+            }
+
+
+    /// Monoclinic class 2 gyration components (two-fold axis along x2):
+    /// the diagonal plus g13 = g31.
+    type Monoclinic2Gyration<'g> =
+        {
+            g11 : 'g
+            g22 : 'g
+            g33 : 'g
+            g13 : 'g
+        }
+
+        member this.map (f : 'g -> 'h) : Monoclinic2Gyration<'h> =
+            {
+                g11 = f this.g11
+                g22 = f this.g22
+                g33 = f this.g33
+                g13 = f this.g13
+            }
+
+
+    /// Monoclinic class m gyration components (mirror normal to x2):
+    /// only g12 = g21 and g23 = g32 survive.
+    type MonoclinicMGyration<'g> =
+        {
+            g12 : 'g
+            g23 : 'g
+        }
+
+        member this.map (f : 'g -> 'h) : MonoclinicMGyration<'h> =
+            {
+                g12 = f this.g12
+                g23 = f this.g23
+            }
+
+
+    /// Triclinic class 1 gyration components: the full symmetric tensor.
+    type Triclinic1Gyration<'g> =
+        {
+            g11 : 'g
+            g22 : 'g
+            g33 : 'g
+            g23 : 'g
+            g13 : 'g
+            g12 : 'g
+        }
+
+        member this.map (f : 'g -> 'h) : Triclinic1Gyration<'h> =
+            {
+                g11 = f this.g11
+                g22 = f this.g22
+                g33 = f this.g33
+                g23 = f this.g23
+                g13 = f this.g13
+                g12 = f this.g12
+            }
+
+
+    /// A symmetry-class gyration tensor over an abstract component 'g (RhoValue
+    /// for a constant tensor, DispersionFormula for a dispersive one). ONLY the
+    /// rotation-producing classes appear; the multi-component cases carry the
+    /// NAMED records above, never anonymous tuples.
+    type GyrationClass<'g> =
+        | CubicActive of 'g
+        | UniaxialActive of UniaxialGyration<'g>
+        | PlanarActive of 'g
+        | Orthorhombic222 of Orthorhombic222Gyration<'g>
+        | Monoclinic2 of Monoclinic2Gyration<'g>
+        | MonoclinicM of MonoclinicMGyration<'g>
+        | Triclinic1 of Triclinic1Gyration<'g>
+
+        member this.map (f : 'g -> 'h) : GyrationClass<'h> =
+            match this with
+            | CubicActive g11 -> CubicActive (f g11)
+            | UniaxialActive u -> UniaxialActive (u.map f)
+            | PlanarActive g12 -> PlanarActive (f g12)
+            | Orthorhombic222 o -> Orthorhombic222 (o.map f)
+            | Monoclinic2 m -> Monoclinic2 (m.map f)
+            | MonoclinicM m -> MonoclinicM (m.map f)
+            | Triclinic1 t -> Triclinic1 (t.map f)
+
+
+    /// A gyration tensor plus the crystal's handedness — reused by both
+    /// RhoWithDispValue cases.
+    type GyrotropicValue<'g> =
+        {
+            gyration : GyrationClass<'g>
+            hand : Handedness
+        }
+
+
+    /// The serializable counterpart of the engine's RhoWithDisp: a symmetry-class
+    /// gyration whose components are either DispersionFormula (dispersive) or
+    /// RhoValue (constant). toRhoWithDisp — the assembly onto the engine type —
+    /// is a type extension in OpticalProperties/Active.fs, next to the
+    /// crystal-class Rho builders it routes through.
+    type RhoWithDispValue =
+        | RhoWithDispValue of GyrotropicValue<DispersionFormula>
+        | RhoWithoutDispValue of GyrotropicValue<RhoValue>

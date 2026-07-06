@@ -35,6 +35,7 @@
         <Compile Include="AnalysisFunctionsTests.fs" />
         <Compile Include="DispersionFormulaTests.fs" />
         <Compile Include="EpsWithDispValueTests.fs" />
+        <Compile Include="RhoWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
     </ItemGroup>
 
