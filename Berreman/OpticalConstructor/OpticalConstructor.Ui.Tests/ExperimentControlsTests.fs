@@ -71,7 +71,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``the ribbon still offers seven bays including Experiments and Details`` () =
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.library; BayNames.experiments; BayNames.details ],
+            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector; BayNames.experiments; BayNames.details ],
             BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore

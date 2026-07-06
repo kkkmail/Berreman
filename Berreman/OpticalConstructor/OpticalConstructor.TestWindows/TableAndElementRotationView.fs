@@ -122,7 +122,7 @@ type Model =
         /// windows (free placement, unchanged). Set by `initMain`.
         snapChain : bool
         /// Spec 0027 (024): the injected mock Library IO seam (the functional-proxy convention). Used by
-        /// the Main-screen Library bay to constrain the choosable entries by the selected element's kind
+        /// the Main-screen Selector bay to constrain the choosable entries by the selected element's kind
         /// and to resolve the bound entry name. Defaulted to the in-memory mock for the test scenes.
         library : Library.LibraryProxy
         /// Spec 0027 (024) Phase 2: the injected mock Experiments IO seam (the functional-proxy
@@ -146,14 +146,17 @@ module BayNames =
     let move = "Move"
     let add = "Add"
     let render = "Render"
-    /// Spec 0027 (024): the Library bay — pick the choosable spec for the selected element.
-    let library = "Library"
+    /// Spec 0027 (024): the Selector bay (labelled "Library" until spec 0033 step 014) — pick the
+    /// choosable spec for the selected element. The kind-constrained, confirm-gated binding through
+    /// `LibraryControls` and the read-only `LibraryProxy` is unchanged; only the label moved, freeing
+    /// the word Library for the samples workbench.
+    let selector = "Selector"
     /// Spec 0027 (024) Phase 2: the Experiments bay — pick which element's R1 sweeps a full circle.
     let experiments = "Experiments"
     /// Spec 0027 (026): the Details bay — the selected element's bound Library entry (what it is, its full
     /// description, and a layer-stack band view for a multilayer sample).
     let details = "Details"
-    let all = [ rotation; move; add; render; library; experiments; details ]
+    let all = [ rotation; move; add; render; selector; experiments; details ]
 
 let defaultElementZoom : float = 5.0
 
@@ -189,7 +192,7 @@ let initWith (library : Library.LibraryProxy) (experiments : Experiments.Experim
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
 /// the central ray, no add/remove palette. Behaviour is unchanged from before — the palette is empty.
-/// The Library proxy defaults to the in-memory mock (the test scene never shows the Library bay).
+/// The Library proxy defaults to the in-memory mock (the test scene never shows the Selector bay).
 let init () : Model =
     initWith (Library.createInMemory ()) (Experiments.createInMemory ()) [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
 
@@ -588,7 +591,7 @@ let update (msg : Msg) (model : Model) : Model =
         | TableSelected | NothingSelected -> model
     | RequestBindValueId entryId ->
         // Spec 0027 (026): select the entry as PENDING (its full description is shown) without binding yet —
-        // inert unless an element is selected (the Library bay is only enabled for an element).
+        // inert unless an element is selected (the Selector bay is only enabled for an element).
         match model.selection with
         | ElementSelected _ -> { model with pendingEntry = Some entryId }
         | TableSelected | NothingSelected -> model
@@ -1007,7 +1010,7 @@ let rec private flattenNode (allowed : Set<string>) (boundId : string option) (d
         if List.isEmpty childRows then []
         else { label = label.value; depth = depth; entryId = ""; isBound = false } :: childRows
 
-/// The Library bay state for the current selection: an `ElementSelected` shows the kind-constrained
+/// The Selector bay state for the current selection: an `ElementSelected` shows the kind-constrained
 /// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
 let private libraryState (model : Model) : LibraryControls.State =
     match model.selection with
@@ -1612,7 +1615,7 @@ let private detailsState (model : Model) : LayerBandsControls.State =
         | Some entry ->
             ({ title = sprintf "%s — %s" entry.displayName entry.fullDescription; bands = [] } : LayerBandsControls.State)
         | None ->
-            ({ title = "No Library entry bound — pick one in the Library bay to see its details."; bands = [] } : LayerBandsControls.State)
+            ({ title = "No Library entry bound — pick one in the Selector bay to see its details."; bands = [] } : LayerBandsControls.State)
     | TableSelected | NothingSelected ->
         ({ title = "Select an element to see what it is."; bands = [] } : LayerBandsControls.State)
 
@@ -1623,7 +1626,7 @@ let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
       { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch) }
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) }
-      { name = BayNames.library; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
+      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
       { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) }
       { name = BayNames.details; content = LayerBandsControls.view (detailsState model) } ]
 

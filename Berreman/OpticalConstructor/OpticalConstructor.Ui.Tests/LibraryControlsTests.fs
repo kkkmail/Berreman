@@ -12,9 +12,10 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.TestWindows.TableAndElementRotationView
 
-/// Spec 0027 (024) Phase 1 — the Library bay: the pure control contract, the host's kind-constrained
-/// `libraryState` flattening, the `BindValueId` MVU binding, and one headless render proof that the bay
-/// lists its entries and a click binds the selected element's `valueId`.
+/// Spec 0027 (024) Phase 1 — the Selector bay (labelled "Library" until spec 0033 step 014): the pure
+/// control contract, the host's kind-constrained `libraryState` flattening, the `BindValueId` MVU
+/// binding, and one headless render proof that the bay lists its entries and a click binds the selected
+/// element's `valueId`. The control stays `LibraryControls` — only the bay label changed.
 module LibraryControlsTests =
 
     let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
@@ -46,7 +47,7 @@ module LibraryControlsTests =
 
     // ============================ host libraryState (pure) ============================
 
-    /// Build the model with a single Sample element selected (so the Library shows samples).
+    /// Build the model with a single Sample element selected (so the Selector bay shows samples).
     let private withSampleSelected () : Model =
         initMain () |> update (AddElement Sample)   // appends a Sample at index 2, selects it
 
@@ -54,8 +55,8 @@ module LibraryControlsTests =
     let ``libraryState for a selected Sample lists ONLY sample leaf rows, kind-labelled Sample`` () =
         let m = withSampleSelected ()
         let bays = mainBays m ignore
-        // The Library bay exists and is offered.
-        Assert.Contains(BayNames.library, bays |> List.map (fun b -> b.name))
+        // The Selector bay exists and is offered.
+        Assert.Contains(BayNames.selector, bays |> List.map (fun b -> b.name))
         // Its rows: every selectable leaf is a Sample entry id; the kind label is "Sample".
         // (Re-derive the bay state the same way the host does — through the live model.)
         let sampleIds =
@@ -90,17 +91,21 @@ module LibraryControlsTests =
         Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
 
     [<Fact>]
-    let ``the ribbon offers the Library bay among its bays`` () =
-        // The Library bay is present, in order, after Render (the Experiments bay was added in Phase 2,
+    let ``the ribbon offers the Selector bay among its bays and no bay labelled Library`` () =
+        // The Selector bay is present, in order, after Render (the Experiments bay was added in Phase 2,
         // so `BayNames.all` is now longer than the original five; assert membership + the prefix order
-        // rather than an exact five-element list).
-        Assert.Contains(BayNames.library, BayNames.all)
+        // rather than an exact five-element list). Spec 0033 step 014 renamed the bay label from
+        // "Library" to "Selector" (same behaviour) — pin the literal and the absence of the old label.
+        Assert.Equal("Selector", BayNames.selector)
+        Assert.Contains(BayNames.selector, BayNames.all)
+        Assert.DoesNotContain("Library", BayNames.all)
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.library ],
+            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector ],
             BayNames.all |> List.truncate 5)
         let m = initMain ()
         let bays = mainBays m ignore
         Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
+        Assert.DoesNotContain("Library", bays |> List.map (fun b -> b.name))
 
     // ============================ Spec 0027 (026) confirm-gated bind (pure) ============================
 
@@ -151,19 +156,28 @@ module LibraryControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Library bay shows the pending description, then a Confirm click binds the valueId`` () =
+    let ``the Selector bay shows the pending description, then a Confirm click binds the valueId`` () =
         HeadlessSession.run (fun () ->
-            // A Sample is selected, an entry is already PENDING (selected-not-confirmed), the Library bay is
+            // A Sample is selected, an entry is already PENDING (selected-not-confirmed), the Selector bay is
             // shown — so the confirm panel (the entry's full description + Confirm / Cancel) renders up front.
             let mutable model =
                 withSampleSelected ()
-                |> update (SelectBay BayNames.library)
+                |> update (SelectBay BayNames.selector)
                 |> update (RequestBindValueId glass1mmId)
             let dispatch (msg : Msg) = model <- update msg model
             let window = Window(Width = 980.0, Height = canvasHeight + 320.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
+            // The ribbon shows a Selector tab and no tab labelled Library (spec 0033 step 014).
+            let tabNames =
+                window.GetVisualDescendants()
+                |> Seq.choose (function
+                    | :? Border as b when not (System.String.IsNullOrEmpty b.Name) && b.Name.StartsWith("RibbonTab_") -> Some b.Name
+                    | _ -> None)
+                |> List.ofSeq
+            Assert.Contains(Ribbon.UiIds.tab BayNames.selector, tabNames)
+            Assert.DoesNotContain(Ribbon.UiIds.tab "Library", tabNames)
             // The pending entry's full description is shown (and the element is NOT bound yet).
             Assert.Equal(None, (elem 2 model).placement.valueId)
             let descriptionShown () : bool =
@@ -177,7 +191,7 @@ module LibraryControlsTests =
                 window.GetVisualDescendants()
                 |> Seq.tryPick (function :? Border as b when b.Name = LibraryControls.UiIds.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findConfirm () with
-            | None -> Assert.Fail("the Confirm button was not visible in the Library bay")
+            | None -> Assert.Fail("the Confirm button was not visible in the Selector bay")
             | Some b ->
                 let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
                 if c.HasValue then
