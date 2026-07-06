@@ -95,12 +95,12 @@ module LibraryProxyTests =
         let smp =
             SampleItem
                 {
-                    id = "p"
+                    id = SampleId.create ()
                     name = "p"
                     structure =
                         {
                             films = []
-                            substrate = Some { materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm> }
+                            substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm> }
                             lower = None
                         }
                     substrate = Plate
@@ -142,9 +142,9 @@ module LibraryProxyTests =
         // Spec 0033 step 001: a Repeated period group flattens to `count` copies of its cell, in cell
         // order, before/after any single layers — the same `List.replicate count cell |> List.concat`
         // shape as `RepeatBuilder.expand`.
-        let a = { materialId = "glass-1.52"; thickness = Thickness.nm 100.0<nm> }
-        let b = { materialId = "vacuum"; thickness = Thickness.nm 150.0<nm> }
-        let c = { materialId = "silicon"; thickness = Thickness.nm 25.0<nm> }
+        let a = { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm> }
+        let b = { materialId = MaterialLibrary.MaterialIds.vacuum; thickness = Thickness.nm 150.0<nm> }
+        let c = { materialId = MaterialLibrary.MaterialIds.silicon; thickness = Thickness.nm 25.0<nm> }
         let structure =
             {
                 films = [ Repeated { cell = [ a; b ]; count = 3 }; SingleLayer c ]
@@ -152,6 +152,56 @@ module LibraryProxyTests =
                 lower = None
             }
         Assert.Equal<SampleLayer list>([ a; b; a; b; a; b; c ], structure.expandedFilms)
+
+    // ============================ Spec 0033 (002) — elevated ids, round-trips ============================
+
+    [<Fact>]
+    let ``every seeded sample round-trips store-lookup by its Guid entry id`` () =
+        // Spec 0033 step 002 acceptance: `Sample.id` is a Guid-backed `SampleId`; it crosses the
+        // Selector valueId seam as its Guid STRING form (`entryId`) and `tryGetEntry` resolves that
+        // string back to the SAME sample.
+        Assert.NotEmpty SeedSamples.all
+        for s in SeedSamples.all do
+            let entryId = (SampleItem s).entryId
+            Assert.Equal(string s.id.value, entryId)
+            match proxy.tryGetEntry entryId with
+            | Ok (Some (SampleItem found)) -> Assert.Equal<SampleId>(s.id, found.id)
+            | other -> Assert.Fail(sprintf "sample %s did not round-trip by entry id %s: %A" s.name entryId other)
+
+    [<Fact>]
+    let ``a MINTED SampleId round-trips create-store-lookup through a proxy of the same shape`` () =
+        // Create (mint) → store (a stub proxy over the entry list) → lookup (by the entry id string).
+        let sample =
+            {
+                id = SampleId.create ()
+                name = "Round-trip sample"
+                structure =
+                    {
+                        films = []
+                        substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm> }
+                        lower = None
+                    }
+                substrate = Plate
+                description = "A minted-id glass plate."
+            }
+        let entries = [ SampleItem sample ]
+        let stub : LibraryProxy =
+            {
+                entriesForKind = fun kind -> Ok (entries |> List.filter (fun e -> e.forKinds |> List.contains kind))
+                libraryTrees = fun () -> Ok []
+                tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
+            }
+        match stub.tryGetEntry (SampleItem sample).entryId with
+        | Ok (Some (SampleItem found)) -> Assert.Equal<SampleId>(sample.id, found.id)
+        | other -> Assert.Fail(sprintf "expected the minted sample back, got %A" other)
+
+    [<Fact>]
+    let ``the seeded sample ids are distinct, non-empty Guids`` () =
+        // The seeds parse fixed literal Guids (never Guid.NewGuid), so every id is distinct and no
+        // seed carries the empty Guid (a Guid.Parse typo would surface here).
+        let ids = SeedSamples.all |> List.map (fun s -> s.id)
+        Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
+        Assert.All(SeedSamples.all, fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =

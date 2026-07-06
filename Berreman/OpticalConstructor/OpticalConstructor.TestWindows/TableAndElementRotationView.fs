@@ -1169,11 +1169,12 @@ let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.
 let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSample, MaterialLibrary.MaterialError> option =
     runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials materialLibrary)
 
-/// The human-readable message a failed sample-material resolution surfaces on the chart.
+/// The human-readable message a failed sample-material resolution surfaces on the chart. The error
+/// case carries a diagnostic `reason` (spec 0033 step 002) naming the offending id.
 let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
     match err with
-    | MaterialLibrary.UnknownMaterialId id ->
-        sprintf "Cannot run: the sample references an unknown material id '%s'." id
+    | MaterialLibrary.UnknownMaterialId reason ->
+        sprintf "Cannot run: the sample references an unknown material (%s)." reason
 
 /// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
 /// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
@@ -1493,30 +1494,40 @@ let private stableHashStr (s : string) : int =
 let private bandPalette : string[] =
     [| "#1F77B4"; "#FF7F0E"; "#2CA02C"; "#D62728"; "#9467BD"; "#8C564B"; "#E377C2"; "#BCBD22" |]
 
-/// A curated `#RRGGBB` colour for a known band material ID (mirrors `Schematic.curated`), else a stable
-/// palette slot from the id's hash. Keyed by the `MaterialLibrary` entry id — the same key the sample
-/// structure carries (spec 0033 step 001). Pure and total.
-let private bandColorHex (materialId : string) : string =
-    match materialId with
-    | "glass-1.52" -> "#C8E1F5"
-    | "glass-1.50" -> "#CDE6FA"
-    | "glass-1.75" -> "#AACDEB"
-    | "vacuum" -> "#F2F2F2"
-    | "euv-molybdenum" -> "#5A5A6E"
-    | "euv-silicon" | "silicon" -> "#5A5A6E"
-    | "langasite" -> "#78C8DC"
-    | "uniaxial-crystal" -> "#AFE1AF"
-    | "biaxial-crystal" -> "#96D296"
-    | "active-crystal" -> "#C8B4E6"
-    | _ -> bandPalette.[stableHashStr materialId % bandPalette.Length]
+/// Curated `#RRGGBB` colours for the built-in band materials (mirrors `Schematic.curated`), keyed by
+/// the elevated `MaterialId` (spec 0033 step 002) — the same key the sample structure carries; the
+/// old host id literals are gone with the string-id path.
+let private bandColors : Map<MaterialLibrary.MaterialId, string> =
+    Map
+        [
+            MaterialLibrary.MaterialIds.glass152, "#C8E1F5"
+            MaterialLibrary.MaterialIds.glass150, "#CDE6FA"
+            MaterialLibrary.MaterialIds.glass175, "#AACDEB"
+            MaterialLibrary.MaterialIds.vacuum, "#F2F2F2"
+            MaterialLibrary.MaterialIds.euvMolybdenum, "#5A5A6E"
+            MaterialLibrary.MaterialIds.euvSilicon, "#5A5A6E"
+            MaterialLibrary.MaterialIds.silicon, "#5A5A6E"
+            MaterialLibrary.MaterialIds.langasite, "#78C8DC"
+            MaterialLibrary.MaterialIds.uniaxialCrystal, "#AFE1AF"
+            MaterialLibrary.MaterialIds.biaxialCrystal, "#96D296"
+            MaterialLibrary.MaterialIds.activeCrystal, "#C8B4E6"
+        ]
 
-/// The display name of a material id: the library entry's name, or the raw id when unknown (an unknown
-/// id still LABELS its band — running the sample is what surfaces the typed resolution error).
-let private materialDisplayName (materialId : string) : string =
+/// A curated colour for a known band material id, else a stable palette slot hashed from the id's
+/// Guid string form. Pure and total.
+let private bandColorHex (materialId : MaterialLibrary.MaterialId) : string =
+    match Map.tryFind materialId bandColors with
+    | Some hex -> hex
+    | None -> bandPalette.[stableHashStr (string materialId.value) % bandPalette.Length]
+
+/// The display name of a material id: the library entry's name, or the id's Guid string form when
+/// unknown (an unknown id still LABELS its band — running the sample is what surfaces the typed
+/// resolution error).
+let private materialDisplayName (materialId : MaterialLibrary.MaterialId) : string =
     materialLibrary.entries
     |> List.tryFind (fun e -> e.id = materialId)
     |> Option.map (fun e -> e.name)
-    |> Option.defaultValue materialId
+    |> Option.defaultValue (string materialId.value)
 
 /// A band's thickness for the Details view — finite layers carry their thickness in metres; a half-space /
 /// plate carries none (drawn as "semi-infinite"). This keeps the engine's `Thickness` DU (which collides
@@ -1557,7 +1568,7 @@ let private layerBandThickness (layer : Library.SampleLayer) : BandThickness =
 /// 0033 step 001 — no per-sample-id table): each band is (material id, thickness, repeat count). A
 /// `Repeated` period group stays collapsed (one "×N" band per cell layer), the substrate plate follows
 /// the films, and a non-vacuum lower half-space renders as a semi-infinite band.
-let private sampleBandSpecs (sample : Library.Sample) : (string * BandThickness * int) list =
+let private sampleBandSpecs (sample : Library.Sample) : (MaterialLibrary.MaterialId * BandThickness * int) list =
     let filmBands =
         sample.structure.films
         |> List.collect (fun item ->

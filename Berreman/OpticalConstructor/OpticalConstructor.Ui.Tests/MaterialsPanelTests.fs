@@ -76,7 +76,7 @@ module MaterialsPanelTests =
     let ``dispersion preview routes to the WebView2 host, never an AvaPlot`` () =
         HeadlessSession.run (fun () ->
             let model = fst Shell.init
-            let filter = { MaterialsView.Filter.empty with selected = Some "glass-1.52" }
+            let filter = { MaterialsView.Filter.empty with selected = Some MaterialLibrary.MaterialIds.glass152 }
             let window = mount (MaterialsView.materialsPanel model.materials filter model.construction ignore ignore)
 
             // AC-U3.1: the preview hosts a Plotly chart through ChartHosts.webView2Host,
@@ -103,7 +103,7 @@ module MaterialsPanelTests =
         // AC-U3.2: a drop on layer 0 routes the single seam (layerMaterialDrop) and
         // dispatches Construction (EditStack (path, SetLayerMaterial (0, _))).
         let captured = List<ConstructionPage.Msg>()
-        MaterialsView.materialDrop model.materials MaterialsView.referenceWavelength path captured.Add 0 "silicon"
+        MaterialsView.materialDrop model.materials MaterialsView.referenceWavelength path captured.Add 0 MaterialLibrary.MaterialIds.silicon
 
         let edit =
             captured
@@ -125,8 +125,8 @@ module MaterialsPanelTests =
         let f0 = MaterialsView.Filter.empty
         let f1 = MaterialsView.update (MaterialsView.SetCategory (Some MaterialLibrary.Glass)) f0
         Assert.Equal(Some MaterialLibrary.Glass, f1.category)
-        let f2 = MaterialsView.update (MaterialsView.SelectMaterial "silicon") f1
-        Assert.Equal(Some "silicon", f2.selected)
+        let f2 = MaterialsView.update (MaterialsView.SelectMaterial MaterialLibrary.MaterialIds.silicon) f1
+        Assert.Equal(Some MaterialLibrary.MaterialIds.silicon, f2.selected)
 
         // filteredEntries reuses byCategory: a Glass filter yields only glass entries.
         let lib = MaterialLibrary.standard
@@ -136,5 +136,5 @@ module MaterialsPanelTests =
 
         // An unknown material id resolves to Error, so the drop dispatches nothing.
         let captured = List<ConstructionPage.Msg>()
-        MaterialsView.materialDrop lib MaterialsView.referenceWavelength [] captured.Add 0 "no-such-material"
+        MaterialsView.materialDrop lib MaterialsView.referenceWavelength [] captured.Add 0 (MaterialLibrary.newMaterialId ())
         Assert.Empty(captured)

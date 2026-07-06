@@ -31,6 +31,10 @@ module ExperimentControlsTests =
     let private bind (i : int) (entryId : string) (m : Model) : Model =
         { m with selection = ElementSelected i } |> update (BindValueId entryId)
 
+    /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
+    /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
+    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
+
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : Model) : string = (elem i m).id.value
 
@@ -169,7 +173,7 @@ module ExperimentControlsTests =
 
     /// initMain + a bound Sample at index 2, chosen, on the given variable, capture T.
     let private withChosenSample (v : ExperimentControls.VariableChoice) : Model =
-        let m = initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200"
+        let m = initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id
         m
         |> update (ExpChooseElement (idOf 2 m))
         |> update (ExpChooseVariable v)
@@ -214,7 +218,7 @@ module ExperimentControlsTests =
     let ``capturing BOTH branches yields two series (T and R)`` () =
         // A bound sample, VaryR2, capture Both ⇒ a transmitted AND a reflected intensity series.
         let m =
-            initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200"
+            initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id
             |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
             |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)
@@ -225,7 +229,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
         let m =
-            initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200" |> bind 1 "det-ellipsometer"
+            initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 "det-ellipsometer"
             |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
             |> update (ExpChooseMeasurement ExperimentControls.CaptureT)
@@ -515,7 +519,7 @@ module ExperimentControlsTests =
             let seed =
                 initMain () |> update (AddElement Sample)
                 |> (fun m -> { m with selection = ElementSelected 2 })
-                |> update (BindValueId "sample-glass-film-200")
+                |> update (BindValueId glassFilm200Id)
                 |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
                 |> update (ExpChooseVariable ExperimentControls.VaryR2)
                 |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)

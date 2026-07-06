@@ -1,9 +1,11 @@
 namespace OpticalConstructor.Domain
 
+open System                     // Guid (the SampleId backing + the fixed seed literals)
 open Berreman.Constants         // the nm / mm units of measure
 open Berreman.Fields            // WaveLength
 open Berreman.Media             // Thickness
 open OpticalConstructor.Domain.Placement   // CatalogueKind
+open OpticalConstructor.Domain.MaterialLibrary   // MaterialId / MaterialIds (spec 0033 step 002)
 
 /// Spec 0027 (024) — the Library domain: an elevated, serializable `ElementId` (the stable
 /// table-element identity, distinct from `valueId`), the kind-constrained Library presets
@@ -30,6 +32,21 @@ module Library =
     /// unambiguous call site used by the host).
     let elementId (s : string) : ElementId = ElementId s
 
+    /// Elevated sample identity (spec 0033 step 002): a Guid-backed single-case DU — no raw string
+    /// sample id appears in a domain record. `create` MINTS a fresh id; the seeded samples parse FIXED
+    /// literal Guids (`SeedSamples`) so the grouping trees and the tests stay deterministic across
+    /// runs. The Selector `valueId` binding seam stays a string: `LibraryEntry.entryId` carries the
+    /// Guid STRING form.
+    type SampleId =
+        | SampleId of Guid
+
+        member this.value = let (SampleId g) = this in g
+        static member create () : SampleId = Guid.NewGuid() |> SampleId
+
+    /// Module-level mint helper for `SampleId` (the case name and type name collide — the same
+    /// collision `elementId` documents; this is the unambiguous call site for qualified callers).
+    let newSampleId () : SampleId = SampleId.create ()
+
     /// Whether a sample's geometry is a thin film, a thick plate, or a wedge (spec §2a). A DU, not a
     /// bool/enum, so the sample editor can add geometries case-by-case (compiler-guided).
     type SubstrateKind =
@@ -38,11 +55,11 @@ module Library =
         | Wedge
 
     /// One physical layer of a sample's stack (spec 0033 step 001 — the stack is DATA): a material
-    /// reference plus a thickness. `materialId` keys into the existing `MaterialLibrary`; it stays a
-    /// string until step 2 elevates it.
+    /// reference plus a thickness. `materialId` is the elevated `MaterialLibrary.MaterialId`
+    /// (spec 0033 step 002) — the same key `resolveMaterialWithDisp` looks up.
     type SampleLayer =
         {
-            materialId : string
+            materialId : MaterialId
             thickness : Thickness
         }
 
@@ -66,7 +83,7 @@ module Library =
         {
             films : StackItem list
             substrate : SampleLayer option
-            lower : string option
+            lower : MaterialId option
         }
 
         /// The flattened film layers in order — each `Repeated` expands to `count` copies of its cell
@@ -83,7 +100,7 @@ module Library =
     /// (what the sample is made of, as data); `substrate` stays the geometry facet.
     type Sample =
         {
-            id : string
+            id : SampleId
             name : string
             structure : SampleStructure
             substrate : SubstrateKind
@@ -136,10 +153,12 @@ module Library =
         | DetectorItem of DetectorPreset
         | PolarizerItem of PolarizerPreset
 
-        /// The entry id (== the `valueId` written onto the bound table element).
+        /// The entry id (== the `valueId` written onto the bound table element). A sample's elevated
+        /// `SampleId` crosses this seam as its Guid STRING form (spec 0033 step 002) so the Selector
+        /// `valueId` binding stays a plain string.
         member this.entryId : string =
             match this with
-            | SampleItem s -> s.id
+            | SampleItem s -> string s.id.value
             | SourceItem s -> s.id
             | DetectorItem d -> d.id
             | PolarizerItem p -> p.id
@@ -224,7 +243,7 @@ module Library =
         }
 
     /// A single-layer thin-film structure between vacuum (the common seed shape).
-    let private filmStructure (materialId : string) (thickness : Thickness) : SampleStructure =
+    let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
             films = [ SingleLayer { materialId = materialId; thickness = thickness } ]
             substrate = None
@@ -232,7 +251,7 @@ module Library =
         }
 
     /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer).
-    let private plateStructure (materialId : string) (thickness : Thickness) : SampleStructure =
+    let private plateStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
             films = []
             substrate = Some { materialId = materialId; thickness = thickness }
@@ -246,138 +265,165 @@ module Library =
     /// λ/4 at 10.6 nm — each EUV Mo/Si layer (2.65 nm, from MultilayerThinFilm_EUV.fsx).
     let private euvLayerThickness : Thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
 
+    /// The seeded samples (spec §2a), let-bound so `seedEntries`, the grouping tree, and the tests
+    /// all reference the SAME values programmatically — the id literals are never repeated (spec 0033
+    /// step 002). Each id is a FIXED literal Guid parsed at seed construction, deterministic across
+    /// runs; a new seeded sample adds a new literal here — seed construction never calls
+    /// `SampleId.create`.
+    module SeedSamples =
+
+        let glassPlate1mm : Sample =
+            {
+                id = Guid.Parse "a8ceb21b-0719-4553-8f07-e782cb206800" |> SampleId
+                name = "Glass plate (n=1.52, 1 mm)"
+                structure = plateStructure MaterialIds.glass152 (Thickness.mm 1.0<mm>)
+                substrate = Plate
+                description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
+            }
+
+        let glassPlate2mm : Sample =
+            {
+                id = Guid.Parse "962a3eff-4c25-467e-9739-a5ff8922cac3" |> SampleId
+                name = "Glass plate (n=1.52, 2 mm)"
+                structure = plateStructure MaterialIds.glass152 (Thickness.mm 2.0<mm>)
+                substrate = Plate
+                description = "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
+            }
+
+        let glassFilm600 : Sample =
+            {
+                id = Guid.Parse "66cc0291-7b61-42c1-933e-5c39f2c41917" |> SampleId
+                name = "Glass thin film (n=1.75, 600 nm)"
+                structure = filmStructure MaterialIds.glass175 (Thickness.nm 600.0<nm>)
+                substrate = ThinFilm
+                description = "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
+            }
+
+        let glassVacuum : Sample =
+            {
+                id = Guid.Parse "b880a749-812d-415c-b1fb-6041360e85ee" |> SampleId
+                name = "Glass / vacuum interface (n=1.50)"
+                structure = plateStructure MaterialIds.glass150 (Thickness.mm 1.0<mm>)
+                substrate = Plate
+                description = "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
+            }
+
+        let glassFilm200 : Sample =
+            {
+                id = Guid.Parse "9f49dcfa-dede-4858-8757-216443deeba3" |> SampleId
+                name = "Glass thin film (n=1.52, 200 nm)"
+                structure = filmStructure MaterialIds.glass152 (Thickness.nm 200.0<nm>)
+                substrate = ThinFilm
+                description = "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
+            }
+
+        let multilayerQw : Sample =
+            {
+                id = Guid.Parse "80e5b7b0-8f10-42f6-9d87-bae692454fd5" |> SampleId
+                name = "Quarter-wave glass/vacuum multilayer (41 layers)"
+                structure =
+                    {
+                        films =
+                            [
+                                Repeated
+                                    {
+                                        cell =
+                                            [
+                                                { materialId = MaterialIds.glass152; thickness = qwGlassThickness }
+                                                { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness }
+                                            ]
+                                        count = 20
+                                    }
+                                SingleLayer { materialId = MaterialIds.glass152; thickness = qwGlassThickness }
+                            ]
+                        substrate = None
+                        lower = None
+                    }
+                substrate = ThinFilm
+                description = "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
+            }
+
+        let euvMoSi : Sample =
+            {
+                id = Guid.Parse "ea947362-10cf-46e8-ad03-c267fba9de50" |> SampleId
+                name = "EUV Mo/Si multilayer (100 pairs)"
+                structure =
+                    {
+                        films =
+                            [
+                                Repeated
+                                    {
+                                        cell =
+                                            [
+                                                { materialId = MaterialIds.euvMolybdenum; thickness = euvLayerThickness }
+                                                { materialId = MaterialIds.euvSilicon; thickness = euvLayerThickness }
+                                            ]
+                                        count = 100
+                                    }
+                            ]
+                        substrate = None
+                        lower = None
+                    }
+                substrate = ThinFilm
+                description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
+            }
+
+        let uniaxial : Sample =
+            {
+                id = Guid.Parse "2669348a-029b-48db-b39e-02f78e5aa1ab" |> SampleId
+                name = "Uniaxial crystal film (1 µm)"
+                structure = filmStructure MaterialIds.uniaxialCrystal (Thickness.nm 1000.0<nm>)
+                substrate = ThinFilm
+                description = "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
+            }
+
+        let biaxial : Sample =
+            {
+                id = Guid.Parse "53b01f16-faf9-4413-a419-14592670a03c" |> SampleId
+                name = "Biaxial crystal film (1 µm)"
+                structure = filmStructure MaterialIds.biaxialCrystal (Thickness.nm 1000.0<nm>)
+                substrate = ThinFilm
+                description = "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
+            }
+
+        let activeCrystal : Sample =
+            {
+                id = Guid.Parse "1c170dcc-0528-466e-98a7-cabfdaf9007a" |> SampleId
+                name = "Active gyrotropic crystal plate (1 cm)"
+                structure = plateStructure MaterialIds.activeCrystal Thickness.oneCentiMeter
+                substrate = Plate
+                description = "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
+            }
+
+        let langasiteSilicon : Sample =
+            {
+                id = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
+                name = "Langasite film on silicon (10 µm, dispersive)"
+                structure =
+                    {
+                        films = [ SingleLayer { materialId = MaterialIds.langasite; thickness = Thickness.mm 0.01<mm> } ]
+                        substrate = None
+                        lower = Some MaterialIds.silicon
+                    }
+                substrate = ThinFilm
+                description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
+            }
+
+        /// All seeded samples in Library display order (the order `seedEntries` lists them).
+        let all : Sample list =
+            [
+                glassPlate1mm; glassPlate2mm; glassFilm600; glassVacuum; glassFilm200
+                multilayerQw; euvMoSi; uniaxial; biaxial; activeCrystal; langasiteSilicon
+            ]
+
     /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
     /// LP + two ideal CP, and one monochromatic source. Every sample's stack is DATA (spec 0033
-    /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case.
+    /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
+    /// the samples are the named `SeedSamples` values (spec 0033 step 002).
     let seedEntries : LibraryEntry list =
-        [
-            SampleItem
-                {
-                    id = "sample-glass-1mm"
-                    name = "Glass plate (n=1.52, 1 mm)"
-                    structure = plateStructure "glass-1.52" (Thickness.mm 1.0<mm>)
-                    substrate = Plate
-                    description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-2mm"
-                    name = "Glass plate (n=1.52, 2 mm)"
-                    structure = plateStructure "glass-1.52" (Thickness.mm 2.0<mm>)
-                    substrate = Plate
-                    description = "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-film-600"
-                    name = "Glass thin film (n=1.75, 600 nm)"
-                    structure = filmStructure "glass-1.75" (Thickness.nm 600.0<nm>)
-                    substrate = ThinFilm
-                    description = "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-vacuum"
-                    name = "Glass / vacuum interface (n=1.50)"
-                    structure = plateStructure "glass-1.50" (Thickness.mm 1.0<mm>)
-                    substrate = Plate
-                    description = "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-film-200"
-                    name = "Glass thin film (n=1.52, 200 nm)"
-                    structure = filmStructure "glass-1.52" (Thickness.nm 200.0<nm>)
-                    substrate = ThinFilm
-                    description = "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-multilayer-qw"
-                    name = "Quarter-wave glass/vacuum multilayer (41 layers)"
-                    structure =
-                        {
-                            films =
-                                [
-                                    Repeated
-                                        {
-                                            cell =
-                                                [
-                                                    { materialId = "glass-1.52"; thickness = qwGlassThickness }
-                                                    { materialId = "vacuum"; thickness = qwVacuumThickness }
-                                                ]
-                                            count = 20
-                                        }
-                                    SingleLayer { materialId = "glass-1.52"; thickness = qwGlassThickness }
-                                ]
-                            substrate = None
-                            lower = None
-                        }
-                    substrate = ThinFilm
-                    description = "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
-                }
-            SampleItem
-                {
-                    id = "sample-euv-mosi"
-                    name = "EUV Mo/Si multilayer (100 pairs)"
-                    structure =
-                        {
-                            films =
-                                [
-                                    Repeated
-                                        {
-                                            cell =
-                                                [
-                                                    { materialId = "euv-molybdenum"; thickness = euvLayerThickness }
-                                                    { materialId = "euv-silicon"; thickness = euvLayerThickness }
-                                                ]
-                                            count = 100
-                                        }
-                                ]
-                            substrate = None
-                            lower = None
-                        }
-                    substrate = ThinFilm
-                    description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-uniaxial"
-                    name = "Uniaxial crystal film (1 µm)"
-                    structure = filmStructure "uniaxial-crystal" (Thickness.nm 1000.0<nm>)
-                    substrate = ThinFilm
-                    description = "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-biaxial"
-                    name = "Biaxial crystal film (1 µm)"
-                    structure = filmStructure "biaxial-crystal" (Thickness.nm 1000.0<nm>)
-                    substrate = ThinFilm
-                    description = "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-active-crystal"
-                    name = "Active gyrotropic crystal plate (1 cm)"
-                    structure = plateStructure "active-crystal" Thickness.oneCentiMeter
-                    substrate = Plate
-                    description = "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
-                }
-            SampleItem
-                {
-                    id = "sample-langasite-silicon"
-                    name = "Langasite film on silicon (10 µm, dispersive)"
-                    structure =
-                        {
-                            films = [ SingleLayer { materialId = "langasite"; thickness = Thickness.mm 0.01<mm> } ]
-                            substrate = None
-                            lower = Some "silicon"
-                        }
-                    substrate = ThinFilm
-                    description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
-                }
+        (SeedSamples.all |> List.map SampleItem)
+        @ [
             DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity }
             DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer }
             PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; kind = IdealLinear }
@@ -385,6 +431,12 @@ module Library =
             PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; kind = IdealCircularRight }
             SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm> }
         ]
+
+    /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
+    /// (spec 0033 step 002 — the id literal lives only in `SeedSamples`), carrying its Guid-string
+    /// entry id exactly as `tryGetEntry` resolves it.
+    let private sampleLeaf (label : string) (s : Sample) : LibraryTreeNode =
+        Leaf (TreeLabel label, (SampleItem s).entryId)
 
     /// One canonical grouping tree (R3): the entries organised by kind, with the two glass plates
     /// nested under their shared material (the "same glass, different thickness" grouping §2a).
@@ -402,29 +454,29 @@ module Library =
                                       Group
                                           (TreeLabel "Glass (n=1.52)",
                                            [
-                                               Leaf (TreeLabel "1 mm plate", "sample-glass-1mm")
-                                               Leaf (TreeLabel "2 mm plate", "sample-glass-2mm")
-                                               Leaf (TreeLabel "200 nm film", "sample-glass-film-200")
+                                               sampleLeaf "1 mm plate" SeedSamples.glassPlate1mm
+                                               sampleLeaf "2 mm plate" SeedSamples.glassPlate2mm
+                                               sampleLeaf "200 nm film" SeedSamples.glassFilm200
                                            ])
-                                      Leaf (TreeLabel "Glass film (n=1.75)", "sample-glass-film-600")
-                                      Leaf (TreeLabel "Glass / vacuum interface (n=1.50)", "sample-glass-vacuum")
+                                      sampleLeaf "Glass film (n=1.75)" SeedSamples.glassFilm600
+                                      sampleLeaf "Glass / vacuum interface (n=1.50)" SeedSamples.glassVacuum
                                       Group
                                           (TreeLabel "Multilayers",
                                            [
-                                               Leaf (TreeLabel "Quarter-wave glass/vacuum (41)", "sample-multilayer-qw")
-                                               Leaf (TreeLabel "EUV Mo/Si (100 pairs)", "sample-euv-mosi")
+                                               sampleLeaf "Quarter-wave glass/vacuum (41)" SeedSamples.multilayerQw
+                                               sampleLeaf "EUV Mo/Si (100 pairs)" SeedSamples.euvMoSi
                                            ])
                                       Group
                                           (TreeLabel "Crystals",
                                            [
-                                               Leaf (TreeLabel "Uniaxial film", "sample-uniaxial")
-                                               Leaf (TreeLabel "Biaxial film", "sample-biaxial")
-                                               Leaf (TreeLabel "Active gyrotropic plate", "sample-active-crystal")
+                                               sampleLeaf "Uniaxial film" SeedSamples.uniaxial
+                                               sampleLeaf "Biaxial film" SeedSamples.biaxial
+                                               sampleLeaf "Active gyrotropic plate" SeedSamples.activeCrystal
                                            ])
                                       Group
                                           (TreeLabel "Dispersive",
                                            [
-                                               Leaf (TreeLabel "Langasite on silicon", "sample-langasite-silicon")
+                                               sampleLeaf "Langasite on silicon" SeedSamples.langasiteSilicon
                                            ])
                                   ])
                              Group (TreeLabel "Sources", [ Leaf (TreeLabel "600 nm", "src-600") ])

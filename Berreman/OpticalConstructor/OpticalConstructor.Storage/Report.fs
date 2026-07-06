@@ -85,14 +85,21 @@ module MaterialLibrary =
             if results.IsValid then Ok ()
             else Error (SchemaValidationError [ "document violated the materialEntry $def" ])
 
-    let private dtoToEntry (dto : MaterialEntryDto) : MaterialEntry =
-        {
-            id = dto.id
-            name = dto.name
-            category = dto.category
-            description = dto.description
-            properties = vacuumProperties
-        }
+    /// Parse a persisted DTO back to a domain entry. The persisted `id` is the `MaterialId`'s Guid
+    /// STRING form (spec 0033 step 002); a non-Guid id is a typed error — no legacy string-id path,
+    /// no fallback, no migration.
+    let private dtoToEntry (dto : MaterialEntryDto) : Result<MaterialEntry, StorageError> =
+        match MaterialId.tryCreate dto.id with
+        | Some id ->
+            Ok
+                {
+                    id = id
+                    name = dto.name
+                    category = dto.category
+                    description = dto.description
+                    properties = vacuumProperties
+                }
+        | None -> Error (JsonParseError (sprintf "materialEntry id '%s' is not a Guid" dto.id))
 
     /// Import a material library (§I.8 / AC-I10). A document that begins with `[`/`{`
     /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
@@ -111,7 +118,14 @@ module MaterialLibrary =
             if trimmed.StartsWith "[" || trimmed.StartsWith "{" then
                 try
                     let dtos = JsonSerializer.Deserialize<MaterialEntryDto list>(text, ProjectJson.options)
-                    Ok(dtos |> List.map dtoToEntry)
+                    let rec toEntries (pending : MaterialEntryDto list) (acc : MaterialEntry list) : Result<MaterialEntry list, StorageError> =
+                        match pending with
+                        | [] -> Ok(List.rev acc)
+                        | dto :: rest ->
+                            match dtoToEntry dto with
+                            | Ok entry -> toEntries rest (entry :: acc)
+                            | Error e -> Error e
+                    toEntries dtos []
                 with e -> Error(JsonParseError e.Message)
             else
                 match MaterialImport.importCsv text with
@@ -130,7 +144,8 @@ module MaterialLibrary =
                 entries
                 |> List.map (fun e ->
                     let dict = System.Collections.Generic.Dictionary<string, obj>()
-                    dict.["id"] <- box e.id
+                    // The elevated MaterialId crosses the JSON boundary as its Guid string form.
+                    dict.["id"] <- box (string e.id.value)
                     dict.["name"] <- box e.name
                     // The MaterialCategory DU is serialized by the shared
                     // ProjectJson.options (fieldless-tag unwrap) — its runtime type

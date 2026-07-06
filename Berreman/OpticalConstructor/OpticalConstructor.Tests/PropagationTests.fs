@@ -111,12 +111,12 @@ module PropagationTests =
 
     let private glassSample : Sample =
         {
-            id = "sample-glass-1mm"
+            id = SampleId.create ()
             name = "Glass plate (n=1.52, 1 mm)"
             structure =
                 {
                     films = []
-                    substrate = Some { materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm> }
+                    substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm> }
                     lower = None
                 }
             substrate = Library.Plate
@@ -128,7 +128,7 @@ module PropagationTests =
     let private resolveOrFail (s : Sample) : ResolvedSample =
         match resolveSampleMaterials MaterialLibrary.standard s with
         | Ok r -> r
-        | Error e -> failwith (sprintf "sample %s did not resolve: %A" s.id e)
+        | Error e -> failwith (sprintf "sample %s did not resolve: %A" s.name e)
 
     let private glassResolved : ResolvedSample = resolveOrFail glassSample
 
@@ -172,10 +172,7 @@ module PropagationTests =
 
     [<Fact>]
     let ``the multilayer sample maps to a real 41-film stack`` () =
-        let multilayer =
-            Library.seedEntries
-            |> List.pick (function SampleItem s when s.id = "sample-multilayer-qw" -> Some s | _ -> None)
-        let system = sampleToSystem (resolveOrFail multilayer) (WaveLength.nm 600.0<nm>)
+        let system = sampleToSystem (resolveOrFail SeedSamples.multilayerQw) (WaveLength.nm 600.0<nm>)
         Assert.Equal(41, List.length system.films)
 
     // ============================ Spec 0027 (026) Part 1 — curated samples ============================
@@ -187,20 +184,15 @@ module PropagationTests =
 
     /// The wavelength a given sample is exercised at (EUV samples live at ~10 nm; everything else 600 nm).
     let private runWaveLengthFor (s : Sample) : WaveLength =
-        if s.id = "sample-euv-mosi" then WaveLength.nm 10.0<nm> else WaveLength.nm 600.0<nm>
+        if s.id = SeedSamples.euvMoSi.id then WaveLength.nm 10.0<nm> else WaveLength.nm 600.0<nm>
 
     [<Fact>]
-    let ``the curated Library seeds the expected new samples`` () =
-        let ids = seededSamples |> List.map (fun s -> s.id) |> Set.ofList
-        let expected =
-            [
-                "sample-glass-1mm"; "sample-glass-2mm"; "sample-glass-film-600"
-                "sample-glass-vacuum"; "sample-glass-film-200"; "sample-multilayer-qw"
-                "sample-euv-mosi"; "sample-uniaxial"; "sample-biaxial"
-                "sample-active-crystal"; "sample-langasite-silicon"
-            ]
-        for id in expected do
-            Assert.True(Set.contains id ids, sprintf "missing seeded sample %s" id)
+    let ``the curated Library seeds exactly the named SeedSamples`` () =
+        // The samples in `seedEntries` ARE the named `SeedSamples` values, in order (spec 0033
+        // step 002 — the id literals live only in `SeedSamples`).
+        Assert.Equal<SampleId list>(
+            SeedSamples.all |> List.map (fun s -> s.id),
+            seededSamples |> List.map (fun s -> s.id))
 
     [<Fact>]
     let ``every seeded sample maps to a finite, energy-conserving sample Mueller matrix`` () =
@@ -208,38 +200,35 @@ module PropagationTests =
             let w = runWaveLengthFor s
             let mm = sampleMuellerT (resolveOrFail s) w IncidenceAngle.normal
             let out = s0 (mm * unpolarizedStokes)
-            Assert.False(System.Double.IsNaN out, sprintf "%s produced NaN S0" s.id)
-            Assert.False(System.Double.IsInfinity out, sprintf "%s produced infinite S0" s.id)
-            Assert.True(out >= -1.0e-9, sprintf "%s transmitted a negative S0: %g" s.id out)
-            Assert.True(out <= 1.0 + 1.0e-9, sprintf "%s transmitted S0 > input: %g" s.id out)
+            Assert.False(System.Double.IsNaN out, sprintf "%s produced NaN S0" s.name)
+            Assert.False(System.Double.IsInfinity out, sprintf "%s produced infinite S0" s.name)
+            Assert.True(out >= -1.0e-9, sprintf "%s transmitted a negative S0: %g" s.name out)
+            Assert.True(out <= 1.0 + 1.0e-9, sprintf "%s transmitted S0 > input: %g" s.name out)
 
     [<Fact>]
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
+        let plateIds =
+            [ SeedSamples.activeCrystal.id; SeedSamples.glassVacuum.id; SeedSamples.glassPlate1mm.id; SeedSamples.glassPlate2mm.id ]
         for s in seededSamples do
             let w = runWaveLengthFor s
             let system = sampleToSystem (resolveOrFail s) w
-            match s.id with
-            | "sample-multilayer-qw" -> Assert.Equal(41, List.length system.films)
-            | "sample-euv-mosi" -> Assert.Equal(200, List.length system.films)
-            | "sample-active-crystal"
-            | "sample-glass-vacuum"
-            | "sample-glass-1mm"
-            | "sample-glass-2mm" ->
+            if s.id = SeedSamples.multilayerQw.id then Assert.Equal(41, List.length system.films)
+            elif s.id = SeedSamples.euvMoSi.id then Assert.Equal(200, List.length system.films)
+            elif plateIds |> List.contains s.id then
                 Assert.Empty system.films
-                Assert.True(Option.isSome system.substrate, sprintf "%s should be a substrate plate" s.id)
-            | _ ->
+                Assert.True(Option.isSome system.substrate, sprintf "%s should be a substrate plate" s.name)
+            else
                 // The remaining seeded samples are single-film systems.
                 Assert.Equal(1, List.length system.films)
 
     [<Fact>]
     let ``every seeded sample carries a non-empty description`` () =
         for s in seededSamples do
-            Assert.False(System.String.IsNullOrWhiteSpace s.description, sprintf "%s has an empty description" s.id)
+            Assert.False(System.String.IsNullOrWhiteSpace s.description, sprintf "%s has an empty description" s.name)
 
     [<Fact>]
     let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
-        let langasite =
-            seededSamples |> List.find (fun s -> s.id = "sample-langasite-silicon") |> resolveOrFail
+        let langasite = resolveOrFail SeedSamples.langasiteSilicon
         // Silicon's dispersion makes the transmitted intensity wavelength-dependent; the dispersive seam
         // (getProperties w) is therefore actually being evaluated at the run wavelength.
         let i400 = s0 (sampleMuellerT langasite (WaveLength.nm 400.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
@@ -355,32 +344,34 @@ module PropagationTests =
 
     [<Fact>]
     let ``resolveSampleMaterials returns a typed Error for an unknown film material id`` () =
+        let missing = MaterialLibrary.newMaterialId ()
         let sample : Sample =
             { glassSample with
-                id = "sample-bad-film"
+                id = SampleId.create ()
                 structure =
                     {
-                        films = [ SingleLayer { materialId = "no-such-material"; thickness = Thickness.nm 100.0<nm> } ]
+                        films = [ SingleLayer { materialId = missing; thickness = Thickness.nm 100.0<nm> } ]
                         substrate = None
                         lower = None
                     } }
         match resolveSampleMaterials MaterialLibrary.standard sample with
-        | Error (MaterialLibrary.UnknownMaterialId id) -> Assert.Equal("no-such-material", id)
+        | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
         | other -> Assert.Fail(sprintf "expected UnknownMaterialId, got %A" other)
 
     [<Fact>]
     let ``resolveSampleMaterials returns a typed Error for an unknown lower half-space id`` () =
+        let missing = MaterialLibrary.newMaterialId ()
         let sample : Sample =
             { glassSample with
-                id = "sample-bad-lower"
+                id = SampleId.create ()
                 structure =
                     {
-                        films = [ SingleLayer { materialId = "glass-1.52"; thickness = Thickness.nm 100.0<nm> } ]
+                        films = [ SingleLayer { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm> } ]
                         substrate = None
-                        lower = Some "no-such-substrate"
+                        lower = Some missing
                     } }
         match resolveSampleMaterials MaterialLibrary.standard sample with
-        | Error (MaterialLibrary.UnknownMaterialId id) -> Assert.Equal("no-such-substrate", id)
+        | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
         | other -> Assert.Fail(sprintf "expected UnknownMaterialId, got %A" other)
 
     [<Fact>]
@@ -388,7 +379,7 @@ module PropagationTests =
         for s in seededSamples do
             match resolveSampleMaterials MaterialLibrary.standard s with
             | Ok _ -> ()
-            | Error e -> Assert.Fail(sprintf "%s did not resolve: %A" s.id e)
+            | Error e -> Assert.Fail(sprintf "%s did not resolve: %A" s.name e)
 
     /// The 41-layer λ/4 films exactly as the PRE-0033 hand-built branch constructed them.
     let private legacyQwFilms : Layer list =
@@ -421,13 +412,12 @@ module PropagationTests =
                 substrate = Some (Substrate.Plate { properties = properties; thickness = thickness })
                 lower = OpticalProperties.vacuum
             }
-        match s.id with
-        | "sample-glass-1mm" -> plate OpticalProperties.transparentGlass (Thickness.mm 1.0<mm>)
-        | "sample-glass-2mm" -> plate OpticalProperties.transparentGlass (Thickness.mm 2.0<mm>)
-        | "sample-glass-film-600" -> film OpticalProperties.transparentGlass175 (Thickness.nm 600.0<nm>)
-        | "sample-glass-vacuum" -> plate OpticalProperties.transparentGlass150 (Thickness.mm 1.0<mm>)
-        | "sample-glass-film-200" -> film OpticalProperties.transparentGlass (Thickness.nm 200.0<nm>)
-        | "sample-multilayer-qw" ->
+        if s.id = SeedSamples.glassPlate1mm.id then plate OpticalProperties.transparentGlass (Thickness.mm 1.0<mm>)
+        elif s.id = SeedSamples.glassPlate2mm.id then plate OpticalProperties.transparentGlass (Thickness.mm 2.0<mm>)
+        elif s.id = SeedSamples.glassFilm600.id then film OpticalProperties.transparentGlass175 (Thickness.nm 600.0<nm>)
+        elif s.id = SeedSamples.glassVacuum.id then plate OpticalProperties.transparentGlass150 (Thickness.mm 1.0<mm>)
+        elif s.id = SeedSamples.glassFilm200.id then film OpticalProperties.transparentGlass (Thickness.nm 200.0<nm>)
+        elif s.id = SeedSamples.multilayerQw.id then
             {
                 description = None
                 upper = OpticalProperties.vacuum
@@ -435,7 +425,7 @@ module PropagationTests =
                 substrate = None
                 lower = OpticalProperties.vacuum
             }
-        | "sample-euv-mosi" ->
+        elif s.id = SeedSamples.euvMoSi.id then
             let thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
             let films =
                 [ { properties = OpticalProperties.euvMolybdenum; thickness = thickness }
@@ -449,13 +439,13 @@ module PropagationTests =
                 substrate = None
                 lower = OpticalProperties.vacuum
             }
-        | "sample-uniaxial" -> film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
-        | "sample-biaxial" -> film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
-        | "sample-active-crystal" ->
+        elif s.id = SeedSamples.uniaxial.id then film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
+        elif s.id = SeedSamples.biaxial.id then film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
+        elif s.id = SeedSamples.activeCrystal.id then
             let e11 = RefractionIndex 2.315 |> EpsValue.fromRefractionIndex
             let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
             plate (OpticalProperties.planarCrystal e11 e33 (RhoValue 1.5e-6)) Thickness.oneCentiMeter
-        | "sample-langasite-silicon" ->
+        elif s.id = SeedSamples.langasiteSilicon.id then
             {
                 description = None
                 upper = OpticalProperties.vacuum
@@ -463,7 +453,7 @@ module PropagationTests =
                 substrate = None
                 lower = siliconOpticalProperties.getProperties w
             }
-        | other -> failwith (sprintf "no legacy expectation for sample id %s" other)
+        else failwith (sprintf "no legacy expectation for sample %s" s.name)
 
     [<Fact>]
     let ``every seeded sample's structurally-built system equals the previously hand-built system`` () =

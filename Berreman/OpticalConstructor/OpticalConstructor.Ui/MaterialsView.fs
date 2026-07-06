@@ -39,13 +39,13 @@ open OpticalConstructor.Domain.Units
 // ---------------------------------------------------------------------------
 
 /// The browse filter + current selection. `search`/`category` drive the filtered list
-/// (through the existing library seams); `selected` is the id of the entry whose
-/// dispersion preview is shown.
+/// (through the existing library seams); `selected` is the elevated id of the entry
+/// whose dispersion preview is shown (spec 0033 step 002).
 type Filter =
     {
         search : string
         category : MaterialLibrary.MaterialCategory option
-        selected : string option
+        selected : MaterialLibrary.MaterialId option
     }
 
 module Filter =
@@ -58,7 +58,7 @@ module Filter =
 type MaterialsMsg =
     | SetSearch of string
     | SetCategory of MaterialLibrary.MaterialCategory option
-    | SelectMaterial of string
+    | SelectMaterial of MaterialLibrary.MaterialId
 
 /// Pure dispatcher over the filter state (R-1).
 let update (msg : MaterialsMsg) (f : Filter) : Filter =
@@ -106,8 +106,10 @@ let referenceWavelength : WaveLength = Templates.defaultLight.waveLength
 // the resulting `Construction (EditStack …)`. The view resolves nothing itself.
 // ---------------------------------------------------------------------------
 
-/// The typed drag payload format carrying a dragged material's stable id. Avalonia 12 replaced the
-/// old string-keyed `DataObject`/`IDataObject` with the typed `DataTransfer` / `DataFormat` API.
+/// The typed drag payload format carrying a dragged material's stable id — its Guid STRING form
+/// (spec 0033 step 002); the drop handler parses it back through `MaterialId.tryCreate` (this drag
+/// payload is a genuine IO boundary). Avalonia 12 replaced the old string-keyed
+/// `DataObject`/`IDataObject` with the typed `DataTransfer` / `DataFormat` API.
 let MaterialDataFormat : Avalonia.Input.DataFormat<string> =
     Avalonia.Input.DataFormat.CreateStringApplicationFormat "oc-material-id"
 
@@ -124,7 +126,7 @@ let materialDrop
     (path : ConstructionPage.NodePath)
     (dispatch : ConstructionPage.Msg -> unit)
     (index : int)
-    (materialId : string)
+    (materialId : MaterialLibrary.MaterialId)
     : unit =
     match StackEditor.layerMaterialDrop lib w index materialId with
     | Ok sm -> dispatch (ConstructionPage.EditStack (path, sm))
@@ -184,16 +186,17 @@ let private filterBar (filter : Filter) (dispatch : MaterialsMsg -> unit) : IVie
 
 /// One library entry row (R-1 / R-3): a selectable button (selects it for preview) wrapped
 /// in a drag-source border that carries the entry's stable id on a drag gesture.
-let private entryRow (dispatch : MaterialsMsg -> unit) (selected : string option) (entry : MaterialLibrary.MaterialEntry) : IView =
+let private entryRow (dispatch : MaterialsMsg -> unit) (selected : MaterialLibrary.MaterialId option) (entry : MaterialLibrary.MaterialEntry) : IView =
     let isSelected = selected = Some entry.id
     Border.create [
         Border.background (if isSelected then Brushes.LightSteelBlue :> IBrush else Brushes.Transparent :> IBrush)
         // Real Avalonia drag source: a drag gesture carries ONLY the stable material id
-        // (§A.7); resolution happens on drop through `layerMaterialDrop` (R-3). Never
-        // fires headlessly (no pointer), so the smoke/view tests are unaffected.
+        // (§A.7) as its Guid string form; resolution happens on drop through
+        // `layerMaterialDrop` (R-3). Never fires headlessly (no pointer), so the
+        // smoke/view tests are unaffected.
         Border.onPointerPressed (fun e ->
             let data = new Avalonia.Input.DataTransfer()
-            data.Add(Avalonia.Input.DataTransferItem.Create(MaterialDataFormat, entry.id))
+            data.Add(Avalonia.Input.DataTransferItem.Create(MaterialDataFormat, string entry.id.value))
             Avalonia.Input.DragDrop.DoDragDropAsync(e, data, Avalonia.Input.DragDropEffects.Copy) |> ignore)
         Border.child (
             Button.create [
@@ -279,7 +282,12 @@ let private dropRow
             let dt = e.DataTransfer
             if Avalonia.Input.DataTransferExtensions.Contains(dt, MaterialDataFormat) then
                 match box (Avalonia.Input.DataTransferExtensions.TryGetValue(dt, MaterialDataFormat)) with
-                | :? string as id -> materialDrop lib referenceWavelength path dispatchC index id
+                | :? string as payload ->
+                    // The drag payload is an IO boundary: parse the Guid string form back
+                    // to a MaterialId; an unparsable payload is a no-op (never a throw).
+                    match MaterialLibrary.tryMaterialId payload with
+                    | Some id -> materialDrop lib referenceWavelength path dispatchC index id
+                    | None -> ()
                 | _ -> ())
         Border.child (TextBlock.create [ TextBlock.text label ])
     ] :> IView

@@ -77,9 +77,11 @@ module MaterialImport =
                         na + (nb - na) * t, ka + (kb - ka) * t
             createComplex n k |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
 
-    let private entryFromTabulated (id : string) (name : string) (category : MaterialCategory) (points : (float * float * float)[]) : MaterialEntry =
+    /// An imported entry MINTS a fresh `MaterialId` (spec 0033 step 002) — imports carry no
+    /// persisted identity of their own; the stable Guid ids live with the library seeds.
+    let private entryFromTabulated (name : string) (category : MaterialCategory) (points : (float * float * float)[]) : MaterialEntry =
         {
-            id = id
+            id = MaterialId.create ()
             name = name
             category = category
             description = Some "Imported tabulated n,k (refractiveindex.info)."
@@ -125,7 +127,7 @@ module MaterialImport =
                             let s = pairs |> Array.sumBy (fun p -> p.[0] * lam2 / (lam2 - p.[1] * p.[1]))
                             createComplex (sqrt (1.0 + c0 + s)) 0.0 |> ComplexRefractionIndex |> Eps.fromComplexRefractionIndex
                         Ok {
-                            id = "imported-rii"
+                            id = MaterialId.create ()
                             name = "Imported (refractiveindex.info formula 1)"
                             category = Glass
                             description = Some "Imported Sellmeier (refractiveindex.info formula 1)."
@@ -135,7 +137,7 @@ module MaterialImport =
             else
                 let rows = tabulatedRows Micrometer lines
                 if rows.Length = 0 then Error (NoData "no tabulated rows found")
-                else Ok (entryFromTabulated "imported-rii" "Imported (refractiveindex.info)" Semiconductor rows)
+                else Ok (entryFromTabulated "Imported (refractiveindex.info)" Semiconductor rows)
         with e -> Error (MalformedYaml e.Message)
 
     /// Import a refractiveindex.info-style n,k CSV (§D.9). Columns are
@@ -161,7 +163,7 @@ module MaterialImport =
                     else None)
                 |> Array.ofSeq
             if rows.Length = 0 then Error (NoData "no CSV data rows found")
-            else Ok (entryFromTabulated "imported-csv" "Imported (CSV)" Glass rows)
+            else Ok (entryFromTabulated "Imported (CSV)" Glass rows)
         with e -> Error (MalformedCsv e.Message)
 
     /// Export n,k sampled over a `Range<WaveLength>` to CSV text (§D.9), reading the

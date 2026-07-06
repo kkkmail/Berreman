@@ -47,7 +47,7 @@ module DispersionModelsTests =
     [<Fact>]
     let ``the silicon library entry reproduces the engine Silicon preset bit-for-bit`` () =
         // Built-in entries reuse the engine presets directly — no dispersion re-derived.
-        let entry = builtInEntries |> List.find (fun e -> e.id = "silicon")
+        let entry = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
         for nm in [ 400.0<nm>; 500.0<nm>; 600.0<nm> ] do
             let w = WaveLength.nm nm
             let got = entry.properties.epsWithDisp.getEps w
@@ -112,12 +112,35 @@ module DispersionModelsTests =
     [<Fact>]
     let ``resolveMaterial returns the concrete tensor for a known id at the supplied wavelength`` () =
         let w = WaveLength.nm 500.0<nm>
-        match resolveMaterial standard "silicon" w with
+        match resolveMaterial standard MaterialIds.silicon w with
         | Ok op -> Assert.True(epsClose 1e-12 op.eps (siliconOpticalProperties.getProperties w).eps)
         | Error e -> Assert.Fail($"expected Ok, got {e}")
 
     [<Fact>]
     let ``resolveMaterial returns Error UnknownMaterialId for an unknown id and never throws`` () =
-        match resolveMaterial standard "no-such-material" (WaveLength.nm 500.0<nm>) with
-        | Error (UnknownMaterialId id) -> Assert.Equal("no-such-material", id)
+        // The error's reason (spec 0033 step 002) names the offending id's Guid string form.
+        let unknown = MaterialId.create ()
+        match resolveMaterial standard unknown (WaveLength.nm 500.0<nm>) with
+        | Error (UnknownMaterialId reason) -> Assert.Contains(string unknown.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownMaterialId _), got {other}")
+
+    [<Fact>]
+    let ``a minted MaterialId round-trips create-store-lookup through the library`` () =
+        // Spec 0033 step 002 acceptance: create an entry with a MINTED id, store it in a library,
+        // and the by-id lookup returns THAT entry's properties; the id also round-trips its Guid
+        // string form through the `tryCreate` IO-boundary parse.
+        let id = MaterialId.create ()
+        let entry =
+            {
+                id = id
+                name = "Round-trip entry"
+                category = Glass
+                description = None
+                properties = siliconOpticalProperties
+            }
+        let lib : MaterialLibrary = { entries = entry :: standard.entries }
+        match resolveMaterialWithDisp lib id with
+        | Ok p -> Assert.True(System.Object.ReferenceEquals(p, entry.properties), "lookup must return the STORED entry's properties")
+        | Error e -> Assert.Fail($"expected Ok, got {e}")
+        Assert.Equal(Some id, MaterialId.tryCreate (string id.value))
+        Assert.Equal(None, MaterialId.tryCreate "not-a-guid")

@@ -18,6 +18,50 @@ open OpticalProperties.Active
 /// is re-derived here.
 module MaterialLibrary =
 
+    /// Elevated material-entry identity (spec 0033 step 002): a Guid-backed single-case DU — no raw
+    /// string material id appears in a domain record or public signature. `create` MINTS a fresh id
+    /// (imports, user-authored entries); the built-in seeds parse FIXED literal Guids (`MaterialIds`)
+    /// so identity is deterministic across runs; `tryCreate` parses the Guid string form at a genuine
+    /// IO boundary (library JSON, the drag payload) — an unparsable string is `None`, never a throw
+    /// (no legacy string-id path).
+    type MaterialId =
+        | MaterialId of Guid
+
+        member this.value = let (MaterialId g) = this in g
+        static member create () : MaterialId = Guid.NewGuid() |> MaterialId
+
+        static member tryCreate (s : string) : MaterialId option =
+            match Guid.TryParse s with
+            | true, g -> Some (MaterialId g)
+            | _ -> None
+
+    /// Module-level parse helper for `MaterialId` (the case name and type name collide, so a
+    /// QUALIFIED `MaterialLibrary.MaterialId.tryCreate` resolves to the case rather than the static
+    /// member — the same collision `Library.elementId` documents; this helper is the unambiguous
+    /// call site for qualified callers, e.g. the drag-payload boundary).
+    let tryMaterialId (s : string) : MaterialId option = MaterialId.tryCreate s
+
+    /// Module-level mint helper for `MaterialId` (same case/type name collision as `tryMaterialId`).
+    let newMaterialId () : MaterialId = MaterialId.create ()
+
+    /// The FIXED ids of the built-in library entries (spec 0033 step 002): literal Guids parsed once,
+    /// so the seeds, the sample structures (`Library.SeedSamples`), the grouping trees, and the tests
+    /// all reference the SAME deterministic identity across runs. A new built-in adds a new literal
+    /// here — seed construction never calls `MaterialId.create`.
+    module MaterialIds =
+        let silicon : MaterialId = Guid.Parse "0f698851-dca1-412a-ad46-fac413496667" |> MaterialId
+        let langasite : MaterialId = Guid.Parse "e95f01fb-0442-42c4-ba69-74d82f52e544" |> MaterialId
+        let glass152 : MaterialId = Guid.Parse "55750ee2-358c-40d4-ab6c-06fc144adbf8" |> MaterialId
+        let glass150 : MaterialId = Guid.Parse "0eedbd4b-ad1c-4bfe-8f6d-ae573b4a422d" |> MaterialId
+        let glass175 : MaterialId = Guid.Parse "7bd71d63-98a6-4096-849d-b0c95e876966" |> MaterialId
+        let glass200 : MaterialId = Guid.Parse "077d0db9-a2e2-45da-a76f-5ddedfcf0dc5" |> MaterialId
+        let uniaxialCrystal : MaterialId = Guid.Parse "749465a5-fece-4d8d-9ea9-c626613614be" |> MaterialId
+        let biaxialCrystal : MaterialId = Guid.Parse "4381fb35-662c-4dc9-80a4-c1a88125f5e5" |> MaterialId
+        let vacuum : MaterialId = Guid.Parse "4355ad6d-b743-4ca9-8365-7ce9f585a7a0" |> MaterialId
+        let euvMolybdenum : MaterialId = Guid.Parse "cff60a4d-6c57-4a99-84ae-42533351de2c" |> MaterialId
+        let euvSilicon : MaterialId = Guid.Parse "43075352-cb2a-41ed-b53b-76e7166ece57" |> MaterialId
+        let activeCrystal : MaterialId = Guid.Parse "a8dfa59c-2e95-4e3a-bfa6-b7e7e12ef58f" |> MaterialId
+
     /// Material category for filtering (§D.8). `Vacuum` (spec 0033 step 001) categorises the
     /// vacuum spacer entry the structural multilayer seeds reference.
     type MaterialCategory =
@@ -33,7 +77,7 @@ module MaterialLibrary =
     /// engine's `OpticalPropertiesWithDisp` (`Dispersion.fs:53`).
     type MaterialEntry =
         {
-            id : string
+            id : MaterialId
             name : string
             category : MaterialCategory
             description : string option
@@ -41,9 +85,10 @@ module MaterialLibrary =
         }
 
     /// Net-new error channel for material resolution (errors as values, §0). Returned
-    /// — never thrown — by `resolveMaterial` on an unknown id.
+    /// — never thrown — by `resolveMaterial` on an unknown id; the case carries a
+    /// diagnostic `reason` (spec 0033 step 002) naming the id's Guid string form.
     type MaterialError =
-        | UnknownMaterialId of string
+        | UnknownMaterialId of reason : string
 
     /// The in-memory, additive material library (§D.8). Persistence of an entry is the
     /// JSON `materialEntry` `$def` (§A.7); a shareable library FILE format is Part I §I.8.
@@ -73,12 +118,12 @@ module MaterialLibrary =
     /// `OpticalPropertiesWithDisp` itself, unevaluated, for callers that resolve once and evaluate per
     /// wavelength (`Propagation.resolveSampleMaterials`). Unknown ids return
     /// `Error (UnknownMaterialId _)` — the function never throws.
-    let resolveMaterialWithDisp (lib : MaterialLibrary) (id : string) : Result<OpticalPropertiesWithDisp, MaterialError> =
+    let resolveMaterialWithDisp (lib : MaterialLibrary) (id : MaterialId) : Result<OpticalPropertiesWithDisp, MaterialError> =
         match lib.entries |> List.tryFind (fun e -> e.id = id) with
         | Some e -> Ok e.properties
-        | None -> Error (UnknownMaterialId id)
+        | None -> Error (UnknownMaterialId (sprintf "unknown material id '%s'" (string id.value)))
 
-    let resolveMaterial (lib : MaterialLibrary) (id : string) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
+    let resolveMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
         resolveMaterialWithDisp lib id |> Result.map (fun p -> p.getProperties w)
 
     /// Built-in entries (§D.8). Each wraps an existing engine preset as-is; none
@@ -89,84 +134,84 @@ module MaterialLibrary =
     let builtInEntries : MaterialEntry list =
         [
             {
-                id = "silicon"
+                id = MaterialIds.silicon
                 name = "Silicon"
                 category = Semiconductor
                 description = Some "Crystalline silicon (engine preset Silicon)."
                 properties = siliconOpticalProperties
             }
             {
-                id = "langasite"
+                id = MaterialIds.langasite
                 name = "Langasite (La3Ga5SiO14)"
                 category = Crystal
                 description = Some "Langasite, optically active uniaxial crystal (engine preset Langasite)."
                 properties = langasiteOpticalProperties
             }
             {
-                id = "glass-1.52"
+                id = MaterialIds.glass152
                 name = "Transparent glass (n = 1.52)"
                 category = Glass
                 description = Some "Standard transparent glass preset."
                 properties = OpticalProperties.transparentGlass.dispersive
             }
             {
-                id = "glass-1.50"
+                id = MaterialIds.glass150
                 name = "Transparent glass (n = 1.50)"
                 category = Glass
                 description = None
                 properties = OpticalProperties.transparentGlass150.dispersive
             }
             {
-                id = "glass-1.75"
+                id = MaterialIds.glass175
                 name = "Transparent glass (n = 1.75)"
                 category = Glass
                 description = None
                 properties = OpticalProperties.transparentGlass175.dispersive
             }
             {
-                id = "glass-2.00"
+                id = MaterialIds.glass200
                 name = "Transparent glass (n = 2.00)"
                 category = Glass
                 description = None
                 properties = OpticalProperties.transparentGlass200.dispersive
             }
             {
-                id = "uniaxial-crystal"
+                id = MaterialIds.uniaxialCrystal
                 name = "Uniaxial crystal"
                 category = Crystal
                 description = Some "Standard uniaxial crystal preset."
                 properties = OpticalProperties.uniaxialCrystal.dispersive
             }
             {
-                id = "biaxial-crystal"
+                id = MaterialIds.biaxialCrystal
                 name = "Biaxial crystal"
                 category = Crystal
                 description = Some "Standard biaxial crystal preset."
                 properties = OpticalProperties.biaxialCrystal.dispersive
             }
             {
-                id = "vacuum"
+                id = MaterialIds.vacuum
                 name = "Vacuum"
                 category = Vacuum
                 description = Some "Vacuum (n = 1) — the spacer material of the structural multilayer stacks."
                 properties = OpticalProperties.vacuum.dispersive
             }
             {
-                id = "euv-molybdenum"
+                id = MaterialIds.euvMolybdenum
                 name = "Molybdenum (Mo, EUV)"
                 category = Metal
                 description = Some "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
                 properties = OpticalProperties.euvMolybdenum.dispersive
             }
             {
-                id = "euv-silicon"
+                id = MaterialIds.euvSilicon
                 name = "Silicon (Si, EUV)"
                 category = Semiconductor
                 description = Some "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
                 properties = OpticalProperties.euvSilicon.dispersive
             }
             {
-                id = "active-crystal"
+                id = MaterialIds.activeCrystal
                 name = "Active (gyrotropic) crystal"
                 category = Crystal
                 description = Some "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx)."

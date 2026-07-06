@@ -19,6 +19,13 @@ module LibraryControlsTests =
 
     let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
 
+    /// The Guid-string entry ids of the seeded samples these tests bind (the Selector valueId seam
+    /// carries the Guid string form since spec 0033 step 002 — referenced programmatically, never as
+    /// a repeated literal).
+    let private glass1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+    let private glass2mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate2mm).entryId
+    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId
+
     // ============================ pure control contract ============================
 
     [<Fact>]
@@ -30,7 +37,10 @@ module LibraryControlsTests =
 
     [<Fact>]
     let ``the Library UiIds prefix leaf ids and are stable`` () =
-        Assert.Equal("LibraryEntry_sample-glass-1mm", LibraryControls.UiIds.entry "sample-glass-1mm")
+        // `entry` is a pure prefix over ANY entry id string (a seeded sample's id is its Guid
+        // string form since spec 0033 step 002).
+        Assert.Equal("LibraryEntry_abc", LibraryControls.UiIds.entry "abc")
+        Assert.Equal("LibraryEntry_" + glass1mmId, LibraryControls.UiIds.entry glass1mmId)
         Assert.Equal("LibraryTree", LibraryControls.UiIds.tree)
         Assert.Equal("LibraryBoundReadout", LibraryControls.UiIds.readout)
 
@@ -63,21 +73,21 @@ module LibraryControlsTests =
     [<Fact>]
     let ``BindValueId sets the selected element's valueId; inert for table or nothing`` () =
         let m = withSampleSelected ()                      // element 2 (a Sample) selected
-        let bound = update (BindValueId "sample-glass-1mm") m
-        Assert.Equal(Some "sample-glass-1mm", (elem 2 bound).placement.valueId)
+        let bound = update (BindValueId glass1mmId) m
+        Assert.Equal(Some glass1mmId, (elem 2 bound).placement.valueId)
         // Inert when the table is selected.
         let tableSel = { (initMain ()) with selection = TableSelected }
-        Assert.Equal<Model>(tableSel, update (BindValueId "sample-glass-1mm") tableSel)
+        Assert.Equal<Model>(tableSel, update (BindValueId glass1mmId) tableSel)
         // Inert when nothing is selected.
         let nothingSel = { (initMain ()) with selection = NothingSelected }
-        Assert.Equal<Model>(nothingSel, update (BindValueId "sample-glass-1mm") nothingSel)
+        Assert.Equal<Model>(nothingSel, update (BindValueId glass1mmId) nothingSel)
 
     [<Fact>]
     let ``binding then rebinding overwrites the valueId`` () =
         let m = withSampleSelected ()
-        let m1 = update (BindValueId "sample-glass-1mm") m
-        let m2 = update (BindValueId "sample-glass-2mm") m1
-        Assert.Equal(Some "sample-glass-2mm", (elem 2 m2).placement.valueId)
+        let m1 = update (BindValueId glass1mmId) m
+        let m2 = update (BindValueId glass2mmId) m1
+        Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
 
     [<Fact>]
     let ``the ribbon offers the Library bay among its bays`` () =
@@ -97,25 +107,25 @@ module LibraryControlsTests =
     [<Fact>]
     let ``RequestBindValueId sets a pending entry WITHOUT binding the valueId`` () =
         let m = withSampleSelected ()                          // element 2 (a Sample) selected
-        let pending = update (RequestBindValueId "sample-glass-1mm") m
+        let pending = update (RequestBindValueId glass1mmId) m
         // The pending choice is recorded, but no valueId is bound yet.
-        Assert.Equal(Some "sample-glass-1mm", pending.pendingEntry)
+        Assert.Equal(Some glass1mmId, pending.pendingEntry)
         Assert.Equal(None, (elem 2 pending).placement.valueId)
 
     [<Fact>]
     let ``ConfirmBindValueId commits the pending entry to the selected element's valueId and clears pending`` () =
         let m =
             withSampleSelected ()
-            |> update (RequestBindValueId "sample-glass-1mm")
+            |> update (RequestBindValueId glass1mmId)
             |> update ConfirmBindValueId
-        Assert.Equal(Some "sample-glass-1mm", (elem 2 m).placement.valueId)
+        Assert.Equal(Some glass1mmId, (elem 2 m).placement.valueId)
         Assert.Equal(None, m.pendingEntry)
 
     [<Fact>]
     let ``CancelBindValueId clears the pending entry and does NOT bind`` () =
         let m =
             withSampleSelected ()
-            |> update (RequestBindValueId "sample-glass-1mm")
+            |> update (RequestBindValueId glass1mmId)
             |> update CancelBindValueId
         Assert.Equal(None, m.pendingEntry)
         Assert.Equal(None, (elem 2 m).placement.valueId)
@@ -127,15 +137,15 @@ module LibraryControlsTests =
 
     [<Fact>]
     let ``libraryState surfaces the pending entry's name and FULL description before confirm`` () =
-        let m = withSampleSelected () |> update (RequestBindValueId "sample-multilayer-qw")
+        let m = withSampleSelected () |> update (RequestBindValueId multilayerQwId)
         // The host's libraryState fills the pending fields from the proxy; mirror that resolution here.
-        match m.library.tryGetEntry "sample-multilayer-qw" with
+        match m.library.tryGetEntry multilayerQwId with
         | Ok (Some entry) ->
             Assert.False(System.String.IsNullOrWhiteSpace entry.fullDescription)
             // A multilayer's description spells out the stack, not just its short name.
             Assert.Contains("layer", entry.fullDescription)
         | other -> Assert.Fail(sprintf "expected the quarter-wave multilayer entry, got %A" other)
-        Assert.Equal(Some "sample-multilayer-qw", m.pendingEntry)
+        Assert.Equal(Some multilayerQwId, m.pendingEntry)
 
     // ============================ headless render proof (ui-smoke) ============================
 
@@ -148,7 +158,7 @@ module LibraryControlsTests =
             let mutable model =
                 withSampleSelected ()
                 |> update (SelectBay BayNames.library)
-                |> update (RequestBindValueId "sample-glass-1mm")
+                |> update (RequestBindValueId glass1mmId)
             let dispatch (msg : Msg) = model <- update msg model
             let window = Window(Width = 980.0, Height = canvasHeight + 320.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
@@ -175,6 +185,6 @@ module LibraryControlsTests =
                     Dispatcher.UIThread.RunJobs()
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-                    Assert.Equal(Some "sample-glass-1mm", (elem 2 model).placement.valueId)
+                    Assert.Equal(Some glass1mmId, (elem 2 model).placement.valueId)
                 else Assert.Fail("the Confirm button has no on-screen position")
             window.Close())
