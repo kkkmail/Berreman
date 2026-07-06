@@ -74,3 +74,44 @@ work itself; nothing was tried and abandoned.
 branch `0075`; the earlier no-window fix had already been committed there as
 `a04cfdb`. The `.manual/004` note in this folder was untracked. None of this
 touches the Berreman product code, which is fully committed on branch `0033`.
+
+## Run time, spec-writer start → arc-runner end (all times UTC)
+
+**Total calendar run time: 16h 45m 25s** (2026-07-05 22:13:53 → 2026-07-06
+14:59:18; first `.history` event of the spec writer → the arc-runner's
+`COMPLETE` row).
+
+**Total real run time (all gaps excluded): 12h 54m 25s**, of which the spec
+writer accounts for 1h 37m 59s (22:13:53 → 23:51:52 handoff) and the
+arc-runner for 11h 16m 26s (10h 44m 59s in execution 1 net of quota waits,
+23m 24s of which was slice 025's pre-hibernate work that the retry reused,
+plus 31m 27s in execution 2).
+
+**Gap times by type — 3h 51m 00s total:**
+
+| Gap type | Duration | Window |
+|---|---|---|
+| Machine hibernation | 2h 03m 27s | 12:18:53 → 14:22:20 |
+| Quota waits (2) | 1h 09m 49s | 03:42:04 → 04:11:00 (judge, 28m 56s); 08:30:07 → 09:11:00 (worker, 40m 53s) |
+| Boot-failure repair | 0h 26m 42s | 23:57:23 → 00:24:05 |
+| Handoff idle | 0h 05m 31s | 23:51:52 → 23:57:23 |
+| Post-wake stop/relaunch | 0h 05m 31s | 14:22:20 → 14:27:51 |
+
+The quota waits are the runner's own QUOTA-RETRY pauses for the subscription
+window (slice 010's code judge and slice 021's worker). The boot-failure
+repair window is counted as a gap even though it was active work — the
+supervisor diagnosing and fixing the ASG boot-order bug between the exit-4
+escalation and the successful relaunch — because neither the spec writer nor
+the arc-runner was executing. Handoff idle is the operator pause between
+handoff completion and the first launch attempt; post-wake stop/relaunch is
+the operator stopping the stalled runner and resuming it after the machine
+woke.
+
+Measurement notes: the hibernation window runs from the last observed worker
+output (the slice-025 console tee stops at 12:18:53, confirmed by file mtime)
+to the first post-wake evidence (14:22:20); the true sleep interval may
+differ by a few minutes at either edge. The spec-writer phase is counted as
+fully real: at the granularity of `.history` and file mtimes there is no
+identifiable idle stretch inside it — operator review pauses between spec
+cycles are embedded and not separable. The segment boundaries reconcile
+exactly against the stats tool's `total_wall_clock_seconds` of 60,325.
