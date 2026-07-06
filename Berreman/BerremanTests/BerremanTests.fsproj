@@ -33,6 +33,7 @@
         <Compile Include="SolverTests.fs" />
         <Compile Include="MuellerMatrixTests.fs" />
         <Compile Include="AnalysisFunctionsTests.fs" />
+        <Compile Include="DispersionFormulaTests.fs" />
         <Compile Include="OptimizationTests.fs" />
     </ItemGroup>
 
