@@ -56,7 +56,7 @@ module SeriesDataTests =
         let x =
             IncidenceAngleRange (Range.create 6 (Angle.degree 0.0 |> IncidenceAngle) (Angle.degree 50.0 |> IncidenceAngle))
         let y =
-            WaveLengthRange (Range.create 5 (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>))
+            WaveLengthRange (   Range.create 5 (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>))
 
         // A single fixed calculate3D run, shared between mapFun and the adapter, so
         // the comparison is order-stable (calculate3D parallelises over rows).
