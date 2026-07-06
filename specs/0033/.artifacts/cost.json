@@ -59,6 +59,96 @@
       "tokens_in": null,
       "tokens_out": null,
       "usd": null
+    },
+    {
+      "role_id": "implement_worker",
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "flavor": "subscription",
+      "transport_kind": "cli",
+      "elapsed_sec": 205.1,
+      "exit_code": 0,
+      "hung_up": false,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null,
+      "utc": "2026-07-06T14:31:18Z",
+      "phase": "multistep",
+      "role": "implement_worker"
+    },
+    {
+      "role_id": "code_judge",
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "flavor": "subscription",
+      "transport_kind": "cli",
+      "elapsed_sec": 125.2,
+      "exit_code": 0,
+      "hung_up": false,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null,
+      "utc": "2026-07-06T14:35:22Z",
+      "phase": "multistep",
+      "role": "code_judge"
+    },
+    {
+      "role_id": "wire_ui_worker",
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "flavor": "subscription",
+      "transport_kind": "cli",
+      "elapsed_sec": 1205.4,
+      "exit_code": 0,
+      "hung_up": false,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null,
+      "utc": "2026-07-06T14:55:28Z",
+      "phase": "multistep",
+      "role": "wire_ui_worker"
+    },
+    {
+      "role_id": "code_judge",
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "flavor": "subscription",
+      "transport_kind": "cli",
+      "elapsed_sec": 120.1,
+      "exit_code": 0,
+      "hung_up": false,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null,
+      "utc": "2026-07-06T14:59:18Z",
+      "phase": "multistep",
+      "role": "code_judge"
     }
-  ]
+  ],
+  "per_role_totals": {
+    "implement_worker": {
+      "spawns": 1,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null
+    },
+    "code_judge": {
+      "spawns": 2,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null
+    },
+    "wire_ui_worker": {
+      "spawns": 1,
+      "tokens_in": null,
+      "tokens_out": null,
+      "cost_usd": null
+    }
+  },
+  "grand_total": {
+    "spawns": 4,
+    "tokens_in": null,
+    "tokens_out": null,
+    "cost_usd": null
+  }
 }
