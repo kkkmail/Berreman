@@ -235,14 +235,15 @@ let private libraryList (lib : MaterialLibrary.MaterialLibrary) (filter : Filter
 /// engine dispersion DATA calculator `Analytics.Variables.calculateN11Re` (no dispersion
 /// re-derived) and constructs the Plotly chart with `Chart.Line` — the same construction
 /// `plotDispersion` performs, minus the `Chart.show` side-effect. The spectral range is
-/// still built through the existing `MaterialPreview.spectralRange` seam. See Gotchas.
+/// still built through the existing `SpectralAxis.spectralRange` seam (REAL-MOVED from
+/// `MaterialPreview` to `OpticalConstructor.Domain`, spec 0033 step 019). See Gotchas.
 let private dispersionPreview (lib : MaterialLibrary.MaterialLibrary) (filter : Filter) : IView =
     let entryOpt =
         filter.selected
         |> Option.bind (fun id -> lib.entries |> List.tryFind (fun e -> e.id = id))
     match entryOpt with
     | Some entry ->
-        let range = MaterialPreview.spectralRange Nanometer 200.0 800.0 50
+        let range = SpectralAxis.spectralRange Nanometer 200.0 800.0 50
         let chart : Lazy<Plotly.NET.GenericChart> =
             lazy (
                 let data = Analytics.Variables.calculateN11Re entry.properties range

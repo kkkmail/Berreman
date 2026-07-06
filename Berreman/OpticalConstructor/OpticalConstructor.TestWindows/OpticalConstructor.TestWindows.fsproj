@@ -43,6 +43,11 @@
              ScottPlot chart window (ChartWindow.fs) are REAL-MOVED into OpticalConstructor.Controls so
              both hosts share ONE type identity; this project reaches them through the Controls
              project reference below. -->
+        <!-- Spec 0033 (019): the pure n/k dispersion chart builder on the 018 dual-axis spine —
+             the engine's eps dispersion (getEps path) into the shared ExperimentChart, n on the
+             LEFT axis and k on the RIGHT via the paired ChartStyle seed, x-axis from the Domain
+             SpectralAxis helpers. -->
+        <Compile Include="NkDispersionChart.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
         <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
@@ -77,6 +82,9 @@
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
         <!-- Spec 0027 (008-task): the shared rotation-controls bar. -->
         <ProjectReference Include="..\OpticalConstructor.Controls\OpticalConstructor.Controls.fsproj" />
+        <!-- Spec 0033 (019): the n/k dispersion chart builder's range vocabulary is the engine's
+             Analytics.Variables.Range<WaveLength> (also the SpectralAxis helpers' signature type). -->
+        <ProjectReference Include="..\..\Analytics\Analytics.fsproj" />
     </ItemGroup>
 
 </Project>

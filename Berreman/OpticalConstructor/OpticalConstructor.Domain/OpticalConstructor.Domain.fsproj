@@ -25,6 +25,11 @@
          Slice 001 ships these as empty placeholder modules; later slices fill them. -->
     <ItemGroup>
         <Compile Include="Units.fs" />
+        <!-- Spec 0033 (019): the pure spectral-axis helpers (label / canonical-meter range /
+             display-unit ticks), REAL-MOVED here from Ui's MaterialPreview so non-Ui chart
+             hosts (TestWindows' n/k dispersion chart) share them. Depends only on Units and
+             the engine/Analytics references below. -->
+        <Compile Include="SpectralAxis.fs" />
         <Compile Include="BeamTree.fs" />
         <Compile Include="Placement.fs" />
         <Compile Include="RayModel.fs" />
