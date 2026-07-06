@@ -83,6 +83,10 @@
              DispersionFilter/MaterialQuery, the extended MaterialError, and the mock/stub MaterialProxy
              exercised through all six functions' exact signatures. -->
         <Compile Include="MaterialProxyTests.fs" />
+        <!-- Spec 0033 step 004 (ADD_CONTRACT STORE_XDUO_0002): the mutating samples write-seam —
+             SampleQuery/SampleError and the mock/stub SampleProxy exercised through all six
+             functions' exact signatures. -->
+        <Compile Include="SampleProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

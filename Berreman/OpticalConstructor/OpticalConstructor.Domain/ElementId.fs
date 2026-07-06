@@ -242,6 +242,51 @@ module Library =
             tryGetEntry : string -> Result<LibraryEntry option, LibraryError>
         }
 
+    /// A samples-library search query (spec 0033 step 004): a case-insensitive name fragment
+    /// (empty matches all) and an optional `SubstrateKind` facet. The query is DATA, so the
+    /// samples panel drives one search seam (`SampleProxy.searchSamples`) instead of composing
+    /// ad-hoc filter calls — the `MaterialQuery` convention (`MaterialLibrary.fs`).
+    type SampleQuery =
+        {
+            text : string
+            substrate : SubstrateKind option
+        }
+
+        /// The match-everything query (a search UI's initial state).
+        static member empty : SampleQuery =
+            {
+                text = ""
+                substrate = None
+            }
+
+    /// The samples write-seam error channel (errors as values; each case carries a diagnostic
+    /// `reason` — a bare error case is useless in a log): an unknown id on lookup / update /
+    /// remove, adding a sample under an id the library already holds, and rejecting a
+    /// malformed sample.
+    type SampleError =
+        | UnknownSampleId of reason : string
+        | DuplicateSampleId of reason : string
+        | InvalidSample of reason : string
+
+    /// The mutating samples write-seam (spec 0033 step 004, contract STORE_XDUO_0002 — DECLARED
+    /// lifecycle): the same functional-proxy shape as step 003's `MaterialProxy`
+    /// (`MaterialLibrary.fs`) — a record of camelCase `Result`-returning functions; a test
+    /// substitutes a stub of the SAME shape. Function-valued fields have no structural equality,
+    /// so the proxy compares by reference — a host model holding one keeps its (Elmish-required)
+    /// equality. The real, persisting store behind this surface is the later IMPLEMENT_CONTRACT
+    /// step (`OpticalConstructor.Storage`); until then the only producers are the in-memory mock
+    /// (`createInMemorySampleProxy`) and test stubs.
+    [<ReferenceEquality>]
+    type SampleProxy =
+        {
+            listSamples : unit -> Result<Sample list, SampleError>
+            searchSamples : SampleQuery -> Result<Sample list, SampleError>
+            tryGetSample : SampleId -> Result<Sample option, SampleError>
+            addSample : Sample -> Result<unit, SampleError>
+            updateSample : Sample -> Result<unit, SampleError>
+            removeSample : SampleId -> Result<unit, SampleError>
+        }
+
     /// A single-layer thin-film structure between vacuum (the common seed shape).
     let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
@@ -506,6 +551,61 @@ module Library =
             entriesForKind = fun kind -> Ok (entries |> List.filter (fun e -> e.forKinds |> List.contains kind))
             libraryTrees = fun () -> Ok trees
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
+        }
+
+    /// The blank-name validation the sample mock's write functions share (spec 0033 step 004):
+    /// a `Sample` whose display name is empty/whitespace is `InvalidSample`.
+    let private validateSample (s : Sample) : Result<unit, SampleError> =
+        if String.IsNullOrWhiteSpace s.name
+        then Error (InvalidSample (sprintf "sample '%s' has a blank name" (string s.id.value)))
+        else Ok ()
+
+    /// The in-memory mock `SampleProxy` (spec 0033 step 004): an inline stub record over the
+    /// FIXED `SeedSamples.all` list — no IO, no mutation, deterministic for tests. The read
+    /// functions answer from the fixed list (search matches the name fragment case-insensitively,
+    /// then the substrate facet); the WRITE functions validate against it and return the typed
+    /// outcome WITHOUT persisting anything: `addSample` rejects an id the list already holds
+    /// (`DuplicateSampleId`), `addSample`/`updateSample` reject a blank name (`InvalidSample`),
+    /// `updateSample`/`removeSample` reject an unknown id (`UnknownSampleId`). The real,
+    /// persisting store is the later IMPLEMENT_CONTRACT step, leaving callers of this shape
+    /// unchanged. (`createInMemory` above builds the `LibraryProxy`; this is the sample seam's
+    /// distinctly-named mock.)
+    let createInMemorySampleProxy () : SampleProxy =
+        let samples = SeedSamples.all
+        let tryFind (id : SampleId) : Sample option =
+            samples |> List.tryFind (fun s -> s.id = id)
+        let unknown (id : SampleId) : SampleError =
+            UnknownSampleId (sprintf "unknown sample id '%s'" (string id.value))
+        {
+            listSamples = fun () -> Ok samples
+            searchSamples =
+                fun q ->
+                    let byText =
+                        samples |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
+                    match q.substrate with
+                    | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
+                    | None -> Ok byText
+            tryGetSample = fun id -> Ok (tryFind id)
+            addSample =
+                fun sample ->
+                    validateSample sample
+                    |> Result.bind (fun () ->
+                        match tryFind sample.id with
+                        | Some existing ->
+                            Error (DuplicateSampleId (sprintf "sample id '%s' already names '%s'" (string sample.id.value) existing.name))
+                        | None -> Ok ())
+            updateSample =
+                fun sample ->
+                    validateSample sample
+                    |> Result.bind (fun () ->
+                        match tryFind sample.id with
+                        | Some _ -> Ok ()
+                        | None -> Error (unknown sample.id))
+            removeSample =
+                fun id ->
+                    match tryFind id with
+                    | Some _ -> Ok ()
+                    | None -> Error (unknown id)
         }
 
 /// Spec 0027 (028) — the Experiments domain, redesigned around a multi-step, EDITABLE experiment built
