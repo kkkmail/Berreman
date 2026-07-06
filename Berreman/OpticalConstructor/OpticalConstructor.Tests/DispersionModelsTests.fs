@@ -384,3 +384,163 @@ module DispersionModelsTests =
         for w in visibleGrid do
             let expected = Eps.fromComplexRefractionIndex (f w)
             Assert.True(epsClose 1e-8 (op.epsWithDisp.getEps w) expected, $"λ={w}")
+
+    // ----------------------------------------------------------------------
+    // AC-B6 (slice 012): ForouhiBloomer / BrendelBormann evaluate against
+    // documented reference values for one published coefficient set each
+    // (Forouhi & Bloomer 1986; Rakić et al. 1998 Au).
+    // ----------------------------------------------------------------------
+
+    /// The published Forouhi–Bloomer a-Si coefficient set (Horiba TN13, which
+    /// implements the 1986 five-parameter form and tabulates ε∞ = 3.453 —
+    /// hence n∞ = √ε∞ — A = 0.865 eV, B = 6.703 eV, C = 13.237 eV²,
+    /// Eg = 0.906 eV over 0.6–5 eV).
+    let private forouhiBloomerASi =
+        ForouhiBloomer
+            {
+                nInf = sqrt 3.453
+                a = 0.865
+                b = 6.703
+                c = 13.237
+                bandGap = 0.906
+                wavelengthUnit = ElectronVolt
+                thermoOptic = None
+            }
+
+    /// Rakić et al. 1998 (Appl. Opt. 37, 5271) Brendel–Bormann parameters for
+    /// gold — the set behind the refractiveindex.info Au/Rakic-BB entry.
+    let private brendelBormannGold =
+        BrendelBormann
+            {
+                plasmaFrequency = 9.03
+                intrabandStrength = 0.770
+                intrabandDamping = 0.050
+                strength = [ 0.054; 0.050; 0.312; 0.719; 1.648 ]
+                resonance = [ 0.218; 2.885; 4.069; 6.137; 27.97 ]
+                damping = [ 0.074; 0.035; 0.083; 0.125; 0.179 ]
+                broadening = [ 0.742; 0.349; 0.830; 1.246; 1.795 ]
+                wavelengthUnit = ElectronVolt
+                thermoOptic = None
+            }
+
+    [<Fact>]
+    let ``AC-B6 evaluate ForouhiBloomer reproduces the published a-Si reference values`` () =
+        // The TN13 note displays n = 3.182, k = 0.000 at E = 0.6 eV for this
+        // set (the closed form gives n(0.6) = 3.1818311; 0.6 eV sits below the
+        // gap, so the Θ ∝ (E − Eg)² step makes k exactly zero). Above the gap
+        // both branches are pinned by the published closed form: Q = √(4C−B²)/2
+        // = 1.4157852, B₀ = −2.4292240, C₀ = 14.1313281; at E = 3 eV the
+        // denominator is 9 − 3B + C = 2.128, so n = n∞ + (3B₀ + C₀)/2.128 =
+        // 5.0742287 and k = A·(3 − Eg)²/2.128 = 1.7823699.
+        let f = evaluate forouhiBloomerASi
+        let below = (f (toWaveLength ElectronVolt 0.6)).value
+        Assert.True(abs (below.Real - 3.182) <= 5e-4, $"n(0.6 eV) = {below.Real}, expected 3.182")
+        Assert.Equal(0.0, below.Imaginary)
+        let above = (f (toWaveLength ElectronVolt 3.0)).value
+        Assert.True(abs (above.Real - 5.0742287) <= 1e-6, $"n(3 eV) = {above.Real}, expected 5.0742287")
+        Assert.True(abs (above.Imaginary - 1.7823699) <= 1e-6, $"k(3 eV) = {above.Imaginary}, expected 1.7823699")
+
+    [<Fact>]
+    let ``AC-B6 evaluate BrendelBormann reproduces the Rakić 1998 gold reference values`` () =
+        // Expected n/k are the CC0 refractiveindex.info Au/Rakic-BB tabulation
+        // rows (quoted verbatim), computed from the same published parameter
+        // set. 2e-3 absolute covers the table's 5-significant-digit rounding
+        // of both λ and n/k plus the seam's evNmProduct vs the table's h·c
+        // (1.6e-6 relative).
+        let f = evaluate brendelBormannGold
+        let rows =
+            [
+                0.49712, 0.89849, 1.8312
+                0.62346, 0.20533, 3.1621
+                1.0129, 0.28761, 6.2718
+                2.0306, 0.86294, 12.953
+            ]
+        for lamUm, nExpected, kExpected in rows do
+            let got = (f (toWaveLength Micrometer lamUm)).value
+            Assert.True(abs (got.Real - nExpected) <= 2e-3, $"λ={lamUm}µm: n = {got.Real}, expected {nExpected}")
+            Assert.True(abs (got.Imaginary - kExpected) <= 2e-3, $"λ={lamUm}µm: k = {got.Imaginary}, expected {kExpected}")
+
+    [<Fact>]
+    let ``AC-B6 the BrendelBormann intraband part is the Drude free-carrier term`` () =
+        // With no oscillators the model is ε = 1 − f₀·ωp²/(E² + i·Γ₀·E) —
+        // exactly the existing Drude case with plasmaFrequency √f₀·ωp.
+        let bb =
+            BrendelBormann
+                {
+                    plasmaFrequency = 9.03
+                    intrabandStrength = 0.770
+                    intrabandDamping = 0.050
+                    strength = []
+                    resonance = []
+                    damping = []
+                    broadening = []
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        let drude =
+            Drude
+                {
+                    epsInf = 1.0
+                    plasmaFrequency = sqrt 0.770 * 9.03
+                    dampingFrequency = 0.050
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        let fBb = evaluate bb
+        let fDrude = evaluate drude
+        for w in visibleGrid do
+            Assert.True(closeC 1e-12 (fBb w).value (fDrude w).value, $"λ={w}")
+
+    [<Fact>]
+    let ``AC-B6 a narrow BrendelBormann oscillator collapses to the matching Lorentz oscillator`` () =
+        // σ → 0 turns the Gaussian superposition back into a single Lorentz
+        // oscillator with strength f·ωp²: χ → f·ωp²/(ω₀² − E² − i·Γ·E). The
+        // deviation is O(σ²), so σ = 1e-3 pins the Voigt closed form and the
+        // Faddeeva evaluation against the independently-implemented Lorentz
+        // case well below 1e-4.
+        let bb =
+            BrendelBormann
+                {
+                    plasmaFrequency = 5.0
+                    intrabandStrength = 0.0
+                    intrabandDamping = 0.06
+                    strength = [ 0.4 ]
+                    resonance = [ 3.1 ]
+                    damping = [ 0.35 ]
+                    broadening = [ 1.0e-3 ]
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        let lorentz =
+            Lorentz
+                {
+                    epsInf = 1.0
+                    strength = [ 0.4 * 5.0 * 5.0 ]
+                    resonance = [ 3.1 ]
+                    damping = [ 0.35 ]
+                    wavelengthUnit = ElectronVolt
+                    thermoOptic = None
+                }
+        let fBb = evaluate bb
+        let fLorentz = evaluate lorentz
+        for w in visibleGrid do
+            Assert.True(closeC 1e-4 (fBb w).value (fLorentz w).value, $"λ={w}: BB {(fBb w).value} vs Lorentz {(fLorentz w).value}")
+
+    [<Fact>]
+    let ``AC-B6 ForouhiBloomer and BrendelBormann are a typed lowering error and evaluate directly`` () =
+        // Slice 011's recorded route for non-finite-term models: `ComplexEps`
+        // carries pure term data and cannot hold a closure, so toEpsAxis
+        // surfaces the typed error and toOpticalProperties keeps both models
+        // fully working by wrapping `evaluate` in the engine EpsWithDisp
+        // closure.
+        for model in [ forouhiBloomerASi; brendelBormannGold ] do
+            Assert.Equal(ElectronVolt, wavelengthUnitOf model)
+            Assert.Equal(None, thermoOpticOf model)
+            match toEpsAxis model with
+            | Error (NotAFiniteTermSum _) -> ()
+            | other -> Assert.Fail($"expected Error (NotAFiniteTermSum _), got {other}")
+            let f = evaluate model
+            let op = toOpticalProperties model
+            for w in visibleGrid do
+                let expected = Eps.fromComplexRefractionIndex (f w)
+                Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")

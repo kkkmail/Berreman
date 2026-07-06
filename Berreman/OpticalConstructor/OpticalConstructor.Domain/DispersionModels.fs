@@ -107,6 +107,48 @@ module DispersionModels =
             thermoOptic : ThermoOptic option
         }
 
+    /// Forouhi–Bloomer five-parameter amorphous form (Forouhi & Bloomer,
+    /// Phys. Rev. B 34, 7018 (1986)): `k(E) = a·(E − bandGap)²/(E² − b·E + c)`
+    /// above the band gap and zero below it (the Θ ∝ (E − Eg)² density-of-states
+    /// factor), with the Kramers–Kronig closed form
+    /// `n(E) = nInf + (B₀·E + C₀)/(E² − b·E + c)` where `Q = √(4c − b²)/2`,
+    /// `B₀ = (a/Q)·(−b²/2 + bandGap·b − bandGap² + c)` and
+    /// `C₀ = (a/Q)·((bandGap² + c)·b/2 − 2·bandGap·c)`. The abscissa E is photon
+    /// energy, so `wavelengthUnit` is conventionally `ElectronVolt` (a, b in eV;
+    /// c in eV²).
+    type ForouhiBloomerCoefficients =
+        {
+            nInf : float
+            a : float
+            b : float
+            c : float
+            bandGap : float
+            wavelengthUnit : UnitOfMeasure
+            thermoOptic : ThermoOptic option
+        }
+
+    /// Brendel–Bormann Gaussian-broadened (Voigt) oscillator model (Rakić,
+    /// Djurišić, Elazar & Majewski, Appl. Opt. 37, 5271 (1998)):
+    /// `ε(E) = 1 − f₀·ωp²/(E² + i·Γ₀·E) + Σⱼ χⱼ(E)` with
+    /// `χⱼ(E) = i·√π·fⱼ·ωp²/(2·√2·αⱼ·σⱼ)·[w((αⱼ−ωⱼ)/(√2·σⱼ)) + w((αⱼ+ωⱼ)/(√2·σⱼ))]`,
+    /// `αⱼ = √(E² + i·Γⱼ·E)` (principal root) and `w` the Faddeeva function —
+    /// signs in this codebase's Im ε ≥ 0 (k ≥ 0) convention, like Lorentz/Drude.
+    /// The four per-oscillator lists (strength fⱼ, resonance ωⱼ, damping Γⱼ,
+    /// broadening σⱼ) run in step; the published model carries no ε∞ — the
+    /// constant term is 1. Oscillator models are conventionally in eV.
+    type BrendelBormannCoefficients =
+        {
+            plasmaFrequency : float
+            intrabandStrength : float
+            intrabandDamping : float
+            strength : float list
+            resonance : float list
+            damping : float list
+            broadening : float list
+            wavelengthUnit : UnitOfMeasure
+            thermoOptic : ThermoOptic option
+        }
+
     /// Constant complex index `n + ik` (no dispersion). Emitted as `EpsWithoutDisp`
     /// by `toOpticalProperties` so a non-dispersive entry incurs no closure overhead.
     type ConstantNKCoefficients =
@@ -130,6 +172,8 @@ module DispersionModels =
         | Drude of DrudeCoefficients
         | TaucLorentz of TaucLorentzCoefficients
         | GaussianOscillator of GaussianOscillatorCoefficients
+        | ForouhiBloomer of ForouhiBloomerCoefficients
+        | BrendelBormann of BrendelBormannCoefficients
         | ConstantNK of ConstantNKCoefficients
         | SumOfTerms of EpsAxisDispersion
 
@@ -145,6 +189,8 @@ module DispersionModels =
         | Drude c -> c.wavelengthUnit
         | TaucLorentz c -> c.wavelengthUnit
         | GaussianOscillator c -> c.wavelengthUnit
+        | ForouhiBloomer c -> c.wavelengthUnit
+        | BrendelBormann c -> c.wavelengthUnit
         | ConstantNK c -> c.wavelengthUnit
         | SumOfTerms _ -> Meter
 
@@ -159,8 +205,47 @@ module DispersionModels =
         | Drude c -> c.thermoOptic
         | TaucLorentz c -> c.thermoOptic
         | GaussianOscillator c -> c.thermoOptic
+        | ForouhiBloomer c -> c.thermoOptic
+        | BrendelBormann c -> c.thermoOptic
         | ConstantNK c -> c.thermoOptic
         | SumOfTerms _ -> None
+
+    /// Term count of the Faddeeva rational series below. Weideman shows N = 24
+    /// already reaches near-machine accuracy over the closed upper half plane.
+    let private faddeevaTermCount = 24
+
+    /// Weideman's optimal scale L = √(N/√2) for the Möbius map (L + iz)/(L − iz).
+    let private faddeevaScale = sqrt (float faddeevaTermCount / sqrt 2.0)
+
+    /// Coefficients a₁..a_N of Weideman's rational series for the Faddeeva
+    /// function (SIAM J. Numer. Anal. 31, 1497 (1994)): the cosine-transform
+    /// samples aₙ = (1/2M)·Σₖ f(θₖ)·cos(n·θₖ) of the even function
+    /// f(θ) = e^(−t²)·(L² + t²) under t = L·tan(θ/2), θₖ = kπ/M,
+    /// k = −M+1 .. M−1, M = 2N — computed once from the definition, not a
+    /// hand-copied table (f vanishes at θ = ±π, so those endpoints drop out).
+    let private faddeevaCoefficients : double array =
+        let m = 2 * faddeevaTermCount
+        let l = faddeevaScale
+        let samples =
+            [| for k in -m + 1 .. m - 1 ->
+                let theta = float k * System.Math.PI / float m
+                let t = l * tan (0.5 * theta)
+                theta, exp (-(t * t)) * (l * l + t * t) |]
+        [| for j in 1 .. faddeevaTermCount ->
+            (samples |> Array.sumBy (fun (theta, f) -> f * cos (float j * theta))) / float (2 * m) |]
+
+    /// The Faddeeva function w(z) = e^(−z²)·erfc(−i·z) for Im z ≥ 0 — the kernel
+    /// of the Brendel–Bormann Gaussian-broadened oscillator. Weideman's rational
+    /// series: with Z = (L + iz)/(L − iz),
+    /// w(z) = 2·(Σₙ aₙ·Zⁿ⁻¹)/(L − iz)² + (1/√π)/(L − iz). Every argument built in
+    /// `baseIndex` has Im ≥ 0 (α is the principal root of E² + i·Γ·E), so the
+    /// half-plane restriction is safe by construction.
+    let private faddeeva (z : Complex) : Complex =
+        let l = createComplex faddeevaScale 0.0
+        let iz = createComplex 0.0 1.0 * z
+        let ratio = (l + iz) / (l - iz)
+        let p = Array.foldBack (fun a acc -> acc * ratio + createComplex a 0.0) faddeevaCoefficients Complex.Zero
+        createComplex 2.0 0.0 * p / ((l - iz) * (l - iz)) + createComplex (1.0 / sqrt System.Math.PI) 0.0 / (l - iz)
 
     /// The isothermal complex index at the reference temperature: the analytic
     /// formula evaluated against the model's abscissa (λ for Sellmeier/Cauchy in
@@ -195,6 +280,27 @@ module DispersionModels =
         | GaussianOscillator c ->
             let d = (x - c.energy) / c.broadening
             Complex.Sqrt (Complex(c.epsInf, c.amplitude * exp (-(d * d))))
+        | ForouhiBloomer c ->
+            let q = 0.5 * sqrt (4.0 * c.c - c.b * c.b)
+            let b0 = c.a / q * (-0.5 * c.b * c.b + c.bandGap * c.b - c.bandGap * c.bandGap + c.c)
+            let c0 = c.a / q * (0.5 * c.b * (c.bandGap * c.bandGap + c.c) - 2.0 * c.bandGap * c.c)
+            let denominator = x * x - c.b * x + c.c
+            let n = c.nInf + (b0 * x + c0) / denominator
+            let k = if x > c.bandGap then c.a * (x - c.bandGap) * (x - c.bandGap) / denominator else 0.0
+            createComplex n k
+        | BrendelBormann c ->
+            let wp2 = c.plasmaFrequency * c.plasmaFrequency
+            let intraband = createComplex (c.intrabandStrength * wp2) 0.0 / Complex(x * x, c.intrabandDamping * x)
+            let oscillator (f : double) (r : double) (d : double) (s : double) : Complex =
+                let alpha = Complex.Sqrt (Complex(x * x, d * x))
+                let width = createComplex (sqrt 2.0 * s) 0.0
+                let za = (alpha - createComplex r 0.0) / width
+                let zb = (alpha + createComplex r 0.0) / width
+                createComplex 0.0 (sqrt System.Math.PI * f * wp2) / (createComplex 2.0 0.0 * alpha * width) * (faddeeva za + faddeeva zb)
+            let interband =
+                List.map2 (fun (f, r, d) s -> oscillator f r d s) (List.zip3 c.strength c.resonance c.damping) c.broadening
+                |> List.fold (+) Complex.Zero
+            Complex.Sqrt (Complex.One - intraband + interband)
         | ConstantNK c ->
             createComplex c.n c.k
         | SumOfTerms axis ->
@@ -335,9 +441,10 @@ module DispersionModels =
     /// Lorentz and Drude to `ComplexEps` inverse terms (complex is genuine — the
     /// damping); `SumOfTerms` to itself. Reciprocal-abscissa tabulations (eV,
     /// cm⁻¹ — the oscillator convention) substitute abscissa = k/x and stay exact
-    /// through `rationalXSquaredTerms`. TaucLorentz / GaussianOscillator are NOT
-    /// finite term sums — a typed error; they keep evaluating directly through
-    /// `evaluate`. The lowering is isothermal: like `evaluate`, it takes a `Some`
+    /// through `rationalXSquaredTerms`. TaucLorentz / GaussianOscillator /
+    /// ForouhiBloomer / BrendelBormann are NOT finite term sums (band-gap steps,
+    /// exp, the Faddeeva function) — a typed error; they keep evaluating directly
+    /// through `evaluate`. The lowering is isothermal: like `evaluate`, it takes a `Some`
     /// thermo-optic model at its reference temperature (Δn = 0); the operating
     /// temperature enters only at the `evaluateAt` boundary (§D.12).
     let toEpsAxis (model : DispersionModel) : Result<EpsAxisDispersion, EpsAxisLoweringError> =
@@ -405,6 +512,10 @@ module DispersionModels =
             Error (NotAFiniteTermSum "TaucLorentz is piecewise transcendental (band-gap step); it stays a named case evaluated directly")
         | GaussianOscillator _ ->
             Error (NotAFiniteTermSum "GaussianOscillator is transcendental (exp); it stays a named case evaluated directly")
+        | ForouhiBloomer _ ->
+            Error (NotAFiniteTermSum "ForouhiBloomer is piecewise (band-gap step in k) with a conjugate-pole rational n; it stays a named case evaluated directly")
+        | BrendelBormann _ ->
+            Error (NotAFiniteTermSum "BrendelBormann is transcendental (Faddeeva-function Voigt broadening); it stays a named case evaluated directly")
 
     /// Wrap an `EpsWithDisp` into an isotropic `OpticalPropertiesWithDisp` with the
     /// `Mu.vacuum`/`Rho.vacuum` dispersive defaults — mirroring `Silicon`'s record
