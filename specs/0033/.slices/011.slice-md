@@ -1,0 +1,11 @@
+# Step 011 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [8]
+```
+
+**How to implement.** In OpticalConstructor.Domain/DispersionModels.fs add a SumOfTerms escape-hatch case to DispersionModel (DispersionModels.fs:120) carrying a raw EpsAxisDispersion, and toEpsAxis : DispersionModel -> EpsAxisDispersion lowering each analytic case: Cauchy (coefficients at :51) to RealNK Laurent terms (A + B*x^-2 + C*x^-4, k = the zero formula); Sellmeier (:42) to RealNK using the identity that each oscillator is a constant B_i plus an inverse term with the n formula evaluating sqrt(1 + sum); ConstantNK (:109) to RealNK constants; Lorentz (:63) and Drude (:74) to ComplexEps inverse terms (complex is genuine - the damping); TaucLorentz (:85) and GaussianOscillator (:97) to ComplexEps wrapping evaluate (:206) as named transcendental cases (they are not finite term sums). Remove AnisotropicModel (:242) as superseded by EpsDispersiveValue, and re-point the toOpticalProperties (:228) / toAnisotropicOpticalProperties (:259) surface at EpsWithDispValue.toEpsWithDisp, keeping isotropicProperties (:216) as the single vacuum-mu/rho wrapper; update the existing consumers in OpticalConstructor.Tests/DispersionModelsTests.fs:62,70. Tests: for each analytic case, toEpsAxis complexIndex equals evaluate across a sampled wavelength grid within tolerance.
+
+**Acceptance.** After the step, for Sellmeier, Cauchy, ConstantNK, Lorentz and Drude the lowered EpsAxisDispersion.complexIndex MUST match DispersionModels.evaluate across a sampled wavelength grid within tolerance, and AnisotropicModel MUST no longer exist.

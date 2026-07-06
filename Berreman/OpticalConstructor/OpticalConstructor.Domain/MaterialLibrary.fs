@@ -6,6 +6,7 @@ open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalProperties.Dispersive
 open OpticalProperties.Standard
+open OpticalProperties.Active
 
 /// The searchable, categorised materials library aggregate (§D.8). A `MaterialEntry`
 /// pairs display metadata with the engine's `OpticalPropertiesWithDisp` (produced by
@@ -17,12 +18,14 @@ open OpticalProperties.Standard
 /// is re-derived here.
 module MaterialLibrary =
 
-    /// Material category for filtering (§D.8).
+    /// Material category for filtering (§D.8). `Vacuum` (spec 0033 step 001) categorises the
+    /// vacuum spacer entry the structural multilayer seeds reference.
     type MaterialCategory =
         | Glass
         | Metal
         | Semiconductor
         | Crystal
+        | Vacuum
 
     /// A library entry: a stable id (the `materialEntry` id, §A.7), a display name,
     /// a category, an optional description (mirroring the engine's `description`
@@ -66,10 +69,17 @@ module MaterialLibrary =
     /// `WaveLength` is REQUIRED because a dispersive entry has no single tensor until
     /// a wavelength is chosen. Unknown ids return `Error (UnknownMaterialId _)` — the
     /// function never throws. Slices 005/014 call THIS rather than rebuilding tensors.
-    let resolveMaterial (lib : MaterialLibrary) (id : string) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
+    /// The by-id DISPERSIVE material-resolution seam (spec 0033 step 001): the entry's
+    /// `OpticalPropertiesWithDisp` itself, unevaluated, for callers that resolve once and evaluate per
+    /// wavelength (`Propagation.resolveSampleMaterials`). Unknown ids return
+    /// `Error (UnknownMaterialId _)` — the function never throws.
+    let resolveMaterialWithDisp (lib : MaterialLibrary) (id : string) : Result<OpticalPropertiesWithDisp, MaterialError> =
         match lib.entries |> List.tryFind (fun e -> e.id = id) with
-        | Some e -> Ok (e.properties.getProperties w)
+        | Some e -> Ok e.properties
         | None -> Error (UnknownMaterialId id)
+
+    let resolveMaterial (lib : MaterialLibrary) (id : string) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
+        resolveMaterialWithDisp lib id |> Result.map (fun p -> p.getProperties w)
 
     /// Built-in entries (§D.8). Each wraps an existing engine preset as-is; none
     /// re-derives dispersion. `Silicon`/`Langasite` come from `Dispersive.fs:98,99`;
@@ -133,6 +143,38 @@ module MaterialLibrary =
                 category = Crystal
                 description = Some "Standard biaxial crystal preset."
                 properties = OpticalProperties.biaxialCrystal.dispersive
+            }
+            {
+                id = "vacuum"
+                name = "Vacuum"
+                category = Vacuum
+                description = Some "Vacuum (n = 1) — the spacer material of the structural multilayer stacks."
+                properties = OpticalProperties.vacuum.dispersive
+            }
+            {
+                id = "euv-molybdenum"
+                name = "Molybdenum (Mo, EUV)"
+                category = Metal
+                description = Some "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
+                properties = OpticalProperties.euvMolybdenum.dispersive
+            }
+            {
+                id = "euv-silicon"
+                name = "Silicon (Si, EUV)"
+                category = Semiconductor
+                description = Some "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
+                properties = OpticalProperties.euvSilicon.dispersive
+            }
+            {
+                id = "active-crystal"
+                name = "Active (gyrotropic) crystal"
+                category = Crystal
+                description = Some "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx)."
+                properties =
+                    (OpticalProperties.planarCrystal
+                        (RefractionIndex 2.315 |> EpsValue.fromRefractionIndex)
+                        (RefractionIndex 2.226 |> EpsValue.fromRefractionIndex)
+                        (RhoValue 1.5e-6)).dispersive
             }
         ]
 

@@ -83,7 +83,7 @@
         "name": { "type": "string", "description": "Display name." },
         "category": {
           "type": "string",
-          "enum": ["Glass", "Metal", "Semiconductor", "Crystal"],
+          "enum": ["Glass", "Metal", "Semiconductor", "Crystal", "Vacuum"],
           "description": "Material category for filtering (D.8)."
         },
         "description": { "type": "string", "description": "Optional human-readable description (A.7)." },

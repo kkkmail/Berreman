@@ -1,0 +1,11 @@
+# Step 018 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: [17]
+```
+
+**How to implement.** In the moved chart model add the second Y axis: ChartElement (formerly ExperimentChart.fs:152) distinguishes the left and right Y axes; ChartStyleState (:241) holds a second AxisStyle for the right axis with tri-state axis mutators (X, Y-left, Y-right); SeriesStyle (:229) gains an axis-side assignment (a two-case DU, left or right); dataBounds (:261) and defaultState (:281) compute independent per-axis Y bounds. In the moved ChartWindow, rebuildPlot (formerly ChartWindow.fs:178) assigns each scatter's Axes.YAxis to plot.Axes.Left or plot.Axes.Right (ScottPlot 5.1.59 native right axis, currently unused in the repo), and applyAxisLimits (:133), the axis format and font appliers, and setCartesianAxesVisible (:151) also drive plot.Axes.Right. The polar toggle stays hidden for non-angular charts (ExperimentChart.angular, :29); toCsv (:47) is unchanged. Model-level tests cover per-axis bounds and the left/right series assignment.
+
+**Acceptance.** After the step, a chart carrying one left-axis and one right-axis series MUST produce independent per-axis Y bounds in dataBounds/defaultState and assign each scatter to its side in rebuildPlot, with toCsv output unchanged.

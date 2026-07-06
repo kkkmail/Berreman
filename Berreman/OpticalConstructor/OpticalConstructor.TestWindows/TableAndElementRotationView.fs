@@ -1159,6 +1159,22 @@ let private runSampleOpt (model : Model) : Library.Sample option =
         | Some (Library.SampleItem s) -> Some s
         | _ -> None)
 
+/// The material library the host resolves sample structures against (the composition root's single
+/// library instance, spec 0033 step 001).
+let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.standard
+
+/// The bound sample resolved against the material library — resolved ONCE per run (spec 0033 step 001).
+/// `None` = no sample bound; `Some (Error _)` = the sample references an unknown material id, which the
+/// chart surfaces as its message (a typed error, never a fallback).
+let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSample, MaterialLibrary.MaterialError> option =
+    runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials materialLibrary)
+
+/// The human-readable message a failed sample-material resolution surfaces on the chart.
+let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
+    match err with
+    | MaterialLibrary.UnknownMaterialId id ->
+        sprintf "Cannot run: the sample references an unknown material id '%s'." id
+
 /// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
 /// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
 /// then reads the raw sample output, spec R1).
@@ -1186,13 +1202,13 @@ let private seriesName (m : Experiments.MeasurementMode) (branchTag : string) (b
     | Experiments.CaptureBoth -> sprintf "%s (%s)" baseName branchTag
     | _ -> baseName
 
-/// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound sample re-solved at
-/// the run wavelength / normal incidence on that branch, or — with NO sample — the identity MM for the
-/// transmitted branch (a transparent pass-through; the Malus law then holds exactly) and `None` for the
-/// reflected branch (there is nothing to reflect).
-let private rotateSampleMueller (model : Model) (branch : Propagation.Branch) : MuellerMatrix option =
+/// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound RESOLVED sample
+/// re-solved at the run wavelength / normal incidence on that branch, or — with NO sample — the identity
+/// MM for the transmitted branch (a transparent pass-through; the Malus law then holds exactly) and
+/// `None` for the reflected branch (there is nothing to reflect).
+let private rotateSampleMueller (model : Model) (sampleOpt : Propagation.ResolvedSample option) (branch : Propagation.Branch) : MuellerMatrix option =
     let w = runWaveLength model
-    match runSampleOpt model with
+    match sampleOpt with
     | Some s -> Some (Propagation.sampleMueller branch s w IncidenceAngle.normal)
     | None ->
         match branch with
@@ -1232,6 +1248,13 @@ let chartForParams
     (label : string) : ExperimentChart.ExperimentChart =
     if not (model.elements |> List.exists (fun e -> e.id = chosen)) then ExperimentChart.empty
     else
+    // Resolve the bound sample's materials ONCE per run (spec 0033 step 001); an unknown material id is
+    // a typed error the chart surfaces as its message — no series are computed from a fallback.
+    match runResolvedSampleOpt model with
+    | Some (Error err) ->
+        { ExperimentChart.empty with title = "Sample materials failed to resolve"; description = materialErrorText err }
+    | resolved ->
+        let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
         let svIn = runInputStokes model
         let w = runWaveLength model
         let detector = runDetectorKind model
@@ -1255,7 +1278,7 @@ let chartForParams
                 let seriesList =
                     branchesFor measurement
                     |> List.choose (fun (branch, tag) ->
-                        rotateSampleMueller model branch
+                        rotateSampleMueller model sampleOpt branch
                         |> Option.map (fun mm ->
                             let curve = Propagation.rotatingAnalyzerCurveRange svIn mm analyzerKind range.min range.max n
                             series (seriesName measurement tag "Intensity") curve.points))
@@ -1268,7 +1291,7 @@ let chartForParams
                     angular = true
                 }
         | Experiments.VaryR2 ->
-            match runSampleOpt model with
+            match sampleOpt with
             | Some sample ->
                 // The engine cannot solve exactly 90° incidence, so the top is clamped below it (drawn to 90).
                 let lo = max 0.0 (min range.min range.max)
@@ -1305,7 +1328,7 @@ let chartForParams
                     }
             | None -> ExperimentChart.empty
         | Experiments.VaryWaveLength ->
-            match runSampleOpt model with
+            match sampleOpt with
             | Some sample ->
                 let lo = min range.min range.max
                 let hi = max range.min range.max
@@ -1382,11 +1405,16 @@ let private experimentPsiDelta (model : Model) : (float * float) option =
     | Some chosen, Some Experiments.VaryR1 when model.elements |> List.exists (fun e -> e.id = chosen) ->
         match runDetectorKind model with
         | Library.Ellipsometer ->
-            let svIn = runInputStokes model
-            let branch = branchesFor draft.measurement |> List.head |> fst
-            let mm = rotateSampleMueller model branch |> Option.defaultValue Propagation.identityMueller
-            let pd = Propagation.ellipsometerReadout (mm * svIn)
-            Some (pd.psi.degrees, pd.delta.degrees)
+            // A failed material resolution yields no readout — the chart already carries the message.
+            match runResolvedSampleOpt model with
+            | Some (Error _) -> None
+            | resolved ->
+                let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
+                let svIn = runInputStokes model
+                let branch = branchesFor draft.measurement |> List.head |> fst
+                let mm = rotateSampleMueller model sampleOpt branch |> Option.defaultValue Propagation.identityMueller
+                let pd = Propagation.ellipsometerReadout (mm * svIn)
+                Some (pd.psi.degrees, pd.delta.degrees)
         | Library.Intensity -> None
     | _ -> None
 
@@ -1465,21 +1493,30 @@ let private stableHashStr (s : string) : int =
 let private bandPalette : string[] =
     [| "#1F77B4"; "#FF7F0E"; "#2CA02C"; "#D62728"; "#9467BD"; "#8C564B"; "#E377C2"; "#BCBD22" |]
 
-/// A curated `#RRGGBB` colour for a known band material name (mirrors `Schematic.curated`), else a stable
-/// palette slot from the name's hash. Pure and total.
-let private bandColorHex (material : string) : string =
-    match material with
-    | "Glass (n=1.52)" -> "#C8E1F5"
-    | "Glass (n=1.50)" -> "#CDE6FA"
-    | "Glass (n=1.75)" -> "#AACDEB"
-    | "Vacuum" -> "#F2F2F2"
-    | "Molybdenum (Mo)" -> "#5A5A6E"
-    | "Silicon (Si)" -> "#5A5A6E"
-    | "Langasite" -> "#78C8DC"
-    | "Uniaxial crystal" -> "#AFE1AF"
-    | "Biaxial crystal" -> "#96D296"
-    | "Active crystal" -> "#C8B4E6"
-    | _ -> bandPalette.[stableHashStr material % bandPalette.Length]
+/// A curated `#RRGGBB` colour for a known band material ID (mirrors `Schematic.curated`), else a stable
+/// palette slot from the id's hash. Keyed by the `MaterialLibrary` entry id — the same key the sample
+/// structure carries (spec 0033 step 001). Pure and total.
+let private bandColorHex (materialId : string) : string =
+    match materialId with
+    | "glass-1.52" -> "#C8E1F5"
+    | "glass-1.50" -> "#CDE6FA"
+    | "glass-1.75" -> "#AACDEB"
+    | "vacuum" -> "#F2F2F2"
+    | "euv-molybdenum" -> "#5A5A6E"
+    | "euv-silicon" | "silicon" -> "#5A5A6E"
+    | "langasite" -> "#78C8DC"
+    | "uniaxial-crystal" -> "#AFE1AF"
+    | "biaxial-crystal" -> "#96D296"
+    | "active-crystal" -> "#C8B4E6"
+    | _ -> bandPalette.[stableHashStr materialId % bandPalette.Length]
+
+/// The display name of a material id: the library entry's name, or the raw id when unknown (an unknown
+/// id still LABELS its band — running the sample is what surfaces the typed resolution error).
+let private materialDisplayName (materialId : string) : string =
+    materialLibrary.entries
+    |> List.tryFind (fun e -> e.id = materialId)
+    |> Option.map (fun e -> e.name)
+    |> Option.defaultValue materialId
 
 /// A band's thickness for the Details view — finite layers carry their thickness in metres; a half-space /
 /// plate carries none (drawn as "semi-infinite"). This keeps the engine's `Thickness` DU (which collides
@@ -1509,42 +1546,33 @@ let private bandWeight (t : BandThickness) : float =
         // log10 of nanometres, floored — a 1 nm layer ⇒ 0, a 1 µm layer ⇒ 3, a 1 mm layer ⇒ 6.
         max 0.1 (log10 (meters * 1.0e9))
 
-/// The thickness of a Library `Sample` as a `BandThickness` (via `Propagation.thicknessMeters`, so the
-/// engine `Thickness` DU never reaches this file).
-let private sampleBandThickness (sample : Library.Sample) : BandThickness =
-    match Propagation.thicknessMeters sample.thickness with
+/// The thickness of a sample-structure layer as a `BandThickness` (via `Propagation.thicknessMeters`,
+/// so the engine `Thickness` DU never reaches this file).
+let private layerBandThickness (layer : Library.SampleLayer) : BandThickness =
+    match Propagation.thicknessMeters layer.thickness with
     | Some m -> FiniteMeters m
     | None -> SemiInfinite
 
-/// The per-sample, material-labelled layer list for the band view (collapsed to repeating units): each band
-/// is (material name, thickness, repeat count). Keyed off the sample id so the labels match the seeded
-/// composition; the default thin-film / plate samples yield a single band of their resolved material.
+/// The material-labelled layer list for the band view, read STRAIGHT off the sample's structure (spec
+/// 0033 step 001 — no per-sample-id table): each band is (material id, thickness, repeat count). A
+/// `Repeated` period group stays collapsed (one "×N" band per cell layer), the substrate plate follows
+/// the films, and a non-vacuum lower half-space renders as a semi-infinite band.
 let private sampleBandSpecs (sample : Library.Sample) : (string * BandThickness * int) list =
-    let qwGlass = FiniteMeters ((600.0 / 1.52 / 4.0) * 1.0e-9)
-    let qwVacuum = FiniteMeters ((600.0 / 1.00 / 4.0) * 1.0e-9)
-    let euv = FiniteMeters (10.6 / 4.0 * 1.0e-9)
-    match sample.id with
-    | "sample-multilayer-qw" ->
-        [ "Glass (n=1.52)", qwGlass, 21
-          "Vacuum", qwVacuum, 20 ]
-    | "sample-euv-mosi" ->
-        [ "Molybdenum (Mo)", euv, 100
-          "Silicon (Si)", euv, 100 ]
-    | "sample-uniaxial" -> [ "Uniaxial crystal", sampleBandThickness sample, 1 ]
-    | "sample-biaxial" -> [ "Biaxial crystal", sampleBandThickness sample, 1 ]
-    | "sample-active-crystal" -> [ "Active crystal", sampleBandThickness sample, 1 ]
-    | "sample-langasite-silicon" ->
-        [ "Langasite", sampleBandThickness sample, 1
-          "Silicon (Si)", SemiInfinite, 1 ]
-    | "sample-glass-vacuum" -> [ "Glass (n=1.50)", sampleBandThickness sample, 1 ]
-    | _ ->
-        let material =
-            match sample.materialId with
-            | "glass-1.50" -> "Glass (n=1.50)"
-            | "glass-1.52" -> "Glass (n=1.52)"
-            | "glass-1.75" -> "Glass (n=1.75)"
-            | _ -> sample.name
-        [ material, sampleBandThickness sample, 1 ]
+    let filmBands =
+        sample.structure.films
+        |> List.collect (fun item ->
+            match item with
+            | Library.SingleLayer l -> [ l.materialId, layerBandThickness l, 1 ]
+            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId, layerBandThickness l, g.count))
+    let substrateBands =
+        match sample.structure.substrate with
+        | Some l -> [ l.materialId, layerBandThickness l, 1 ]
+        | None -> []
+    let lowerBands =
+        match sample.structure.lower with
+        | Some materialId -> [ materialId, SemiInfinite, 1 ]
+        | None -> []
+    filmBands @ substrateBands @ lowerBands
 
 /// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
 /// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
@@ -1557,12 +1585,12 @@ let private detailsState (model : Model) : LayerBandsControls.State =
         | Some (Library.SampleItem s) ->
             let bands =
                 sampleBandSpecs s
-                |> List.map (fun (material, thickness, count) ->
+                |> List.map (fun (materialId, thickness, count) ->
                     let countText = if count > 1 then sprintf " ×%d" count else ""
                     ({
-                        label = sprintf "%s — %s%s" material (bandThicknessLabel thickness) countText
+                        label = sprintf "%s — %s%s" (materialDisplayName materialId) (bandThicknessLabel thickness) countText
                         heightWeight = bandWeight thickness
-                        colorHex = bandColorHex material
+                        colorHex = bandColorHex materialId
                      } : LayerBandsControls.Band))
             ({ title = sprintf "%s — %s" s.name s.description; bands = bands } : LayerBandsControls.State)
         | Some entry ->

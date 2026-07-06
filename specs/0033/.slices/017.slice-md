@@ -1,0 +1,11 @@
+# Step 017 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.TestWindows, OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** REAL-MOVE the renderer-neutral chart model OpticalConstructor.TestWindows/ExperimentChart.fs (ExperimentChart :18, toCsv :47, ChartFontState :90, ChartElement :152, AxisStyle :199, SeriesStyle :229, ChartStyleState :241, dataBounds :261, defaultState :281) and the ScottPlot seam OpticalConstructor.TestWindows/ChartWindow.fs (rebuildPlot :178) into OpticalConstructor.Controls, changing their namespace and adding a ScottPlot.Avalonia 5.1.59 PackageReference to OpticalConstructor.Controls.fsproj (the same version both hosts already use: TestWindows fsproj:75, Ui fsproj:173). File-linking is NOT acceptable - it mints distinct type identities per assembly; this MUST be a real move plus project references. Re-point every TestWindows usage; reconcile OpticalConstructor.Ui/Charts/ChartSettings.fs onto the one shared model (re-point Ui, do not grow a third settings type). Both existing charts stay green.
+
+**Acceptance.** After the move, the chart model and window types MUST compile in OpticalConstructor.Controls with both hosts re-pointed, existing chart tests green, and no chart type left declared in TestWindows.

@@ -6,6 +6,10 @@ open Berreman.Constants
 open Berreman.Geometry
 open Berreman.Fields
 open Berreman.Media
+open Berreman.MaterialProperties
+open OpticalProperties.Standard
+open OpticalProperties.Active
+open OpticalProperties.Dispersive
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Propagation
@@ -109,15 +113,28 @@ module PropagationTests =
         {
             id = "sample-glass-1mm"
             name = "Glass plate (n=1.52, 1 mm)"
-            materialId = "glass-1.52"
-            thickness = Thickness.mm 1.0<mm>
+            structure =
+                {
+                    films = []
+                    substrate = Some { materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm> }
+                    lower = None
+                }
             substrate = Library.Plate
             description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
         }
 
+    /// Resolve a sample against the standard material library, failing the test on a typed error (every
+    /// sample used by these tests references known built-in ids).
+    let private resolveOrFail (s : Sample) : ResolvedSample =
+        match resolveSampleMaterials MaterialLibrary.standard s with
+        | Ok r -> r
+        | Error e -> failwith (sprintf "sample %s did not resolve: %A" s.id e)
+
+    let private glassResolved : ResolvedSample = resolveOrFail glassSample
+
     [<Fact>]
     let ``the engine sample Mueller matrix transmits at most the input intensity`` () =
-        let mm = sampleMuellerT glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let svOut = mm * unpolarizedStokes
         let out = s0 svOut
         // A physical transmittance: 0 < S0 ≤ 1 for unit unpolarized input.
@@ -146,7 +163,7 @@ module PropagationTests =
     [<Fact>]
     let ``ellipsometerReadout of a real sample is finite and in range`` () =
         let svIn = inputStokes IdealLinear (deg 45.0)
-        let mm = sampleMuellerT glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let pd = ellipsometerReadout (mm * svIn)
         Assert.False(Double.IsNaN pd.psi.degrees)
         Assert.False(Double.IsNaN pd.delta.degrees)
@@ -155,16 +172,10 @@ module PropagationTests =
 
     [<Fact>]
     let ``the multilayer sample maps to a real 41-film stack`` () =
-        let multilayer : Sample =
-            {
-                id = "sample-multilayer-qw"
-                name = "Quarter-wave glass/vacuum multilayer (41 layers)"
-                materialId = "glass-1.52"
-                thickness = Thickness.nm 100.0<nm>
-                substrate = Library.ThinFilm
-                description = "41-layer quarter-wave stack."
-            }
-        let system = sampleToSystem multilayer (WaveLength.nm 600.0<nm>)
+        let multilayer =
+            Library.seedEntries
+            |> List.pick (function SampleItem s when s.id = "sample-multilayer-qw" -> Some s | _ -> None)
+        let system = sampleToSystem (resolveOrFail multilayer) (WaveLength.nm 600.0<nm>)
         Assert.Equal(41, List.length system.films)
 
     // ============================ Spec 0027 (026) Part 1 — curated samples ============================
@@ -195,7 +206,7 @@ module PropagationTests =
     let ``every seeded sample maps to a finite, energy-conserving sample Mueller matrix`` () =
         for s in seededSamples do
             let w = runWaveLengthFor s
-            let mm = sampleMuellerT s w IncidenceAngle.normal
+            let mm = sampleMuellerT (resolveOrFail s) w IncidenceAngle.normal
             let out = s0 (mm * unpolarizedStokes)
             Assert.False(System.Double.IsNaN out, sprintf "%s produced NaN S0" s.id)
             Assert.False(System.Double.IsInfinity out, sprintf "%s produced infinite S0" s.id)
@@ -206,7 +217,7 @@ module PropagationTests =
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
         for s in seededSamples do
             let w = runWaveLengthFor s
-            let system = sampleToSystem s w
+            let system = sampleToSystem (resolveOrFail s) w
             match s.id with
             | "sample-multilayer-qw" -> Assert.Equal(41, List.length system.films)
             | "sample-euv-mosi" -> Assert.Equal(200, List.length system.films)
@@ -227,9 +238,10 @@ module PropagationTests =
 
     [<Fact>]
     let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
-        let langasite = seededSamples |> List.find (fun s -> s.id = "sample-langasite-silicon")
+        let langasite =
+            seededSamples |> List.find (fun s -> s.id = "sample-langasite-silicon") |> resolveOrFail
         // Silicon's dispersion makes the transmitted intensity wavelength-dependent; the dispersive seam
-        // (getSystem w v) is therefore actually being evaluated at the run wavelength.
+        // (getProperties w) is therefore actually being evaluated at the run wavelength.
         let i400 = s0 (sampleMuellerT langasite (WaveLength.nm 400.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
         let i800 = s0 (sampleMuellerT langasite (WaveLength.nm 800.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
         Assert.False(Double.IsNaN i400)
@@ -245,7 +257,7 @@ module PropagationTests =
     [<Fact>]
     let ``r2SweepCurve returns n points whose x runs 0..89 monotone with finite y`` () =
         let n = 31
-        let curve = r2SweepCurve BranchTransmitted linear45 glassSample (WaveLength.nm 600.0<nm>) None 0.0 r2SweepMaxDegrees n
+        let curve = r2SweepCurve BranchTransmitted linear45 glassResolved (WaveLength.nm 600.0<nm>) None 0.0 r2SweepMaxDegrees n
         Assert.Equal(n, List.length curve)
         let xs = curve |> List.map fst
         Assert.True(close 0.0 (List.head xs))
@@ -258,14 +270,14 @@ module PropagationTests =
 
     [<Fact>]
     let ``intensityThroughAnalyzerOpt None equals S0 of the raw sample output`` () =
-        let mm = sampleMuellerT glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let withNone = intensityThroughAnalyzerOpt linear45 mm None
         let direct = s0 (mm * linear45)
         Assert.True(close direct withNone)
 
     [<Fact>]
     let ``intensityThroughAnalyzerOpt Some passes through the analyzer Mueller matrix`` () =
-        let mm = sampleMuellerT glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let mm = sampleMuellerT glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let analyzer = Some (IdealLinear, deg 90.0)
         let withAnalyzer = intensityThroughAnalyzerOpt linear45 mm analyzer
         let expected = intensity (propagate linear45 mm (analyzerMueller IdealLinear (deg 90.0)))
@@ -274,7 +286,7 @@ module PropagationTests =
     [<Fact>]
     let ``waveLengthSweepIntensity spans the chosen range with finite y`` () =
         let n = 21
-        let curve = waveLengthSweepIntensity BranchTransmitted linear45 glassSample IncidenceAngle.normal None 200.0 800.0 n
+        let curve = waveLengthSweepIntensity BranchTransmitted linear45 glassResolved IncidenceAngle.normal None 200.0 800.0 n
         Assert.Equal(n, List.length curve)
         let xs = curve |> List.map fst
         Assert.True(close 200.0 (List.head xs))
@@ -285,7 +297,7 @@ module PropagationTests =
     [<Fact>]
     let ``r2SweepPsiDelta returns two equal-length Psi / Delta curves`` () =
         let n = 19
-        let psi, delta = r2SweepPsiDelta BranchTransmitted linear45 glassSample (WaveLength.nm 600.0<nm>) 0.0 r2SweepMaxDegrees n
+        let psi, delta = r2SweepPsiDelta BranchTransmitted linear45 glassResolved (WaveLength.nm 600.0<nm>) 0.0 r2SweepMaxDegrees n
         Assert.Equal(n, List.length psi)
         Assert.Equal(List.length psi, List.length delta)
         Assert.True(close 89.0 (List.last (psi |> List.map fst)))
@@ -293,7 +305,7 @@ module PropagationTests =
     [<Fact>]
     let ``waveLengthSweepPsiDelta returns two equal-length Psi / Delta curves over the range`` () =
         let n = 17
-        let psi, delta = waveLengthSweepPsiDelta BranchTransmitted linear45 glassSample IncidenceAngle.normal 300.0 700.0 n
+        let psi, delta = waveLengthSweepPsiDelta BranchTransmitted linear45 glassResolved IncidenceAngle.normal 300.0 700.0 n
         Assert.Equal(n, List.length psi)
         Assert.Equal(List.length psi, List.length delta)
         Assert.True(close 300.0 (List.head (psi |> List.map fst)))
@@ -303,7 +315,7 @@ module PropagationTests =
 
     [<Fact>]
     let ``sampleMuellerR reflects a physical (0 < S0 <= 1) intensity`` () =
-        let mm = sampleMuellerR glassSample (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
+        let mm = sampleMuellerR glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let out = s0 (mm * unpolarizedStokes)
         Assert.False(Double.IsNaN out)
         Assert.True(out >= -1.0e-9, sprintf "reflected S0 was negative: %g" out)
@@ -312,10 +324,10 @@ module PropagationTests =
     [<Fact>]
     let ``sampleMueller selects the transmitted vs reflected engine matrix by branch`` () =
         let w = WaveLength.nm 600.0<nm>
-        let byBranchT = sampleMueller BranchTransmitted glassSample w IncidenceAngle.normal
-        let byBranchR = sampleMueller BranchReflected glassSample w IncidenceAngle.normal
-        let t = sampleMuellerT glassSample w IncidenceAngle.normal
-        let r = sampleMuellerR glassSample w IncidenceAngle.normal
+        let byBranchT = sampleMueller BranchTransmitted glassResolved w IncidenceAngle.normal
+        let byBranchR = sampleMueller BranchReflected glassResolved w IncidenceAngle.normal
+        let t = sampleMuellerT glassResolved w IncidenceAngle.normal
+        let r = sampleMuellerR glassResolved w IncidenceAngle.normal
         // The branch selector agrees with the dedicated T / R helpers (same S0 for unpolarized input).
         Assert.True(close (s0 (byBranchT * unpolarizedStokes)) (s0 (t * unpolarizedStokes)))
         Assert.True(close (s0 (byBranchR * unpolarizedStokes)) (s0 (r * unpolarizedStokes)))
@@ -338,3 +350,124 @@ module PropagationTests =
         for ((xa, ya), (xb, yb)) in List.zip full.points range.points do
             Assert.True(close xa xb)
             Assert.True(close ya yb)
+
+    // ============================ Spec 0033 (001) — structural stacks, typed resolution ============================
+
+    [<Fact>]
+    let ``resolveSampleMaterials returns a typed Error for an unknown film material id`` () =
+        let sample : Sample =
+            { glassSample with
+                id = "sample-bad-film"
+                structure =
+                    {
+                        films = [ SingleLayer { materialId = "no-such-material"; thickness = Thickness.nm 100.0<nm> } ]
+                        substrate = None
+                        lower = None
+                    } }
+        match resolveSampleMaterials MaterialLibrary.standard sample with
+        | Error (MaterialLibrary.UnknownMaterialId id) -> Assert.Equal("no-such-material", id)
+        | other -> Assert.Fail(sprintf "expected UnknownMaterialId, got %A" other)
+
+    [<Fact>]
+    let ``resolveSampleMaterials returns a typed Error for an unknown lower half-space id`` () =
+        let sample : Sample =
+            { glassSample with
+                id = "sample-bad-lower"
+                structure =
+                    {
+                        films = [ SingleLayer { materialId = "glass-1.52"; thickness = Thickness.nm 100.0<nm> } ]
+                        substrate = None
+                        lower = Some "no-such-substrate"
+                    } }
+        match resolveSampleMaterials MaterialLibrary.standard sample with
+        | Error (MaterialLibrary.UnknownMaterialId id) -> Assert.Equal("no-such-substrate", id)
+        | other -> Assert.Fail(sprintf "expected UnknownMaterialId, got %A" other)
+
+    [<Fact>]
+    let ``every seeded sample resolves against the standard material library`` () =
+        for s in seededSamples do
+            match resolveSampleMaterials MaterialLibrary.standard s with
+            | Ok _ -> ()
+            | Error e -> Assert.Fail(sprintf "%s did not resolve: %A" s.id e)
+
+    /// The 41-layer λ/4 films exactly as the PRE-0033 hand-built branch constructed them.
+    let private legacyQwFilms : Layer list =
+        let thickness1 = Thickness.nm ((600.0 / 1.52 / 4.0) * oneNanometer)
+        let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * oneNanometer)
+        let pairs =
+            [ for _ in 1 .. 20 ->
+                [ { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
+                  { properties = OpticalProperties.vacuum; thickness = thickness2 } ] ]
+            |> List.concat
+        pairs @ [ { properties = OpticalProperties.transparentGlass; thickness = thickness1 } ]
+
+    /// The engine system the PRE-0033 `sampleToSystem` hand-built per sample id (replicated here
+    /// verbatim, descriptions dropped) — the acceptance harness the structurally-built systems must
+    /// match layer for layer, substrate for substrate, tensor for tensor.
+    let private legacyExpectedSystem (s : Sample) (w : WaveLength) : OpticalSystem =
+        let film (properties : OpticalProperties) (thickness : Thickness) : OpticalSystem =
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = [ { properties = properties; thickness = thickness } ]
+                substrate = None
+                lower = OpticalProperties.vacuum
+            }
+        let plate (properties : OpticalProperties) (thickness : Thickness) : OpticalSystem =
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = []
+                substrate = Some (Substrate.Plate { properties = properties; thickness = thickness })
+                lower = OpticalProperties.vacuum
+            }
+        match s.id with
+        | "sample-glass-1mm" -> plate OpticalProperties.transparentGlass (Thickness.mm 1.0<mm>)
+        | "sample-glass-2mm" -> plate OpticalProperties.transparentGlass (Thickness.mm 2.0<mm>)
+        | "sample-glass-film-600" -> film OpticalProperties.transparentGlass175 (Thickness.nm 600.0<nm>)
+        | "sample-glass-vacuum" -> plate OpticalProperties.transparentGlass150 (Thickness.mm 1.0<mm>)
+        | "sample-glass-film-200" -> film OpticalProperties.transparentGlass (Thickness.nm 200.0<nm>)
+        | "sample-multilayer-qw" ->
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = legacyQwFilms
+                substrate = None
+                lower = OpticalProperties.vacuum
+            }
+        | "sample-euv-mosi" ->
+            let thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
+            let films =
+                [ { properties = OpticalProperties.euvMolybdenum; thickness = thickness }
+                  { properties = OpticalProperties.euvSilicon; thickness = thickness } ]
+                |> List.replicate 100
+                |> List.concat
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = films
+                substrate = None
+                lower = OpticalProperties.vacuum
+            }
+        | "sample-uniaxial" -> film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
+        | "sample-biaxial" -> film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
+        | "sample-active-crystal" ->
+            let e11 = RefractionIndex 2.315 |> EpsValue.fromRefractionIndex
+            let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
+            plate (OpticalProperties.planarCrystal e11 e33 (RhoValue 1.5e-6)) Thickness.oneCentiMeter
+        | "sample-langasite-silicon" ->
+            {
+                description = None
+                upper = OpticalProperties.vacuum
+                films = [ { properties = langasiteOpticalProperties.getProperties w; thickness = Thickness.mm 0.01<mm> } ]
+                substrate = None
+                lower = siliconOpticalProperties.getProperties w
+            }
+        | other -> failwith (sprintf "no legacy expectation for sample id %s" other)
+
+    [<Fact>]
+    let ``every seeded sample's structurally-built system equals the previously hand-built system`` () =
+        for s in seededSamples do
+            let w = runWaveLengthFor s
+            let actual = sampleToSystem (resolveOrFail s) w
+            Assert.Equal<OpticalSystem>(legacyExpectedSystem s w, { actual with description = None })

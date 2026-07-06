@@ -92,7 +92,20 @@ module LibraryProxyTests =
         let cpR = PolarizerItem { id = "z"; name = "cpR"; kind = IdealCircularRight }
         let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm> }
         let det = DetectorItem { id = "d"; name = "d"; kind = Intensity }
-        let smp = SampleItem { id = "p"; name = "p"; materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm>; substrate = Plate; description = "a glass plate" }
+        let smp =
+            SampleItem
+                {
+                    id = "p"
+                    name = "p"
+                    structure =
+                        {
+                            films = []
+                            substrate = Some { materialId = "glass-1.52"; thickness = Thickness.mm 1.0<mm> }
+                            lower = None
+                        }
+                    substrate = Plate
+                    description = "a glass plate"
+                }
         Assert.Equal<CatalogueKind list>([ LinearPolarizer ], lp.forKinds)
         Assert.Equal<CatalogueKind list>([ CircularPolarizer ], cpL.forKinds)
         Assert.Equal<CatalogueKind list>([ CircularPolarizer ], cpR.forKinds)
@@ -123,6 +136,22 @@ module LibraryProxyTests =
         Assert.Contains("linear", lp.fullDescription)
         let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm> }
         Assert.Contains("500", src.fullDescription)
+
+    [<Fact>]
+    let ``expandedFilms mirrors RepeatBuilder.expand (count copies of the cell, order preserved)`` () =
+        // Spec 0033 step 001: a Repeated period group flattens to `count` copies of its cell, in cell
+        // order, before/after any single layers — the same `List.replicate count cell |> List.concat`
+        // shape as `RepeatBuilder.expand`.
+        let a = { materialId = "glass-1.52"; thickness = Thickness.nm 100.0<nm> }
+        let b = { materialId = "vacuum"; thickness = Thickness.nm 150.0<nm> }
+        let c = { materialId = "silicon"; thickness = Thickness.nm 25.0<nm> }
+        let structure =
+            {
+                films = [ Repeated { cell = [ a; b ]; count = 3 }; SingleLayer c ]
+                substrate = None
+                lower = None
+            }
+        Assert.Equal<SampleLayer list>([ a; b; a; b; a; b; c ], structure.expandedFilms)
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =

@@ -1,0 +1,11 @@
+# Step 014 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.TestWindows/TableAndElementRotationView.fs rename the element-binding bay: BayNames.library (TableAndElementRotationView.fs:150, value 'Library') becomes BayNames.selector with value 'Selector'; update BayNames.all (:156) and the mainBays row (:1582) plus any test references. The bay's behaviour - kind-constrained, confirm-gated binding through LibraryControls and the read-only LibraryProxy - is unchanged; LibraryControls and LibraryProxy keep their names (only the label frees the word Library for the samples workbench).
+
+**Acceptance.** After the rename, the ribbon MUST show a Selector tab with the unchanged confirm-gated binding behaviour and no bay labelled Library, verified by the headless UI tests.

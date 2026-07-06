@@ -1,0 +1,11 @@
+# Step 020 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [1, 2]
+```
+
+**How to implement.** In OpticalConstructor.Domain add CrystalOrientation = PrimaryAxes | EulerRotation of convention : RotationConvention * phi : Angle * theta : Angle * psi : Angle (RotationConvention at Geometry.fs:578, Rotation at :601) with member toRotation : Rotation - PrimaryAxes is the identity, EulerRotation builds Rotation.create convention phi theta psi (Geometry.fs:604); the named shortcuts rotatePiX / rotateHalfPiY (:616,622) remain available for tests. Give SampleLayer an orientation : CrystalOrientation field defaulting to PrimaryAxes, and apply it in the step-1 system builder via Layer.rotate (Media.fs:30) -> OpticalProperties.rotate (MaterialProperties.fs:187) for non-identity orientations - nothing is stored rotated (worked precedent: Analytics/Examples/ActiveCrystalComparison.fsx:136 rotates a plate system by rotateHalfPiY). Tests in OpticalConstructor.Tests: an EulerRotation layer's built system equals rotating the same layer directly; PrimaryAxes builds unrotated tensors.
+
+**Acceptance.** After the step, a uniaxial layer with an EulerRotation orientation MUST produce the same rotated tensors as applying Layer.rotate directly, and PrimaryAxes MUST leave tensors unrotated - verified in OpticalConstructor.Tests.

@@ -1,0 +1,16 @@
+# Step 015 — ADD_COMPONENT UICOMP_XDUO_0001 MaterialsControls
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0001
+name: MaterialsControls
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Controls
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Create OpticalConstructor.Controls/MaterialsControls.fs copying the domain-free LibraryControls shape (LibraryControls.fs:25,34,64,76: pure Row and State records, a Handlers record of unit-returning functions, one [<RequireQualifiedAccess>] module UiIds of [<Literal>] ids): a searchable materials list with a search box, category and dispersion facet selectors, and Add / Edit / Remove / View verbs. Stable intent-named ids: MaterialSearchBox, MaterialCategoryFilter, MaterialDispersionFilter, MaterialsList, AddMaterialButton, EditMaterialButton, RemoveMaterialButton, ViewMaterialButton. The control renders the rows it is given and never touches a proxy (the host flattens); rows for view-only entries (no edit model) carry no Edit affordance - removed, not greyed. Headless structure test in OpticalConstructor.Ui.Tests: mount the view over a known State, assert every UiIds control exists, and assert a simulated click dispatches the matching handler.
+
+**Acceptance.** After the step, the headless test MUST mount MaterialsControls over a known State, find every UiIds control, and observe that a simulated Add click invokes the add handler.

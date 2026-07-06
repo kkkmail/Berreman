@@ -1,0 +1,16 @@
+# Step 016 — ADD_COMPONENT UICOMP_XDUO_0002 SampleLibraryControls
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0002
+name: SampleLibraryControls
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Controls
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Create OpticalConstructor.Controls/SampleLibraryControls.fs with the same domain-free shape as step 15 (LibraryControls.fs:25,34,64,76 conventions) for the samples workbench: a searchable samples list with a search box and a substrate-kind facet selector, and Add / Edit / Remove / View verbs plus the multilayer entry point. Stable intent-named ids: SampleSearchBox, SampleSubstrateFilter, SamplesList, AddSampleButton, EditSampleButton, RemoveSampleButton, ViewSampleButton, MakeMultilayerButton. Headless structure test in OpticalConstructor.Ui.Tests mirroring step 15.
+
+**Acceptance.** After the step, the headless test MUST mount SampleLibraryControls over a known State, find every UiIds control, and observe that a simulated Add click invokes the add handler.

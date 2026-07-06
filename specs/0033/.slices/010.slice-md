@@ -1,0 +1,11 @@
+# Step 010 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [Berreman, BerremanTests]
+depends_on: [7]
+```
+
+**How to implement.** In Berreman/Berreman/Dispersion.fs add GyrationAxis = AlongX | AlongY | AlongZ (default AlongZ, the Faraday geometry; transverse = Voigt); PolderValue<'g> (muDiagonal : 'g, muParallel : 'g, gyration : 'g, axis : GyrationAxis) - ONE generic Polder record reused by both cases; ConstantMuValue = ScalarMu of MuValue | GyromagneticMu of PolderValue<MuValue> (MuValue at MaterialProperties.fs:101); and MuWithDispValue = MuWithDispValue of PolderValue<DispersionFormula> | MuWithoutDispValue of ConstantMuValue with member toMuWithDisp : MuWithDisp assembling the Polder tensor rows [mu, +i*g, 0], [-i*g, mu, 0], [0, 0, muParallel] permuted by axis through Mu.create (MaterialProperties.fs:112); ScalarMu builds mu times identity; the constant cases short-circuit to MuWithoutDisp. No solver work - the Berreman matrix already reads off-diagonal mu. BerremanTests: each axis produces the correctly permuted tensor; ScalarMu equals the scaled identity; a dispersive Polder value evaluated at a wavelength equals the constant assembly with the same magnitudes.
+
+**Acceptance.** After the step, MuWithDispValue.toMuWithDisp MUST produce the expected Polder tensor for all three axes and the scalar short-circuit, verified in BerremanTests.

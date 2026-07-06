@@ -1,0 +1,16 @@
+# Step 023 — ADD_COMPONENT UICOMP_XDUO_0004 MaterialEditorWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0004
+name: MaterialEditorWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.TestWindows
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Domain, OpticalConstructor.Ui.Tests]
+depends_on: [6, 13, 19]
+```
+
+**How to implement.** Create the Material editor window in OpticalConstructor.TestWindows over a pure MaterialComplexity edit model (an Avalonia-free message DU plus update function in OpticalConstructor.Domain, unit-tested without a window). Progressive-unlock ladder: the anisotropy 3-way choice (isotropic / uniaxial / biaxial selecting the ConstantEpsValue shape or EpsDispersiveValue flavor), the absorbing toggle (transparent vs absorbing constant cases), the dispersive toggle (ConstantEpsValue vs segment list), and the OPTIONAL optically-active and magnetic toggles - each unlock lifts exactly one aspect off its default and unchecking restores that default losslessly. Per-segment dispersion editor: wavelengthInterval bounds plus a DispersionModel picker including ForouhiBloomer, BrendelBormann and the raw SumOfTerms escape hatch, lowered via toEpsAxis. Symmetry-class gyration panel constrained by the anisotropy choice (isotropic offers cubic 23/432; uniaxial offers the diagonal two-component classes; biaxial offers 222/monoclinic/triclinic; a handedness switch; the activity toggle is REMOVED for non-rotating choices, not greyed). Polder-mu panel: scalar or gyromagnetic with the axis picker. The live preview embeds the step-19 dual-axis n/k chart; a negative k surfaces the advisory gain warning (the imaginaryIndexGainWarning rule, OpticalConstructor.Ui/Validation.fs:92). Save mints MaterialId.create for a new entry and calls MaterialProxy.addMaterial / updateMaterial, storing complexity = Some model with properties = toProperties; entries with complexity = None (silicon, langasite) are view-only and offer no Edit affordance. Stable UiIds: MaterialEditorWindow, MaterialNameBox, AnisotropyToggle, AbsorbingToggle, DispersiveToggle, ActiveToggle, MagneticToggle, GyrationClassPicker, HandednessSwitch, DispersionModelPicker, AddSegmentButton, MaterialEditorSaveButton, MaterialEditorCancelButton.
+
+**Acceptance.** After the step, headless tests MUST show: choosing biaxial exposes three principal-index fields, enabling activity on a uniaxial medium offers only the uniaxial gyration classes, unchecking a toggle restores the default model losslessly, and Save round-trips the entry through MaterialProxy with complexity = Some.

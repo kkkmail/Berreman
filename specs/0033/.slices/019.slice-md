@@ -1,0 +1,11 @@
+# Step 019 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [17, 18]
+```
+
+**How to implement.** REAL-MOVE the pure spectral-axis helpers axisLabel / spectralRange / axisTicks (OpticalConstructor.Ui/MaterialPreview.fs:18,31,40) into an OpticalConstructor.Domain module and re-point MaterialPreview (no duplication). Add an Analytics ProjectReference to OpticalConstructor.TestWindows.fsproj (today it references only Domain and Controls, fsproj:79,81) and build a pure nkDispersionChart builder in TestWindows: OpticalPropertiesWithDisp + display unit + range -> the shared ExperimentChart, with the n series (Analytics.Variables.calculateN11Re, Analytics/Variables.fs:321 - the builder behind plotN11Series, OpticalConstructor.Ui/Charts/SeriesData.fs:103) assigned to the LEFT axis and the k series (calculateXi11Im, behind plotXi11Series, SeriesData.fs:104) to the RIGHT, X axis from the moved spectral-axis helpers. Dispersive entries yield curves; non-dispersive entries yield flat lines through the same builder.
+
+**Acceptance.** After the step, nkDispersionChart over a dispersive entry MUST yield an ExperimentChart whose n series is assigned to the left axis and k series to the right, spanning the requested spectral range - verified by a headless model test.

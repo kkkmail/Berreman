@@ -1,0 +1,11 @@
+# Step 026 — WIRE_UI
+
+```step
+anchor: WIRE_UI
+touches: [OpticalConstructor.App, OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [24, 25]
+```
+
+**How to implement.** Finalize the composition root: MainConstructorWindow (OpticalConstructor.App/Program.fs:114-129) builds MaterialProxy.createInMemory (its samplesReferencing lookup backed by the SampleProxy store) and SampleProxy.createInMemory beside the existing library/experiments proxies (Program.fs:125-126) and injects all four through initMainWith; the launcher path is otherwise unchanged. Verify the whole surface headless: the ui-smoke suite renders one frame for the Selector, Materials and Library bays and both editor windows without throwing.
+
+**Acceptance.** After composition, launching the Main window MUST wire the four in-memory proxies at the root, and the ui-smoke suite MUST render the Selector, Materials and Library bays and both editor windows without throwing, with every test gate at or above its baseline count.

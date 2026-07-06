@@ -1,0 +1,11 @@
+# Step 021 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [20]
+```
+
+**How to implement.** Add a pure, Avalonia-free Domain edit model SampleStackEditor over SampleStructure, mirroring the message-DU discipline of StackEditor.StackMsg / applyStackMsg (OpticalConstructor.Ui/StackEditor.fs:161,176) but at the material-id level: a state record (structure : SampleStructure, selection : selected layer positions) and messages SelectLayer, SelectByMaterial of MaterialId, ClearSelection, SetThicknessOfSelected of Thickness, SetMaterialOfSelected of MaterialId, SetOrientationOfSelected of CrystalOrientation, RemoveSelected, MoveSelectedUp, MoveSelectedDown, MakeRepeatBlock of count : int (folds the selected contiguous layers into a PeriodGroup), SetRepeatCount of group position * int - rejecting count < 1 with a typed error (the same rule Validation.validateRepeatCount enforces at the Ui boundary, OpticalConstructor.Ui/Validation.fs:56). Editing a period's cell edits every repetition; changing the count adds or removes whole periods. This is DISTINCT from the untouched StackEditor.groupLayers (StackEditor.fs:69) - the existing OpticalSystem editor stays as-is. Every message arm is unit-tested without a window.
+
+**Acceptance.** After the step, MakeRepeatBlock over 2 selected layers with count K MUST yield a structure expanding to 2*K films, and SelectByMaterial followed by SetThicknessOfSelected MUST update exactly the matching layers - verified by pure unit tests.

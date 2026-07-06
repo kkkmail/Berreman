@@ -1,0 +1,11 @@
+# Step 002 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Storage, OpticalConstructor.Ui, OpticalConstructor.TestWindows, OpticalConstructor.Tests]
+depends_on: [1]
+```
+
+**How to implement.** Add MaterialId and SampleId as Guid-backed single-case DUs (a value member, a static create unit -> id minting Guid.NewGuid) in OpticalConstructor.Domain; re-type MaterialEntry.id (MaterialLibrary.fs:33), Sample.id (ElementId.fs:45), SampleLayer.materialId and SampleStructure.lower to the elevated ids. Seeds mint FIXED literal Guids (Guid.Parse of literal strings at seed construction) so tests and the grouping trees stay deterministic; LibraryEntry.entryId (ElementId.fs:100) returns the Guid string form so the Selector valueId binding seam is unchanged, and the seedTrees leaves reference the seeded samples programmatically instead of repeating literals. resolveMaterial (MaterialLibrary.fs:69) becomes a MaterialId lookup; relabel MaterialError.UnknownMaterialId (MaterialLibrary.fs:42-43) to carry reason : string. Update every construction/lookup site: the MaterialImport entry builders (OpticalConstructor.Storage/MaterialImport.fs:80,109,144), StackEditor.layerMaterialDrop (OpticalConstructor.Ui/StackEditor.fs:195), and the TestWindows host id literals. No legacy string-id path, no fallback, no migration.
+
+**Acceptance.** After the change, no domain record carries a raw string material/sample id (MaterialId / SampleId are the field types) and create-store-lookup round-trips by id MUST pass in OpticalConstructor.Tests.
