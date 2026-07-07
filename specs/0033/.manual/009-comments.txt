@@ -1,0 +1,6 @@
+When dispersive, then uniaxial and biaxial MUST show two or three dispersion formulas corresponding to the anisotropy.
+The models have many parameters. Some of the parameters have a dimension. The units of measure must be shown for 
+all parameters with the dimension. If it is a length based one, then nm is likely the standard unit of measure. Check that 
+AND convert to nm if the model that you’ve used uses other unit of measure.
+Sum of terms is not implemented at all. Implement it.
+Update the implementation log.
