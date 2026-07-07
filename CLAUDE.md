@@ -53,6 +53,17 @@ change; if your local build/tests are green, the matching gate is green too.
 **A green build is non-negotiable:** core projects compile with
 `--warnaserror+:25` (uninstantiated-generic warnings are errors).
 
+**Zero warnings from our code.** Every compiler warning that originates in *our*
+code must be cleared — not suppressed, not ignored. This covers F# warnings
+(`FS####`) and MSBuild warnings that stem from our project configuration or
+references — notably **`MSB3277`** (conflicting assembly versions, e.g. two
+`WindowsBase` versions): resolve the underlying reference conflict, do not leave
+it. The ONLY warnings exempt from this rule are NuGet advisories about
+third-party packages themselves, which are outside our control and tracked
+separately: **`NU1701`** (fallback-framework restore) and the vulnerability
+advisories **`NU1901` / `NU1902` / `NU1903` / `NU1904`**. Anything else is ours
+to fix.
+
 ---
 
 ## Project layout

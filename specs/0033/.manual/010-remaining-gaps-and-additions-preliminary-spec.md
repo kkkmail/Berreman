@@ -74,6 +74,15 @@ edit model + a `Handlers` record; behaviour is unit-tested in Domain, structure/
 
 3.5 **Interpolated strings, never `sprintf`** (the new CLAUDE.md rule).
 
+3.6 **Zero warnings from our code.** Every slice must leave the build free of any compiler warning
+originating in our code — F# `FS####` warnings and MSBuild warnings from our project configuration /
+references alike. In particular the **`MSB3277`** assembly-version conflict currently emitted by the
+Avalonia UI / App projects (two `WindowsBase` versions — the WPF `Microsoft.Web.WebView2.Wpf`
+assembly drags `WindowsBase` 5.0 into an app that does not use WPF) **MUST be sorted out** at the
+reference level (drop the unused WPF WebView2 reference or constrain the reference), not suppressed.
+The only exempt warnings are third-party NuGet advisories outside our control — **`NU1701`** and the
+vulnerability advisories **`NU1901` / `NU1902` / `NU1903` / `NU1904`**; everything else is ours to fix.
+
 ---
 
 ## 4. Categories — an open, editable, Guid-keyed set (G4 + G5)
@@ -292,6 +301,9 @@ Cosmetic; behaviour (the derived model) is unchanged.
 - **`…TestWindows/SampleEditorView.fs`** — searchable material picker; empty-sample guard; the seeded
   make-multilayer init path.
 - **`…App/Program.fs`** — build the mock `CategoryProxy` at the composition root.
+- **`…Ui/OpticalConstructor.Ui.fsproj` + `…App/OpticalConstructor.App.fsproj`** — resolve the
+  `MSB3277` `WindowsBase` version conflict (the WPF `Microsoft.Web.WebView2.Wpf` reference) so the
+  build is warning-clean (§3.6); and any residual `FS####` warnings across the touched files.
 - **Tests** — category proxy add / rename / remove-hard-block round-trips; create-picker excludes
   `HiddenOnCreate`; ribbon full-surface + reorder headless proofs; dispersive ρ/μ derive + seed
   round-trip; searchable sample picker; make-multilayer seed; empty-sample rejection.
@@ -333,6 +345,10 @@ Cosmetic; behaviour (the derived model) is unchanged.
 6. **Sample-editor polish** — searchable material picker; distinct seeded make-multilayer; empty-sample
    validation (update the two name-only tests).
 7. **Material-editor polish** — the two-option Constant / Dispersive control (update the toggle tests).
+8. **Warning cleanup** — resolve `MSB3277` (the `WindowsBase` / WPF-WebView2 conflict) and any
+   `FS####` warnings from the touched code, so the whole build is warning-clean per §3.6. (Each slice
+   above also leaves its own touched files warning-free; this final slice sweeps anything residual and
+   the cross-cutting reference conflict.)
 
 ---
 
