@@ -173,7 +173,7 @@
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
         <PackageReference Include="Plotly.NET" Version="5.1.0" />
         <PackageReference Include="OpenTK" Version="4.9.4" />
-        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     </ItemGroup>
 
     <ItemGroup>
