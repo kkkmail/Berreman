@@ -1,0 +1,1 @@
+Claim-check chunk 3/3 (.spec-md lines 322-336 = References section): all bullets are external URL citations with no assumption-shape phrases about existing repo artefacts; emitted empty claims array. Verified spec-md SHA matched expected 43eae68.
