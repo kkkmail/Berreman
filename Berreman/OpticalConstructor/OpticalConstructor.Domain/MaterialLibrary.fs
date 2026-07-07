@@ -547,3 +547,85 @@ module MaterialLibrary =
         if String.IsNullOrWhiteSpace entry.name
         then Error (InvalidMaterial $"material '%s{string entry.id.value}' has a blank name")
         else Ok ()
+
+    /// The real, stateful in-memory category store behind the write-seam (spec 0035 step 003 —
+    /// IMPLEMENT_CONTRACT STORE_XDUO_0003; replaces the step-002 declared mock). `createInMemory`
+    /// closes over a `ref` `Map<CategoryId, MaterialCategory>` seeded from `standardCategories` —
+    /// the elevated `CategoryId` is the Map key directly (the `SampleProxy` / `MaterialProxy`
+    /// `createInMemory` precedent, `ElementId.fs`). Mutation stays INSIDE the closure (the IO
+    /// boundary), so the logic holding the proxy stays pure: `listCategories` answers from the
+    /// current map; `addCategory` keeps the step-002 blank-name validation (`InvalidCategory`)
+    /// then hard-blocks an id the store already holds (`DuplicateCategoryId`); `updateCategory`
+    /// validates then replaces a known id and rejects an unknown one (`UnknownCategoryId`) —
+    /// built-ins ARE renamable, so there is no origin guard on update; `removeCategory` refuses a
+    /// `BuiltInCategory` outright (`BuiltInNotRemovable`) and, for a `UserCategory`, consults
+    /// `materialsReferencingCategory` and returns `CategoryStillReferenced` NAMING the referencing
+    /// materials whenever any remain — it never cascades and never silently deletes — else removes
+    /// it. Deterministic under test — every category carries its own id, no clock, no IO. (An
+    /// INTRINSIC augmentation staying in this file, mirroring `SampleProxy.createInMemory`: the
+    /// referencing lookup is `MaterialEntry`-typed and `MaterialEntry` compiles above, so — unlike
+    /// `MaterialProxy.createInMemory`, whose `Sample`-typed lookup forces it into `ElementId.fs` —
+    /// this store needs nothing declared later. At composition the lookup is
+    /// `materialsReferencingCategory` below, backed by the step-006 `MaterialProxy` store.)
+    type CategoryProxy with
+
+        static member createInMemory (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
+            let store = ref (standardCategories |> List.map (fun c -> c.id, c) |> Map.ofList)
+            let currentCategories () : MaterialCategory list =
+                store.Value |> Map.toList |> List.map snd
+            let unknown (id : CategoryId) : CategoryError =
+                UnknownCategoryId $"unknown category id '%s{string id.value}'"
+            {
+                listCategories = fun () -> Ok (currentCategories ())
+                addCategory =
+                    fun category ->
+                        validateCategory category
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind category.id with
+                            | Some existing ->
+                                Error (DuplicateCategoryId $"category id '%s{string category.id.value}' already names '%s{existing.name}'")
+                            | None ->
+                                store.Value <- store.Value |> Map.add category.id category
+                                Ok ())
+                updateCategory =
+                    fun category ->
+                        validateCategory category
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind category.id with
+                            | Some _ ->
+                                store.Value <- store.Value |> Map.add category.id category
+                                Ok ()
+                            | None -> Error (unknown category.id))
+                removeCategory =
+                    fun id ->
+                        match store.Value |> Map.tryFind id with
+                        | Some category ->
+                            match category.origin with
+                            | BuiltInCategory ->
+                                Error (BuiltInNotRemovable $"category '%s{category.name}' ('%s{string id.value}') ships with the app and cannot be removed")
+                            | UserCategory ->
+                                match materialsReferencingCategory id with
+                                | [] ->
+                                    store.Value <- store.Value |> Map.remove id
+                                    Ok ()
+                                | referencing ->
+                                    let names =
+                                        referencing
+                                        |> List.map (fun e -> $"'%s{e.name}'")
+                                        |> List.sort
+                                        |> String.concat ", "
+                                    Error (CategoryStillReferenced $"category '%s{category.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} material(s): %s{names}")
+                        | None -> Error (unknown id)
+            }
+
+    /// The composition-root referencing lookup for `CategoryProxy.createInMemory` (spec 0035 step
+    /// 003): every material entry the materials store currently holds whose `category` is the given
+    /// id. Backed by the LIVE step-006 `MaterialProxy` store (the `samplesReferencing` precedent,
+    /// `ElementId.fs`) — once the referencing materials are re-categorised or removed the category
+    /// becomes removable; there is no snapshot to refresh. The in-memory `listMaterials` is total
+    /// (always `Ok`); the signature carries no error channel, so a future store whose listing can
+    /// fail must supply its own conservative lookup instead of this one.
+    let materialsReferencingCategory (materials : MaterialProxy) (id : CategoryId) : MaterialEntry list =
+        match materials.listMaterials () with
+        | Ok all -> all |> List.filter (fun e -> e.category = id)
+        | Error _ -> []
