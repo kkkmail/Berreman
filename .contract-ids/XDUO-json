@@ -46,5 +46,29 @@
     "declaringProject": "OpticalConstructor.TestWindows",
     "status": "active",
     "formerNames": []
+  },
+  "STORE_XDUO_0003": {
+    "name": "CategoryProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0005": {
+    "name": "CategoryControls",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Controls",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0006": {
+    "name": "CategoryEditorWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.TestWindows",
+    "status": "active",
+    "formerNames": []
   }
 }
