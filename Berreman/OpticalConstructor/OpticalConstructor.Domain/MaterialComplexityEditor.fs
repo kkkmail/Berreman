@@ -73,6 +73,18 @@ type PrincipalAxisSlot =
     | SecondAxis
     | ThirdAxis
 
+/// One independent component of a symmetric gyration tensor (spec 0033 gap G9 —
+/// the missing per-component entry). Only the subset a class's point-group
+/// symmetry admits is ever exposed (see `gyrationComponents`); a free 3×3 is
+/// never offered (spec 0033 §0.4).
+type GyrationComponent =
+    | G11
+    | G22
+    | G33
+    | G12
+    | G13
+    | G23
+
 /// One dispersion segment under edit: the shared `wavelengthInterval` bounds
 /// plus one `DispersionModel` PER AXIS SLOT (so an existing per-axis segment
 /// tree seeds losslessly through the raw `SumOfTerms` escape hatch). The
@@ -138,11 +150,19 @@ type MaterialComplexityMsg =
     | AddSegment
     | RemoveSegment of segmentIndex : int
     | SetSegmentInterval of segmentIndex : int * WaveLengthInterval
-    /// Choose a segment's dispersion model (applied to every axis slot; a
+    /// Choose a segment's dispersion model KIND (applied to every axis slot; a
     /// same-kind re-pick keeps the current coefficients).
     | ChooseSegmentModel of segmentIndex : int * DispersionModel
+    /// Replace a segment's dispersion model UNCONDITIONALLY on every axis slot
+    /// (spec 0033 gap G7 — a coefficient edit rebuilds the model in place and
+    /// must NOT be discarded as a same-kind no-op the way `ChooseSegmentModel`
+    /// treats a re-pick).
+    | SetSegmentModel of segmentIndex : int * DispersionModel
     | SetActivity of ActivityChoice
     | ChooseGyrationClass of GyrationClass<RhoValue>
+    /// Set one symmetry-allowed component of the current gyration tensor
+    /// (spec 0033 gap G9 — the per-component entry).
+    | SetGyrationComponent of GyrationComponent * RhoValue
     | SetHandedness of Handedness
     | SetMagnetic of MagneticChoice
     | SetMuKind of MuKind
@@ -246,24 +266,63 @@ let defaultSegment : EditSegment =
         model3 = model
     }
 
-/// The gyration classes the anisotropy choice offers (spec Part F): the class
-/// picker is CONSTRAINED — isotropic media offer the cubic classes 23/432;
-/// uniaxial media the diagonal two-component classes (3/4/6 and 32/42/62 share
-/// the diag(g₁₁, g₁₁, g₃₃) form the engine's `UniaxialActive` carries); biaxial
-/// media the orthorhombic 222 / monoclinic / triclinic classes. Every offered
-/// class is rotation-producing (`GyrationClass` deliberately holds no other);
-/// were a choice to offer none, the activity toggle itself is REMOVED.
+/// The gyration classes the anisotropy choice offers (spec Part F; spec 0033
+/// gap G9). The optical-activity gyration tensor gᵢⱼ is a SYMMETRIC second-rank
+/// AXIAL (pseudo-)tensor; its independent components are fixed by the crystal's
+/// point group, and only the rotation-producing (enantiomorphic / gyrotropic)
+/// classes appear here — never a free 3×3 (spec 0033 §0.4). The optical
+/// anisotropy the editor already knows (isotropic / uniaxial / biaxial) is a
+/// direct read-off of the crystal SYSTEM, which in turn fixes which gyration
+/// forms are physically admissible, so the picker is CONSTRAINED by it:
+///
+///   • ISOTROPIC optics ⇐ CUBIC system. Classes 23 and 432 carry an isotropic
+///     gyration g·I (diag(g, g, g)) → `CubicActive`.
+///
+///   • UNIAXIAL optics ⇐ TETRAGONAL / TRIGONAL / HEXAGONAL systems. The
+///     enantiomorphic classes 3, 32, 4, 422, 6, 622 all carry the diagonal form
+///     diag(g₁₁, g₁₁, g₃₃) → `UniaxialActive` (the engine's `type_3_4_6_Crystal`
+///     builder; quartz, class 32, is the worked example — g₁₁ ≈ +5.9×10⁻⁵,
+///     g₃₃ ≈ −10.1×10⁻⁵ at 24 °C).
+///
+///   • BIAXIAL optics ⇐ ORTHORHOMBIC / MONOCLINIC / TRICLINIC systems:
+///       – 222 (orthorhombic)  → diag(g₁₁, g₂₂, g₃₃)               → `Orthorhombic222`
+///       – mm2 (orthorhombic)  → a single off-diagonal g₁₂          → `PlanarActive`
+///       – 2   (monoclinic)    → g₁₁, g₂₂, g₃₃, g₁₃                 → `Monoclinic2`
+///       – m   (monoclinic)    → g₁₂, g₂₃                          → `MonoclinicM`
+///       – 1   (triclinic)     → the full symmetric tensor (6 comp) → `Triclinic1`
+///
+/// spec 0033 gap G9: `PlanarActive` (class mm2) was previously offered by NO
+/// anisotropy and was therefore unreachable, even though the seeded "Active
+/// (gyrotropic) crystal" built-in uses it (with a biaxial-transparent eps —
+/// `MaterialLibrary.fs`); mm2 is orthorhombic, hence optically BIAXIAL, so it
+/// belongs on the biaxial list, which also makes that built-in round-trip
+/// through `ofComplexity`/`toComplexity` instead of snapping to another class.
+///
+/// Every offered class is rotation-producing (`GyrationClass` deliberately holds
+/// no centrosymmetric / non-gyrotropic case); were a choice to offer none, the
+/// activity toggle itself is REMOVED (spec Part F — remove, don't grey).
+///
+/// References (gyration-tensor forms by point group):
+///   • J. F. Nye, *Physical Properties of Crystals* (Oxford, 1985), Ch. XIV
+///     (canonical gyration-tensor forms by class).
+///   • "Optical activity of time-invariant crystals" — tensor forms by
+///     point-group family, arXiv:2501.03684 (https://arxiv.org/abs/2501.03684).
+///   • International Tables for Crystallography, Vol. A, §3.2 (point groups;
+///     enantiomorphic enumeration).
+///   • Quartz gyration (class 32): *Appl. Opt.* 48(28), 5307 (2009)
+///     (https://opg.optica.org/ao/abstract.cfm?uri=ao-48-28-5307).
 let availableGyrationClasses (anisotropy : Anisotropy) : GyrationClass<RhoValue> list =
     let g = defaultGyrationComponent
     match anisotropy with
-    | Isotropic -> [ CubicActive g ]
-    | Uniaxial -> [ UniaxialActive { g11 = g; g33 = g } ]
+    | Isotropic -> [ CubicActive g ]                                  // cubic 23 / 432
+    | Uniaxial -> [ UniaxialActive { g11 = g; g33 = g } ]             // trig / tet / hex 3,32,4,422,6,622
     | Biaxial ->
         [
-            Orthorhombic222 { g11 = g; g22 = g; g33 = g }
-            Monoclinic2 { g11 = g; g22 = g; g33 = g; g13 = g }
-            MonoclinicM { g12 = g; g23 = g }
-            Triclinic1 { g11 = g; g22 = g; g33 = g; g23 = g; g13 = g; g12 = g }
+            Orthorhombic222 { g11 = g; g22 = g; g33 = g }             // orthorhombic 222
+            PlanarActive g                                           // orthorhombic mm2 (single g₁₂)
+            Monoclinic2 { g11 = g; g22 = g; g33 = g; g13 = g }        // monoclinic 2
+            MonoclinicM { g12 = g; g23 = g }                          // monoclinic m
+            Triclinic1 { g11 = g; g22 = g; g33 = g; g23 = g; g13 = g; g12 = g }  // triclinic 1
         ]
 
 /// A picker-stable code for a gyration CLASS (component values do not change
@@ -283,11 +342,91 @@ let gyrationClassLabel (gyration : GyrationClass<'g>) : string =
     match gyration with
     | CubicActive _ -> "Cubic 23 / 432"
     | UniaxialActive _ -> "Uniaxial 3 / 4 / 6 (g₁₁, g₃₃)"
-    | PlanarActive _ -> "Planar (g₁₂)"
+    | PlanarActive _ -> "Planar mm2 (g₁₂)"
     | Orthorhombic222 _ -> "Orthorhombic 222"
     | Monoclinic2 _ -> "Monoclinic 2"
     | MonoclinicM _ -> "Monoclinic m"
     | Triclinic1 _ -> "Triclinic 1"
+
+/// A picker-stable code for a gyration component (the derived automation-id key).
+let gyrationComponentCode (comp : GyrationComponent) : string =
+    match comp with
+    | G11 -> "g11"
+    | G22 -> "g22"
+    | G33 -> "g33"
+    | G12 -> "g12"
+    | G13 -> "g13"
+    | G23 -> "g23"
+
+/// A human label for a gyration component (the entry-box caption).
+let gyrationComponentLabel (comp : GyrationComponent) : string =
+    match comp with
+    | G11 -> "g₁₁"
+    | G22 -> "g₂₂"
+    | G33 -> "g₃₃"
+    | G12 -> "g₁₂"
+    | G13 -> "g₁₃"
+    | G23 -> "g₂₃"
+
+/// The editable components of a gyration class, IN DISPLAY ORDER, paired with
+/// their current value. Exactly the components the class's symmetry admits
+/// appear — one for the single-valued cubic/planar forms, two for uniaxial /
+/// monoclinic-m, and up to the full six for triclinic (spec 0033 gap G9).
+let gyrationComponents (gyration : GyrationClass<RhoValue>) : (GyrationComponent * RhoValue) list =
+    match gyration with
+    | CubicActive g -> [ (G11, g) ]
+    | UniaxialActive u -> [ (G11, u.g11); (G33, u.g33) ]
+    | PlanarActive g12 -> [ (G12, g12) ]
+    | Orthorhombic222 o -> [ (G11, o.g11); (G22, o.g22); (G33, o.g33) ]
+    | Monoclinic2 m -> [ (G11, m.g11); (G22, m.g22); (G33, m.g33); (G13, m.g13) ]
+    | MonoclinicM m -> [ (G12, m.g12); (G23, m.g23) ]
+    | Triclinic1 t -> [ (G11, t.g11); (G22, t.g22); (G33, t.g33); (G13, t.g13); (G23, t.g23); (G12, t.g12) ]
+
+/// Set ONE component of the gyration tensor to `value`, keeping the class and
+/// its other components. A component the class does not carry is a no-op — the
+/// symmetry forbids it and the picker never offers it (spec 0033 gap G9).
+let setGyrationComponent (comp : GyrationComponent) (value : RhoValue) (gyration : GyrationClass<RhoValue>) : GyrationClass<RhoValue> =
+    match gyration with
+    | CubicActive _ ->
+        match comp with
+        | G11 -> CubicActive value
+        | _ -> gyration
+    | UniaxialActive u ->
+        match comp with
+        | G11 -> UniaxialActive { u with g11 = value }
+        | G33 -> UniaxialActive { u with g33 = value }
+        | _ -> gyration
+    | PlanarActive _ ->
+        match comp with
+        | G12 -> PlanarActive value
+        | _ -> gyration
+    | Orthorhombic222 o ->
+        match comp with
+        | G11 -> Orthorhombic222 { o with g11 = value }
+        | G22 -> Orthorhombic222 { o with g22 = value }
+        | G33 -> Orthorhombic222 { o with g33 = value }
+        | _ -> gyration
+    | Monoclinic2 m ->
+        match comp with
+        | G11 -> Monoclinic2 { m with g11 = value }
+        | G22 -> Monoclinic2 { m with g22 = value }
+        | G33 -> Monoclinic2 { m with g33 = value }
+        | G13 -> Monoclinic2 { m with g13 = value }
+        | _ -> gyration
+    | MonoclinicM m ->
+        match comp with
+        | G12 -> MonoclinicM { m with g12 = value }
+        | G23 -> MonoclinicM { m with g23 = value }
+        | _ -> gyration
+    | Triclinic1 t ->
+        // Triclinic 1 carries all six components — the match is exhaustive.
+        match comp with
+        | G11 -> Triclinic1 { t with g11 = value }
+        | G22 -> Triclinic1 { t with g22 = value }
+        | G33 -> Triclinic1 { t with g33 = value }
+        | G13 -> Triclinic1 { t with g13 = value }
+        | G23 -> Triclinic1 { t with g23 = value }
+        | G12 -> Triclinic1 { t with g12 = value }
 
 /// The default edit state — the ladder's ground floor: transparent, isotropic,
 /// non-dispersive, no optional aspect unlocked; every facet pre-seeded so any
@@ -409,12 +548,21 @@ let applyMaterialComplexityMsg
                 if modelKindCode seg.model1 = modelKindCode model then seg
                 else { seg with model1 = model; model2 = model; model3 = model }
             { state with segments = mapSegment segmentIndex pick state.segments })
+    | SetSegmentModel (segmentIndex, model) ->
+        // A coefficient edit (spec 0033 gap G7): store the rebuilt model on
+        // every axis slot verbatim — no same-kind short-circuit, so the new
+        // coefficients survive.
+        checkSegmentIndex segmentIndex state.segments
+        |> Result.map (fun () ->
+            { state with segments = mapSegment segmentIndex (fun seg -> { seg with model1 = model; model2 = model; model3 = model }) state.segments })
     | SetActivity ActivityOn -> Ok { state with activity = ActivityOn; gyration = snapGyration state.anisotropy state.gyration }
     | SetActivity ActivityOff -> Ok { state with activity = ActivityOff }
     | ChooseGyrationClass gyration ->
         // A same-class re-pick keeps the current components.
         if gyrationClassCode gyration = gyrationClassCode state.gyration then Ok state
         else Ok { state with gyration = gyration }
+    | SetGyrationComponent (comp, value) ->
+        Ok { state with gyration = setGyrationComponent comp value state.gyration }
     | SetHandedness hand -> Ok { state with hand = hand }
     | SetMagnetic magnetic -> Ok { state with magnetic = magnetic }
     | SetMuKind muKind -> Ok { state with muKind = muKind }

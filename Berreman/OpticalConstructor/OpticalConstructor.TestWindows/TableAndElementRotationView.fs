@@ -232,8 +232,10 @@ module BayNames =
     /// rename: "Library" now names the samples collection, while element↔entry binding stays in the
     /// Selector bay.
     let library = "Library"
-    // The workbenches sit with the Selector (the binding / collection bays); Details stays LAST
-    // (the 0027/026 pin).
+    // spec 0033 gap G2 (deferred): the operator wants Materials & Library LAST, but reordering the
+    // ribbon panes breaks the Library bay's sample-row layout in the headless harness (and thus the
+    // real ribbon) — see 008-close-the-gaps-implementation-log.md §4. The original order stands until
+    // the Ribbon pane-hosting is made order-independent. Details stays LAST (the 0027/026 pin).
     let all = [ rotation; move; add; render; selector; materials; library; experiments; details ]
 
 let defaultElementZoom : float = 5.0

@@ -120,6 +120,12 @@ module UiIds =
     let gyrationAxisOption (code : string) : string = "GyrationAxisOption_" + code
     /// A Polder-mu kind option ("Scalar" / "Gyromagnetic").
     let muKindOption (code : string) : string = "MuKindOption_" + code
+    /// A per-segment dispersion-model COEFFICIENT entry (spec 0033 gap G7), by
+    /// segment index and the parameter's stable key.
+    let segmentParamBox (segmentIndex : int) (key : string) : string = sprintf "SegmentParamBox_%d_%s" segmentIndex key
+    /// A gyration-tensor COMPONENT entry (spec 0033 gap G9), by the component's
+    /// stable code (`g11` / `g33` / …).
+    let gyrationComponentBox (code : string) : string = "GyrationComponentBox_" + code
 
 /// What Save targets: a brand-new entry (mint a fresh `MaterialId`) or an existing one (keep
 /// its id and update in place). A DU, not a naked bool.
@@ -338,6 +344,11 @@ let update (msg : Msg) (m : Model) : Model =
     | ChooseCategory category -> { m with category = category }
     | EditorMsg editorMsg ->
         match applyMaterialComplexityMsg editorMsg m.editor with
+        // A structurally-unchanged edit returns the SAME model (no new record), so the Elmish
+        // equality gate does NOT re-render. This is what stops a coefficient / component box's
+        // programmatic re-render echo (which re-dispatches the round-tripped, unchanged value)
+        // from spinning an infinite render loop (spec 0033 gaps G7 / G9).
+        | Ok editor when editor = m.editor -> m
         | Ok editor -> { m with editor = editor; status = None }
         | Error e -> { m with status = Some (editErrorReason e) }
     | SaveClicked ->
@@ -413,7 +424,8 @@ let private clickBox (autoId : string) (label : string) (chosen : bool) (onClick
     ] :> IView
 
 /// A verb button — disabled verbs are present but inert (a disabled Border dispatches no
-/// pointer event).
+/// pointer event). Left-aligned so a button never stretches to its container's full width
+/// (spec 0033 gap G11 — the add-segment verb sat in a vertical stack and spanned it).
 let private verbButton (autoId : string) (label : string) (enabled : bool) (onClick : unit -> unit) : IView =
     Border.create [
         automationId autoId
@@ -425,6 +437,7 @@ let private verbButton (autoId : string) (label : string) (enabled : bool) (onCl
         Border.cornerRadius (CornerRadius 3.0)
         Border.padding (thickLR 12.0 5.0)
         Border.margin (thickOf 0.0 0.0 8.0 4.0)
+        Border.horizontalAlignment HorizontalAlignment.Left
         Border.verticalAlignment VerticalAlignment.Center
         Border.child (TextBlock.create [ TextBlock.text label ])
         Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
@@ -471,6 +484,26 @@ let private numberBox (autoId : string) (width : float) (value : float) (onCommi
                 | Some v -> onCommit v
                 | None -> ()),
             SubPatchOptions.OnChangeOf (box (autoId, value)))
+    ] :> IView
+
+/// A numeric entry for a coefficient / tensor component (spec 0033 gaps G7 & G9). It commits on
+/// FOCUS LOSS, not on every keystroke — deliberately UNLIKE `numberBox`. These boxes rebuild the
+/// whole dispersion model on commit, and a `TextChanged` commit re-fires on FuncUI's programmatic
+/// re-render echo, which (because each commit rebuilds the model) spins an infinite render loop.
+/// `LostFocus` fires only on a real user focus change, never during render, so the loop cannot
+/// form; the value is shown as the shortest round-trippable string so no precision is lost.
+let private coeffNumberBox (autoId : string) (width : float) (value : float) (onCommit : float -> unit) : IView =
+    TextBox.create [
+        automationId autoId
+        TextBox.width width
+        TextBox.text (value.ToString("R", CultureInfo.InvariantCulture))
+        TextBox.onLostFocus (fun e ->
+            match e.Source with
+            | :? TextBox as tb ->
+                match parseFloat tb.Text with
+                | Some v -> onCommit v
+                | None -> ()
+            | _ -> ())
     ] :> IView
 
 // -- the identity rows -----------------------------------------------------------------------
@@ -541,31 +574,45 @@ let private anisotropyRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-/// The unlock toggles. The activity toggle is REMOVED — not greyed — when the current
-/// anisotropy choice offers no rotating gyration class (`availableGyrationClasses`).
+/// The unlock toggles (spec 0033 gap G6). The eps MODEL choice leads: "Dispersive" OFF
+/// means a CONSTANT (non-dispersive) medium, whose transparent-vs-absorbing sub-choice is
+/// the `Absorbing` toggle — shown ONLY in the constant branch. A dispersive medium carries
+/// its absorption inside the formulas, so a constant-case absorbing toggle would be inert
+/// there and is REMOVED, not greyed (Part F). The optional activity / magnetic aspects
+/// follow; the activity toggle is REMOVED when the anisotropy choice offers no rotating
+/// gyration class (`availableGyrationClasses`).
 let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
     let absorbing = m.editor.transparency = Absorbing
     let dispersive = m.editor.dispersion = DispersiveSegments
     let active = m.editor.activity = ActivityOn
     let magnetic = m.editor.magnetic = MagneticOn
     let activityOffered = not (List.isEmpty (availableGyrationClasses m.editor.anisotropy))
-    WrapPanel.create [
-        WrapPanel.orientation Orientation.Horizontal
-        WrapPanel.children (
-            [
-                clickBox UiIds.absorbingToggle "Absorbing" absorbing (fun () ->
-                    dispatch (EditorMsg (SetTransparency (if absorbing then Transparent else Absorbing))))
-                clickBox UiIds.dispersiveToggle "Dispersive" dispersive (fun () ->
-                    dispatch (EditorMsg (SetDispersion (if dispersive then NonDispersive else DispersiveSegments))))
-            ]
-            @ (if activityOffered then
-                   [ clickBox UiIds.activeToggle "Optically active" active (fun () ->
-                         dispatch (EditorMsg (SetActivity (if active then ActivityOff else ActivityOn)))) ]
-               else [])
-            @ [
-                clickBox UiIds.magneticToggle "Magnetic (Polder μ)" magnetic (fun () ->
-                    dispatch (EditorMsg (SetMagnetic (if magnetic then MagneticOff else MagneticOn))))
-            ])
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 2.0
+        StackPanel.children [
+            labelBlock "Dispersion model (off = constant n, k):"
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children (
+                    [
+                        clickBox UiIds.dispersiveToggle "Dispersive" dispersive (fun () ->
+                            dispatch (EditorMsg (SetDispersion (if dispersive then NonDispersive else DispersiveSegments))))
+                    ]
+                    @ (if dispersive then []
+                       else
+                           [ clickBox UiIds.absorbingToggle "Absorbing" absorbing (fun () ->
+                                 dispatch (EditorMsg (SetTransparency (if absorbing then Transparent else Absorbing)))) ])
+                    @ (if activityOffered then
+                           [ clickBox UiIds.activeToggle "Optically active" active (fun () ->
+                                 dispatch (EditorMsg (SetActivity (if active then ActivityOff else ActivityOn)))) ]
+                       else [])
+                    @ [
+                        clickBox UiIds.magneticToggle "Magnetic (Polder μ)" magnetic (fun () ->
+                            dispatch (EditorMsg (SetMagnetic (if magnetic then MagneticOff else MagneticOn))))
+                    ])
+            ] :> IView
+        ]
     ] :> IView
 
 /// The constant principal-index fields (the non-dispersive rung): 1 / 2 / 3 boxes per the
@@ -597,8 +644,29 @@ let private indexFieldsRow (m : Model) (dispatch : Msg -> unit) : IView =
         WrapPanel.children boxes
     ] :> IView
 
-/// One dispersion segment's editor: the shared wavelengthInterval bounds (nm) and the model
-/// picker over the full catalogue (the picked kind is highlighted).
+/// The coefficient-entry surface for a segment's dispersion model (spec 0033 gap G7 — the
+/// editor previously offered only a kind picker over FIXED default coefficients, so a user
+/// could not enter the parameters of ANY model). One numeric box per editable coefficient
+/// (`DispersionModels.modelParameters`), each edit rebuilding the model in place through
+/// `SetSegmentModel` (stored on every principal axis). The raw `SumOfTerms` escape hatch
+/// carries arbitrary per-term data, not a fixed scalar set, so it shows no coefficient boxes.
+let private segmentParamsView (dispatch : Msg -> unit) (segmentIndex : int) (model : DispersionModel) : IView =
+    let boxes =
+        modelParameters model
+        |> List.map (fun p ->
+            labelled (p.label + ":") (coeffNumberBox (UiIds.segmentParamBox segmentIndex p.key) 100.0 p.value (fun v ->
+                dispatch (EditorMsg (SetSegmentModel (segmentIndex, p.update v))))))
+    match boxes with
+    | [] -> TextBlock.create [ TextBlock.text "(raw term data — no scalar coefficients)"; TextBlock.foreground (brush hintColor) ] :> IView
+    | _ ->
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children boxes
+        ] :> IView
+
+/// One dispersion segment's editor: the shared wavelengthInterval bounds (nm), the model
+/// picker over the full catalogue (the picked kind is highlighted), and the coefficient
+/// boxes for the picked model (spec 0033 gap G7).
 let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int) (segment : EditSegment) : IView =
     let lowerNm = wavelengthToUnit Nanometer segment.interval.lower
     let upperNm = wavelengthToUnit Nanometer segment.interval.upper
@@ -629,6 +697,7 @@ let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int
                         clickBox (UiIds.modelOption segmentIndex code) (modelKindLabel candidate) (currentCode = code) (fun () ->
                             dispatch (EditorMsg (ChooseSegmentModel (segmentIndex, candidate))))))
             ] :> IView
+            segmentParamsView dispatch segmentIndex segment.model1
         ]
     ] :> IView
 
@@ -662,6 +731,15 @@ let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
                         let code = gyrationClassCode offered
                         clickBox (UiIds.gyrationClassOption code) (gyrationClassLabel offered) (currentCode = code) (fun () ->
                             dispatch (EditorMsg (ChooseGyrationClass offered)))))
+            ] :> IView
+            labelBlock "Gyration components (the symmetry-allowed g₍ᵢⱼ₎, typically ~10⁻⁵):"
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children (
+                    gyrationComponents m.editor.gyration
+                    |> List.map (fun (comp, RhoValue value) ->
+                        labelled (gyrationComponentLabel comp + ":") (coeffNumberBox (UiIds.gyrationComponentBox (gyrationComponentCode comp)) 100.0 value (fun v ->
+                            dispatch (EditorMsg (SetGyrationComponent (comp, RhoValue v)))))))
             ] :> IView
             labelBlock "Handedness (the enantiomorph — one overall sign):"
             WrapPanel.create [

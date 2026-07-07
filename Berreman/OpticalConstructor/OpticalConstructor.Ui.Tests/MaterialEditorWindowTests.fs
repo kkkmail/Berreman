@@ -265,8 +265,10 @@ module MaterialEditorWindowTests =
     let ``availableGyrationClasses is constrained by the anisotropy choice`` () =
         Assert.Equal<string list>([ "Cubic" ], availableGyrationClasses Isotropic |> List.map gyrationClassCode)
         Assert.Equal<string list>([ "Uniaxial" ], availableGyrationClasses Uniaxial |> List.map gyrationClassCode)
+        // spec 0033 gap G9: biaxial optics ⇐ orthorhombic (222 AND mm2/Planar) / monoclinic /
+        // triclinic. `Planar` (mm2) was previously unreachable from every anisotropy.
         Assert.Equal<string list>(
-            [ "Orthorhombic222"; "Monoclinic2"; "MonoclinicM"; "Triclinic1" ],
+            [ "Orthorhombic222"; "Planar"; "Monoclinic2"; "MonoclinicM"; "Triclinic1" ],
             availableGyrationClasses Biaxial |> List.map gyrationClassCode)
 
     [<Fact>]
@@ -286,6 +288,58 @@ module MaterialEditorWindowTests =
         match (derived left).active with
         | Some (RhoWithoutDispValue g) -> Assert.Equal(LeftHanded, g.hand)
         | other -> Assert.Fail(sprintf "expected a constant gyration rho, got %A" other)
+
+    [<Fact>]
+    let ``spec 0033 G9: SetGyrationComponent edits a symmetry-allowed component, others are no-ops`` () =
+        // A uniaxial active medium's class carries exactly g11 and g33.
+        let st = applied [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
+        Assert.Equal<string list>([ "g11"; "g33" ], gyrationComponents st.gyration |> List.map (fst >> gyrationComponentCode))
+        // Editing g33 changes only g33; g11 is untouched.
+        let edited = applyOk (SetGyrationComponent (G33, RhoValue 7.0e-5)) st
+        match edited.gyration with
+        | UniaxialActive u ->
+            Assert.Equal<RhoValue>(defaultGyrationComponent, u.g11)
+            Assert.Equal<RhoValue>(RhoValue 7.0e-5, u.g33)
+        | other -> Assert.Fail(sprintf "expected UniaxialActive, got %A" other)
+        // A component the class's symmetry does not admit is a no-op.
+        let noop = applyOk (SetGyrationComponent (G12, RhoValue 1.0)) st
+        Assert.Equal(st.gyration, noop.gyration)
+
+    [<Fact>]
+    let ``spec 0033 G9: PlanarActive (mm2) is reachable under biaxial and round-trips`` () =
+        // The seeded active crystal is biaxial + PlanarActive; it must derive (and thus be
+        // editable, not view-only) now that mm2 is offered under biaxial.
+        let st = applied [ ChooseAnisotropy Biaxial; SetActivity ActivityOn; ChooseGyrationClass (PlanarActive (RhoValue 1.5e-6)) ]
+        Assert.Equal("Planar", gyrationClassCode st.gyration)
+        match (derived st).active with
+        | Some (RhoWithoutDispValue g) ->
+            match g.gyration with
+            | PlanarActive (RhoValue v) -> Assert.Equal(1.5e-6, v)
+            | other -> Assert.Fail(sprintf "expected PlanarActive, got %A" other)
+        | other -> Assert.Fail(sprintf "expected a constant gyration rho, got %A" other)
+
+    [<Fact>]
+    let ``spec 0033 G7: SetSegmentModel stores new coefficients verbatim where a same-kind re-pick would not`` () =
+        let st = applied [ SetDispersion DispersiveSegments ]
+        let ninefold = ConstantNK { n = 9.0; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
+        // A same-kind ChooseSegmentModel keeps the segment's current (default) coefficients…
+        let repick = applyOk (ChooseSegmentModel (0, ninefold)) st
+        // …so a coefficient edit must use SetSegmentModel, which applies them verbatim.
+        let edited = applyOk (SetSegmentModel (0, ninefold)) st
+        match (List.head repick.segments).model1, (List.head edited.segments).model1 with
+        | ConstantNK a, ConstantNK b ->
+            Assert.Equal(defaultIndexValue, a.n)
+            Assert.Equal(9.0, b.n)
+        | other -> Assert.Fail(sprintf "expected ConstantNK segments, got %A" other)
+
+    [<Fact>]
+    let ``spec 0033 G7: modelParameters exposes and rebuilds each editable coefficient`` () =
+        let model = ConstantNK { n = 1.5; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
+        let ps = modelParameters model
+        Assert.Equal<string list>([ "n"; "k" ], ps |> List.map (fun p -> p.key))
+        match (ps |> List.find (fun p -> p.key = "n")).update 2.7 with
+        | ConstantNK c -> Assert.Equal(2.7, c.n)
+        | other -> Assert.Fail(sprintf "expected ConstantNK, got %A" other)
 
     [<Fact>]
     let ``the magnetic unlock derives scalar and gyromagnetic Polder mu with the axis`` () =

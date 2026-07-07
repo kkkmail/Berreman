@@ -46,6 +46,8 @@ module LayerBandsControlsTests =
 
     [<Fact>]
     let ``the ribbon offers the Details bay LAST, after Experiments`` () =
+        // [spec 0033 gap G2 reorder deferred — reordering the ribbon panes breaks the Library bay's
+        // sample-row layout in the headless harness; see the implementation log.]
         Assert.Equal(BayNames.details, List.last BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore

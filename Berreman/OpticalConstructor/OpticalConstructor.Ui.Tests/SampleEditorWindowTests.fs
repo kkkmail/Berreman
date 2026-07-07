@@ -503,7 +503,7 @@ module SampleEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the QWOT entry derives the read-only canonical-metres thickness and Set thickness applies it`` () =
+    let ``the QWOT entry derives the read-only thickness in nanometres and Set thickness applies it`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
             let window = SampleEditorWindow(materials, samples, None)
@@ -513,8 +513,9 @@ module SampleEditorWindowTests =
             clickOn window UiIds.addLayerButton
             clickOn window (UiIds.layerRow 0)
             setText window UiIds.qwotEntryBox "600"
-            // t = λ/(4n) = 600/(4·1.52) nm, shown read-only in canonical metres.
-            Assert.Equal(sprintf "%g m" (600.0 / (4.0 * 1.52) * 1.0e-9), textOf window UiIds.qwotDerivedText)
+            // t = λ/(4n) = 600/(4·1.52) nm, shown read-only in DISPLAY nanometres (spec 0033
+            // gap G14.1 — no longer raw metres) though stored canonical-SI.
+            Assert.Equal(sprintf "%g nm" (600.0 / (4.0 * 1.52)), textOf window UiIds.qwotDerivedText)
             clickOn window UiIds.setLayerHeightButton
             Assert.Equal(sprintf "%g nm" (600.0 / (4.0 * 1.52)), textOf window (UiIds.layerThickness 0))
             window.Close())

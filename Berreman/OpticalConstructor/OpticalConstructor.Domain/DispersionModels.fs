@@ -210,6 +210,95 @@ module DispersionModels =
         | ConstantNK c -> c.thermoOptic
         | SumOfTerms _ -> None
 
+    /// One editable scalar coefficient of a dispersion model (spec 0033 gap G7 —
+    /// the parameter-entry surface the editor lacked). `update` rebuilds the WHOLE
+    /// model with this one coefficient replaced, so the editor can dispatch it
+    /// straight back as the segment's new model. A list-valued coefficient
+    /// contributes ONE `ModelParameter` per element, its `key`/`label` carrying
+    /// the 1-based index. This is a transient UI descriptor (a record of
+    /// functions), never stored or serialized.
+    type ModelParameter =
+        {
+            key : string
+            label : string
+            value : float
+            update : float -> DispersionModel
+        }
+
+    /// Replace the i-th element of a list (identity when i is out of range).
+    let private replaceAt (i : int) (v : 'a) (xs : 'a list) : 'a list =
+        xs |> List.mapi (fun j x -> if j = i then v else x)
+
+    /// The editable scalar coefficients of a model, in display order (spec 0033
+    /// gap G7). Every analytic model exposes its full scalar parameter set and one
+    /// box per oscillator-list element; the raw `SumOfTerms` escape hatch carries
+    /// arbitrary per-term data rather than a fixed scalar set, so it has none.
+    let modelParameters (model : DispersionModel) : ModelParameter list =
+        let p (key : string) (label : string) (value : float) (update : float -> DispersionModel) : ModelParameter =
+            { key = key; label = label; value = value; update = update }
+        let listParams (name : string) (label : string) (xs : float list) (rebuild : float list -> DispersionModel) : ModelParameter list =
+            xs |> List.mapi (fun i x -> p (sprintf "%s%d" name i) (sprintf "%s%d" label (i + 1)) x (fun v -> rebuild (replaceAt i v xs)))
+        match model with
+        | ConstantNK c ->
+            [
+                p "n" "n" c.n (fun v -> ConstantNK { c with n = v })
+                p "k" "k" c.k (fun v -> ConstantNK { c with k = v })
+            ]
+        | Cauchy c ->
+            [
+                p "a" "A" c.a (fun v -> Cauchy { c with a = v })
+                p "b" "B" c.b (fun v -> Cauchy { c with b = v })
+                p "c" "C" c.c (fun v -> Cauchy { c with c = v })
+            ]
+        | Sellmeier c ->
+            listParams "b" "B" c.b (fun xs -> Sellmeier { c with b = xs })
+            @ listParams "c" "C" c.c (fun xs -> Sellmeier { c with c = xs })
+        | Lorentz c ->
+            [ p "epsInf" "eInf" c.epsInf (fun v -> Lorentz { c with epsInf = v }) ]
+            @ listParams "s" "s" c.strength (fun xs -> Lorentz { c with strength = xs })
+            @ listParams "r" "E" c.resonance (fun xs -> Lorentz { c with resonance = xs })
+            @ listParams "d" "G" c.damping (fun xs -> Lorentz { c with damping = xs })
+        | Drude c ->
+            [
+                p "epsInf" "eInf" c.epsInf (fun v -> Drude { c with epsInf = v })
+                p "wp" "wp" c.plasmaFrequency (fun v -> Drude { c with plasmaFrequency = v })
+                p "gamma" "gamma" c.dampingFrequency (fun v -> Drude { c with dampingFrequency = v })
+            ]
+        | TaucLorentz c ->
+            [
+                p "epsInf" "eInf" c.epsInf (fun v -> TaucLorentz { c with epsInf = v })
+                p "amp" "A" c.amplitude (fun v -> TaucLorentz { c with amplitude = v })
+                p "res" "E0" c.resonance (fun v -> TaucLorentz { c with resonance = v })
+                p "br" "C" c.broadening (fun v -> TaucLorentz { c with broadening = v })
+                p "eg" "Eg" c.bandGap (fun v -> TaucLorentz { c with bandGap = v })
+            ]
+        | GaussianOscillator c ->
+            [
+                p "epsInf" "eInf" c.epsInf (fun v -> GaussianOscillator { c with epsInf = v })
+                p "amp" "A" c.amplitude (fun v -> GaussianOscillator { c with amplitude = v })
+                p "en" "E0" c.energy (fun v -> GaussianOscillator { c with energy = v })
+                p "br" "sigma" c.broadening (fun v -> GaussianOscillator { c with broadening = v })
+            ]
+        | ForouhiBloomer c ->
+            [
+                p "nInf" "nInf" c.nInf (fun v -> ForouhiBloomer { c with nInf = v })
+                p "a" "A" c.a (fun v -> ForouhiBloomer { c with a = v })
+                p "b" "B" c.b (fun v -> ForouhiBloomer { c with b = v })
+                p "c" "C" c.c (fun v -> ForouhiBloomer { c with c = v })
+                p "eg" "Eg" c.bandGap (fun v -> ForouhiBloomer { c with bandGap = v })
+            ]
+        | BrendelBormann c ->
+            [
+                p "wp" "wp" c.plasmaFrequency (fun v -> BrendelBormann { c with plasmaFrequency = v })
+                p "f0" "f0" c.intrabandStrength (fun v -> BrendelBormann { c with intrabandStrength = v })
+                p "g0" "G0" c.intrabandDamping (fun v -> BrendelBormann { c with intrabandDamping = v })
+            ]
+            @ listParams "f" "f" c.strength (fun xs -> BrendelBormann { c with strength = xs })
+            @ listParams "w" "w" c.resonance (fun xs -> BrendelBormann { c with resonance = xs })
+            @ listParams "g" "G" c.damping (fun xs -> BrendelBormann { c with damping = xs })
+            @ listParams "sig" "sigma" c.broadening (fun xs -> BrendelBormann { c with broadening = xs })
+        | SumOfTerms _ -> []
+
     /// Term count of the Faddeeva rational series below. Weideman shows N = 24
     /// already reaches near-machine accuracy over the closed upper half plane.
     let private faddeevaTermCount = 24

@@ -85,6 +85,19 @@ module UiIds =
     let qwotDerivedText = "QwotDerivedText"
     [<Literal>]
     let filmsCount = "SampleFilmsCount"
+    // Substrate / lower half-space surfaces (spec 0033 gap G12).
+    [<Literal>]
+    let substrateSummary = "SampleSubstrateSummary"
+    [<Literal>]
+    let lowerSummary = "SampleLowerSummary"
+    [<Literal>]
+    let setSubstrateButton = "SetSubstrateButton"
+    [<Literal>]
+    let clearSubstrateButton = "ClearSubstrateButton"
+    [<Literal>]
+    let setLowerButton = "SetLowerButton"
+    [<Literal>]
+    let clearLowerButton = "ClearLowerButton"
     [<Literal>]
     let statusText = "SampleEditorStatus"
     [<Literal>]
@@ -198,6 +211,14 @@ type Msg =
     | MakeRepeatBlockClicked
     /// A group's inline stepper: resize the `Repeated` group at a films index by whole periods.
     | GroupCountBy of int * int
+    /// Set the thick substrate plate to the chosen material (spec 0033 gap G12).
+    | SetSubstrateClicked
+    /// Clear the substrate plate (spec 0033 gap G12).
+    | ClearSubstrateClicked
+    /// Set the lower half-space to the chosen material (spec 0033 gap G12).
+    | SetLowerClicked
+    /// Clear the lower half-space back to vacuum (spec 0033 gap G12).
+    | ClearLowerClicked
     | SaveClicked
     | CancelClicked
 
@@ -389,17 +410,16 @@ let update (msg : Msg) (m : Model) : Model =
         then { m with collapsedGroups = Set.remove groupIndex m.collapsedGroups }
         else { m with collapsedGroups = Set.add groupIndex m.collapsedGroups }
     | AddLayerClicked ->
-        // The step-21 message DU has no Add arm (and Domain is outside this slice's touches),
-        // so appending a layer is a view-level structural edit over the same immutable data.
+        // spec 0033 gap G13: appending a layer now routes through the pure Domain
+        // `AddLayer` arm (`SampleStackEditor`), not a view-level structural edit — so the
+        // behaviour stays testable without a window.
         let materialIdOpt =
             match m.chosenMaterial with
             | Some id -> Some id
             | None -> m.materials |> List.tryHead |> Option.map (fun e -> e.id)
         match materialIdOpt with
         | Some id ->
-            let layer = { materialId = id; thickness = defaultLayerThickness; orientation = PrimaryAxes }
-            let films = m.editor.structure.films @ [ SingleLayer layer ]
-            { m with editor = { m.editor with structure = { m.editor.structure with films = films } }; status = None }
+            applyStack (AddLayer { materialId = id; thickness = defaultLayerThickness; orientation = PrimaryAxes }) m
         | None -> { m with status = Some "no materials are available to add a layer from" }
     | SelectByMaterialClicked ->
         match m.chosenMaterial with
@@ -446,6 +466,18 @@ let update (msg : Msg) (m : Model) : Model =
         match List.tryItem groupIndex m.editor.structure.films with
         | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count + delta)) m
         | Some (SingleLayer _) | None -> { m with status = Some (sprintf "films item %d is not a repeat group" groupIndex) }
+    | SetSubstrateClicked ->
+        // Qualify the Domain case — the view `Msg` also has a `SetSubstrate` (the geometry
+        // facet), so the bare name would resolve to the wrong DU.
+        match m.chosenMaterial with
+        | Some id -> applyStack (SampleStackMsg.SetSubstrate (Some { materialId = id; thickness = defaultLayerThickness; orientation = PrimaryAxes })) m
+        | None -> { m with status = Some "choose a material to set as the substrate plate" }
+    | ClearSubstrateClicked -> applyStack (SampleStackMsg.SetSubstrate None) m
+    | SetLowerClicked ->
+        match m.chosenMaterial with
+        | Some id -> applyStack (SampleStackMsg.SetLower (Some id)) m
+        | None -> { m with status = Some "choose a material to set as the lower half-space" }
+    | ClearLowerClicked -> applyStack (SampleStackMsg.SetLower None) m
     | SaveClicked ->
         let saved =
             match m.target with
@@ -803,6 +835,57 @@ let private hasChosenMaterial (m : Model) : bool =
     | Some _ -> true
     | None -> false
 
+/// A material's display name by id (a placeholder when the id is unresolved).
+let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
+    match m.materials |> List.tryFind (fun e -> e.id = id) with
+    | Some e -> e.name
+    | None -> sprintf "unknown (%s)" (string id.value)
+
+/// The substrate-plate and lower-half-space editor (spec 0033 gap G12): both
+/// `SampleStructure` fields were previously invisible and uneditable. Each shows
+/// its current material and offers Set-from-chosen / Clear (lower clears to
+/// vacuum). Set requires a chosen material; Clear is always available.
+let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
+    let substrateText =
+        match m.editor.structure.substrate with
+        | Some layer -> sprintf "%s (%s)" (nameOfMaterialId m layer.materialId) (thicknessLabel layer.thickness)
+        | None -> "none"
+    let lowerText =
+        match m.editor.structure.lower with
+        | Some id -> nameOfMaterialId m id
+        | None -> "vacuum"
+    let summary (autoId : string) (text : string) : IView =
+        TextBlock.create [
+            TextBlock.name autoId
+            TextBlock.text text
+            TextBlock.width 200.0
+            TextBlock.verticalAlignment VerticalAlignment.Center
+        ] :> IView
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 2.0
+        StackPanel.children [
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children [
+                    labelBlock "Substrate plate:"
+                    summary UiIds.substrateSummary substrateText
+                    verbButton UiIds.setSubstrateButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetSubstrateClicked)
+                    verbButton UiIds.clearSubstrateButton "Clear" false true (fun () -> dispatch ClearSubstrateClicked)
+                ]
+            ] :> IView
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children [
+                    labelBlock "Lower half-space:"
+                    summary UiIds.lowerSummary lowerText
+                    verbButton UiIds.setLowerButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetLowerClicked)
+                    verbButton UiIds.clearLowerButton "Clear (vacuum)" false true (fun () -> dispatch ClearLowerClicked)
+                ]
+            ] :> IView
+        ]
+    ] :> IView
+
 /// Selection verbs: select-by-material, clear, remove, move up/down, and the make-repeat-block
 /// entry with its fold-count stepper (the mandated `RepeatCountStepper`). A WRAP panel: the
 /// headless font metrics run a single row past the window edge, and an off-screen verb cannot
@@ -863,10 +946,11 @@ let private editToolbar (m : Model) (dispatch : Msg -> unit) : IView =
 /// The optional QWOT entry: λ (nm) → the read-only derived t = λ/(4n) in canonical metres
 /// (n from the chosen material at λ); Set-thickness applies it while it is valid.
 let private qwotRow (m : Model) (dispatch : Msg -> unit) : IView =
+    // spec 0033 gap G14.1: render the derived thickness in display nanometres (the unit
+    // every other thickness readout uses), not raw metres.
     let derivedLabel =
         match qwotDerived m with
-        | Some (Thickness meters) -> sprintf "%g m" (float meters)
-        | Some Infinity -> "∞"
+        | Some t -> thicknessLabel t
         | None -> "—"
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
@@ -932,6 +1016,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (qwotRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (halfSpacesRow m dispatch) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (editToolbar m dispatch) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (selectionToolbar m dispatch) ]
             Border.create [

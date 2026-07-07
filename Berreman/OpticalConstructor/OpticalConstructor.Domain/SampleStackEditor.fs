@@ -80,6 +80,18 @@ type SampleStackMsg =
     /// Set the repetition count of the `Repeated` group at a films index —
     /// whole periods are added or removed (the cell is untouched).
     | SetRepeatCount of groupIndex : int * count : int
+    /// Append ONE single film layer to the bottom of the stack (spec 0033 gap
+    /// G13 — the pure Domain arm the editor's Add-layer button previously
+    /// lacked, forcing a view-level structural edit that broke the
+    /// window-free-testability rule).
+    | AddLayer of SampleLayer
+    /// Set (`Some`) or clear (`None`) the thick substrate plate beneath the
+    /// films (spec 0033 gap G12 — the sample editor could neither show nor
+    /// edit `SampleStructure.substrate`).
+    | SetSubstrate of SampleLayer option
+    /// Set (`Some`) or clear (`None` = vacuum) the lower half-space material
+    /// (spec 0033 gap G12 — likewise for `SampleStructure.lower`).
+    | SetLower of MaterialId option
 
 // ---------------------------------------------------------------------------
 // Selection helpers.
@@ -340,3 +352,9 @@ let applySampleStackMsg (msg : SampleStackMsg) (state : SampleStackEditState) : 
         makeRepeatBlock count state
     | SetRepeatCount (groupIndex, count) ->
         setRepeatCount groupIndex count state
+    | AddLayer layer ->
+        Ok { state with structure = { state.structure with films = state.structure.films @ [ SingleLayer layer ] } }
+    | SetSubstrate substrate ->
+        Ok { state with structure = { state.structure with substrate = substrate } }
+    | SetLower lower ->
+        Ok { state with structure = { state.structure with lower = lower } }
