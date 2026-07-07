@@ -179,7 +179,7 @@ Two changes land together, the hosting fix first:
 - **Full-surface bays.** A bay declares its content mode as a two-case DU (never a
   `bool`): a table bay keeps the canvas plus its pan/zoom/rotate gestures; a
   full-surface bay replaces the canvas area entirely with the bay's own content.
-  `mainView` (`…TestWindows/TableAndElementRotationView.fs:2281`) wires the table
+  `mainView` (`…TestWindows/TableAndElementRotationView.fs:2298`) wires the table
   canvas and pointer/wheel handlers ONLY for a table bay; the Materials and Library
   bays become full-surface. With hosting order-independent, make **Materials and
   Library the last two** bays in `mainBays` (`:2265`) and `BayNames.all` (`:239`),
@@ -210,8 +210,9 @@ ladder: each symmetry-allowed gyration component (the components
 and each Polder component becomes a `DispersionFormula` edited through the SAME
 `DispersionModels.modelParameters` + raw `SumOfTerms` coefficient surface built in
 0033 (`…Domain/DispersionModels.fs:291`). The edit state generalises so unchecking
-Dispersive restores the constant losslessly (the ladder's existing lossless
-discipline); `toComplexity` builds `RhoWithDispValue` / `MuWithDispValue` under the
+Dispersive restores the constant losslessly (the ladder's lossless-uncheck
+mechanic, commented on `toComplexity` at `…Domain/MaterialComplexityEditor.fs:697`);
+`toComplexity` builds `RhoWithDispValue` / `MuWithDispValue` under the
 sub-toggle, and `ofComplexity` seeds from a dispersive ρ / μ — the
 `UnsupportedComplexity` case is deleted (§0.2).
 
@@ -226,8 +227,13 @@ Three independent sample-editor gaps (preliminary spec §7):
 - **Empty-sample validation (G14.5).** `validateSample` checks the name only
   (`…Domain/ElementId.fs:596`). A sample with **no films AND no substrate** is
   structurally empty and MUST be refused on save with the typed `InvalidSample`
-  (add the structure-content rule beside the name rule). The existing tests that
-  save a structurally-empty sample are updated to add content.
+  (add the structure-content rule beside the name rule). The new rule is proven by
+  a negative case in `…OpticalConstructor.Tests/SampleProxyTests.fs`, beside the
+  blank-name rejection (`:120`): `addSample` of a films-empty / substrate-`None`
+  sample MUST return `InvalidSample`. No save test needs a content edit — every
+  seed builds `filmStructure` (a film, no substrate, `…Domain/ElementId.fs:329`)
+  or `plateStructure` (a substrate, no films, `:337`), so none is structurally
+  empty.
 - **Searchable material picker (G14.3).** The picker in
   `SampleEditorView.materialRow` (`…TestWindows/SampleEditorView.fs:647`) is a flat
   snapshot of `MaterialProxy.listMaterials`. Add a search box plus a category facet
@@ -314,8 +320,10 @@ gaps, one is presentation polish.
   `Dispersive` toggle ("off = constant n, k", `…TestWindows/MaterialEditorView.fs:594,604`).
   Present it as two mutually-exclusive options (Constant / Dispersive) so the branch
   reads as a choice; update the `absorbingToggle` / `dispersiveToggle` acceptance
-  tests (`:56,58`) to the two-option model. Cosmetic — the derived model is
-  unchanged.
+  tests (`:56,58`) to the two-option model. Cosmetic — the presentation change MUST
+  NOT alter the `MaterialComplexity` that `MaterialComplexityEditor.toComplexity`
+  (`…Domain/MaterialComplexityEditor.fs:699`) derives; it only restyles the eps
+  branch's toggle.
 
 ---
 
