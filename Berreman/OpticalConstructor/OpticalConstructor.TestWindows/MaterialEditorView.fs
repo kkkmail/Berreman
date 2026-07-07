@@ -122,7 +122,17 @@ module UiIds =
     let muKindOption (code : string) : string = "MuKindOption_" + code
     /// A per-segment dispersion-model COEFFICIENT entry (spec 0033 gap G7), by
     /// segment index and the parameter's stable key.
-    let segmentParamBox (segmentIndex : int) (key : string) : string = sprintf "SegmentParamBox_%d_%s" segmentIndex key
+    let segmentParamBox (segmentIndex : int) (key : string) : string = $"SegmentParamBox_{segmentIndex}_{key}"
+    /// Per-principal-axis id families (spec 0033 comment 009 — uniaxial / biaxial
+    /// dispersive media carry one formula per axis). The FIRST axis reduces to the
+    /// single-axis ids above, so the slice-mandated literals and existing tests stay
+    /// valid; the extraordinary / y / z axes get an axis-suffixed member.
+    let axisModelPickerOf (segmentIndex : int) (isFirst : bool) (axisCode : string) : string =
+        if isFirst then segmentModelPicker segmentIndex else $"{segmentModelPicker segmentIndex}_ax{axisCode}"
+    let axisModelOptionOf (segmentIndex : int) (isFirst : bool) (axisCode : string) (code : string) : string =
+        if isFirst then modelOption segmentIndex code else $"{modelOption segmentIndex code}_ax{axisCode}"
+    let axisParamBoxOf (segmentIndex : int) (isFirst : bool) (axisCode : string) (key : string) : string =
+        if isFirst then segmentParamBox segmentIndex key else $"{segmentParamBox segmentIndex key}_ax{axisCode}"
     /// A gyration-tensor COMPONENT entry (spec 0033 gap G9), by the component's
     /// stable code (`g11` / `g33` / …).
     let gyrationComponentBox (code : string) : string = "GyrationComponentBox_" + code
@@ -644,61 +654,96 @@ let private indexFieldsRow (m : Model) (dispatch : Msg -> unit) : IView =
         WrapPanel.children boxes
     ] :> IView
 
-/// The coefficient-entry surface for a segment's dispersion model (spec 0033 gap G7 — the
-/// editor previously offered only a kind picker over FIXED default coefficients, so a user
-/// could not enter the parameters of ANY model). One numeric box per editable coefficient
-/// (`DispersionModels.modelParameters`), each edit rebuilding the model in place through
-/// `SetSegmentModel` (stored on every principal axis). The raw `SumOfTerms` escape hatch
-/// carries arbitrary per-term data, not a fixed scalar set, so it shows no coefficient boxes.
-let private segmentParamsView (dispatch : Msg -> unit) (segmentIndex : int) (model : DispersionModel) : IView =
+/// One coefficient entry with its unit of measure shown (spec 0033 comment 009): a dimensioned
+/// parameter reads "label: [box] unit"; a dimensionless one omits the unit.
+let private paramBoxWithUnit (autoId : string) (p : ModelParameter) (onCommit : float -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 4.0
+        StackPanel.margin (thickOf 0.0 0.0 10.0 4.0)
+        StackPanel.children (
+            [ labelBlock (p.label + ":"); coeffNumberBox autoId 100.0 p.value onCommit ]
+            @ (if p.unit = "" then [] else [ labelBlock p.unit ]))
+    ] :> IView
+
+/// The coefficient-entry surface for ONE principal axis of a segment (spec 0033 gap G7 +
+/// comment 009): one unit-labelled box per editable coefficient (`DispersionModels.modelParameters`,
+/// which now covers the raw `SumOfTerms` term data too), each edit rebuilding that axis's model
+/// through `SetSegmentAxisModel`.
+let private segmentParamsView (dispatch : Msg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (isFirst : bool) (axisCode : string) (model : DispersionModel) : IView =
     let boxes =
         modelParameters model
         |> List.map (fun p ->
-            labelled (p.label + ":") (coeffNumberBox (UiIds.segmentParamBox segmentIndex p.key) 100.0 p.value (fun v ->
-                dispatch (EditorMsg (SetSegmentModel (segmentIndex, p.update v))))))
+            paramBoxWithUnit (UiIds.axisParamBoxOf segmentIndex isFirst axisCode p.key) p (fun v ->
+                dispatch (EditorMsg (SetSegmentAxisModel (segmentIndex, slot, p.update v)))))
     match boxes with
-    | [] -> TextBlock.create [ TextBlock.text "(raw term data — no scalar coefficients)"; TextBlock.foreground (brush hintColor) ] :> IView
+    | [] -> TextBlock.create [ TextBlock.text "(no editable coefficients)"; TextBlock.foreground (brush hintColor) ] :> IView
     | _ ->
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children boxes
         ] :> IView
 
-/// One dispersion segment's editor: the shared wavelengthInterval bounds (nm), the model
-/// picker over the full catalogue (the picked kind is highlighted), and the coefficient
-/// boxes for the picked model (spec 0033 gap G7).
-let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int) (segment : EditSegment) : IView =
-    let lowerNm = wavelengthToUnit Nanometer segment.interval.lower
-    let upperNm = wavelengthToUnit Nanometer segment.interval.upper
-    let currentCode = modelKindCode segment.model1
+/// The principal axes a dispersive segment exposes, by anisotropy (spec 0033 comment 009):
+/// isotropic → one unlabelled axis; uniaxial → ordinary + extraordinary; biaxial → x/y/z. The
+/// tuple is (slot, display label, id-code); the first slot always uses the single-axis ids.
+let private axisSlotsOf (anisotropy : Anisotropy) : (PrincipalAxisSlot * string * string) list =
+    match anisotropy with
+    | Isotropic -> [ (FirstAxis, "", "o") ]
+    | Uniaxial -> [ (FirstAxis, "Ordinary (o):", "o"); (SecondAxis, "Extraordinary (e):", "e") ]
+    | Biaxial -> [ (FirstAxis, "X:", "x"); (SecondAxis, "Y:", "y"); (ThirdAxis, "Z:", "z") ]
+
+/// One principal axis's model picker + coefficient boxes within a segment (spec 0033 comment 009).
+let private segmentAxisView (dispatch : Msg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (axisLabel : string) (axisCode : string) (model : DispersionModel) : IView =
+    let isFirst = (slot = FirstAxis)
+    let currentCode = modelKindCode model
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
-        StackPanel.children [
-            WrapPanel.create [
-                WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children [
-                    labelBlock (sprintf "Segment %d —" segmentIndex)
-                    labelled "λ from (nm):" (numberBox (UiIds.segmentLowerBox segmentIndex) 70.0 lowerNm (fun v ->
-                        dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = toWaveLength Nanometer v; upper = segment.interval.upper })))))
-                    labelled "to (nm):" (numberBox (UiIds.segmentUpperBox segmentIndex) 70.0 upperNm (fun v ->
-                        dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer v })))))
-                    verbButton (UiIds.segmentRemoveButton segmentIndex) "Remove" (List.length m.editor.segments > 1) (fun () ->
-                        dispatch (EditorMsg (RemoveSegment segmentIndex)))
-                ]
-            ] :> IView
-            WrapPanel.create [
-                automationId (UiIds.segmentModelPicker segmentIndex)
-                WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children (
-                    defaultModelChoices
-                    |> List.map (fun candidate ->
-                        let code = modelKindCode candidate
-                        clickBox (UiIds.modelOption segmentIndex code) (modelKindLabel candidate) (currentCode = code) (fun () ->
-                            dispatch (EditorMsg (ChooseSegmentModel (segmentIndex, candidate))))))
-            ] :> IView
-            segmentParamsView dispatch segmentIndex segment.model1
-        ]
+        StackPanel.children (
+            (if axisLabel = "" then [] else [ labelBlock axisLabel ])
+            @ [
+                WrapPanel.create [
+                    automationId (UiIds.axisModelPickerOf segmentIndex isFirst axisCode)
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children (
+                        defaultModelChoices
+                        |> List.map (fun candidate ->
+                            let code = modelKindCode candidate
+                            clickBox (UiIds.axisModelOptionOf segmentIndex isFirst axisCode code) (modelKindLabel candidate) (currentCode = code) (fun () ->
+                                dispatch (EditorMsg (ChooseSegmentAxisModel (segmentIndex, slot, candidate))))))
+                ] :> IView
+                segmentParamsView dispatch segmentIndex slot isFirst axisCode model
+            ])
+    ] :> IView
+
+/// One dispersion segment's editor: the shared wavelengthInterval bounds (nm), then — PER
+/// PRINCIPAL AXIS of the anisotropy (spec 0033 comment 009) — a model picker + unit-labelled
+/// coefficient boxes.
+let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int) (segment : EditSegment) : IView =
+    let lowerNm = wavelengthToUnit Nanometer segment.interval.lower
+    let upperNm = wavelengthToUnit Nanometer segment.interval.upper
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 2.0
+        StackPanel.children (
+            [
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children [
+                        labelBlock $"Segment {segmentIndex} —"
+                        labelled "λ from (nm):" (numberBox (UiIds.segmentLowerBox segmentIndex) 70.0 lowerNm (fun v ->
+                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = toWaveLength Nanometer v; upper = segment.interval.upper })))))
+                        labelled "to (nm):" (numberBox (UiIds.segmentUpperBox segmentIndex) 70.0 upperNm (fun v ->
+                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer v })))))
+                        verbButton (UiIds.segmentRemoveButton segmentIndex) "Remove" (List.length m.editor.segments > 1) (fun () ->
+                            dispatch (EditorMsg (RemoveSegment segmentIndex)))
+                    ]
+                ] :> IView
+            ]
+            @ (axisSlotsOf m.editor.anisotropy
+               |> List.map (fun (slot, axisLabel, axisCode) ->
+                   segmentAxisView dispatch segmentIndex slot axisLabel axisCode (axisModelOf slot segment))))
     ] :> IView
 
 /// The per-segment dispersion editor (the dispersive rung): each segment's bounds + model

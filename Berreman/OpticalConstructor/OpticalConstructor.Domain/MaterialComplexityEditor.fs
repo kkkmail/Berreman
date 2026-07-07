@@ -158,6 +158,13 @@ type MaterialComplexityMsg =
     /// must NOT be discarded as a same-kind no-op the way `ChooseSegmentModel`
     /// treats a re-pick).
     | SetSegmentModel of segmentIndex : int * DispersionModel
+    /// Choose the model KIND of ONE principal axis of a segment (spec 0033
+    /// comment 009 — uniaxial / biaxial dispersive media carry an independent
+    /// formula per axis); a same-kind re-pick keeps that axis's coefficients.
+    | ChooseSegmentAxisModel of segmentIndex : int * axis : PrincipalAxisSlot * DispersionModel
+    /// Replace ONE principal axis's model unconditionally (a per-axis coefficient
+    /// edit — spec 0033 comment 009 + the gap-G7 coefficient surface).
+    | SetSegmentAxisModel of segmentIndex : int * axis : PrincipalAxisSlot * DispersionModel
     | SetActivity of ActivityChoice
     | ChooseGyrationClass of GyrationClass<RhoValue>
     /// Set one symmetry-allowed component of the current gyration tensor
@@ -199,12 +206,15 @@ let private constantFormula (value : float) : DispersionFormula =
 let defaultModelChoices : DispersionModel list =
     [
         ConstantNK { n = defaultIndexValue; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
-        Cauchy { a = 1.5; b = 0.004; c = 0.0; wavelengthUnit = Micrometer; thermoOptic = None }
+        // Length-based models are seeded in NANOMETRES (spec 0033 comment 009): the BK7 / a-glass
+        // coefficients converted from their conventional µm form — the wavelength-squared / -fourth
+        // terms scale by 1e6 / 1e12 so the evaluated index is identical, just displayed in nm.
+        Cauchy { a = 1.5; b = 0.004 * 1.0e6; c = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
         Sellmeier
             {
                 b = [ 1.03961212; 0.231792344; 1.01046945 ]
-                c = [ 0.00600069867; 0.0200179144; 103.560653 ]
-                wavelengthUnit = Micrometer
+                c = [ 0.00600069867 * 1.0e6; 0.0200179144 * 1.0e6; 103.560653 * 1.0e6 ]
+                wavelengthUnit = Nanometer
                 thermoOptic = None
             }
         Lorentz { epsInf = 2.25; strength = [ 1.0 ]; resonance = [ 4.0 ]; damping = [ 0.1 ]; wavelengthUnit = ElectronVolt; thermoOptic = None }
@@ -505,6 +515,22 @@ let private checkSegmentIndex (segmentIndex : int) (segments : EditSegment list)
 let private mapSegment (segmentIndex : int) (f : EditSegment -> EditSegment) (segments : EditSegment list) : EditSegment list =
     segments |> List.mapi (fun i seg -> if i = segmentIndex then f seg else seg)
 
+/// The dispersion model a segment carries on one principal-axis slot (spec 0033
+/// comment 009): isotropic reads the first only; uniaxial the first two (ordinary,
+/// extraordinary); biaxial all three (x, y, z). Public so the editor view reads a
+/// per-axis picker's current model.
+let axisModelOf (slot : PrincipalAxisSlot) (seg : EditSegment) : DispersionModel =
+    match slot with
+    | FirstAxis -> seg.model1
+    | SecondAxis -> seg.model2
+    | ThirdAxis -> seg.model3
+
+let private setAxisModel (slot : PrincipalAxisSlot) (model : DispersionModel) (seg : EditSegment) : EditSegment =
+    match slot with
+    | FirstAxis -> { seg with model1 = model }
+    | SecondAxis -> { seg with model2 = model }
+    | ThirdAxis -> { seg with model3 = model }
+
 let applyMaterialComplexityMsg
     (msg : MaterialComplexityMsg)
     (state : MaterialComplexityEditState)
@@ -555,6 +581,20 @@ let applyMaterialComplexityMsg
         checkSegmentIndex segmentIndex state.segments
         |> Result.map (fun () ->
             { state with segments = mapSegment segmentIndex (fun seg -> { seg with model1 = model; model2 = model; model3 = model }) state.segments })
+    | ChooseSegmentAxisModel (segmentIndex, slot, model) ->
+        // A per-axis KIND pick (spec 0033 comment 009): a same-kind re-pick keeps
+        // that axis's current coefficients.
+        checkSegmentIndex segmentIndex state.segments
+        |> Result.map (fun () ->
+            let pick (seg : EditSegment) : EditSegment =
+                if modelKindCode (axisModelOf slot seg) = modelKindCode model then seg
+                else setAxisModel slot model seg
+            { state with segments = mapSegment segmentIndex pick state.segments })
+    | SetSegmentAxisModel (segmentIndex, slot, model) ->
+        // A per-axis coefficient edit: store that axis's rebuilt model verbatim.
+        checkSegmentIndex segmentIndex state.segments
+        |> Result.map (fun () ->
+            { state with segments = mapSegment segmentIndex (setAxisModel slot model) state.segments })
     | SetActivity ActivityOn -> Ok { state with activity = ActivityOn; gyration = snapGyration state.anisotropy state.gyration }
     | SetActivity ActivityOff -> Ok { state with activity = ActivityOff }
     | ChooseGyrationClass gyration ->

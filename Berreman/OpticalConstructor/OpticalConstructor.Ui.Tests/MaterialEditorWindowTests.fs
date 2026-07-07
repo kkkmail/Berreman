@@ -300,7 +300,7 @@ module MaterialEditorWindowTests =
         | UniaxialActive u ->
             Assert.Equal<RhoValue>(defaultGyrationComponent, u.g11)
             Assert.Equal<RhoValue>(RhoValue 7.0e-5, u.g33)
-        | other -> Assert.Fail(sprintf "expected UniaxialActive, got %A" other)
+        | other -> Assert.Fail($"expected UniaxialActive, got %A{other}")
         // A component the class's symmetry does not admit is a no-op.
         let noop = applyOk (SetGyrationComponent (G12, RhoValue 1.0)) st
         Assert.Equal(st.gyration, noop.gyration)
@@ -315,8 +315,8 @@ module MaterialEditorWindowTests =
         | Some (RhoWithoutDispValue g) ->
             match g.gyration with
             | PlanarActive (RhoValue v) -> Assert.Equal(1.5e-6, v)
-            | other -> Assert.Fail(sprintf "expected PlanarActive, got %A" other)
-        | other -> Assert.Fail(sprintf "expected a constant gyration rho, got %A" other)
+            | other -> Assert.Fail($"expected PlanarActive, got %A{other}")
+        | other -> Assert.Fail($"expected a constant gyration rho, got %A{other}")
 
     [<Fact>]
     let ``spec 0033 G7: SetSegmentModel stores new coefficients verbatim where a same-kind re-pick would not`` () =
@@ -330,7 +330,7 @@ module MaterialEditorWindowTests =
         | ConstantNK a, ConstantNK b ->
             Assert.Equal(defaultIndexValue, a.n)
             Assert.Equal(9.0, b.n)
-        | other -> Assert.Fail(sprintf "expected ConstantNK segments, got %A" other)
+        | other -> Assert.Fail($"expected ConstantNK segments, got %A{other}")
 
     [<Fact>]
     let ``spec 0033 G7: modelParameters exposes and rebuilds each editable coefficient`` () =
@@ -339,7 +339,7 @@ module MaterialEditorWindowTests =
         Assert.Equal<string list>([ "n"; "k" ], ps |> List.map (fun p -> p.key))
         match (ps |> List.find (fun p -> p.key = "n")).update 2.7 with
         | ConstantNK c -> Assert.Equal(2.7, c.n)
-        | other -> Assert.Fail(sprintf "expected ConstantNK, got %A" other)
+        | other -> Assert.Fail($"expected ConstantNK, got %A{other}")
 
     [<Fact>]
     let ``the magnetic unlock derives scalar and gyromagnetic Polder mu with the axis`` () =

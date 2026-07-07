@@ -201,3 +201,47 @@ edits were fully reverted along with the G2 source change.
   editable.
 - The deferred items in §4 (G1/G4/G5/G10 especially) are the ones you said you would review;
   each is flagged with the specific decision it waits on.
+
+---
+
+## 7. Follow-up — comments 009 (per-axis formulas, units, SumOfTerms, interpolated strings)
+
+Addressing `009-comments.txt`. All five test gates stay green (416 / 310 / 83 / 119).
+
+- **Per-axis dispersion formulas (comment 1).** A dispersive segment now renders an
+  independent model picker + coefficient boxes **per principal axis of the anisotropy**:
+  one (unlabelled) for isotropic, two (Ordinary / Extraordinary) for uniaxial, three
+  (X / Y / Z) for biaxial. New pure messages `ChooseSegmentAxisModel` /
+  `SetSegmentAxisModel` (`MaterialComplexityEditor`) target one axis slot; the public
+  `axisModelOf` reads a slot's model. The first axis keeps the existing single-axis
+  automation ids (so the mandated literals and existing tests hold); the extra axes get
+  `…_ax{code}` ids. `EditSegment` already carried `model1/2/3`, and `dispersiveEps` already
+  read them per anisotropy — only the editor surface was missing.
+
+- **Units of measure, length-based in nm (comment 2).** `ModelParameter` gained a `unit`
+  field; every dimensioned coefficient now shows its unit beside the box
+  (`label: [box] unit`), dimensionless ones show none. Units derive from the model's
+  abscissa unit — energy models read `eV`, the wavelength-power coefficients read `nm²` /
+  `nm⁴`. The length-based defaults (Sellmeier, Cauchy) are seeded in **nanometres**: the
+  µm² / µm⁴ coefficients are scaled by 1e6 / 1e12 so the evaluated index is identical but
+  the numbers read in nm (`unitAbbrev` added to `Units.fs`).
+
+- **SumOfTerms now implemented (comment 3).** The raw escape hatch was previously
+  non-editable (`modelParameters` returned `[]`). It now exposes **every scalar of every
+  term** — multiplier, λ₀, power, and each polynomial coefficient — of the `RealNK` n/k
+  formulas, or the real/imaginary parts of a `ComplexEps` ε formula. So the escape hatch,
+  and any seeded dispersive entry re-opened through it, is fully editable.
+
+- **Interpolated strings (your message).** Every `sprintf` in the code authored for this
+  task (DispersionModels' parameter builders, the MaterialEditorView per-axis id helpers
+  and segment header, SampleEditorView's material-name / half-space summaries, and the four
+  new tests) was converted to F# interpolated strings (`$"…"`). Pre-existing `sprintf` in
+  untouched functions was left as-is to keep the diff scoped; say the word to sweep the
+  wider codebase.
+
+**Build note.** `dotnet build Berreman.slnx` currently fails ONLY on the `App` project's
+post-compile DLL copy (`MSB3021`/`MSB3027`) because the app is running under Visual Studio
+and holds the shared DLLs — an environmental lock, not a code error. Every project compiles
+(verified by building `TestWindows`, `Ui.Tests`, `OpticalConstructor.Tests` individually,
+all green) and all four test gates pass; the build gate will go green once the running app
+is closed.

@@ -839,7 +839,7 @@ let private hasChosenMaterial (m : Model) : bool =
 let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
     match m.materials |> List.tryFind (fun e -> e.id = id) with
     | Some e -> e.name
-    | None -> sprintf "unknown (%s)" (string id.value)
+    | None -> $"unknown ({id.value})"
 
 /// The substrate-plate and lower-half-space editor (spec 0033 gap G12): both
 /// `SampleStructure` fields were previously invisible and uneditable. Each shows
@@ -848,7 +848,7 @@ let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
 let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
     let substrateText =
         match m.editor.structure.substrate with
-        | Some layer -> sprintf "%s (%s)" (nameOfMaterialId m layer.materialId) (thicknessLabel layer.thickness)
+        | Some layer -> $"{nameOfMaterialId m layer.materialId} ({thicknessLabel layer.thickness})"
         | None -> "none"
     let lowerText =
         match m.editor.structure.lower with

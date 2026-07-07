@@ -213,14 +213,17 @@ module DispersionModels =
     /// One editable scalar coefficient of a dispersion model (spec 0033 gap G7 —
     /// the parameter-entry surface the editor lacked). `update` rebuilds the WHOLE
     /// model with this one coefficient replaced, so the editor can dispatch it
-    /// straight back as the segment's new model. A list-valued coefficient
-    /// contributes ONE `ModelParameter` per element, its `key`/`label` carrying
-    /// the 1-based index. This is a transient UI descriptor (a record of
+    /// straight back as the segment's new model. `unit` is the parameter's unit of
+    /// measure (spec 0033 comment 009): a length-power symbol (e.g. `nm²`), an
+    /// energy symbol (`eV`), or "" for a dimensionless parameter. A list-valued
+    /// coefficient contributes ONE `ModelParameter` per element, its `key`/`label`
+    /// carrying the 1-based index. A transient UI descriptor (a record of
     /// functions), never stored or serialized.
     type ModelParameter =
         {
             key : string
             label : string
+            unit : string
             value : float
             update : float -> DispersionModel
         }
@@ -229,75 +232,138 @@ module DispersionModels =
     let private replaceAt (i : int) (v : 'a) (xs : 'a list) : 'a list =
         xs |> List.mapi (fun j x -> if j = i then v else x)
 
+    let private mkParam (key : string) (label : string) (unit : string) (value : float) (update : float -> DispersionModel) : ModelParameter =
+        { key = key; label = label; unit = unit; value = value; update = update }
+
+    // -- the raw SumOfTerms escape hatch, editable per term (spec 0033 comment 009).
+    // Each DispersionTerm is m·(Σ cₖ·(λ−λ₀)^k)^power; every scalar is exposed. λ₀ is a
+    // wavelength offset (nm — the segment's reduced abscissa), the rest are raw.
+
+    let private setTermAt (j : int) (g : DispersionTerm -> DispersionTerm) (terms : DispersionTerm list) : DispersionTerm list =
+        terms |> List.mapi (fun i t -> if i = j then g t else t)
+
+    let private setArrayAt (k : int) (v : 'a) (a : 'a array) : 'a array =
+        a |> Array.mapi (fun idx old -> if idx = k then v else old)
+
+    let private realFormulaParams (prefix : string) (f : DispersionFormula) (rebuild : DispersionFormula -> DispersionModel) : ModelParameter list =
+        f.terms
+        |> List.mapi (fun j t ->
+            let onTerm (g : DispersionTerm -> DispersionTerm) = rebuild { f with terms = setTermAt j g f.terms }
+            [
+                mkParam $"{prefix}t{j}mul" $"{prefix} t{j + 1} mult" "" t.multiplier (fun v -> onTerm (fun t -> { t with multiplier = v }))
+                mkParam $"{prefix}t{j}lam" $"{prefix} t{j + 1} λ0" "nm" t.lambda (fun v -> onTerm (fun t -> { t with lambda = v }))
+                mkParam $"{prefix}t{j}pow" $"{prefix} t{j + 1} power" "" (float t.power) (fun v -> onTerm (fun t -> { t with power = int (round v) }))
+            ]
+            @ (t.coefficients
+               |> Array.toList
+               |> List.mapi (fun k ck ->
+                   mkParam $"{prefix}t{j}c{k}" $"{prefix} t{j + 1} c{k}" "" ck (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k v t.coefficients })))))
+        |> List.concat
+
+    let private setCTermAt (j : int) (g : ComplexDispersionTerm -> ComplexDispersionTerm) (terms : ComplexDispersionTerm list) : ComplexDispersionTerm list =
+        terms |> List.mapi (fun i t -> if i = j then g t else t)
+
+    let private complexFormulaParams (prefix : string) (f : ComplexDispersionFormula) (rebuild : ComplexDispersionFormula -> DispersionModel) : ModelParameter list =
+        f.terms
+        |> List.mapi (fun j t ->
+            let onTerm (g : ComplexDispersionTerm -> ComplexDispersionTerm) = rebuild { f with terms = setCTermAt j g f.terms }
+            [
+                mkParam $"{prefix}t{j}mulR" $"{prefix} t{j + 1} mult re" "" t.multiplier.Real (fun v -> onTerm (fun t -> { t with multiplier = createComplex v t.multiplier.Imaginary }))
+                mkParam $"{prefix}t{j}mulI" $"{prefix} t{j + 1} mult im" "" t.multiplier.Imaginary (fun v -> onTerm (fun t -> { t with multiplier = createComplex t.multiplier.Real v }))
+                mkParam $"{prefix}t{j}lamR" $"{prefix} t{j + 1} λ0 re" "nm" t.lambda.Real (fun v -> onTerm (fun t -> { t with lambda = createComplex v t.lambda.Imaginary }))
+                mkParam $"{prefix}t{j}pow" $"{prefix} t{j + 1} power" "" (float t.power) (fun v -> onTerm (fun t -> { t with power = int (round v) }))
+            ]
+            @ (t.coefficients
+               |> Array.toList
+               |> List.mapi (fun k ck ->
+                   [
+                       mkParam $"{prefix}t{j}c{k}R" $"{prefix} t{j + 1} c{k} re" "" ck.Real (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k (createComplex v t.coefficients.[k].Imaginary) t.coefficients }))
+                       mkParam $"{prefix}t{j}c{k}I" $"{prefix} t{j + 1} c{k} im" "" ck.Imaginary (fun v -> onTerm (fun t -> { t with coefficients = setArrayAt k (createComplex t.coefficients.[k].Real v) t.coefficients }))
+                   ])
+               |> List.concat))
+        |> List.concat
+
     /// The editable scalar coefficients of a model, in display order (spec 0033
-    /// gap G7). Every analytic model exposes its full scalar parameter set and one
-    /// box per oscillator-list element; the raw `SumOfTerms` escape hatch carries
-    /// arbitrary per-term data rather than a fixed scalar set, so it has none.
+    /// gap G7 / comment 009). Every analytic model exposes its full scalar
+    /// parameter set (with units) and one box per oscillator-list element; the raw
+    /// `SumOfTerms` escape hatch exposes every term scalar of its n/k (or complex ε)
+    /// formulas, so it is fully editable too.
     let modelParameters (model : DispersionModel) : ModelParameter list =
-        let p (key : string) (label : string) (value : float) (update : float -> DispersionModel) : ModelParameter =
-            { key = key; label = label; value = value; update = update }
-        let listParams (name : string) (label : string) (xs : float list) (rebuild : float list -> DispersionModel) : ModelParameter list =
-            xs |> List.mapi (fun i x -> p (sprintf "%s%d" name i) (sprintf "%s%d" label (i + 1)) x (fun v -> rebuild (replaceAt i v xs)))
+        let p (key : string) (label : string) (unit : string) (value : float) (update : float -> DispersionModel) : ModelParameter =
+            mkParam key label unit value update
+        let listParams (name : string) (label : string) (unit : string) (xs : float list) (rebuild : float list -> DispersionModel) : ModelParameter list =
+            xs |> List.mapi (fun i x -> p $"{name}{i}" $"{label}{i + 1}" unit x (fun v -> rebuild (replaceAt i v xs)))
+        // The model's abscissa unit and its length-power derivatives (spec 0033
+        // comment 009): dimensioned parameters read in these.
+        let un = unitAbbrev (wavelengthUnitOf model)
+        let un2 = un + "²"
+        let un4 = un + "⁴"
         match model with
         | ConstantNK c ->
             [
-                p "n" "n" c.n (fun v -> ConstantNK { c with n = v })
-                p "k" "k" c.k (fun v -> ConstantNK { c with k = v })
+                p "n" "n" "" c.n (fun v -> ConstantNK { c with n = v })
+                p "k" "k" "" c.k (fun v -> ConstantNK { c with k = v })
             ]
         | Cauchy c ->
             [
-                p "a" "A" c.a (fun v -> Cauchy { c with a = v })
-                p "b" "B" c.b (fun v -> Cauchy { c with b = v })
-                p "c" "C" c.c (fun v -> Cauchy { c with c = v })
+                p "a" "A" "" c.a (fun v -> Cauchy { c with a = v })
+                p "b" "B" un2 c.b (fun v -> Cauchy { c with b = v })
+                p "c" "C" un4 c.c (fun v -> Cauchy { c with c = v })
             ]
         | Sellmeier c ->
-            listParams "b" "B" c.b (fun xs -> Sellmeier { c with b = xs })
-            @ listParams "c" "C" c.c (fun xs -> Sellmeier { c with c = xs })
+            listParams "b" "B" "" c.b (fun xs -> Sellmeier { c with b = xs })
+            @ listParams "c" "C" un2 c.c (fun xs -> Sellmeier { c with c = xs })
         | Lorentz c ->
-            [ p "epsInf" "eInf" c.epsInf (fun v -> Lorentz { c with epsInf = v }) ]
-            @ listParams "s" "s" c.strength (fun xs -> Lorentz { c with strength = xs })
-            @ listParams "r" "E" c.resonance (fun xs -> Lorentz { c with resonance = xs })
-            @ listParams "d" "G" c.damping (fun xs -> Lorentz { c with damping = xs })
+            [ p "epsInf" "eInf" "" c.epsInf (fun v -> Lorentz { c with epsInf = v }) ]
+            @ listParams "s" "s" "" c.strength (fun xs -> Lorentz { c with strength = xs })
+            @ listParams "r" "E" un c.resonance (fun xs -> Lorentz { c with resonance = xs })
+            @ listParams "d" "G" un c.damping (fun xs -> Lorentz { c with damping = xs })
         | Drude c ->
             [
-                p "epsInf" "eInf" c.epsInf (fun v -> Drude { c with epsInf = v })
-                p "wp" "wp" c.plasmaFrequency (fun v -> Drude { c with plasmaFrequency = v })
-                p "gamma" "gamma" c.dampingFrequency (fun v -> Drude { c with dampingFrequency = v })
+                p "epsInf" "eInf" "" c.epsInf (fun v -> Drude { c with epsInf = v })
+                p "wp" "wp" un c.plasmaFrequency (fun v -> Drude { c with plasmaFrequency = v })
+                p "gamma" "gamma" un c.dampingFrequency (fun v -> Drude { c with dampingFrequency = v })
             ]
         | TaucLorentz c ->
             [
-                p "epsInf" "eInf" c.epsInf (fun v -> TaucLorentz { c with epsInf = v })
-                p "amp" "A" c.amplitude (fun v -> TaucLorentz { c with amplitude = v })
-                p "res" "E0" c.resonance (fun v -> TaucLorentz { c with resonance = v })
-                p "br" "C" c.broadening (fun v -> TaucLorentz { c with broadening = v })
-                p "eg" "Eg" c.bandGap (fun v -> TaucLorentz { c with bandGap = v })
+                p "epsInf" "eInf" "" c.epsInf (fun v -> TaucLorentz { c with epsInf = v })
+                p "amp" "A" un c.amplitude (fun v -> TaucLorentz { c with amplitude = v })
+                p "res" "E0" un c.resonance (fun v -> TaucLorentz { c with resonance = v })
+                p "br" "C" un c.broadening (fun v -> TaucLorentz { c with broadening = v })
+                p "eg" "Eg" un c.bandGap (fun v -> TaucLorentz { c with bandGap = v })
             ]
         | GaussianOscillator c ->
             [
-                p "epsInf" "eInf" c.epsInf (fun v -> GaussianOscillator { c with epsInf = v })
-                p "amp" "A" c.amplitude (fun v -> GaussianOscillator { c with amplitude = v })
-                p "en" "E0" c.energy (fun v -> GaussianOscillator { c with energy = v })
-                p "br" "sigma" c.broadening (fun v -> GaussianOscillator { c with broadening = v })
+                p "epsInf" "eInf" "" c.epsInf (fun v -> GaussianOscillator { c with epsInf = v })
+                p "amp" "A" "" c.amplitude (fun v -> GaussianOscillator { c with amplitude = v })
+                p "en" "E0" un c.energy (fun v -> GaussianOscillator { c with energy = v })
+                p "br" "sigma" un c.broadening (fun v -> GaussianOscillator { c with broadening = v })
             ]
         | ForouhiBloomer c ->
             [
-                p "nInf" "nInf" c.nInf (fun v -> ForouhiBloomer { c with nInf = v })
-                p "a" "A" c.a (fun v -> ForouhiBloomer { c with a = v })
-                p "b" "B" c.b (fun v -> ForouhiBloomer { c with b = v })
-                p "c" "C" c.c (fun v -> ForouhiBloomer { c with c = v })
-                p "eg" "Eg" c.bandGap (fun v -> ForouhiBloomer { c with bandGap = v })
+                p "nInf" "nInf" "" c.nInf (fun v -> ForouhiBloomer { c with nInf = v })
+                p "a" "A" "" c.a (fun v -> ForouhiBloomer { c with a = v })
+                p "b" "B" un c.b (fun v -> ForouhiBloomer { c with b = v })
+                p "c" "C" un2 c.c (fun v -> ForouhiBloomer { c with c = v })
+                p "eg" "Eg" un c.bandGap (fun v -> ForouhiBloomer { c with bandGap = v })
             ]
         | BrendelBormann c ->
             [
-                p "wp" "wp" c.plasmaFrequency (fun v -> BrendelBormann { c with plasmaFrequency = v })
-                p "f0" "f0" c.intrabandStrength (fun v -> BrendelBormann { c with intrabandStrength = v })
-                p "g0" "G0" c.intrabandDamping (fun v -> BrendelBormann { c with intrabandDamping = v })
+                p "wp" "wp" un c.plasmaFrequency (fun v -> BrendelBormann { c with plasmaFrequency = v })
+                p "f0" "f0" "" c.intrabandStrength (fun v -> BrendelBormann { c with intrabandStrength = v })
+                p "g0" "G0" un c.intrabandDamping (fun v -> BrendelBormann { c with intrabandDamping = v })
             ]
-            @ listParams "f" "f" c.strength (fun xs -> BrendelBormann { c with strength = xs })
-            @ listParams "w" "w" c.resonance (fun xs -> BrendelBormann { c with resonance = xs })
-            @ listParams "g" "G" c.damping (fun xs -> BrendelBormann { c with damping = xs })
-            @ listParams "sig" "sigma" c.broadening (fun xs -> BrendelBormann { c with broadening = xs })
-        | SumOfTerms _ -> []
+            @ listParams "f" "f" "" c.strength (fun xs -> BrendelBormann { c with strength = xs })
+            @ listParams "w" "w" un c.resonance (fun xs -> BrendelBormann { c with resonance = xs })
+            @ listParams "g" "G" un c.damping (fun xs -> BrendelBormann { c with damping = xs })
+            @ listParams "sig" "sigma" un c.broadening (fun xs -> BrendelBormann { c with broadening = xs })
+        | SumOfTerms axis ->
+            match axis with
+            | RealNK (nF, kF) ->
+                realFormulaParams "n" nF (fun f -> SumOfTerms (RealNK (f, kF)))
+                @ realFormulaParams "k" kF (fun f -> SumOfTerms (RealNK (nF, f)))
+            | ComplexEps cF ->
+                complexFormulaParams "eps" cF (fun f -> SumOfTerms (ComplexEps f))
 
     /// Term count of the Faddeeva rational series below. Weideman shows N = 24
     /// already reaches near-machine accuracy over the closed upper half plane.
