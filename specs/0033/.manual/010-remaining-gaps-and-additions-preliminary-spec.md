@@ -25,8 +25,10 @@ Close the remaining Materials / Library editor gaps and land the decided additio
   formula / coefficient surface (§6).
 - **Sample-editor polish**: a searchable material picker, a distinct *Make multilayer* entry point,
   and empty-sample validation (§7).
-- **Material-editor polish**: present the Constant-vs-Dispersive choice as a mutually-exclusive
-  control (§8).
+- **Material-editor dispersion preview**: the live n/k preview reuses the **real shared chart
+  control** (identical to the experiment chart), and **every** model — including the transcendental
+  four (Tauc–Lorentz / Gaussian / Forouhi–Bloomer / Brendel–Bormann) — draws n/k and is saveable;
+  plus the Constant-vs-Dispersive presentation polish (§8).
 
 Everything stays against **mocked, in-memory IO proxies** (the 0033 seam). **No legacy, no fallback,
 no migration** — schemas are fluid and nothing is persisted, so every app start begins from the
@@ -271,7 +273,53 @@ exposes the per-component formula boxes.
 
 ---
 
-## 8. Material-editor polish (G6 presentation)
+## 8. Material-editor dispersion preview & polish
+
+### 8.1 Reuse the shared chart control for the n/k preview (implementation gap)
+
+The live n/k preview in the Material editor is drawn by a **primitive hand-rolled canvas**
+(`…TestWindows/NkDispersionChart.inlineCanvas`) — it does not look or behave like the experiment
+chart. It **must reuse the same chart control** and be identical in style and functionality (axes,
+ticks, gridlines, styling, the dual **n-left / k-right** Y axes, and the interaction the experiment
+chart offers). That shared control already exists: 0033 **Part D** REAL-MOVED
+`ExperimentChart` / `ChartFont` / `ChartStyle` / `ChartWindow` into **`OpticalConstructor.Controls`**
+(ScottPlot.Avalonia) and added the second Y axis. So the pieces are there; the editor just did not
+embed them — it built an `ExperimentChart` model and then rendered it through the primitive canvas
+instead of the real control.
+
+**Trace — implementation gap.** Part D specced the extraction AND embedding the extracted dual-axis
+chart as the editor's live preview; the implementation substituted a primitive renderer. The fix
+embeds the **actual ScottPlot chart control** (an inline/embeddable form of `ChartWindow`, not only
+the pop-out window) as the preview, so a dispersion curve here is pixel-for-pixel the experiment
+chart. The primitive `NkDispersionChart.inlineCanvas` is deleted.
+
+### 8.2 Every dispersion model must draw n and k — including the transcendental ones (implementation gap)
+
+**Tauc–Lorentz, Gaussian, Forouhi–Bloomer and Brendel–Bormann draw NO n/k curve at all** — and worse,
+they cannot be derived, saved, or used in a segment. Root cause: `DispersionModels.toEpsAxis` returns
+a typed `NotAFiniteTermSum` for these four (they are not finite term sums), so a segment carrying one
+fails `MaterialComplexityEditor.toComplexity` (`SegmentNotLowerable`) → no properties → no chart, and
+the editor merely surfaces the reason. But these models **evaluate perfectly well directly** —
+`DispersionModels.evaluate` returns `WaveLength -> ComplexRefractionIndex` for every model, and
+`toOpticalProperties` already wraps that closure for them. The lowering path is only needed for the
+serializable term data; it must not gate whether a model can be **used or drawn**.
+
+This is the 035/033 §6.1 intent — "they stay **named cases evaluated directly** (their coefficient
+record is already serializable)" — that the implementation dropped by making them hard errors.
+**Make them first-class in a dispersive segment:** add a closure-/named-model case to the per-axis
+`EpsAxisDispersion` (e.g. `EvaluatedModel of DispersionModel`, serialized AS its coefficient record)
+whose `complexIndex` calls `DispersionModels.evaluate`. Then:
+
+- `toComplexity` builds `OpticalPropertiesWithDisp` for a transcendental segment (no more
+  `SegmentNotLowerable` for these four); the material is **usable and saveable**.
+- The shared chart (§8.1) samples n and k for them exactly like any other model.
+- The finite-term models keep lowering to `RealNK` / `ComplexEps` as today; only the transcendental
+  four take the evaluated-directly route.
+
+**Trace — implementation gap** (a model you cannot put in a segment, save, or preview is useless; the
+spec intended them to evaluate directly).
+
+### 8.3 Constant-vs-Dispersive presentation (G6)
 
 The Constant-vs-Dispersive branch is currently a `Dispersive` sticky toggle ("off = constant n, k").
 Present it as **two mutually-exclusive options** (Constant / Dispersive) so the primary branch reads as
@@ -297,7 +345,15 @@ Cosmetic; behaviour (the derived model) is unchanged.
   make-multilayer path.
 - **`…TestWindows/CategoryEditorWindow.fs`** (NEW) — the category editor window.
 - **`…TestWindows/MaterialEditorView.fs`** — catalogue-driven create picker; the two-option
-  Constant/Dispersive control; the dispersive ρ/μ panels.
+  Constant/Dispersive control; the dispersive ρ/μ panels; **embed the shared ScottPlot chart control**
+  as the live n/k preview (delete the primitive `NkDispersionChart.inlineCanvas`).
+- **`Berreman/Berreman/Dispersion.fs`** — add the closure-/named-model `EpsAxisDispersion` case
+  (transcendental models evaluated directly, serialized as their coefficient record); its
+  `complexIndex` routes through `DispersionModels.evaluate`.
+- **`…Domain/DispersionModels.fs`** — `toEpsAxis` no longer errors for the transcendental four; it
+  lowers them to the new evaluated-directly case so `toComplexity` succeeds and they are saveable.
+- **`…Controls/ChartWindow.fs` / `ExperimentChart.fs`** — expose an inline/embeddable form of the
+  dual-axis chart control so the Material editor (and any future host) can host it, not only pop it out.
 - **`…TestWindows/SampleEditorView.fs`** — searchable material picker; empty-sample guard; the seeded
   make-multilayer init path.
 - **`…App/Program.fs`** — build the mock `CategoryProxy` at the composition root.
@@ -344,8 +400,14 @@ Cosmetic; behaviour (the derived model) is unchanged.
    surface; `ofComplexity` seeds dispersive (drop `UnsupportedComplexity`); derive + round-trip tests.
 6. **Sample-editor polish** — searchable material picker; distinct seeded make-multilayer; empty-sample
    validation (update the two name-only tests).
-7. **Material-editor polish** — the two-option Constant / Dispersive control (update the toggle tests).
-8. **Warning cleanup** — resolve `MSB3277` (the `WindowsBase` / WPF-WebView2 conflict) and any
+7. **Transcendental models usable + drawn** — the evaluated-directly `EpsAxisDispersion` case; `toEpsAxis`
+   lowers the four transcendental models to it (no more `SegmentNotLowerable`); `toComplexity` builds and
+   the entry saves. Pure derive + round-trip tests (evaluated n/k equals `DispersionModels.evaluate`).
+8. **Shared chart preview** — embed the extracted dual-axis ScottPlot chart control as the Material
+   editor's live n/k preview (delete `NkDispersionChart.inlineCanvas`); every model kind, including the
+   four transcendental, draws a curve. Headless render proof.
+9. **Material-editor polish** — the two-option Constant / Dispersive control (update the toggle tests).
+10. **Warning cleanup** — resolve `MSB3277` (the `WindowsBase` / WPF-WebView2 conflict) and any
    `FS####` warnings from the touched code, so the whole build is warning-clean per §3.6. (Each slice
    above also leaves its own touched files warning-free; this final slice sweeps anything residual and
    the cross-cutting reference conflict.)
