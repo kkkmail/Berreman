@@ -143,6 +143,49 @@ module MaterialLibrary =
     let tryFindCategoryByName (name : string) : MaterialCategory option =
         standardCategories |> List.tryFind (fun c -> c.name = name)
 
+    /// The category write-seam error channel (spec 0035 step 002, contract STORE_XDUO_0003 —
+    /// DECLARED lifecycle): errors as values, each case carrying a diagnostic `reason` — a bare
+    /// error case is useless in a log. Mirrors `MaterialError` (below) and `SampleError`
+    /// (`ElementId.fs`): an unknown id on update/remove, adding a category under an id the
+    /// catalogue already holds, and removing a category a material entry still references. Adds
+    /// `BuiltInNotRemovable` — a `BuiltInCategory` is shipped with the app and MUST NOT be deleted
+    /// (only a `UserCategory` may be removed) — and `InvalidCategory` for a malformed (blank-name)
+    /// category.
+    type CategoryError =
+        | UnknownCategoryId of reason : string
+        | DuplicateCategoryId of reason : string
+        | CategoryStillReferenced of reason : string
+        | BuiltInNotRemovable of reason : string
+        | InvalidCategory of reason : string
+
+    /// The mutating category write-seam (spec 0035 step 002, contract STORE_XDUO_0003 — DECLARED
+    /// lifecycle): the functional-proxy convention `LibraryProxy`/`MaterialProxy`/`SampleProxy`
+    /// set (`ElementId.fs`; `MaterialProxy` below), a record of camelCase `Result`-returning
+    /// functions. A test substitutes a stub of the SAME shape. Function-valued fields have no
+    /// structural equality, so the proxy compares by reference — a host model holding one keeps
+    /// its (Elmish-required) equality, comparing the proxy by identity. This step ships the
+    /// DECLARED surface, a mock, and a mock-driven test only; the real, stateful in-memory store
+    /// behind this surface (`CategoryProxy.createInMemory`) is the later `IMPLEMENT_CONTRACT
+    /// STORE_XDUO_0003` step.
+    [<ReferenceEquality>]
+    type CategoryProxy =
+        {
+            listCategories : unit -> Result<MaterialCategory list, CategoryError>
+            addCategory : MaterialCategory -> Result<unit, CategoryError>
+            updateCategory : MaterialCategory -> Result<unit, CategoryError>
+            removeCategory : CategoryId -> Result<unit, CategoryError>
+        }
+
+    /// The blank-name validation the store's write functions share (spec 0035 step 002): a
+    /// `MaterialCategory` whose display name is empty/whitespace is `InvalidCategory` — the
+    /// `validateEntry` precedent (below). Not private: the real store is a later type
+    /// augmentation, and an optional extension in another file cannot reach a module-private
+    /// binding.
+    let validateCategory (category : MaterialCategory) : Result<unit, CategoryError> =
+        if String.IsNullOrWhiteSpace category.name
+        then Error (InvalidCategory $"category '%s{string category.id.value}' has a blank name")
+        else Ok ()
+
     /// The editable material-complexity option tree (spec 0033 step 013, §B / the
     /// Part F progressive ladder): the serializable edit model a material's engine
     /// properties are BUILT from. `eps` is ALWAYS present; the magnetic (Polder μ)
