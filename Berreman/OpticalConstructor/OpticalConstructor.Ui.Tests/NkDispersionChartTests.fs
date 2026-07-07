@@ -35,8 +35,8 @@ module NkDispersionChartTests =
         Assert.Equal<float list>(xs, (List.item NkDispersionChart.kSeriesIndex chart.series).points |> List.map fst)
         // The x-axis spans the REQUESTED range in the display unit: 400…800 nm over 41 grid points.
         Assert.Equal(41, List.length xs)
-        Assert.True(abs (List.head xs - 400.0) < 1e-9, sprintf "first x = %g" (List.head xs))
-        Assert.True(abs (List.last xs - 800.0) < 1e-9, sprintf "last x = %g" (List.last xs))
+        Assert.True(abs (List.head xs - 400.0) < 1e-9, $"first x = %g{List.head xs}")
+        Assert.True(abs (List.last xs - 800.0) < 1e-9, $"last x = %g{List.last xs}")
         Assert.Equal<string>(SpectralAxis.axisLabel Nanometer, chart.xLabel)
         Assert.False(chart.angular)
         // The paired style seed carries the axis assignment (the side is STYLE, not data — 018):
@@ -51,7 +51,7 @@ module NkDispersionChartTests =
         let chart = NkDispersionChart.nkDispersionChart siliconEntry.properties Nanometer range
         let ys = (List.item NkDispersionChart.nSeriesIndex chart.series).points |> List.map snd
         let span = List.max ys - List.min ys
-        Assert.True(span > 0.01, sprintf "silicon n span across the range = %g (expected a curve)" span)
+        Assert.True(span > 0.01, $"silicon n span across the range = %g{span} (expected a curve)")
 
     [<Fact>]
     let ``a non-dispersive entry yields flat lines through the SAME builder — vacuum n = 1, k = 0`` () =
@@ -60,7 +60,7 @@ module NkDispersionChartTests =
         for s in chart.series do
             let ys = s.points |> List.map snd
             let span = List.max ys - List.min ys
-            Assert.True(span < 1e-12, sprintf "series %s span = %g (expected flat)" s.name span)
+            Assert.True(span < 1e-12, $"series %s{s.name} span = %g{span} (expected flat)")
         let nAt (i : int) = (List.item i chart.series).points |> List.head |> snd
         Assert.True(abs (nAt NkDispersionChart.nSeriesIndex - 1.0) < 1e-12, "vacuum n must be 1")
         Assert.True(abs (nAt NkDispersionChart.kSeriesIndex) < 1e-12, "vacuum k must be 0")

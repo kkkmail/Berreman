@@ -110,21 +110,21 @@ module UiIds =
     let repeatCountStepperMinus = "RepeatCountStepperMinus"
     /// The toolbar fold stepper carries the mandated literal; each period group's INLINE
     /// stepper carries the group-indexed member of the same family.
-    let groupStepper (groupIndex : int) : string = sprintf "RepeatCountStepper_%d" groupIndex
-    let groupStepperPlus (groupIndex : int) : string = sprintf "RepeatCountStepperPlus_%d" groupIndex
-    let groupStepperMinus (groupIndex : int) : string = sprintf "RepeatCountStepperMinus_%d" groupIndex
+    let groupStepper (groupIndex : int) : string = $"RepeatCountStepper_%d{groupIndex}"
+    let groupStepperPlus (groupIndex : int) : string = $"RepeatCountStepperPlus_%d{groupIndex}"
+    let groupStepperMinus (groupIndex : int) : string = $"RepeatCountStepperMinus_%d{groupIndex}"
     /// A top-level single layer's row / a period group's nested cell-layer row.
-    let layerRow (itemIndex : int) : string = sprintf "SampleLayerRow_%d" itemIndex
-    let cellLayerRow (itemIndex : int) (cellIndex : int) : string = sprintf "SampleLayerRow_%d_%d" itemIndex cellIndex
+    let layerRow (itemIndex : int) : string = $"SampleLayerRow_%d{itemIndex}"
+    let cellLayerRow (itemIndex : int) (cellIndex : int) : string = $"SampleLayerRow_%d{itemIndex}_%d{cellIndex}"
     /// A period group's collapsible super-row and its rotating-triangle expander.
-    let groupRow (itemIndex : int) : string = sprintf "SampleGroupRow_%d" itemIndex
-    let groupExpander (itemIndex : int) : string = sprintf "SampleGroupExpander_%d" itemIndex
+    let groupRow (itemIndex : int) : string = $"SampleGroupRow_%d{itemIndex}"
+    let groupExpander (itemIndex : int) : string = $"SampleGroupExpander_%d{itemIndex}"
     /// A row's thickness readout cell (what the bulk set-thickness acceptance observes).
-    let layerThickness (itemIndex : int) : string = sprintf "SampleLayerThickness_%d" itemIndex
-    let cellLayerThickness (itemIndex : int) (cellIndex : int) : string = sprintf "SampleLayerThickness_%d_%d" itemIndex cellIndex
+    let layerThickness (itemIndex : int) : string = $"SampleLayerThickness_%d{itemIndex}"
+    let cellLayerThickness (itemIndex : int) (cellIndex : int) : string = $"SampleLayerThickness_%d{itemIndex}_%d{cellIndex}"
     /// A row's per-layer orientation editor (present ONLY for anisotropic materials).
-    let layerOrientation (itemIndex : int) : string = sprintf "SampleLayerOrientation_%d" itemIndex
-    let cellLayerOrientation (itemIndex : int) (cellIndex : int) : string = sprintf "SampleLayerOrientation_%d_%d" itemIndex cellIndex
+    let layerOrientation (itemIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}"
+    let cellLayerOrientation (itemIndex : int) (cellIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}_%d{cellIndex}"
     /// A material option's clickable id, by the MaterialId's Guid string form.
     let materialOption (materialId : string) : string = "SampleMaterialOption_" + materialId
     /// A SubstrateKind facet option's clickable id, by its stable code.
@@ -294,7 +294,7 @@ let qwotDerived (m : Model) : Thickness option =
 /// A thickness readout in display nanometres (`∞` for the semi-infinite case).
 let thicknessLabel (t : Thickness) : string =
     match t with
-    | Thickness meters -> sprintf "%g nm" (meters / nmToMeter / oneNanometer)
+    | Thickness meters -> $"%g{meters / nmToMeter / oneNanometer} nm"
     | Infinity -> "∞"
 
 /// The flattened film count — each `Repeated` group expands to count × cell (the structure
@@ -329,7 +329,7 @@ let private orientationOf (phi : float) (theta : float) (psi : float) : CrystalO
 let private orientationLabel (o : CrystalOrientation) : string =
     match o with
     | PrimaryAxes -> "primary axes"
-    | EulerRotation (_, phi, theta, psi) -> sprintf "φ=%g° θ=%g° ψ=%g°" phi.degrees theta.degrees psi.degrees
+    | EulerRotation (_, phi, theta, psi) -> $"φ=%g{phi.degrees}° θ=%g{theta.degrees}° ψ=%g{psi.degrees}°"
 
 // ---------------------------------------------------------------------------
 // init / toSample / update (pure — IO only through the context's proxy fields).
@@ -465,7 +465,7 @@ let update (msg : Msg) (m : Model) : Model =
     | GroupCountBy (groupIndex, delta) ->
         match List.tryItem groupIndex m.editor.structure.films with
         | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count + delta)) m
-        | Some (SingleLayer _) | None -> { m with status = Some (sprintf "films item %d is not a repeat group" groupIndex) }
+        | Some (SingleLayer _) | None -> { m with status = Some $"films item %d{groupIndex} is not a repeat group" }
     | SetSubstrateClicked ->
         // Qualify the Domain case — the view `Msg` also has a `SetSubstrate` (the geometry
         // facet), so the bare name would resolve to the wrong DU.
@@ -673,7 +673,7 @@ let private orientationEditorView (dispatch : Msg -> unit) (position : LayerPosi
             labelBlock label
             TextBox.create [
                 TextBox.width 46.0
-                TextBox.text (sprintf "%g" current)
+                TextBox.text $"%g{current}"
                 TextBox.onTextChanged (
                     (fun s ->
                         match parseFloat s with
@@ -709,7 +709,7 @@ let private layerRowView
     let materialName =
         match entryOpt with
         | Some entry -> entry.name
-        | None -> sprintf "unknown material %s" (string layer.materialId.value)
+        | None -> $"unknown material %s{string layer.materialId.value}"
     let orientationEditor =
         match entryOpt with
         | Some entry when isAnisotropicEntry entry -> [ orientationEditorView dispatch position orientationId layer.orientation ]
@@ -775,7 +775,7 @@ let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int)
                 StackPanel.children [
                     clickBoxView (UiIds.groupExpander groupIndex) false triangle (fun () -> dispatch (ToggleGroup groupIndex))
                     TextBlock.create [
-                        TextBlock.text (sprintf "%d-layer cell" (List.length group.cell))
+                        TextBlock.text $"%d{List.length group.cell}-layer cell"
                         TextBlock.verticalAlignment VerticalAlignment.Center
                     ] :> IView
                     stepper
@@ -785,7 +785,7 @@ let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int)
                         group.count
                         (fun delta -> dispatch (GroupCountBy (groupIndex, delta)))
                     TextBlock.create [
-                        TextBlock.text (sprintf "× %d periods = %d films" group.count (group.count * List.length group.cell))
+                        TextBlock.text $"× %d{group.count} periods = %d{group.count * List.length group.cell} films"
                         TextBlock.foreground (brush hintColor)
                         TextBlock.verticalAlignment VerticalAlignment.Center
                     ] :> IView

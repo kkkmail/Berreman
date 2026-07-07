@@ -68,9 +68,7 @@ module MaterialLibrary =
                     use doc = JsonDocument.Parse text
                     let defsText = doc.RootElement.GetProperty("$defs").GetRawText()
                     let wrapper =
-                        sprintf
-                            """{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/materialEntry","$defs":%s}"""
-                            defsText
+                        $"""{{"$schema":"https://json-schema.org/draft/2020-12/schema","$ref":"#/$defs/materialEntry","$defs":%s{defsText}}}"""
                     Ok (JsonSchema.FromText wrapper)
                 with e -> Error (FileIoError e)
 
@@ -102,7 +100,7 @@ module MaterialLibrary =
                     // rebuilt entry is view-only until the §D.9 mapping lands.
                     complexity = None
                 }
-        | None -> Error (JsonParseError (sprintf "materialEntry id '%s' is not a Guid" dto.id))
+        | None -> Error (JsonParseError $"materialEntry id '%s{dto.id}' is not a Guid")
 
     /// Import a material library (§I.8 / AC-I10). A document that begins with `[`/`{`
     /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
@@ -225,7 +223,7 @@ module DesignHistory =
                 let dir = Path.Combine(projectFolder, historyFolder)
                 Directory.CreateDirectory dir |> ignore
                 let next = (Directory.GetFiles(dir, "rev-*.json") |> Array.length) + 1
-                let file = Path.Combine(dir, sprintf "rev-%04d.json" next)
+                let file = Path.Combine(dir, $"rev-%04d{next}.json")
                 File.WriteAllText(file, json, System.Text.UTF8Encoding false)
                 Ok()
             with e -> Error(FileIoError e)
@@ -237,7 +235,7 @@ module DesignHistory =
         let o = List.toArray oldItems
         let n = List.toArray newItems
         [ for i in 0 .. (max o.Length n.Length) - 1 do
-            let ident = sprintf "%s[%d]" label i
+            let ident = $"%s{label}[%d{i}]"
             if i >= o.Length then yield { identity = ident; change = Added }
             elif i >= n.Length then yield { identity = ident; change = Removed }
             elif o.[i] <> n.[i] then yield { identity = ident; change = Changed } ]
@@ -249,7 +247,7 @@ module DesignHistory =
             let oldFilms = if i < o.Length then List.toArray o.[i].films else [||]
             let newFilms = if i < n.Length then List.toArray n.[i].films else [||]
             for j in 0 .. (max oldFilms.Length newFilms.Length) - 1 do
-                let ident = sprintf "system[%d].layer[%d]" i j
+                let ident = $"system[%d{i}].layer[%d{j}]"
                 if j >= oldFilms.Length then yield { identity = ident; change = Added }
                 elif j >= newFilms.Length then yield { identity = ident; change = Removed }
                 elif oldFilms.[j] <> newFilms.[j] then yield { identity = ident; change = Changed } ]
@@ -299,7 +297,7 @@ module Report =
             project.systems
             |> List.mapi (fun i s ->
                 tr [] [
-                    td [] [ str (sprintf "system[%d]" i) ]
+                    td [] [ str $"system[%d{i}]" ]
                     td [] [ str (defaultArg s.description "(no description)") ]
                 ])
 
@@ -315,7 +313,7 @@ module Report =
                 table [] (
                     (tr [] [ th [] [ str "Element" ]; th [] [ str "Description" ] ]) :: systemRows)
                 h2 [] [ str "Project parameters" ]
-                p [] [ str (sprintf "%d system(s), %d source(s)." (List.length project.systems) (List.length project.sources)) ]
+                p [] [ str $"%d{List.length project.systems} system(s), %d{List.length project.sources} source(s)." ]
             ]
             @ chartNodes
 
@@ -342,7 +340,7 @@ module Report =
             let images =
                 charts
                 |> List.mapi (fun i h ->
-                    let imgPath = Path.Combine(dir, sprintf "chart-%d.png" i)
+                    let imgPath = Path.Combine(dir, $"chart-%d{i}.png")
                     // Best-effort image export; the actual render is the chart
                     // library's own writer (UI/WebView2-hosted) and is referenced by
                     // path in the HTML regardless of headless availability.
@@ -350,7 +348,7 @@ module Report =
                     (h.title, imgPath))
             let htmlText = buildHtml project images
             let ext = match format with | Html -> "html" | Pdf -> "pdf"
-            let outPath = Path.Combine(dir, sprintf "report.%s" ext)
+            let outPath = Path.Combine(dir, $"report.%s{ext}")
             File.WriteAllText(outPath, htmlText, System.Text.UTF8Encoding false)
             Ok()
         with e -> Error(FileIoError e)

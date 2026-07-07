@@ -98,7 +98,7 @@ module LocalRefinementTests =
             // evaluate the SAME modelValue path at the refined solution.
             let model = MeritFunction.modelValue baseSystem parameters result.solution target
             let hinge = max 0.0 (model - bound)
-            Assert.True(hinge < 1.0e-2, sprintf "expected hinge ~0, got %g (R = %g)" hinge model)
+            Assert.True(hinge < 1.0e-2, $"expected hinge ~0, got %g{hinge} (R = %g{model})")
         | Error e -> failwith $"expected a refined system, got Error {e}"
 
     // ----------------------------------------------------------------- AC-G4
@@ -113,7 +113,7 @@ module LocalRefinementTests =
                 waveNm
                 |> List.map (fun nm ->
                     let r = reflectanceOf trueSystem (WaveLength.nm (nm * 1.0<nm>))
-                    sprintf "%g,%g" nm r)
+                    $"%g{nm},%g{r}")
             String.concat "\n" ("wavelength_nm,R" :: rows)
 
         let baseLight = IncidentLightInfo.create (WaveLength.nm 500.0<nm>)
@@ -135,7 +135,7 @@ module LocalRefinementTests =
             match InverseFit.invertFromCsv (Photometric R) baseLight baseSystem parameters initial csvText with
             | Ok (refined, result) ->
                 let chiFinal = ssr result.finalResiduals
-                Assert.True(chiFinal < chiInitial, sprintf "expected χ² to drop: initial %g, final %g" chiInitial chiFinal)
+                Assert.True(chiFinal < chiInitial, $"expected χ² to drop: initial %g{chiInitial}, final %g{chiFinal}")
 
                 // Fold-back through the §G.3 mapping produced a real system with a
                 // non-negative refined thickness.
@@ -196,7 +196,7 @@ module LocalRefinementTests =
         match LocalRefinement.refine baseSystem parameters initial [ target ] with
         | Ok (_, result) ->
             let chiFinal = ssr result.finalResiduals
-            Assert.True(chiFinal < chiInitial, sprintf "expected χ² to drop: initial %g, final %g" chiInitial chiFinal)
+            Assert.True(chiFinal < chiInitial, $"expected χ² to drop: initial %g{chiInitial}, final %g{chiFinal}")
         | Error e -> failwith $"expected a refined system, got Error {e}"
 
     // ------------------------------------------------ §G.7 ellipsometric CSV path
@@ -213,7 +213,7 @@ module LocalRefinementTests =
             let light = diagonalLight angle (WaveLength.nm (nm * 1.0<nm>))
             Psi.evaluate (OpticalSystemSolver(light, trueSystem).solution)
         let csvText =
-            let rows = waveNm |> List.map (fun nm -> sprintf "%g,%g" nm (psiAt nm))
+            let rows = waveNm |> List.map (fun nm -> $"%g{nm},%g{(psiAt nm)}")
             String.concat "\n" ("wavelength_nm,Psi" :: rows)
 
         let baseLight = diagonalLight angle (WaveLength.nm 500.0<nm>)
@@ -243,8 +243,8 @@ module LocalRefinementTests =
             // over the full multi-point path is slice 011, §G.8.)
             let chiAtStart = MeritFunction.buildResidual baseSystem parameters targets [| 220.0e-9 |] |> ssr
             let chiAtTrue = MeritFunction.buildResidual baseSystem parameters targets [| 250.0e-9 |] |> ssr
-            Assert.True(chiAtTrue < chiAtStart, sprintf "ellipsometric residual must be sensitive to thickness: true %g, start %g" chiAtTrue chiAtStart)
-            Assert.True(chiAtTrue < 1.0e-9, sprintf "synthetic data must be reproduced at the true thickness, got χ² %g" chiAtTrue)
+            Assert.True(chiAtTrue < chiAtStart, $"ellipsometric residual must be sensitive to thickness: true %g{chiAtTrue}, start %g{chiAtStart}")
+            Assert.True(chiAtTrue < 1.0e-9, $"synthetic data must be reproduced at the true thickness, got χ² %g{chiAtTrue}")
 
             // Drive the full MeasuredEllipsometric CSV → FitTargets → §G.5 refine
             // path end to end and fold the solution back through the §G.3 mapping.

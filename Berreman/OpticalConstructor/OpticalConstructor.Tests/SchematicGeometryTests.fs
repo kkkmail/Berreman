@@ -101,7 +101,7 @@ module SchematicGeometryTests =
                 substrate = Some (Wedge { layer = film (Thickness.mm 1.0<mm>); angle = WedgeAngle (Angle.degree 2.0) })
                 lower = OpticalProperties.vacuum
             }
-        let bands = Schematic.layout Nanometer (fun i -> sprintf "m%d" i) sys
+        let bands = Schematic.layout Nanometer (fun i -> $"m%d{i}") sys
         // upper + 2 films + substrate + lower = 5 bands.
         Assert.Equal(5, List.length bands)
         // The substrate band carries the wedge shape; the half-spaces and films do not.

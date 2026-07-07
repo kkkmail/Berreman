@@ -27,7 +27,7 @@ module LibraryProxyTests =
         | Ok entries ->
             Assert.NotEmpty entries
             Assert.All(entries, fun e -> Assert.True((match e with SampleItem _ -> true | _ -> false), e.displayName))
-        | Error err -> Assert.Fail(sprintf "%A" err)
+        | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``entriesForKind Detector returns only DetectorItems`` () =
@@ -35,7 +35,7 @@ module LibraryProxyTests =
         | Ok entries ->
             Assert.NotEmpty entries
             Assert.All(entries, fun e -> Assert.True((match e with DetectorItem _ -> true | _ -> false), e.displayName))
-        | Error err -> Assert.Fail(sprintf "%A" err)
+        | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``entriesForKind LinearPolarizer returns ONLY the ideal LP (not the CPs)`` () =
@@ -45,7 +45,7 @@ module LibraryProxyTests =
             match entries with
             | [ PolarizerItem p ] -> Assert.Equal(IdealLinear, p.kind)
             | _ -> Assert.Fail("expected exactly one ideal linear polarizer")
-        | Error err -> Assert.Fail(sprintf "%A" err)
+        | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``entriesForKind CircularPolarizer returns EXACTLY the two CP presets (not the LP)`` () =
@@ -57,16 +57,16 @@ module LibraryProxyTests =
                 |> List.choose (function PolarizerItem p -> Some p.kind | _ -> None)
                 |> Set.ofList
             Assert.Equal<Set<PolarizerKind>>(Set.ofList [ IdealCircularLeft; IdealCircularRight ], kinds)
-        | Error err -> Assert.Fail(sprintf "%A" err)
+        | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``tryGetEntry hits a known id and misses an unknown id`` () =
         match proxy.tryGetEntry "src-600" with
         | Ok (Some (SourceItem s)) -> Assert.Equal("src-600", s.id)
-        | other -> Assert.Fail(sprintf "expected the 600 nm source, got %A" other)
+        | other -> Assert.Fail($"expected the 600 nm source, got %A{other}")
         match proxy.tryGetEntry "no-such-id" with
         | Ok None -> ()
-        | other -> Assert.Fail(sprintf "expected Ok None, got %A" other)
+        | other -> Assert.Fail($"expected Ok None, got %A{other}")
 
     [<Fact>]
     let ``libraryTrees returns at least one tree and every leaf entry id resolves`` () =
@@ -82,8 +82,8 @@ module LibraryProxyTests =
             for id in ids do
                 match proxy.tryGetEntry id with
                 | Ok (Some _) -> ()
-                | other -> Assert.Fail(sprintf "tree leaf %s did not resolve: %A" id other)
-        | Error err -> Assert.Fail(sprintf "%A" err)
+                | other -> Assert.Fail($"tree leaf %s{id} did not resolve: %A{other}")
+        | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``forKinds maps each entry case to its valid catalogue kinds`` () =
@@ -166,7 +166,7 @@ module LibraryProxyTests =
             Assert.Equal(string s.id.value, entryId)
             match proxy.tryGetEntry entryId with
             | Ok (Some (SampleItem found)) -> Assert.Equal<SampleId>(s.id, found.id)
-            | other -> Assert.Fail(sprintf "sample %s did not round-trip by entry id %s: %A" s.name entryId other)
+            | other -> Assert.Fail($"sample %s{s.name} did not round-trip by entry id %s{entryId}: %A{other}")
 
     [<Fact>]
     let ``a MINTED SampleId round-trips create-store-lookup through a proxy of the same shape`` () =
@@ -193,7 +193,7 @@ module LibraryProxyTests =
             }
         match stub.tryGetEntry (SampleItem sample).entryId with
         | Ok (Some (SampleItem found)) -> Assert.Equal<SampleId>(sample.id, found.id)
-        | other -> Assert.Fail(sprintf "expected the minted sample back, got %A" other)
+        | other -> Assert.Fail($"expected the minted sample back, got %A{other}")
 
     [<Fact>]
     let ``the seeded sample ids are distinct, non-empty Guids`` () =
@@ -217,4 +217,4 @@ module LibraryProxyTests =
         Assert.Equal<LibraryEntry list>([], (match stub.entriesForKind LinearPolarizer with Ok e -> e | Error _ -> [ onlyDetector ]))
         match stub.tryGetEntry "stub-det" with
         | Ok (Some (DetectorItem d)) -> Assert.Equal("stub-det", d.id)
-        | other -> Assert.Fail(sprintf "%A" other)
+        | other -> Assert.Fail($"%A{other}")

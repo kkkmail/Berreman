@@ -121,4 +121,4 @@ module InverseFit =
         (csvText : string) : Result<OpticalSystem * OptimizationResult, string> =
         match parseMeasurementCsv quantity baseLight csvText with
         | Ok targets -> LocalRefinement.refine baseSystem parameters initial targets
-        | Error e -> Error (sprintf "%A" e)
+        | Error e -> Error $"%A{e}"

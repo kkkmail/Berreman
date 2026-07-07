@@ -31,13 +31,13 @@ module ValidationTests =
         let t = Thickness.Thickness 1.0e-7<meter>
         match validateThickness t with
         | Ok back -> Assert.Equal(t, back)            // no coercion
-        | Error e -> Assert.Fail(sprintf "%A" e)
+        | Error e -> Assert.Fail($"%A{e}")
 
     [<Fact>]
     let ``AC-J9 the semi-infinite half-space (Infinity) is Ok`` () =
         match validateThickness Thickness.Infinity with
         | Ok Thickness.Infinity -> ()
-        | other -> Assert.Fail(sprintf "%A" other)
+        | other -> Assert.Fail($"%A{other}")
 
     // --- AC-J9: repeat count >= 1 (the J.2 seam) --------------------------------
 
@@ -75,7 +75,7 @@ module ValidationTests =
         | Ok (lo, hi) ->
             Assert.Equal(400.0e-9<meter>, lo)         // no coercion / reordering
             Assert.Equal(800.0e-9<meter>, hi)
-        | Error e -> Assert.Fail(sprintf "%A" e)
+        | Error e -> Assert.Fail($"%A{e}")
 
     // --- AC-J9: physical-sanity gain warning (advisory, non-blocking) -----------
 
@@ -83,7 +83,7 @@ module ValidationTests =
     let ``AC-J9 a negative imaginary index raises a non-blocking gain warning`` () =
         match imaginaryIndexGainWarning -0.01 with
         | [ w ] -> Assert.Equal(Warning, w.severity)
-        | other -> Assert.Fail(sprintf "%A" other)
+        | other -> Assert.Fail($"%A{other}")
 
     [<Fact>]
     let ``AC-J9 an absorbing (k >= 0) index raises no warning`` () =

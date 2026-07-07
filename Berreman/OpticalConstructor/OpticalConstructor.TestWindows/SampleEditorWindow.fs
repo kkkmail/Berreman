@@ -20,7 +20,7 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, existi
     do
         this.Title <-
             match existing with
-            | Some s -> sprintf "Sample Editor — %s" s.name
+            | Some s -> $"Sample Editor — %s{s.name}"
             | None -> "Sample Editor — new sample"
         this.Name <- SampleEditorView.UiIds.window
         AutomationProperties.SetAutomationId(this, SampleEditorView.UiIds.window)

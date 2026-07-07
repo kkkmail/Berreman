@@ -93,11 +93,22 @@ not by colocation.
 - A **space before every colon** in an annotation: `name : Type`, never `name: Type`.
 - **Every record field is `camelCase`** — both data fields and function-valued
   fields (`{ data : CustomerData; saveChanges : unit -> int }`).
+- **Interpolated strings, never `sprintf`**: `$"value: {x}"`, not
+  `sprintf "value: %d" x`. Applies to logs, errors, ids, and all formatted strings
+  (a typed format specifier still works inside the hole: `$"%08x{h}"`, `$"%A{x}"`).
 - **Pattern-match.** Never `.IsSome` / `.IsNone` / `.Value` on options, and never
   reach into a single-case DU outside its accessor.
 - **Immutable by default.** Mutation only at the IO boundary or in a measured
   hot numerical kernel.
-- Errors are values: return `Result<'T, 'E>`, do not throw across a public boundary.
+- **Errors are values**: return `Result<'T, 'E>`, do not throw across a public
+  boundary. Platform APIs that throw (.NET IO, native interop) are caught AT the
+  boundary and mapped to typed errors — F# above the boundary never handles
+  exceptions.
+- **Explicit concrete types on every public function parameter and return type.**
+  No inference reliance at a module-boundary surface; only genuinely generic
+  functions keep their type parameters (`Result<'T, 'E>` stays generic), named
+  meaningfully (`'Item`, `'Config`) — not bare `'a` / `'b`.
+- **Pure functions by default**; side effects live only at the edges.
 - Prefer `async` computation expressions for IO.
 - Simplicity and correctness over cleverness.
 - Four-space indent. For floating-point comparisons in tests, reuse the

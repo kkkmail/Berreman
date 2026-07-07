@@ -30,10 +30,10 @@ module ExportImportTests =
         // The headers/rows are already-computed sweep tuples (no solver re-invocation).
         let headers = [ "wavelength_nm"; "R"; "T" ]
         let rows : float[][] = [| [| 400.0; 0.10; 0.90 |]; [| 500.0; 0.20; 0.80 |] |]
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-csv-%s.csv" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-csv-%s{(Guid.NewGuid().ToString("N"))}.csv""")
         try
             match Export.exportCsv path (headers, rows) with
-            | Error e -> Assert.Fail(sprintf "%A" e)
+            | Error e -> Assert.Fail($"%A{e}")
             | Ok () ->
                 let lines = File.ReadAllLines path
                 Assert.Equal(3, lines.Length)                  // one header + two rows
@@ -50,16 +50,16 @@ module ExportImportTests =
         let csvPath = Path.Combine(fixtures, "sample-nk.csv")
         match importMaterials csvPath with
         | Ok entries -> Assert.False(List.isEmpty entries, "imported at least one entry")
-        | Error e -> Assert.Fail(sprintf "%A" e)
+        | Error e -> Assert.Fail($"%A{e}")
 
     [<Fact>]
     let ``AC-I10 exportMaterials writes JSON that validates against the materialEntry $def`` () =
         // Built-in entries span categories and include None descriptions (the omit-null path).
         let entries = builtInEntries
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-mat-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-mat-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             match exportMaterials path entries with
-            | Error e -> Assert.Fail(sprintf "%A" e)
+            | Error e -> Assert.Fail($"%A{e}")
             | Ok () ->
                 use doc = JsonDocument.Parse(File.ReadAllText path)
                 Assert.Equal(JsonValueKind.Array, doc.RootElement.ValueKind)
@@ -68,7 +68,7 @@ module ExportImportTests =
                     count <- count + 1
                     match validateEntryElement el with
                     | Ok () -> ()
-                    | Error e -> Assert.Fail(sprintf "entry failed materialEntry validation: %A" e)
+                    | Error e -> Assert.Fail($"entry failed materialEntry validation: %A{e}")
                 Assert.Equal(List.length entries, count)
         finally
             if File.Exists path then File.Delete path
@@ -96,7 +96,7 @@ module ExportImportTests =
 
     [<Fact>]
     let ``AC-I11 appendRevision twice yields two numbered snapshots and diffRevisions returns a ProjectDiff`` () =
-        let folder = Path.Combine(Path.GetTempPath(), sprintf "oc-hist-%s" (Guid.NewGuid().ToString("N")))
+        let folder = Path.Combine(Path.GetTempPath(), $"""oc-hist-%s{(Guid.NewGuid().ToString("N"))}""")
         Directory.CreateDirectory folder |> ignore
         try
             let p1 = sampleProject Nanometer
@@ -113,6 +113,6 @@ module ExportImportTests =
                 let p3 = { p2 with systems = vacuumSystem :: p2.systems }
                 let d = diffRevisions p1 p3
                 Assert.Contains(d.systems, fun (it : DiffItem) -> it.change = Added)
-            | r1, r2 -> Assert.Fail(sprintf "appendRevision failed: %A / %A" r1 r2)
+            | r1, r2 -> Assert.Fail($"appendRevision failed: %A{r1} / %A{r2}")
         finally
             if Directory.Exists folder then Directory.Delete(folder, true)

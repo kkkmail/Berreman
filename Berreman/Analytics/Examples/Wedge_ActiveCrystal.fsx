@@ -31,8 +31,8 @@ let numberOfPoints = 2000
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = sprintf "Planar active crystal wedge %A degrees, r12 = %A, n11 = %A, n33 = %A." wedgeAngle.degrees r12.value e11.refractionIndex.value e33.refractionIndex.value
-let d1 = sprintf "Planar active crystal wedge %A degrees, n11 = %A, n33 = %A." wedgeAngle.degrees e11.refractionIndex.value e33.refractionIndex.value
+let d = $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, r12 = %A{r12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let d1 = $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
 let p = OpticalProperties.planarCrystal e11 e33 r12
 
 let wedgeAngleRange =

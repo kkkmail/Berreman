@@ -64,13 +64,13 @@ module SampleStackEditorTests =
             (fun s m ->
                 match applySampleStackMsg m s with
                 | Ok next -> next
-                | Error e -> failwith (sprintf "unexpected editor error on %A: %A" m e))
+                | Error e -> failwith $"unexpected editor error on %A{m}: %A{e}")
             state
 
     /// Apply one message expected to be rejected, returning the typed error.
     let private expectError (msg : SampleStackMsg) (state : SampleStackEditState) : SampleStackEditError =
         match applySampleStackMsg msg state with
-        | Ok _ -> failwith (sprintf "expected a typed error for %A, got Ok" msg)
+        | Ok _ -> failwith $"expected a typed error for %A{msg}, got Ok"
         | Error e -> e
 
     // ================================ selection ================================
@@ -274,7 +274,7 @@ module SampleStackEditorTests =
         | [ SingleLayer single; Repeated group ] ->
             Assert.Equal(MaterialIds.glass175, single.materialId)
             Assert.Equal(3, group.count)
-        | films -> failwith (sprintf "unexpected films shape: %A" films)
+        | films -> failwith $"unexpected films shape: %A{films}"
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
 
     // ============================== MakeRepeatBlock ==============================
@@ -314,7 +314,7 @@ module SampleStackEditorTests =
             Assert.Equal(3, group.count)
             Assert.Equal(2, List.length group.cell)
             Assert.Equal(MaterialIds.glass152, trailing.materialId)
-        | films -> failwith (sprintf "unexpected films shape: %A" films)
+        | films -> failwith $"unexpected films shape: %A{films}"
         Assert.Equal(2 * 3 + 1, List.length state.structure.expandedFilms)
 
     [<Fact>]
@@ -322,30 +322,30 @@ module SampleStackEditorTests =
         let selected = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 1) ]
         match expectError (MakeRepeatBlock 0) selected with
         | InvalidRepeatCount _ -> ()
-        | e -> failwith (sprintf "expected InvalidRepeatCount, got %A" e)
+        | e -> failwith $"expected InvalidRepeatCount, got %A{e}"
         match expectError (MakeRepeatBlock -3) selected with
         | InvalidRepeatCount _ -> ()
-        | e -> failwith (sprintf "expected InvalidRepeatCount, got %A" e)
+        | e -> failwith $"expected InvalidRepeatCount, got %A{e}"
 
     [<Fact>]
     let ``MakeRepeatBlock rejects a non-contiguous selection`` () =
         let selected = editorOf threeSingles |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 2) ]
         match expectError (MakeRepeatBlock 2) selected with
         | SelectionNotFoldable _ -> ()
-        | e -> failwith (sprintf "expected SelectionNotFoldable, got %A" e)
+        | e -> failwith $"expected SelectionNotFoldable, got %A{e}"
 
     [<Fact>]
     let ``MakeRepeatBlock rejects an empty selection`` () =
         match expectError (MakeRepeatBlock 2) (editorOf threeSingles) with
         | SelectionNotFoldable _ -> ()
-        | e -> failwith (sprintf "expected SelectionNotFoldable, got %A" e)
+        | e -> failwith $"expected SelectionNotFoldable, got %A{e}"
 
     [<Fact>]
     let ``MakeRepeatBlock rejects a selection holding period-cell layers`` () =
         let selected = editorOf withGroup |> applyAll [ SelectLayer (AtCellLayer (0, 0)) ]
         match expectError (MakeRepeatBlock 2) selected with
         | SelectionNotFoldable _ -> ()
-        | e -> failwith (sprintf "expected SelectionNotFoldable, got %A" e)
+        | e -> failwith $"expected SelectionNotFoldable, got %A{e}"
 
     // ============================== SetRepeatCount ==============================
 
@@ -360,14 +360,14 @@ module SampleStackEditorTests =
     let ``SetRepeatCount rejects a count below 1 with the typed error — the validateRepeatCount rule`` () =
         match expectError (SetRepeatCount (0, 0)) (editorOf withGroup) with
         | InvalidRepeatCount _ -> ()
-        | e -> failwith (sprintf "expected InvalidRepeatCount, got %A" e)
+        | e -> failwith $"expected InvalidRepeatCount, got %A{e}"
         // The SAME rule the Ui boundary enforces: validateRepeatCount rejects 0, accepts 1.
         match OpticalConstructor.Ui.Validation.validateRepeatCount 0 with
         | Error _ -> ()
-        | Ok c -> failwith (sprintf "Ui validateRepeatCount unexpectedly accepted %d" c)
+        | Ok c -> failwith $"Ui validateRepeatCount unexpectedly accepted %d{c}"
         match OpticalConstructor.Ui.Validation.validateRepeatCount 1 with
         | Ok _ -> ()
-        | Error e -> failwith (sprintf "Ui validateRepeatCount unexpectedly rejected 1: %A" e)
+        | Error e -> failwith $"Ui validateRepeatCount unexpectedly rejected 1: %A{e}"
         let accepted = editorOf withGroup |> applyAll [ SetRepeatCount (0, 1) ]
         Assert.Equal(3, List.length accepted.structure.expandedFilms)
 
@@ -375,7 +375,7 @@ module SampleStackEditorTests =
     let ``SetRepeatCount aimed at a non-group position is rejected with the typed error`` () =
         match expectError (SetRepeatCount (1, 2)) (editorOf withGroup) with
         | NotARepeatGroup _ -> ()
-        | e -> failwith (sprintf "expected NotARepeatGroup, got %A" e)
+        | e -> failwith $"expected NotARepeatGroup, got %A{e}"
         match expectError (SetRepeatCount (7, 2)) (editorOf withGroup) with
         | NotARepeatGroup _ -> ()
-        | e -> failwith (sprintf "expected NotARepeatGroup, got %A" e)
+        | e -> failwith $"expected NotARepeatGroup, got %A{e}"

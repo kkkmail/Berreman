@@ -88,11 +88,11 @@ module EnvironmentRoundTripTests =
             // The by-value Layer fragment's canonical SI thickness is byte-identical.
             match l.thickness with
             | Thickness.Thickness d -> Assert.Equal(filmThickness, d)
-            | other -> Assert.Fail(sprintf "unexpected pinned thickness: %A" other)
+            | other -> Assert.Fail($"unexpected pinned thickness: %A{other}")
             Assert.Equal(1, List.length s.films)
             Assert.Equal("Si", m)
             Assert.Equal("src-d65", src)
-        | other -> Assert.Fail(sprintf "unexpected pins: %A" other)
+        | other -> Assert.Fail($"unexpected pins: %A{other}")
         // Recent files, last folders, theme, palette, layout, preferences all survive.
         Assert.Equal<string list>(sample.recentFiles, back.recentFiles)
         Assert.Equal<string list>(sample.lastFolders, back.lastFolders)
@@ -108,7 +108,7 @@ module EnvironmentRoundTripTests =
 
     [<Fact>]
     let ``AC-J6 a deliberately invalid settings file falls back to built-in defaults`` () =
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             // A document missing required fields (and the schemaVersion const) must
             // FAIL validation; load returns defaults rather than attempting migration.
@@ -122,13 +122,13 @@ module EnvironmentRoundTripTests =
 
     [<Fact>]
     let ``AC-J6 a missing settings file yields defaults`` () =
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-missing-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-missing-%s{(Guid.NewGuid().ToString("N"))}.json""")
         Assert.False(File.Exists path)
         Assert.Equal(defaults, load path)
 
     [<Fact>]
     let ``AC-J6 save then load round-trips through the file system`` () =
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-rt-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-rt-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             save path sample |> okOr
             Assert.True((sample = load path))
@@ -168,7 +168,7 @@ module EnvironmentRoundTripTests =
     let ``AC-I2 the selected language persists through the on-disk save path`` () =
         // The Settings-ribbon selector (Part D / slice 006) writes through `save`; the
         // chosen language is restored by `load` on the next launch (I.2.1 / I.5).
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-lang-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-lang-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             save path { defaults with language = Russian } |> okOr
             Assert.Equal(Russian, (load path).language)
@@ -203,7 +203,7 @@ module EnvironmentRoundTripTests =
 
     [<Fact>]
     let ``AC-E8 the customized key map persists through the on-disk save path`` () =
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-env-keymap-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-keymap-%s{(Guid.NewGuid().ToString("N"))}.json""")
         try
             let customized =
                 { defaults with keyMap = { defaults.keyMap with rotationStepDegrees = 7.5 } }

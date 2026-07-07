@@ -96,7 +96,7 @@ module RibbonTests =
         for tab in Ribbon.allTabs do
             let cmds = Ribbon.tabCommands tab
             Assert.NotEmpty cmds
-            for c in cmds do Assert.True(registryCommands.Contains c, sprintf "%A is not a registry command" c)
+            for c in cmds do Assert.True(registryCommands.Contains c, $"%A{c} is not a registry command")
 
     // =======================================================================
     // AC-D2 — single-source ribbon ↔ menu equivalence (constraint 0.4).
@@ -184,15 +184,15 @@ module RibbonTests =
         // No catalogue kind maps to the engine Analyzer case (no analyzer entry, F.1.2/F.3).
         for kind in Ribbon.catalogueKinds do
             match toConstructorElement kind with
-            | BeamTree.Analyzer -> Assert.Fail(sprintf "catalogue kind %A must not map to Analyzer" kind)
+            | BeamTree.Analyzer -> Assert.Fail($"catalogue kind %A{kind} must not map to Analyzer")
             | _ -> ()
         // LP and CP both map to Polarizer (no new DU case, F.3).
         match toConstructorElement LinearPolarizer with
         | BeamTree.Polarizer -> ()
-        | other -> Assert.Fail(sprintf "Linear polarizer must map to Polarizer, got %A" other)
+        | other -> Assert.Fail($"Linear polarizer must map to Polarizer, got %A{other}")
         match toConstructorElement CircularPolarizer with
         | BeamTree.Polarizer -> ()
-        | other -> Assert.Fail(sprintf "Circular polarizer must map to Polarizer, got %A" other)
+        | other -> Assert.Fail($"Circular polarizer must map to Polarizer, got %A{other}")
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
@@ -206,7 +206,7 @@ module RibbonTests =
         for p in m3.project.placements do
             match toConstructorElement p.catalogueKind with
             | BeamTree.Polarizer -> ()
-            | other -> Assert.Fail(sprintf "expected Polarizer, got %A" other)
+            | other -> Assert.Fail($"expected Polarizer, got %A{other}")
 
     // =======================================================================
     // AC-F2 — the value-id binding action + working empty modal.
@@ -259,16 +259,16 @@ module RibbonTests =
     [<Trait("Category", "ui-tests")>]
     let ``the surfaceless commands are not parameterless-invokable; every other registry command is`` () =
         for cmd in surfacelessCommands do
-            Assert.False(ConstructorView.isParameterlessInvokable cmd, sprintf "%A has no front-door surface (must render disabled)" cmd)
+            Assert.False(ConstructorView.isParameterlessInvokable cmd, $"%A{cmd} has no front-door surface (must render disabled)")
         let registryCommands = Commands.registry |> List.map (fun d -> d.command)
         for cmd in registryCommands do
             if not (List.contains cmd surfacelessCommands) then
-                Assert.True(ConstructorView.isParameterlessInvokable cmd, sprintf "%A must be parameterless-invokable" cmd)
+                Assert.True(ConstructorView.isParameterlessInvokable cmd, $"%A{cmd} must be parameterless-invokable")
         // The four element-edit commands are RE-ENABLED this slice (their overlays now render),
         // so they are NOT in the surfaceless set and ARE parameterless-invokable.
         for cmd in reEnabledElementCommands do
-            Assert.False(List.contains cmd surfacelessCommands, sprintf "%A now has a rendered front-door surface" cmd)
-            Assert.True(ConstructorView.isParameterlessInvokable cmd, sprintf "%A must be parameterless-invokable" cmd)
+            Assert.False(List.contains cmd surfacelessCommands, $"%A{cmd} now has a rendered front-door surface")
+            Assert.True(ConstructorView.isParameterlessInvokable cmd, $"%A{cmd} must be parameterless-invokable")
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]

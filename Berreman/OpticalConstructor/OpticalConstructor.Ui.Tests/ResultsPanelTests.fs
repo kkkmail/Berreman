@@ -62,11 +62,11 @@ module ResultsPanelTests =
             // system has five films + the incident/exit half-spaces + a substrate band,
             // so at least eight band rectangles render.
             let rects = descendants |> List.filter (fun v -> v :? Rectangle) |> List.length
-            Assert.True(rects >= 8, sprintf "expected >= 8 schematic band rectangles, got %d" rects)
+            Assert.True(rects >= 8, $"expected >= 8 schematic band rectangles, got %d{rects}")
 
             // The ray overlay renders as the three ray Lines (incident/reflected/transmitted).
             let lines = descendants |> List.filter (fun v -> v :? Line) |> List.length
-            Assert.True(lines >= 3, sprintf "expected >= 3 ray lines, got %d" lines)
+            Assert.True(lines >= 3, $"expected >= 3 ray lines, got %d{lines}")
             let texts = textBlocks window
             Assert.Contains(texts, fun t -> t.Contains "Primary detector #1")
             window.Close())
@@ -94,7 +94,7 @@ module ResultsPanelTests =
                 |> Seq.length
             let scottPlaceholder = texts |> List.exists (fun t -> t.Contains "Plot — renderer unavailable")
             Assert.True(avaPlots >= 1 || scottPlaceholder,
-                        sprintf "expected the overlay hosted via scottPlotHost (AvaPlot or its placeholder), got texts: %A" texts)
+                        $"expected the overlay hosted via scottPlotHost (AvaPlot or its placeholder), got texts: %A{texts}")
             Assert.DoesNotContain(texts, fun (t : string) -> t.Contains "Plotly chart (WebView2)")
             window.Close()
 

@@ -46,7 +46,7 @@ module WireUiCompositionTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
         match found with
-        | None -> Assert.Fail(sprintf "%s was not found (or not visible)" id)
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
@@ -55,7 +55,7 @@ module WireUiCompositionTests =
                 if window.IsVisible then
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-            else Assert.Fail(sprintf "%s has no on-screen position" id)
+            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// control's `onTextChanged` binds).
@@ -64,15 +64,15 @@ module WireUiCompositionTests =
         | Some (:? TextBox as tb) ->
             tb.Text <- text
             Dispatcher.UIThread.RunJobs()
-        | Some c -> Assert.Fail(sprintf "%s is a %s, not a TextBox" id (c.GetType().Name))
-        | None -> Assert.Fail(sprintf "%s was not found" id)
+        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail($"%s{id} was not found")
 
     /// The text of the TextBlock carrying `id`.
     let private textOf (window : Window) (id : string) : string =
         match tryFindControl window id with
         | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith (sprintf "%s is a %s, not a TextBlock" id (c.GetType().Name))
-        | None -> failwith (sprintf "%s was not found in the visual tree" id)
+        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
+        | None -> failwith $"%s{id} was not found in the visual tree"
 
     /// Mount the REAL composition root headless: the window's constructor builds the four
     /// in-memory proxies and runs the Elmish loop over `initMainWith` — exactly what the
@@ -93,11 +93,11 @@ module WireUiCompositionTests =
             // three slice-named bays — a bay whose content throws fails the sweep here).
             for bay in BayNames.all do
                 clickOn window (Ribbon.UiIds.tab bay)
-                Assert.True(window.IsVisible, sprintf "the %s bay must render one frame without throwing" bay)
+                Assert.True(window.IsVisible, $"the %s{bay} bay must render one frame without throwing")
             // Selector: the kind-constrained binding surface mounts (its ids are unconditional).
             clickOn window (Ribbon.UiIds.tab BayNames.selector)
             for id in [ LibraryControls.UiIds.kindLabel; LibraryControls.UiIds.readout; LibraryControls.UiIds.tree ] do
-                Assert.True(isPresent window id, sprintf "the Selector bay must mount %s" id)
+                Assert.True(isPresent window id, $"the Selector bay must mount %s{id}")
             // Materials: the workbench lists the SEEDED store — the root wired a live
             // MaterialProxy, not an empty stand-in.
             clickOn window (Ribbon.UiIds.tab BayNames.materials)

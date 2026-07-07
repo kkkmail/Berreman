@@ -30,7 +30,7 @@ module AlglibAdapter =
         | 5 -> MaxIterationsReached
         | 7 -> StepTooSmall
         | c when c > 0 -> Converged
-        | c -> Failed (sprintf "ALGLIB termination code %d" c)
+        | c -> Failed $"ALGLIB termination code %d{c}"
 
     let private result (xr : float[]) (request : OptimizationRequest) (iterations : int) (code : int) : OptimizationResult =
         {

@@ -100,18 +100,18 @@ module UiIds =
     /// A material-category option, by the category's stable code.
     let categoryOption (code : string) : string = "MaterialCategoryOption_" + code
     /// A principal-index entry (1-based axis slot; present per the anisotropy choice).
-    let indexBox (axisNumber : int) : string = sprintf "PrincipalIndexBox_%d" axisNumber
+    let indexBox (axisNumber : int) : string = $"PrincipalIndexBox_%d{axisNumber}"
     /// A principal absorption (k) entry (present only while the absorbing rung is unlocked).
-    let absorptionBox (axisNumber : int) : string = sprintf "AbsorptionIndexBox_%d" axisNumber
+    let absorptionBox (axisNumber : int) : string = $"AbsorptionIndexBox_%d{axisNumber}"
     /// Segment 0's model picker carries the mandated literal; later segments carry the
     /// indexed member of the same family (the 022 RepeatCountStepper precedent).
     let segmentModelPicker (segmentIndex : int) : string =
-        if segmentIndex = 0 then dispersionModelPicker else sprintf "DispersionModelPicker_%d" segmentIndex
-    let segmentLowerBox (segmentIndex : int) : string = sprintf "SegmentLowerBox_%d" segmentIndex
-    let segmentUpperBox (segmentIndex : int) : string = sprintf "SegmentUpperBox_%d" segmentIndex
-    let segmentRemoveButton (segmentIndex : int) : string = sprintf "SegmentRemoveButton_%d" segmentIndex
+        if segmentIndex = 0 then dispersionModelPicker else $"DispersionModelPicker_%d{segmentIndex}"
+    let segmentLowerBox (segmentIndex : int) : string = $"SegmentLowerBox_%d{segmentIndex}"
+    let segmentUpperBox (segmentIndex : int) : string = $"SegmentUpperBox_%d{segmentIndex}"
+    let segmentRemoveButton (segmentIndex : int) : string = $"SegmentRemoveButton_%d{segmentIndex}"
     /// A segment's dispersion-model option, by segment index and the model kind's code.
-    let modelOption (segmentIndex : int) (code : string) : string = sprintf "DispersionModelOption_%d_%s" segmentIndex code
+    let modelOption (segmentIndex : int) (code : string) : string = $"DispersionModelOption_%d{segmentIndex}_%s{code}"
     /// A gyration-class option, by the class's stable code.
     let gyrationClassOption (code : string) : string = "GyrationClassOption_" + code
     /// A handedness option ("Right" / "Left").
@@ -288,9 +288,9 @@ let private epsCaseLabel (eps : EpsWithDispValue) : string =
     | EpsWithoutDispValue (UniaxialAbsorbing _) -> "uniaxial absorbing"
     | EpsWithoutDispValue (BiaxialTransparent _) -> "biaxial transparent"
     | EpsWithoutDispValue (BiaxialAbsorbing _) -> "biaxial absorbing"
-    | EpsWithDispValue (IsotropicDispersive segments) -> sprintf "isotropic dispersive (%d segments)" (List.length segments)
-    | EpsWithDispValue (UniaxialDispersive segments) -> sprintf "uniaxial dispersive (%d segments)" (List.length segments)
-    | EpsWithDispValue (BiaxialDispersive segments) -> sprintf "biaxial dispersive (%d segments)" (List.length segments)
+    | EpsWithDispValue (IsotropicDispersive segments) -> $"isotropic dispersive (%d{List.length segments} segments)"
+    | EpsWithDispValue (UniaxialDispersive segments) -> $"uniaxial dispersive (%d{List.length segments} segments)"
+    | EpsWithDispValue (BiaxialDispersive segments) -> $"biaxial dispersive (%d{List.length segments} segments)"
 
 /// The derived-model readout: the eps case, the optional aspects, and a structural digest —
 /// two states with the SAME summary denote the SAME derived complexity (the lossless-uncheck
@@ -300,13 +300,13 @@ let complexitySummary (m : Model) : string =
     | ViewOnlyMaterial _ -> "view-only engine preset"
     | EditableMaterial ->
         match toComplexity m.editor with
-        | Error e -> sprintf "not derivable — %s" (editErrorReason e)
+        | Error e -> $"not derivable — %s{editErrorReason e}"
         | Ok c ->
             let aspect (label : string) (o : 'a option) : string =
                 match o with
-                | Some _ -> sprintf "%s on" label
-                | None -> sprintf "%s off" label
-            sprintf "eps %s; %s; %s [%08x]" (epsCaseLabel c.eps) (aspect "active" c.active) (aspect "magnetic" c.magnetic) (hash c)
+                | Some _ -> $"%s{label} on"
+                | None -> $"%s{label} off"
+            $"""eps %s{epsCaseLabel c.eps}; %s{aspect "active" c.active}; %s{aspect "magnetic" c.magnetic} [%08x{hash c}]"""
 
 // ---------------------------------------------------------------------------
 // init / update (pure — IO only through the context's proxy fields).
@@ -487,7 +487,7 @@ let private numberBox (autoId : string) (width : float) (value : float) (onCommi
     TextBox.create [
         automationId autoId
         TextBox.width width
-        TextBox.text (sprintf "%g" value)
+        TextBox.text $"%g{value}"
         TextBox.onTextChanged (
             (fun s ->
                 match parseFloat s with
@@ -645,7 +645,7 @@ let private indexFieldsRow (m : Model) (dispatch : Msg -> unit) : IView =
             @ (match m.editor.transparency with
                | Absorbing ->
                    [
-                       labelled (sprintf "k%d:" number) (numberBox (UiIds.absorptionBox number) 70.0 im (fun v ->
+                       labelled $"k%d{number}:" (numberBox (UiIds.absorptionBox number) 70.0 im (fun v ->
                            dispatch (EditorMsg (SetPrincipalIndex (slot, ComplexRefractionIndex (createComplex re v))))))
                    ]
                | Transparent -> []))
@@ -926,7 +926,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.spacing 6.0
                             StackPanel.children [
-                                labelBlock (sprintf "%s — %s" m.name (categoryCode m.category))
+                                labelBlock $"%s{m.name} — %s{categoryCode m.category}"
                                 TextBlock.create [ TextBlock.text m.description; TextBlock.foreground (brush hintColor) ] :> IView
                                 TextBlock.create [
                                     TextBlock.name UiIds.viewOnlyNote

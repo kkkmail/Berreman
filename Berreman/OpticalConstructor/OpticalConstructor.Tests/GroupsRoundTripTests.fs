@@ -27,7 +27,7 @@ module GroupsRoundTripTests =
     /// `inBeam` but dropped the stored configuration would be caught by an equality check.
     let private configured (kind : CatalogueKind) (x : float) : ElementPlacement =
         let p = ElementPlacement.create kind (at x 0.0)
-        { p with r1 = Angle.degree 12.0; r2 = Angle.degree 34.0; valueId = Some (sprintf "value-%s-%g" (string kind) x) }
+        { p with r1 = Angle.degree 12.0; r2 = Angle.degree 34.0; valueId = Some $"value-%s{(string kind)}-%g{x}" }
 
     let private addMembers (ps : ElementPlacement list) (g : Groups.ElementGroup) : Groups.ElementGroup =
         ps |> List.fold (fun acc p -> Groups.ElementGroup.addMember p acc) g

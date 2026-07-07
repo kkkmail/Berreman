@@ -20,7 +20,7 @@ type MaterialEditorWindow(materials : MaterialProxy, existing : MaterialEntry op
     do
         this.Title <-
             match existing with
-            | Some e -> sprintf "Material Editor — %s" e.name
+            | Some e -> $"Material Editor — %s{e.name}"
             | None -> "Material Editor — new material"
         this.Name <- MaterialEditorView.UiIds.window
         AutomationProperties.SetAutomationId(this, MaterialEditorView.UiIds.window)

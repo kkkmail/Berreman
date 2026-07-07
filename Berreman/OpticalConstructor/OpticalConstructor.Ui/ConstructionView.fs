@@ -90,7 +90,7 @@ let private layerRow
     (index : int)
     (layer : Layer)
     : IView =
-    let label = sprintf "Layer %d — %s" index (StackEditor.displayThickness u layer.thickness)
+    let label = $"Layer %d{index} — %s{StackEditor.displayThickness u layer.thickness}"
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 4.0

@@ -219,8 +219,8 @@ let progressText (model : JobModel<'r>) : string option =
     model.progress
     |> Option.map (fun p ->
         match p.total with
-        | Some t -> sprintf "%d / %d  (%.1f s)" p.completed t p.elapsed.TotalSeconds
-        | None -> sprintf "%d iterations  (%.1f s)…" p.completed p.elapsed.TotalSeconds)
+        | Some t -> $"%d{p.completed} / %d{t}  (%.1f{p.elapsed.TotalSeconds} s)"
+        | None -> $"%d{p.completed} iterations  (%.1f{p.elapsed.TotalSeconds} s)…")
 
 // ---------------------------------------------------------------------------
 // Derived-artefact sidecar confinement (R-1 item 6). Any artefact a job writes

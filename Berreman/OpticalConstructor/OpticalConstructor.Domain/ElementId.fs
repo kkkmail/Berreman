@@ -217,7 +217,7 @@ module Library =
             | SampleItem s -> s.description
             | SourceItem s ->
                 let wNm = s.waveLength.value / nmToMeter / oneNanometer
-                sprintf "Monochromatic light source at %g nm." wNm
+                $"Monochromatic light source at %g{wNm} nm."
             | DetectorItem d ->
                 match d.kind with
                 | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
@@ -595,7 +595,7 @@ module Library =
     /// steps 004/005): a `Sample` whose display name is empty/whitespace is `InvalidSample`.
     let private validateSample (s : Sample) : Result<unit, SampleError> =
         if String.IsNullOrWhiteSpace s.name
-        then Error (InvalidSample (sprintf "sample '%s' has a blank name" (string s.id.value)))
+        then Error (InvalidSample $"sample '%s{string s.id.value}' has a blank name")
         else Ok ()
 
     /// The real, stateful in-memory samples store behind the write-seam (spec 0033 step 005 —
@@ -624,7 +624,7 @@ module Library =
             let currentSamples () : Sample list =
                 store.Value |> Map.toList |> List.map snd
             let unknown (id : SampleId) : SampleError =
-                UnknownSampleId (sprintf "unknown sample id '%s'" (string id.value))
+                UnknownSampleId $"unknown sample id '%s{string id.value}'"
             {
                 listSamples = fun () -> Ok (currentSamples ())
                 searchSamples =
@@ -642,7 +642,7 @@ module Library =
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind sample.id with
                             | Some existing ->
-                                Error (DuplicateSampleId (sprintf "sample id '%s' already names '%s'" (string sample.id.value) existing.name))
+                                Error (DuplicateSampleId $"sample id '%s{string sample.id.value}' already names '%s{existing.name}'")
                             | None ->
                                 store.Value <- store.Value |> Map.add sample.id sample
                                 Ok ())
@@ -688,7 +688,7 @@ module Library =
             let currentEntries () : MaterialEntry list =
                 store.Value |> Map.toList |> List.map snd
             let unknown (id : MaterialId) : MaterialError =
-                UnknownMaterialId (sprintf "unknown material id '%s'" (string id.value))
+                UnknownMaterialId $"unknown material id '%s{string id.value}'"
             {
                 listMaterials = fun () -> Ok (currentEntries ())
                 searchMaterials = fun q -> Ok (byQuery q { entries = currentEntries () })
@@ -699,7 +699,7 @@ module Library =
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind entry.id with
                             | Some existing ->
-                                Error (DuplicateMaterialId (sprintf "material id '%s' already names '%s'" (string entry.id.value) existing.name))
+                                Error (DuplicateMaterialId $"material id '%s{string entry.id.value}' already names '%s{existing.name}'")
                             | None ->
                                 store.Value <- store.Value |> Map.add entry.id entry
                                 Ok ())
@@ -723,10 +723,10 @@ module Library =
                             | referencing ->
                                 let names =
                                     referencing
-                                    |> List.map (fun s -> sprintf "'%s'" s.name)
+                                    |> List.map (fun s -> $"'%s{s.name}'")
                                     |> List.sort
                                     |> String.concat ", "
-                                Error (MaterialStillReferenced (sprintf "material '%s' ('%s') is still referenced by %d sample(s): %s" entry.name (string id.value) (List.length referencing) names))
+                                Error (MaterialStillReferenced $"material '%s{entry.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
                         | None -> Error (unknown id)
             }
 
@@ -882,9 +882,7 @@ module Experiments =
 
         /// A short, human-readable description (the collection row + readout use this).
         member this.description : string =
-            sprintf "%s: vary %s over %g…%g %s (%d pts), capture %s"
-                this.elementLabel this.variable.label this.range.min this.range.max
-                this.variable.unitLabel this.range.points this.measurement.label
+            $"%s{this.elementLabel}: vary %s{this.variable.label} over %g{this.range.min}…%g{this.range.max} %s{this.variable.unitLabel} (%d{this.range.points} pts), capture %s{this.measurement.label}"
 
     /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
     /// `variable` are `None` until chosen; `commit` needs both. When `editingId` is `Some` the next

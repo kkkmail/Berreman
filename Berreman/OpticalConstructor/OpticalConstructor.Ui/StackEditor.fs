@@ -212,9 +212,9 @@ let defaultNewLayer : Layer =
 let displayThickness (u : UnitOfMeasure) (t : Thickness) : string =
     match t with
     | Thickness.Infinity -> "∞ (substrate)"
-    | Thickness.Thickness m -> sprintf "%g %A" (fromMeters u m) u
+    | Thickness.Thickness m -> $"%g{fromMeters u m} %A{u}"
 
 /// Human-facing labels for the stack-editor toolbar rows a view will render
 /// (display metadata only; the view layer is deferred to a later UI-wiring slice).
 let layerRowLabels (u : UnitOfMeasure) (sys : OpticalSystem) : string list =
-    sys.films |> List.mapi (fun i l -> sprintf "Layer %d — %s" i (displayThickness u l.thickness))
+    sys.films |> List.mapi (fun i l -> $"Layer %d{i} — %s{displayThickness u l.thickness}")

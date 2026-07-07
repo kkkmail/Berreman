@@ -253,7 +253,7 @@ let private dispersionPreview (lib : MaterialLibrary.MaterialLibrary) (filter : 
             StackPanel.spacing 2.0
             StackPanel.margin 4.0
             StackPanel.children [
-                TextBlock.create [ TextBlock.text (sprintf "Dispersion — %s" entry.name); TextBlock.fontWeight FontWeight.Bold ]
+                TextBlock.create [ TextBlock.text ($"Dispersion — %s{entry.name}"); TextBlock.fontWeight FontWeight.Bold ]
                 Border.create [ Border.height 220.0; Border.child (ChartHosts.webView2Host chart) ]
             ]
         ] :> IView
@@ -271,7 +271,7 @@ let private dropRow
     (index : int)
     (layer : Layer)
     : IView =
-    let label = sprintf "Layer %d — %s  (drop material here)" index (StackEditor.displayThickness u layer.thickness)
+    let label = $"Layer %d{index} — %s{StackEditor.displayThickness u layer.thickness}  (drop material here)"
     Border.create [
         Border.borderThickness 1.0
         Border.borderBrush (Brushes.Gray :> IBrush)

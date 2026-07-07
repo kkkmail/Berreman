@@ -700,7 +700,7 @@ let private experimentElementLabel (model : Model) (id : Library.ElementId) : st
     model.elements
     |> List.mapi (fun i e -> i, e)
     |> List.tryFind (fun (_, e) -> e.id = id)
-    |> Option.map (fun (i, e) -> sprintf "%s #%d" (Catalogue.kindName e.placement.catalogueKind) (i + 1))
+    |> Option.map (fun (i, e) -> $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
     |> Option.defaultValue "(element)"
 
 let update (msg : Msg) (model : Model) : Model =
@@ -1051,8 +1051,7 @@ let kindCode : CatalogueKind -> string = Catalogue.kindCode
 let private readoutText (model : Model) : string =
     match model.selection with
     | TableSelected ->
-        sprintf "Selected: TABLE   R1 %.0f°   R2 %.0f°   R3 %.0f°   zoom %.2f×"
-            model.view.r1.degrees model.view.r2.degrees model.view.r3.degrees model.view.zoom
+        $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom}×"
     | ElementSelected i ->
         let e = List.item i model.elements
         let p = e.placement
@@ -1064,9 +1063,7 @@ let private readoutText (model : Model) : string =
                 | Ok (Some entry) -> entry.displayName
                 | Ok None | Error _ -> "unbound"
             | None -> "unbound"
-        sprintf "Selected: Element %d (%s)   R1 %.0f°   R2 %.0f°   R3 %.0f° (%s)   zoom %.1f×   bound: %s"
-            (i + 1) (kindName p.catalogueKind) p.r1.degrees p.r2.degrees p.r3.degrees
-            (if p.r3Locked then "R3 locked" else "R3 free") e.zoom boundName
+        $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(if p.r3Locked then "R3 locked" else "R3 free")})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
     | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
 /// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
@@ -1318,7 +1315,7 @@ let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers 
 /// ("<kind> #<n>", 1-based, in scene order).
 let private sweepCandidates (model : Model) : ExperimentControls.SweepCandidate list =
     model.elements
-    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = sprintf "%s #%d" (kindName e.placement.catalogueKind) (i + 1) })
+    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = $"%s{(kindName e.placement.catalogueKind)} #%d{(i + 1)}" })
 
 /// The current draft experiment's readout (spec 028), or "" when the draft is incomplete / its element is
 /// no longer present.
@@ -1326,8 +1323,7 @@ let private experimentReadout (model : Model) : string =
     let draft = model.experimentCollection.draft
     match draft.elementId, draft.variable with
     | Some id, Some v when model.elements |> List.exists (fun e -> e.id = id) ->
-        sprintf "Experiment: %s — vary %s over %g…%g %s (%d pts), capture %s"
-            draft.elementLabel v.label draft.range.min draft.range.max v.unitLabel draft.range.points draft.measurement.label
+        $"Experiment: %s{draft.elementLabel} — vary %s{v.label} over %g{draft.range.min}…%g{draft.range.max} %s{v.unitLabel} (%d{draft.range.points} pts), capture %s{draft.measurement.label}"
     | _ -> ""
 
 // ---------------------------------------------------------------------------
@@ -1427,11 +1423,11 @@ let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSa
 let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
     match err with
     | MaterialLibrary.UnknownMaterialId reason ->
-        sprintf "Cannot run: the sample references an unknown material (%s)." reason
+        $"Cannot run: the sample references an unknown material (%s{reason})."
     | MaterialLibrary.DuplicateMaterialId reason
     | MaterialLibrary.MaterialStillReferenced reason
     | MaterialLibrary.InvalidMaterial reason ->
-        sprintf "Cannot run: material library error (%s)." reason
+        $"Cannot run: material library error (%s{reason})."
 
 /// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
 /// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
@@ -1457,7 +1453,7 @@ let private branchesFor (m : Experiments.MeasurementMode) : (Propagation.Branch 
 /// A series display name: the base name, suffixed with the branch tag only when capturing BOTH branches.
 let private seriesName (m : Experiments.MeasurementMode) (branchTag : string) (baseName : string) : string =
     match m with
-    | Experiments.CaptureBoth -> sprintf "%s (%s)" baseName branchTag
+    | Experiments.CaptureBoth -> $"%s{baseName} (%s{branchTag})"
     | _ -> baseName
 
 /// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound RESOLVED sample
@@ -1485,8 +1481,7 @@ let private describeRun (model : Model) (label : string) (captureText : string) 
         match runDetectorKind model with
         | Library.Ellipsometer -> "ellipsometer (Ψ/Δ)"
         | Library.Intensity -> "intensity detector (S₀)"
-    sprintf "Source %.0f nm → %s → %s; varied element: %s; capture %s. Varying %s."
-        wNm sampleText detectorText label captureText varyText
+    $"Source %.0f{wNm} nm → %s{sampleText} → %s{detectorText}; varied element: %s{label}; capture %s{captureText}. Varying %s{varyText}."
 
 /// The end-to-end experiment result as a renderer-neutral `ExperimentChart` (spec 028), computed from the
 /// current DRAFT: VaryR1 ⇒ the rotating-analyzer intensity curve over the chosen R1 range (or a single-point
@@ -1520,7 +1515,7 @@ let chartForParams
         let n = max 2 range.points
         match variable with
         | Experiments.VaryR1 ->
-            let varyText = sprintf "the rotation R1 over %g…%g°" range.min range.max
+            let varyText = $"the rotation R1 over %g{range.min}…%g{range.max}°"
             match detector with
             | Library.Ellipsometer ->
                 {
@@ -1554,7 +1549,7 @@ let chartForParams
                 // The engine cannot solve exactly 90° incidence, so the top is clamped below it (drawn to 90).
                 let lo = max 0.0 (min range.min range.max)
                 let hi = min Propagation.r2SweepMaxDegrees (max range.min range.max)
-                let varyText = sprintf "the incidence angle R2 over %g…%g° (%g° computed, drawn to 90°)" range.min range.max hi
+                let varyText = $"the incidence angle R2 over %g{range.min}…%g{range.max}° (%g{hi}° computed, drawn to 90°)"
                 match detector with
                 | Library.Ellipsometer ->
                     let seriesList =
@@ -1591,7 +1586,7 @@ let chartForParams
                 let lo = min range.min range.max
                 let hi = max range.min range.max
                 let inc = IncidenceAngle.normal
-                let varyText = sprintf "the wavelength over %g…%g nm" lo hi
+                let varyText = $"the wavelength over %g{lo}…%g{hi} nm"
                 match detector with
                 | Library.Ellipsometer ->
                     let seriesList =
@@ -1800,9 +1795,9 @@ let private bandThicknessLabel (t : BandThickness) : string =
     | SemiInfinite -> "semi-infinite"
     | FiniteMeters meters ->
         let nm = meters * 1.0e9
-        if nm < 1000.0 then sprintf "%.1f nm" nm
-        elif nm < 1.0e6 then sprintf "%.3g µm" (nm / 1000.0)
-        else sprintf "%.3g mm" (nm / 1.0e6)
+        if nm < 1000.0 then $"%.1f{nm} nm"
+        elif nm < 1.0e6 then $"%.3g{(nm / 1000.0)} µm"
+        else $"%.3g{(nm / 1.0e6)} mm"
 
 /// The relative height weight of a band (log-compressed thickness in metres, so a 2.65 nm EUV layer and a
 /// 1 cm plate are both visible). A half-space / plate gets a fixed mid weight.
@@ -1851,13 +1846,13 @@ let sampleBandsState (s : Library.Sample) : LayerBandsControls.State =
     let bands =
         sampleBandSpecs s
         |> List.map (fun (materialId, thickness, count) ->
-            let countText = if count > 1 then sprintf " ×%d" count else ""
+            let countText = if count > 1 then $" ×%d{count}" else ""
             ({
-                label = sprintf "%s — %s%s" (materialDisplayName materialId) (bandThicknessLabel thickness) countText
+                label = $"%s{(materialDisplayName materialId)} — %s{(bandThicknessLabel thickness)}%s{countText}"
                 heightWeight = bandWeight thickness
                 colorHex = bandColorHex materialId
              } : LayerBandsControls.Band))
-    ({ title = sprintf "%s — %s" s.name s.description; bands = bands } : LayerBandsControls.State)
+    ({ title = $"%s{s.name} — %s{s.description}"; bands = bands } : LayerBandsControls.State)
 
 /// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
 /// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
@@ -1869,7 +1864,7 @@ let private detailsState (model : Model) : LayerBandsControls.State =
         match boundEntry model e with
         | Some (Library.SampleItem s) -> sampleBandsState s
         | Some entry ->
-            ({ title = sprintf "%s — %s" entry.displayName entry.fullDescription; bands = [] } : LayerBandsControls.State)
+            ({ title = $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.State)
         | None ->
             ({ title = "No Library entry bound — pick one in the Selector bay to see its details."; bands = [] } : LayerBandsControls.State)
     | TableSelected | NothingSelected ->
@@ -2107,7 +2102,7 @@ let private materialConfirmRow (model : Model) (dispatch : Msg -> unit) : IView 
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
                   TextBlock.create [
-                      TextBlock.text (sprintf "Remove material '%s'?" name)
+                      TextBlock.text $"Remove material '%s{name}'?"
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
@@ -2161,7 +2156,7 @@ let private materialViewPanel (model : Model) : IView list =
                           StackPanel.children [
                               TextBlock.create [
                                   TextBlock.fontWeight FontWeight.SemiBold
-                                  TextBlock.text (sprintf "%s — %s%s" entry.name (materialCategoryLabel (Some entry.category)) editability)
+                                  TextBlock.text $"%s{entry.name} — %s{(materialCategoryLabel (Some entry.category))}%s{editability}"
                               ]
                               TextBlock.create [
                                   TextBlock.textWrapping TextWrapping.Wrap
@@ -2188,7 +2183,7 @@ let private sampleConfirmRow (model : Model) (dispatch : Msg -> unit) : IView li
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
                   TextBlock.create [
-                      TextBlock.text (sprintf "Remove sample '%s'?" name)
+                      TextBlock.text $"Remove sample '%s{name}'?"
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
@@ -2232,7 +2227,7 @@ let private sampleViewPanel (model : Model) : IView list =
                           StackPanel.children [
                               TextBlock.create [
                                   TextBlock.fontWeight FontWeight.SemiBold
-                                  TextBlock.text (sprintf "%s — %s" s.name (substrateFacetLabel (Some s.substrate)))
+                                  TextBlock.text $"%s{s.name} — %s{(substrateFacetLabel (Some s.substrate))}"
                               ]
                               LayerBandsControls.view (sampleBandsState s)
                           ]

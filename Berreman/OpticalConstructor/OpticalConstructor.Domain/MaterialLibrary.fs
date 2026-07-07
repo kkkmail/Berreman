@@ -166,7 +166,7 @@ module MaterialLibrary =
     let resolveMaterialWithDisp (lib : MaterialLibrary) (id : MaterialId) : Result<OpticalPropertiesWithDisp, MaterialError> =
         match lib.entries |> List.tryFind (fun e -> e.id = id) with
         | Some e -> Ok e.properties
-        | None -> Error (UnknownMaterialId (sprintf "unknown material id '%s'" (string id.value)))
+        | None -> Error (UnknownMaterialId $"unknown material id '%s{string id.value}'")
 
     let resolveMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
         resolveMaterialWithDisp lib id |> Result.map (fun p -> p.getProperties w)
@@ -429,5 +429,5 @@ module MaterialLibrary =
     /// extension in another file cannot reach a module-private binding.
     let validateEntry (entry : MaterialEntry) : Result<unit, MaterialError> =
         if String.IsNullOrWhiteSpace entry.name
-        then Error (InvalidMaterial (sprintf "material '%s' has a blank name" (string entry.id.value)))
+        then Error (InvalidMaterial $"material '%s{string entry.id.value}' has a blank name")
         else Ok ()

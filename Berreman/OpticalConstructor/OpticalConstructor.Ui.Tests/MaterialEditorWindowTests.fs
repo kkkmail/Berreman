@@ -51,7 +51,7 @@ module MaterialEditorWindowTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
         match found with
-        | None -> Assert.Fail(sprintf "%s was not found (or not visible)" id)
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
@@ -61,7 +61,7 @@ module MaterialEditorWindowTests =
                 if window.IsVisible then
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-            else Assert.Fail(sprintf "%s has no on-screen position" id)
+            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// view's `onTextChanged` binds — still driving the control found by its UiId).
@@ -70,15 +70,15 @@ module MaterialEditorWindowTests =
         | Some (:? TextBox as tb) ->
             tb.Text <- text
             Dispatcher.UIThread.RunJobs()
-        | Some c -> Assert.Fail(sprintf "%s is a %s, not a TextBox" id (c.GetType().Name))
-        | None -> Assert.Fail(sprintf "%s was not found" id)
+        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail($"%s{id} was not found")
 
     /// The text of the TextBlock carrying `id`.
     let private textOf (window : Window) (id : string) : string =
         match tryFindControl window id with
         | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith (sprintf "%s is a %s, not a TextBlock" id (c.GetType().Name))
-        | None -> failwith (sprintf "%s was not found in the visual tree" id)
+        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
+        | None -> failwith $"%s{id} was not found in the visual tree"
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
 
@@ -112,7 +112,7 @@ module MaterialEditorWindowTests =
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
         match applyMaterialComplexityMsg msg s with
         | Ok next -> next
-        | Error e -> failwith (sprintf "unexpected edit rejection: %A" e)
+        | Error e -> failwith $"unexpected edit rejection: %A{e}"
 
     /// Fold a message list over the default edit state.
     let private applied (msgs : MaterialComplexityMsg list) : MaterialComplexityEditState =
@@ -122,7 +122,7 @@ module MaterialEditorWindowTests =
     let private derived (s : MaterialComplexityEditState) : MaterialComplexity =
         match toComplexity s with
         | Ok c -> c
-        | Error e -> failwith (sprintf "expected a derivable complexity, got %A" e)
+        | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
     let private modelOfKind (code : string) : DispersionModel =
         defaultModelChoices |> List.find (fun m -> modelKindCode m = code)
@@ -162,14 +162,14 @@ module MaterialEditorWindowTests =
         let c = derived defaultState
         Assert.Equal<MaterialComplexity>(defaultComplexity, c)
         match c.eps with
-        | EpsWithoutDispValue (IsotropicTransparent (RefractionIndex n)) -> Assert.True(close n 1.5, sprintf "n = %g" n)
-        | other -> Assert.Fail(sprintf "expected the isotropic transparent constant case, got %A" other)
+        | EpsWithoutDispValue (IsotropicTransparent (RefractionIndex n)) -> Assert.True(close n 1.5, $"n = %g{n}")
+        | other -> Assert.Fail($"expected the isotropic transparent constant case, got %A{other}")
         match c.magnetic with
         | None -> ()
-        | Some m -> Assert.Fail(sprintf "the default magnetic aspect must be absent, got %A" m)
+        | Some m -> Assert.Fail($"the default magnetic aspect must be absent, got %A{m}")
         match c.active with
         | None -> ()
-        | Some a -> Assert.Fail(sprintf "the default active aspect must be absent, got %A" a)
+        | Some a -> Assert.Fail($"the default active aspect must be absent, got %A{a}")
 
     [<Fact>]
     let ``choosing biaxial with absorbing derives BiaxialAbsorbing over the entered indices`` () =
@@ -187,7 +187,7 @@ module MaterialEditorWindowTests =
             Assert.Equal(createComplex 1.6 0.1, n1.value)
             Assert.Equal(createComplex 1.7 0.2, n2.value)
             Assert.Equal(createComplex 1.8 0.3, n3.value)
-        | other -> Assert.Fail(sprintf "expected BiaxialAbsorbing, got %A" other)
+        | other -> Assert.Fail($"expected BiaxialAbsorbing, got %A{other}")
 
     [<Fact>]
     let ``uniaxial transparent derives the (ordinary, extraordinary) constant case`` () =
@@ -200,8 +200,8 @@ module MaterialEditorWindowTests =
                 ]
         match (derived st).eps with
         | EpsWithoutDispValue (UniaxialTransparent (RefractionIndex nO, RefractionIndex nE)) ->
-            Assert.True(close nO 1.5 && close nE 1.65, sprintf "nO = %g, nE = %g" nO nE)
-        | other -> Assert.Fail(sprintf "expected UniaxialTransparent, got %A" other)
+            Assert.True(close nO 1.5 && close nE 1.65, $"nO = %g{nO}, nE = %g{nE}")
+        | other -> Assert.Fail($"expected UniaxialTransparent, got %A{other}")
 
     [<Fact>]
     let ``the dispersive toggle swaps the constant eps for the segment tree and back losslessly`` () =
@@ -211,8 +211,8 @@ module MaterialEditorWindowTests =
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
             // The default segment carries the ConstantNK default: a flat n = 1.5, k = 0 line.
             let (ComplexRefractionIndex nk) = seg.dispersion.complexIndex (WaveLength.nm 550.0<nm>)
-            Assert.True(close nk.Real 1.5 && close nk.Imaginary 0.0, sprintf "n+ik = %A" nk)
-        | other -> Assert.Fail(sprintf "expected one isotropic dispersive segment, got %A" other)
+            Assert.True(close nk.Real 1.5 && close nk.Imaginary 0.0, $"n+ik = %A{nk}")
+        | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
         let back = applyOk (SetDispersion NonDispersive) st
         Assert.Equal<MaterialComplexity>(baseline, derived back)
 
@@ -225,10 +225,10 @@ module MaterialEditorWindowTests =
         Assert.Equal<WaveLengthInterval>(interval, edited.segments.[1].interval)
         match applyMaterialComplexityMsg (SetSegmentInterval (5, interval)) st with
         | Error (NoSuchSegment reason) -> Assert.Contains("5", reason)
-        | other -> Assert.Fail(sprintf "expected NoSuchSegment, got %A" other)
+        | other -> Assert.Fail($"expected NoSuchSegment, got %A{other}")
         match applyMaterialComplexityMsg (RemoveSegment 0) (applied [ SetDispersion DispersiveSegments ]) with
         | Error (LastSegmentNotRemovable _) -> ()
-        | other -> Assert.Fail(sprintf "expected LastSegmentNotRemovable, got %A" other)
+        | other -> Assert.Fail($"expected LastSegmentNotRemovable, got %A{other}")
         let removed = applyOk (RemoveSegment 1) st
         Assert.Equal(1, List.length removed.segments)
 
@@ -240,8 +240,8 @@ module MaterialEditorWindowTests =
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
             match toEpsAxis sellmeier with
             | Ok expected -> Assert.Equal<EpsAxisDispersion>(expected, seg.dispersion)
-            | Error e -> failwith (sprintf "the Sellmeier default must lower, got %A" e)
-        | other -> Assert.Fail(sprintf "expected one isotropic dispersive segment, got %A" other)
+            | Error e -> failwith $"the Sellmeier default must lower, got %A{e}"
+        | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
 
     [<Fact>]
     let ``ForouhiBloomer and BrendelBormann are pickable but surface the typed NotAFiniteTermSum reason`` () =
@@ -250,7 +250,7 @@ module MaterialEditorWindowTests =
             Assert.Equal(code, modelKindCode st.segments.[0].model1)
             match toComplexity st with
             | Error (SegmentNotLowerable reason) -> Assert.Contains(code, reason)
-            | other -> Assert.Fail(sprintf "expected the typed lowering rejection for %s, got %A" code other)
+            | other -> Assert.Fail($"expected the typed lowering rejection for %s{code}, got %A{other}")
 
     [<Fact>]
     let ``the raw SumOfTerms escape hatch is the identity under lowering`` () =
@@ -259,7 +259,7 @@ module MaterialEditorWindowTests =
         match (derived st).eps, sumOfTerms with
         | EpsWithDispValue (IsotropicDispersive [ seg ]), SumOfTerms axis ->
             Assert.Equal<EpsAxisDispersion>(axis, seg.dispersion)
-        | other, _ -> Assert.Fail(sprintf "expected the raw axis data verbatim, got %A" other)
+        | other, _ -> Assert.Fail($"expected the raw axis data verbatim, got %A{other}")
 
     [<Fact>]
     let ``availableGyrationClasses is constrained by the anisotropy choice`` () =
@@ -282,12 +282,12 @@ module MaterialEditorWindowTests =
             | UniaxialActive u ->
                 Assert.Equal<RhoValue>(defaultGyrationComponent, u.g11)
                 Assert.Equal<RhoValue>(defaultGyrationComponent, u.g33)
-            | other -> Assert.Fail(sprintf "expected the uniaxial diagonal class, got %A" other)
-        | other -> Assert.Fail(sprintf "expected a constant gyration rho, got %A" other)
+            | other -> Assert.Fail($"expected the uniaxial diagonal class, got %A{other}")
+        | other -> Assert.Fail($"expected a constant gyration rho, got %A{other}")
         let left = applyOk (SetHandedness LeftHanded) st
         match (derived left).active with
         | Some (RhoWithoutDispValue g) -> Assert.Equal(LeftHanded, g.hand)
-        | other -> Assert.Fail(sprintf "expected a constant gyration rho, got %A" other)
+        | other -> Assert.Fail($"expected a constant gyration rho, got %A{other}")
 
     [<Fact>]
     let ``spec 0033 G9: SetGyrationComponent edits a symmetry-allowed component, others are no-ops`` () =
@@ -345,8 +345,8 @@ module MaterialEditorWindowTests =
     let ``the magnetic unlock derives scalar and gyromagnetic Polder mu with the axis`` () =
         let scalar = applied [ SetMagnetic MagneticOn ]
         match (derived scalar).magnetic with
-        | Some (MuWithoutDispValue (ScalarMu (MuValue m))) -> Assert.True(close m 1.0, sprintf "mu = %g" m)
-        | other -> Assert.Fail(sprintf "expected the scalar constant mu, got %A" other)
+        | Some (MuWithoutDispValue (ScalarMu (MuValue m))) -> Assert.True(close m 1.0, $"mu = %g{m}")
+        | other -> Assert.Fail($"expected the scalar constant mu, got %A{other}")
         let gyro =
             applied
                 [
@@ -363,7 +363,7 @@ module MaterialEditorWindowTests =
             Assert.Equal<MuValue>(MuValue 1.1, p.muParallel)
             Assert.Equal<MuValue>(MuValue 0.2, p.gyration)
             Assert.Equal(AlongX, p.axis)
-        | other -> Assert.Fail(sprintf "expected the gyromagnetic Polder mu, got %A" other)
+        | other -> Assert.Fail($"expected the gyromagnetic Polder mu, got %A{other}")
 
     [<Fact>]
     let ``acceptance: unchecking a toggle restores the default model losslessly and re-checking restores the edits`` () =
@@ -409,8 +409,8 @@ module MaterialEditorWindowTests =
             | Some c ->
                 match ofComplexity c with
                 | Ok st -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity st)
-                | Error e -> Assert.Fail(sprintf "%s must seed the editor, got %A" entry.name e)
-            | None -> Assert.Fail(sprintf "%s must carry an edit model" entry.name)
+                | Error e -> Assert.Fail($"%s{entry.name} must seed the editor, got %A{e}")
+            | None -> Assert.Fail($"%s{entry.name} must carry an edit model")
 
     [<Fact>]
     let ``the imaginaryIndexGainWarning rule flags a finite negative k only`` () =
@@ -420,7 +420,7 @@ module MaterialEditorWindowTests =
         for k in [ 0.0; 0.1; nan; infinity; -infinity ] do
             match imaginaryIndexGainWarning k with
             | None -> ()
-            | Some message -> Assert.Fail(sprintf "k = %g must not warn, got '%s'" k message)
+            | Some message -> Assert.Fail($"k = %g{k} must not warn, got '%s{message}'")
 
     [<Fact>]
     let ``init seeds a new material, an existing editable entry, and a view-only entry`` () =
@@ -459,7 +459,7 @@ module MaterialEditorWindowTests =
             Assert.Equal<MaterialComplexity>(defaultComplexity, c)
             // properties IS complexity.toProperties — the sync invariant at save time.
             let eps = saved.[0].properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
-            Assert.True(close (eps.[0, 0].Real) (1.5 * 1.5), sprintf "eps11 = %A" eps.[0, 0])
+            Assert.True(close (eps.[0, 0].Real) (1.5 * 1.5), $"eps11 = %A{eps.[0, 0]}")
         | None -> Assert.Fail("Save must store complexity = Some model")
         // Existing → updateMaterial under the SAME id, then close.
         let calls2, saved2, context2 = recordingContext ()
@@ -519,7 +519,7 @@ module MaterialEditorWindowTests =
                     UiIds.saveButton
                     UiIds.cancelButton
                 ] do
-                Assert.True(isPresent window id, sprintf "%s is missing from the mounted window" id)
+                Assert.True(isPresent window id, $"%s{id} is missing from the mounted window")
             // The segment editor's mandated ids appear once the dispersive rung unlocks…
             clickOn window UiIds.dispersiveToggle
             Assert.True(isPresent window UiIds.dispersionModelPicker, "the dispersive rung must expose the model picker")
@@ -567,7 +567,7 @@ module MaterialEditorWindowTests =
             Assert.True(isPresent window UiIds.handednessSwitch)
             Assert.True(isPresent window (UiIds.gyrationClassOption "Uniaxial"), "the uniaxial diagonal class must be offered")
             for offLimits in [ "Cubic"; "Planar"; "Orthorhombic222"; "Monoclinic2"; "MonoclinicM"; "Triclinic1" ] do
-                Assert.False(isPresent window (UiIds.gyrationClassOption offLimits), sprintf "%s must NOT be offered for a uniaxial medium" offLimits)
+                Assert.False(isPresent window (UiIds.gyrationClassOption offLimits), $"%s{offLimits} must NOT be offered for a uniaxial medium")
             window.Close())
 
     [<Fact>]
@@ -600,7 +600,7 @@ module MaterialEditorWindowTests =
             let seededCount =
                 match materials.listMaterials () with
                 | Ok all -> List.length all
-                | Error e -> failwith (sprintf "seed listing failed: %A" e)
+                | Error e -> failwith $"seed listing failed: %A{e}"
             let window = MaterialEditorWindow(materials, None)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -620,16 +620,16 @@ module MaterialEditorWindowTests =
                     | Some c ->
                         match c.eps with
                         | EpsWithoutDispValue (BiaxialTransparent (RefractionIndex n1, RefractionIndex n2, RefractionIndex n3)) ->
-                            Assert.True(close n1 1.6 && close n2 1.7 && close n3 1.8, sprintf "n = %g, %g, %g" n1 n2 n3)
-                        | other -> Assert.Fail(sprintf "expected the biaxial transparent constant case, got %A" other)
+                            Assert.True(close n1 1.6 && close n2 1.7 && close n3 1.8, $"n = %g{n1}, %g{n2}, %g{n3}")
+                        | other -> Assert.Fail($"expected the biaxial transparent constant case, got %A{other}")
                         // properties IS complexity.toProperties: the stored tensors agree.
                         let eps = savedEntry.properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
-                        Assert.True(close (eps.[0, 0].Real) (1.6 * 1.6), sprintf "eps11 = %A" eps.[0, 0])
-                        Assert.True(close (eps.[1, 1].Real) (1.7 * 1.7), sprintf "eps22 = %A" eps.[1, 1])
-                        Assert.True(close (eps.[2, 2].Real) (1.8 * 1.8), sprintf "eps33 = %A" eps.[2, 2])
+                        Assert.True(close (eps.[0, 0].Real) (1.6 * 1.6), $"eps11 = %A{eps.[0, 0]}")
+                        Assert.True(close (eps.[1, 1].Real) (1.7 * 1.7), $"eps22 = %A{eps.[1, 1]}")
+                        Assert.True(close (eps.[2, 2].Real) (1.8 * 1.8), $"eps33 = %A{eps.[2, 2]}")
                     | None -> Assert.Fail("the saved entry must carry complexity = Some model")
                 | None -> Assert.Fail("the new material was not persisted")
-            | Error e -> Assert.Fail(sprintf "listMaterials failed: %A" e))
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -639,11 +639,11 @@ module MaterialEditorWindowTests =
             let existing =
                 match materials.tryGetMaterial MaterialIds.glass152 with
                 | Ok (Some e) -> e
-                | other -> failwith (sprintf "glass152 must be seeded, got %A" other)
+                | other -> failwith $"glass152 must be seeded, got %A{other}"
             let seededCount =
                 match materials.listMaterials () with
                 | Ok all -> List.length all
-                | Error e -> failwith (sprintf "seed listing failed: %A" e)
+                | Error e -> failwith $"seed listing failed: %A{e}"
             let window = MaterialEditorWindow(materials, Some existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -657,10 +657,10 @@ module MaterialEditorWindowTests =
                 | Some _ -> ()
                 | None -> Assert.Fail("the updated entry must keep complexity = Some model")
             | Ok None -> Assert.Fail("the existing entry vanished")
-            | Error e -> Assert.Fail(sprintf "tryGetMaterial failed: %A" e)
+            | Error e -> Assert.Fail($"tryGetMaterial failed: %A{e}")
             match materials.listMaterials () with
             | Ok all -> Assert.Equal(seededCount, List.length all)
-            | Error e -> Assert.Fail(sprintf "listMaterials failed: %A" e))
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

@@ -393,7 +393,7 @@ let private openPathCmd (path : string) : Cmd<RootMsg> =
         System.Threading.Tasks.Task.Run(fun () ->
             match ProjectFile.openProject path with
             | Ok project -> marshalIo dispatch (LifecycleView.Loaded (project, path))
-            | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "%A" e)))
+            | Error e -> marshalIo dispatch (LifecycleView.IoError ($"%A{e}")))
         |> ignore ]
 
 /// Raise the `IStorageProvider` open picker (R-1, host layer §0.5). The picker is only
@@ -427,7 +427,7 @@ let private saveCmdForProject
     : Cmd<RootMsg> =
     [ fun (dispatch : RootMsg -> unit) ->
         match ProjectJson.serializeProject project with
-        | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "%A" e))
+        | Error e -> marshalIo dispatch (LifecycleView.IoError ($"%A{e}"))
         | Ok json ->
             let defaultPath = Path.Combine(workingFolder, projectName + ".ocproj.json")
             let writeTo (path : string) =
@@ -466,7 +466,7 @@ let private saveGroupsLibraryCmd
         System.Threading.Tasks.Task.Run(fun () ->
             match GroupsLibrary.save (GroupsLibrary.libraryPath ()) { groups = groups; collections = collections } with
             | Ok () -> ()
-            | Error e -> marshalIo dispatch (LifecycleView.IoError (sprintf "Groups library error: %A" e)))
+            | Error e -> marshalIo dispatch (LifecycleView.IoError ($"Groups library error: %A{e}")))
         |> ignore ]
 
 /// Strip the committable `<name>.ocproj.json` suffix back to the bare project name.
@@ -509,24 +509,24 @@ let private updateIo (im : LifecycleView.IoMsg) (model : RootModel) : RootModel 
     | LifecycleView.OpenPath path -> model, openPathCmd path
     | LifecycleView.Loaded (project, path) ->
         loadProjectInto project (Path.GetDirectoryName path) (projectNameOfPath path)
-            (sprintf "Opened %s" (Path.GetFileName path)) model, Cmd.none
+            ($"Opened %s{Path.GetFileName path}") model, Cmd.none
     | LifecycleView.SaveRequested ->
         model, saveCmdForProject model.constructor.project model.construction.workingFolder model.construction.projectName
     | LifecycleView.Saved path ->
         // Subsequent saves follow the just-written destination.
         { model with
             construction = { model.construction with workingFolder = Path.GetDirectoryName path; projectName = projectNameOfPath path }
-            status = Some (sprintf "Saved %s" (Path.GetFileName path)) }, Cmd.none
-    | LifecycleView.IoError e -> { model with status = Some (sprintf "Error: %s" e) }, Cmd.none
+            status = Some ($"Saved %s{Path.GetFileName path}") }, Cmd.none
+    | LifecycleView.IoError e -> { model with status = Some ($"Error: %s{e}") }, Cmd.none
     | LifecycleView.LoadTemplate entry ->
         // R-2: load through the existing schema-validated factory (no private deserialize).
         match Templates.loadTemplate entry.build with
-        | Ok project -> loadProjectInto project defaultWorkingFolder entry.title (sprintf "Loaded template %s" entry.title) model, Cmd.none
-        | Error e -> { model with status = Some (sprintf "Template error: %A" e) }, Cmd.none
+        | Ok project -> loadProjectInto project defaultWorkingFolder entry.title ($"Loaded template %s{entry.title}") model, Cmd.none
+        | Error e -> { model with status = Some ($"Template error: %A{e}") }, Cmd.none
     | LifecycleView.LoadGallery entry ->
         match Help.openEntry entry with
-        | Ok project -> loadProjectInto project defaultWorkingFolder entry.title (sprintf "Loaded sample %s" entry.title) model, Cmd.none
-        | Error e -> { model with status = Some (sprintf "Gallery error: %A" e) }, Cmd.none
+        | Ok project -> loadProjectInto project defaultWorkingFolder entry.title ($"Loaded sample %s{entry.title}") model, Cmd.none
+        | Error e -> { model with status = Some ($"Gallery error: %A{e}") }, Cmd.none
 
 let private updateShell (msg : ShellMsg) (model : RootModel) : RootModel =
     match msg with

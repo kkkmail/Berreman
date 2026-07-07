@@ -79,7 +79,7 @@ module PropagationTests =
         for (d, i) in curve.points do
             let theta = d * Math.PI / 180.0
             let expected = i0 * (cos theta) ** 2.0
-            Assert.True(closeT 1.0e-9 expected i, sprintf "at %g° expected %g got %g" d expected i)
+            Assert.True(closeT 1.0e-9 expected i, $"at %g{d}° expected %g{expected} got %g{i}")
 
     [<Fact>]
     let ``the Malus curve peaks when aligned and is ~0 when crossed`` () =
@@ -128,7 +128,7 @@ module PropagationTests =
     let private resolveOrFail (s : Sample) : ResolvedSample =
         match resolveSampleMaterials MaterialLibrary.standard s with
         | Ok r -> r
-        | Error e -> failwith (sprintf "sample %s did not resolve: %A" s.name e)
+        | Error e -> failwith ($"sample %s{s.name} did not resolve: %A{e}")
 
     let private glassResolved : ResolvedSample = resolveOrFail glassSample
 
@@ -138,8 +138,8 @@ module PropagationTests =
         let svOut = mm * unpolarizedStokes
         let out = s0 svOut
         // A physical transmittance: 0 < S0 ≤ 1 for unit unpolarized input.
-        Assert.True(out > 0.0, sprintf "transmitted S0 was not positive: %g" out)
-        Assert.True(out <= 1.0 + 1.0e-9, sprintf "transmitted S0 exceeded the input: %g" out)
+        Assert.True(out > 0.0, $"transmitted S0 was not positive: %g{out}")
+        Assert.True(out <= 1.0 + 1.0e-9, $"transmitted S0 exceeded the input: %g{out}")
 
     // ============================ Phase 4 — ellipsometer Ψ/Δ ============================
 
@@ -155,10 +155,10 @@ module PropagationTests =
         let cases = [ 45.0, 0.0; 30.0, 90.0; 20.0, 180.0; 10.0, -45.0 ]
         for (psiDeg, deltaDeg) in cases do
             let pd = psiDeltaOfStokes (stokesOfPsiDelta psiDeg deltaDeg)
-            Assert.True(closeT 1.0e-6 psiDeg pd.psi.degrees, sprintf "Ψ: expected %g got %g" psiDeg pd.psi.degrees)
+            Assert.True(closeT 1.0e-6 psiDeg pd.psi.degrees, $"Ψ: expected %g{psiDeg} got %g{pd.psi.degrees}")
             // Δ wraps to (−180, 180]; compare after normalizing the difference.
             let dwrap = ((pd.delta.degrees - deltaDeg + 540.0) % 360.0) - 180.0
-            Assert.True(closeT 1.0e-6 0.0 dwrap, sprintf "Δ: expected %g got %g" deltaDeg pd.delta.degrees)
+            Assert.True(closeT 1.0e-6 0.0 dwrap, $"Δ: expected %g{deltaDeg} got %g{pd.delta.degrees}")
 
     [<Fact>]
     let ``ellipsometerReadout of a real sample is finite and in range`` () =
@@ -200,10 +200,10 @@ module PropagationTests =
             let w = runWaveLengthFor s
             let mm = sampleMuellerT (resolveOrFail s) w IncidenceAngle.normal
             let out = s0 (mm * unpolarizedStokes)
-            Assert.False(System.Double.IsNaN out, sprintf "%s produced NaN S0" s.name)
-            Assert.False(System.Double.IsInfinity out, sprintf "%s produced infinite S0" s.name)
-            Assert.True(out >= -1.0e-9, sprintf "%s transmitted a negative S0: %g" s.name out)
-            Assert.True(out <= 1.0 + 1.0e-9, sprintf "%s transmitted S0 > input: %g" s.name out)
+            Assert.False(System.Double.IsNaN out, $"%s{s.name} produced NaN S0")
+            Assert.False(System.Double.IsInfinity out, $"%s{s.name} produced infinite S0")
+            Assert.True(out >= -1.0e-9, $"%s{s.name} transmitted a negative S0: %g{out}")
+            Assert.True(out <= 1.0 + 1.0e-9, $"%s{s.name} transmitted S0 > input: %g{out}")
 
     [<Fact>]
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
@@ -216,7 +216,7 @@ module PropagationTests =
             elif s.id = SeedSamples.euvMoSi.id then Assert.Equal(200, List.length system.films)
             elif plateIds |> List.contains s.id then
                 Assert.Empty system.films
-                Assert.True(Option.isSome system.substrate, sprintf "%s should be a substrate plate" s.name)
+                Assert.True(Option.isSome system.substrate, $"%s{s.name} should be a substrate plate")
             else
                 // The remaining seeded samples are single-film systems.
                 Assert.Equal(1, List.length system.films)
@@ -224,7 +224,7 @@ module PropagationTests =
     [<Fact>]
     let ``every seeded sample carries a non-empty description`` () =
         for s in seededSamples do
-            Assert.False(System.String.IsNullOrWhiteSpace s.description, sprintf "%s has an empty description" s.name)
+            Assert.False(System.String.IsNullOrWhiteSpace s.description, $"%s{s.name} has an empty description")
 
     [<Fact>]
     let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
@@ -235,7 +235,7 @@ module PropagationTests =
         let i800 = s0 (sampleMuellerT langasite (WaveLength.nm 800.0<nm>) IncidenceAngle.normal * unpolarizedStokes)
         Assert.False(Double.IsNaN i400)
         Assert.False(Double.IsNaN i800)
-        Assert.True(abs (i400 - i800) > 1.0e-9, sprintf "dispersion not observed: I(400)=%g I(800)=%g" i400 i800)
+        Assert.True(abs (i400 - i800) > 1.0e-9, $"dispersion not observed: I(400)=%g{i400} I(800)=%g{i800}")
 
     // ============================ Spec 0027 (026) Part 2 — R2 / λ sweeps ============================
 
@@ -250,7 +250,7 @@ module PropagationTests =
         Assert.Equal(n, List.length curve)
         let xs = curve |> List.map fst
         Assert.True(close 0.0 (List.head xs))
-        Assert.True(close r2SweepMaxDegrees (List.last xs), sprintf "last x = %g, expected 89" (List.last xs))
+        Assert.True(close r2SweepMaxDegrees (List.last xs), $"last x = %g{(List.last xs)}, expected 89")
         Assert.True(close 89.0 (List.last xs))
         Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
         for (_, y) in curve do
@@ -307,8 +307,8 @@ module PropagationTests =
         let mm = sampleMuellerR glassResolved (WaveLength.nm 600.0<nm>) IncidenceAngle.normal
         let out = s0 (mm * unpolarizedStokes)
         Assert.False(Double.IsNaN out)
-        Assert.True(out >= -1.0e-9, sprintf "reflected S0 was negative: %g" out)
-        Assert.True(out <= 1.0 + 1.0e-9, sprintf "reflected S0 exceeded the input: %g" out)
+        Assert.True(out >= -1.0e-9, $"reflected S0 was negative: %g{out}")
+        Assert.True(out <= 1.0 + 1.0e-9, $"reflected S0 exceeded the input: %g{out}")
 
     [<Fact>]
     let ``sampleMueller selects the transmitted vs reflected engine matrix by branch`` () =
@@ -356,7 +356,7 @@ module PropagationTests =
                     } }
         match resolveSampleMaterials MaterialLibrary.standard sample with
         | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
-        | other -> Assert.Fail(sprintf "expected UnknownMaterialId, got %A" other)
+        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
 
     [<Fact>]
     let ``resolveSampleMaterials returns a typed Error for an unknown lower half-space id`` () =
@@ -372,14 +372,14 @@ module PropagationTests =
                     } }
         match resolveSampleMaterials MaterialLibrary.standard sample with
         | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
-        | other -> Assert.Fail(sprintf "expected UnknownMaterialId, got %A" other)
+        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
 
     [<Fact>]
     let ``every seeded sample resolves against the standard material library`` () =
         for s in seededSamples do
             match resolveSampleMaterials MaterialLibrary.standard s with
             | Ok _ -> ()
-            | Error e -> Assert.Fail(sprintf "%s did not resolve: %A" s.name e)
+            | Error e -> Assert.Fail($"%s{s.name} did not resolve: %A{e}")
 
     /// The 41-layer λ/4 films exactly as the PRE-0033 hand-built branch constructed them.
     let private legacyQwFilms : Layer list =
@@ -453,7 +453,7 @@ module PropagationTests =
                 substrate = None
                 lower = siliconOpticalProperties.getProperties w
             }
-        else failwith (sprintf "no legacy expectation for sample %s" s.name)
+        else failwith ($"no legacy expectation for sample %s{s.name}")
 
     [<Fact>]
     let ``every seeded sample's structurally-built system equals the previously hand-built system`` () =
@@ -542,4 +542,4 @@ module PropagationTests =
         | Some (Substrate.Plate b), Some (Substrate.Plate u) ->
             Assert.Equal<Layer>(u.rotate rotation, b)
             Assert.False((u = b), "the Euler rotation left the substrate tensors unchanged")
-        | other -> Assert.Fail(sprintf "expected two substrate plates, got %A" other)
+        | other -> Assert.Fail($"expected two substrate plates, got %A{other}")

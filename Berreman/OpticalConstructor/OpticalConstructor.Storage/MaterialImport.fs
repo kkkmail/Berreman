@@ -177,7 +177,7 @@ module MaterialImport =
                 | Ok terms ->
                     match tryIntegerExponent exponent with
                     | Some p -> Ok (terms @ [ build amplitude p ])
-                    | None -> Error (UnsupportedFormula (formulaNumber, sprintf "exponent %g is not an integer — not a finite term sum" exponent)))
+                    | None -> Error (UnsupportedFormula (formulaNumber, $"exponent %g{exponent} is not an integer — not a finite term sum")))
             (Ok [])
 
     /// Exact ComplexEps terms for amplitude·x^p/(x² − a), integer p ≥ 0 (the RII
@@ -249,8 +249,8 @@ module MaterialImport =
             else
                 match tryIntegerExponent exponent with
                 | Some p when p >= 0 -> Ok (resonantTerms amplitude p (resonanceBase ** resonancePower))
-                | Some p -> Error (UnsupportedFormula (4, sprintf "negative resonant-term exponent %d is not supported" p))
-                | None -> Error (UnsupportedFormula (4, sprintf "exponent %g is not an integer — not a finite term sum" exponent))
+                | Some p -> Error (UnsupportedFormula (4, $"negative resonant-term exponent %d{p} is not supported"))
+                | None -> Error (UnsupportedFormula (4, $"exponent %g{exponent} is not an integer — not a finite term sum"))
         match resonant c.[1] c.[2] c.[3] c.[4] with
         | Error e -> Error e
         | Ok first ->
@@ -314,7 +314,7 @@ module MaterialImport =
         | 1 | 2 | 3 | 4 | 5 | 6 | 7 -> None
         | 8 -> Some "formula 8 (Retro) defines (n² − 1)/(n² + 2) — a rational transform with no finite-term eps lowering"
         | 9 -> Some "formula 9 (Exotic) is not lowered to editable term data"
-        | n -> Some (sprintf "unknown refractiveindex.info dispersion formula %d (supported: 1-7)" n)
+        | n -> Some $"unknown refractiveindex.info dispersion formula %d{n} (supported: 1-7)"
 
     /// Lower a supported formula's coefficient block to the per-axis
     /// serializable term data (spec 0033 step 025 / §B). The catch-all restates
@@ -328,7 +328,7 @@ module MaterialImport =
         | 5 -> cauchyAxis nums
         | 6 -> gasesAxis nums
         | 7 -> herzbergerAxis nums
-        | n -> Error (UnsupportedFormula (n, sprintf "unknown refractiveindex.info dispersion formula %d (supported: 1-7)" n))
+        | n -> Error (UnsupportedFormula (n, $"unknown refractiveindex.info dispersion formula %d{n} (supported: 1-7)"))
 
     /// The `type: formula N` declaration of an analytic RII page (None on a
     /// tabulated page). N is read but NOT validated here — `unsupportedReason`
@@ -391,9 +391,9 @@ module MaterialImport =
             }
         {
             id = MaterialId.create ()
-            name = sprintf "Imported (refractiveindex.info formula %d)" formulaNumber
+            name = $"Imported (refractiveindex.info formula %d{formulaNumber})"
             category = Glass
-            description = Some (sprintf "Imported %s (refractiveindex.info formula %d)." (formulaFamily formulaNumber) formulaNumber)
+            description = Some $"Imported %s{formulaFamily formulaNumber} (refractiveindex.info formula %d{formulaNumber})."
             properties = complexity.toProperties
             complexity = Some complexity
         }
@@ -418,11 +418,11 @@ module MaterialImport =
                     match lines |> Array.tryFind (fun l -> l.TrimStart().StartsWith "coefficients:") with
                     | Some cl ->
                         let nums = parseFloats (cl.Substring(cl.IndexOf(':') + 1))
-                        if nums.Length < 1 then Error (NoData (sprintf "formula %d: no coefficients" formulaNumber))
+                        if nums.Length < 1 then Error (NoData $"formula %d{formulaNumber}: no coefficients")
                         else
                             lowerFormulaAxis formulaNumber nums
                             |> Result.map (entryOfAxis formulaNumber (rangeInterval lines))
-                    | None -> Error (MalformedYaml (sprintf "formula %d block has no coefficients line" formulaNumber))
+                    | None -> Error (MalformedYaml $"formula %d{formulaNumber} block has no coefficients line")
             | None ->
                 let rows = tabulatedRows Micrometer lines
                 if rows.Length = 0 then Error (NoData "no tabulated rows found")

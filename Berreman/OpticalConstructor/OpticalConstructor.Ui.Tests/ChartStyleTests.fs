@@ -32,8 +32,8 @@ module ChartStyleTests =
         let xlo, xhi = b.x
         let ylo, yhi = b.yLeft
         // The x-range brackets 400…800 tightly (padded < 5 % of the 400-wide span, so nowhere near 0 or 1000).
-        Assert.True(xlo > 300.0 && xlo < 400.0, sprintf "xlo=%g" xlo)
-        Assert.True(xhi > 800.0 && xhi < 900.0, sprintf "xhi=%g" xhi)
+        Assert.True(xlo > 300.0 && xlo < 400.0, $"xlo=%g{xlo}")
+        Assert.True(xhi > 800.0 && xhi < 900.0, $"xhi=%g{xhi}")
         Assert.True(ylo < 0.2 && yhi > 0.9)
 
     [<Fact>]
@@ -53,11 +53,11 @@ module ChartStyleTests =
         let xlo, xhi = b.x
         Assert.True(xlo < 400.0 && xhi > 800.0)             // x spans BOTH series
         let llo, lhi = b.yLeft
-        Assert.True(llo > 1.0 && llo < 1.5, sprintf "left lo=%g" llo)   // brackets only 1.5…2.5
-        Assert.True(lhi > 2.5 && lhi < 3.0, sprintf "left hi=%g" lhi)
+        Assert.True(llo > 1.0 && llo < 1.5, $"left lo=%g{llo}")   // brackets only 1.5…2.5
+        Assert.True(lhi > 2.5 && lhi < 3.0, $"left hi=%g{lhi}")
         let rlo, rhi = b.yRight
-        Assert.True(rlo < 0.01 && rlo > -0.1, sprintf "right lo=%g" rlo) // brackets only 0.01…0.09
-        Assert.True(rhi > 0.09 && rhi < 0.2, sprintf "right hi=%g" rhi)  // nowhere near the left 2.5
+        Assert.True(rlo < 0.01 && rlo > -0.1, $"right lo=%g{rlo}") // brackets only 0.01…0.09
+        Assert.True(rhi > 0.09 && rhi < 0.2, $"right hi=%g{rhi}")  // nowhere near the left 2.5
 
     [<Fact>]
     let ``the default state fits the axes to the data per side and auto is on`` () =

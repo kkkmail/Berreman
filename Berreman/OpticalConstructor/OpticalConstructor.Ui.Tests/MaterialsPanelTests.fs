@@ -58,7 +58,7 @@ module MaterialsPanelTests =
             let allButtons = buttonContents all
             Assert.Contains("Silicon", allButtons)
             Assert.True(allButtons |> List.exists (fun c -> c.Contains "Transparent glass"),
-                        sprintf "expected a glass entry, got: %A" allButtons)
+                        $"expected a glass entry, got: %A{allButtons}")
             all.Close()
 
             // Category = Glass narrows the list through `byCategory`: glass entries show,
@@ -68,7 +68,7 @@ module MaterialsPanelTests =
             let glassButtons = buttonContents glass
             Assert.DoesNotContain("Silicon", glassButtons)
             Assert.True(glassButtons |> List.exists (fun c -> c.Contains "Transparent glass"),
-                        sprintf "expected a glass entry after filtering, got: %A" glassButtons)
+                        $"expected a glass entry after filtering, got: %A{glassButtons}")
             glass.Close())
 
     [<Fact>]
@@ -84,7 +84,7 @@ module MaterialsPanelTests =
             // placeholder renders and NO ScottPlot AvaPlot is ever instantiated.
             let texts = textBlocks window
             Assert.True(texts |> List.exists (fun t -> t.Contains "renderer unavailable"),
-                        sprintf "expected the WebView2 unavailable placeholder, got: %A" texts)
+                        $"expected the WebView2 unavailable placeholder, got: %A{texts}")
             let avaPlots =
                 window.GetVisualDescendants()
                 |> Seq.filter (fun v -> v :? ScottPlot.Avalonia.AvaPlot)
@@ -111,7 +111,7 @@ module MaterialsPanelTests =
                 match m with
                 | ConstructionPage.EditStack (p, (StackEditor.SetLayerMaterial (i, _) as sm)) when p = path && i = 0 -> Some sm
                 | _ -> None)
-        Assert.True(edit.IsSome, sprintf "expected EditStack(SetLayerMaterial 0), got: %A" (List.ofSeq captured))
+        Assert.True(edit.IsSome, $"expected EditStack(SetLayerMaterial 0), got: %A{List.ofSeq captured}")
 
         // The frozen update applies the edit, swapping the material but leaving the
         // layer's thickness unchanged (the view resolved nothing itself).

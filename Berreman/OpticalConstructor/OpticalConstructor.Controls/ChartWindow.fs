@@ -73,7 +73,7 @@ type ChartWindow(chart : ExperimentChart) as this =
     let mutable style = ChartStyle.defaultState chart
     let mutable polar = false
     let seriesCount = List.length chart.series
-    let seriesName (i : int) : string = match List.tryItem i chart.series with Some s -> s.name | None -> sprintf "series %d" i
+    let seriesName (i : int) : string = match List.tryItem i chart.series with Some s -> s.name | None -> $"series %d{i}"
 
     do
         ChartWindow.ConstructedCount <- ChartWindow.ConstructedCount + 1
@@ -260,7 +260,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                             marker.Location <- near.Coordinates
                             marker.IsVisible <- true
                             readout.Location <- near.Coordinates
-                            readout.LabelText <- sprintf "x=%.4g, y=%.4g" near.Coordinates.X near.Coordinates.Y
+                            readout.LabelText <- $"x=%.4g{near.Coordinates.X}, y=%.4g{near.Coordinates.Y}"
                             readout.IsVisible <- true
                             ava.Refresh()
                     with _ -> ())
@@ -300,7 +300,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             minus.Click.Add(fun _ -> bump -1.0; applyStyle (); rebuildProperties ())
             let plus = Button(Name = ChartWindowIds.fontPlus, Content = "A+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             plus.Click.Add(fun _ -> bump 1.0; applyStyle (); rebuildProperties ())
-            let sz = TextBlock(Name = ChartWindowIds.fontSize, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = sprintf "%g pt" (ChartFont.sizeOf target style.font))
+            let sz = TextBlock(Name = ChartWindowIds.fontSize, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{ChartFont.sizeOf target style.font} pt")
             row [ smallLabel "Font:"; minus; plus; sz ]
 
         let axisPanel (axis : ChartStyle.ChartAxis) : Control list =
@@ -333,7 +333,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             decMinus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals axis -1 style; applyStyle (); rebuildProperties ())
             let decPlus = Button(Name = ChartWindowIds.axisDecimalsPlus, Content = "+", IsEnabled = decEnabled, Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             decPlus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals axis 1 style; applyStyle (); rebuildProperties ())
-            let decReadout = TextBlock(Name = ChartWindowIds.axisDecimals, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = sprintf "%d digits" axisStyle.format.decimals)
+            let decReadout = TextBlock(Name = ChartWindowIds.axisDecimals, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%d{axisStyle.format.decimals} digits")
             let bumpAxisFont (delta : float) : unit =
                 style <- ChartStyle.bumpFont ChartFont.AxisLabels delta (ChartStyle.bumpFont ChartFont.TickLabels delta style)
             [
@@ -371,7 +371,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             thickMinus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i -0.5 style; applyStyle (); rebuildProperties ())
             let thickPlus = Button(Name = ChartWindowIds.seriesThicknessPlus, Content = "+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             thickPlus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i 0.5 style; applyStyle (); rebuildProperties ())
-            let thickReadout = TextBlock(Name = ChartWindowIds.seriesThickness, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = sprintf "%g px" st.thickness)
+            let thickReadout = TextBlock(Name = ChartWindowIds.seriesThickness, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{st.thickness} px")
             let colorBox = ComboBox(Name = ChartWindowIds.seriesColor)
             for c in ChartStyle.colorChoices do colorBox.Items.Add(ComboBoxItem(Content = c)) |> ignore
             colorBox.SelectedIndex <- (match List.tryFindIndex (fun c -> c = st.colorHex) ChartStyle.colorChoices with Some idx -> idx | None -> 0)
@@ -391,7 +391,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                 if idx >= 0 && idx < List.length ChartStyle.allSides then
                     style <- ChartStyle.setSeriesAxisSide i (List.item idx ChartStyle.allSides) style; applyStyle ())
             [
-                TextBlock(Text = sprintf "Line: %s" (seriesName i), FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
+                TextBlock(Text = $"Line: %s{seriesName i}", FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
                 visBox :> Control
                 row [ smallLabel "Thickness:"; (thickMinus :> Control); (thickPlus :> Control); (thickReadout :> Control) ] :> Control
                 row [ smallLabel "Colour:"; (colorBox :> Control) ] :> Control

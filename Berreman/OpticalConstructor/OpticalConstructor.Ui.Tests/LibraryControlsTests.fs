@@ -69,7 +69,7 @@ module LibraryControlsTests =
         Assert.All(Set.toList sampleIds, fun id ->
             match m.library.tryGetEntry id with
             | Ok (Some (Library.SampleItem _)) -> ()
-            | other -> Assert.Fail(sprintf "%s is not a Sample: %A" id other))
+            | other -> Assert.Fail($"%s{id} is not a Sample: %A{other}"))
 
     [<Fact>]
     let ``BindValueId sets the selected element's valueId; inert for table or nothing`` () =
@@ -150,7 +150,7 @@ module LibraryControlsTests =
             Assert.False(System.String.IsNullOrWhiteSpace entry.fullDescription)
             // A multilayer's description spells out the stack, not just its short name.
             Assert.Contains("layer", entry.fullDescription)
-        | other -> Assert.Fail(sprintf "expected the quarter-wave multilayer entry, got %A" other)
+        | other -> Assert.Fail($"expected the quarter-wave multilayer entry, got %A{other}")
         Assert.Equal(Some multilayerQwId, m.pendingEntry)
 
     // ============================ headless render proof (ui-smoke) ============================

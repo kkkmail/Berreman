@@ -510,7 +510,7 @@ let private snapGyration (anisotropy : Anisotropy) (gyration : GyrationClass<Rho
 
 let private checkSegmentIndex (segmentIndex : int) (segments : EditSegment list) : Result<unit, MaterialComplexityEditError> =
     if segmentIndex >= 0 && segmentIndex < List.length segments then Ok ()
-    else Error (NoSuchSegment (sprintf "segment index %d is out of range (%d segments)" segmentIndex (List.length segments)))
+    else Error (NoSuchSegment $"segment index %d{segmentIndex} is out of range (%d{List.length segments} segments)")
 
 let private mapSegment (segmentIndex : int) (f : EditSegment -> EditSegment) (segments : EditSegment list) : EditSegment list =
     segments |> List.mapi (fun i seg -> if i = segmentIndex then f seg else seg)
@@ -634,7 +634,7 @@ let private constantEps (state : MaterialComplexityEditState) : ConstantEpsValue
 let private lowerAxis (segmentIndex : int) (model : DispersionModel) : Result<EpsAxisDispersion, MaterialComplexityEditError> =
     match toEpsAxis model with
     | Ok axis -> Ok axis
-    | Error (NotAFiniteTermSum reason) -> Error (SegmentNotLowerable (sprintf "segment %d: %s" segmentIndex reason))
+    | Error (NotAFiniteTermSum reason) -> Error (SegmentNotLowerable $"segment %d{segmentIndex}: %s{reason}")
 
 /// Sequence a Result-producing map over a list (first error wins).
 let private traverse (f : 'a -> Result<'b, 'e>) (xs : 'a list) : Result<'b list, 'e> =

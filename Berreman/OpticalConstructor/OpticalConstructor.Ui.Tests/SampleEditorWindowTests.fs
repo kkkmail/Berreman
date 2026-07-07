@@ -45,7 +45,7 @@ module SampleEditorWindowTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
         match found with
-        | None -> Assert.Fail(sprintf "%s was not found (or not visible)" id)
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
@@ -55,7 +55,7 @@ module SampleEditorWindowTests =
                 if window.IsVisible then
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-            else Assert.Fail(sprintf "%s has no on-screen position" id)
+            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// view's `onTextChanged` binds — still driving the control found by its UiId).
@@ -64,15 +64,15 @@ module SampleEditorWindowTests =
         | Some (:? TextBox as tb) ->
             tb.Text <- text
             Dispatcher.UIThread.RunJobs()
-        | Some c -> Assert.Fail(sprintf "%s is a %s, not a TextBox" id (c.GetType().Name))
-        | None -> Assert.Fail(sprintf "%s was not found" id)
+        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail($"%s{id} was not found")
 
     /// The text of the TextBlock carrying `id`.
     let private textOf (window : Window) (id : string) : string =
         match tryFindControl window id with
         | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith (sprintf "%s is a %s, not a TextBlock" id (c.GetType().Name))
-        | None -> failwith (sprintf "%s was not found in the visual tree" id)
+        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
+        | None -> failwith $"%s{id} was not found in the visual tree"
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
 
@@ -164,7 +164,7 @@ module SampleEditorWindowTests =
         Assert.Equal(NewSample, m.target)
         match m.status with
         | None -> ()
-        | Some s -> Assert.Fail(sprintf "expected no status, got '%s'" s)
+        | Some s -> Assert.Fail($"expected no status, got '%s{s}'")
 
     [<Fact>]
     let ``an existing sample seeds the editor and save targets its id`` () =
@@ -209,7 +209,7 @@ module SampleEditorWindowTests =
             Assert.Equal(MaterialIds.glass175, l.materialId)
             Assert.Equal<Thickness>(defaultLayerThickness, l.thickness)
             Assert.Equal(PrimaryAxes, l.orientation)
-        | films -> Assert.Fail(sprintf "expected one single layer, got %A" films)
+        | films -> Assert.Fail($"expected one single layer, got %A{films}")
 
     [<Fact>]
     let ``the fold-count stepper steps and clamps at 1`` () =
@@ -237,7 +237,7 @@ module SampleEditorWindowTests =
         | None -> Assert.Fail("expected a status reason for the count-below-1 step")
         match below.editor.structure.films with
         | Repeated g :: _ -> Assert.Equal(2, g.count)
-        | films -> Assert.Fail(sprintf "expected the repeat group to survive, got %A" films)
+        | films -> Assert.Fail($"expected the repeat group to survive, got %A{films}")
 
     [<Fact>]
     let ``isAnisotropicEntry separates the anisotropic built-ins from the isotropic ones`` () =
@@ -254,7 +254,7 @@ module SampleEditorWindowTests =
     let ``QWOT derives t = lambda over 4n into canonical metres`` () =
         // λ = 600 nm on glass n = 1.52 → t = 600/(4·1.52) nm ≈ 9.868e-8 m (the DBR λ/4 shape).
         match qwotThickness 600.0 1.52 with
-        | Thickness meters -> Assert.True(close (float meters) (600.0 / (4.0 * 1.52) * 1.0e-9), sprintf "t = %A m" meters)
+        | Thickness meters -> Assert.True(close (float meters) (600.0 / (4.0 * 1.52) * 1.0e-9), $"t = %A{meters} m")
         | Infinity -> Assert.Fail("QWOT must derive a finite thickness")
         // The derivation needs a chosen material and a parsable positive wavelength.
         let m = newModel () |> update (SetQwotText "600")
@@ -345,7 +345,7 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.True(matchesId UiIds.window window, "the window itself carries the SampleEditorWindow id")
             for id in mandatedIds do
-                Assert.True(isPresent window id, sprintf "%s is missing from the mounted window" id)
+                Assert.True(isPresent window id, $"%s{id} is missing from the mounted window")
             window.Close())
 
     [<Fact>]
@@ -411,7 +411,7 @@ module SampleEditorWindowTests =
             let seededCount =
                 match samples.listSamples () with
                 | Ok all -> List.length all
-                | Error e -> failwith (sprintf "seed listing failed: %A" e)
+                | Error e -> failwith $"seed listing failed: %A{e}"
             let window = SampleEditorWindow(materials, samples, None)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -429,7 +429,7 @@ module SampleEditorWindowTests =
                     Assert.Equal("made by the headless test", saved.description)
                     Assert.Equal(1, List.length saved.structure.expandedFilms)
                 | None -> Assert.Fail("the new sample was not persisted")
-            | Error e -> Assert.Fail(sprintf "listSamples failed: %A" e))
+            | Error e -> Assert.Fail($"listSamples failed: %A{e}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -440,7 +440,7 @@ module SampleEditorWindowTests =
             let seededCount =
                 match samples.listSamples () with
                 | Ok all -> List.length all
-                | Error e -> failwith (sprintf "seed listing failed: %A" e)
+                | Error e -> failwith $"seed listing failed: %A{e}"
             let window = SampleEditorWindow(materials, samples, Some existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -450,10 +450,10 @@ module SampleEditorWindowTests =
             match samples.tryGetSample existing.id with
             | Ok (Some updated) -> Assert.Equal("Renamed film", updated.name)
             | Ok None -> Assert.Fail("the existing sample vanished")
-            | Error e -> Assert.Fail(sprintf "tryGetSample failed: %A" e)
+            | Error e -> Assert.Fail($"tryGetSample failed: %A{e}")
             match samples.listSamples () with
             | Ok all -> Assert.Equal(seededCount, List.length all)
-            | Error e -> Assert.Fail(sprintf "listSamples failed: %A" e))
+            | Error e -> Assert.Fail($"listSamples failed: %A{e}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -470,7 +470,7 @@ module SampleEditorWindowTests =
             match samples.tryGetSample existing.id with
             | Ok (Some kept) -> Assert.Equal(existing.name, kept.name)
             | Ok None -> Assert.Fail("the existing sample vanished")
-            | Error e -> Assert.Fail(sprintf "tryGetSample failed: %A" e))
+            | Error e -> Assert.Fail($"tryGetSample failed: %A{e}"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -515,7 +515,7 @@ module SampleEditorWindowTests =
             setText window UiIds.qwotEntryBox "600"
             // t = λ/(4n) = 600/(4·1.52) nm, shown read-only in DISPLAY nanometres (spec 0033
             // gap G14.1 — no longer raw metres) though stored canonical-SI.
-            Assert.Equal(sprintf "%g nm" (600.0 / (4.0 * 1.52)), textOf window UiIds.qwotDerivedText)
+            Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window UiIds.qwotDerivedText)
             clickOn window UiIds.setLayerHeightButton
-            Assert.Equal(sprintf "%g nm" (600.0 / (4.0 * 1.52)), textOf window (UiIds.layerThickness 0))
+            Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window (UiIds.layerThickness 0))
             window.Close())

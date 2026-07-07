@@ -126,7 +126,7 @@ module SampleLibraryControlsTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
         match found with
-        | None -> Assert.Fail(sprintf "%s was not found (or not visible)" id)
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
@@ -134,7 +134,7 @@ module SampleLibraryControlsTests =
                 Dispatcher.UIThread.RunJobs()
                 window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                 Dispatcher.UIThread.RunJobs()
-            else Assert.Fail(sprintf "%s has no on-screen position" id)
+            else Assert.Fail($"%s{id} has no on-screen position")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -147,7 +147,7 @@ module SampleLibraryControlsTests =
             Dispatcher.UIThread.RunJobs()
             // Every slice-mandated control exists over the known State.
             for id in allFixedIds do
-                Assert.True(isPresent window id, sprintf "%s is missing from the mounted view" id)
+                Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length
             // The acceptance click: Add invokes the ADD handler — and no other verb handler.
             clickOn window SampleLibraryControls.UiIds.addButton

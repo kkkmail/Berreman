@@ -35,5 +35,5 @@ module PanelViewTests =
 
             // The seed stack carries two layers, so at least two "Layer N — ..." rows render.
             let layerRows = texts |> List.filter (fun t -> t.StartsWith "Layer ")
-            Assert.True(layerRows.Length >= 2, sprintf "expected >= 2 layer rows, got: %A" texts)
+            Assert.True(layerRows.Length >= 2, $"expected >= 2 layer rows, got: %A{texts}")
             window.Close())

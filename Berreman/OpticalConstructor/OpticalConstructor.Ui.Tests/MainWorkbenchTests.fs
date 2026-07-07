@@ -49,7 +49,7 @@ module MainWorkbenchTests =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
         match found with
-        | None -> Assert.Fail(sprintf "%s was not found (or not visible)" id)
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
@@ -58,7 +58,7 @@ module MainWorkbenchTests =
                 if window.IsVisible then
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-            else Assert.Fail(sprintf "%s has no on-screen position" id)
+            else Assert.Fail($"%s{id} has no on-screen position")
 
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// control's `onTextChanged` binds — still driving the control found by its UiId).
@@ -67,15 +67,15 @@ module MainWorkbenchTests =
         | Some (:? TextBox as tb) ->
             tb.Text <- text
             Dispatcher.UIThread.RunJobs()
-        | Some c -> Assert.Fail(sprintf "%s is a %s, not a TextBox" id (c.GetType().Name))
-        | None -> Assert.Fail(sprintf "%s was not found" id)
+        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail($"%s{id} was not found")
 
     /// The text of the TextBlock carrying `id`.
     let private textOf (window : Window) (id : string) : string =
         match tryFindControl window id with
         | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith (sprintf "%s is a %s, not a TextBlock" id (c.GetType().Name))
-        | None -> failwith (sprintf "%s was not found in the visual tree" id)
+        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
+        | None -> failwith $"%s{id} was not found in the visual tree"
 
     /// Fresh, isolated in-memory stores per test — the SAME composition the App performs: the
     /// samples store first, then the materials store whose remove-block consults the LIVE
@@ -228,13 +228,13 @@ module MainWorkbenchTests =
             Assert.Contains("still referenced", reason)
             // The block NAMES the referencing samples (never a cascade).
             Assert.Contains("Glass plate (n=1.52, 1 mm)", reason)
-        | other -> Assert.Fail(sprintf "expected MaterialStillReferenced, got %A" other)
+        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
         // The store is unchanged and the projection still lists the entry.
         match materials.listMaterials () with
         | Ok entries ->
             Assert.Equal(12, List.length entries)
             Assert.Contains(MaterialIds.glass152, entries |> List.map (fun e -> e.id))
-        | Error e -> Assert.Fail(sprintf "listMaterials failed: %A" e)
+        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
         Assert.Contains(string MaterialIds.glass152.value, rowIds (materialsState refused))
 
     [<Fact>]
@@ -248,12 +248,12 @@ module MainWorkbenchTests =
             |> update MatConfirmRemove
         match removed.materialsError with
         | None -> ()
-        | Some e -> Assert.Fail(sprintf "expected no error, got %A" e)
+        | Some e -> Assert.Fail($"expected no error, got %A{e}")
         Assert.DoesNotContain(string MaterialIds.glass200.value, rowIds (materialsState removed))
         Assert.Equal<MaterialId option>(None, removed.selectedMaterial)
         match materials.listMaterials () with
         | Ok entries -> Assert.Equal(11, List.length entries)
-        | Error e -> Assert.Fail(sprintf "listMaterials failed: %A" e)
+        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
 
     [<Fact>]
     let ``acceptance (pure): removing a sample drops its row from the samples projection in the same pass`` () =
@@ -266,11 +266,11 @@ module MainWorkbenchTests =
             |> update SmpConfirmRemove
         match removed.samplesError with
         | None -> ()
-        | Some e -> Assert.Fail(sprintf "expected no error, got %A" e)
+        | Some e -> Assert.Fail($"expected no error, got %A{e}")
         Assert.DoesNotContain(string SeedSamples.glassFilm600.id.value, sampleRowIds (samplesState removed))
         match samples.listSamples () with
         | Ok all -> Assert.Equal(10, List.length all)
-        | Error e -> Assert.Fail(sprintf "listSamples failed: %A" e)
+        | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
     // ============================ pure: Add / Edit / View verbs ============================
 
@@ -398,7 +398,7 @@ module MainWorkbenchTests =
             // The store is unchanged and the row is still listed.
             match materials.listMaterials () with
             | Ok entries -> Assert.Equal(12, List.length entries)
-            | Error e -> Assert.Fail(sprintf "listMaterials failed: %A" e)
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
             Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)))
             window.Close())
 
@@ -418,7 +418,7 @@ module MainWorkbenchTests =
                          "the removed material's row must leave the tree in the same render pass")
             match materials.listMaterials () with
             | Ok entries -> Assert.Equal(11, List.length entries)
-            | Error e -> Assert.Fail(sprintf "listMaterials failed: %A" e)
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
             // Library bay: a sample remove always succeeds and drops the row.
             clickOn window (Ribbon.UiIds.tab BayNames.library)
             setText window SampleLibraryControls.UiIds.searchBox "n=1.75"
@@ -429,7 +429,7 @@ module MainWorkbenchTests =
                          "the removed sample's row must leave the tree in the same render pass")
             match samples.listSamples () with
             | Ok all -> Assert.Equal(10, List.length all)
-            | Error e -> Assert.Fail(sprintf "listSamples failed: %A" e)
+            | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             window.Close())
 
     [<Fact>]

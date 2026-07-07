@@ -39,10 +39,10 @@ let numberOfPoints = 2000
 let polarization = Polarization.s
 
 let light = { light600nmNormalLPs with polarization = polarization }
-let d = sprintf "Planar active crystal wedge %A degrees, r12 = %A, n11 = %A, n33 = %A." wedgeAngle.degrees g12.value e11.refractionIndex.value e33.refractionIndex.value
-let dPlanar = sprintf "Planar active crystal wedge %A degrees, n11 = %A, n33 = %A." wedgeAngle.degrees e11.refractionIndex.value e33.refractionIndex.value
-let dType3_4_6 = sprintf "3, 4, 6 active crystal wedge %A degrees, n11 = %A, n33 = %A." wedgeAngle.degrees e11.refractionIndex.value e33.refractionIndex.value
-let dType32_42_62 = sprintf "32, 42, 62 active crystal wedge %A degrees, n11 = %A, n33 = %A." wedgeAngle.degrees e11.refractionIndex.value e33.refractionIndex.value
+let d = $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, r12 = %A{g12.value}, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let dPlanar = $"Planar active crystal wedge %A{wedgeAngle.degrees} degrees, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let dType3_4_6 = $"3, 4, 6 active crystal wedge %A{wedgeAngle.degrees} degrees, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
+let dType32_42_62 = $"32, 42, 62 active crystal wedge %A{wedgeAngle.degrees} degrees, n11 = %A{e11.refractionIndex.value}, n33 = %A{e33.refractionIndex.value}."
 
 let planar = OpticalProperties.planarCrystal e11 e33 g12
 let type3_4_6 = OpticalProperties.type_3_4_6_Crystal e11 e33 g11 g33

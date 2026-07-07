@@ -20,7 +20,7 @@ module LocalizationTests =
     let private okOr (r : Result<'a, LocalizationError>) : 'a =
         match r with
         | Ok v -> v
-        | Error e -> failwith (sprintf "unexpected localization error: %A" e)
+        | Error e -> failwith $"unexpected localization error: %A{e}"
 
     // --- AC-I1: strings resolve from the runtime resource; editing it changes them ---
 
@@ -42,7 +42,7 @@ module LocalizationTests =
         // Write a temp resource and load it at run time: the loader reflects the edit,
         // so an operator/translator can change strings (or add a language) by editing
         // the file — no rebuild required (I.1.1).
-        let path = Path.Combine(Path.GetTempPath(), sprintf "oc-strings-%s.json" (Guid.NewGuid().ToString("N")))
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-strings-%s{Guid.NewGuid().ToString("N")}.json""")
         try
             File.WriteAllText(path, "{ \"app.title\": { \"en\": \"Edited Title\", \"ru\": \"Изменённый заголовок\" } }")
             let edited = loadFromFile path |> okOr
@@ -101,18 +101,18 @@ module LocalizationTests =
     let ``AC-I3 a missing resource file is surfaced as a copyable message, not a crash`` () =
         // A missing resource is a startup error the entry point can show copyably, never
         // an exception across the boundary (I.3.1).
-        let missing = Path.Combine(Path.GetTempPath(), sprintf "oc-missing-%s.json" (Guid.NewGuid().ToString("N")))
+        let missing = Path.Combine(Path.GetTempPath(), $"""oc-missing-%s{Guid.NewGuid().ToString("N")}.json""")
         Assert.False(File.Exists missing)
         match loadFromFile missing with
         | Error (ResourceMissing p) -> Assert.Equal(missing, p)
-        | other -> Assert.Fail(sprintf "expected ResourceMissing, got %A" other)
+        | other -> Assert.Fail($"expected ResourceMissing, got %A{other}")
         // A malformed file is likewise a returned parse error, not a thrown exception.
-        let bad = Path.Combine(Path.GetTempPath(), sprintf "oc-bad-%s.json" (Guid.NewGuid().ToString("N")))
+        let bad = Path.Combine(Path.GetTempPath(), $"""oc-bad-%s{Guid.NewGuid().ToString("N")}.json""")
         try
             File.WriteAllText(bad, "not json at all {{{")
             match loadFromFile bad with
             | Error (ResourceParseError _) -> ()
-            | other -> Assert.Fail(sprintf "expected ResourceParseError, got %A" other)
+            | other -> Assert.Fail($"expected ResourceParseError, got %A{other}")
         finally
             if File.Exists bad then File.Delete bad
 
@@ -145,4 +145,4 @@ module LocalizationTests =
             for KeyValue(lang, value) in byLang do
                 Assert.False(
                     neutral.Contains value,
-                    sprintf "key '%s' (%s) carries the language-neutral symbol '%s' as a translatable value" key lang value)
+                    $"key '%s{key}' (%s{lang}) carries the language-neutral symbol '%s{value}' as a translatable value")

@@ -207,8 +207,8 @@ let private tableCanvas (model : Model) : IView =
     ] :> IView
 
 let private readoutText (m : Model) : string =
-    let dists = cumulativeGaps m |> List.map (sprintf "%.1f") |> String.concat ", "
-    sprintf "Source R2 = %+.0f°   ·   %d elements snapped to the beam at %s m" (sourceR2Degrees m) (List.length m.downstream) dists
+    let dists = cumulativeGaps m |> List.map (fun x -> $"%.1f{x}") |> String.concat ", "
+    $"Source R2 = %+.0f{(sourceR2Degrees m)}°   ·   %d{(List.length m.downstream)} elements snapped to the beam at %s{dists} m"
 
 /// The shared rotation bar, acting on the SOURCE. Its R2 is the steer that swings the beam; R1 spins the
 /// source (no beam change) and R3 tips the beam out of the table plane.

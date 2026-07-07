@@ -706,7 +706,7 @@ let private applyGroupChange (gi : int) (f : Groups.ElementGroup -> Groups.Eleme
 let private groupActiveElementNow (model : Model) : Model =
     match activeElement model with
     | Some p ->
-        let name = sprintf "Group %d" (List.length model.groups + 1)
+        let name = $"Group %d{List.length model.groups + 1}"
         let g =
             Groups.ElementGroup.create name Groups.MultiSelect
             |> Groups.ElementGroup.addMember p

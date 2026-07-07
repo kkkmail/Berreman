@@ -74,7 +74,7 @@ module LayerBandsControlsTests =
         // Here assert that the bound entry resolves to a multilayer whose description spells out the stack.
         match m.library.tryGetEntry multilayerQwId with
         | Ok (Some entry) -> Assert.Contains("layer", entry.fullDescription)
-        | other -> Assert.Fail(sprintf "expected the multilayer entry, got %A" other)
+        | other -> Assert.Fail($"expected the multilayer entry, got %A{other}")
         // The bound element carries the multilayer valueId.
         Assert.Equal(Some multilayerQwId, (elem 2 m).placement.valueId)
 

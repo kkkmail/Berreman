@@ -205,7 +205,7 @@ let acceptConfirmationPrompt (model : Model) : string option =
 
 /// The per-iteration progress line (item 2): iteration count + current χ²/MSE.
 let progressText (model : Model) : string option =
-    model.progress |> Option.map (fun (iter, chi) -> sprintf "Iteration %d — χ²/MSE = %g" iter chi)
+    model.progress |> Option.map (fun (iter, chi) -> $"Iteration %d{iter} — χ²/MSE = %g{chi}")
 
 /// The distinct photometric `OpticalFunction`s among the targets — the channels
 /// the fit-vs-measured overlay compares.

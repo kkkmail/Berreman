@@ -41,7 +41,7 @@ type SchematicColor =
     }
 
     /// The `#RRGGBB` hex form (handy for tests and the deferred view binding).
-    member c.toHex = sprintf "#%02X%02X%02X" c.red c.green c.blue
+    member c.toHex = $"#%02X{c.red}%02X{c.green}%02X{c.blue}"
 
 let private rgb (r : int) (g : int) (b : int) : SchematicColor =
     { red = byte r; green = byte g; blue = byte b }
@@ -207,7 +207,7 @@ let layout (unit : UnitOfMeasure) (materialKey : int -> string) (sys : OpticalSy
         sys.films
         |> List.mapi (fun i l ->
             {
-                label = sprintf "Layer %d — %s" i (StackEditor.displayThickness unit l.thickness)
+                label = $"Layer %d{i} — %s{StackEditor.displayThickness unit l.thickness}"
                 height = bandHeight l.thickness
                 color = colorForMaterial (materialKey i)
                 substrate = None

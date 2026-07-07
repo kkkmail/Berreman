@@ -82,7 +82,7 @@ module CommandRegistryTests =
         | KeyboardAndMouse (ks, ms) ->
             Assert.False(List.isEmpty ks, "slide must declare its keyboard gestures")
             Assert.False(List.isEmpty ms, "slide must declare its mouse gesture")
-        | other -> Assert.Fail(sprintf "slide must be keyboard-plus-mouse, was %A" other)
+        | other -> Assert.Fail($"slide must be keyboard-plus-mouse, was %A{other}")
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]
@@ -247,7 +247,7 @@ module CommandRegistryTests =
         Assert.Equal((placementAt 0 m1).placementPoint.x, (placementAt 0 mPlain).placementPoint.x)
         match mPlain.drag with
         | ConstructorView.NoDrag -> ()
-        | other -> Assert.Fail(sprintf "a plain element drag must not start a move, was %A" other)
+        | other -> Assert.Fail($"a plain element drag must not start a move, was %A{other}")
 
     // =======================================================================
     // AC-E4 — drag-to-place snaps to the middle of the nearest central-ray path.
@@ -372,7 +372,7 @@ module CommandRegistryTests =
             let (ex, ey) = rot90 (vecFrom v0 p)
             let (rx, ry) = vecFrom vRot p
             Assert.True(abs (ex - rx) < 1e-6 && abs (ey - ry) < 1e-6,
-                        sprintf "element at %A must travel with the rotated table" p)
+                        $"element at %A{p} must travel with the rotated table")
 
     // =======================================================================
     // AC-C3 — table selection.
@@ -505,7 +505,7 @@ module CommandRegistryTests =
             Dispatcher.UIThread.RunJobs()
             window.Close()
             let r1 = (List.item 0 m.project.placements).r1.degrees
-            Assert.True(abs (r1 - 5.0) < 1e-9, sprintf "one Shift+wheel notch rotated R1 to %f° (expected exactly 5°; 10° means the double-fire is back)" r1))
+            Assert.True(abs (r1 - 5.0) < 1e-9, $"one Shift+wheel notch rotated R1 to %f{r1}° (expected exactly 5°; 10° means the double-fire is back)"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

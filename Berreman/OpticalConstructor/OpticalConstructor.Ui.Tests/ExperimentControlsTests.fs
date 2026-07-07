@@ -201,7 +201,7 @@ module ExperimentControlsTests =
         let xs = (List.head chart.series).points |> List.map fst
         Assert.NotEmpty(xs)
         Assert.Equal("Incidence angle R2 (°)", chart.xLabel)
-        Assert.True(abs (89.0 - List.last xs) < 1e-6, sprintf "last x = %g, expected 89" (List.last xs))
+        Assert.True(abs (89.0 - List.last xs) < 1e-6, $"last x = %g{List.last xs}, expected 89")
         Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
 
     [<Fact>]
@@ -447,8 +447,8 @@ module ExperimentControlsTests =
                 Dispatcher.UIThread.RunJobs()
                 window.MouseUp(v.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                 Dispatcher.UIThread.RunJobs()
-            | _ -> Assert.Fail(sprintf "%s off-screen" name)
-        | None -> Assert.Fail(sprintf "%s not found" name)
+            | _ -> Assert.Fail($"%s{name} off-screen")
+        | None -> Assert.Fail($"%s{name} not found")
 
     // ============================ FuncUI recycling regressions (spec 028) ============================
     // The real app re-renders `mainView` on EVERY message (Elmish), so FuncUI diffs the tree. A styled
@@ -623,7 +623,7 @@ module ExperimentControlsTests =
             | [ first; second ] ->
                 Assert.True(obj.ReferenceEquals(second.Axes.YAxis, ava.Plot.Axes.Right), "the flipped series did not move to the right axis")
                 Assert.True(obj.ReferenceEquals(first.Axes.YAxis, ava.Plot.Axes.Left), "the other series must stay on the left axis")
-            | other -> Assert.Fail(sprintf "expected exactly two scatters, got %d" (List.length other))
+            | other -> Assert.Fail($"expected exactly two scatters, got %d{List.length other}")
             window.Close())
 
     [<Fact>]

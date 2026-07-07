@@ -250,7 +250,7 @@ let private catalogueView (resource : Resource) (language : Language) (d : Dispa
     ] :> IView
 
 let private formatMeters (v : float<meter>) : string =
-    sprintf "%.3f" (v / 1.0<meter>)
+    $"%.3f{v / 1.0<meter>}"
 
 let private traceView (resource : Resource) (language : Language) (cv : ConstructorView.Model) (d : Dispatch) : IView =
     StackPanel.create [
@@ -340,8 +340,8 @@ let private experimentView (resource : Resource) (language : Language) (cv : Con
         let count = List.length (ConstructorView.detectorIndices cv)
         let text =
             match ConstructorView.primaryDetectorIndex cv with
-            | Some p -> sprintf "%s: %d — %s #%d" (lookup resource language "experiment.detectors") count (lookup resource language "experiment.primary") p
-            | None -> sprintf "%s: 0" (lookup resource language "experiment.detectors")
+            | Some p -> $"""%s{lookup resource language "experiment.detectors"}: %d{count} — %s{lookup resource language "experiment.primary"} #%d{p}"""
+            | None -> $"""%s{lookup resource language "experiment.detectors"}: 0"""
         labelBlock text
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical

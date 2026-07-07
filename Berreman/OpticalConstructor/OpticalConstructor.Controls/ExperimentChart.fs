@@ -136,7 +136,7 @@ module ChartFont =
 
     /// The size readout text (e.g. "Tick labels: 11 pt").
     let readout (s : ChartFontState) : string =
-        sprintf "%s: %g pt" s.selected.label (selectedSize s)
+        $"%s{s.selected.label}: %g{selectedSize s} pt"
 
 /// Spec 0027 (030) — the pure, renderer-neutral STYLE model for the pop-out chart window: which part of the
 /// chart is SELECTED (header, X / Y axis, legend, or a specific series) and the editable properties of each
@@ -350,7 +350,7 @@ module ChartStyle =
         | YAxis LeftAxis -> "Y axis (left)"
         | YAxis RightAxis -> "Y axis (right)"
         | Legend -> "Legend"
-        | Series i -> sprintf "Line: %s" (seriesName i)
+        | Series i -> $"Line: %s{seriesName i}"
 
     // -- selection + per-element updates (all pure, all clamped) --
 

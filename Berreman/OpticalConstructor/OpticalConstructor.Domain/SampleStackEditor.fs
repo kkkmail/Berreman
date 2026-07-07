@@ -263,7 +263,7 @@ let private moveSelected (direction : MoveDirection) (state : SampleStackEditSta
 /// here because Domain cannot reference Ui).
 let private checkRepeatCount (count : int) : Result<int, SampleStackEditError> =
     if count >= 1 then Ok count
-    else Error (InvalidRepeatCount (sprintf "repeat count must be at least 1, got %d" count))
+    else Error (InvalidRepeatCount $"repeat count must be at least 1, got %d{count}")
 
 /// Fold the selected CONTIGUOUS run of top-level single layers into ONE
 /// `Repeated { cell; count }` at the run's position; the selection clears
@@ -286,7 +286,7 @@ let private makeRepeatBlock (count : int) (state : SampleStackEditState) : Resul
             | first :: _ ->
                 let contiguous = indices |> List.mapi (fun k i -> i = first + k) |> List.forall id
                 if not contiguous then
-                    Error (SelectionNotFoldable (sprintf "the selected layers are not contiguous: indices %A" indices))
+                    Error (SelectionNotFoldable $"the selected layers are not contiguous: indices %A{indices}")
                 else
                     let cell =
                         indices
@@ -315,9 +315,9 @@ let private setRepeatCount (groupIndex : int) (count : int) (state : SampleStack
                 |> List.mapi (fun i item -> if i = groupIndex then Repeated { g with count = count } else item)
             Ok { state with structure = { state.structure with films = films } }
         | Some (SingleLayer _) ->
-            Error (NotARepeatGroup (sprintf "films item %d is a single layer, not a repeat group" groupIndex))
+            Error (NotARepeatGroup $"films item %d{groupIndex} is a single layer, not a repeat group")
         | None ->
-            Error (NotARepeatGroup (sprintf "films index %d is out of range (%d items)" groupIndex (List.length state.structure.films))))
+            Error (NotARepeatGroup $"films index %d{groupIndex} is out of range (%d{List.length state.structure.films} items)"))
 
 // ---------------------------------------------------------------------------
 // The editor's pure update (the SampleStructure mirror of `applyStackMsg`,
