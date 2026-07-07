@@ -1,0 +1,16 @@
+# Step 005 — ADD_COMPONENT UICOMP_XDUO_0005 CategoryControls
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0005
+name: CategoryControls
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Controls
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: [4]
+```
+
+**How to implement.** Create OpticalConstructor.Controls/CategoryControls.fs copying the domain-free LibraryControls shape (pure Row and State records, a Handlers record of unit-returning functions, one [<RequireQualifiedAccess>] module UiIds of [<Literal>] intent-named ids): a category list with an inline name box per row and Add / Rename(save) / Remove verbs, a built-in row whose name is editable but whose Remove is omitted (removed, not greyed), and an inline block-message slot for CategoryStillReferenced / BuiltInNotRemovable. Stable intent-named ids: CategoriesList, AddCategoryButton, CategoryNameBox, RemoveCategoryButton, CategorySaveButton, CategoryCancelButton, CategoryBlockMessage. The control renders the rows it is given and never touches a proxy (the host flattens). Headless structure test in OpticalConstructor.Ui.Tests: mount the view over a known State, assert every UiIds control exists, and assert a simulated Add click invokes the add handler.
+
+**Acceptance.** After the step, the headless test MUST mount CategoryControls over a known State, find every UiIds control, and observe that a simulated Add click invokes the add handler.

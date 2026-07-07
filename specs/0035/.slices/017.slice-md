@@ -1,0 +1,11 @@
+# Step 017 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.TestWindows/MaterialEditorView.fs present the primary eps branch as two mutually-exclusive options Constant / Dispersive instead of the sticky Dispersive toggle (togglesRow, MaterialEditorView.fs:594,604, 'off = constant n, k'). The two options map to the same SetDispersion (NonDispersive / DispersiveSegments) message so the derived model is unchanged (cosmetic). Update the absorbingToggle / dispersiveToggle acceptance tests (the ids at MaterialEditorView.fs:56,58) to the two-option model, and keep the Absorbing sub-option in the Constant branch only (removed, not greyed, under Dispersive).
+
+**Acceptance.** After the step, the eps branch MUST present Constant and Dispersive as two mutually-exclusive options selecting NonDispersive / DispersiveSegments, with the updated toggle tests green and the derived model unchanged.

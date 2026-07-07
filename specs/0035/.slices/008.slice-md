@@ -1,0 +1,11 @@
+# Step 008 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: [7]
+```
+
+**How to implement.** Add a bay content-mode two-case DU (never a bool) - a table bay (the canvas plus its pan/zoom/rotate gestures) vs a full-surface bay (its own IView replaces the canvas area) - carried on Ribbon.Bay (Ribbon.fs:25) or mapped by the Main host from bay name to mode. In TableAndElementRotationView.mainView (TableAndElementRotationView.fs:2281) render the table canvas and its pointer/wheel handlers ONLY for a table bay; a full-surface bay fills the whole area below the ribbon strip with the bay's content and wires no table gestures. Mark the Materials and Library bays full-surface (materialsBay / samplesBay in mainBays, TableAndElementRotationView.fs:2265) and, now that step-7 pane hosting is order-independent, move Materials and Library to be the LAST two bays in mainBays and BayNames.all (TableAndElementRotationView.fs:239), retiring the Details-LAST pin and the deferred-reorder comment (TableAndElementRotationView.fs:235-238). Headless MainWorkbench ui-smoke tests drive the reordered, full-surface bays green.
+
+**Acceptance.** After the change, the ribbon MUST show Materials and Library as the last two bays, each occupying the full surface below the ribbon with no table canvas, while a table bay keeps its canvas and gestures, verified by the headless MainWorkbench tests.

@@ -1,0 +1,58 @@
+# Arc-runner worker task -- 001.slice-md
+
+## Concrete paths for this round
+
+The supervisor pre-resolves every per-slice path you need this
+round and lists them below. Do not compute or guess these
+paths: the canonical layout block describes the shape, this
+section pins the concrete values for the slice you are about
+to implement.
+
+- **spec_folder:** `C:\GitHub\Berreman\specs\0035`
+- **slice_md_path:** `C:\GitHub\Berreman\specs\0035\.slices\001.slice-md`
+- **artifacts_folder:** `C:\GitHub\Berreman\specs\0035\.artifacts`
+- **impl_log_path:** `C:\GitHub\Berreman\specs\0035\.slices\001-impl-log.md`
+- **impl_plan_path:** `C:\GitHub\Berreman\specs\0035\.slices\001-impl-plan.md`
+- **state_of_world_path:** `C:\GitHub\Berreman\specs\0035\.slices\001-state-of-the-world.md`
+- **spec_id:** `0035`
+- **slice_id:** `001`
+
+
+## System prompt
+
+Read the cross-repo system prompt in full before anything else:
+
+- C:\GitHub\AI-Strategy-Generator\implement_worker.system-md
+
+## Project prompt
+
+Read the per-project prompt in full:
+
+- C:\GitHub\Berreman\.user-md\Berreman\arc-runner.user-md
+
+## Slice spec
+
+Implement this slice end-to-end:
+
+- C:\GitHub\Berreman\specs\0035\.slices\001.slice-md
+
+## Outputs you MUST write (and nowhere else)
+
+**Save your state-of-the-world markdown to**
+`C:\GitHub\Berreman\specs\0035\.slices\001-state-of-the-world.md`. **Do not write the SoW anywhere else.**
+
+**Save your impl-log markdown to**
+`C:\GitHub\Berreman\specs\0035\.slices\001-impl-log.md`. **Do not write the impl-log anywhere else.**
+
+## Artifacts folder
+
+Use `C:\GitHub\Berreman\specs\0035\.artifacts` for any persistent run artifacts
+(captured logs, screenshots, traces, dumps). The folder is
+pre-created; this path is the arc-runner's authoritative
+value and supersedes any path the project prompt computes
+from convention.
+
+## Retry hint
+
+Add one test at the Report.fs library boundary that round-trips category through the persistence seam: export a known entry (or the built-ins) and re-import the JSON so dtoToEntry runs, asserting a known category name resolves back to the matching CategoryId, and that a library JSON carrying an unknown category name yields the typed JsonParseError (not a throw or silent default). This exercises the new tryFindCategoryByName function and its error case -- the one genuinely-new, untested public surface in the diff. No other changes are needed; the rest of the slice is green.
+

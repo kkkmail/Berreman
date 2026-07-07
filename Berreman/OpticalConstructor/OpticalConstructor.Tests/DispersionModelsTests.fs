@@ -148,7 +148,7 @@ module DispersionModelsTests =
             {
                 id = id
                 name = "Round-trip entry"
-                category = Glass
+                category = CategoryIds.glass
                 description = None
                 properties = siliconOpticalProperties
                 complexity = None

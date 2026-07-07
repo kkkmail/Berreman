@@ -143,9 +143,9 @@ module MainWorkbenchTests =
 
     [<Fact>]
     let ``the workbench facet code maps round-trip`` () =
-        Assert.Equal(Some Glass, materialCategoryOfCode (materialCategoryCode (Some Glass)))
-        Assert.Equal(Some Crystal, materialCategoryOfCode (materialCategoryCode (Some Crystal)))
-        Assert.Equal<MaterialCategory option>(None, materialCategoryOfCode "all")
+        Assert.Equal(Some CategoryIds.glass, materialCategoryOfCode (materialCategoryCode (Some CategoryIds.glass)))
+        Assert.Equal(Some CategoryIds.crystal, materialCategoryOfCode (materialCategoryCode (Some CategoryIds.crystal)))
+        Assert.Equal<CategoryId option>(None, materialCategoryOfCode "all")
         Assert.Equal(OnlyDispersive, dispersionFilterOfCode (dispersionFilterCode OnlyDispersive))
         Assert.Equal(AnyDispersion, dispersionFilterOfCode "all")
         Assert.Equal(Some Plate, substrateFacetOfCode (substrateFacetCode (Some Plate)))
@@ -177,7 +177,7 @@ module MainWorkbenchTests =
         Assert.Contains(string MaterialIds.glass152.value, rowIds (materialsState byText))
         Assert.DoesNotContain(string MaterialIds.silicon.value, rowIds (materialsState byText))
         // The category facet: the four crystals.
-        let byCategory = update (MatSelectCategory (Some Crystal)) m
+        let byCategory = update (MatSelectCategory (Some CategoryIds.crystal)) m
         Assert.Equal(4, List.length (materialsState byCategory).rows)
         Assert.Contains(string MaterialIds.langasite.value, rowIds (materialsState byCategory))
         // The dispersion facet: only the wavelength-dependent presets.
@@ -185,7 +185,7 @@ module MainWorkbenchTests =
         Assert.Equal(2, List.length (materialsState byDispersion).rows)
         Assert.Contains(string MaterialIds.silicon.value, rowIds (materialsState byDispersion))
         // Facets compose: no glass is a crystal.
-        let composed = m |> update (MatSetSearchText "glass") |> update (MatSelectCategory (Some Crystal))
+        let composed = m |> update (MatSetSearchText "glass") |> update (MatSelectCategory (Some CategoryIds.crystal))
         Assert.Empty((materialsState composed).rows)
 
     [<Fact>]

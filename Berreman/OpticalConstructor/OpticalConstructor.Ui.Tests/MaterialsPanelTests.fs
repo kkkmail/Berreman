@@ -63,7 +63,7 @@ module MaterialsPanelTests =
 
             // Category = Glass narrows the list through `byCategory`: glass entries show,
             // Silicon does not. The filter button "Glass" is not a material row.
-            let glassFilter = { MaterialsView.Filter.empty with category = Some MaterialLibrary.Glass }
+            let glassFilter = { MaterialsView.Filter.empty with category = Some MaterialLibrary.CategoryIds.glass }
             let glass = mount (MaterialsView.materialsPanel model.materials glassFilter model.construction ignore ignore)
             let glassButtons = buttonContents glass
             Assert.DoesNotContain("Silicon", glassButtons)
@@ -123,8 +123,8 @@ module MaterialsPanelTests =
     let ``materials update routes filter edits and an unknown drop id is a no-op`` () =
         // Pure filter dispatcher (R-1): each edit reaches the Filter record.
         let f0 = MaterialsView.Filter.empty
-        let f1 = MaterialsView.update (MaterialsView.SetCategory (Some MaterialLibrary.Glass)) f0
-        Assert.Equal(Some MaterialLibrary.Glass, f1.category)
+        let f1 = MaterialsView.update (MaterialsView.SetCategory (Some MaterialLibrary.CategoryIds.glass)) f0
+        Assert.Equal(Some MaterialLibrary.CategoryIds.glass, f1.category)
         let f2 = MaterialsView.update (MaterialsView.SelectMaterial MaterialLibrary.MaterialIds.silicon) f1
         Assert.Equal(Some MaterialLibrary.MaterialIds.silicon, f2.selected)
 
@@ -132,7 +132,7 @@ module MaterialsPanelTests =
         let lib = MaterialLibrary.standard
         let glass = MaterialsView.filteredEntries lib f1
         Assert.NotEmpty(glass)
-        Assert.True(glass |> List.forall (fun e -> e.category = MaterialLibrary.Glass))
+        Assert.True(glass |> List.forall (fun e -> e.category = MaterialLibrary.CategoryIds.glass))
 
         // An unknown material id resolves to Error, so the drop dispatches nothing.
         let captured = List<ConstructionPage.Msg>()

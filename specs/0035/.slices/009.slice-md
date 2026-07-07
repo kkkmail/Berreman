@@ -1,0 +1,11 @@
+# Step 009 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [3, 6, 8]
+```
+
+**How to implement.** Host-wire the category catalogue into TableAndElementRotationView. Thread the step-3 CategoryProxy into the host model through initMainWith (TableAndElementRotationView.fs:319) beside the material/sample proxies, updating the DefaultStores composition (TableAndElementRotationView.fs:256) and the OpticalConstructor.App/Program.fs composition call mechanically so the solution builds (the step-19 WIRE_UI owns the composition acceptance). Add a Categories... verb to the Materials bay that opens the step-6 CategoryEditorWindow via the EditorLaunchers seam (TableAndElementRotationView.fs:117). Drive the material-editor create picker and the Materials-bay category facet from CategoryProxy.listCategories: the create picker excludes HiddenOnCreate; the facet lists the catalogue with option code = CategoryId Guid string and label = name. After every category add/rename/remove the bay re-queries the proxy so the picker and facet refresh in the same render pass. Headless tests in OpticalConstructor.Ui.Tests: the Categories... verb opens the editor, and a category renamed through the proxy re-labels the create picker and facet.
+
+**Acceptance.** After the step, headless tests MUST show the Materials bay Categories... verb opening the CategoryEditorWindow, and a category renamed through the proxy re-labelling the create picker and facet in the same render pass.

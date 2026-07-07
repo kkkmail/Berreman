@@ -174,7 +174,7 @@ type Model =
         mode : EditorMode
         name : string
         description : string
-        category : MaterialCategory
+        category : CategoryId
         editor : MaterialComplexityEditState
         /// A view-only entry's own engine properties (the preview's source there).
         presetProperties : OpticalPropertiesWithDisp option
@@ -185,7 +185,7 @@ type Model =
 type Msg =
     | SetName of string
     | SetDescription of string
-    | ChooseCategory of MaterialCategory
+    | ChooseCategory of CategoryId
     /// One ladder edit, routed through the pure Domain apply.
     | EditorMsg of MaterialComplexityMsg
     | SaveClicked
@@ -208,14 +208,10 @@ let private anisotropyLabel (anisotropy : Anisotropy) : string =
     | Uniaxial -> "Uniaxial"
     | Biaxial -> "Biaxial"
 
-/// A material category's stable code (the derived UiIds key).
-let categoryCode (category : MaterialCategory) : string =
-    match category with
-    | Glass -> "Glass"
-    | Metal -> "Metal"
-    | Semiconductor -> "Semiconductor"
-    | Crystal -> "Crystal"
-    | Vacuum -> "Vacuum"
+/// A material category's stable code (the derived UiIds key): the display name resolved
+/// through the seeded catalogue by `CategoryId` (spec 0035 step 001), not a closed-union match.
+let categoryCode (category : CategoryId) : string =
+    categoryName category
 
 /// A handedness option's stable code (the derived UiIds key).
 let handednessCode (hand : Handedness) : string =
@@ -320,7 +316,7 @@ let init (context : MaterialEditorContext) (existing : MaterialEntry option) : M
             mode = EditableMaterial
             name = ""
             description = ""
-            category = Glass
+            category = CategoryIds.glass
             editor = defaultState
             presetProperties = None
             status = None
@@ -557,10 +553,13 @@ let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
             WrapPanel.create [
                 automationId UiIds.categoryPicker
                 WrapPanel.orientation Orientation.Horizontal
+                // The create picker offers ONLY the SelectableOnCreate catalogue categories
+                // (spec 0035 step 001): Vacuum is HiddenOnCreate — removed, not greyed.
                 WrapPanel.children (
-                    [ Glass; Metal; Semiconductor; Crystal; Vacuum ]
+                    standardCategories
+                    |> List.filter (fun c -> c.visibility = SelectableOnCreate)
                     |> List.map (fun category ->
-                        clickBox (UiIds.categoryOption (categoryCode category)) (categoryCode category) (m.category = category) (fun () -> dispatch (ChooseCategory category))))
+                        clickBox (UiIds.categoryOption category.name) category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
             ] :> IView
         ]
     ] :> IView

@@ -1,0 +1,11 @@
+# Step 018 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.App]
+depends_on: []
+```
+
+**How to implement.** Sweep the build warning-clean per section 0.6 across the touched projects: resolve any FS#### warning originating in the files this spec edits, and - if the build emits MSB3277 (conflicting assembly versions) from the WebView2 reference chain the Ui project carries (Microsoft.Web.WebView2, OpticalConstructor.Ui.fsproj:176, used by the ChartHosts adapters at :75,80) - resolve it at the reference level (constrain or drop the offending reference), never with a suppression. Only the exempt NuGet advisories (NU1701, NU1901-NU1904) may remain. Verify with dotnet build Berreman.slnx -c Release that no FS#### or MSB3277 warning from our code remains.
+
+**Acceptance.** After the step, dotnet build Berreman.slnx -c Release MUST complete with no FS#### warning from our code and no MSB3277 assembly-version conflict, only the exempt NU1701 / NU1901-NU1904 third-party advisories remaining.

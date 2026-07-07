@@ -1,0 +1,11 @@
+# Step 013 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [1]
+```
+
+**How to implement.** In OpticalConstructor.TestWindows/SampleEditorView.fs make the material picker in materialRow (SampleEditorView.fs:647) searchable: add a search box and a catalogue-driven category facet (the step-1 seeded categories, mirroring the Materials bay facet) that filter the resolved material list the window loads once from MaterialProxy.listMaterials (SampleEditorView.fs:6). The by-MaterialId selection contract (ChooseMaterial of MaterialId, SampleEditorView.fs:190) is unchanged. Add stable intent-named UiIds for the search box and the category facet. Headless tests in OpticalConstructor.Ui.Tests: typing a fragment and selecting a category filter narrows the material options, and choosing a filtered option still dispatches ChooseMaterial with its MaterialId.
+
+**Acceptance.** After the step, headless tests MUST show the sample-editor material picker filtering its options by a search fragment and by a category facet while still selecting a material by MaterialId.

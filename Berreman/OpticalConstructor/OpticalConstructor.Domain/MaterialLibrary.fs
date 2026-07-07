@@ -62,14 +62,86 @@ module MaterialLibrary =
         let euvSilicon : MaterialId = Guid.Parse "43075352-cb2a-41ed-b53b-76e7166ece57" |> MaterialId
         let activeCrystal : MaterialId = Guid.Parse "a8dfa59c-2e95-4e3a-bfa6-b7e7e12ef58f" |> MaterialId
 
-    /// Material category for filtering (§D.8). `Vacuum` (spec 0033 step 001) categorises the
-    /// vacuum spacer entry the structural multilayer seeds reference.
+    /// Elevated material-category identity (spec 0035 step 001): a Guid-backed single-case DU,
+    /// mirroring `MaterialId` (:27). `create` MINTS a fresh id (a user-authored category); the
+    /// seeded built-ins parse FIXED literal Guids (`CategoryIds`) so a category's identity is
+    /// deterministic across runs and a persisted entry resolves to the SAME category.
+    type CategoryId =
+        | CategoryId of Guid
+
+        member this.value = let (CategoryId g) = this in g
+        static member create () : CategoryId = Guid.NewGuid() |> CategoryId
+
+    /// Whether a category is offered as a target in the create/edit picker (spec 0035 step 001):
+    /// a named two-case DU, never a naked `bool`. A `HiddenOnCreate` category (Vacuum) categorises
+    /// seed entries the structural multilayer stacks reference but is NOT a user-selectable
+    /// creation target — it is removed from the picker, not greyed.
+    type CategoryVisibility =
+        | SelectableOnCreate
+        | HiddenOnCreate
+
+    /// Whether a category ships with the app or was authored by a user (spec 0035 step 001): a
+    /// named two-case DU, never a naked `bool`.
+    type CategoryOrigin =
+        | BuiltInCategory
+        | UserCategory
+
+    /// Material category as DATA (spec 0035 step 001): the closed `MaterialCategory` union is
+    /// replaced by a record so categories are a seeded, extensible catalogue resolved by id — not
+    /// a fixed compile-time set. A category `name` is resolved through the catalogue by
+    /// `CategoryId` (the sole seam consumers read); `visibility` and `origin` are named DUs. No
+    /// domain record or public signature carries a closed union — `MaterialEntry.category` and
+    /// `MaterialQuery.category` are `CategoryId`-typed.
     type MaterialCategory =
-        | Glass
-        | Metal
-        | Semiconductor
-        | Crystal
-        | Vacuum
+        {
+            id : CategoryId
+            name : string
+            visibility : CategoryVisibility
+            origin : CategoryOrigin
+        }
+
+    /// The FIXED ids of the built-in categories (spec 0035 step 001): literal Guids parsed once
+    /// (mirroring `MaterialIds` at :51), so the seeded catalogue, the entry seeds, and the tests
+    /// all reference the SAME deterministic identity across runs. A new built-in category adds a
+    /// new literal here; catalogue construction never calls `CategoryId.create`.
+    module CategoryIds =
+        let glass : CategoryId = Guid.Parse "2a4b6c8d-1e3f-4a5b-8c7d-9e0f1a2b3c4d" |> CategoryId
+        let metal : CategoryId = Guid.Parse "3b5c7d9e-2f4a-5b6c-9d8e-0f1a2b3c4d5e" |> CategoryId
+        let semiconductor : CategoryId = Guid.Parse "4c6d8e0f-3a5b-6c7d-ae9f-1a2b3c4d5e6f" |> CategoryId
+        let crystal : CategoryId = Guid.Parse "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70" |> CategoryId
+        let vacuum : CategoryId = Guid.Parse "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081" |> CategoryId
+
+    /// The seeded built-in category catalogue (spec 0035 step 001). Glass/Metal/Semiconductor/
+    /// Crystal are `SelectableOnCreate` creation targets; `Vacuum` is `HiddenOnCreate` — it
+    /// categorises the vacuum spacer entry the structural multilayer seeds reference but is not
+    /// offered in the create picker. Every seed is `BuiltInCategory`.
+    let standardCategories : MaterialCategory list =
+        [
+            { id = CategoryIds.glass; name = "Glass"; visibility = SelectableOnCreate; origin = BuiltInCategory }
+            { id = CategoryIds.metal; name = "Metal"; visibility = SelectableOnCreate; origin = BuiltInCategory }
+            { id = CategoryIds.semiconductor; name = "Semiconductor"; visibility = SelectableOnCreate; origin = BuiltInCategory }
+            { id = CategoryIds.crystal; name = "Crystal"; visibility = SelectableOnCreate; origin = BuiltInCategory }
+            { id = CategoryIds.vacuum; name = "Vacuum"; visibility = HiddenOnCreate; origin = BuiltInCategory }
+        ]
+
+    /// Resolve a category record by its id through the seeded catalogue (spec 0035 step 001): the
+    /// single name-resolution seam consumers read instead of matching a closed union. An id absent
+    /// from the catalogue is `None`, never a throw.
+    let tryFindCategory (id : CategoryId) : MaterialCategory option =
+        standardCategories |> List.tryFind (fun c -> c.id = id)
+
+    /// The display name of a category id, resolved through the catalogue (spec 0035 step 001); an
+    /// id absent from the catalogue falls back to its Guid string form (a diagnostic, never a throw).
+    let categoryName (id : CategoryId) : string =
+        match tryFindCategory id with
+        | Some c -> c.name
+        | None -> string id.value
+
+    /// Resolve a category record by its display name through the catalogue (spec 0035 step 001):
+    /// the inverse of `categoryName`, used at the persisted/wire boundary (library JSON). An
+    /// unknown name is `None`, never a throw.
+    let tryFindCategoryByName (name : string) : MaterialCategory option =
+        standardCategories |> List.tryFind (fun c -> c.name = name)
 
     /// The editable material-complexity option tree (spec 0033 step 013, §B / the
     /// Part F progressive ladder): the serializable edit model a material's engine
@@ -116,7 +188,7 @@ module MaterialLibrary =
         {
             id : MaterialId
             name : string
-            category : MaterialCategory
+            category : CategoryId
             description : string option
             properties : OpticalPropertiesWithDisp
             complexity : MaterialComplexity option
@@ -142,8 +214,9 @@ module MaterialLibrary =
             entries : MaterialEntry list
         }
 
-    /// Linear category filter (§D.8 — `List.filter`, no index).
-    let byCategory (category : MaterialCategory) (lib : MaterialLibrary) : MaterialEntry list =
+    /// Linear category filter (§D.8 — `List.filter`, no index): matches entries by `CategoryId`
+    /// (spec 0035 step 001), not by a closed union.
+    let byCategory (category : CategoryId) (lib : MaterialLibrary) : MaterialEntry list =
         lib.entries |> List.filter (fun e -> e.category = category)
 
     /// Linear case-insensitive name search (§D.8).
@@ -249,7 +322,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.silicon
                 name = "Silicon"
-                category = Semiconductor
+                category = CategoryIds.semiconductor
                 description = Some "Crystalline silicon (engine preset Silicon)."
                 properties = siliconOpticalProperties
                 complexity = None
@@ -257,7 +330,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.langasite
                 name = "Langasite (La3Ga5SiO14)"
-                category = Crystal
+                category = CategoryIds.crystal
                 description = Some "Langasite, optically active uniaxial crystal (engine preset Langasite)."
                 properties = langasiteOpticalProperties
                 complexity = None
@@ -265,7 +338,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.glass152
                 name = "Transparent glass (n = 1.52)"
-                category = Glass
+                category = CategoryIds.glass
                 description = Some "Standard transparent glass preset."
                 properties = glass152Complexity.toProperties
                 complexity = Some glass152Complexity
@@ -273,7 +346,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.glass150
                 name = "Transparent glass (n = 1.50)"
-                category = Glass
+                category = CategoryIds.glass
                 description = None
                 properties = glass150Complexity.toProperties
                 complexity = Some glass150Complexity
@@ -281,7 +354,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.glass175
                 name = "Transparent glass (n = 1.75)"
-                category = Glass
+                category = CategoryIds.glass
                 description = None
                 properties = glass175Complexity.toProperties
                 complexity = Some glass175Complexity
@@ -289,7 +362,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.glass200
                 name = "Transparent glass (n = 2.00)"
-                category = Glass
+                category = CategoryIds.glass
                 description = None
                 properties = glass200Complexity.toProperties
                 complexity = Some glass200Complexity
@@ -297,7 +370,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.uniaxialCrystal
                 name = "Uniaxial crystal"
-                category = Crystal
+                category = CategoryIds.crystal
                 description = Some "Standard uniaxial crystal preset."
                 properties = uniaxialCrystalComplexity.toProperties
                 complexity = Some uniaxialCrystalComplexity
@@ -305,7 +378,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.biaxialCrystal
                 name = "Biaxial crystal"
-                category = Crystal
+                category = CategoryIds.crystal
                 description = Some "Standard biaxial crystal preset."
                 properties = biaxialCrystalComplexity.toProperties
                 complexity = Some biaxialCrystalComplexity
@@ -313,7 +386,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.vacuum
                 name = "Vacuum"
-                category = Vacuum
+                category = CategoryIds.vacuum
                 description = Some "Vacuum (n = 1) — the spacer material of the structural multilayer stacks."
                 properties = OpticalProperties.vacuum.dispersive
                 complexity = None
@@ -321,7 +394,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.euvMolybdenum
                 name = "Molybdenum (Mo, EUV)"
-                category = Metal
+                category = CategoryIds.metal
                 description = Some "Molybdenum for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
                 properties = euvMolybdenumComplexity.toProperties
                 complexity = Some euvMolybdenumComplexity
@@ -329,7 +402,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.euvSilicon
                 name = "Silicon (Si, EUV)"
-                category = Semiconductor
+                category = CategoryIds.semiconductor
                 description = Some "Silicon for EUV multilayers (engine preset, complex n around 10–13.5 nm)."
                 properties = euvSiliconComplexity.toProperties
                 complexity = Some euvSiliconComplexity
@@ -337,7 +410,7 @@ module MaterialLibrary =
             {
                 id = MaterialIds.activeCrystal
                 name = "Active (gyrotropic) crystal"
-                category = Crystal
+                category = CategoryIds.crystal
                 description = Some "Planar active (gyrotropic) crystal: n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6 (from ActiveCrystal.fsx)."
                 properties = activeCrystalComplexity.toProperties
                 complexity = Some activeCrystalComplexity
@@ -358,14 +431,14 @@ module MaterialLibrary =
         | OnlyNonDispersive
 
     /// A materials-library search query (spec 0033 step 003): a case-insensitive name
-    /// fragment (empty matches all — the `byNameContains` semantics), an optional
-    /// `MaterialCategory`, and the dispersion facet. The query is DATA, so the materials
+    /// fragment (empty matches all — the `byNameContains` semantics), an optional category
+    /// `CategoryId` (spec 0035 step 001), and the dispersion facet. The query is DATA, so the materials
     /// panel drives one search seam (`MaterialProxy.searchMaterials`) instead of composing
     /// ad-hoc filter calls.
     type MaterialQuery =
         {
             text : string
-            category : MaterialCategory option
+            category : CategoryId option
             dispersion : DispersionFilter
         }
 

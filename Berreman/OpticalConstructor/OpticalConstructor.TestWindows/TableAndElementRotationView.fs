@@ -410,7 +410,7 @@ type Msg =
     /// metadata + n/k-chart panel. Facet picks carry the DOMAIN facet — the option-code mapping
     /// happens in the bay handlers at the control boundary.
     | MatSetSearchText of string
-    | MatSelectCategory of MaterialLibrary.MaterialCategory option
+    | MatSelectCategory of MaterialLibrary.CategoryId option
     | MatSelectDispersion of MaterialLibrary.DispersionFilter
     | MatSelectRow of MaterialLibrary.MaterialId
     | MatAdd
@@ -1906,32 +1906,26 @@ module WorkbenchIds =
     [<Literal>]
     let sampleViewPanel = "SampleViewPanel"
 
-/// The category facet's domain choices, in display order (the "all" option is `None`).
-let materialCategories : MaterialLibrary.MaterialCategory list =
-    [ MaterialLibrary.Glass; MaterialLibrary.Metal; MaterialLibrary.Semiconductor; MaterialLibrary.Crystal; MaterialLibrary.Vacuum ]
+/// The category facet's choices, in display order (the "all" option is `None`): the seeded
+/// catalogue's ids (spec 0035 step 001), resolved to their names below.
+let materialCategories : MaterialLibrary.CategoryId list =
+    MaterialLibrary.standardCategories |> List.map (fun c -> c.id)
 
 /// The stable option code of a category facet choice (`None` = the match-everything "all") —
-/// the string the control dispatches back and `materialCategoryOfCode` inverts.
-let materialCategoryCode (category : MaterialLibrary.MaterialCategory option) : string =
+/// the string the control dispatches back and `materialCategoryOfCode` inverts. The code is the
+/// catalogue name lower-cased, resolved through `categoryName` by `CategoryId`.
+let materialCategoryCode (category : MaterialLibrary.CategoryId option) : string =
     match category with
     | None -> "all"
-    | Some MaterialLibrary.Glass -> "glass"
-    | Some MaterialLibrary.Metal -> "metal"
-    | Some MaterialLibrary.Semiconductor -> "semiconductor"
-    | Some MaterialLibrary.Crystal -> "crystal"
-    | Some MaterialLibrary.Vacuum -> "vacuum"
+    | Some id -> (MaterialLibrary.categoryName id).ToLowerInvariant()
 
-let private materialCategoryLabel (category : MaterialLibrary.MaterialCategory option) : string =
+let private materialCategoryLabel (category : MaterialLibrary.CategoryId option) : string =
     match category with
     | None -> "All"
-    | Some MaterialLibrary.Glass -> "Glass"
-    | Some MaterialLibrary.Metal -> "Metal"
-    | Some MaterialLibrary.Semiconductor -> "Semiconductor"
-    | Some MaterialLibrary.Crystal -> "Crystal"
-    | Some MaterialLibrary.Vacuum -> "Vacuum"
+    | Some id -> MaterialLibrary.categoryName id
 
 /// The inverse code → facet mapping (an unknown code is the match-everything "all").
-let materialCategoryOfCode (code : string) : MaterialLibrary.MaterialCategory option =
+let materialCategoryOfCode (code : string) : MaterialLibrary.CategoryId option =
     materialCategories |> List.tryFind (fun c -> materialCategoryCode (Some c) = code)
 
 /// The dispersion facet's choices, in display order.

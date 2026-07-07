@@ -1,0 +1,11 @@
+# Step 007 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.Controls/Ribbon.fs make Ribbon.view (Ribbon.fs:90) host only the ACTIVE bay's content in ONE stable, keyed content slot instead of rendering every bay's pane with IsVisible toggles (Ribbon.fs:95-103). Key the single content ContentControl/Border by the active bay name (SubPatchOptions.OnChangeOf the active name) so FuncUI patches a pane only against its own previous self and never recycles a styled, named control across two DIFFERENT bays - the hazard the Ribbon.fs:84-89 comment documents. The activeBay selection (Ribbon.fs:79) and the tab strip are unchanged; UiIds.pane (Ribbon.fs:44) now names the single active slot. Headless test in OpticalConstructor.Ui.Tests: selecting each bay in turn shows exactly that bay's content and no other pane is realized.
+
+**Acceptance.** After the change, the ribbon MUST realize only the selected bay's content in one keyed slot, selecting each bay shows exactly its content, and no styled-element recycling error occurs, verified by the headless UI tests.

@@ -1,0 +1,11 @@
+# Step 001 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.TestWindows, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.Domain/MaterialLibrary.fs REPLACE the closed union MaterialCategory (MaterialLibrary.fs:67) with DATA. Add CategoryId (a Guid-backed single-case DU with a .value accessor and a static create : unit -> CategoryId minting Guid.NewGuid, mirroring MaterialId at MaterialLibrary.fs:27); CategoryVisibility = SelectableOnCreate | HiddenOnCreate and CategoryOrigin = BuiltInCategory | UserCategory (named two-case DUs, never a bool); and the record MaterialCategory = { id : CategoryId; name : string; visibility : CategoryVisibility; origin : CategoryOrigin }. Add a CategoryIds module of FIXED literal Guids (mirroring MaterialLibrary.MaterialIds at :51) and a seeded standardCategories : MaterialCategory list with Glass/Metal/Semiconductor/Crystal as BuiltInCategory/SelectableOnCreate and Vacuum as BuiltInCategory/HiddenOnCreate. Re-type MaterialEntry.category (:119) and MaterialQuery.category (:368) to CategoryId / CategoryId option, re-seed every builtInEntries category (:252 onward) to the matching CategoryIds value, and re-express byCategory (:146) and byQuery (:415) as CategoryId filters. Re-point the consumers to read the seeded catalogue: MaterialEditorView.categoryRow and its hardcoded list (MaterialEditorView.fs:551,561) plus the model category field / ChooseCategory (:177,188) offer only SelectableOnCreate categories from standardCategories (Vacuum removed, not greyed); TableAndElementRotationView.materialCategories / materialCategoryCode / materialCategoryLabel / materialCategoryOfCode (TableAndElementRotationView.fs:1910-1935), the facet (:2002), and the entry.category display (:2159) resolve the name through the catalogue by CategoryId. No closed-union path remains.
+
+**Acceptance.** After the change, no domain record or signature carries the closed MaterialCategory union (MaterialEntry.category and MaterialQuery.category are CategoryId-typed), a category name resolves through the seeded catalogue by id, and the create picker offers every SelectableOnCreate category and no HiddenOnCreate one, with the solution building and OpticalConstructor.Tests green.
