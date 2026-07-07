@@ -104,12 +104,12 @@ type OptimizationTests() =
 
         match LocalRefinement.refineWith LevenbergMarquardt 400 1.0e-12 baseSystem parameters initial targets with
         | Ok (refined, result) ->
-            Assert.True(result.success, sprintf "LM did not succeed: %A" result.terminationReason)
+            Assert.True(result.success, $"LM did not succeed: %A{result.terminationReason}")
             let recovered = thicknessMeters refined.films.[0]
             Assert.True(abs (recovered - trueThickness) < 1.0e-9,
-                        sprintf "recovered %g m, expected %g m" recovered trueThickness)
+                        $"recovered %g{recovered} m, expected %g{trueThickness} m")
             Assert.True(ssr result.finalResiduals < 1.0e-9,
-                        sprintf "expected final χ² ~0, got %g" (ssr result.finalResiduals))
+                        $"expected final χ² ~0, got %g{(ssr result.finalResiduals)}")
         | Error e -> failwith $"expected a refined system, got Error {e}"
 
     /// AC-G9 (ellipsometric Ψ/Δ case, path b): the same recovery over an
@@ -130,7 +130,7 @@ type OptimizationTests() =
         // `DesignParameter` (the same abstraction `layerThickness` builds).
         let nmThickness (index : int) (upperNm : float) : DesignParameters.DesignParameter =
             {
-                name = sprintf "film[%d].thickness.nm" index
+                name = $"film[%d{index}].thickness.nm"
                 getSys =
                     fun (sys : OpticalSystem) (v : double) ->
                         let films =
@@ -158,12 +158,12 @@ type OptimizationTests() =
 
         match LocalRefinement.refineWith LevenbergMarquardt 400 1.0e-9 baseSystem parameters initial targets with
         | Ok (refined, result) ->
-            Assert.True(result.success, sprintf "LM did not succeed: %A" result.terminationReason)
+            Assert.True(result.success, $"LM did not succeed: %A{result.terminationReason}")
             let recoveredNm = thicknessMeters refined.films.[0] / 1.0e-9
             Assert.True(abs (recoveredNm - trueThicknessNm) < 1.0e-3,
-                        sprintf "recovered %g nm, expected %g nm" recoveredNm trueThicknessNm)
+                        $"recovered %g{recoveredNm} nm, expected %g{trueThicknessNm} nm")
             Assert.True(ssr result.finalResiduals < 1.0e-9,
-                        sprintf "expected final χ² ~0, got %g" (ssr result.finalResiduals))
+                        $"expected final χ² ~0, got %g{(ssr result.finalResiduals)}")
         | Error e -> failwith $"expected a refined system, got Error {e}"
 
     // ================================================================= AC-G3
@@ -194,8 +194,8 @@ type OptimizationTests() =
         match LocalRefinement.refine baseSystem parameters initial targets with
         | Ok (refined, result) ->
             let t = thicknessMeters refined.films.[0]
-            Assert.True(t >= 0.0, sprintf "refined thickness must be non-negative, got %g" t)
-            Assert.True(t <= upper + tol, sprintf "refined thickness must be within the upper bound, got %g" t)
+            Assert.True(t >= 0.0, $"refined thickness must be non-negative, got %g{t}")
+            Assert.True(t <= upper + tol, $"refined thickness must be within the upper bound, got %g{t}")
             Assert.True(result.solution.[0] >= -tol, "the solution vector must respect the lower bound 0")
         | Error e -> failwith $"expected a refined system, got Error {e}"
 
@@ -235,9 +235,9 @@ type OptimizationTests() =
                 Assert.True(thicknessMeters film >= 0.0, "no refined film thickness may be negative")
             let postMerit = ssr result.finalResiduals
             Assert.True(postMerit <= preMerit + 1.0e-12,
-                        sprintf "post-insertion merit %g must be ≤ pre-insertion merit %g" postMerit preMerit)
+                        $"post-insertion merit %g{postMerit} must be ≤ pre-insertion merit %g{preMerit}")
             Assert.True(postMerit < preMerit,
-                        sprintf "needle + re-refine should reduce merit: pre %g, post %g" preMerit postMerit)
+                        $"needle + re-refine should reduce merit: pre %g{preMerit}, post %g{postMerit}")
         | Error e -> failwith $"expected a grown, refined system, got Error {e}"
 
     // ================================================================= AC-F3
@@ -299,9 +299,9 @@ type OptimizationTests() =
         // here — so accept ρ or 1/ρ).
         let tanPsi = tan psi
         Assert.True(min (abs (tanPsi - ratio)) (abs (tanPsi - 1.0 / ratio)) < 1.0e-6,
-                    sprintf "tan Ψ solver %g vs analytic ratio %g (or reciprocal %g)" tanPsi ratio (1.0 / ratio))
-        Assert.True(abs (sin delta) < 1.0e-6, sprintf "lossless reflection must be real, sin Δ = %g" (sin delta))
-        Assert.True(abs (n * n + c * c + s * s - 1.0) < 1.0e-9, sprintf "N²+C²+S² = %g" (n * n + c * c + s * s))
+                    $"tan Ψ solver %g{tanPsi} vs analytic ratio %g{ratio} (or reciprocal %g{(1.0 / ratio)})")
+        Assert.True(abs (sin delta) < 1.0e-6, $"lossless reflection must be real, sin Δ = %g{(sin delta)}")
+        Assert.True(abs (n * n + c * c + s * s - 1.0) < 1.0e-9, $"N²+C²+S² = %g{(n * n + c * c + s * s)}")
 
     // ================================================================= AC-F7
 
@@ -319,8 +319,8 @@ type OptimizationTests() =
         let r = solution.func R |> Option.defaultValue 0.0
         let t = solution.func T |> Option.defaultValue 0.0
 
-        Assert.True(abs (total - a) < tol, sprintf "totalAbsorbedPower %g vs absorptance %g" total a)
-        Assert.True(abs (a - (1.0 - r - t)) < tol, sprintf "A %g vs 1-R-T %g" a (1.0 - r - t))
+        Assert.True(abs (total - a) < tol, $"totalAbsorbedPower %g{total} vs absorptance %g{a}")
+        Assert.True(abs (a - (1.0 - r - t)) < tol, $"A %g{a} vs 1-R-T %g{(1.0 - r - t)}")
 
     // ================================================================= AC-F8
 
@@ -346,7 +346,7 @@ type OptimizationTests() =
         // Sanity: at this glass→vacuum geometry the band is in total internal
         // reflection, R ≈ 1 (solved with the TIR `light`, not normal-incidence).
         let r550 = OpticalSystemSolver(light, tirSystem).solution.func R |> Option.get
-        Assert.True(abs (r550 - 1.0) < 1.0e-2, sprintf "TIR fixture R(550) = %g, expected ~1" r550)
+        Assert.True(abs (r550 - 1.0) < 1.0e-2, $"TIR fixture R(550) = %g{r550}, expected ~1")
 
         let fixedInfo : FixedInfo = { incidentLightInfo = light; opticalSystem = tirSystem.dispersive }
         let range = Range<WaveLength>.create 31 (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>)
@@ -355,6 +355,6 @@ type OptimizationTests() =
         let (_, y, _) as xyz = spectrumToXyz D65 R spectrum
         let (sr, sg, sb) = xyzToSrgb xyz
 
-        Assert.True(abs (y - 1.0) < 5.0e-2, sprintf "perfect reflector should give Y ≈ 1, got %g" y)
+        Assert.True(abs (y - 1.0) < 5.0e-2, $"perfect reflector should give Y ≈ 1, got %g{y}")
         Assert.True(sr > 0.75 && sg > 0.75 && sb > 0.75,
-                    sprintf "flat R=1 under D65 should be near-white, got sRGB (%g, %g, %g)" sr sg sb)
+                    $"flat R=1 under D65 should be near-white, got sRGB (%g{sr}, %g{sg}, %g{sb})")

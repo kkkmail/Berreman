@@ -39,12 +39,33 @@
         <Compile Include="TableRotationWindow.fs" />
         <Compile Include="ElementRotationView.fs" />
         <Compile Include="ElementRotationWindow.fs" />
-        <!-- Spec 0027 (026): the renderer-neutral chart data the Experiments bay produces (before the scene
-             that builds it). -->
-        <Compile Include="ExperimentChart.fs" />
-        <!-- Spec 0027 (026) Part 3: the pop-out interactive ScottPlot chart window (after ExperimentChart,
-             before the scene that opens it). -->
-        <Compile Include="ChartWindow.fs" />
+        <!-- Spec 0033 (017): the renderer-neutral chart model (ExperimentChart.fs) and the pop-out
+             ScottPlot chart window (ChartWindow.fs) are REAL-MOVED into OpticalConstructor.Controls so
+             both hosts share ONE type identity; this project reaches them through the Controls
+             project reference below. -->
+        <!-- Spec 0033 (019): the pure n/k dispersion chart builder on the 018 dual-axis spine —
+             the engine's eps dispersion (getEps path) into the shared ExperimentChart, n on the
+             LEFT axis and k on the RIGHT via the paired ChartStyle seed, x-axis from the Domain
+             SpectralAxis helpers. -->
+        <Compile Include="NkDispersionChart.fs" />
+        <!-- Spec 0033 (022): the Sample editor window (UICOMP_XDUO_0003) — name/description,
+             the SubstrateKind geometry facet, the stack table over the Domain SampleStackEditor
+             (period super-rows with rotating-triangle expanders + inline repeat-count steppers),
+             the bulk toolbar, material choice from MaterialProxy.listMaterials, the QWOT
+             derivation, and Save/Cancel through SampleProxy. View (pure MVU) + HostWindow pair.
+             Spec 0033 (024): moved BEFORE TableAndElementRotationView so the Main screen's
+             workbench Add/Edit verbs can open the editor windows without a forward reference. -->
+        <Compile Include="SampleEditorView.fs" />
+        <Compile Include="SampleEditorWindow.fs" />
+        <!-- Spec 0033 (023): the Material editor window (UICOMP_XDUO_0004) — the progressive
+             complexity ladder over the Domain MaterialComplexityEditor (anisotropy 3-way,
+             absorbing/dispersive/active/magnetic unlocks, per-segment DispersionModel picker,
+             constrained gyration-class panel, Polder-mu panel), the inline step-19 dual-axis
+             n/k preview with the advisory gain warning, and Save/Cancel through MaterialProxy.
+             View (pure MVU) + HostWindow pair. Moved before TableAndElementRotationView with
+             the sample editor (spec 0033 step 024). -->
+        <Compile Include="MaterialEditorView.fs" />
+        <Compile Include="MaterialEditorWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
         <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->
@@ -71,14 +92,17 @@
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
-        <!-- Spec 0027 (026) Part 3: the interactive chart-window host (the pop-out ScottPlot window). -->
-        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
+        <!-- ScottPlot.Avalonia moved with the chart window to OpticalConstructor.Controls (spec 0033,
+             017); its compile/runtime assets flow here transitively through the Controls reference. -->
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
         <!-- Spec 0027 (008-task): the shared rotation-controls bar. -->
         <ProjectReference Include="..\OpticalConstructor.Controls\OpticalConstructor.Controls.fsproj" />
+        <!-- Spec 0033 (019): the n/k dispersion chart builder's range vocabulary is the engine's
+             Analytics.Variables.Range<WaveLength> (also the SpectralAxis helpers' signature type). -->
+        <ProjectReference Include="..\..\Analytics\Analytics.fsproj" />
     </ItemGroup>
 
 </Project>

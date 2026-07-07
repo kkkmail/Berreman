@@ -23,7 +23,7 @@
 
     <!-- Spec 0027 (008-task): the shared reusable UI controls (the rotation-controls bar). A thin
          FuncUI control library, generic (no domain types), referenced by both the test windows and
-         the main Ui. Public MIT Avalonia + FuncUI NuGet only. -->
+         the main Ui. Public MIT Avalonia + FuncUI + ScottPlot NuGet only. -->
     <ItemGroup>
         <Compile Include="RotationControls.fs" />
         <Compile Include="ElementPaletteControls.fs" />
@@ -44,12 +44,31 @@
              full circle (the rotating-analyzer experiment). Build / edit only (no solve yet).
              Domain-free (candidates are host-flattened). -->
         <Compile Include="ExperimentControls.fs" />
+        <!-- Spec 0033 (015): the materials workbench list surface (UICOMP_XDUO_0001) — search box,
+             category/dispersion facet selectors, the materials list, and Add / Edit / Remove / View
+             verbs. Domain-free (rows and facet options are host-flattened; the host owns the
+             MaterialProxy search seam); view-only rows carry no Edit affordance. -->
+        <Compile Include="MaterialsControls.fs" />
+        <!-- Spec 0033 (016): the samples workbench list surface (UICOMP_XDUO_0002) — search box,
+             substrate-kind facet selector, the samples list, Add / Edit / Remove / View verbs, and
+             the multilayer entry point. Domain-free (rows and facet options are host-flattened; the
+             host owns the SampleProxy search seam). -->
+        <Compile Include="SampleLibraryControls.fs" />
+        <!-- Spec 0033 (017): the renderer-neutral chart model and the pop-out ScottPlot chart window,
+             REAL-MOVED here from OpticalConstructor.TestWindows so both hosts (TestWindows and Ui)
+             share ONE type identity. ExperimentChart.fs (the pure model: ExperimentChart / ChartFont /
+             ChartStyle) compiles before ChartWindow.fs (the ScottPlot IO seam that maps it). -->
+        <Compile Include="ExperimentChart.fs" />
+        <Compile Include="ChartWindow.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.301" />
         <PackageReference Include="Avalonia" Version="12.0.5" />
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
+        <!-- Spec 0033 (017): the interactive chart-window host (moved here with ChartWindow.fs) — the
+             same version both hosts already used, so one ScottPlot resolves solution-wide. -->
+        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
     </ItemGroup>
 
 </Project>

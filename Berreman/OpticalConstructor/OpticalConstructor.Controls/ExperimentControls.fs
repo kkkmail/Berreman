@@ -417,7 +417,7 @@ module ExperimentControls =
             | Some (psiDeg, deltaDeg) ->
                 [ TextBlock.create [
                       TextBlock.name UiIds.psiDelta
-                      TextBlock.text (sprintf "Ψ = %.2f°   Δ = %.2f°" psiDeg deltaDeg)
+                      TextBlock.text $"Ψ = %.2f{psiDeg}°   Δ = %.2f{deltaDeg}°"
                   ] :> IView ]
             | None -> []
         let chartBlock =
@@ -566,12 +566,12 @@ module ExperimentControls =
             StackPanel.spacing 6.0
             StackPanel.isVisible hasVariable
             StackPanel.children [
-                TextBlock.create [ TextBlock.text (sprintf "min (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.rangeMin (sprintf "%g" state.rangeMin) state.enabled (commitFloat handlers.setRangeMin)
-                TextBlock.create [ TextBlock.text (sprintf "max (%s):" state.rangeUnitLabel); TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.rangeMax (sprintf "%g" state.rangeMax) state.enabled (commitFloat handlers.setRangeMax)
+                TextBlock.create [ TextBlock.text $"min (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangeMin $"%g{state.rangeMin}" state.enabled (commitFloat handlers.setRangeMin)
+                TextBlock.create [ TextBlock.text $"max (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.rangeMax $"%g{state.rangeMax}" state.enabled (commitFloat handlers.setRangeMax)
                 TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.rangePoints (sprintf "%d" state.rangePoints) state.enabled (commitInt handlers.setRangePoints)
+                numberField UiIds.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
             ]
         ] :> IView
 

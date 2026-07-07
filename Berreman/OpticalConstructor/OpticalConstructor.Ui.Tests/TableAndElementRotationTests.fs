@@ -216,8 +216,8 @@ module TableAndElementRotationTests =
                         Dispatcher.UIThread.RunJobs()
                         window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
                         Dispatcher.UIThread.RunJobs()
-                    else Assert.Fail(sprintf "%s has no on-screen position" name)
-                | None -> Assert.Fail(sprintf "%s not found" name)
+                    else Assert.Fail($"%s{name} has no on-screen position")
+                | None -> Assert.Fail($"%s{name} not found")
             click (Ribbon.UiIds.tab BayNames.render)     // show the Render bay
             click RendererControls.UiIds.swapRenderer     // swap the renderer (wireframe → shapes)
             click (Ribbon.UiIds.tab BayNames.rotation)    // back to Rotation — must NOT throw

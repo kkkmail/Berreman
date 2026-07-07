@@ -79,7 +79,7 @@ module ConstructorViewTests =
         let widthPx = List.max ys - List.min ys
         let physRatio = Table.defaultLength / Table.defaultWidth
         Assert.True(abs (lengthPx / widthPx - physRatio) < 1.0e-9,
-                    sprintf "drawn ratio %f vs physical %f" (lengthPx / widthPx) physRatio)
+                    $"drawn ratio %f{lengthPx / widthPx} vs physical %f{physRatio}")
 
     // --- AC-C4: the standard cylinder drawer --------------------------------
 
@@ -131,7 +131,7 @@ module ConstructorViewTests =
         // At (R1,R2,R3) = (0,0,0), N1 is the central-ray direction (+X), so the
         // cylinder axis lies on the ray. This guards against the wrong "standing on
         // the table" interpretation.
-        Assert.True(g.axisEnd.x > g.axisStart.x, sprintf "axis must run along +X, got %A -> %A" g.axisStart g.axisEnd)
+        Assert.True(g.axisEnd.x > g.axisStart.x, $"axis must run along +X, got %A{g.axisStart} -> %A{g.axisEnd}")
         Assert.True(abs ((g.axisEnd.y - g.axisStart.y) / 1.0<meter>) < 1.0e-9)
         Assert.Empty(g.visibleCapCenters)
         Assert.Empty(g.boundingBoxEdges)
@@ -167,9 +167,9 @@ module ConstructorViewTests =
     [<Trait("Category", "ui-tests")>]
     let ``AC-C5 the active-element indicator is at least 2 px and at least 3:1 contrast against the table`` () =
         Assert.True(ConstructorTable.activeIndicatorWeightPx >= 2.0,
-                    sprintf "indicator weight %f must be >= 2 px" ConstructorTable.activeIndicatorWeightPx)
+                    $"indicator weight %f{ConstructorTable.activeIndicatorWeightPx} must be >= 2 px")
         let ratio = ConstructorTable.contrastRatio ConstructorTable.activeIndicatorColor ConstructorTable.tablePlateColor
-        Assert.True(ratio >= 3.0, sprintf "indicator contrast ratio %f must be >= 3:1" ratio)
+        Assert.True(ratio >= 3.0, $"indicator contrast ratio %f{ratio} must be >= 3:1")
 
     [<Fact>]
     [<Trait("Category", "ui-tests")>]

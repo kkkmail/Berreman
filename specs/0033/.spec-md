@@ -1,0 +1,241 @@
+# Spec 0033 — Materials & Library workbenches, structural samples, and serializable dispersion values
+
+Full spec authored from the operator's preliminary spec
+`specs/0027/.manual/035-materials-samples-library-preliminary-spec.md` (rev. 4,
+incorporating the 036/037 dispersion refinements). The ordered work lives in
+`.spec-jsonl`; this document carries only the binding constraints, the contract
+table, and the per-part orientation.
+
+## 0. Binding constraints (every part)
+
+0.1 **The engine `…WithDisp` types stay unchanged and non-serializable.**
+`EpsWithDisp` / `MuWithDisp` / `RhoWithDisp` / `OpticalPropertiesWithDisp`
+(`Berreman/Berreman/Dispersion.fs:9,24,38,53`) each hold a func and MUST NOT be
+altered or serialized. Every new serializable type is a `…Value` data type
+(matching the engine's `EpsValue` / `MuValue` / `RhoValue` convention,
+`Berreman/Berreman/MaterialProperties.fs:50,101,127`) from which a closure
+BUILDS the matching func. No solver file changes in this spec.
+
+0.2 **Elevate every primitive** (CLAUDE.md). All new ids, quantities, filters
+and options MUST be named single-case DUs or records; `EpsWithDispValue`,
+`MuWithDispValue` and `RhoWithDispValue` are DISTINCT types so an eps value can
+never be passed where a μ or ρ value is expected; enumerated sets are DUs, not
+enums; no naked `bool` in a domain record; every error case carries
+`reason : string` or a typed payload.
+
+0.3 **All catalogue IO stays mocked and in-memory.** `MaterialProxy` /
+`SampleProxy` are `[<ReferenceEquality>]` records of camelCase,
+`Result`-returning functions built by `createInMemory` closing over a private
+mutable `Map` store — mutation confined to that closure, the one place
+CLAUDE.md permits it — following the existing `Library.LibraryProxy` shape
+(`Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:178-184`).
+This spec writes NO catalogue files to disk, adds NO JSON schema work, and adds
+NO migration or legacy-id support — every app start begins from the seeded
+in-memory state. The only `OpticalConstructor.Storage` change is Part G's
+import-parser breadth.
+
+0.4 **Forbidden expansions.** There MUST be no search caching or indexing (the
+linear filters stay, `…Domain/MaterialLibrary.fs:53,57`), no retries, no
+configuration knobs, no versioning of the new value types, no free 3×3
+gyration editor (symmetry classes only), and no clamping or validation of
+dispersion segments — the FIRST covering segment wins on overlap and the
+topmost segment extrapolates when no interval covers λ. New editor state MUST
+be expressible and testable without a window (pure edit models plus `Handlers`
+records), per CLAUDE.md's WinForms-portability rule.
+
+0.5 **Naming.** **Materials** = materials only; **Library** = the library of
+samples; the existing element-binding bay (`BayNames.library = "Library"`,
+`…TestWindows/TableAndElementRotationView.fs:150`) is renamed **Selector** — a
+picker, not a maintainer. `LibraryControls` / `LibraryProxy` keep their names;
+a cosmetic rename is NOT in scope.
+
+0.6 **Destructive-action UX** (operator checklist, condensed). The new
+surfaces are ribbon-bay tabs (discoverability); every proxy verb is synchronous
+and in-memory, so there are NO background jobs, NO progress UI and NO
+pre-confirmation gate; after every verb the bay re-queries its proxy in the
+same MVU render pass — no manual reload; Save/Cancel pairs sit in one row with
+a visible gap and distinct positive/negative styling; Remove is confirm-gated
+inline and has NO undo, justified because the store is in-memory session state
+and a restart restores the seeds; no committable files are produced, so no
+`.gitignore` interaction exists. (The spec-writer web pages' hidden-controls
+treatment does not apply: these are desktop bays, not web pages.)
+
+## Contract table (ids minted by the cycle)
+
+| Placeholder | kind | declared in | role |
+|---|---|---|---|
+| `<STORE:MaterialProxy>` | proxy | OpticalConstructor.Domain | mutating materials write-seam |
+| `<STORE:SampleProxy>` | proxy | OpticalConstructor.Domain | mutating samples write-seam |
+| `<UICOMP:MaterialsControls>` | component | OpticalConstructor.Controls | Materials bay control (domain-free) |
+| `<UICOMP:SampleLibraryControls>` | component | OpticalConstructor.Controls | Library (samples) bay control (domain-free) |
+| `<UICOMP:SampleEditorWindow>` | component | OpticalConstructor.TestWindows | sample editor window |
+| `<UICOMP:MaterialEditorWindow>` | component | OpticalConstructor.TestWindows | material editor window |
+
+---
+
+## Part A — Structural samples, elevated ids, mutating proxies (CRITICAL — land first)
+
+### A.0 Problem statement
+
+Today a sample's multilayer shape is faked by string-id branching:
+`Propagation.sampleToSystem` matches `sample.id` against
+`"sample-multilayer-qw"` / `"sample-euv-mosi"` / `"sample-active-crystal"` /
+`"sample-langasite-silicon"` (`…Domain/Propagation.fs:139-141,157,172,180`)
+and the material map `propertiesOf` silently falls back to transparent glass
+(`Propagation.fs:104-111`). Ids are raw strings (`MaterialEntry.id`,
+`…Domain/MaterialLibrary.fs:33`; `Sample.id` / `Sample.materialId`,
+`…Domain/ElementId.fs:45,47`) and the only catalogue proxy is the read-only
+picker `LibraryProxy` (`ElementId.fs:179`). Part A makes the stack DATA — a
+`SampleStructure` with first-class, re-editable period groups — elevates ids
+to `Guid`-backed DUs, and adds the mutating `MaterialProxy` / `SampleProxy`
+write-seams so add / remove / edit / view / search are all unit-testable
+against the stateful in-memory mock.
+
+Recorded decisions:
+
+- **Period groups become a first-class domain type.** This REVERSES the
+  spec-010 decision that only expanded films exist (recorded in the
+  `RepeatBuilder` module doc, `…Ui/RepeatBuilder.fs:1-8`): the period is now a
+  live, re-editable parameter, matching FilmStar / RP-Coating practice. The
+  pure expansion primitive to mirror is `RepeatBuilder.expand`
+  (`…Ui/RepeatBuilder.fs:24`).
+- **Material resolution is injected, never defaulted.** An unknown material id
+  is a typed error surfaced once per run; the glass fallback is deleted.
+- **Seeds carry fixed literal `Guid`s** so tests and the grouping trees stay
+  deterministic; `removeMaterial` HARD-BLOCKS (typed `MaterialStillReferenced`)
+  while any sample references the material — no cascade, no silent delete.
+- Ids elevate to `MaterialId` / `SampleId` (Guid-backed single-case DUs) used
+  DIRECTLY as `Map` keys in the mock stores — no wrap/unwrap layer.
+
+## Part B — Serializable dispersion `…Value` types (engine)
+
+### B.0 Problem statement
+
+Catalogue materials must be serializable and editable, but the engine's
+dispersion types hold funcs. Part B adds, in `Berreman/Berreman/Dispersion.fs`,
+the data types that BUILD them: generic `WaveLengthInterval` / `DispersionTerm`
+/ `DispersionFormula` (real by default; complex mirrors used ONLY where a model
+is inherently complex, e.g. Lorentz/Drude ε); the full eps tree — isotropic /
+uniaxial / biaxial, each either NON-DISPERSIVE (splitting into transparent vs
+absorbing, carried by the descriptive `ConstantEpsValue` DU, never a bare
+`Eps`) or DISPERSIVE (absorption inside the formulas, one shared
+`wavelengthInterval` per segment) — under the two-case `EpsWithDispValue`; and
+the matching two-case `RhoWithDispValue` (symmetry-class gyration,
+`GyrationClass<'g>` with named multi-component records, one `GyrotropicValue<'g>`
+reused by both cases) and `MuWithDispValue` (one generic Polder record
+`PolderValue<'g>` reused by both cases). Assembly reuses the existing engine
+constructors (`Eps.fromRefractionIndex` / `Eps.fromComplexRefractionIndex`,
+`MaterialProperties.fs:76,87`; `Mu.create`, `:112`; `Rho.fromIm`, `:139`) and
+the crystal-class `Rho` builders in `Berreman/OpticalProperties/Active.fs:30,38,46`
+— `Active.fs` gains the missing 222 / monoclinic / triclinic builders, and
+`RhoWithDispValue.toRhoWithDisp` lives there as a type extension because the
+core project cannot reference `OpticalProperties`.
+
+The editor-facing `DispersionModels.DispersionModel` catalogue
+(`…Domain/DispersionModels.fs:120`) is kept and LOWERED to the new
+per-axis `EpsAxisDispersion` via a new `toEpsAxis`; `ForouhiBloomer`,
+`BrendelBormann` and a raw `SumOfTerms` escape hatch are added;
+`AnisotropicModel` (`DispersionModels.fs:242`) is removed as superseded. The
+domain edit model `MaterialComplexity` (eps ALWAYS present; magnetic / active
+OPTIONAL, each itself two-case) maps to `OpticalPropertiesWithDisp` via a pure
+`toProperties`. `MaterialEntry` gains `complexity : MaterialComplexity option`:
+`Some` is the editable source of truth; the built-ins whose physics is
+expressible as data are re-expressed, while `silicon` / `langasite` (dispersion
+coded in `Berreman/OpticalProperties/Dispersive.fs:98-99`) stay preset-backed
+and are view-only — their Edit affordance is REMOVED, not greyed.
+
+## Part C — Bays: Selector rename, Materials & Library workbenches
+
+The Main screen is a generic ribbon of bays (`Ribbon.Bay`,
+`…Controls/Ribbon.fs:25`), so each change is one `BayNames` constant plus one
+`mainBays` row (`…TestWindows/TableAndElementRotationView.fs:144,1577`). The
+old picker bay is renamed Selector (behaviour unchanged); the new
+`MaterialsControls` / `SampleLibraryControls` copy the domain-free
+`LibraryControls` shape (`…Controls/LibraryControls.fs:25,34,64,76`) — pure
+`Row` / `State`, a `Handlers` record of unit-returning functions, one
+`[<RequireQualifiedAccess>] module UiIds` of `[<Literal>]` intent-named ids.
+The host flattens proxy results into rows exactly as `libraryState` /
+`flattenNode` do today (`TableAndElementRotationView.fs:1012,999`) and opens
+the Part E/F editor windows; the bays go live only once those windows exist,
+so no verb ever lands as a dead button.
+
+## Part D — Shared chart control and the dual-axis n/k view
+
+The chart model and pop-out window are REAL-MOVED (no file-linking — it mints
+distinct type identities per assembly) from
+`…TestWindows/ExperimentChart.fs` and `…TestWindows/ChartWindow.fs` into
+`OpticalConstructor.Controls`, which gains the same `ScottPlot.Avalonia`
+5.1.59 package both hosts already use (`…TestWindows/OpticalConstructor.TestWindows.fsproj:75`,
+`…Ui/OpticalConstructor.Ui.fsproj:173`); the Ui-native `Charts/ChartSettings.fs`
+is reconciled onto the one shared model — no third settings type. A second Y
+axis (ScottPlot `plot.Axes.Right`, currently unused) is added through the
+existing style spine (`ChartElement`, `ExperimentChart.fs:152`; `AxisStyle`,
+`:199`; `SeriesStyle`, `:229`; `dataBounds` / `defaultState`, `:261,281`;
+`rebuildPlot` / `applyAxisLimits` / `setCartesianAxesVisible`,
+`ChartWindow.fs:178,133,151`). The dispersion view plots n on the LEFT axis
+and k on the RIGHT, reusing the existing pure series builders
+(`plotN11Series` / `plotXi11Series`, `…Ui/Charts/SeriesData.fs:103-104`,
+backed by `Analytics.Variables`, `Analytics/Variables.fs:321`) and the
+spectral-axis helpers (`…Ui/MaterialPreview.fs:18,31,40`), which move to the
+Domain project so the TestWindows host can reach them.
+
+## Part E — Sample editing: orientation, period groups, bulk ops
+
+Materials are stored in PRIMARY crystallographic axes; a sample layer may sit
+rotated, so each stack layer carries a serializable `CrystalOrientation` that
+BUILDS a `Rotation` (`Berreman/Berreman/Geometry.fs:601,604`; conventions
+`:578`; shortcuts `rotatePiX` / `rotateHalfPiY`, `:616,622`), applied at
+system-build time via `Layer.rotate` (`Berreman/Berreman/Media.fs:30`) →
+`OpticalProperties.rotate` (`MaterialProperties.fs:187`) — nothing is stored
+rotated (worked example: `Berreman/Analytics/Examples/ActiveCrystalComparison.fsx:136`).
+
+Recorded decision: the multi-select bulk / period operations live in a NEW
+pure Domain edit model (`SampleStackEditor`) over `SampleStructure` — NOT as
+`StackEditor.StackMsg` additions as the preliminary spec sketched — because
+`StackEditor.applyStackMsg` transforms a resolved engine `OpticalSystem`
+(`…Ui/StackEditor.fs:161,176`) that has no material ids to select by. The
+existing `StackEditor` (including `groupLayers`, `StackEditor.fs:69`) is
+untouched. Recorded decision: both editor windows land in
+`OpticalConstructor.TestWindows` beside the existing pop-out `ChartWindow` —
+the Main-screen host lives there and that project references only Domain and
+Controls (`…TestWindows/OpticalConstructor.TestWindows.fsproj:79,81`), not Ui;
+their edit models stay in Domain so behaviour is testable without a window.
+
+## Part F — Material editor (progressive complexity ladder)
+
+The simplest material is transparent, isotropic, non-dispersive; every richer
+feature is unlocked by a toggle and lifts exactly one aspect of
+`MaterialComplexity` off its default, and unchecking restores the default
+losslessly. The anisotropy choice constrains the gyration-class picker
+(isotropic ⇒ cubic classes; uniaxial ⇒ the six uniaxial enantiomorphic
+classes; biaxial ⇒ orthorhombic/monoclinic/triclinic); for a non-rotating
+class the activity toggle is REMOVED, not greyed. Validation reuses
+`…Ui/Validation.fs` (`validateThickness:46`, `validateRepeatCount:56`,
+`validateWavelengthRange:64`, `imaginaryIndexGainWarning:92`) — these helpers
+move with the editors where project layering requires, never duplicated.
+
+## Part G — RII import breadth
+
+`MaterialImport.importRefractiveIndexInfo` (`…Storage/MaterialImport.fs:109`)
+today reads only `tabulated n/nk` and `formula 1`. It is extended to RII
+formulas 2–7, each lowered through a `DispersionModel` / `SumOfTerms` to an
+`EpsAxisDispersion`; formulas 8 and 9 return a typed unsupported-formula
+`ImportError` (`MaterialImport.fs:29`) — an honest negative scope, not a stub.
+
+---
+
+## References
+
+- RefractiveIndex.INFO — About (formula types, CC0) — <https://refractiveindex.info/about>
+- refractiveindex.info database paper (Scientific Data) — <https://www.nature.com/articles/s41597-023-02898-2>
+- refractiveindex Python package (formula 1–9 definitions) — <https://pypi.org/project/refractiveindex/>
+- Sellmeier equation — <https://en.wikipedia.org/wiki/Sellmeier_equation> · Cauchy — <https://en.wikipedia.org/wiki/Cauchy%27s_equation>
+- Tauc–Lorentz model — <https://en.wikipedia.org/wiki/Tauc%E2%80%93Lorentz_model>
+- Forouhi & Bloomer, Phys. Rev. B 34, 7018 (1986) — <https://link.aps.org/doi/10.1103/PhysRevB.34.7018> · overview — <https://en.wikipedia.org/wiki/Forouhi%E2%80%93Bloomer_model>
+- Rakić et al., Brendel–Bormann / Lorentz–Drude metal optics (1998) — <https://pubmed.ncbi.nlm.nih.gov/18286006/> · Au Rakic-LD (RII) — <https://refractiveindex.info/?shelf=main&book=Au&page=Rakic-LD>
+- Gyration tensor forms by point group (arXiv:2501.03684) — <https://arxiv.org/abs/2501.03684>
+- Quartz gyration (class 32; g11 ≈ +5.9×10⁻⁵, g33 ≈ −10.1×10⁻⁵ at 24 °C) — <https://opg.optica.org/ao/abstract.cfm?uri=ao-48-28-5307>
+- Polder tensor — <https://en.wikipedia.org/wiki/Polder_tensor>
+- FilmStar DESIGN — repeated layer groups — <https://www.ftgsoftware.com/design.htm> · RP Coating — live period — <https://www.rp-photonics.com/rp_coating.html>
+- Quarter-wave optical thickness — <https://www.jmloptical.com/technical-resources/glossary/quarter-wave-optical-thickness/>
+- NN/g Progressive Disclosure — <https://www.nngroup.com/articles/progressive-disclosure/> · Microsoft progressive-disclosure controls (remove, don't disable) — <https://learn.microsoft.com/en-us/windows/win32/uxguide/ctrl-progressive-disclosure-controls>

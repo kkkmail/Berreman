@@ -1,0 +1,16 @@
+# Step 003 — ADD_CONTRACT STORE_XDUO_0001 MaterialProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0001
+name: MaterialProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [2]
+```
+
+**How to implement.** In OpticalConstructor.Domain, beside MaterialLibrary, declare the mutating materials write-seam: DispersionFilter = AnyDispersion | OnlyDispersive | OnlyNonDispersive; MaterialQuery (text : string, category : MaterialCategory option, dispersion : DispersionFilter - MaterialCategory at MaterialLibrary.fs:21); extend MaterialError with DuplicateMaterialId, MaterialStillReferenced and InvalidMaterial, each carrying reason : string; and the [<ReferenceEquality>] record MaterialProxy with listMaterials : unit -> Result<MaterialEntry list, MaterialError>, searchMaterials : MaterialQuery -> Result<MaterialEntry list, MaterialError>, tryGetMaterial : MaterialId -> Result<MaterialEntry option, MaterialError>, addMaterial : MaterialEntry -> Result<unit, MaterialError>, updateMaterial : MaterialEntry -> Result<unit, MaterialError>, removeMaterial : MaterialId -> Result<unit, MaterialError>, following the LibraryProxy functional-proxy convention (ElementId.fs:178-184). Provide a mock (an inline stub record over a fixed entry list) plus a mock-driven test in OpticalConstructor.Tests exercising every field.
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub MaterialProxy and exercise all six functions through their exact signatures, and it passes.

@@ -21,6 +21,7 @@ open Berreman.Constants
 open Berreman.Fields
 open Berreman.Media
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.MaterialLibrary
 
 // ---------------------------------------------------------------------------
 // Material colour (R-1 item 6). A deterministic, pure function of a material's
@@ -40,7 +41,7 @@ type SchematicColor =
     }
 
     /// The `#RRGGBB` hex form (handy for tests and the deferred view binding).
-    member c.toHex = sprintf "#%02X%02X%02X" c.red c.green c.blue
+    member c.toHex = $"#%02X{c.red}%02X{c.green}%02X{c.blue}"
 
 let private rgb (r : int) (g : int) (b : int) : SchematicColor =
     { red = byte r; green = byte g; blue = byte b }
@@ -52,18 +53,21 @@ let private palette : SchematicColor [] =
         rgb 148 103 189; rgb 140 86 75; rgb 227 119 194; rgb 188 189 34
     |]
 
-/// Curated colours for the built-in material ids (`MaterialLibrary.builtInEntries`).
+/// Curated colours for the built-in material ids (`MaterialLibrary.builtInEntries`), keyed by the
+/// elevated `MaterialId`'s Guid STRING form (spec 0033 step 002) — the identity key a library-backed
+/// caller supplies; synthetic per-layer keys (`layout`'s `materialKey`) fall through to the stable
+/// hash below.
 let private curated : Map<string, SchematicColor> =
     Map
         [
-            "silicon",          rgb 90 90 110
-            "langasite",        rgb 120 200 220
-            "glass-1.52",       rgb 200 225 245
-            "glass-1.50",       rgb 205 230 250
-            "glass-1.75",       rgb 170 205 235
-            "glass-2.00",       rgb 140 185 225
-            "uniaxial-crystal", rgb 175 225 175
-            "biaxial-crystal",  rgb 150 210 150
+            string MaterialIds.silicon.value,         rgb 90 90 110
+            string MaterialIds.langasite.value,       rgb 120 200 220
+            string MaterialIds.glass152.value,        rgb 200 225 245
+            string MaterialIds.glass150.value,        rgb 205 230 250
+            string MaterialIds.glass175.value,        rgb 170 205 235
+            string MaterialIds.glass200.value,        rgb 140 185 225
+            string MaterialIds.uniaxialCrystal.value, rgb 175 225 175
+            string MaterialIds.biaxialCrystal.value,  rgb 150 210 150
         ]
 
 /// Deterministic, process-independent hash of a string (FNV-1a-style fold). NOT
@@ -203,7 +207,7 @@ let layout (unit : UnitOfMeasure) (materialKey : int -> string) (sys : OpticalSy
         sys.films
         |> List.mapi (fun i l ->
             {
-                label = sprintf "Layer %d — %s" i (StackEditor.displayThickness unit l.thickness)
+                label = $"Layer %d{i} — %s{StackEditor.displayThickness unit l.thickness}"
                 height = bandHeight l.thickness
                 color = colorForMaterial (materialKey i)
                 substrate = None

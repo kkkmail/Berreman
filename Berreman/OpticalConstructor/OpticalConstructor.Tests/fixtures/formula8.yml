@@ -1,0 +1,6 @@
+REFERENCES: "Test fixture — minimal refractiveindex.info-style formula 8 (Retro) page (NOT real data)."
+COMMENTS: "Formula 8 defines (n^2 - 1)/(n^2 + 2) and is NOT lowerable to editable term data."
+DATA:
+  - type: formula 8
+    wavelength_range: 0.4 0.8
+    coefficients: 1.607 1.19 0.00352 -0.0423

@@ -78,7 +78,7 @@ module LifecycleTests =
                     runUntil saveCmd (fun ds ->
                         ds |> Seq.exists (fun m -> match m with | Shell.RootMsg.Io (LifecycleView.Saved _) -> true | _ -> false))
                 let savedPath = Path.Combine(dir, "u8-roundtrip.ocproj.json")
-                Assert.True(File.Exists savedPath, sprintf "Save must write %s" savedPath)
+                Assert.True(File.Exists savedPath, $"Save must write %s{savedPath}")
                 Assert.Contains(saved, fun m -> match m with | Shell.RootMsg.Io (LifecycleView.Saved _) -> true | _ -> false)
 
                 // Open of the saved file round-trips through ProjectFile.openProject.

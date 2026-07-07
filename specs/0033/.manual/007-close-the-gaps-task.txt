@@ -1,0 +1,7 @@
+Calculate the percentage of spec gaps out of total gaps, then close the gaps identified here: 
+C:\GitHub\Berreman\specs\0033\.manual\006-materials-library-editors-gap-analysis.md. Double check G9 so that to have 
+anisotropy (isotropic / uniaxial / biaxial) correctly map to allowed classes and add detailed comments + online reference(s) 
+to the code. 
+
+Write an implementation log into C:\GitHub\Berreman\specs\0033\.manual\008-<description>.md. The log should start with the short 
+summary of the gap percentage analysys (spec vs non-spec).

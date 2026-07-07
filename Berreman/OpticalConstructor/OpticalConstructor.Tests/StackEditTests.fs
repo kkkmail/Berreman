@@ -99,13 +99,14 @@ module StackEditTests =
 
     [<Fact>]
     let ``AC-B6 a medium resolves by material-library reference via the slice-004 seam`` () =
-        match StackEditor.mediumFromMaterial standard "silicon" (WaveLength.nm 600.0<nm>) with
+        match StackEditor.mediumFromMaterial standard MaterialIds.silicon (WaveLength.nm 600.0<nm>) with
         | Ok props ->
             let r = StackEditor.setIncidentMedium props baseSystem
             Assert.True(refEq r.upper props)
         | Error e -> failwith $"expected a resolved medium, got {e}"
-        match StackEditor.mediumFromMaterial standard "no-such-id" (WaveLength.nm 600.0<nm>) with
-        | Error (UnknownMaterialId "no-such-id") -> ()
+        let unknown = MaterialId.create ()
+        match StackEditor.mediumFromMaterial standard unknown (WaveLength.nm 600.0<nm>) with
+        | Error (UnknownMaterialId reason) -> Assert.Contains(string unknown.value, reason)
         | other -> failwith $"expected UnknownMaterialId, got {other}"
 
     // ---------------------------------------------------------------- AC-B7
@@ -274,8 +275,8 @@ module StackEditTests =
         let w = WaveLength.nm 600.0<nm>
         // The drop payload carries only the materialEntry id; resolution is the
         // slice-004 by-id seam producing the StackMsg the owning update applies.
-        let resolved = StackEditor.mediumFromMaterial standard "silicon" w |> function Ok p -> p | Error e -> failwith $"{e}"
-        match StackEditor.layerMaterialDrop standard w 1 "silicon" with
+        let resolved = StackEditor.mediumFromMaterial standard MaterialIds.silicon w |> function Ok p -> p | Error e -> failwith $"{e}"
+        match StackEditor.layerMaterialDrop standard w 1 MaterialIds.silicon with
         | Ok (StackEditor.SetLayerMaterial (idx, props)) ->
             Assert.Equal(1, idx)
             // The message carries the resolveMaterial-resolved OpticalProperties (no re-resolution).
@@ -292,8 +293,9 @@ module StackEditTests =
 
     [<Fact>]
     let ``AC-J4 dropping an unknown material id is a no-op error, never throwing`` () =
-        match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) 0 "no-such-id" with
-        | Error (UnknownMaterialId "no-such-id") -> ()
+        let unknown = MaterialId.create ()
+        match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) 0 unknown with
+        | Error (UnknownMaterialId reason) -> Assert.Contains(string unknown.value, reason)
         | other -> failwith $"expected UnknownMaterialId, got {other}"
         // setLayerMaterial on an out-of-range index leaves the system unchanged.
         let r = StackEditor.setLayerMaterial 99 glass baseSystem

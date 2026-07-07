@@ -1,8 +1,8 @@
 namespace OpticalConstructor.Ui.Tests
 
 open Xunit
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.ChartFont
+open OpticalConstructor.Controls
+open OpticalConstructor.Controls.ChartFont
 
 /// Spec 0027 (028) — the pop-out chart window's per-target font-size state: the OLD Font +/- resized only
 /// one text kind; the redesign lets the user SELECT which text (header / axis labels / tick labels /

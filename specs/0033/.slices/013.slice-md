@@ -1,0 +1,11 @@
+# Step 013 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [8, 9, 10, 11]
+```
+
+**How to implement.** In OpticalConstructor.Domain add the edit-model option tree MaterialComplexity (eps : EpsWithDispValue - ALWAYS present; magnetic : MuWithDispValue option; active : RhoWithDispValue option) with pure member toProperties : OpticalPropertiesWithDisp (Dispersion.fs:53) = eps.toEpsWithDisp plus Mu.vacuum.dispersive / Rho.vacuum.dispersive defaults for absent options. Add complexity : MaterialComplexity option to MaterialEntry (MaterialLibrary.fs:31): Some is the editable source of truth (properties = complexity.toProperties, kept in sync at save); None marks an engine-preset entry (view-only). Re-express the expressible built-ins as complexities - the four glasses as IsotropicTransparent, uniaxial/biaxial crystals as UniaxialTransparent/BiaxialTransparent, euv-molybdenum/euv-silicon as IsotropicAbsorbing, active-crystal as UniaxialTransparent plus a constant PlanarActive gyration - while silicon and langasite keep None (their dispersion is coded in OpticalProperties/Dispersive.fs:98-99). Tests: toProperties supplies the vacuum mu/rho defaults when the options are None; each re-expressed built-in's toProperties matches the original preset's tensors at reference wavelengths.
+
+**Acceptance.** After the step, every re-expressed built-in's complexity.toProperties MUST reproduce the original preset's OpticalProperties at reference wavelengths within tolerance, and toProperties MUST default absent magnetic/active options to vacuum.

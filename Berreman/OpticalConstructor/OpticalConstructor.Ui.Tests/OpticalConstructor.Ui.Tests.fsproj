@@ -91,6 +91,42 @@
         <!-- Spec 0027 (026) Part 4: the Details bay — the reusable LayerBandsControls band component
              (pure contract + headless render) + the host detailsState band-builder + the seven-bay ribbon. -->
         <Compile Include="LayerBandsControlsTests.fs" />
+        <!-- Spec 0033 (015): the MaterialsControls component (UICOMP_XDUO_0001) — pure contract +
+             headless structure proof (every UiIds control exists; simulated clicks dispatch the
+             matching stub handlers; a view-only selection removes the Edit verb). -->
+        <Compile Include="MaterialsControlsTests.fs" />
+        <!-- Spec 0033 (016): the SampleLibraryControls component (UICOMP_XDUO_0002) — pure contract +
+             headless structure proof (every UiIds control exists; simulated clicks dispatch the
+             matching stub handlers; the row-targeted verbs are inert without a selection). -->
+        <Compile Include="SampleLibraryControlsTests.fs" />
+        <!-- Spec 0033 (019): the pure n/k dispersion chart builder (TestWindows) on the 018
+             dual-axis spine — headless model tests: n→left / k→right via the paired style seed,
+             the requested spectral range in the display unit, dispersive curve vs flat line. -->
+        <Compile Include="NkDispersionChartTests.fs" />
+        <!-- Spec 0033 (022): the SampleEditorWindow component (UICOMP_XDUO_0003) — pure contract
+             tests + headless UiIds-driven proofs (repeat-block expansion to 2*K films,
+             select-by-material bulk thickness, Save through SampleProxy add/update, Cancel
+             discard, orientation editor only for anisotropic layers, QWOT derivation). -->
+        <Compile Include="SampleEditorWindowTests.fs" />
+        <!-- Spec 0033 (023): the MaterialEditorWindow component (UICOMP_XDUO_0004) — pure contract
+             tests for the Domain MaterialComplexityEditor ladder + headless UiIds-driven proofs
+             (biaxial exposes three principal-index fields, activity on uniaxial offers only the
+             uniaxial gyration classes, toggle uncheck restores the default losslessly, Save
+             round-trips through MaterialProxy with complexity = Some). -->
+        <Compile Include="MaterialEditorWindowTests.fs" />
+        <!-- Spec 0033 (024): the Main-screen Materials + Library workbench bays — pure host
+             projections / confirm-gated verbs over the write seams, plus headless UiIds-driven
+             acceptance proofs (search filters rows, Add/Edit open the editor windows,
+             referenced-material remove surfaces MaterialStillReferenced with the store
+             unchanged, unreferenced removes update the list in the same render pass). -->
+        <Compile Include="MainWorkbenchTests.fs" />
+        <!-- Spec 0033 (026): the WIRE_UI composition acceptance — headless proofs driving the
+             REAL MainConstructorWindow (the finalized composition root with its four in-memory
+             proxies and the default editor launchers): every ribbon bay renders one frame, the
+             Selector / Materials / Library bays mount over the root-wired stores, Add/Edit open
+             both real editor windows, and a referenced-material remove surfaces the typed
+             refusal from the root-coupled samples store. -->
+        <Compile Include="WireUiCompositionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

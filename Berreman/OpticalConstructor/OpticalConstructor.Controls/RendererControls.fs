@@ -202,7 +202,7 @@ module RendererControls =
             StackPanel.children [
                 row [
                     clickBox UiIds.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
-                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text (sprintf "Renderer: %s" (rendererName state.kind)) ]
+                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ]
                     fixedLabel "Cylinder rails:"
                     presetSlider UiIds.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
                     valueLabel (string state.rails)
@@ -218,13 +218,13 @@ module RendererControls =
                 row [
                     fixedLabel "Rail opacity:"
                     opacitySlider UiIds.railOpacitySlider state.railOpacity handlers.setRailOpacity
-                    valueLabel (sprintf "%.2f" state.railOpacity)
+                    valueLabel $"%.2f{state.railOpacity}"
                     fixedLabel "Face opacity:"
                     opacitySlider UiIds.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
-                    valueLabel (sprintf "%.2f" state.faceOpacity)
+                    valueLabel $"%.2f{state.faceOpacity}"
                     fixedLabel "Line opacity:"
                     opacitySlider UiIds.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
-                    valueLabel (sprintf "%.2f" state.lineOpacity)
+                    valueLabel $"%.2f{state.lineOpacity}"
                 ]
             ]
         ] :> IView

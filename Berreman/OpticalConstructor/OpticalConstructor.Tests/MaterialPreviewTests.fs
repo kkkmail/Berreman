@@ -4,6 +4,9 @@ open Berreman.Constants
 open Berreman.Fields
 open Analytics.Variables
 open OpticalConstructor.Domain.Units
+// Spec 0033 (019): axisLabel / spectralRange / axisTicks REAL-MOVED from
+// Ui.MaterialPreview into the Domain SpectralAxis module; same symbols, new home.
+open OpticalConstructor.Domain.SpectralAxis
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Ui.MaterialPreview
 open Xunit

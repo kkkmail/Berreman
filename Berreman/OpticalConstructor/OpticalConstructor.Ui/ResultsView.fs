@@ -68,7 +68,7 @@ let private activeSystem (ws : WS.Model) : OpticalSystem option =
 /// material-id assignment lift is a later part (same representative-inputs precedent as
 /// `ChartView`'s sample sweep / slice-004's `referenceWavelength`). `colorForMaterial`
 /// is total for any string, so the bands still colour deterministically.
-let private materialKey (i : int) : string = sprintf "layer-%d" i
+let private materialKey (i : int) : string = $"layer-%d{i}"
 
 /// The drawn stack column geometry (pure layout constants — display only, §A.3).
 [<Literal>]
@@ -180,7 +180,7 @@ let private overlayHost (source : SourceSpec.SourceSpec) (ws : WS.Model) : IView
 let private systemRow (dispatch : WS.Msg -> unit) (ws : WS.Model) (i : int) (sys : OpticalSystem) : IView =
     let visible = Set.contains i ws.visible
     let isActive = ws.active = Some i
-    let name = sys.description |> Option.defaultValue (sprintf "System %d" i)
+    let name = sys.description |> Option.defaultValue ($"System %d{i}")
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 4.0
@@ -238,7 +238,7 @@ let private detectorLabel (primary : int option) (i : int) (p : ElementPlacement
         match primary with
         | Some j when j = i -> "Primary detector"
         | _ -> "Secondary detector"
-    sprintf "%s #%d — x=%.3f m, y=%.3f m" role i (p.placementPoint.x / 1.0<meter>) (p.placementPoint.y / 1.0<meter>)
+    $"%s{role} #%d{i} — x=%.3f{p.placementPoint.x / 1.0<meter>} m, y=%.3f{p.placementPoint.y / 1.0<meter>} m"
 
 let private detectorSection (ws : WS.Model) : IView =
     let rows = detectorRows ws

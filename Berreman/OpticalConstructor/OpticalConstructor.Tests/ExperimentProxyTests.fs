@@ -169,16 +169,16 @@ module ExperimentProxyTests =
     let ``listExperiments returns at least one seed template`` () =
         match proxy.listExperiments () with
         | Ok experiments -> Assert.NotEmpty experiments
-        | Error err -> Assert.Fail(sprintf "%A" err)
+        | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
     let ``tryGetExperiment hits a known seed id and misses an unknown one`` () =
         match proxy.tryGetExperiment 1 with
         | Ok (Some e) -> Assert.Equal(1, e.id.value)
-        | other -> Assert.Fail(sprintf "expected seed 1, got %A" other)
+        | other -> Assert.Fail($"expected seed 1, got %A{other}")
         match proxy.tryGetExperiment 9999 with
         | Ok None -> ()
-        | other -> Assert.Fail(sprintf "expected Ok None, got %A" other)
+        | other -> Assert.Fail($"expected Ok None, got %A{other}")
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same listing logic`` () =
@@ -198,10 +198,10 @@ module ExperimentProxyTests =
             }
         match stub.listExperiments () with
         | Ok [ s ] -> Assert.Equal(7, s.id.value)
-        | other -> Assert.Fail(sprintf "%A" other)
+        | other -> Assert.Fail($"%A{other}")
         match stub.tryGetExperiment 7 with
         | Ok (Some s) -> Assert.Equal(el "stub-el", s.elementId)
-        | other -> Assert.Fail(sprintf "%A" other)
+        | other -> Assert.Fail($"%A{other}")
         match stub.tryGetExperiment 0 with
         | Ok None -> ()
-        | other -> Assert.Fail(sprintf "%A" other)
+        | other -> Assert.Fail($"%A{other}")

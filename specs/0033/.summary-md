@@ -1,0 +1,117 @@
+# Arc summary — spec 0033 (Materials & Library workbenches, structural samples, serializable dispersion values)
+
+> **This file is NOT a substitute for stats.** It is the narrative companion to
+> the numbers the stats tool computes over the impl-logs and
+> `.manifest-arc-runner.log`; read the two together. (Provenance note: the
+> supervisor session that babysat this arc crashed shortly after the arc
+> completed, so this summary was reconstructed from that session's on-disk
+> transcript and the arc artifacts rather than written from live memory.)
+
+## How it went
+
+The product work itself was remarkably quiet: all 26 slices completed on the
+first judge cycle with a `done-green` verdict, zero route-backs, and no gate
+ever failed on real code. Total wall time was ~14.5 hours across two runner
+executions (2026-07-06 00:24–14:24 UTC for slices 001–024 plus a hibernate
+gap, then 14:27–14:59 for the resumed 025–026), finishing with the finalise
+commit `124d195` and a clean worktree. Every surprise of the arc was in the
+harness around the slices, not in the slices.
+
+**Surprise 1 — the arc refused to boot (exit 4).** The first launch died in
+the health check: the manifest listed 26 slices but `.slices/` did not exist.
+Root cause was an ordering gap left over from the v7 handoff cutover (direct
+successor of the STL 0176 bug): handoff deliberately defers `.slices/`
+emission to arc-runner boot, but the boot health check ran *before* the
+step-compiler emit, so the first boot of any true at-rest v7 spec died on
+exactly the files the compiler was about to write. Spec 0033 was the first to
+hit it because 0176's slices had been rendered manually out-of-band. Fixed in
+the ASG repo (a pre-emit step before the health check), verified against a
+scratch copy of this spec, and documented in
+`.manual/002-asg-error-boot-health-check-before-slice-emit.md`. The relaunch
+booted clean and the fix held for the whole arc.
+
+**Surprise 2 — a phantom Claude console window.** The detached runner
+(`DETACHED_PROCESS`, from the 0176 kill-chain hardening) has no console, so
+on Windows every console-app child it spawned got a brand-new *visible* —
+and, because stdio is piped, completely empty — window. Cosmetic but
+dangerous: closing that window with the X button would have killed the live
+worker. Fixed in ASG (`CREATE_NO_WINDOW` at all nine headless spawn sites),
+documented in `.manual/003-asg-error-visible-worker-window-under-detached-runner.md`,
+and confirmed fixed in production when the resumed run showed zero windows.
+
+**Surprise 3 — the machine hibernated ~2 hours mid-slice-025.** The worker
+froze at 12:18 UTC and the runner sat silent beside it until the operator
+stopped the run at ~14:24. Two lessons came out of the post-mortem. First,
+the 1-hour hangup watchdog "failing to fire" was not a watchdog bug: Python's
+monotonic timers do not advance during sleep, so after wake the runner
+believed almost no idle time had passed (a wall-clock cross-check on resume
+remains an open hardening candidate). Second, an earlier claim that nothing
+could take the detached runner down was wrong — `taskkill /T` follows
+parent-child links, so stopping the hosting shell is (and remains) the
+correct way to stop the arc. The resume was routine: slice 025's retry
+finished in 3.4 minutes, helped by the pre-hibernate partial work already in
+the worktree.
+
+**Surprise 4 — the monitor cried wolf on the final slice.** During slice 026
+the arc monitor reported a stuck loop while the worker was demonstrably
+healthy (its transcript was growing ~1 KB/s). The monitor was watching the
+per-attempt console file, which legitimately sits at 0 bytes for a whole
+worker phase, and it had no way to find the worker transcript because the
+runner only logged that path at worker *exit*. Both gaps were fixed in ASG
+after the arc completed (30-second worker heartbeats to the console stream,
+plus a `WORKER-TRANSCRIPT` row at spawn that the monitor now tails) and
+documented in `.manual/004-asg-error-monitor-blind-during-worker-phase.md`.
+
+**Minor turbulence, absorbed silently:** two transient CLI failures were
+retried by the runner's quota-retry path — slice 010's code judge (exit 1
+after 10 s) and slice 021's implement worker (exit 1, retried ~40 minutes
+later). Slice 021 was the only slice to need a second attempt task file, and
+it still went done-green on cycle 1. No dead-ends were hit inside the product
+work itself; nothing was tried and abandoned.
+
+**Loose ends at time of writing:** the ASG monitor-gap fix (gap A/B,
+`cli_transport.py` + `arc_monitor.py` + new tests) sat uncommitted on ASG
+branch `0075`; the earlier no-window fix had already been committed there as
+`a04cfdb`. The `.manual/004` note in this folder was untracked. None of this
+touches the Berreman product code, which is fully committed on branch `0033`.
+
+## Run time, spec-writer start → arc-runner end (all times UTC)
+
+**Total calendar run time: 16h 45m 25s** (2026-07-05 22:13:53 → 2026-07-06
+14:59:18; first `.history` event of the spec writer → the arc-runner's
+`COMPLETE` row).
+
+**Total real run time (all gaps excluded): 12h 54m 25s**, of which the spec
+writer accounts for 1h 37m 59s (22:13:53 → 23:51:52 handoff) and the
+arc-runner for 11h 16m 26s (10h 44m 59s in execution 1 net of quota waits,
+23m 24s of which was slice 025's pre-hibernate work that the retry reused,
+plus 31m 27s in execution 2).
+
+**Gap times by type — 3h 51m 00s total:**
+
+| Gap type | Duration | Window |
+|---|---|---|
+| Machine hibernation | 2h 03m 27s | 12:18:53 → 14:22:20 |
+| Quota waits (2) | 1h 09m 49s | 03:42:04 → 04:11:00 (judge, 28m 56s); 08:30:07 → 09:11:00 (worker, 40m 53s) |
+| Boot-failure repair | 0h 26m 42s | 23:57:23 → 00:24:05 |
+| Handoff idle | 0h 05m 31s | 23:51:52 → 23:57:23 |
+| Post-wake stop/relaunch | 0h 05m 31s | 14:22:20 → 14:27:51 |
+
+The quota waits are the runner's own QUOTA-RETRY pauses for the subscription
+window (slice 010's code judge and slice 021's worker). The boot-failure
+repair window is counted as a gap even though it was active work — the
+supervisor diagnosing and fixing the ASG boot-order bug between the exit-4
+escalation and the successful relaunch — because neither the spec writer nor
+the arc-runner was executing. Handoff idle is the operator pause between
+handoff completion and the first launch attempt; post-wake stop/relaunch is
+the operator stopping the stalled runner and resuming it after the machine
+woke.
+
+Measurement notes: the hibernation window runs from the last observed worker
+output (the slice-025 console tee stops at 12:18:53, confirmed by file mtime)
+to the first post-wake evidence (14:22:20); the true sleep interval may
+differ by a few minutes at either edge. The spec-writer phase is counted as
+fully real: at the granularity of `.history` and file mtimes there is no
+identifiable idle stretch inside it — operator review pauses between spec
+cycles are embedded and not separable. The segment boundaries reconcile
+exactly against the stats tool's `total_wall_clock_seconds` of 60,325.

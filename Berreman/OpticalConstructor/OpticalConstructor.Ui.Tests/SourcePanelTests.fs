@@ -58,14 +58,14 @@ module SourcePanelTests =
                 window.GetVisualDescendants()
                 |> Seq.filter (fun v -> v :? TextBox)
                 |> Seq.length
-            Assert.True(textBoxes >= 5, sprintf "expected >= 5 field editors, got %d" textBoxes)
+            Assert.True(textBoxes >= 5, $"expected >= 5 field editors, got %d{textBoxes}")
 
             // R-2: the live Stokes/Poincaré/ellipse readout renders.
             let texts = textBlocks window
             Assert.True(texts |> List.exists (fun t -> t.StartsWith "Stokes:"),
-                        sprintf "expected a live Stokes readout, got: %A" texts)
+                        $"expected a live Stokes readout, got: %A{texts}")
             Assert.True(texts |> List.exists (fun t -> t.StartsWith "Poincaré:"),
-                        sprintf "expected a Poincaré readout, got: %A" texts)
+                        $"expected a Poincaré readout, got: %A{texts}")
             window.Close())
 
     [<Fact>]
@@ -125,5 +125,5 @@ module SourcePanelTests =
                 |> Seq.length
             let scottPlaceholder = texts |> List.exists (fun t -> t.Contains "Plot — renderer unavailable")
             Assert.True(avaPlots >= 1 || scottPlaceholder,
-                        sprintf "expected the ellipse hosted via scottPlotHost (AvaPlot or its placeholder), got texts: %A" texts)
+                        $"expected the ellipse hosted via scottPlotHost (AvaPlot or its placeholder), got texts: %A{texts}")
             window.Close())

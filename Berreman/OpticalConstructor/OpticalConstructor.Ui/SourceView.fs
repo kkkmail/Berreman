@@ -94,7 +94,7 @@ let private numberField (label : string) (value : float) (onChanged : float -> u
             TextBlock.create [ TextBlock.text label; TextBlock.width 130.0; TextBlock.verticalAlignment VerticalAlignment.Center ]
             TextBox.create [
                 TextBox.width 120.0
-                TextBox.text (sprintf "%g" value)
+                TextBox.text ($"%g{value}")
                 TextBox.onTextChanged (fun t -> match tryFloat t with | Some v -> onChanged v | None -> ())
             ]
         ]
@@ -201,9 +201,9 @@ let private liveReadout (s : SourceSpec) : IView =
         StackPanel.margin 4.0
         StackPanel.children [
             TextBlock.create [ TextBlock.text "Live readout"; TextBlock.fontWeight FontWeight.Bold ]
-            TextBlock.create [ TextBlock.text (sprintf "Stokes: S0=%.3f  S1=%.3f  S2=%.3f  S3=%.3f" v.[0] v.[1] v.[2] v.[3]) ]
-            TextBlock.create [ TextBlock.text (sprintf "Poincaré: (%.3f, %.3f, %.3f)" s1 s2 s3) ]
-            TextBlock.create [ TextBlock.text (sprintf "Ellipse: azimuth=%.3f rad  axial ratio=%.3f" ell.azimuth ell.axialRatio) ]
+            TextBlock.create [ TextBlock.text ($"Stokes: S0=%.3f{v.[0]}  S1=%.3f{v.[1]}  S2=%.3f{v.[2]}  S3=%.3f{v.[3]}") ]
+            TextBlock.create [ TextBlock.text ($"Poincaré: (%.3f{s1}, %.3f{s2}, %.3f{s3})") ]
+            TextBlock.create [ TextBlock.text ($"Ellipse: azimuth=%.3f{ell.azimuth} rad  axial ratio=%.3f{ell.axialRatio}") ]
         ]
     ] :> IView
 

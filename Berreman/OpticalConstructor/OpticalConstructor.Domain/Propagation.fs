@@ -9,9 +9,7 @@ open Berreman.Media
 open Berreman.Solvers
 open Berreman.Constants
 open Berreman.Dispersion
-open OpticalProperties.Standard
-open OpticalProperties.Active
-open OpticalProperties.Dispersive
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 
 /// Spec 0027 (024) Phase 3 — the pure Mueller-matrix / Stokes-vector propagation pipeline (the only new
@@ -99,107 +97,88 @@ module Propagation =
               [ 0.0; 0.0; 1.0; 0.0 ]
               [ 0.0; 0.0; 0.0; 1.0 ] ]
 
-    /// Resolve a Library `Sample`'s material id to engine `OpticalProperties`. Kept total and pure: the
-    /// seeded materials map to their standard presets; anything else falls back to transparent glass.
-    let private propertiesOf (materialId : string) : OpticalProperties =
-        match materialId with
-        | "glass-1.50" -> OpticalProperties.transparentGlass150
-        | "glass-1.52" -> OpticalProperties.transparentGlass
-        | "glass-1.75" -> OpticalProperties.transparentGlass175
-        | "uniaxial-crystal" -> OpticalProperties.uniaxialCrystal
-        | "biaxial-crystal" -> OpticalProperties.biaxialCrystal
-        | _ -> OpticalProperties.transparentGlass
-
-    /// The active (gyrotropic) planar-crystal properties of the seeded active-crystal sample (from
-    /// `ActiveCrystal.fsx`): n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6.
-    let private activeCrystalProperties : OpticalProperties =
-        let e11 = RefractionIndex 2.315 |> EpsValue.fromRefractionIndex
-        let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
-        let g12 = RhoValue 1.5e-6
-        OpticalProperties.planarCrystal e11 e33 g12
-
-    /// The dispersive langasite-on-silicon system (from `LangasiteOnSilicon.fsx`): a langasite thin film
-    /// over a silicon substrate, both wavelength-dependent. Evaluated at the run wavelength by `getSystem`.
-    let private langasiteOnSiliconWithDisp (thickness : Thickness) : OpticalSystemWithDisp =
+    /// One resolved layer of a sample (spec 0033 step 020): the dispersive engine layer plus the
+    /// crystal orientation the system builder applies AT BUILD TIME — nothing is stored rotated.
+    type ResolvedLayer =
         {
-            description = Some "Langasite thin film on silicon substrate."
-            upperWithDisp = OpticalProperties.vacuum.dispersive
-            filmsWithDisp = [ { propertiesWithDisp = langasiteOpticalProperties; thickness = thickness } ]
-            substrateWithDisp = None
-            lowerWithDisp = siliconOpticalProperties
+            layerWithDisp : LayerWithDisp
+            orientation : CrystalOrientation
         }
 
-    /// Map a Library `Sample` to an engine `OpticalSystem`, evaluated at the run wavelength `w` (the
-    /// wavelength only matters for the dispersive samples; the rest ignore it). Each seeded sample id keys
-    /// a real engine system: the quarter-wave id builds a 41-layer glass/vacuum λ/4 stack, the EUV id a
-    /// 100-pair Mo/Si stack, the crystal ids single anisotropic films, the active id a gyrotropic plate,
-    /// the dispersive langasite id is evaluated via `getSystem`; everything else is the default thin-film /
-    /// plate built from `propertiesOf`. (`Library.SubstrateKind` is qualified so it cannot collide with
-    /// `Berreman.Media.Substrate`'s `Plate` / `Wedge` cases.)
-    let sampleToSystem (sample : Sample) (w : WaveLength) : OpticalSystem =
-        match sample.id with
-        | "sample-multilayer-qw" ->
-            // 41-layer λ/4 stack at 600 nm: 21 glass + 20 vacuum, ending on glass (alternation start/end).
-            let thickness1 = Thickness.nm ((600.0 / 1.52 / 4.0) * oneNanometer)
-            let thickness2 = Thickness.nm ((600.0 / 1.00 / 4.0) * oneNanometer)
-            let pairs =
-                [ for _ in 1 .. 20 ->
-                    [ { properties = OpticalProperties.transparentGlass; thickness = thickness1 }
-                      { properties = OpticalProperties.vacuum; thickness = thickness2 } ] ]
-                |> List.concat
-            {
-                description = Some sample.name
-                upper = OpticalProperties.vacuum
-                films = pairs @ [ { properties = OpticalProperties.transparentGlass; thickness = thickness1 } ]
-                substrate = None
-                lower = OpticalProperties.vacuum
-            }
-        | "sample-euv-mosi" ->
-            // 100 Mo/Si bilayers, each layer λ/4 at 10.6 nm = 2.65 nm (from MultilayerThinFilm_EUV.fsx).
-            let thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
-            let films =
-                [ { properties = OpticalProperties.euvMolybdenum; thickness = thickness }
-                  { properties = OpticalProperties.euvSilicon; thickness = thickness } ]
-                |> List.replicate 100
-                |> List.concat
-            {
-                description = Some sample.name
-                upper = OpticalProperties.vacuum
-                films = films
-                substrate = None
-                lower = OpticalProperties.vacuum
-            }
-        | "sample-active-crystal" ->
-            {
-                description = Some sample.name
-                upper = OpticalProperties.vacuum
-                films = []
-                substrate = Some (Substrate.Plate { properties = activeCrystalProperties; thickness = sample.thickness })
-                lower = OpticalProperties.vacuum
-            }
-        | "sample-langasite-silicon" ->
-            // The langasite system has no wedge substrate, so the wedge-angle argument is unused.
-            (langasiteOnSiliconWithDisp sample.thickness).getSystem w WedgeAngle.defaultValue
-        | _ ->
-            let props = propertiesOf sample.materialId
-            match sample.substrate with
-            | Library.ThinFilm ->
+        /// The engine layer at the run wavelength with the orientation applied: `PrimaryAxes` builds
+        /// the unrotated layer (tensors exactly as stored); an `EulerRotation` rotates it via
+        /// `Layer.rotate` (→ `OpticalProperties.rotate`), exactly as rotating the layer directly
+        /// would (the `ActiveCrystalComparison.fsx` plate-rotation precedent).
+        member this.getLayer (w : WaveLength) : Layer =
+            let layer = this.layerWithDisp.getLayer w
+            match this.orientation with
+            | PrimaryAxes -> layer
+            | EulerRotation _ -> layer.rotate this.orientation.toRotation
+
+    /// A Library `Sample` resolved against the material library (spec 0033 step 001): every referenced
+    /// material carried as its DISPERSIVE engine properties (`ResolvedLayer` — resolved once, evaluated
+    /// per wavelength, its crystal orientation applied at build time), the film stack already expanded
+    /// from its `StackItem`s, and the lower half-space defaulting to vacuum. `sampleToSystem` over this
+    /// is TOTAL — resolution (and its typed error) happened up front in `resolveSampleMaterials`.
+    type ResolvedSample =
+        {
+            name : string
+            films : ResolvedLayer list
+            substrate : ResolvedLayer option
+            lower : OpticalPropertiesWithDisp
+        }
+
+    /// Resolve every material a sample's structure references to its `OpticalPropertiesWithDisp`
+    /// through the material library (spec 0033 step 001). An unknown id is a typed
+    /// `Error (UnknownMaterialId _)` — never a fallback. Hosts call this ONCE per run and surface the
+    /// error as a message.
+    let resolveSampleMaterials (lib : MaterialLibrary) (sample : Sample) : Result<ResolvedSample, MaterialError> =
+        let resolveLayer (l : SampleLayer) : Result<ResolvedLayer, MaterialError> =
+            resolveMaterialWithDisp lib l.materialId
+            |> Result.map (fun p ->
                 {
-                    description = Some sample.name
-                    upper = OpticalProperties.vacuum
-                    films = [ { properties = props; thickness = sample.thickness } ]
-                    substrate = None
-                    lower = OpticalProperties.vacuum
-                }
-            | Library.Plate
-            | Library.Wedge ->
-                {
-                    description = Some sample.name
-                    upper = OpticalProperties.vacuum
-                    films = []
-                    substrate = Some (Substrate.Plate { properties = props; thickness = sample.thickness })
-                    lower = OpticalProperties.vacuum
-                }
+                    layerWithDisp = { propertiesWithDisp = p; thickness = l.thickness }
+                    orientation = l.orientation
+                })
+        let rec resolveFilms (pending : SampleLayer list) (acc : ResolvedLayer list) : Result<ResolvedLayer list, MaterialError> =
+            match pending with
+            | [] -> Ok (List.rev acc)
+            | l :: rest ->
+                match resolveLayer l with
+                | Ok r -> resolveFilms rest (r :: acc)
+                | Error e -> Error e
+        match resolveFilms sample.structure.expandedFilms [] with
+        | Error e -> Error e
+        | Ok films ->
+            let substrateResult =
+                match sample.structure.substrate with
+                | None -> Ok None
+                | Some l -> resolveLayer l |> Result.map Some
+            match substrateResult with
+            | Error e -> Error e
+            | Ok substrate ->
+                let lowerResult =
+                    match sample.structure.lower with
+                    | None -> Ok OpticalProperties.vacuum.dispersive
+                    | Some id -> resolveMaterialWithDisp lib id
+                match lowerResult with
+                | Error e -> Error e
+                | Ok lower -> Ok { name = sample.name; films = films; substrate = substrate; lower = lower }
+
+    /// Map a RESOLVED sample to an engine `OpticalSystem` at the run wavelength `w` (the wavelength only
+    /// matters for the dispersive materials; the rest ignore it): evaluate each material at `w`, apply
+    /// each layer's crystal orientation (spec 0033 step 020 — `ResolvedLayer.getLayer` rotates a
+    /// non-identity orientation via `Layer.rotate`; `PrimaryAxes` builds the stored tensors), and
+    /// assemble films / substrate plate / lower half-space in vacuum. TOTAL over the expanded
+    /// structure — no per-sample-id branching.
+    let sampleToSystem (sample : ResolvedSample) (w : WaveLength) : OpticalSystem =
+        {
+            description = Some sample.name
+            upper = OpticalProperties.vacuum
+            films = sample.films |> List.map (fun f -> f.getLayer w)
+            substrate = sample.substrate |> Option.map (fun s -> Substrate.Plate (s.getLayer w))
+            lower = sample.lower.getProperties w
+        }
 
     /// The thickness in metres of a finite layer, or `None` for a semi-infinite (`Infinity`) half-space /
     /// plate (spec 0027 / 026 — the Details band view reads thicknesses without touching the engine's
@@ -218,7 +197,7 @@ module Propagation =
 
     /// The sample's Mueller matrix for a branch, from the EXISTING engine (no new physics): the same solve
     /// as before, reading the transmitted or the reflected Mueller matrix.
-    let sampleMueller (branch : Branch) (sample : Sample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
+    let sampleMueller (branch : Branch) (sample : ResolvedSample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
         let info = { (IncidentLightInfo.createInclined w inc) with refractionIndex = RefractionIndex.vacuum }
         let solver = OpticalSystemSolver(info, sampleToSystem sample w)
         match branch with
@@ -227,12 +206,12 @@ module Propagation =
 
     /// The sample's transmitted-branch Mueller matrix from the EXISTING engine (no new physics). Solves the
     /// mapped `OpticalSystem` at the given wavelength / incidence angle in vacuum.
-    let sampleMuellerT (sample : Sample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
+    let sampleMuellerT (sample : ResolvedSample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
         sampleMueller BranchTransmitted sample w inc
 
     /// The sample's reflected-branch Mueller matrix from the EXISTING engine (spec 028 — the reflected
     /// capture, the counterpart of `sampleMuellerT`).
-    let sampleMuellerR (sample : Sample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
+    let sampleMuellerR (sample : ResolvedSample) (w : WaveLength) (inc : IncidenceAngle) : MuellerMatrix =
         sampleMueller BranchReflected sample w inc
 
     /// The full SV propagation: SV_out = MM_sample · SV_in, then SV_det = MM_analyzer · SV_out (spec §1/§4).
@@ -299,7 +278,7 @@ module Propagation =
     let r2SweepCurve
         (branch : Branch)
         (svIn : StokesVector)
-        (sample : Sample)
+        (sample : ResolvedSample)
         (w : WaveLength)
         (analyzer : (PolarizerKind * Angle) option)
         (loDeg : float)
@@ -353,7 +332,7 @@ module Propagation =
     let r2SweepPsiDelta
         (branch : Branch)
         (svIn : StokesVector)
-        (sample : Sample)
+        (sample : ResolvedSample)
         (w : WaveLength)
         (loDeg : float)
         (hiDeg : float)
@@ -375,7 +354,7 @@ module Propagation =
     let waveLengthSweepIntensity
         (branch : Branch)
         (svIn : StokesVector)
-        (sample : Sample)
+        (sample : ResolvedSample)
         (inc : IncidenceAngle)
         (analyzer : (PolarizerKind * Angle) option)
         (loNm : float)
@@ -397,7 +376,7 @@ module Propagation =
     let waveLengthSweepPsiDelta
         (branch : Branch)
         (svIn : StokesVector)
-        (sample : Sample)
+        (sample : ResolvedSample)
         (inc : IncidenceAngle)
         (loNm : float)
         (hiNm : float)

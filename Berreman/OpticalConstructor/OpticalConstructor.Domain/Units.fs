@@ -26,6 +26,19 @@ module Units =
         | ElectronVolt
         | Wavenumber
 
+    /// The short display symbol of a unit (spec 0033 comment 009 — parameter units
+    /// must be shown). Length units read as their SI-prefixed symbol; the abscissa
+    /// units read as the energy / wavenumber symbol.
+    let unitAbbrev (u : UnitOfMeasure) : string =
+        match u with
+        | Meter -> "m"
+        | Millimeter -> "mm"
+        | Micrometer -> "µm"
+        | Nanometer -> "nm"
+        | Angstrom -> "Å"
+        | ElectronVolt -> "eV"
+        | Wavenumber -> "cm⁻¹"
+
     /// E[eV] = 1239.84 / λ[nm]. The eV↔wavelength relation; this literal MUST
     /// appear exactly once in the solution (D.2).
     let evNmProduct = 1239.84

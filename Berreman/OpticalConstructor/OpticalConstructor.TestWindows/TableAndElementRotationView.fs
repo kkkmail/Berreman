@@ -9,11 +9,13 @@
 module OpticalConstructor.TestWindows.TableAndElementRotationView
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 open Berreman.Constants
@@ -95,6 +97,40 @@ type DragState =
     | Pressed of ScreenPoint
     | Panning of ScreenPoint
 
+/// Which remove (if any) a workbench bay is awaiting inline confirmation for (spec 0033
+/// step 024). The pending case CARRIES the id the Remove click targeted, so a selection change
+/// between Remove and Confirm can never delete a different entry — the
+/// `RotationControls.ResetConfirm` confirm-gating shape, with a payload. Genuinely generic:
+/// the Materials bay instantiates it at `MaterialId`, the Library bay at `SampleId`.
+type RemoveConfirm<'id> =
+    | NoRemoveConfirm
+    | ConfirmingRemove of 'id
+
+/// The side-effecting "open an editor window" seam behind the workbench Add / Edit verbs
+/// (spec 0033 step 024). Opening a `Window` is IO (the `openChartWindowHook` precedent), so the
+/// verbs reach it through an injected function record (the functional-proxy convention): a
+/// headless test substitutes recording launchers — possibly still constructing the real
+/// windows — and observes exactly which editor a verb requested. Function-valued fields have no
+/// structural equality, so the record compares by reference (the model keeps its
+/// Elmish-required equality).
+[<ReferenceEquality>]
+type EditorLaunchers =
+    {
+        /// Open the step-023 Material editor: `None` = a new entry (Add), `Some entry` = Edit.
+        openMaterialEditor : MaterialLibrary.MaterialProxy -> MaterialLibrary.MaterialEntry option -> unit
+        /// Open the step-022 Sample editor: `None` = a new sample (Add / Make-multilayer),
+        /// `Some sample` = Edit.
+        openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> Library.Sample option -> unit
+    }
+
+    /// The real launchers — the step-022/023 editor windows themselves (compiled before this
+    /// file since spec 0033 step 024). Never invoked by a render, only by an Add/Edit dispatch.
+    static member defaults : EditorLaunchers =
+        {
+            openMaterialEditor = fun materials existing -> MaterialEditorWindow(materials, existing).Show()
+            openSampleEditor = fun materials samples existing -> SampleEditorWindow(materials, samples, existing).Show()
+        }
+
 type Model =
     {
         table : OpticalTable
@@ -122,7 +158,7 @@ type Model =
         /// windows (free placement, unchanged). Set by `initMain`.
         snapChain : bool
         /// Spec 0027 (024): the injected mock Library IO seam (the functional-proxy convention). Used by
-        /// the Main-screen Library bay to constrain the choosable entries by the selected element's kind
+        /// the Main-screen Selector bay to constrain the choosable entries by the selected element's kind
         /// and to resolve the bound entry name. Defaulted to the in-memory mock for the test scenes.
         library : Library.LibraryProxy
         /// Spec 0027 (024) Phase 2: the injected mock Experiments IO seam (the functional-proxy
@@ -138,6 +174,37 @@ type Model =
         /// bind). Clicking a Library entry sets this and shows its full description; Confirm commits it to
         /// the selected element's `valueId`, Cancel clears it.
         pendingEntry : string option
+        /// Spec 0033 (024): the injected materials WRITE seam (STORE_XDUO_0001) behind the Materials
+        /// workbench bay. The bay projection re-queries it on EVERY render, so a verb's write shows in
+        /// the same render pass.
+        materials : MaterialLibrary.MaterialProxy
+        /// Spec 0033 (024): the injected samples WRITE seam (STORE_XDUO_0002) behind the Library
+        /// (samples workbench) bay.
+        samples : Library.SampleProxy
+        /// The Materials bay's live search query — the `MaterialQuery` DATA (text + category +
+        /// dispersion facets) the search box / facet selectors drive through `searchMaterials`.
+        materialQuery : MaterialLibrary.MaterialQuery
+        /// The Materials bay's selected row (the Edit / Remove / View verbs' target).
+        selectedMaterial : MaterialLibrary.MaterialId option
+        /// Which material remove (if any) awaits its inline confirmation.
+        materialRemoveConfirm : RemoveConfirm<MaterialLibrary.MaterialId>
+        /// The last materials-store refusal, surfaced as the bay's inline message —
+        /// `MaterialStillReferenced` NAMES the referencing samples; never a cascade, never a dialog.
+        materialsError : MaterialLibrary.MaterialError option
+        /// The material whose read-only metadata + n/k chart the View verb opened (a toggle).
+        viewedMaterial : MaterialLibrary.MaterialId option
+        /// The Library bay's live samples search query (text + substrate facet).
+        sampleQuery : Library.SampleQuery
+        /// The Library bay's selected row (the Edit / Remove / View verbs' target).
+        selectedSample : Library.SampleId option
+        /// Which sample remove (if any) awaits its inline confirmation.
+        sampleRemoveConfirm : RemoveConfirm<Library.SampleId>
+        /// The last samples-store refusal, surfaced as the bay's inline message.
+        samplesError : Library.SampleError option
+        /// The sample whose read-only metadata + band view the View verb opened (a toggle).
+        viewedSample : Library.SampleId option
+        /// Spec 0033 (024): the editor-window launcher seam behind the workbench Add / Edit verbs.
+        launchers : EditorLaunchers
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -146,14 +213,30 @@ module BayNames =
     let move = "Move"
     let add = "Add"
     let render = "Render"
-    /// Spec 0027 (024): the Library bay — pick the choosable spec for the selected element.
-    let library = "Library"
+    /// Spec 0027 (024): the Selector bay (labelled "Library" until spec 0033 step 014) — pick the
+    /// choosable spec for the selected element. The kind-constrained, confirm-gated binding through
+    /// `LibraryControls` and the read-only `LibraryProxy` is unchanged; only the label moved, freeing
+    /// the word Library for the samples workbench.
+    let selector = "Selector"
     /// Spec 0027 (024) Phase 2: the Experiments bay — pick which element's R1 sweeps a full circle.
     let experiments = "Experiments"
     /// Spec 0027 (026): the Details bay — the selected element's bound Library entry (what it is, its full
     /// description, and a layer-stack band view for a multilayer sample).
     let details = "Details"
-    let all = [ rotation; move; add; render; library; experiments; details ]
+    /// Spec 0033 (024): the Materials bay — the materials WORKBENCH (the step-015 `MaterialsControls`
+    /// list surface over the step-006 `MaterialProxy` write seam): search box, category / dispersion
+    /// facets, and the Add / Edit / Remove / View verbs.
+    let materials = "Materials"
+    /// Spec 0033 (024): the Library bay — the SAMPLES workbench (the step-016 `SampleLibraryControls`
+    /// surface over the step-005 `SampleProxy` write seam). The label freed by the step-014 Selector
+    /// rename: "Library" now names the samples collection, while element↔entry binding stays in the
+    /// Selector bay.
+    let library = "Library"
+    // spec 0033 gap G2 (deferred): the operator wants Materials & Library LAST, but reordering the
+    // ribbon panes breaks the Library bay's sample-row layout in the headless harness (and thus the
+    // real ribbon) — see 008-close-the-gaps-implementation-log.md §4. The original order stands until
+    // the Ribbon pane-hosting is made order-independent. Details stays LAST (the 0027/026 pin).
+    let all = [ rotation; move; add; render; selector; materials; library; experiments; details ]
 
 let defaultElementZoom : float = 5.0
 
@@ -164,11 +247,32 @@ let private freshId () : Library.ElementId = Library.elementId (System.Guid.NewG
 let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
     { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
 
+/// The default in-memory material / sample stores for the parameterless test scenes
+/// (`init` / `initMain`) — the SAME composition the App performs (spec 0033 steps 005/006): the
+/// samples store first, then the materials store whose remove-block consults the LIVE samples
+/// through `samplesReferencing`. A nested module so the `Library` open (required to see the
+/// optional `MaterialProxy.createInMemory` type extension) stays scoped away from this file's
+/// Avalonia names.
+module private DefaultStores =
+    open OpticalConstructor.Domain.Library
+
+    let create () : MaterialLibrary.MaterialProxy * SampleProxy =
+        let samples = SampleProxy.createInMemory ()
+        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
+        materials, samples
+
 /// The shared scene seed: the standard table, the straight top-down view, the given elements, the
-/// table selected first, an add/remove `palette`, and the injected Library proxy. `init` (the test
-/// window) passes an empty palette; `initMain` (the Main screen) passes a non-empty one — that is the
-/// ONLY behavioural difference between them.
-let initWith (library : Library.LibraryProxy) (experiments : Experiments.ExperimentProxy) (elements : TestElement list) (palette : CatalogueKind list) : Model =
+/// table selected first, an add/remove `palette`, and the injected proxies (the read-only Library
+/// and Experiments seams, plus — spec 0033 step 024 — the material / sample WRITE seams behind the
+/// workbench bays). `init` (the test window) passes an empty palette; `initMain` (the Main screen)
+/// passes a non-empty one — that is the ONLY behavioural difference between them.
+let initWith
+    (library : Library.LibraryProxy)
+    (experiments : Experiments.ExperimentProxy)
+    (materials : MaterialLibrary.MaterialProxy)
+    (samples : Library.SampleProxy)
+    (elements : TestElement list)
+    (palette : CatalogueKind list) : Model =
     {
         table = Table.defaultTable
         view = Table.defaultView
@@ -185,19 +289,38 @@ let initWith (library : Library.LibraryProxy) (experiments : Experiments.Experim
         experiments = experiments
         experimentCollection = Experiments.ExperimentCollection.empty
         pendingEntry = None
+        materials = materials
+        samples = samples
+        materialQuery = MaterialLibrary.MaterialQuery.empty
+        selectedMaterial = None
+        materialRemoveConfirm = NoRemoveConfirm
+        materialsError = None
+        viewedMaterial = None
+        sampleQuery = Library.SampleQuery.empty
+        selectedSample = None
+        sampleRemoveConfirm = NoRemoveConfirm
+        samplesError = None
+        viewedSample = None
+        launchers = EditorLaunchers.defaults
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
 /// the central ray, no add/remove palette. Behaviour is unchanged from before — the palette is empty.
-/// The Library proxy defaults to the in-memory mock (the test scene never shows the Library bay).
+/// The proxies default to the in-memory mocks/stores (the test scene never shows the ribbon bays).
 let init () : Model =
-    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
+    let materials, samples = DefaultStores.create ()
+    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
-/// "Lego constructor"). The Library proxy is injected at the composition root. This is the Main screen —
-/// identical scene logic, elements added/removed at runtime.
-let initMainWith (library : Library.LibraryProxy) (experiments : Experiments.ExperimentProxy) : Model =
+/// "Lego constructor"). The proxies — incl. the step-024 material / sample write seams — are injected
+/// at the composition root. This is the Main screen — identical scene logic, elements added/removed at
+/// runtime.
+let initMainWith
+    (library : Library.LibraryProxy)
+    (experiments : Experiments.ExperimentProxy)
+    (materials : MaterialLibrary.MaterialProxy)
+    (samples : Library.SampleProxy) : Model =
     // The light source snaps to the table's LEFT edge and the detector to the RIGHT edge — i.e. the
     // central-ray endpoints, which sit exactly on the plate edges (`defaultSourceDetectorDistance` = the
     // table length). Added elements land between them on the beam. The source/detector get DETERMINISTIC
@@ -205,14 +328,18 @@ let initMainWith (library : Library.LibraryProxy) (experiments : Experiments.Exp
     { initWith
         library
         experiments
+        materials
+        samples
         [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
           { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
         [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
         with snapChain = true }
 
-/// The Main scene with the default in-memory mock proxies (the test default; the composition root
-/// injects its own proxies via `initMainWith`).
-let initMain () : Model = initMainWith (Library.createInMemory ()) (Experiments.createInMemory ())
+/// The Main scene with the default in-memory mock proxies / stores (the test default; the composition
+/// root injects its own proxies via `initMainWith`).
+let initMain () : Model =
+    let materials, samples = DefaultStores.create ()
+    initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples
 
 type Msg =
     | RotateR1By of float
@@ -277,6 +404,34 @@ type Msg =
     /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
     /// button, and a double-click on the experiment row).
     | ViewExperiment of string
+    /// Spec 0033 (024) — the MATERIALS workbench bay. The search box / facet selectors drive the
+    /// `searchMaterials` query; a row click selects the verbs' target; Add / Edit open the step-023
+    /// editor through the launcher seam; Remove is confirm-gated inline; View toggles the read-only
+    /// metadata + n/k-chart panel. Facet picks carry the DOMAIN facet — the option-code mapping
+    /// happens in the bay handlers at the control boundary.
+    | MatSetSearchText of string
+    | MatSelectCategory of MaterialLibrary.MaterialCategory option
+    | MatSelectDispersion of MaterialLibrary.DispersionFilter
+    | MatSelectRow of MaterialLibrary.MaterialId
+    | MatAdd
+    | MatEdit
+    | MatView
+    | MatRequestRemove
+    | MatConfirmRemove
+    | MatCancelRemove
+    /// Spec 0033 (024) — the LIBRARY (samples workbench) bay: the same verb vocabulary over
+    /// `searchSamples` / the step-022 editor; Make-multilayer is the second creation entry point
+    /// (a new sample — the stack editor's fold vocabulary IS the multilayer flow).
+    | SmpSetSearchText of string
+    | SmpSelectSubstrate of Library.SubstrateKind option
+    | SmpSelectRow of Library.SampleId
+    | SmpAdd
+    | SmpMakeMultilayer
+    | SmpEdit
+    | SmpView
+    | SmpRequestRemove
+    | SmpConfirmRemove
+    | SmpCancelRemove
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -545,7 +700,7 @@ let private experimentElementLabel (model : Model) (id : Library.ElementId) : st
     model.elements
     |> List.mapi (fun i e -> i, e)
     |> List.tryFind (fun (_, e) -> e.id = id)
-    |> Option.map (fun (i, e) -> sprintf "%s #%d" (Catalogue.kindName e.placement.catalogueKind) (i + 1))
+    |> Option.map (fun (i, e) -> $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
     |> Option.defaultValue "(element)"
 
 let update (msg : Msg) (model : Model) : Model =
@@ -588,7 +743,7 @@ let update (msg : Msg) (model : Model) : Model =
         | TableSelected | NothingSelected -> model
     | RequestBindValueId entryId ->
         // Spec 0027 (026): select the entry as PENDING (its full description is shown) without binding yet —
-        // inert unless an element is selected (the Library bay is only enabled for an element).
+        // inert unless an element is selected (the Selector bay is only enabled for an element).
         match model.selection with
         | ElementSelected _ -> { model with pendingEntry = Some entryId }
         | TableSelected | NothingSelected -> model
@@ -637,6 +792,103 @@ let update (msg : Msg) (model : Model) : Model =
         // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
         viewExperimentHook model idStr
         model
+    // -- Spec 0033 (024): the Materials workbench bay. A query / selection change also disarms a
+    // -- pending remove confirmation and clears the inline message — a stale confirm or refusal
+    // -- never outlives the state it referred to. The bay projection re-queries the proxy on every
+    // -- render, so each arm's write (if any) shows in the same render pass.
+    | MatSetSearchText text ->
+        { model with materialQuery = { model.materialQuery with text = text }; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatSelectCategory category ->
+        { model with materialQuery = { model.materialQuery with category = category }; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatSelectDispersion dispersion ->
+        { model with materialQuery = { model.materialQuery with dispersion = dispersion }; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatSelectRow id ->
+        { model with selectedMaterial = Some id; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatAdd ->
+        model.launchers.openMaterialEditor model.materials None
+        { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatEdit ->
+        // Edit opens the step-023 editor on the selected entry, resolved through the proxy at
+        // dispatch time. (The bay REMOVES the Edit verb for a view-only selection; an entry with
+        // `complexity = None` would open view-only anyway — the editor's own rule.)
+        (match model.selectedMaterial with
+         | Some id ->
+             match model.materials.tryGetMaterial id with
+             | Ok (Some entry) -> model.launchers.openMaterialEditor model.materials (Some entry)
+             | Ok None | Error _ -> ()
+         | None -> ())
+        { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatView ->
+        // Toggle the read-only panel: viewing the already-viewed selection closes it.
+        let viewed =
+            match model.selectedMaterial, model.viewedMaterial with
+            | Some selected, Some shown when selected = shown -> None
+            | selected, _ -> selected
+        { model with viewedMaterial = viewed; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatRequestRemove ->
+        match model.selectedMaterial with
+        | Some id -> { model with materialRemoveConfirm = ConfirmingRemove id; materialsError = None }
+        | None -> model
+    | MatConfirmRemove ->
+        match model.materialRemoveConfirm with
+        | ConfirmingRemove id ->
+            match model.materials.removeMaterial id with
+            | Ok () ->
+                { model with
+                    materialRemoveConfirm = NoRemoveConfirm
+                    materialsError = None
+                    selectedMaterial = (if model.selectedMaterial = Some id then None else model.selectedMaterial)
+                    viewedMaterial = (if model.viewedMaterial = Some id then None else model.viewedMaterial) }
+            | Error err ->
+                // The store refused (`MaterialStillReferenced` names the referencing samples) —
+                // surface the reason inline and leave the store, the selection and the list untouched.
+                { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = Some err }
+        | NoRemoveConfirm -> model
+    | MatCancelRemove -> { model with materialRemoveConfirm = NoRemoveConfirm }
+    // -- Spec 0033 (024): the Library (samples workbench) bay — the same discipline.
+    | SmpSetSearchText text ->
+        { model with sampleQuery = { model.sampleQuery with text = text }; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpSelectSubstrate substrate ->
+        { model with sampleQuery = { model.sampleQuery with substrate = substrate }; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpSelectRow id ->
+        { model with selectedSample = Some id; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpAdd | SmpMakeMultilayer ->
+        // Both creation entry points open the step-022 editor on a NEW sample: the make-multilayer
+        // flow is the stack editor's fold vocabulary (MakeRepeatBlock + the repeat-count steppers).
+        model.launchers.openSampleEditor model.materials model.samples None
+        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpEdit ->
+        (match model.selectedSample with
+         | Some id ->
+             match model.samples.tryGetSample id with
+             | Ok (Some sample) -> model.launchers.openSampleEditor model.materials model.samples (Some sample)
+             | Ok None | Error _ -> ()
+         | None -> ())
+        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpView ->
+        let viewed =
+            match model.selectedSample, model.viewedSample with
+            | Some selected, Some shown when selected = shown -> None
+            | selected, _ -> selected
+        { model with viewedSample = viewed; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpRequestRemove ->
+        match model.selectedSample with
+        | Some id -> { model with sampleRemoveConfirm = ConfirmingRemove id; samplesError = None }
+        | None -> model
+    | SmpConfirmRemove ->
+        match model.sampleRemoveConfirm with
+        | ConfirmingRemove id ->
+            match model.samples.removeSample id with
+            | Ok () ->
+                { model with
+                    sampleRemoveConfirm = NoRemoveConfirm
+                    samplesError = None
+                    selectedSample = (if model.selectedSample = Some id then None else model.selectedSample)
+                    viewedSample = (if model.viewedSample = Some id then None else model.viewedSample) }
+            | Error err ->
+                { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = Some err }
+        | NoRemoveConfirm -> model
+    | SmpCancelRemove -> { model with sampleRemoveConfirm = NoRemoveConfirm }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -799,8 +1051,7 @@ let kindCode : CatalogueKind -> string = Catalogue.kindCode
 let private readoutText (model : Model) : string =
     match model.selection with
     | TableSelected ->
-        sprintf "Selected: TABLE   R1 %.0f°   R2 %.0f°   R3 %.0f°   zoom %.2f×"
-            model.view.r1.degrees model.view.r2.degrees model.view.r3.degrees model.view.zoom
+        $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom}×"
     | ElementSelected i ->
         let e = List.item i model.elements
         let p = e.placement
@@ -812,9 +1063,7 @@ let private readoutText (model : Model) : string =
                 | Ok (Some entry) -> entry.displayName
                 | Ok None | Error _ -> "unbound"
             | None -> "unbound"
-        sprintf "Selected: Element %d (%s)   R1 %.0f°   R2 %.0f°   R3 %.0f° (%s)   zoom %.1f×   bound: %s"
-            (i + 1) (kindName p.catalogueKind) p.r1.degrees p.r2.degrees p.r3.degrees
-            (if p.r3Locked then "R3 locked" else "R3 free") e.zoom boundName
+        $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(if p.r3Locked then "R3 locked" else "R3 free")})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
     | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
 /// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
@@ -1007,7 +1256,7 @@ let rec private flattenNode (allowed : Set<string>) (boundId : string option) (d
         if List.isEmpty childRows then []
         else { label = label.value; depth = depth; entryId = ""; isBound = false } :: childRows
 
-/// The Library bay state for the current selection: an `ElementSelected` shows the kind-constrained
+/// The Selector bay state for the current selection: an `ElementSelected` shows the kind-constrained
 /// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
 let private libraryState (model : Model) : LibraryControls.State =
     match model.selection with
@@ -1066,7 +1315,7 @@ let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers 
 /// ("<kind> #<n>", 1-based, in scene order).
 let private sweepCandidates (model : Model) : ExperimentControls.SweepCandidate list =
     model.elements
-    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = sprintf "%s #%d" (kindName e.placement.catalogueKind) (i + 1) })
+    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = $"%s{(kindName e.placement.catalogueKind)} #%d{(i + 1)}" })
 
 /// The current draft experiment's readout (spec 028), or "" when the draft is incomplete / its element is
 /// no longer present.
@@ -1074,8 +1323,7 @@ let private experimentReadout (model : Model) : string =
     let draft = model.experimentCollection.draft
     match draft.elementId, draft.variable with
     | Some id, Some v when model.elements |> List.exists (fun e -> e.id = id) ->
-        sprintf "Experiment: %s — vary %s over %g…%g %s (%d pts), capture %s"
-            draft.elementLabel v.label draft.range.min draft.range.max v.unitLabel draft.range.points draft.measurement.label
+        $"Experiment: %s{draft.elementLabel} — vary %s{v.label} over %g{draft.range.min}…%g{draft.range.max} %s{v.unitLabel} (%d{draft.range.points} pts), capture %s{draft.measurement.label}"
     | _ -> ""
 
 // ---------------------------------------------------------------------------
@@ -1159,6 +1407,28 @@ let private runSampleOpt (model : Model) : Library.Sample option =
         | Some (Library.SampleItem s) -> Some s
         | _ -> None)
 
+/// The material library the host resolves sample structures against (the composition root's single
+/// library instance, spec 0033 step 001).
+let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.standard
+
+/// The bound sample resolved against the material library — resolved ONCE per run (spec 0033 step 001).
+/// `None` = no sample bound; `Some (Error _)` = the sample references an unknown material id, which the
+/// chart surfaces as its message (a typed error, never a fallback).
+let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSample, MaterialLibrary.MaterialError> option =
+    runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials materialLibrary)
+
+/// The human-readable message a failed sample-material resolution surfaces on the chart. Every error
+/// case carries a diagnostic `reason` (spec 0033 steps 002/003); only `UnknownMaterialId` can actually
+/// arise from resolution — the write-seam cases (step 003) render a generic library message.
+let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
+    match err with
+    | MaterialLibrary.UnknownMaterialId reason ->
+        $"Cannot run: the sample references an unknown material (%s{reason})."
+    | MaterialLibrary.DuplicateMaterialId reason
+    | MaterialLibrary.MaterialStillReferenced reason
+    | MaterialLibrary.InvalidMaterial reason ->
+        $"Cannot run: material library error (%s{reason})."
+
 /// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
 /// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
 /// then reads the raw sample output, spec R1).
@@ -1183,16 +1453,16 @@ let private branchesFor (m : Experiments.MeasurementMode) : (Propagation.Branch 
 /// A series display name: the base name, suffixed with the branch tag only when capturing BOTH branches.
 let private seriesName (m : Experiments.MeasurementMode) (branchTag : string) (baseName : string) : string =
     match m with
-    | Experiments.CaptureBoth -> sprintf "%s (%s)" baseName branchTag
+    | Experiments.CaptureBoth -> $"%s{baseName} (%s{branchTag})"
     | _ -> baseName
 
-/// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound sample re-solved at
-/// the run wavelength / normal incidence on that branch, or — with NO sample — the identity MM for the
-/// transmitted branch (a transparent pass-through; the Malus law then holds exactly) and `None` for the
-/// reflected branch (there is nothing to reflect).
-let private rotateSampleMueller (model : Model) (branch : Propagation.Branch) : MuellerMatrix option =
+/// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound RESOLVED sample
+/// re-solved at the run wavelength / normal incidence on that branch, or — with NO sample — the identity
+/// MM for the transmitted branch (a transparent pass-through; the Malus law then holds exactly) and
+/// `None` for the reflected branch (there is nothing to reflect).
+let private rotateSampleMueller (model : Model) (sampleOpt : Propagation.ResolvedSample option) (branch : Propagation.Branch) : MuellerMatrix option =
     let w = runWaveLength model
-    match runSampleOpt model with
+    match sampleOpt with
     | Some s -> Some (Propagation.sampleMueller branch s w IncidenceAngle.normal)
     | None ->
         match branch with
@@ -1211,8 +1481,7 @@ let private describeRun (model : Model) (label : string) (captureText : string) 
         match runDetectorKind model with
         | Library.Ellipsometer -> "ellipsometer (Ψ/Δ)"
         | Library.Intensity -> "intensity detector (S₀)"
-    sprintf "Source %.0f nm → %s → %s; varied element: %s; capture %s. Varying %s."
-        wNm sampleText detectorText label captureText varyText
+    $"Source %.0f{wNm} nm → %s{sampleText} → %s{detectorText}; varied element: %s{label}; capture %s{captureText}. Varying %s{varyText}."
 
 /// The end-to-end experiment result as a renderer-neutral `ExperimentChart` (spec 028), computed from the
 /// current DRAFT: VaryR1 ⇒ the rotating-analyzer intensity curve over the chosen R1 range (or a single-point
@@ -1232,6 +1501,13 @@ let chartForParams
     (label : string) : ExperimentChart.ExperimentChart =
     if not (model.elements |> List.exists (fun e -> e.id = chosen)) then ExperimentChart.empty
     else
+    // Resolve the bound sample's materials ONCE per run (spec 0033 step 001); an unknown material id is
+    // a typed error the chart surfaces as its message — no series are computed from a fallback.
+    match runResolvedSampleOpt model with
+    | Some (Error err) ->
+        { ExperimentChart.empty with title = "Sample materials failed to resolve"; description = materialErrorText err }
+    | resolved ->
+        let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
         let svIn = runInputStokes model
         let w = runWaveLength model
         let detector = runDetectorKind model
@@ -1239,7 +1515,7 @@ let chartForParams
         let n = max 2 range.points
         match variable with
         | Experiments.VaryR1 ->
-            let varyText = sprintf "the rotation R1 over %g…%g°" range.min range.max
+            let varyText = $"the rotation R1 over %g{range.min}…%g{range.max}°"
             match detector with
             | Library.Ellipsometer ->
                 {
@@ -1255,7 +1531,7 @@ let chartForParams
                 let seriesList =
                     branchesFor measurement
                     |> List.choose (fun (branch, tag) ->
-                        rotateSampleMueller model branch
+                        rotateSampleMueller model sampleOpt branch
                         |> Option.map (fun mm ->
                             let curve = Propagation.rotatingAnalyzerCurveRange svIn mm analyzerKind range.min range.max n
                             series (seriesName measurement tag "Intensity") curve.points))
@@ -1268,12 +1544,12 @@ let chartForParams
                     angular = true
                 }
         | Experiments.VaryR2 ->
-            match runSampleOpt model with
+            match sampleOpt with
             | Some sample ->
                 // The engine cannot solve exactly 90° incidence, so the top is clamped below it (drawn to 90).
                 let lo = max 0.0 (min range.min range.max)
                 let hi = min Propagation.r2SweepMaxDegrees (max range.min range.max)
-                let varyText = sprintf "the incidence angle R2 over %g…%g° (%g° computed, drawn to 90°)" range.min range.max hi
+                let varyText = $"the incidence angle R2 over %g{range.min}…%g{range.max}° (%g{hi}° computed, drawn to 90°)"
                 match detector with
                 | Library.Ellipsometer ->
                     let seriesList =
@@ -1305,12 +1581,12 @@ let chartForParams
                     }
             | None -> ExperimentChart.empty
         | Experiments.VaryWaveLength ->
-            match runSampleOpt model with
+            match sampleOpt with
             | Some sample ->
                 let lo = min range.min range.max
                 let hi = max range.min range.max
                 let inc = IncidenceAngle.normal
-                let varyText = sprintf "the wavelength over %g…%g nm" lo hi
+                let varyText = $"the wavelength over %g{lo}…%g{hi} nm"
                 match detector with
                 | Library.Ellipsometer ->
                     let seriesList =
@@ -1382,11 +1658,16 @@ let private experimentPsiDelta (model : Model) : (float * float) option =
     | Some chosen, Some Experiments.VaryR1 when model.elements |> List.exists (fun e -> e.id = chosen) ->
         match runDetectorKind model with
         | Library.Ellipsometer ->
-            let svIn = runInputStokes model
-            let branch = branchesFor draft.measurement |> List.head |> fst
-            let mm = rotateSampleMueller model branch |> Option.defaultValue Propagation.identityMueller
-            let pd = Propagation.ellipsometerReadout (mm * svIn)
-            Some (pd.psi.degrees, pd.delta.degrees)
+            // A failed material resolution yields no readout — the chart already carries the message.
+            match runResolvedSampleOpt model with
+            | Some (Error _) -> None
+            | resolved ->
+                let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
+                let svIn = runInputStokes model
+                let branch = branchesFor draft.measurement |> List.head |> fst
+                let mm = rotateSampleMueller model sampleOpt branch |> Option.defaultValue Propagation.identityMueller
+                let pd = Propagation.ellipsometerReadout (mm * svIn)
+                Some (pd.psi.degrees, pd.delta.degrees)
         | Library.Intensity -> None
     | _ -> None
 
@@ -1465,21 +1746,40 @@ let private stableHashStr (s : string) : int =
 let private bandPalette : string[] =
     [| "#1F77B4"; "#FF7F0E"; "#2CA02C"; "#D62728"; "#9467BD"; "#8C564B"; "#E377C2"; "#BCBD22" |]
 
-/// A curated `#RRGGBB` colour for a known band material name (mirrors `Schematic.curated`), else a stable
-/// palette slot from the name's hash. Pure and total.
-let private bandColorHex (material : string) : string =
-    match material with
-    | "Glass (n=1.52)" -> "#C8E1F5"
-    | "Glass (n=1.50)" -> "#CDE6FA"
-    | "Glass (n=1.75)" -> "#AACDEB"
-    | "Vacuum" -> "#F2F2F2"
-    | "Molybdenum (Mo)" -> "#5A5A6E"
-    | "Silicon (Si)" -> "#5A5A6E"
-    | "Langasite" -> "#78C8DC"
-    | "Uniaxial crystal" -> "#AFE1AF"
-    | "Biaxial crystal" -> "#96D296"
-    | "Active crystal" -> "#C8B4E6"
-    | _ -> bandPalette.[stableHashStr material % bandPalette.Length]
+/// Curated `#RRGGBB` colours for the built-in band materials (mirrors `Schematic.curated`), keyed by
+/// the elevated `MaterialId` (spec 0033 step 002) — the same key the sample structure carries; the
+/// old host id literals are gone with the string-id path.
+let private bandColors : Map<MaterialLibrary.MaterialId, string> =
+    Map
+        [
+            MaterialLibrary.MaterialIds.glass152, "#C8E1F5"
+            MaterialLibrary.MaterialIds.glass150, "#CDE6FA"
+            MaterialLibrary.MaterialIds.glass175, "#AACDEB"
+            MaterialLibrary.MaterialIds.vacuum, "#F2F2F2"
+            MaterialLibrary.MaterialIds.euvMolybdenum, "#5A5A6E"
+            MaterialLibrary.MaterialIds.euvSilicon, "#5A5A6E"
+            MaterialLibrary.MaterialIds.silicon, "#5A5A6E"
+            MaterialLibrary.MaterialIds.langasite, "#78C8DC"
+            MaterialLibrary.MaterialIds.uniaxialCrystal, "#AFE1AF"
+            MaterialLibrary.MaterialIds.biaxialCrystal, "#96D296"
+            MaterialLibrary.MaterialIds.activeCrystal, "#C8B4E6"
+        ]
+
+/// A curated colour for a known band material id, else a stable palette slot hashed from the id's
+/// Guid string form. Pure and total.
+let private bandColorHex (materialId : MaterialLibrary.MaterialId) : string =
+    match Map.tryFind materialId bandColors with
+    | Some hex -> hex
+    | None -> bandPalette.[stableHashStr (string materialId.value) % bandPalette.Length]
+
+/// The display name of a material id: the library entry's name, or the id's Guid string form when
+/// unknown (an unknown id still LABELS its band — running the sample is what surfaces the typed
+/// resolution error).
+let private materialDisplayName (materialId : MaterialLibrary.MaterialId) : string =
+    materialLibrary.entries
+    |> List.tryFind (fun e -> e.id = materialId)
+    |> Option.map (fun e -> e.name)
+    |> Option.defaultValue (string materialId.value)
 
 /// A band's thickness for the Details view — finite layers carry their thickness in metres; a half-space /
 /// plate carries none (drawn as "semi-infinite"). This keeps the engine's `Thickness` DU (which collides
@@ -1495,9 +1795,9 @@ let private bandThicknessLabel (t : BandThickness) : string =
     | SemiInfinite -> "semi-infinite"
     | FiniteMeters meters ->
         let nm = meters * 1.0e9
-        if nm < 1000.0 then sprintf "%.1f nm" nm
-        elif nm < 1.0e6 then sprintf "%.3g µm" (nm / 1000.0)
-        else sprintf "%.3g mm" (nm / 1.0e6)
+        if nm < 1000.0 then $"%.1f{nm} nm"
+        elif nm < 1.0e6 then $"%.3g{(nm / 1000.0)} µm"
+        else $"%.3g{(nm / 1.0e6)} mm"
 
 /// The relative height weight of a band (log-compressed thickness in metres, so a 2.65 nm EUV layer and a
 /// 1 cm plate are both visible). A half-space / plate gets a fixed mid weight.
@@ -1509,42 +1809,50 @@ let private bandWeight (t : BandThickness) : float =
         // log10 of nanometres, floored — a 1 nm layer ⇒ 0, a 1 µm layer ⇒ 3, a 1 mm layer ⇒ 6.
         max 0.1 (log10 (meters * 1.0e9))
 
-/// The thickness of a Library `Sample` as a `BandThickness` (via `Propagation.thicknessMeters`, so the
-/// engine `Thickness` DU never reaches this file).
-let private sampleBandThickness (sample : Library.Sample) : BandThickness =
-    match Propagation.thicknessMeters sample.thickness with
+/// The thickness of a sample-structure layer as a `BandThickness` (via `Propagation.thicknessMeters`,
+/// so the engine `Thickness` DU never reaches this file).
+let private layerBandThickness (layer : Library.SampleLayer) : BandThickness =
+    match Propagation.thicknessMeters layer.thickness with
     | Some m -> FiniteMeters m
     | None -> SemiInfinite
 
-/// The per-sample, material-labelled layer list for the band view (collapsed to repeating units): each band
-/// is (material name, thickness, repeat count). Keyed off the sample id so the labels match the seeded
-/// composition; the default thin-film / plate samples yield a single band of their resolved material.
-let private sampleBandSpecs (sample : Library.Sample) : (string * BandThickness * int) list =
-    let qwGlass = FiniteMeters ((600.0 / 1.52 / 4.0) * 1.0e-9)
-    let qwVacuum = FiniteMeters ((600.0 / 1.00 / 4.0) * 1.0e-9)
-    let euv = FiniteMeters (10.6 / 4.0 * 1.0e-9)
-    match sample.id with
-    | "sample-multilayer-qw" ->
-        [ "Glass (n=1.52)", qwGlass, 21
-          "Vacuum", qwVacuum, 20 ]
-    | "sample-euv-mosi" ->
-        [ "Molybdenum (Mo)", euv, 100
-          "Silicon (Si)", euv, 100 ]
-    | "sample-uniaxial" -> [ "Uniaxial crystal", sampleBandThickness sample, 1 ]
-    | "sample-biaxial" -> [ "Biaxial crystal", sampleBandThickness sample, 1 ]
-    | "sample-active-crystal" -> [ "Active crystal", sampleBandThickness sample, 1 ]
-    | "sample-langasite-silicon" ->
-        [ "Langasite", sampleBandThickness sample, 1
-          "Silicon (Si)", SemiInfinite, 1 ]
-    | "sample-glass-vacuum" -> [ "Glass (n=1.50)", sampleBandThickness sample, 1 ]
-    | _ ->
-        let material =
-            match sample.materialId with
-            | "glass-1.50" -> "Glass (n=1.50)"
-            | "glass-1.52" -> "Glass (n=1.52)"
-            | "glass-1.75" -> "Glass (n=1.75)"
-            | _ -> sample.name
-        [ material, sampleBandThickness sample, 1 ]
+/// The material-labelled layer list for the band view, read STRAIGHT off the sample's structure (spec
+/// 0033 step 001 — no per-sample-id table): each band is (material id, thickness, repeat count). A
+/// `Repeated` period group stays collapsed (one "×N" band per cell layer), the substrate plate follows
+/// the films, and a non-vacuum lower half-space renders as a semi-infinite band.
+let private sampleBandSpecs (sample : Library.Sample) : (MaterialLibrary.MaterialId * BandThickness * int) list =
+    let filmBands =
+        sample.structure.films
+        |> List.collect (fun item ->
+            match item with
+            | Library.SingleLayer l -> [ l.materialId, layerBandThickness l, 1 ]
+            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId, layerBandThickness l, g.count))
+    let substrateBands =
+        match sample.structure.substrate with
+        | Some l -> [ l.materialId, layerBandThickness l, 1 ]
+        | None -> []
+    let lowerBands =
+        match sample.structure.lower with
+        | Some materialId -> [ materialId, SemiInfinite, 1 ]
+        | None -> []
+    filmBands @ substrateBands @ lowerBands
+
+/// The band-view state of ONE sample — its "×N"-collapsed stack (one band per unit-cell layer of a
+/// `Repeated` group, then the substrate / lower half-space), titled with the sample's name +
+/// description. Shared by the Details bay (the selected element's bound sample) and the Library
+/// bay's View panel (spec 0033 step 024). Public so the hosts' band projection is unit-testable
+/// without mounting a window.
+let sampleBandsState (s : Library.Sample) : LayerBandsControls.State =
+    let bands =
+        sampleBandSpecs s
+        |> List.map (fun (materialId, thickness, count) ->
+            let countText = if count > 1 then $" ×%d{count}" else ""
+            ({
+                label = $"%s{(materialDisplayName materialId)} — %s{(bandThicknessLabel thickness)}%s{countText}"
+                heightWeight = bandWeight thickness
+                colorHex = bandColorHex materialId
+             } : LayerBandsControls.Band))
+    ({ title = $"%s{s.name} — %s{s.description}"; bands = bands } : LayerBandsControls.State)
 
 /// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
 /// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
@@ -1554,23 +1862,403 @@ let private detailsState (model : Model) : LayerBandsControls.State =
     | ElementSelected i ->
         let e = List.item i model.elements
         match boundEntry model e with
-        | Some (Library.SampleItem s) ->
-            let bands =
-                sampleBandSpecs s
-                |> List.map (fun (material, thickness, count) ->
-                    let countText = if count > 1 then sprintf " ×%d" count else ""
-                    ({
-                        label = sprintf "%s — %s%s" material (bandThicknessLabel thickness) countText
-                        heightWeight = bandWeight thickness
-                        colorHex = bandColorHex material
-                     } : LayerBandsControls.Band))
-            ({ title = sprintf "%s — %s" s.name s.description; bands = bands } : LayerBandsControls.State)
+        | Some (Library.SampleItem s) -> sampleBandsState s
         | Some entry ->
-            ({ title = sprintf "%s — %s" entry.displayName entry.fullDescription; bands = [] } : LayerBandsControls.State)
+            ({ title = $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.State)
         | None ->
-            ({ title = "No Library entry bound — pick one in the Library bay to see its details."; bands = [] } : LayerBandsControls.State)
+            ({ title = "No Library entry bound — pick one in the Selector bay to see its details."; bands = [] } : LayerBandsControls.State)
     | TableSelected | NothingSelected ->
         ({ title = "Select an element to see what it is."; bands = [] } : LayerBandsControls.State)
+
+// ---------------------------------------------------------------------------
+// Spec 0033 (024) — the MATERIALS and LIBRARY (samples) workbench bays: the step-015/016 list
+// surfaces (`MaterialsControls` / `SampleLibraryControls`) wired over the step-005/006 WRITE
+// seams. The controls are domain-free, so the host flattens each search result into `Row`s and
+// the facets into coded `FacetOption`s here — exactly as `libraryState` / `flattenNode` do for
+// the Selector — and the projections re-query their proxy on EVERY render, so a verb's write
+// refreshes the list in the same render pass. The host adds three surfaces the controls do not
+// carry: the inline confirm-gated Remove row, the inline store-refusal message
+// (`MaterialStillReferenced` naming the referencing samples — never a cascade), and the View
+// panels (read-only metadata + the step-19 n/k chart for a material; the Details-bay band view
+// for a sample).
+// ---------------------------------------------------------------------------
+
+/// Stable intent-named ids for the workbench surfaces THIS host adds around the shared controls
+/// (whose own ids live in `MaterialsControls.UiIds` / `SampleLibraryControls.UiIds`).
+[<RequireQualifiedAccess>]
+module WorkbenchIds =
+    [<Literal>]
+    let materialsMessage = "MaterialsWorkbenchMessage"
+    [<Literal>]
+    let removeMaterialConfirm = "RemoveMaterialConfirmButton"
+    [<Literal>]
+    let removeMaterialCancel = "RemoveMaterialCancelButton"
+    [<Literal>]
+    let materialViewPanel = "MaterialViewPanel"
+    [<Literal>]
+    let materialNkChart = "MaterialWorkbenchNkChart"
+    [<Literal>]
+    let samplesMessage = "SamplesWorkbenchMessage"
+    [<Literal>]
+    let removeSampleConfirm = "RemoveSampleConfirmButton"
+    [<Literal>]
+    let removeSampleCancel = "RemoveSampleCancelButton"
+    [<Literal>]
+    let sampleViewPanel = "SampleViewPanel"
+
+/// The category facet's domain choices, in display order (the "all" option is `None`).
+let materialCategories : MaterialLibrary.MaterialCategory list =
+    [ MaterialLibrary.Glass; MaterialLibrary.Metal; MaterialLibrary.Semiconductor; MaterialLibrary.Crystal; MaterialLibrary.Vacuum ]
+
+/// The stable option code of a category facet choice (`None` = the match-everything "all") —
+/// the string the control dispatches back and `materialCategoryOfCode` inverts.
+let materialCategoryCode (category : MaterialLibrary.MaterialCategory option) : string =
+    match category with
+    | None -> "all"
+    | Some MaterialLibrary.Glass -> "glass"
+    | Some MaterialLibrary.Metal -> "metal"
+    | Some MaterialLibrary.Semiconductor -> "semiconductor"
+    | Some MaterialLibrary.Crystal -> "crystal"
+    | Some MaterialLibrary.Vacuum -> "vacuum"
+
+let private materialCategoryLabel (category : MaterialLibrary.MaterialCategory option) : string =
+    match category with
+    | None -> "All"
+    | Some MaterialLibrary.Glass -> "Glass"
+    | Some MaterialLibrary.Metal -> "Metal"
+    | Some MaterialLibrary.Semiconductor -> "Semiconductor"
+    | Some MaterialLibrary.Crystal -> "Crystal"
+    | Some MaterialLibrary.Vacuum -> "Vacuum"
+
+/// The inverse code → facet mapping (an unknown code is the match-everything "all").
+let materialCategoryOfCode (code : string) : MaterialLibrary.MaterialCategory option =
+    materialCategories |> List.tryFind (fun c -> materialCategoryCode (Some c) = code)
+
+/// The dispersion facet's choices, in display order.
+let dispersionFilters : MaterialLibrary.DispersionFilter list =
+    [ MaterialLibrary.AnyDispersion; MaterialLibrary.OnlyDispersive; MaterialLibrary.OnlyNonDispersive ]
+
+let dispersionFilterCode (filter : MaterialLibrary.DispersionFilter) : string =
+    match filter with
+    | MaterialLibrary.AnyDispersion -> "all"
+    | MaterialLibrary.OnlyDispersive -> "dispersive"
+    | MaterialLibrary.OnlyNonDispersive -> "constant"
+
+let private dispersionFilterLabel (filter : MaterialLibrary.DispersionFilter) : string =
+    match filter with
+    | MaterialLibrary.AnyDispersion -> "All"
+    | MaterialLibrary.OnlyDispersive -> "Dispersive"
+    | MaterialLibrary.OnlyNonDispersive -> "Non-dispersive"
+
+let dispersionFilterOfCode (code : string) : MaterialLibrary.DispersionFilter =
+    dispersionFilters
+    |> List.tryFind (fun f -> dispersionFilterCode f = code)
+    |> Option.defaultValue MaterialLibrary.AnyDispersion
+
+/// The substrate facet's choices, in display order (`None` = the match-everything "all").
+let substrateFacets : Library.SubstrateKind option list =
+    [ None; Some Library.ThinFilm; Some Library.Plate; Some Library.Wedge ]
+
+let substrateFacetCode (substrate : Library.SubstrateKind option) : string =
+    match substrate with
+    | None -> "all"
+    | Some Library.ThinFilm -> "thinfilm"
+    | Some Library.Plate -> "plate"
+    | Some Library.Wedge -> "wedge"
+
+let private substrateFacetLabel (substrate : Library.SubstrateKind option) : string =
+    match substrate with
+    | None -> "All"
+    | Some Library.ThinFilm -> "Thin film"
+    | Some Library.Plate -> "Plate"
+    | Some Library.Wedge -> "Wedge"
+
+let substrateFacetOfCode (code : string) : Library.SubstrateKind option =
+    substrateFacets
+    |> List.choose id
+    |> List.tryFind (fun k -> substrateFacetCode (Some k) = code)
+
+/// The Materials bay state: the model's `MaterialQuery` run through the store's search seam and
+/// flattened to `MaterialsControls.Row`s. A row is `Editable` iff its entry carries the step-013
+/// edit model (`complexity = Some`); a `complexity = None` engine preset is `ViewOnly` (the
+/// control REMOVES its Edit verb). Public so the bay projection is unit-testable without a window.
+let materialsState (model : Model) : MaterialsControls.State =
+    let rows =
+        match model.materials.searchMaterials model.materialQuery with
+        | Ok entries ->
+            entries
+            |> List.map (fun e ->
+                ({
+                    materialId = string e.id.value
+                    label = e.name
+                    editability =
+                        match e.complexity with
+                        | Some _ -> MaterialsControls.Editable
+                        | None -> MaterialsControls.ViewOnly
+                 } : MaterialsControls.Row))
+        | Error _ -> []
+    {
+        searchText = model.materialQuery.text
+        categoryOptions =
+            None :: (materialCategories |> List.map Some)
+            |> List.map (fun c -> ({ code = materialCategoryCode c; label = materialCategoryLabel c } : MaterialsControls.FacetOption))
+        selectedCategory = materialCategoryCode model.materialQuery.category
+        dispersionOptions =
+            dispersionFilters
+            |> List.map (fun f -> ({ code = dispersionFilterCode f; label = dispersionFilterLabel f } : MaterialsControls.FacetOption))
+        selectedDispersion = dispersionFilterCode model.materialQuery.dispersion
+        rows = rows
+        selectedId = model.selectedMaterial |> Option.map (fun id -> string id.value)
+    }
+
+/// The Materials bay handlers: each control callback is one dispatched `Mat…` message; the
+/// option codes and the row's Guid-string id are lifted back to their domain types HERE, at the
+/// control boundary (an unparsable row id dispatches nothing).
+let private materialsHandlers (dispatch : Msg -> unit) : MaterialsControls.Handlers =
+    {
+        setSearchText = fun text -> dispatch (MatSetSearchText text)
+        selectCategory = fun code -> dispatch (MatSelectCategory (materialCategoryOfCode code))
+        selectDispersion = fun code -> dispatch (MatSelectDispersion (dispersionFilterOfCode code))
+        selectMaterial =
+            fun idStr ->
+                // `MaterialLibrary.MaterialId` in expression position names the union CASE (the
+                // documented type/case collision), so parse the Guid and construct directly.
+                match System.Guid.TryParse idStr with
+                | true, g -> dispatch (MatSelectRow (MaterialLibrary.MaterialId g))
+                | _ -> ()
+        addMaterial = fun () -> dispatch MatAdd
+        editMaterial = fun () -> dispatch MatEdit
+        removeMaterial = fun () -> dispatch MatRequestRemove
+        viewMaterial = fun () -> dispatch MatView
+    }
+
+/// The Library (samples workbench) bay state — the `SampleQuery` through `searchSamples`,
+/// flattened to `SampleLibraryControls.Row`s. Public for the same testability reason.
+let samplesState (model : Model) : SampleLibraryControls.State =
+    let rows =
+        match model.samples.searchSamples model.sampleQuery with
+        | Ok found -> found |> List.map (fun s -> ({ sampleId = string s.id.value; label = s.name } : SampleLibraryControls.Row))
+        | Error _ -> []
+    {
+        searchText = model.sampleQuery.text
+        substrateOptions =
+            substrateFacets
+            |> List.map (fun k -> ({ code = substrateFacetCode k; label = substrateFacetLabel k } : SampleLibraryControls.FacetOption))
+        selectedSubstrate = substrateFacetCode model.sampleQuery.substrate
+        rows = rows
+        selectedId = model.selectedSample |> Option.map (fun id -> string id.value)
+    }
+
+let private samplesHandlers (dispatch : Msg -> unit) : SampleLibraryControls.Handlers =
+    {
+        setSearchText = fun text -> dispatch (SmpSetSearchText text)
+        selectSubstrate = fun code -> dispatch (SmpSelectSubstrate (substrateFacetOfCode code))
+        selectSample =
+            fun idStr ->
+                match System.Guid.TryParse idStr with
+                | true, g -> dispatch (SmpSelectRow (Library.SampleId g))
+                | _ -> ()
+        addSample = fun () -> dispatch SmpAdd
+        editSample = fun () -> dispatch SmpEdit
+        removeSample = fun () -> dispatch SmpRequestRemove
+        viewSample = fun () -> dispatch SmpView
+        makeMultilayer = fun () -> dispatch SmpMakeMultilayer
+    }
+
+/// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through
+/// FuncUI's attr builder — the confirm buttons / panels appear and disappear with the model, so
+/// they carry AutomationIds (the MaterialsControls discipline).
+let private workbenchAutomationId (autoId : string) : IAttr<Border> =
+    AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+/// A small clickable verb box for the host-added confirm rows (the MaterialsControls button look).
+let private workbenchButton (autoId : string) (label : string) (onClick : unit -> unit) : IView =
+    Border.create [
+        workbenchAutomationId autoId
+        Border.background (brush (color 232 232 232))
+        Border.borderBrush (brush (color 120 120 120))
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (Thickness(12.0, 5.0))
+        Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text label ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
+    ] :> IView
+
+let private workbenchMessageColor = color 178 34 34
+
+/// The inline remove confirmation for the Materials bay — present only while a remove is armed.
+/// A WrapPanel row (the 022 headless-layout lesson: no long horizontal StackPanels).
+let private materialConfirmRow (model : Model) (dispatch : Msg -> unit) : IView list =
+    match model.materialRemoveConfirm with
+    | NoRemoveConfirm -> []
+    | ConfirmingRemove id ->
+        let name =
+            match model.materials.tryGetMaterial id with
+            | Ok (Some entry) -> entry.name
+            | Ok None | Error _ -> string id.value
+        [ WrapPanel.create [
+              WrapPanel.orientation Orientation.Horizontal
+              WrapPanel.children [
+                  TextBlock.create [
+                      TextBlock.text $"Remove material '%s{name}'?"
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  workbenchButton WorkbenchIds.removeMaterialConfirm "Remove" (fun () -> dispatch MatConfirmRemove)
+                  workbenchButton WorkbenchIds.removeMaterialCancel "Cancel" (fun () -> dispatch MatCancelRemove)
+              ]
+          ] :> IView ]
+
+/// The Materials bay's inline store-refusal message. Every `MaterialError` case carries its
+/// diagnostic reason (spec 0033 step 003); `MaterialStillReferenced`'s reason NAMES the
+/// referencing samples, so the block reads as "why" — never a cascade, never a dialog.
+let private materialsMessageRow (model : Model) : IView list =
+    match model.materialsError with
+    | None -> []
+    | Some err ->
+        let text =
+            match err with
+            | MaterialLibrary.UnknownMaterialId reason
+            | MaterialLibrary.DuplicateMaterialId reason
+            | MaterialLibrary.MaterialStillReferenced reason
+            | MaterialLibrary.InvalidMaterial reason -> reason
+        [ TextBlock.create [
+              TextBlock.name WorkbenchIds.materialsMessage
+              TextBlock.foreground (brush workbenchMessageColor)
+              TextBlock.textWrapping TextWrapping.Wrap
+              TextBlock.maxWidth 760.0
+              TextBlock.text text
+          ] :> IView ]
+
+/// The Materials View panel: the entry's read-only metadata plus the step-19 dual-axis n/k
+/// chart over the editor's preview range, drawn by the ONE shared inline renderer
+/// (`NkDispersionChart.inlineCanvas`). Resolved through the proxy at render time, so a removed
+/// entry's panel vanishes with its row.
+let private materialViewPanel (model : Model) : IView list =
+    match model.viewedMaterial with
+    | None -> []
+    | Some id ->
+        match model.materials.tryGetMaterial id with
+        | Ok (Some entry) ->
+            let chart = NkDispersionChart.nkDispersionChart entry.properties Units.Nanometer MaterialEditorView.previewRange
+            let editability =
+                match entry.complexity with
+                | Some _ -> ""
+                | None -> " (view-only engine preset)"
+            [ Border.create [
+                  workbenchAutomationId WorkbenchIds.materialViewPanel
+                  Border.child (
+                      StackPanel.create [
+                          StackPanel.orientation Orientation.Vertical
+                          StackPanel.spacing 2.0
+                          StackPanel.children [
+                              TextBlock.create [
+                                  TextBlock.fontWeight FontWeight.SemiBold
+                                  TextBlock.text $"%s{entry.name} — %s{(materialCategoryLabel (Some entry.category))}%s{editability}"
+                              ]
+                              TextBlock.create [
+                                  TextBlock.textWrapping TextWrapping.Wrap
+                                  TextBlock.maxWidth 760.0
+                                  TextBlock.text (entry.description |> Option.defaultValue "")
+                              ]
+                              NkDispersionChart.inlineCanvas WorkbenchIds.materialNkChart chart
+                          ]
+                      ])
+              ] :> IView ]
+        | Ok None | Error _ -> []
+
+/// The Library bay's inline remove confirmation (samples remove is not reference-blocked — the
+/// gate is the user's own confirm).
+let private sampleConfirmRow (model : Model) (dispatch : Msg -> unit) : IView list =
+    match model.sampleRemoveConfirm with
+    | NoRemoveConfirm -> []
+    | ConfirmingRemove id ->
+        let name =
+            match model.samples.tryGetSample id with
+            | Ok (Some s) -> s.name
+            | Ok None | Error _ -> string id.value
+        [ WrapPanel.create [
+              WrapPanel.orientation Orientation.Horizontal
+              WrapPanel.children [
+                  TextBlock.create [
+                      TextBlock.text $"Remove sample '%s{name}'?"
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  workbenchButton WorkbenchIds.removeSampleConfirm "Remove" (fun () -> dispatch SmpConfirmRemove)
+                  workbenchButton WorkbenchIds.removeSampleCancel "Cancel" (fun () -> dispatch SmpCancelRemove)
+              ]
+          ] :> IView ]
+
+let private samplesMessageRow (model : Model) : IView list =
+    match model.samplesError with
+    | None -> []
+    | Some err ->
+        let text =
+            match err with
+            | Library.UnknownSampleId reason
+            | Library.DuplicateSampleId reason
+            | Library.InvalidSample reason -> reason
+        [ TextBlock.create [
+              TextBlock.name WorkbenchIds.samplesMessage
+              TextBlock.foreground (brush workbenchMessageColor)
+              TextBlock.textWrapping TextWrapping.Wrap
+              TextBlock.maxWidth 760.0
+              TextBlock.text text
+          ] :> IView ]
+
+/// The Library View panel: the sample's read-only metadata plus the `LayerBandsControls` band
+/// view over its "×N"-collapsed stack — exactly what the Details bay renders for a bound sample
+/// (the shared `sampleBandsState`).
+let private sampleViewPanel (model : Model) : IView list =
+    match model.viewedSample with
+    | None -> []
+    | Some id ->
+        match model.samples.tryGetSample id with
+        | Ok (Some s) ->
+            [ Border.create [
+                  workbenchAutomationId WorkbenchIds.sampleViewPanel
+                  Border.child (
+                      StackPanel.create [
+                          StackPanel.orientation Orientation.Vertical
+                          StackPanel.spacing 2.0
+                          StackPanel.children [
+                              TextBlock.create [
+                                  TextBlock.fontWeight FontWeight.SemiBold
+                                  TextBlock.text $"%s{s.name} — %s{(substrateFacetLabel (Some s.substrate))}"
+                              ]
+                              LayerBandsControls.view (sampleBandsState s)
+                          ]
+                      ])
+              ] :> IView ]
+        | Ok None | Error _ -> []
+
+/// The Materials bay content: the shared list surface, then the host-added inline confirm /
+/// message / View-panel rows.
+let private materialsBay (model : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 4.0
+        StackPanel.children (
+            [ MaterialsControls.view (materialsState model) (materialsHandlers dispatch) ]
+            @ materialConfirmRow model dispatch
+            @ materialsMessageRow model
+            @ materialViewPanel model)
+    ] :> IView
+
+/// The Library (samples workbench) bay content.
+let private samplesBay (model : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 4.0
+        StackPanel.children (
+            [ SampleLibraryControls.view (samplesState model) (samplesHandlers dispatch) ]
+            @ sampleConfirmRow model dispatch
+            @ samplesMessageRow model
+            @ sampleViewPanel model)
+    ] :> IView
 
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
@@ -1579,7 +2267,9 @@ let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
       { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch) }
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) }
-      { name = BayNames.library; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
+      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
+      { name = BayNames.materials; content = materialsBay model dispatch }
+      { name = BayNames.library; content = samplesBay model dispatch }
       { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) }
       { name = BayNames.details; content = LayerBandsControls.view (detailsState model) } ]
 

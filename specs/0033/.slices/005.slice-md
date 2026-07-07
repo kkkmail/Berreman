@@ -1,0 +1,15 @@
+# Step 005 — IMPLEMENT_CONTRACT STORE_XDUO_0002 SampleProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0002
+name: SampleProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [4]
+```
+
+**How to implement.** Implement SampleProxy.createInMemory : unit -> SampleProxy closing over a ref Map<SampleId, Sample> seeded from the samples in Library.seedEntries (ElementId.fs:189) - the elevated SampleId is the Map key directly. addSample rejects a duplicate id (DuplicateSampleId), updateSample rejects an unknown id (UnknownSampleId), searchSamples filters by case-insensitive name fragment and the SubstrateKind facet. Mutation stays inside the closure (the IO boundary); the functions are deterministic under test because every entry carries its own id. Unit tests in OpticalConstructor.Tests: add-then-list, update-then-get, remove-then-search round-trips with fixed Guids, plus the duplicate-add and unknown-update rejections.
+
+**Acceptance.** After createInMemory lands, add-then-list, update-then-get and remove-then-search round-trips over the stateful in-memory SampleProxy MUST pass deterministically with fixed Guids and no IO.

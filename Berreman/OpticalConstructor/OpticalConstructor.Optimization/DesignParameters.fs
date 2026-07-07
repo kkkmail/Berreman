@@ -38,7 +38,7 @@ module DesignParameters =
     /// 0 — that bound IS the negative-thickness prohibition (R-3), not a validator.
     let layerThickness (index : int) (upperMeters : float) : DesignParameter =
         {
-            name = sprintf "film[%d].thickness" index
+            name = $"film[%d{index}].thickness"
             getSys =
                 fun (sys : OpticalSystem) (v : double) ->
                     let films =

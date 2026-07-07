@@ -1,4 +1,4 @@
-namespace OpticalConstructor.TestWindows
+namespace OpticalConstructor.Controls
 
 /// Spec 0027 (026) — the renderer-neutral chart data the Experiments bay produces and BOTH the inline
 /// scene chart and the pop-out chart window consume. Domain-neutral (no Berreman types) so it crosses the
@@ -136,7 +136,7 @@ module ChartFont =
 
     /// The size readout text (e.g. "Tick labels: 11 pt").
     let readout (s : ChartFontState) : string =
-        sprintf "%s: %g pt" s.selected.label (selectedSize s)
+        $"%s{s.selected.label}: %g{selectedSize s} pt"
 
 /// Spec 0027 (030) — the pure, renderer-neutral STYLE model for the pop-out chart window: which part of the
 /// chart is SELECTED (header, X / Y axis, legend, or a specific series) and the editable properties of each
@@ -148,13 +148,36 @@ module ChartStyle =
 
     open ExperimentChart
 
-    /// A selectable part of the chart. `Series i` selects the i-th curve.
+    /// Which vertical axis a series (or a Y-axis selection) binds to. Spec 0033 (018): the chart carries
+    /// TWO independent Y axes (ScottPlot's native left and right), so quantities with different scales
+    /// (e.g. n and k) can share one chart without one flattening the other.
+    type AxisSide =
+        | LeftAxis
+        | RightAxis
+
+        /// A human-readable label (the series panel's axis picker item text).
+        member this.label : string =
+            match this with
+            | LeftAxis -> "Left"
+            | RightAxis -> "Right"
+
+    /// The two sides, in display order.
+    let allSides : AxisSide list = [ LeftAxis; RightAxis ]
+
+    /// A selectable part of the chart. `Series i` selects the i-th curve; the two `YAxis` elements format
+    /// the left / right vertical axes independently (spec 0033/018).
     type ChartElement =
         | Header
         | XAxis
-        | YAxis
+        | YAxis of AxisSide
         | Legend
         | Series of int
+
+    /// The axis a range / format / digits mutator targets — X, left Y, or right Y (the tri-state that
+    /// replaced the boolean `isX` flag when the right axis arrived — spec 0033/018).
+    type ChartAxis =
+        | AxisX
+        | AxisY of AxisSide
 
     /// How a number is rendered on an axis / readout (Excel-style). Carries its own digit count.
     type NumberFormat =
@@ -225,25 +248,29 @@ module ChartStyle =
             placement : LegendPlacement
         }
 
-    /// One series' style: visibility, line thickness, colour (`#RRGGBB`), and whether markers (dots) show.
+    /// One series' style: visibility, line thickness, colour (`#RRGGBB`), whether markers (dots) show,
+    /// and which vertical axis (left or right) the series plots against (spec 0033/018).
     type SeriesStyle =
         {
             visible : bool
             thickness : float
             colorHex : string
             showMarkers : bool
+            axisSide : AxisSide
         }
 
     let minThickness : float = 0.5
     let maxThickness : float = 10.0
 
-    /// The whole chart's style plus the selected element and the shared font sizes.
+    /// The whole chart's style plus the selected element and the shared font sizes. The left and right
+    /// Y axes carry INDEPENDENT styles (spec 0033/018).
     type ChartStyleState =
         {
             selected : ChartElement
             font : ChartFont.ChartFontState
             xAxis : AxisStyle
-            yAxis : AxisStyle
+            yAxisLeft : AxisStyle
+            yAxisRight : AxisStyle
             legend : LegendStyle
             series : SeriesStyle list
         }
@@ -255,80 +282,107 @@ module ChartStyle =
     let colorChoices : string list =
         [ "#1E5AC8"; "#DC7814"; "#289646"; "#C81E32"; "#7D3CB4"; "#5A5A5A"; "#000000" ]
 
-    /// The (xMin, xMax, yMin, yMax) bounds of the VISIBLE data, padded a little so points do not sit on the
-    /// frame. Falls back to a unit box when there is no data (so the axes never collapse). Pure — this is
-    /// what initializes the x-range to "what's in the data" (spec 030) rather than a default 0…1000.
-    let dataBounds (series : ChartSeries list) : float * float * float * float =
-        let pts = series |> List.collect (fun s -> s.points)
-        match pts with
-        | [] -> 0.0, 1.0, 0.0, 1.0
-        | _ ->
-            let xs = pts |> List.map fst
-            let ys = pts |> List.map snd
-            let xlo, xhi = List.min xs, List.max xs
-            let ylo, yhi = List.min ys, List.max ys
-            // Pad by 3 % of the span (or a unit when the span is degenerate) so the curve clears the frame.
-            let pad lo hi =
-                let span = hi - lo
-                if span > 1e-12 then let p = span * 0.03 in lo - p, hi + p
-                else lo - 0.5, hi + 0.5
-            let xlo', xhi' = pad xlo xhi
-            let ylo', yhi' = pad ylo yhi
-            xlo', xhi', ylo', yhi'
+    /// The padded [lo, hi] view ranges of a chart's data: ONE shared x-range (all series share the x grid)
+    /// and INDEPENDENT left / right y-ranges, each computed from only the series assigned to that side —
+    /// a right-axis series must not stretch the left axis, and vice versa (spec 0033/018).
+    type ChartBounds =
+        {
+            x : float * float
+            yLeft : float * float
+            yRight : float * float
+        }
 
-    /// The initial style for a chart: both axes auto-fit to the data (general format), the legend visible at
-    /// the upper-right, one default-styled series per curve, and the default font sizes.
+    /// The padded [lo, hi] range of a value list: 3 % of the span (or a half-unit when the span is
+    /// degenerate) so the curve clears the frame; a unit box when there are no values (so an axis never
+    /// collapses). Pure — this is what initializes each axis to "what's in the data" (spec 030) rather
+    /// than a default 0…1000.
+    let private paddedRange (values : float list) : float * float =
+        match values with
+        | [] -> 0.0, 1.0
+        | _ ->
+            let lo, hi = List.min values, List.max values
+            let span = hi - lo
+            if span > 1e-12 then let p = span * 0.03 in lo - p, hi + p
+            else lo - 0.5, hi + 0.5
+
+    /// The bounds of the given (series, axis side) pairs: x over ALL series, each Y side over only its
+    /// own series (unit fallback per side, so an unused right axis gets a finite box).
+    let dataBounds (series : (ChartSeries * AxisSide) list) : ChartBounds =
+        let pointsOn (side : AxisSide) : (float * float) list =
+            series |> List.filter (fun (_, sd) -> sd = side) |> List.collect (fun (s, _) -> s.points)
+        {
+            x = paddedRange (series |> List.collect (fun (s, _) -> s.points) |> List.map fst)
+            yLeft = paddedRange (pointsOn LeftAxis |> List.map snd)
+            yRight = paddedRange (pointsOn RightAxis |> List.map snd)
+        }
+
+    /// The initial style for a chart: all three axes auto-fit to the data (general format; every series
+    /// starts on the LEFT axis, so the right axis seeds to the unit fallback), the legend visible at the
+    /// upper-right, one default-styled series per curve, and the default font sizes.
     let defaultState (chart : ExperimentChart) : ChartStyleState =
-        let xlo, xhi, ylo, yhi = dataBounds chart.series
-        let axis lo hi = { auto = true; min = lo; max = hi; format = GeneralFormat }
+        let bounds = dataBounds (chart.series |> List.map (fun s -> s, LeftAxis))
+        let axis (lo, hi) = { auto = true; min = lo; max = hi; format = GeneralFormat }
         let seriesStyles =
             chart.series
             |> List.mapi (fun i _ ->
-                { visible = true; thickness = 1.5; colorHex = List.item (i % List.length defaultColors) defaultColors; showMarkers = false })
+                { visible = true; thickness = 1.5; colorHex = List.item (i % List.length defaultColors) defaultColors; showMarkers = false; axisSide = LeftAxis })
         {
             selected = (match chart.series with [] -> Header | _ -> Series 0)
             font = ChartFont.defaultState
-            xAxis = axis xlo xhi
-            yAxis = axis ylo yhi
+            xAxis = axis bounds.x
+            yAxisLeft = axis bounds.yLeft
+            yAxisRight = axis bounds.yRight
             legend = { visible = true; placement = UpperRight }
             series = seriesStyles
         }
 
-    /// The selectable elements offered by the window's element picker: the four fixed parts then one per
-    /// series (labelled by the series' name, supplied by the caller).
+    /// The selectable elements offered by the window's element picker: the five fixed parts (header, the
+    /// X axis, the two Y axes, the legend) then one per series (labelled by the series' name, supplied by
+    /// the caller).
     let elements (seriesCount : int) : ChartElement list =
-        [ Header; XAxis; YAxis; Legend ] @ [ for i in 0 .. seriesCount - 1 -> Series i ]
+        [ Header; XAxis; YAxis LeftAxis; YAxis RightAxis; Legend ] @ [ for i in 0 .. seriesCount - 1 -> Series i ]
 
     /// A human label for an element (the series name is supplied since the model does not hold it).
     let elementLabel (seriesName : int -> string) (e : ChartElement) : string =
         match e with
         | Header -> "Header"
         | XAxis -> "X axis"
-        | YAxis -> "Y axis"
+        | YAxis LeftAxis -> "Y axis (left)"
+        | YAxis RightAxis -> "Y axis (right)"
         | Legend -> "Legend"
-        | Series i -> sprintf "Line: %s" (seriesName i)
+        | Series i -> $"Line: %s{seriesName i}"
 
     // -- selection + per-element updates (all pure, all clamped) --
 
     let selectElement (e : ChartElement) (s : ChartStyleState) : ChartStyleState = { s with selected = e }
 
-    let private mapAxis (isX : bool) (f : AxisStyle -> AxisStyle) (s : ChartStyleState) : ChartStyleState =
-        if isX then { s with xAxis = f s.xAxis } else { s with yAxis = f s.yAxis }
+    /// The style of the given axis (the tri-state lookup the mutators and the window's axis panel share).
+    let axisStyleOf (axis : ChartAxis) (s : ChartStyleState) : AxisStyle =
+        match axis with
+        | AxisX -> s.xAxis
+        | AxisY LeftAxis -> s.yAxisLeft
+        | AxisY RightAxis -> s.yAxisRight
 
-    let setAxisAuto (isX : bool) (auto : bool) (s : ChartStyleState) : ChartStyleState =
-        mapAxis isX (fun a -> { a with auto = auto }) s
+    let private mapAxis (axis : ChartAxis) (f : AxisStyle -> AxisStyle) (s : ChartStyleState) : ChartStyleState =
+        match axis with
+        | AxisX -> { s with xAxis = f s.xAxis }
+        | AxisY LeftAxis -> { s with yAxisLeft = f s.yAxisLeft }
+        | AxisY RightAxis -> { s with yAxisRight = f s.yAxisRight }
 
-    let setAxisMin (isX : bool) (v : float) (s : ChartStyleState) : ChartStyleState =
-        mapAxis isX (fun a -> { a with min = v; auto = false }) s
+    let setAxisAuto (axis : ChartAxis) (auto : bool) (s : ChartStyleState) : ChartStyleState =
+        mapAxis axis (fun a -> { a with auto = auto }) s
 
-    let setAxisMax (isX : bool) (v : float) (s : ChartStyleState) : ChartStyleState =
-        mapAxis isX (fun a -> { a with max = v; auto = false }) s
+    let setAxisMin (axis : ChartAxis) (v : float) (s : ChartStyleState) : ChartStyleState =
+        mapAxis axis (fun a -> { a with min = v; auto = false }) s
 
-    let setAxisFormat (isX : bool) (fmt : NumberFormat) (s : ChartStyleState) : ChartStyleState =
-        mapAxis isX (fun a -> { a with format = fmt }) s
+    let setAxisMax (axis : ChartAxis) (v : float) (s : ChartStyleState) : ChartStyleState =
+        mapAxis axis (fun a -> { a with max = v; auto = false }) s
 
-    let bumpAxisDecimals (isX : bool) (delta : int) (s : ChartStyleState) : ChartStyleState =
-        mapAxis isX (fun a -> { a with format = withDecimals (a.format.decimals + delta) a.format }) s
+    let setAxisFormat (axis : ChartAxis) (fmt : NumberFormat) (s : ChartStyleState) : ChartStyleState =
+        mapAxis axis (fun a -> { a with format = fmt }) s
+
+    let bumpAxisDecimals (axis : ChartAxis) (delta : int) (s : ChartStyleState) : ChartStyleState =
+        mapAxis axis (fun a -> { a with format = withDecimals (a.format.decimals + delta) a.format }) s
 
     let setLegendVisible (v : bool) (s : ChartStyleState) : ChartStyleState =
         { s with legend = { s.legend with visible = v } }
@@ -351,6 +405,10 @@ module ChartStyle =
     let setSeriesMarkers (i : int) (v : bool) (s : ChartStyleState) : ChartStyleState =
         mapSeries i (fun st -> { st with showMarkers = v }) s
 
+    /// Assign series `i` to the left or right Y axis (spec 0033/018).
+    let setSeriesAxisSide (i : int) (side : AxisSide) (s : ChartStyleState) : ChartStyleState =
+        mapSeries i (fun st -> { st with axisSide = side }) s
+
     /// Bump the font size of whichever font target `target` names (the panel picks the target from the
     /// selected element — Header→Title, an axis→its labels/ticks, Legend→Legend).
     let bumpFont (target : ChartFont.ChartFontTarget) (delta : float) (s : ChartStyleState) : ChartStyleState =
@@ -360,7 +418,7 @@ module ChartStyle =
     let seriesStyleOf (i : int) (s : ChartStyleState) : SeriesStyle =
         match List.tryItem i s.series with
         | Some st -> st
-        | None -> { visible = true; thickness = 1.5; colorHex = List.head defaultColors; showMarkers = false }
+        | None -> { visible = true; thickness = 1.5; colorHex = List.head defaultColors; showMarkers = false; axisSide = LeftAxis }
 
     // -- polar representation (spec 030) --
 

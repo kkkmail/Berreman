@@ -4,7 +4,9 @@
 /// a nm/µm/Å/eV/cm⁻¹ unit toggle implemented by the `Units` seam (D.2) at the chart
 /// boundary ONLY: the underlying `Range<WaveLength>` and the engine data stay in
 /// canonical meters (the toggle relabels/rescales the axis, it never re-stores data,
-/// §D.11 / AC-D7).
+/// §D.11 / AC-D7). The pure spectral-axis helpers (`axisLabel` / `spectralRange` /
+/// `axisTicks`) were REAL-MOVED to `OpticalConstructor.Domain.SpectralAxis`
+/// (spec 0033 step 019) so non-Ui chart hosts share them; callers point there.
 module OpticalConstructor.Ui.MaterialPreview
 
 open Berreman.Fields
@@ -13,35 +15,6 @@ open Analytics.Variables
 open Analytics.Charting
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
-
-/// Human-facing axis label for a spectral display unit. Display intent only.
-let axisLabel (u : UnitOfMeasure) : string =
-    match u with
-    | Meter -> "λ (m)"
-    | Millimeter -> "λ (mm)"
-    | Micrometer -> "λ (µm)"
-    | Nanometer -> "λ (nm)"
-    | Angstrom -> "λ (Å)"
-    | ElectronVolt -> "E (eV)"
-    | Wavenumber -> "ν̃ (cm⁻¹)"
-
-/// Build the canonical-meter `Range<WaveLength>` from user endpoints entered in unit
-/// `u` (§D.2 `toWaveLength`). The stored range is always canonical meters, so an EUV
-/// user may enter eV and a green-laser user nm without manual conversion (R-6).
-let spectralRange (u : UnitOfMeasure) (startValue : float) (endValue : float) (points : int) : Range<WaveLength> =
-    {
-        startValue = toWaveLength u startValue
-        endValue = toWaveLength u endValue
-        numberOfPoints = points
-    }
-
-/// Axis tick positions in the display unit (§D.2 `wavelengthToUnit`). RELABEL/RESCALE
-/// only — the underlying `Range<WaveLength>` and the engine data stay in meters (§D.11).
-let axisTicks (u : UnitOfMeasure) (range : Range<WaveLength>) : float list =
-    let s = range.startValue.value
-    let e = range.endValue.value
-    let n = max 1 range.numberOfPoints
-    [ for i in 0 .. range.numberOfPoints -> fromMeters u (s + (e - s) * (float i) / (float n)) ]
 
 /// The `(properties, range)` inputs handed to the engine dispersion plots. The
 /// spectral-axis display unit is passed THROUGH unchanged: it MUST NOT alter the

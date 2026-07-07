@@ -23,6 +23,10 @@ module LayerBandsControlsTests =
     let private bind (i : int) (entryId : string) (m : Model) : Model =
         { m with selection = ElementSelected i } |> update (BindValueId entryId)
 
+    /// The Guid-string entry id of the seeded 41-layer multilayer these tests bind (referenced
+    /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
+    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId
+
     // ============================ pure control contract ============================
 
     [<Fact>]
@@ -42,6 +46,8 @@ module LayerBandsControlsTests =
 
     [<Fact>]
     let ``the ribbon offers the Details bay LAST, after Experiments`` () =
+        // [spec 0033 gap G2 reorder deferred — reordering the ribbon panes breaks the Library bay's
+        // sample-row layout in the headless harness; see the implementation log.]
         Assert.Equal(BayNames.details, List.last BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore
@@ -60,17 +66,17 @@ module LayerBandsControlsTests =
         let m =
             initMain ()
             |> update (AddElement Sample)             // index 2
-            |> bind 2 "sample-multilayer-qw"
+            |> bind 2 multilayerQwId
         let bays = mainBays m ignore
         Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
         // Re-derive the band view through the same public seam the host uses (the ribbon bay's content is the
         // LayerBandsControls.view of detailsState); assert the band shape via the rendered Details bay below.
         // Here assert that the bound entry resolves to a multilayer whose description spells out the stack.
-        match m.library.tryGetEntry "sample-multilayer-qw" with
+        match m.library.tryGetEntry multilayerQwId with
         | Ok (Some entry) -> Assert.Contains("layer", entry.fullDescription)
-        | other -> Assert.Fail(sprintf "expected the multilayer entry, got %A" other)
+        | other -> Assert.Fail($"expected the multilayer entry, got %A{other}")
         // The bound element carries the multilayer valueId.
-        Assert.Equal(Some "sample-multilayer-qw", (elem 2 m).placement.valueId)
+        Assert.Equal(Some multilayerQwId, (elem 2 m).placement.valueId)
 
     [<Fact>]
     let ``detailsState shows a hint when nothing is selected and nothing bound`` () =
@@ -131,7 +137,7 @@ module LayerBandsControlsTests =
             let mutable model =
                 initMain ()
                 |> update (AddElement Sample)               // index 2, selected
-                |> update (BindValueId "sample-multilayer-qw")
+                |> update (BindValueId multilayerQwId)
                 |> update (SelectBay BayNames.details)
             let dispatch (msg : Msg) = model <- update msg model
             let window = Window(Width = 980.0, Height = canvasHeight + 360.0)

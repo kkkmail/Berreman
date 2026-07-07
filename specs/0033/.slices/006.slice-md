@@ -1,0 +1,15 @@
+# Step 006 — IMPLEMENT_CONTRACT STORE_XDUO_0001 MaterialProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0001
+name: MaterialProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [3, 5]
+```
+
+**How to implement.** Implement MaterialProxy.createInMemory taking samplesReferencing : MaterialId -> Sample list and closing over a ref Map<MaterialId, MaterialEntry> seeded from MaterialLibrary.builtInEntries (MaterialLibrary.fs:79). searchMaterials reuses the pure byCategory / byNameContains filters (MaterialLibrary.fs:53,57) plus the DispersionFilter facet (an entry is dispersive when its epsWithDisp is the func case). removeMaterial returns Error MaterialStillReferenced with a reason naming the referencing samples whenever samplesReferencing returns any - it never cascades and never silently deletes; addMaterial hard-blocks a duplicate id (DuplicateMaterialId). At composition the referencing lookup is backed by the SampleProxy store (step 5). Unit tests: add/update/remove/search round-trips, the referenced-material hard block, and the duplicate-add rejection.
+
+**Acceptance.** After createInMemory lands, removeMaterial on a material referenced by a seeded sample MUST return Error MaterialStillReferenced and leave the store unchanged, while removing an unreferenced material succeeds - with the round-trip and search-facet tests passing.

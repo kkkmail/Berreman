@@ -1,0 +1,50 @@
+{
+  "STORE_XDUO_0001": {
+    "name": "MaterialProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0002": {
+    "name": "SampleProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0001": {
+    "name": "MaterialsControls",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Controls",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0002": {
+    "name": "SampleLibraryControls",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Controls",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0003": {
+    "name": "SampleEditorWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.TestWindows",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0004": {
+    "name": "MaterialEditorWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.TestWindows",
+    "status": "active",
+    "formerNames": []
+  }
+}

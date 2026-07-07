@@ -1,0 +1,16 @@
+# Step 004 — ADD_CONTRACT STORE_XDUO_0002 SampleProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0002
+name: SampleProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [2]
+```
+
+**How to implement.** In OpticalConstructor.Domain, beside Library, declare the mutating samples write-seam with the same functional-proxy shape as step 3: SampleQuery (text : string, substrate : SubstrateKind option - SubstrateKind at ElementId.fs:35); SampleError = UnknownSampleId | DuplicateSampleId | InvalidSample, each carrying reason : string; and the [<ReferenceEquality>] record SampleProxy with listSamples : unit -> Result<Sample list, SampleError>, searchSamples : SampleQuery -> Result<Sample list, SampleError>, tryGetSample : SampleId -> Result<Sample option, SampleError>, addSample : Sample -> Result<unit, SampleError>, updateSample : Sample -> Result<unit, SampleError>, removeSample : SampleId -> Result<unit, SampleError>. Provide a mock (an inline stub record over a fixed sample list) plus a mock-driven test in OpticalConstructor.Tests exercising every field.
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub SampleProxy and exercise all six functions through their exact signatures, and it passes.

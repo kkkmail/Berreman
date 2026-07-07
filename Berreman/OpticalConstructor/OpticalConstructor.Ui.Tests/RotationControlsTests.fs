@@ -195,8 +195,8 @@ module RotationControlsTests =
                         Dispatcher.UIThread.RunJobs()
                         window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
                         Dispatcher.UIThread.RunJobs()
-                    else Assert.Fail(sprintf "%s has no on-screen position" name)
-                | None -> Assert.Fail(sprintf "%s not found" name)
+                    else Assert.Fail($"%s{name} has no on-screen position")
+                | None -> Assert.Fail($"%s{name} not found")
 
             // Reset → arms; the SAME button now reads "Yes" and clicking it CONFIRMS (one reset, no cancel).
             click RotationControls.UiIds.reset

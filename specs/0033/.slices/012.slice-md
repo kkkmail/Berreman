@@ -1,0 +1,11 @@
+# Step 012 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [11]
+```
+
+**How to implement.** Add ForouhiBloomer and BrendelBormann cases to DispersionModel following the existing coefficient-record convention (coefficients + wavelengthUnit + thermoOptic option, as the records at DispersionModels.fs:42-115): Forouhi-Bloomer's amorphous n(E)/k(E) five-parameter form and Brendel-Bormann's Gaussian-broadened (Voigt) oscillator epsilon(E). Implement their evaluation in the same private baseIndex dispatch the other models use (:156) and lower both via toEpsAxis as ComplexEps wrapping evaluate. Tests reproduce documented reference values for one published coefficient set each (Forouhi-Bloomer 1986; Rakic et al. 1998 Au - references in the steering .spec-md) within tolerance.
+
+**Acceptance.** After the step, evaluate for ForouhiBloomer and BrendelBormann MUST reproduce documented reference values for a published coefficient set within tolerance in OpticalConstructor.Tests.

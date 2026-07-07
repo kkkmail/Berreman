@@ -61,7 +61,7 @@ let unitsGlossary : GlossaryEntry list =
         { term = "Wavelength (λ)"
           definition = "The vacuum wavelength of the light. Stored canonical-SI in meters via WaveLength.value; entered/displayed in nm, µm, Å, or m at the UI boundary only." }
         { term = "Electron-volt (eV)"
-          definition = sprintf "Photon energy. E[eV] = %g / λ[nm] (Domain.Units.evNmProduct); converted through Units.toMeters/fromMeters ElectronVolt — no second implementation." Units.evNmProduct }
+          definition = $"Photon energy. E[eV] = %g{Units.evNmProduct} / λ[nm] (Domain.Units.evNmProduct); converted through Units.toMeters/fromMeters ElectronVolt — no second implementation." }
         { term = "Wavenumber (cm⁻¹)"
           definition = "Spatial frequency ν̃ = 1 / λ. ν̃[cm⁻¹] = 1e7 / λ[nm]; λ[nm] = 1e7 / ν̃[cm⁻¹], via Domain.Units.toMeters/fromMeters Wavenumber." }
         { term = "Thickness"

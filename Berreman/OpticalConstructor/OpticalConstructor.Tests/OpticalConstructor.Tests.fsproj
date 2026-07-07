@@ -79,6 +79,24 @@
              ideal analyzer after an ideal input over an identity sample), the ideal-polarizer Stokes/
              Mueller constants, the engine sample-MM sanity bound, and the ellipsometer Ψ/Δ round-trip. -->
         <Compile Include="PropagationTests.fs" />
+        <!-- Spec 0033 step 003 (ADD_CONTRACT STORE_XDUO_0001): the mutating materials write-seam —
+             DispersionFilter/MaterialQuery, the extended MaterialError, and the mock/stub MaterialProxy
+             exercised through all six functions' exact signatures. -->
+        <Compile Include="MaterialProxyTests.fs" />
+        <!-- Spec 0033 step 004 (ADD_CONTRACT STORE_XDUO_0002): the mutating samples write-seam —
+             SampleQuery/SampleError and the mock/stub SampleProxy exercised through all six
+             functions' exact signatures. -->
+        <Compile Include="SampleProxyTests.fs" />
+        <!-- Spec 0033 step 013 (AC-B7): the MaterialComplexity edit-model option tree —
+             toProperties vacuum defaults, Polder/PlanarActive assembly through
+             toMuWithDisp/toRhoWithDisp, and the re-expressed built-in seeds pinned against
+             the original engine presets at reference wavelengths. -->
+        <Compile Include="MaterialComplexityTests.fs" />
+        <!-- Spec 0033 step 021: the pure SampleStackEditor edit model over SampleStructure —
+             every message arm (selection, per-material selection, thickness/material/orientation
+             edits, remove, moves, MakeRepeatBlock, SetRepeatCount) without a window, plus both
+             acceptance criteria and the typed repeat-count rejections. -->
+        <Compile Include="SampleStackEditorTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -86,6 +104,35 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="fixtures\sample-nk.csv">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <!-- Spec 0033 step 025: one minimal RII-style page per dispersion formula
+             (1-7 supported and lowered to editable term data; 8/9 typed unsupported). -->
+        <Content Include="fixtures\formula1.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula2.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula3.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula4.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula5.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula6.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula7.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula8.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="fixtures\formula9.yml">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

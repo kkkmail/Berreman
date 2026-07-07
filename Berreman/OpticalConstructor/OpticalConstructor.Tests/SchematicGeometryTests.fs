@@ -77,11 +77,15 @@ module SchematicGeometryTests =
 
     [<Fact>]
     let ``AC-J1 material colour is a deterministic pure function of the stable id`` () =
+        // The curated identity keys are the built-in MaterialIds' Guid string forms (spec 0033
+        // step 002); synthetic per-layer keys still hash deterministically.
+        let silicon = string OpticalConstructor.Domain.MaterialLibrary.MaterialIds.silicon.value
+        let glass152 = string OpticalConstructor.Domain.MaterialLibrary.MaterialIds.glass152.value
         // Same id → same colour across redraws.
-        Assert.Equal(Schematic.colorForMaterial "silicon", Schematic.colorForMaterial "silicon")
+        Assert.Equal(Schematic.colorForMaterial silicon, Schematic.colorForMaterial silicon)
         // A curated id maps to its static colour entry, distinct from another material.
-        Assert.NotEqual(Schematic.colorForMaterial "silicon", Schematic.colorForMaterial "glass-1.52")
-        // An unknown id is still deterministic (stable hash fallback, not GetHashCode).
+        Assert.NotEqual(Schematic.colorForMaterial silicon, Schematic.colorForMaterial glass152)
+        // An unknown / synthetic key is still deterministic (stable hash fallback, not GetHashCode).
         Assert.Equal(Schematic.colorForMaterial "made-up-id", Schematic.colorForMaterial "made-up-id")
 
     // ----------------------------------------------------------------- layout
@@ -97,7 +101,7 @@ module SchematicGeometryTests =
                 substrate = Some (Wedge { layer = film (Thickness.mm 1.0<mm>); angle = WedgeAngle (Angle.degree 2.0) })
                 lower = OpticalProperties.vacuum
             }
-        let bands = Schematic.layout Nanometer (fun i -> sprintf "m%d" i) sys
+        let bands = Schematic.layout Nanometer (fun i -> $"m%d{i}") sys
         // upper + 2 films + substrate + lower = 5 bands.
         Assert.Equal(5, List.length bands)
         // The substrate band carries the wedge shape; the half-spaces and films do not.

@@ -394,8 +394,7 @@ let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handler
 
 let private readoutText (m : Model) : string =
     let mirror = List.item 1 m.elements
-    sprintf "Mirror  R1 %.0f°   R2 %.0f°   R3 %.0f°   ·   the detector is snapped to the REFLECTED beam (rotate R2/R3 to steer it; R1 does nothing)"
-        mirror.r1.degrees mirror.r2.degrees mirror.r3.degrees
+    $"Mirror  R1 %.0f{mirror.r1.degrees}°   R2 %.0f{mirror.r2.degrees}°   R3 %.0f{mirror.r3.degrees}°   ·   the detector is snapped to the REFLECTED beam (rotate R2/R3 to steer it; R1 does nothing)"
 
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [

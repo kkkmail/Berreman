@@ -1,9 +1,12 @@
 namespace OpticalConstructor.Domain
 
+open System                     // Guid (the SampleId backing + the fixed seed literals)
 open Berreman.Constants         // the nm / mm units of measure
+open Berreman.Geometry          // RotationConvention / Angle / Rotation (CrystalOrientation, spec 0033 step 020)
 open Berreman.Fields            // WaveLength
 open Berreman.Media             // Thickness
 open OpticalConstructor.Domain.Placement   // CatalogueKind
+open OpticalConstructor.Domain.MaterialLibrary   // MaterialId / MaterialIds (spec 0033 step 002); the materials store seam (step 006)
 
 /// Spec 0027 (024) — the Library domain: an elevated, serializable `ElementId` (the stable
 /// table-element identity, distinct from `valueId`), the kind-constrained Library presets
@@ -30,6 +33,21 @@ module Library =
     /// unambiguous call site used by the host).
     let elementId (s : string) : ElementId = ElementId s
 
+    /// Elevated sample identity (spec 0033 step 002): a Guid-backed single-case DU — no raw string
+    /// sample id appears in a domain record. `create` MINTS a fresh id; the seeded samples parse FIXED
+    /// literal Guids (`SeedSamples`) so the grouping trees and the tests stay deterministic across
+    /// runs. The Selector `valueId` binding seam stays a string: `LibraryEntry.entryId` carries the
+    /// Guid STRING form.
+    type SampleId =
+        | SampleId of Guid
+
+        member this.value = let (SampleId g) = this in g
+        static member create () : SampleId = Guid.NewGuid() |> SampleId
+
+    /// Module-level mint helper for `SampleId` (the case name and type name collide — the same
+    /// collision `elementId` documents; this is the unambiguous call site for qualified callers).
+    let newSampleId () : SampleId = SampleId.create ()
+
     /// Whether a sample's geometry is a thin film, a thick plate, or a wedge (spec §2a). A DU, not a
     /// bool/enum, so the sample editor can add geometries case-by-case (compiler-guided).
     type SubstrateKind =
@@ -37,15 +55,92 @@ module Library =
         | Plate
         | Wedge
 
-    /// A cut-out plate (spec §2a): a material cut to a thickness/plate geometry → Layer(s)/an
-    /// `OpticalSystem` (the mapping to the engine is Phase 3). `materialId` keys into the existing
-    /// `MaterialLibrary`.
+    /// How a layer's crystal tensors are oriented relative to the lab frame (spec 0033 step 020):
+    /// `PrimaryAxes` keeps the material's own principal axes (the identity — tensors exactly as
+    /// stored); `EulerRotation` orients them by Euler angles under an explicit engine
+    /// `RotationConvention`. This is DATA on the layer — nothing is stored rotated; the step-1
+    /// system builder applies the rotation via `Layer.rotate` when it assembles the engine system.
+    type CrystalOrientation =
+        | PrimaryAxes
+        | EulerRotation of convention : RotationConvention * phi : Angle * theta : Angle * psi : Angle
+
+        /// The engine rotation this orientation denotes: `PrimaryAxes` is the identity;
+        /// `EulerRotation` builds `Rotation.create convention phi theta psi`. The named engine
+        /// shortcuts (`Rotation.rotatePiX`, `Rotation.rotateHalfPiY`, …) remain available for tests.
+        member this.toRotation : Rotation =
+            match this with
+            | PrimaryAxes -> RealMatrix3x3.identity |> Rotation
+            | EulerRotation (convention, phi, theta, psi) -> Rotation.create convention phi theta psi |> Rotation
+
+    /// One physical layer of a sample's stack (spec 0033 step 001 — the stack is DATA): a material
+    /// reference plus a thickness, plus the crystal orientation of its tensors (spec 0033 step 020 —
+    /// `PrimaryAxes` unless the sample says otherwise; the rotation is applied at system-build time,
+    /// never stored). `materialId` is the elevated `MaterialLibrary.MaterialId`
+    /// (spec 0033 step 002) — the same key `resolveMaterialWithDisp` looks up.
+    type SampleLayer =
+        {
+            materialId : MaterialId
+            thickness : Thickness
+            orientation : CrystalOrientation
+        }
+
+    /// A repeated unit cell (period) of layers — the DBR / Bragg / EUV-Mo–Si shape. `cell` is the
+    /// ordered unit cell; `count` the number of periods.
+    type PeriodGroup =
+        {
+            cell : SampleLayer list
+            count : int
+        }
+
+    /// One item of a sample's film stack: a single layer, or a repeated period group.
+    type StackItem =
+        | SingleLayer of SampleLayer
+        | Repeated of PeriodGroup
+
+    /// A sample's full material structure (spec 0033 step 001): the film stack (top to bottom), an
+    /// optional thick substrate plate, and the lower half-space material (`None` = vacuum). This is the
+    /// DATA the engine mapping expands — no per-sample-id branching anywhere downstream.
+    type SampleStructure =
+        {
+            films : StackItem list
+            substrate : SampleLayer option
+            lower : MaterialId option
+        }
+
+        /// The flattened film layers in order — each `Repeated` expands to `count` copies of its cell
+        /// (mirrors `RepeatBuilder.expand`: `List.replicate count cell |> List.concat`). Pure.
+        member this.expandedFilms : SampleLayer list =
+            this.films
+            |> List.collect (fun item ->
+                match item with
+                | SingleLayer l -> [ l ]
+                | Repeated g -> List.replicate g.count g.cell |> List.concat)
+
+        /// Every material id the structure references (spec 0033 step 006): each film layer's
+        /// material (a `Repeated` group's cell counted once — repetition adds no new
+        /// reference), the substrate plate's material, and the lower half-space material.
+        /// Pure — the referencing lookup `MaterialProxy.removeMaterial` consults is built
+        /// over this (`samplesReferencing`).
+        member this.referencedMaterials : Set<MaterialId> =
+            let filmMaterialIds =
+                this.films
+                |> List.collect (fun item ->
+                    match item with
+                    | SingleLayer l -> [ l.materialId ]
+                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId))
+            let substrateMaterialIds =
+                this.substrate |> Option.toList |> List.map (fun l -> l.materialId)
+            let lowerMaterialIds = this.lower |> Option.toList
+            filmMaterialIds @ substrateMaterialIds @ lowerMaterialIds |> Set.ofList
+
+    /// A cut-out plate (spec §2a): a material structure cut to a plate / thin-film geometry → Layer(s)/an
+    /// `OpticalSystem` (the mapping to the engine is Phase 3). The `structure` is the material facet
+    /// (what the sample is made of, as data); `substrate` stays the geometry facet.
     type Sample =
         {
-            id : string
+            id : SampleId
             name : string
-            materialId : string
-            thickness : Thickness
+            structure : SampleStructure
             substrate : SubstrateKind
             /// A human-readable description of what the sample IS — materials + thicknesses + stack —
             /// shown in the Details element-view and the Library confirm step. Multilayer samples spell
@@ -96,10 +191,12 @@ module Library =
         | DetectorItem of DetectorPreset
         | PolarizerItem of PolarizerPreset
 
-        /// The entry id (== the `valueId` written onto the bound table element).
+        /// The entry id (== the `valueId` written onto the bound table element). A sample's elevated
+        /// `SampleId` crosses this seam as its Guid STRING form (spec 0033 step 002) so the Selector
+        /// `valueId` binding stays a plain string.
         member this.entryId : string =
             match this with
-            | SampleItem s -> s.id
+            | SampleItem s -> string s.id.value
             | SourceItem s -> s.id
             | DetectorItem d -> d.id
             | PolarizerItem p -> p.id
@@ -120,7 +217,7 @@ module Library =
             | SampleItem s -> s.description
             | SourceItem s ->
                 let wNm = s.waveLength.value / nmToMeter / oneNanometer
-                sprintf "Monochromatic light source at %g nm." wNm
+                $"Monochromatic light source at %g{wNm} nm."
             | DetectorItem d ->
                 match d.kind with
                 | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
@@ -183,110 +280,233 @@ module Library =
             tryGetEntry : string -> Result<LibraryEntry option, LibraryError>
         }
 
+    /// A samples-library search query (spec 0033 step 004): a case-insensitive name fragment
+    /// (empty matches all) and an optional `SubstrateKind` facet. The query is DATA, so the
+    /// samples panel drives one search seam (`SampleProxy.searchSamples`) instead of composing
+    /// ad-hoc filter calls — the `MaterialQuery` convention (`MaterialLibrary.fs`).
+    type SampleQuery =
+        {
+            text : string
+            substrate : SubstrateKind option
+        }
+
+        /// The match-everything query (a search UI's initial state).
+        static member empty : SampleQuery =
+            {
+                text = ""
+                substrate = None
+            }
+
+    /// The samples write-seam error channel (errors as values; each case carries a diagnostic
+    /// `reason` — a bare error case is useless in a log): an unknown id on lookup / update /
+    /// remove, adding a sample under an id the library already holds, and rejecting a
+    /// malformed sample.
+    type SampleError =
+        | UnknownSampleId of reason : string
+        | DuplicateSampleId of reason : string
+        | InvalidSample of reason : string
+
+    /// The mutating samples write-seam (spec 0033 steps 004/005, contract STORE_XDUO_0002 —
+    /// IMPLEMENTED lifecycle): the same functional-proxy shape as step 003's `MaterialProxy`
+    /// (`MaterialLibrary.fs`) — a record of camelCase `Result`-returning functions; a test
+    /// substitutes a stub of the SAME shape. Function-valued fields have no structural equality,
+    /// so the proxy compares by reference — a host model holding one keeps its (Elmish-required)
+    /// equality. The real, stateful in-memory store behind this surface is
+    /// `SampleProxy.createInMemory` (declared as a type augmentation below `seedEntries`, which
+    /// seeds it).
+    [<ReferenceEquality>]
+    type SampleProxy =
+        {
+            listSamples : unit -> Result<Sample list, SampleError>
+            searchSamples : SampleQuery -> Result<Sample list, SampleError>
+            tryGetSample : SampleId -> Result<Sample option, SampleError>
+            addSample : Sample -> Result<unit, SampleError>
+            updateSample : Sample -> Result<unit, SampleError>
+            removeSample : SampleId -> Result<unit, SampleError>
+        }
+
+    /// A single-layer thin-film structure between vacuum (the common seed shape).
+    let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
+        {
+            films = [ SingleLayer { materialId = materialId; thickness = thickness; orientation = PrimaryAxes } ]
+            substrate = None
+            lower = None
+        }
+
+    /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer).
+    let private plateStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
+        {
+            films = []
+            substrate = Some { materialId = materialId; thickness = thickness; orientation = PrimaryAxes }
+            lower = None
+        }
+
+    /// λ/4 film thicknesses of the 600 nm quarter-wave stack (glass n = 1.52; vacuum n = 1).
+    let private qwGlassThickness : Thickness = Thickness.nm ((600.0 / 1.52 / 4.0) * oneNanometer)
+    let private qwVacuumThickness : Thickness = Thickness.nm ((600.0 / 1.00 / 4.0) * oneNanometer)
+
+    /// λ/4 at 10.6 nm — each EUV Mo/Si layer (2.65 nm, from MultilayerThinFilm_EUV.fsx).
+    let private euvLayerThickness : Thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
+
+    /// The seeded samples (spec §2a), let-bound so `seedEntries`, the grouping tree, and the tests
+    /// all reference the SAME values programmatically — the id literals are never repeated (spec 0033
+    /// step 002). Each id is a FIXED literal Guid parsed at seed construction, deterministic across
+    /// runs; a new seeded sample adds a new literal here — seed construction never calls
+    /// `SampleId.create`.
+    module SeedSamples =
+
+        let glassPlate1mm : Sample =
+            {
+                id = Guid.Parse "a8ceb21b-0719-4553-8f07-e782cb206800" |> SampleId
+                name = "Glass plate (n=1.52, 1 mm)"
+                structure = plateStructure MaterialIds.glass152 (Thickness.mm 1.0<mm>)
+                substrate = Plate
+                description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
+            }
+
+        let glassPlate2mm : Sample =
+            {
+                id = Guid.Parse "962a3eff-4c25-467e-9739-a5ff8922cac3" |> SampleId
+                name = "Glass plate (n=1.52, 2 mm)"
+                structure = plateStructure MaterialIds.glass152 (Thickness.mm 2.0<mm>)
+                substrate = Plate
+                description = "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
+            }
+
+        let glassFilm600 : Sample =
+            {
+                id = Guid.Parse "66cc0291-7b61-42c1-933e-5c39f2c41917" |> SampleId
+                name = "Glass thin film (n=1.75, 600 nm)"
+                structure = filmStructure MaterialIds.glass175 (Thickness.nm 600.0<nm>)
+                substrate = ThinFilm
+                description = "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
+            }
+
+        let glassVacuum : Sample =
+            {
+                id = Guid.Parse "b880a749-812d-415c-b1fb-6041360e85ee" |> SampleId
+                name = "Glass / vacuum interface (n=1.50)"
+                structure = plateStructure MaterialIds.glass150 (Thickness.mm 1.0<mm>)
+                substrate = Plate
+                description = "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
+            }
+
+        let glassFilm200 : Sample =
+            {
+                id = Guid.Parse "9f49dcfa-dede-4858-8757-216443deeba3" |> SampleId
+                name = "Glass thin film (n=1.52, 200 nm)"
+                structure = filmStructure MaterialIds.glass152 (Thickness.nm 200.0<nm>)
+                substrate = ThinFilm
+                description = "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
+            }
+
+        let multilayerQw : Sample =
+            {
+                id = Guid.Parse "80e5b7b0-8f10-42f6-9d87-bae692454fd5" |> SampleId
+                name = "Quarter-wave glass/vacuum multilayer (41 layers)"
+                structure =
+                    {
+                        films =
+                            [
+                                Repeated
+                                    {
+                                        cell =
+                                            [
+                                                { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                            ]
+                                        count = 20
+                                    }
+                                SingleLayer { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                            ]
+                        substrate = None
+                        lower = None
+                    }
+                substrate = ThinFilm
+                description = "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
+            }
+
+        let euvMoSi : Sample =
+            {
+                id = Guid.Parse "ea947362-10cf-46e8-ad03-c267fba9de50" |> SampleId
+                name = "EUV Mo/Si multilayer (100 pairs)"
+                structure =
+                    {
+                        films =
+                            [
+                                Repeated
+                                    {
+                                        cell =
+                                            [
+                                                { materialId = MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                            ]
+                                        count = 100
+                                    }
+                            ]
+                        substrate = None
+                        lower = None
+                    }
+                substrate = ThinFilm
+                description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
+            }
+
+        let uniaxial : Sample =
+            {
+                id = Guid.Parse "2669348a-029b-48db-b39e-02f78e5aa1ab" |> SampleId
+                name = "Uniaxial crystal film (1 µm)"
+                structure = filmStructure MaterialIds.uniaxialCrystal (Thickness.nm 1000.0<nm>)
+                substrate = ThinFilm
+                description = "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
+            }
+
+        let biaxial : Sample =
+            {
+                id = Guid.Parse "53b01f16-faf9-4413-a419-14592670a03c" |> SampleId
+                name = "Biaxial crystal film (1 µm)"
+                structure = filmStructure MaterialIds.biaxialCrystal (Thickness.nm 1000.0<nm>)
+                substrate = ThinFilm
+                description = "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
+            }
+
+        let activeCrystal : Sample =
+            {
+                id = Guid.Parse "1c170dcc-0528-466e-98a7-cabfdaf9007a" |> SampleId
+                name = "Active gyrotropic crystal plate (1 cm)"
+                structure = plateStructure MaterialIds.activeCrystal Thickness.oneCentiMeter
+                substrate = Plate
+                description = "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
+            }
+
+        let langasiteSilicon : Sample =
+            {
+                id = Guid.Parse "8fa9867a-b1dd-4571-a83c-46a0acf16b4f" |> SampleId
+                name = "Langasite film on silicon (10 µm, dispersive)"
+                structure =
+                    {
+                        films = [ SingleLayer { materialId = MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
+                        substrate = None
+                        lower = Some MaterialIds.silicon
+                    }
+                substrate = ThinFilm
+                description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
+            }
+
+        /// All seeded samples in Library display order (the order `seedEntries` lists them).
+        let all : Sample list =
+            [
+                glassPlate1mm; glassPlate2mm; glassFilm600; glassVacuum; glassFilm200
+                multilayerQw; euvMoSi; uniaxial; biaxial; activeCrystal; langasiteSilicon
+            ]
+
     /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
-    /// LP + two ideal CP, and one monochromatic source.
+    /// LP + two ideal CP, and one monochromatic source. Every sample's stack is DATA (spec 0033
+    /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
+    /// the samples are the named `SeedSamples` values (spec 0033 step 002).
     let seedEntries : LibraryEntry list =
-        [
-            SampleItem
-                {
-                    id = "sample-glass-1mm"
-                    name = "Glass plate (n=1.52, 1 mm)"
-                    materialId = "glass-1.52"
-                    thickness = Thickness.mm 1.0<mm>
-                    substrate = Plate
-                    description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-2mm"
-                    name = "Glass plate (n=1.52, 2 mm)"
-                    materialId = "glass-1.52"
-                    thickness = Thickness.mm 2.0<mm>
-                    substrate = Plate
-                    description = "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-film-600"
-                    name = "Glass thin film (n=1.75, 600 nm)"
-                    materialId = "glass-1.75"
-                    thickness = Thickness.nm 600.0<nm>
-                    substrate = ThinFilm
-                    description = "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-vacuum"
-                    name = "Glass / vacuum interface (n=1.50)"
-                    materialId = "glass-1.50"
-                    thickness = Thickness.mm 1.0<mm>
-                    substrate = Plate
-                    description = "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
-                }
-            SampleItem
-                {
-                    id = "sample-glass-film-200"
-                    name = "Glass thin film (n=1.52, 200 nm)"
-                    materialId = "glass-1.52"
-                    thickness = Thickness.nm 200.0<nm>
-                    substrate = ThinFilm
-                    description = "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-multilayer-qw"
-                    name = "Quarter-wave glass/vacuum multilayer (41 layers)"
-                    materialId = "glass-1.52"
-                    thickness = Thickness.nm 100.0<nm>
-                    substrate = ThinFilm
-                    description = "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
-                }
-            SampleItem
-                {
-                    id = "sample-euv-mosi"
-                    name = "EUV Mo/Si multilayer (100 pairs)"
-                    materialId = "euv-mo-si"
-                    thickness = Thickness.nm 2.65<nm>
-                    substrate = ThinFilm
-                    description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-uniaxial"
-                    name = "Uniaxial crystal film (1 µm)"
-                    materialId = "uniaxial-crystal"
-                    thickness = Thickness.nm 1000.0<nm>
-                    substrate = ThinFilm
-                    description = "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-biaxial"
-                    name = "Biaxial crystal film (1 µm)"
-                    materialId = "biaxial-crystal"
-                    thickness = Thickness.nm 1000.0<nm>
-                    substrate = ThinFilm
-                    description = "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
-                }
-            SampleItem
-                {
-                    id = "sample-active-crystal"
-                    name = "Active gyrotropic crystal plate (1 cm)"
-                    materialId = "active-crystal"
-                    thickness = Thickness.oneCentiMeter
-                    substrate = Plate
-                    description = "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
-                }
-            SampleItem
-                {
-                    id = "sample-langasite-silicon"
-                    name = "Langasite film on silicon (10 µm, dispersive)"
-                    materialId = "langasite-on-silicon"
-                    thickness = Thickness.mm 0.01<mm>
-                    substrate = ThinFilm
-                    description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
-                }
+        (SeedSamples.all |> List.map SampleItem)
+        @ [
             DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity }
             DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer }
             PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; kind = IdealLinear }
@@ -294,6 +514,12 @@ module Library =
             PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; kind = IdealCircularRight }
             SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm> }
         ]
+
+    /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
+    /// (spec 0033 step 002 — the id literal lives only in `SeedSamples`), carrying its Guid-string
+    /// entry id exactly as `tryGetEntry` resolves it.
+    let private sampleLeaf (label : string) (s : Sample) : LibraryTreeNode =
+        Leaf (TreeLabel label, (SampleItem s).entryId)
 
     /// One canonical grouping tree (R3): the entries organised by kind, with the two glass plates
     /// nested under their shared material (the "same glass, different thickness" grouping §2a).
@@ -311,29 +537,29 @@ module Library =
                                       Group
                                           (TreeLabel "Glass (n=1.52)",
                                            [
-                                               Leaf (TreeLabel "1 mm plate", "sample-glass-1mm")
-                                               Leaf (TreeLabel "2 mm plate", "sample-glass-2mm")
-                                               Leaf (TreeLabel "200 nm film", "sample-glass-film-200")
+                                               sampleLeaf "1 mm plate" SeedSamples.glassPlate1mm
+                                               sampleLeaf "2 mm plate" SeedSamples.glassPlate2mm
+                                               sampleLeaf "200 nm film" SeedSamples.glassFilm200
                                            ])
-                                      Leaf (TreeLabel "Glass film (n=1.75)", "sample-glass-film-600")
-                                      Leaf (TreeLabel "Glass / vacuum interface (n=1.50)", "sample-glass-vacuum")
+                                      sampleLeaf "Glass film (n=1.75)" SeedSamples.glassFilm600
+                                      sampleLeaf "Glass / vacuum interface (n=1.50)" SeedSamples.glassVacuum
                                       Group
                                           (TreeLabel "Multilayers",
                                            [
-                                               Leaf (TreeLabel "Quarter-wave glass/vacuum (41)", "sample-multilayer-qw")
-                                               Leaf (TreeLabel "EUV Mo/Si (100 pairs)", "sample-euv-mosi")
+                                               sampleLeaf "Quarter-wave glass/vacuum (41)" SeedSamples.multilayerQw
+                                               sampleLeaf "EUV Mo/Si (100 pairs)" SeedSamples.euvMoSi
                                            ])
                                       Group
                                           (TreeLabel "Crystals",
                                            [
-                                               Leaf (TreeLabel "Uniaxial film", "sample-uniaxial")
-                                               Leaf (TreeLabel "Biaxial film", "sample-biaxial")
-                                               Leaf (TreeLabel "Active gyrotropic plate", "sample-active-crystal")
+                                               sampleLeaf "Uniaxial film" SeedSamples.uniaxial
+                                               sampleLeaf "Biaxial film" SeedSamples.biaxial
+                                               sampleLeaf "Active gyrotropic plate" SeedSamples.activeCrystal
                                            ])
                                       Group
                                           (TreeLabel "Dispersive",
                                            [
-                                               Leaf (TreeLabel "Langasite on silicon", "sample-langasite-silicon")
+                                               sampleLeaf "Langasite on silicon" SeedSamples.langasiteSilicon
                                            ])
                                   ])
                              Group (TreeLabel "Sources", [ Leaf (TreeLabel "600 nm", "src-600") ])
@@ -364,6 +590,157 @@ module Library =
             libraryTrees = fun () -> Ok trees
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
+
+    /// The blank-name validation the samples store's write functions share (spec 0033
+    /// steps 004/005): a `Sample` whose display name is empty/whitespace is `InvalidSample`.
+    let private validateSample (s : Sample) : Result<unit, SampleError> =
+        if String.IsNullOrWhiteSpace s.name
+        then Error (InvalidSample $"sample '%s{string s.id.value}' has a blank name")
+        else Ok ()
+
+    /// The real, stateful in-memory samples store behind the write-seam (spec 0033 step 005 —
+    /// IMPLEMENT_CONTRACT STORE_XDUO_0002; replaces the step-004 validate-only mock).
+    /// `createInMemory` closes over a `ref` `Map<SampleId, Sample>` seeded from the samples in
+    /// `seedEntries` — the elevated `SampleId` is the Map key directly. Mutation stays INSIDE
+    /// the closure (the IO boundary), so the logic holding the proxy stays pure: reads answer
+    /// from the current map; `searchSamples` matches the name fragment case-insensitively, then
+    /// the `SubstrateKind` facet; `addSample` persists a fresh sample and rejects an id the
+    /// store already holds (`DuplicateSampleId`); `updateSample` replaces a known sample and
+    /// rejects an unknown id (`UnknownSampleId`); `removeSample` deletes a known id and rejects
+    /// an unknown one; both writes keep the step-004 blank-name validation (`InvalidSample`).
+    /// Deterministic under test — every entry carries its own id, no clock, no IO. (A static
+    /// member, not a module `let`: `createInMemory` at module level already builds the
+    /// `LibraryProxy`; the augmentation sits here because it needs `seedEntries` above.)
+    type SampleProxy with
+
+        static member createInMemory () : SampleProxy =
+            let seeded =
+                seedEntries
+                |> List.choose (fun e ->
+                    match e with
+                    | SampleItem s -> Some (s.id, s)
+                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> None)
+            let store = ref (Map.ofList seeded)
+            let currentSamples () : Sample list =
+                store.Value |> Map.toList |> List.map snd
+            let unknown (id : SampleId) : SampleError =
+                UnknownSampleId $"unknown sample id '%s{string id.value}'"
+            {
+                listSamples = fun () -> Ok (currentSamples ())
+                searchSamples =
+                    fun q ->
+                        let byText =
+                            currentSamples ()
+                            |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
+                        match q.substrate with
+                        | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
+                        | None -> Ok byText
+                tryGetSample = fun id -> Ok (store.Value |> Map.tryFind id)
+                addSample =
+                    fun sample ->
+                        validateSample sample
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind sample.id with
+                            | Some existing ->
+                                Error (DuplicateSampleId $"sample id '%s{string sample.id.value}' already names '%s{existing.name}'")
+                            | None ->
+                                store.Value <- store.Value |> Map.add sample.id sample
+                                Ok ())
+                updateSample =
+                    fun sample ->
+                        validateSample sample
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind sample.id with
+                            | Some _ ->
+                                store.Value <- store.Value |> Map.add sample.id sample
+                                Ok ()
+                            | None -> Error (unknown sample.id))
+                removeSample =
+                    fun id ->
+                        match store.Value |> Map.tryFind id with
+                        | Some _ ->
+                            store.Value <- store.Value |> Map.remove id
+                            Ok ()
+                        | None -> Error (unknown id)
+            }
+
+    /// The real, stateful in-memory materials store behind the write-seam (spec 0033 step 006
+    /// — IMPLEMENT_CONTRACT STORE_XDUO_0001; replaces the step-003 validate-only mock).
+    /// `createInMemory` closes over a `ref` `Map<MaterialId, MaterialEntry>` seeded from
+    /// `MaterialLibrary.builtInEntries` — the elevated `MaterialId` is the Map key directly.
+    /// Mutation stays INSIDE the closure (the IO boundary), so logic holding the proxy stays
+    /// pure: reads answer from the current map; `searchMaterials` answers through the pure
+    /// query seam (`byQuery` — the §D.8 `byNameContains`/`byCategory` filters plus the
+    /// `DispersionFilter` facet); `addMaterial` persists a fresh entry and hard-blocks an id
+    /// the store already holds (`DuplicateMaterialId`); `updateMaterial` replaces a known
+    /// entry and rejects an unknown one; `removeMaterial` consults `samplesReferencing` and
+    /// returns `MaterialStillReferenced` NAMING the referencing samples whenever any remain —
+    /// it never cascades and never silently deletes; both writes keep the step-003 blank-name
+    /// validation (`InvalidMaterial`). Deterministic under test — every entry carries its own
+    /// id, no clock, no IO. (A type augmentation HERE, not beside the type in
+    /// `MaterialLibrary.fs`: the referencing lookup is `Sample`-typed, and `Sample` compiles
+    /// after that file. At composition the lookup is `samplesReferencing` below, backed by
+    /// the step-005 `SampleProxy` store.)
+    type MaterialProxy with
+
+        static member createInMemory (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
+            let store = ref (builtInEntries |> List.map (fun e -> e.id, e) |> Map.ofList)
+            let currentEntries () : MaterialEntry list =
+                store.Value |> Map.toList |> List.map snd
+            let unknown (id : MaterialId) : MaterialError =
+                UnknownMaterialId $"unknown material id '%s{string id.value}'"
+            {
+                listMaterials = fun () -> Ok (currentEntries ())
+                searchMaterials = fun q -> Ok (byQuery q { entries = currentEntries () })
+                tryGetMaterial = fun id -> Ok (store.Value |> Map.tryFind id)
+                addMaterial =
+                    fun entry ->
+                        validateEntry entry
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind entry.id with
+                            | Some existing ->
+                                Error (DuplicateMaterialId $"material id '%s{string entry.id.value}' already names '%s{existing.name}'")
+                            | None ->
+                                store.Value <- store.Value |> Map.add entry.id entry
+                                Ok ())
+                updateMaterial =
+                    fun entry ->
+                        validateEntry entry
+                        |> Result.bind (fun () ->
+                            match store.Value |> Map.tryFind entry.id with
+                            | Some _ ->
+                                store.Value <- store.Value |> Map.add entry.id entry
+                                Ok ()
+                            | None -> Error (unknown entry.id))
+                removeMaterial =
+                    fun id ->
+                        match store.Value |> Map.tryFind id with
+                        | Some entry ->
+                            match samplesReferencing id with
+                            | [] ->
+                                store.Value <- store.Value |> Map.remove id
+                                Ok ()
+                            | referencing ->
+                                let names =
+                                    referencing
+                                    |> List.map (fun s -> $"'%s{s.name}'")
+                                    |> List.sort
+                                    |> String.concat ", "
+                                Error (MaterialStillReferenced $"material '%s{entry.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
+                        | None -> Error (unknown id)
+            }
+
+    /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
+    /// step 006): every sample the samples store currently holds whose structure references
+    /// the material. Backed by the LIVE step-005 `SampleProxy` store — once the referencing
+    /// samples are removed the material becomes removable; there is no snapshot to refresh.
+    /// The in-memory `listSamples` is total (always `Ok`); the signature carries no error
+    /// channel, so a future store whose listing can fail must supply its own conservative
+    /// lookup instead of this one.
+    let samplesReferencing (samples : SampleProxy) (id : MaterialId) : Sample list =
+        match samples.listSamples () with
+        | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)
+        | Error _ -> []
 
 /// Spec 0027 (028) — the Experiments domain, redesigned around a multi-step, EDITABLE experiment built
 /// from the live setup:
@@ -505,9 +882,7 @@ module Experiments =
 
         /// A short, human-readable description (the collection row + readout use this).
         member this.description : string =
-            sprintf "%s: vary %s over %g…%g %s (%d pts), capture %s"
-                this.elementLabel this.variable.label this.range.min this.range.max
-                this.variable.unitLabel this.range.points this.measurement.label
+            $"%s{this.elementLabel}: vary %s{this.variable.label} over %g{this.range.min}…%g{this.range.max} %s{this.variable.unitLabel} (%d{this.range.points} pts), capture %s{this.measurement.label}"
 
     /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
     /// `variable` are `None` until chosen; `commit` needs both. When `editingId` is `Some` the next

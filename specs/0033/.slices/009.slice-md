@@ -1,0 +1,11 @@
+# Step 009 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [Berreman, OpticalProperties, BerremanTests]
+depends_on: [7]
+```
+
+**How to implement.** In Berreman/Berreman/Dispersion.fs add Handedness = LeftHanded | RightHanded (the enantiomorph is one overall sign flip of g); the NAMED generic gyration records UniaxialGyration (g11, g33), Orthorhombic222Gyration (g11, g22, g33), Monoclinic2Gyration (g11, g22, g33, g13), MonoclinicMGyration (g12, g23), Triclinic1Gyration (g11, g22, g33, g23, g13, g12) - never anonymous tuples; GyrationClass<'g> = CubicActive of 'g | UniaxialActive of UniaxialGyration | PlanarActive of 'g | Orthorhombic222 | Monoclinic2 | MonoclinicM | Triclinic1 over those records (ONLY rotation-producing classes; no free 3x3); GyrotropicValue<'g> (gyration : GyrationClass<'g>, hand : Handedness); and RhoWithDispValue = RhoWithDispValue of GyrotropicValue<DispersionFormula> | RhoWithoutDispValue of GyrotropicValue<RhoValue> (RhoValue at MaterialProperties.fs:127). Because the core project cannot reference OpticalProperties, implement toRhoWithDisp : RhoWithDisp as a type extension in Berreman/OpticalProperties/Active.fs, assembling the imaginary gyration matrix through the existing constructors - CubicActive via Rho.cubicCrystal (Active.fs:30), UniaxialActive via the diagonal Rho.type_3_4_6_Crystal (Active.fs:46; NOT type_32_42_62_Crystal, Active.fs:54, which needs a g12 a symmetric two-component uniaxial cannot supply), PlanarActive via Rho.planarCrystal (Active.fs:38) - and NEW Rho.fromIm builders added to Active.fs for 222, monoclinic-2, monoclinic-m and triclinic (Rho.fromIm at MaterialProperties.fs:139). The dispersive case evaluates each component's DispersionFormula at the wavelength; RhoWithoutDispValue short-circuits to RhoWithoutDisp. BerremanTests: the quartz class-32 example (g11 +5.9e-5, g33 -10.1e-5) assembles diag(g11, g11, g33); each new builder is covered; flipping Handedness negates the tensor.
+
+**Acceptance.** After the step, each GyrationClass case MUST assemble the expected imaginary gyration matrix (quartz example diag(+5.9e-5, +5.9e-5, -10.1e-5) via Rho.type_3_4_6_Crystal; handedness flip negates it) and the new 222/monoclinic/triclinic builders MUST be covered by passing tests.

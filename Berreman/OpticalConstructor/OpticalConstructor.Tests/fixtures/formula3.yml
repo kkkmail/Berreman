@@ -1,0 +1,6 @@
+REFERENCES: "Test fixture — minimal refractiveindex.info-style formula 3 (polynomial) page (NOT real data)."
+COMMENTS: "n^2 = 2.2 + 0.02*L^2 + 0.01*L^-2, L in micrometers."
+DATA:
+  - type: formula 3
+    wavelength_range: 0.4 2.0
+    coefficients: 2.2 0.02 2 0.01 -2

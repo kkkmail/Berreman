@@ -1,0 +1,11 @@
+# Step 025 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: [11]
+```
+
+**How to implement.** Extend MaterialImport.importRefractiveIndexInfo (OpticalConstructor.Storage/MaterialImport.fs:109) beyond tabulated + formula 1: parse RII formulas 2 (Sellmeier-2), 3 (polynomial), 4 (the RII formula), 5 (Cauchy), 6 (gases) and 7 (Herzberger), each lowered through a DispersionModel or SumOfTerms to an EpsAxisDispersion carried in an EpsWithDispValue-backed MaterialComplexity on the imported MaterialEntry (so imports are editable); formulas 8 and 9 return a NEW typed unsupported-formula case on ImportError (MaterialImport.fs:29). Wavelengths keep the micrometre RII convention through the existing Units seam exactly as the formula 1 path already does. Tests in OpticalConstructor.Tests: one fixture per supported formula number asserting the imported entry's evaluated index matches hand-computed values at sample wavelengths; one fixture asserting formulas 8 and 9 produce the typed error.
+
+**Acceptance.** After the step, importing fixtures for RII formulas 2-7 MUST produce entries whose evaluated index matches hand-computed values within tolerance, and formulas 8/9 MUST return the typed unsupported-formula ImportError.

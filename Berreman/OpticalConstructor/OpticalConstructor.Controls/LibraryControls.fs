@@ -175,7 +175,7 @@ module LibraryControls =
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.spacing 4.0
                             StackPanel.children [
-                                TextBlock.create [ TextBlock.text (sprintf "Selected: %s" name); TextBlock.fontWeight FontWeight.SemiBold ]
+                                TextBlock.create [ TextBlock.text $"Selected: %s{name}"; TextBlock.fontWeight FontWeight.SemiBold ]
                                 TextBlock.create [
                                     TextBlock.name UiIds.description
                                     TextBlock.text state.pendingDescription
@@ -199,10 +199,10 @@ module LibraryControls =
     /// The Library bay — the constrained-kind label, the bound-entry readout, the kind-constrained tree of
     /// selectable entries, and (once an entry is picked) the confirm panel showing its full description.
     let view (state : State) (handlers : Handlers) : IView =
-        let kindText = if state.kindLabel = "" then "Showing: (select an element)" else sprintf "Showing: %s" state.kindLabel
+        let kindText = if state.kindLabel = "" then "Showing: (select an element)" else $"Showing: %s{state.kindLabel}"
         let boundText =
             match state.boundName with
-            | Some name -> sprintf "Bound: %s" name
+            | Some name -> $"Bound: %s{name}"
             | None -> "Bound: (none)"
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical

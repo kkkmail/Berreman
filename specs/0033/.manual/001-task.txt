@@ -1,0 +1,5 @@
+This is an ASG bug that was supposed to be fixed in ASG 0065 work: C:\GitHub\AI-Strategy-Generator\specs\0065\.manual\ 
+OR documented and fixed during STL 0176 work: C:\GitHub\Softellect\specs\0176\.manual\. We need to fix it now in the 
+ASG repo (C:\GitHub\AI-Strategy-Generator\) directly as otherwise we cannot boot here. Find and fix the issue, 
+log an ASG error and implementation log here: C:\GitHub\Berreman\specs\0033\.manual\002-<description>.md, use tag: `asg-error`. 
+Let me know if after fixing the ASG error we need to reopen the spec and re-submit the handoff cycle. Make no other changes.

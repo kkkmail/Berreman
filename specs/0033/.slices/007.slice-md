@@ -1,0 +1,11 @@
+# Step 007 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [Berreman, BerremanTests]
+depends_on: []
+```
+
+**How to implement.** In Berreman/Berreman/Dispersion.fs add the generic serializable formula blocks: WaveLengthInterval (lower : WaveLength, upper : WaveLength - an interval is just an interval); DispersionTerm (lambda : double, coefficients : double array, power : int, multiplier : double) meaning multiplier * (sum over k of coefficients[k] * (x - lambda)^k) ^ power; DispersionFormula (terms : DispersionTerm list, wavelengthScale : double = metres per coefficient unit) with member evaluate : WaveLength -> double reducing the canonical wavelength to the coefficient unit and summing the terms; and ComplexDispersionTerm / ComplexDispersionFormula mirroring them over System.Numerics.Complex (used ONLY where a model is inherently complex). These are pure data + evaluation; the engine unions in this file are untouched. BerremanTests: evaluate a Cauchy-shaped Laurent polynomial and a Sellmeier-shaped inverse term against hand-computed values, using the existing tolerance helpers (BerremanTests/MatrixComparison.fs) - no new epsilon logic.
+
+**Acceptance.** After the step, DispersionFormula.evaluate MUST reproduce hand-computed polynomial and inverse-polynomial values within the project tolerance in BerremanTests.

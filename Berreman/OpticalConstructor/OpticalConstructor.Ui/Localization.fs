@@ -172,10 +172,8 @@ let check (resource : Resource) (language : Language) : CompletenessReport =
         if List.isEmpty missingKeys then ""
         else
             let header =
-                sprintf
-                    "Localization: %d interface string(s) are missing for the selected language (%s). The English text is shown instead. Missing keys:"
-                    (List.length missingKeys) (languageName language)
-            let lines = missingKeys |> List.map (sprintf "  - %s")
+                $"Localization: %d{List.length missingKeys} interface string(s) are missing for the selected language (%s{languageName language}). The English text is shown instead. Missing keys:"
+            let lines = missingKeys |> List.map (fun k -> $"  - %s{k}")
             String.concat "\n" (header :: lines)
     { language = language; missingKeys = missingKeys; message = message }
 
@@ -184,11 +182,9 @@ let check (resource : Resource) (language : Language) : CompletenessReport =
 let describeError (err : LocalizationError) : string =
     match err with
     | ResourceMissing path ->
-        sprintf
-            "Localization: the string resource '%s' was not found at %s. Interface text falls back to the embedded keys."
-            resourceFileName path
+        $"Localization: the string resource '%s{resourceFileName}' was not found at %s{path}. Interface text falls back to the embedded keys."
     | ResourceParseError message ->
-        sprintf "Localization: the string resource '%s' could not be read: %s" resourceFileName message
+        $"Localization: the string resource '%s{resourceFileName}' could not be read: %s{message}"
 
 /// The startup completeness check the app entry point wires (I.3.1 / `Program.fs`):
 /// load the shipped resource and return a copyable error message when it is missing,

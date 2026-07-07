@@ -31,6 +31,10 @@ module ExperimentControlsTests =
     let private bind (i : int) (entryId : string) (m : Model) : Model =
         { m with selection = ElementSelected i } |> update (BindValueId entryId)
 
+    /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
+    /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
+    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
+
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : Model) : string = (elem i m).id.value
 
@@ -65,9 +69,12 @@ module ExperimentControlsTests =
         Assert.Equal("both", ExperimentControls.measurementCode ExperimentControls.CaptureBoth)
 
     [<Fact>]
-    let ``the ribbon still offers seven bays including Experiments and Details`` () =
+    let ``the ribbon offers every bay including Experiments, Details and the step-024 workbenches`` () =
+        // The step-024 workbenches sit with the Selector (the binding / collection bays);
+        // Details stays LAST (the 0027/026 pin). [spec 0033 gap G2 reorder deferred — see the log.]
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.library; BayNames.experiments; BayNames.details ],
+            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector
+              BayNames.materials; BayNames.library; BayNames.experiments; BayNames.details ],
             BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore
@@ -169,7 +176,7 @@ module ExperimentControlsTests =
 
     /// initMain + a bound Sample at index 2, chosen, on the given variable, capture T.
     let private withChosenSample (v : ExperimentControls.VariableChoice) : Model =
-        let m = initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200"
+        let m = initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id
         m
         |> update (ExpChooseElement (idOf 2 m))
         |> update (ExpChooseVariable v)
@@ -194,7 +201,7 @@ module ExperimentControlsTests =
         let xs = (List.head chart.series).points |> List.map fst
         Assert.NotEmpty(xs)
         Assert.Equal("Incidence angle R2 (°)", chart.xLabel)
-        Assert.True(abs (89.0 - List.last xs) < 1e-6, sprintf "last x = %g, expected 89" (List.last xs))
+        Assert.True(abs (89.0 - List.last xs) < 1e-6, $"last x = %g{List.last xs}, expected 89")
         Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
 
     [<Fact>]
@@ -214,7 +221,7 @@ module ExperimentControlsTests =
     let ``capturing BOTH branches yields two series (T and R)`` () =
         // A bound sample, VaryR2, capture Both ⇒ a transmitted AND a reflected intensity series.
         let m =
-            initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200"
+            initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id
             |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
             |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)
@@ -225,7 +232,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
         let m =
-            initMain () |> update (AddElement Sample) |> bind 2 "sample-glass-film-200" |> bind 1 "det-ellipsometer"
+            initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id |> bind 1 "det-ellipsometer"
             |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
             |> update (ExpChooseMeasurement ExperimentControls.CaptureT)
@@ -276,7 +283,7 @@ module ExperimentControlsTests =
               ChartWindowIds.axisAuto; ChartWindowIds.axisMin; ChartWindowIds.axisMax; ChartWindowIds.axisFormat
               ChartWindowIds.axisDecimals; ChartWindowIds.legendVisible; ChartWindowIds.legendPlacement
               ChartWindowIds.seriesVisible; ChartWindowIds.seriesThickness; ChartWindowIds.seriesColor
-              ChartWindowIds.seriesMarkers; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
+              ChartWindowIds.seriesMarkers; ChartWindowIds.seriesAxis; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
               ChartWindowIds.minorGrid; ChartWindowIds.exportPng; ChartWindowIds.exportCsv; ChartWindowIds.description ]
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
 
@@ -440,8 +447,8 @@ module ExperimentControlsTests =
                 Dispatcher.UIThread.RunJobs()
                 window.MouseUp(v.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                 Dispatcher.UIThread.RunJobs()
-            | _ -> Assert.Fail(sprintf "%s off-screen" name)
-        | None -> Assert.Fail(sprintf "%s not found" name)
+            | _ -> Assert.Fail($"%s{name} off-screen")
+        | None -> Assert.Fail($"%s{name} not found")
 
     // ============================ FuncUI recycling regressions (spec 028) ============================
     // The real app re-renders `mainView` on EVERY message (Elmish), so FuncUI diffs the tree. A styled
@@ -515,7 +522,7 @@ module ExperimentControlsTests =
             let seed =
                 initMain () |> update (AddElement Sample)
                 |> (fun m -> { m with selection = ElementSelected 2 })
-                |> update (BindValueId "sample-glass-film-200")
+                |> update (BindValueId glassFilm200Id)
                 |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
                 |> update (ExpChooseVariable ExperimentControls.VaryR2)
                 |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)   // two series (T + R)
@@ -582,6 +589,41 @@ module ExperimentControlsTests =
             let lim1 = ava.Plot.Axes.GetLimits()
             Assert.True(abs (lim0.Left - lim1.Left) < 1e-6 && abs (lim0.Right - lim1.Right) < 1e-6, "the XY x-limits were not restored")
             Assert.True(abs (lim0.Bottom - lim1.Bottom) < 1e-6 && abs (lim0.Top - lim1.Top) < 1e-6, "the XY y-limits were not restored")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``flipping a series to the right axis moves its scatter to plot.Axes.Right`` () =
+        // Spec 0033 (018) acceptance: rebuildPlot/applySeriesStyle assign each scatter's Axes.YAxis to the
+        // native left or right axis from its SeriesStyle.axisSide. This drives the series panel's axis
+        // picker for the SECOND series and asserts the scatters land on their sides (reference equality on
+        // the axis objects — no pixels).
+        HeadlessSession.run (fun () ->
+            let window = ChartWindow(sampleChart)
+            try window.Show() with _ -> ()
+            try Dispatcher.UIThread.RunJobs() with _ -> ()
+            let ctrl (name : string) : Control option =
+                window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
+            let ava = (ctrl ChartWindowIds.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let scatters () : ScottPlot.Plottables.Scatter list =
+                ava.Plot.GetPlottables()
+                |> Seq.choose (function :? ScottPlot.Plottables.Scatter as s -> Some s | _ -> None)
+                |> List.ofSeq
+            Assert.True(
+                scatters () |> List.forall (fun s -> obj.ReferenceEquals(s.Axes.YAxis, ava.Plot.Axes.Left)),
+                "every series should START on the left axis")
+            // The element picker: Header, X axis, Y left, Y right, Legend, series 0, series 1 → index 6.
+            (ctrl ChartWindowIds.elementSelector |> Option.get :?> ComboBox).SelectedIndex <- 6
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match ctrl ChartWindowIds.seriesAxis with
+            | Some c -> (c :?> ComboBox).SelectedIndex <- 1     // Left → Right
+            | None -> Assert.Fail("the series panel offered no axis-side picker")
+            (try Dispatcher.UIThread.RunJobs() with _ -> ())
+            match scatters () with
+            | [ first; second ] ->
+                Assert.True(obj.ReferenceEquals(second.Axes.YAxis, ava.Plot.Axes.Right), "the flipped series did not move to the right axis")
+                Assert.True(obj.ReferenceEquals(first.Axes.YAxis, ava.Plot.Axes.Left), "the other series must stay on the left axis")
+            | other -> Assert.Fail($"expected exactly two scatters, got %d{List.length other}")
             window.Close())
 
     [<Fact>]

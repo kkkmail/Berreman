@@ -1,0 +1,16 @@
+# Step 022 — ADD_COMPONENT UICOMP_XDUO_0003 SampleEditorWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0003
+name: SampleEditorWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.TestWindows
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [5, 6, 16, 20, 21]
+```
+
+**How to implement.** Create the Sample editor window in OpticalConstructor.TestWindows beside the existing pop-out ChartWindow.fs: name and description fields, the SubstrateKind geometry facet, and the stack table over the step-21 SampleStackEditor - each PeriodGroup renders as one collapsible super-row (rotating-triangle expander) with an inline repeat-count stepper and its unit-cell layers nested beneath; multi-select plus a bulk toolbar (select-by-material, set thickness, change material, set orientation, remove, move up/down, make repeat block) dispatching SampleStackEditor messages; material choice by MaterialId from MaterialProxy.listMaterials; the per-layer orientation editor is shown ONLY for anisotropic materials (removed for isotropic, not greyed); optional QWOT entry derives the physical thickness t = lambda/(4n) read-only into canonical metres (precedent: the DBR template expansion Templates.dbrCell / Templates.dbrPeriods, OpticalConstructor.Ui/Templates.fs:103,106). Save calls SampleProxy.addSample for a new sample (minting SampleId.create) and updateSample for an existing one; Cancel discards; Save/Cancel sit in one row with distinct positive/negative styling. Stable UiIds: SampleEditorWindow, SampleNameBox, AddLayerButton, MakeRepeatBlockButton, SelectByMaterialButton, SetLayerHeightButton, SetLayerMaterialButton, SetOrientationOfSelectedButton, RemoveSelectedLayersButton, RepeatCountStepper, QwotEntryBox, SampleEditorSaveButton, SampleEditorCancelButton.
+
+**Acceptance.** After the step, headless tests MUST drive the window by UiIds: repeating a 2-layer selection K times shows a structure expanding to 2*K films, select-by-material bulk set-thickness updates only matching layers, and Save persists through SampleProxy (add for new, update for existing).

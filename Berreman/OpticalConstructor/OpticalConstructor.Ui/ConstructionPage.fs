@@ -264,7 +264,7 @@ let isNodeBusy (path : NodePath) (model : Model) : bool = Set.contains path mode
 /// carrying the LIVE descendant count; `None` when no deletion is pending.
 let confirmationPrompt (model : Model) : string option =
     model.pendingDeletion
-    |> Option.map (fun (_, count) -> sprintf "Delete this node and its %d descendant node(s)?" count)
+    |> Option.map (fun (_, count) -> $"Delete this node and its %d{count} descendant node(s)?")
 
 /// Whether the single-level undo action is available (§B.10 item 5).
 let canUndo (model : Model) : bool = Option.isSome model.undo

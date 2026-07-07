@@ -1,0 +1,11 @@
+# Step 008 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [Berreman, BerremanTests]
+depends_on: [7]
+```
+
+**How to implement.** In Berreman/Berreman/Dispersion.fs add the serializable eps tree: ConstantEpsValue - a DESCRIPTIVE DU, never a bare Eps - with the six cases IsotropicTransparent of RefractionIndex, IsotropicAbsorbing of ComplexRefractionIndex, UniaxialTransparent of ordinary * extraordinary RefractionIndex, UniaxialAbsorbing of ordinary * extraordinary ComplexRefractionIndex, BiaxialTransparent of nx * ny * nz RefractionIndex, BiaxialAbsorbing of nx * ny * nz ComplexRefractionIndex (index types at MaterialProperties.fs:35,43) and member toEps building through the existing constructors Eps.fromRefractionIndex / Eps.fromComplexRefractionIndex (MaterialProperties.fs:76,79,87,95; uniaxial maps to the triple n_o, n_e, n_o); EpsAxisDispersion = RealNK of n * k DispersionFormula (k = the zero formula for transparent media) | ComplexEps of ComplexDispersionFormula, with member complexIndex : WaveLength -> ComplexRefractionIndex (RealNK evaluates n + i*k; ComplexEps evaluates sqrt of eps); IsotropicEpsSegment / UniaxialEpsSegment / BiaxialEpsSegment, each one wavelengthInterval : WaveLengthInterval SHARED across that segment's axes plus one EpsAxisDispersion per axis; EpsDispersiveValue = IsotropicDispersive | UniaxialDispersive | BiaxialDispersive of the homogeneous segment lists; and EpsWithDispValue = EpsWithDispValue of EpsDispersiveValue | EpsWithoutDispValue of ConstantEpsValue with member toEpsWithDisp : EpsWithDisp - the constant case short-circuits to EpsWithoutDisp via toEps, the dispersive case builds the WaveLength -> Eps closure selecting the FIRST segment whose interval covers the wavelength (top-of-list wins on overlap; when none covers, the topmost segment extrapolates - no clamps, no validation). BerremanTests: every ConstantEpsValue case equals the directly-constructed Eps; segment selection (overlap -> first, out-of-range -> topmost); uniaxial and biaxial dispersive closures equal the per-axis analytic values.
+
+**Acceptance.** After the step, EpsWithDispValue.toEpsWithDisp MUST reproduce the directly-constructed engine Eps for all six constant cases, and the top-of-list overlap and topmost-extrapolation segment tests MUST pass in BerremanTests.

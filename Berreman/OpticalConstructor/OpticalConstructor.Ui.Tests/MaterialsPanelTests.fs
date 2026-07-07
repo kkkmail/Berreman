@@ -58,7 +58,7 @@ module MaterialsPanelTests =
             let allButtons = buttonContents all
             Assert.Contains("Silicon", allButtons)
             Assert.True(allButtons |> List.exists (fun c -> c.Contains "Transparent glass"),
-                        sprintf "expected a glass entry, got: %A" allButtons)
+                        $"expected a glass entry, got: %A{allButtons}")
             all.Close()
 
             // Category = Glass narrows the list through `byCategory`: glass entries show,
@@ -68,7 +68,7 @@ module MaterialsPanelTests =
             let glassButtons = buttonContents glass
             Assert.DoesNotContain("Silicon", glassButtons)
             Assert.True(glassButtons |> List.exists (fun c -> c.Contains "Transparent glass"),
-                        sprintf "expected a glass entry after filtering, got: %A" glassButtons)
+                        $"expected a glass entry after filtering, got: %A{glassButtons}")
             glass.Close())
 
     [<Fact>]
@@ -76,7 +76,7 @@ module MaterialsPanelTests =
     let ``dispersion preview routes to the WebView2 host, never an AvaPlot`` () =
         HeadlessSession.run (fun () ->
             let model = fst Shell.init
-            let filter = { MaterialsView.Filter.empty with selected = Some "glass-1.52" }
+            let filter = { MaterialsView.Filter.empty with selected = Some MaterialLibrary.MaterialIds.glass152 }
             let window = mount (MaterialsView.materialsPanel model.materials filter model.construction ignore ignore)
 
             // AC-U3.1: the preview hosts a Plotly chart through ChartHosts.webView2Host,
@@ -84,7 +84,7 @@ module MaterialsPanelTests =
             // placeholder renders and NO ScottPlot AvaPlot is ever instantiated.
             let texts = textBlocks window
             Assert.True(texts |> List.exists (fun t -> t.Contains "renderer unavailable"),
-                        sprintf "expected the WebView2 unavailable placeholder, got: %A" texts)
+                        $"expected the WebView2 unavailable placeholder, got: %A{texts}")
             let avaPlots =
                 window.GetVisualDescendants()
                 |> Seq.filter (fun v -> v :? ScottPlot.Avalonia.AvaPlot)
@@ -103,7 +103,7 @@ module MaterialsPanelTests =
         // AC-U3.2: a drop on layer 0 routes the single seam (layerMaterialDrop) and
         // dispatches Construction (EditStack (path, SetLayerMaterial (0, _))).
         let captured = List<ConstructionPage.Msg>()
-        MaterialsView.materialDrop model.materials MaterialsView.referenceWavelength path captured.Add 0 "silicon"
+        MaterialsView.materialDrop model.materials MaterialsView.referenceWavelength path captured.Add 0 MaterialLibrary.MaterialIds.silicon
 
         let edit =
             captured
@@ -111,7 +111,7 @@ module MaterialsPanelTests =
                 match m with
                 | ConstructionPage.EditStack (p, (StackEditor.SetLayerMaterial (i, _) as sm)) when p = path && i = 0 -> Some sm
                 | _ -> None)
-        Assert.True(edit.IsSome, sprintf "expected EditStack(SetLayerMaterial 0), got: %A" (List.ofSeq captured))
+        Assert.True(edit.IsSome, $"expected EditStack(SetLayerMaterial 0), got: %A{List.ofSeq captured}")
 
         // The frozen update applies the edit, swapping the material but leaving the
         // layer's thickness unchanged (the view resolved nothing itself).
@@ -125,8 +125,8 @@ module MaterialsPanelTests =
         let f0 = MaterialsView.Filter.empty
         let f1 = MaterialsView.update (MaterialsView.SetCategory (Some MaterialLibrary.Glass)) f0
         Assert.Equal(Some MaterialLibrary.Glass, f1.category)
-        let f2 = MaterialsView.update (MaterialsView.SelectMaterial "silicon") f1
-        Assert.Equal(Some "silicon", f2.selected)
+        let f2 = MaterialsView.update (MaterialsView.SelectMaterial MaterialLibrary.MaterialIds.silicon) f1
+        Assert.Equal(Some MaterialLibrary.MaterialIds.silicon, f2.selected)
 
         // filteredEntries reuses byCategory: a Glass filter yields only glass entries.
         let lib = MaterialLibrary.standard
@@ -136,5 +136,5 @@ module MaterialsPanelTests =
 
         // An unknown material id resolves to Error, so the drop dispatches nothing.
         let captured = List<ConstructionPage.Msg>()
-        MaterialsView.materialDrop lib MaterialsView.referenceWavelength [] captured.Add 0 "no-such-material"
+        MaterialsView.materialDrop lib MaterialsView.referenceWavelength [] captured.Add 0 (MaterialLibrary.newMaterialId ())
         Assert.Empty(captured)

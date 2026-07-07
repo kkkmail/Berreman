@@ -1,0 +1,28 @@
+The spec: C:\GitHub\Berreman\specs\0033\ has been implemented. There are some gaps. We need to identify them and trace 
+them back to the source(s). The primary sources of the gaps are spec gaps or implementation gaps, but there could be 
+something else in addition: procedures, tests, various verifiers, etc. Some of the below fall into the category like / do 
+not like (e.g. use sticky buttons OR checkboxes – this is NOT A GAP) but the rest of them are truly gaps.
+
+Here are some hints but there could be more that I did not notice yet.
+
+Materials and Library should NOT show the optical table.
+Materials and Library should be the last two ribbons.
+
+Materials => Add => opens Material Editor (must be Editor not editor) screen (CORRECT).
+1. The list of categories is hardcoded with no way to modify (add / edit / remove) the categories. Vacuum is NOT a category 
+as there is only one and the only vacuum.
+2. The UI DOES NOT correctly model `C:\GitHub\Berreman\specs\0027\.manual\035-materials-samples-library-preliminary-spec.md` 
+(`the-spec`) => `6.1`. Given the DU tree, I think that the first question (two mutually exclusive buttons or even radio buttons) 
+should be Simple (Fixed??? – check the web for a correct term) OR Dispersive. I will use the word `Simple` for simplicity. If 
+`Simple`, then it could be ON / OFF: absorbing, optically active, magnetic, AND if dispersive, then since absorption is handled 
+by dispersive media internally, then it could be ON / OFF: optically active, magnetic.
+3. Fine, we go the dispersive way, and this is where it gets really interesting or should I say completely fucked up. There are 
+just NO controls to input the parameters for ANY model apart from magnetic parameters AND the number of gyration symmetry classes 
+DOES NOT match the number of classes in the spec. The UI MUST have Add segment as the LAST button (and NOT as a fucked up full width button), 
+so that the user changes the parameters and THEN adds THAT segment.
+4. Analyze the Sample Editor for gaps as well. 
+
+Enough for now but we are not done yet as I will review the gap analysis and look at the screens again.
+
+Write the gap analysis into C:\GitHub\Berreman\specs\0033\.manual\006-<description>.md. Make no other changes.
+

@@ -25,6 +25,11 @@
          Slice 001 ships these as empty placeholder modules; later slices fill them. -->
     <ItemGroup>
         <Compile Include="Units.fs" />
+        <!-- Spec 0033 (019): the pure spectral-axis helpers (label / canonical-meter range /
+             display-unit ticks), REAL-MOVED here from Ui's MaterialPreview so non-Ui chart
+             hosts (TestWindows' n/k dispersion chart) share them. Depends only on Units and
+             the engine/Analytics references below. -->
+        <Compile Include="SpectralAxis.fs" />
         <Compile Include="BeamTree.fs" />
         <Compile Include="Placement.fs" />
         <Compile Include="RayModel.fs" />
@@ -55,6 +60,18 @@
              the rotating-analyzer intensity curve (the Malus proof), and the ellipsometer Ψ/Δ readout.
              Depends on the engine Fields/Media/Solvers + the Library domain. -->
         <Compile Include="Propagation.fs" />
+        <!-- Spec 0033 (021): the pure, Avalonia-free SAMPLE-stack edit model over
+             SampleStructure (state + selection, one message DU, typed repeat-count
+             errors). Mirrors Ui's StackEditor message discipline at the material-id
+             level; depends only on ElementId/MaterialLibrary above. -->
+        <Compile Include="SampleStackEditor.fs" />
+        <!-- Spec 0033 (023): the pure, Avalonia-free MATERIAL edit model over
+             MaterialComplexity (the Part F progressive-unlock ladder): state +
+             message DU + Result-returning apply, toComplexity/ofComplexity onto
+             the engine's serializable value trees, the constrained gyration-class
+             offering, and the restated advisory gain rule. Depends on
+             DispersionModels/MaterialLibrary above. -->
+        <Compile Include="MaterialComplexityEditor.fs" />
     </ItemGroup>
 
     <ItemGroup>

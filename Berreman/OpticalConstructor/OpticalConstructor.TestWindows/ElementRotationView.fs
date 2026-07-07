@@ -425,11 +425,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     let e = selectedElement model
     let p = e.placement
     let readout =
-        sprintf
-            "Element %d/%d (%s):  R1 %.0f°   R2 %.0f°   R3 %.0f° (%s)   zoom %.1f×"
-            (model.selected + 1) (List.length model.elements) (kindName p.catalogueKind)
-            p.r1.degrees p.r2.degrees p.r3.degrees (if p.r3Locked then "R3 locked" else "R3 free")
-            e.zoom
+        $"""Element %d{model.selected + 1}/%d{List.length model.elements} (%s{kindName p.catalogueKind}):  R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(if p.r3Locked then "R3 locked" else "R3 free")})   zoom %.1f{e.zoom}×"""
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0

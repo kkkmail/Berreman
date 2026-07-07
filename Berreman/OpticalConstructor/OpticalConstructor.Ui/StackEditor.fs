@@ -110,7 +110,7 @@ let mediumFromRefractionIndex (n : float) : OpticalProperties =
 
 /// Resolve a medium by materials-library reference through slice 004's single
 /// by-id `resolveMaterial` seam (§D.8); dispersion resolution is NOT re-done here.
-let mediumFromMaterial (lib : MaterialLibrary) (id : string) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
+let mediumFromMaterial (lib : MaterialLibrary) (id : MaterialId) (w : WaveLength) : Result<OpticalProperties, MaterialError> =
     resolveMaterial lib id w
 
 // ---------------------------------------------------------------------------
@@ -188,11 +188,13 @@ let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem =
 
 /// §J.4 — turn a material dropped on the layer row at `index` into the `StackMsg`
 /// the owning `update` applies. The drop payload carries ONLY the stable
-/// `materialEntry` id (§A.7); resolution to `OpticalProperties` goes through
-/// slice 004's by-id `resolveMaterial` seam (§D.8) at the active wavelength `w`
-/// (REUSING `mediumFromMaterial`) — Part J re-resolves no dispersion. An unknown
-/// id returns `Error (UnknownMaterialId _)` (the drop is a no-op), never throwing.
-let layerMaterialDrop (lib : MaterialLibrary) (w : WaveLength) (index : int) (materialId : string) : Result<StackMsg, MaterialError> =
+/// `materialEntry` id (§A.7) — its Guid string form, parsed back to a `MaterialId`
+/// at the drag-payload boundary by the view (spec 0033 step 002); resolution to
+/// `OpticalProperties` goes through slice 004's by-id `resolveMaterial` seam (§D.8)
+/// at the active wavelength `w` (REUSING `mediumFromMaterial`) — Part J re-resolves
+/// no dispersion. An unknown id returns `Error (UnknownMaterialId _)` (the drop is
+/// a no-op), never throwing.
+let layerMaterialDrop (lib : MaterialLibrary) (w : WaveLength) (index : int) (materialId : MaterialId) : Result<StackMsg, MaterialError> =
     mediumFromMaterial lib materialId w
     |> Result.map (fun props -> SetLayerMaterial (index, props))
 
@@ -210,9 +212,9 @@ let defaultNewLayer : Layer =
 let displayThickness (u : UnitOfMeasure) (t : Thickness) : string =
     match t with
     | Thickness.Infinity -> "∞ (substrate)"
-    | Thickness.Thickness m -> sprintf "%g %A" (fromMeters u m) u
+    | Thickness.Thickness m -> $"%g{fromMeters u m} %A{u}"
 
 /// Human-facing labels for the stack-editor toolbar rows a view will render
 /// (display metadata only; the view layer is deferred to a later UI-wiring slice).
 let layerRowLabels (u : UnitOfMeasure) (sys : OpticalSystem) : string list =
-    sys.films |> List.mapi (fun i l -> sprintf "Layer %d — %s" i (displayThickness u l.thickness))
+    sys.films |> List.mapi (fun i l -> $"Layer %d{i} — %s{displayThickness u l.thickness}")

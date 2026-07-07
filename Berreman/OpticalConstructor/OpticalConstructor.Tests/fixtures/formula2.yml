@@ -1,0 +1,6 @@
+REFERENCES: "Test fixture — minimal refractiveindex.info-style formula 2 (Sellmeier-2) page (NOT real data)."
+COMMENTS: "Coefficients follow the refractiveindex.info micrometer convention; resonances are NOT squared in formula 2."
+DATA:
+  - type: formula 2
+    wavelength_range: 0.3 2.5
+    coefficients: 0.5 1.0 0.01 0.2 100

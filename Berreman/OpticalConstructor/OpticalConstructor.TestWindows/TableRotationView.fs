@@ -319,10 +319,7 @@ let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handler
 
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     let readout =
-        sprintf
-            "R1 %.0f°   R2 %.0f°   R3 %.0f°   Zoom %.2f×      Table: %s"
-            (degrees model.view.r1) (degrees model.view.r2) (degrees model.view.r3) model.view.zoom
-            (match model.selection with TableSelected -> "SELECTED" | TableUnselected -> "not selected")
+        $"""R1 %.0f{degrees model.view.r1}°   R2 %.0f{degrees model.view.r2}°   R3 %.0f{degrees model.view.r3}°   Zoom %.2f{model.view.zoom}×      Table: %s{(match model.selection with TableSelected -> "SELECTED" | TableUnselected -> "not selected")}"""
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0

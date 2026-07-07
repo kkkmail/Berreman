@@ -125,7 +125,7 @@ let private surface3D (s : ChartSettings.ChartSettings) : Lazy<Plotly.NET.Generi
 let private toolbar (settings : ChartSettings.ChartSettings) (markers : Readout.Markers) (dispatch : ChartMsg -> unit) : IView =
     let cursorText =
         match markers.cursor1 with
-        | Some (x, y) -> sprintf "cursor: (%.1f, %.3f)" x y
+        | Some (x, y) -> $"cursor: (%.1f{x}, %.3f{y})"
         | None -> "cursor: —"
     let nextScale = match settings.xScale with | ChartSettings.Linear -> ChartSettings.Log10 | ChartSettings.Log10 -> ChartSettings.Linear
     StackPanel.create [

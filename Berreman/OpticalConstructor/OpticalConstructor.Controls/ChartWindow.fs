@@ -1,4 +1,4 @@
-namespace OpticalConstructor.TestWindows
+namespace OpticalConstructor.Controls
 
 open System
 open System.IO
@@ -6,7 +6,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
-open OpticalConstructor.TestWindows.ExperimentChart
+open OpticalConstructor.Controls.ExperimentChart
 
 /// Spec 0027 (026/028/030) — the pop-out interactive chart window (double-click the inline Experiments
 /// chart). A plain Avalonia `Window` hosting a `ScottPlot.Avalonia.AvaPlot`. Spec 030 turns it into an
@@ -18,6 +18,15 @@ open OpticalConstructor.TestWindows.ExperimentChart
 /// range / number-format / polar-conversion logic lives in `ChartStyle`; this file is the ScottPlot IO seam.
 /// The window is never opened under the headless `ui-smoke` gate's frame render, so its native ScottPlot
 /// rendering cannot break that gate.
+
+/// Spec 0033 (017) — the shared renderer-neutral-style → ScottPlot mappings. The pop-out window below
+/// and the Ui `ChartSettings` projection (`scottPlotColor`) both delegate here, so each mapping lives in
+/// exactly ONE place beside the one shared chart model (no per-host duplicate, no third settings type).
+[<RequireQualifiedAccess>]
+module ChartRender =
+
+    /// Parse a `#RRGGBB` colour string into ScottPlot's `Color`.
+    let colorOf (hex : string) : ScottPlot.Color = ScottPlot.Color.FromHex hex
 
 /// Stable automation ids for the chart window's controls (CLAUDE.md: centralize ids).
 [<RequireQualifiedAccess>]
@@ -48,6 +57,8 @@ module ChartWindowIds =
     let seriesThickness = "ChartWindowSeriesThick"
     let seriesColor = "ChartWindowSeriesColor"
     let seriesMarkers = "ChartWindowSeriesMarkers"
+    /// The series' Y-axis side picker (left / right — spec 0033/018).
+    let seriesAxis = "ChartWindowSeriesAxis"
     /// The polar ⇄ XY toggle (only for angular charts).
     let polarToggle = "ChartWindowPolar"
     let majorGrid = "ChartWindowMajorGrid"
@@ -62,7 +73,7 @@ type ChartWindow(chart : ExperimentChart) as this =
     let mutable style = ChartStyle.defaultState chart
     let mutable polar = false
     let seriesCount = List.length chart.series
-    let seriesName (i : int) : string = match List.tryItem i chart.series with Some s -> s.name | None -> sprintf "series %d" i
+    let seriesName (i : int) : string = match List.tryItem i chart.series with Some s -> s.name | None -> $"series %d{i}"
 
     do
         ChartWindow.ConstructedCount <- ChartWindow.ConstructedCount + 1
@@ -78,8 +89,6 @@ type ChartWindow(chart : ExperimentChart) as this =
         let mutable marker : ScottPlot.Plottables.Marker = null
         let mutable readout : ScottPlot.Plottables.Text = null
 
-        let colorOf (hex : string) : ScottPlot.Color = ScottPlot.Color.FromHex hex
-
         let placementAlignment (p : ChartStyle.LegendPlacement) : ScottPlot.Alignment =
             match p with
             | ChartStyle.UpperLeft -> ScottPlot.Alignment.UpperLeft
@@ -92,14 +101,26 @@ type ChartWindow(chart : ExperimentChart) as this =
             | ChartStyle.LowerCenter -> ScottPlot.Alignment.LowerCenter
             | ChartStyle.LowerRight -> ScottPlot.Alignment.LowerRight
 
-        /// The data bounds of the currently-visible series (what "Auto" and the initial view fit to).
-        let dataBoundsVisible () : float * float * float * float =
-            let visible =
-                chart.series
-                |> List.mapi (fun i s -> i, s)
-                |> List.filter (fun (i, _) -> (ChartStyle.seriesStyleOf i style).visible)
-                |> List.map snd
-            ChartStyle.dataBounds (match visible with [] -> chart.series | v -> v)
+        /// The ScottPlot vertical axis a side maps to (the one place the side → native-axis mapping lives).
+        let scottYAxis (side : ChartStyle.AxisSide) : ScottPlot.IYAxis =
+            match side with
+            | ChartStyle.LeftAxis -> plot.Axes.Left
+            | ChartStyle.RightAxis -> plot.Axes.Right
+
+        /// The per-axis data bounds of the currently-visible series, each paired with its assigned side
+        /// (what "Auto" and the initial view fit to).
+        let dataBoundsVisible () : ChartStyle.ChartBounds =
+            let sided = chart.series |> List.mapi (fun i s -> s, ChartStyle.seriesStyleOf i style)
+            let visible = sided |> List.filter (fun (_, st) -> st.visible)
+            (match visible with [] -> sided | v -> v)
+            |> List.map (fun (s, st) -> s, st.axisSide)
+            |> ChartStyle.dataBounds
+
+        /// Whether anything currently plots against the right axis (drives whether its limits are pushed).
+        let rightAxisInUse () : bool =
+            chart.series
+            |> List.mapi (fun i _ -> ChartStyle.seriesStyleOf i style)
+            |> List.exists (fun st -> st.visible && st.axisSide = ChartStyle.RightAxis)
 
         let applyAxisFonts () : unit =
             let setAxis (panel : obj) : unit =
@@ -110,6 +131,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                 | _ -> ()
             setAxis plot.Axes.Bottom
             setAxis plot.Axes.Left
+            setAxis plot.Axes.Right
 
         let applyLegendAndFonts () : unit =
             plot.Axes.Title.Label.FontSize <- float32 style.font.title
@@ -128,12 +150,21 @@ type ChartWindow(chart : ExperimentChart) as this =
                     | _ -> ()
                 | _ -> ()
             setFmt plot.Axes.Bottom style.xAxis.format
-            setFmt plot.Axes.Left style.yAxis.format
+            setFmt plot.Axes.Left style.yAxisLeft.format
+            setFmt plot.Axes.Right style.yAxisRight.format
 
         let applyAxisLimits () : unit =
-            let xlo, xhi, ylo, yhi = dataBoundsVisible ()
+            let bounds = dataBoundsVisible ()
+            let xlo, xhi = bounds.x
             (if style.xAxis.auto then plot.Axes.SetLimitsX(xlo, xhi) else plot.Axes.SetLimitsX(style.xAxis.min, style.xAxis.max))
-            (if style.yAxis.auto then plot.Axes.SetLimitsY(ylo, yhi) else plot.Axes.SetLimitsY(style.yAxis.min, style.yAxis.max))
+            let ylo, yhi = bounds.yLeft
+            (if style.yAxisLeft.auto then plot.Axes.SetLimitsY(ylo, yhi, plot.Axes.Left) else plot.Axes.SetLimitsY(style.yAxisLeft.min, style.yAxisLeft.max, plot.Axes.Left))
+            // The right axis gets limits only once something plots against it (or the user pinned a manual
+            // range): an untouched ScottPlot axis keeps an unset range and renders NO ticks, so pushing a
+            // fallback 0…1 here would paint phantom tick labels on every single-axis chart's right edge.
+            if rightAxisInUse () || not style.yAxisRight.auto then
+                let rlo, rhi = bounds.yRight
+                (if style.yAxisRight.auto then plot.Axes.SetLimitsY(rlo, rhi, plot.Axes.Right) else plot.Axes.SetLimitsY(style.yAxisRight.min, style.yAxisRight.max, plot.Axes.Right))
 
         let applySeriesStyle () : unit =
             scatters
@@ -141,9 +172,12 @@ type ChartWindow(chart : ExperimentChart) as this =
                 let st = ChartStyle.seriesStyleOf i style
                 sc.IsVisible <- st.visible
                 sc.LineWidth <- float32 st.thickness
-                sc.Color <- colorOf st.colorHex
+                sc.Color <- ChartRender.colorOf st.colorHex
                 sc.MarkerShape <- (if st.showMarkers then ScottPlot.MarkerShape.FilledCircle else ScottPlot.MarkerShape.None)
-                sc.MarkerSize <- 5.0f)
+                sc.MarkerSize <- 5.0f
+                // Re-assert the Y-axis side so flipping a series left ⇄ right takes effect on the next
+                // style application (polar projects onto the hidden cartesian pair; leave it alone there).
+                if not polar then sc.Axes.YAxis <- scottYAxis st.axisSide)
 
         /// Show / hide the rectangular (cartesian) axes. `Plot.Add.PolarAxis` HIDES them so the polar grid
         /// reads cleanly; returning to XY must show them again or the plot renders with no axes / ticks /
@@ -151,6 +185,7 @@ type ChartWindow(chart : ExperimentChart) as this =
         let setCartesianAxesVisible (v : bool) : unit =
             (match plot.Axes.Bottom with :? ScottPlot.AxisPanels.AxisBase as a -> a.IsVisible <- v | _ -> ())
             (match plot.Axes.Left with :? ScottPlot.AxisPanels.AxisBase as a -> a.IsVisible <- v | _ -> ())
+            (match plot.Axes.Right with :? ScottPlot.AxisPanels.AxisBase as a -> a.IsVisible <- v | _ -> ())
 
         /// Push the whole style onto the plot: series look, legend, fonts, and (cartesian only) the axis
         /// number format + limits (polar auto-fits its circular grid instead).
@@ -185,16 +220,20 @@ type ChartWindow(chart : ExperimentChart) as this =
                     chart.series
                     |> List.mapi (fun i s ->
                         let coords = s.points |> List.map (fun (deg, v) -> pax.GetCoordinates(v, deg)) |> List.toArray
-                        let sc = plot.Add.ScatterLine(coords, System.Nullable (colorOf (ChartStyle.seriesStyleOf i style).colorHex))
+                        let sc = plot.Add.ScatterLine(coords, System.Nullable (ChartRender.colorOf (ChartStyle.seriesStyleOf i style).colorHex))
                         sc.LegendText <- s.name
                         sc)
                 else
                     chart.series
                     |> List.mapi (fun i s ->
+                        let st = ChartStyle.seriesStyleOf i style
                         let xs = s.points |> List.map fst |> List.toArray
                         let ys = s.points |> List.map snd |> List.toArray
-                        let sc = plot.Add.Scatter(xs, ys, System.Nullable (colorOf (ChartStyle.seriesStyleOf i style).colorHex))
+                        let sc = plot.Add.Scatter(xs, ys, System.Nullable (ChartRender.colorOf st.colorHex))
                         sc.LegendText <- s.name
+                        // Spec 0033 (018): each scatter plots against its assigned vertical axis — the
+                        // native left or right Y axis.
+                        sc.Axes.YAxis <- scottYAxis st.axisSide
                         sc)
             setupCrosshair ()
             applyStyle ()
@@ -221,7 +260,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                             marker.Location <- near.Coordinates
                             marker.IsVisible <- true
                             readout.Location <- near.Coordinates
-                            readout.LabelText <- sprintf "x=%.4g, y=%.4g" near.Coordinates.X near.Coordinates.Y
+                            readout.LabelText <- $"x=%.4g{near.Coordinates.X}, y=%.4g{near.Coordinates.Y}"
                             readout.IsVisible <- true
                             ava.Refresh()
                     with _ -> ())
@@ -261,39 +300,44 @@ type ChartWindow(chart : ExperimentChart) as this =
             minus.Click.Add(fun _ -> bump -1.0; applyStyle (); rebuildProperties ())
             let plus = Button(Name = ChartWindowIds.fontPlus, Content = "A+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             plus.Click.Add(fun _ -> bump 1.0; applyStyle (); rebuildProperties ())
-            let sz = TextBlock(Name = ChartWindowIds.fontSize, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = sprintf "%g pt" (ChartFont.sizeOf target style.font))
+            let sz = TextBlock(Name = ChartWindowIds.fontSize, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{ChartFont.sizeOf target style.font} pt")
             row [ smallLabel "Font:"; minus; plus; sz ]
 
-        let axisPanel (isX : bool) : Control list =
-            let axis = if isX then style.xAxis else style.yAxis
-            let autoBox = CheckBox(Name = ChartWindowIds.axisAuto, Content = "Auto (fit data)", IsChecked = axis.auto)
+        let axisPanel (axis : ChartStyle.ChartAxis) : Control list =
+            let axisStyle = ChartStyle.axisStyleOf axis style
+            let axisTitle =
+                match axis with
+                | ChartStyle.AxisX -> "X axis"
+                | ChartStyle.AxisY ChartStyle.LeftAxis -> "Y axis (left)"
+                | ChartStyle.AxisY ChartStyle.RightAxis -> "Y axis (right)"
+            let autoBox = CheckBox(Name = ChartWindowIds.axisAuto, Content = "Auto (fit data)", IsChecked = axisStyle.auto)
             autoBox.IsCheckedChanged.Add(fun _ ->
-                style <- ChartStyle.setAxisAuto isX (autoBox.IsChecked.GetValueOrDefault true) style
+                style <- ChartStyle.setAxisAuto axis (autoBox.IsChecked.GetValueOrDefault true) style
                 applyStyle (); rebuildProperties ())
-            let minF = numberField ChartWindowIds.axisMin axis.min (not axis.auto) (fun v -> style <- ChartStyle.setAxisMin isX v style; applyStyle (); rebuildProperties ())
-            let maxF = numberField ChartWindowIds.axisMax axis.max (not axis.auto) (fun v -> style <- ChartStyle.setAxisMax isX v style; applyStyle (); rebuildProperties ())
+            let minF = numberField ChartWindowIds.axisMin axisStyle.min (not axisStyle.auto) (fun v -> style <- ChartStyle.setAxisMin axis v style; applyStyle (); rebuildProperties ())
+            let maxF = numberField ChartWindowIds.axisMax axisStyle.max (not axisStyle.auto) (fun v -> style <- ChartStyle.setAxisMax axis v style; applyStyle (); rebuildProperties ())
             let fmtBox = ComboBox(Name = ChartWindowIds.axisFormat)
             for f in [ ChartStyle.GeneralFormat; ChartStyle.FixedFormat 2; ChartStyle.ScientificFormat 2 ] do
                 fmtBox.Items.Add(ComboBoxItem(Content = f.label)) |> ignore
-            fmtBox.SelectedIndex <- (match axis.format with ChartStyle.GeneralFormat -> 0 | ChartStyle.FixedFormat _ -> 1 | ChartStyle.ScientificFormat _ -> 2)
+            fmtBox.SelectedIndex <- (match axisStyle.format with ChartStyle.GeneralFormat -> 0 | ChartStyle.FixedFormat _ -> 1 | ChartStyle.ScientificFormat _ -> 2)
             fmtBox.SelectionChanged.Add(fun _ ->
-                let d = axis.format.decimals
+                let d = axisStyle.format.decimals
                 let fmt =
                     match fmtBox.SelectedIndex with
                     | 1 -> ChartStyle.FixedFormat (if d = 0 then 2 else d)
                     | 2 -> ChartStyle.ScientificFormat (if d = 0 then 2 else d)
                     | _ -> ChartStyle.GeneralFormat
-                style <- ChartStyle.setAxisFormat isX fmt style; applyStyle (); rebuildProperties ())
-            let decEnabled = (match axis.format with ChartStyle.GeneralFormat -> false | _ -> true)
+                style <- ChartStyle.setAxisFormat axis fmt style; applyStyle (); rebuildProperties ())
+            let decEnabled = (match axisStyle.format with ChartStyle.GeneralFormat -> false | _ -> true)
             let decMinus = Button(Name = ChartWindowIds.axisDecimalsMinus, Content = "−", IsEnabled = decEnabled)
-            decMinus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals isX -1 style; applyStyle (); rebuildProperties ())
+            decMinus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals axis -1 style; applyStyle (); rebuildProperties ())
             let decPlus = Button(Name = ChartWindowIds.axisDecimalsPlus, Content = "+", IsEnabled = decEnabled, Margin = Thickness(4.0, 0.0, 0.0, 0.0))
-            decPlus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals isX 1 style; applyStyle (); rebuildProperties ())
-            let decReadout = TextBlock(Name = ChartWindowIds.axisDecimals, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = sprintf "%d digits" axis.format.decimals)
+            decPlus.Click.Add(fun _ -> style <- ChartStyle.bumpAxisDecimals axis 1 style; applyStyle (); rebuildProperties ())
+            let decReadout = TextBlock(Name = ChartWindowIds.axisDecimals, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%d{axisStyle.format.decimals} digits")
             let bumpAxisFont (delta : float) : unit =
                 style <- ChartStyle.bumpFont ChartFont.AxisLabels delta (ChartStyle.bumpFont ChartFont.TickLabels delta style)
             [
-                TextBlock(Text = (if isX then "X axis" else "Y axis"), FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
+                TextBlock(Text = axisTitle, FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
                 autoBox :> Control
                 row [ smallLabel "Min:"; (minF :> Control) ] :> Control
                 row [ smallLabel "Max:"; (maxF :> Control) ] :> Control
@@ -327,7 +371,7 @@ type ChartWindow(chart : ExperimentChart) as this =
             thickMinus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i -0.5 style; applyStyle (); rebuildProperties ())
             let thickPlus = Button(Name = ChartWindowIds.seriesThicknessPlus, Content = "+", Margin = Thickness(4.0, 0.0, 0.0, 0.0))
             thickPlus.Click.Add(fun _ -> style <- ChartStyle.bumpSeriesThickness i 0.5 style; applyStyle (); rebuildProperties ())
-            let thickReadout = TextBlock(Name = ChartWindowIds.seriesThickness, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = sprintf "%g px" st.thickness)
+            let thickReadout = TextBlock(Name = ChartWindowIds.seriesThickness, VerticalAlignment = VerticalAlignment.Center, Margin = Thickness(6.0, 0.0, 0.0, 0.0), Text = $"%g{st.thickness} px")
             let colorBox = ComboBox(Name = ChartWindowIds.seriesColor)
             for c in ChartStyle.colorChoices do colorBox.Items.Add(ComboBoxItem(Content = c)) |> ignore
             colorBox.SelectedIndex <- (match List.tryFindIndex (fun c -> c = st.colorHex) ChartStyle.colorChoices with Some idx -> idx | None -> 0)
@@ -337,11 +381,21 @@ type ChartWindow(chart : ExperimentChart) as this =
                     style <- ChartStyle.setSeriesColor i (List.item idx ChartStyle.colorChoices) style; applyStyle ())
             let dotsBox = CheckBox(Name = ChartWindowIds.seriesMarkers, Content = "Show dots", IsChecked = st.showMarkers)
             dotsBox.IsCheckedChanged.Add(fun _ -> style <- ChartStyle.setSeriesMarkers i (dotsBox.IsChecked.GetValueOrDefault false) style; applyStyle (); rebuildProperties ())
+            // Which Y axis the series plots against (spec 0033/018) — applying the style re-asserts each
+            // scatter's Axes.YAxis, so the flip takes effect without a full rebuild.
+            let axisBox = ComboBox(Name = ChartWindowIds.seriesAxis)
+            for side in ChartStyle.allSides do axisBox.Items.Add(ComboBoxItem(Content = side.label)) |> ignore
+            axisBox.SelectedIndex <- List.findIndex (fun a -> a = st.axisSide) ChartStyle.allSides
+            axisBox.SelectionChanged.Add(fun _ ->
+                let idx = axisBox.SelectedIndex
+                if idx >= 0 && idx < List.length ChartStyle.allSides then
+                    style <- ChartStyle.setSeriesAxisSide i (List.item idx ChartStyle.allSides) style; applyStyle ())
             [
-                TextBlock(Text = sprintf "Line: %s" (seriesName i), FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
+                TextBlock(Text = $"Line: %s{seriesName i}", FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
                 visBox :> Control
                 row [ smallLabel "Thickness:"; (thickMinus :> Control); (thickPlus :> Control); (thickReadout :> Control) ] :> Control
                 row [ smallLabel "Colour:"; (colorBox :> Control) ] :> Control
+                row [ smallLabel "Axis:"; (axisBox :> Control) ] :> Control
                 dotsBox :> Control
             ]
 
@@ -356,8 +410,8 @@ type ChartWindow(chart : ExperimentChart) as this =
                 let controls =
                     match style.selected with
                     | ChartStyle.Header -> [ TextBlock(Text = "Header", FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control; fontRow ChartFont.Title (fun d -> style <- ChartStyle.bumpFont ChartFont.Title d style) :> Control ]
-                    | ChartStyle.XAxis -> axisPanel true
-                    | ChartStyle.YAxis -> axisPanel false
+                    | ChartStyle.XAxis -> axisPanel ChartStyle.AxisX
+                    | ChartStyle.YAxis side -> axisPanel (ChartStyle.AxisY side)
                     | ChartStyle.Legend -> legendPanel ()
                     | ChartStyle.Series i -> seriesPanel i
                 controls |> List.iter (fun c -> propertiesHost.Children.Add c)

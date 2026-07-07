@@ -81,9 +81,9 @@ module SystemView3DTests =
 
             // placeElements renders one box per placed element — the two-node tree gives >= 2.
             let rects = descendants |> List.filter (fun v -> v :? Rectangle) |> List.length
-            Assert.True(rects >= 2, sprintf "expected >= 2 placed-element boxes, got %d" rects)
+            Assert.True(rects >= 2, $"expected >= 2 placed-element boxes, got %d{rects}")
 
             // beamSegments renders the reflected/transmitted rays read from the solved fields.
             let lines = descendants |> List.filter (fun v -> v :? Line) |> List.length
-            Assert.True(lines >= 1, sprintf "expected >= 1 beam-segment line, got %d" lines)
+            Assert.True(lines >= 1, $"expected >= 1 beam-segment line, got %d{lines}")
             window.Close())

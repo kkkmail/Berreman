@@ -79,24 +79,24 @@ module HistoryTests =
         // most-recent, with the very last bump at the head.
         let full =
             [ 1 .. 20 ]
-            |> List.fold (fun acc i -> RecentFiles.bump (sprintf @"C:\proj\f%d.ocproj" i) acc) []
+            |> List.fold (fun acc i -> RecentFiles.bump $@"C:\proj\f%d{i}.ocproj" acc) []
         Assert.Equal(RecentFiles.maxRecent, List.length full)
         Assert.Equal(@"C:\proj\f20.ocproj", List.head full)
         Assert.Equal(@"C:\proj\f5.ocproj", List.last full)
 
     [<Fact>]
     let ``AC-I6 writeAutosave leaves the .ocproj untouched and writes a distinct .autosave`` () =
-        let dir = Path.Combine(Path.GetTempPath(), sprintf "oc-autosave-%s" (Guid.NewGuid().ToString("N")))
+        let dir = Path.Combine(Path.GetTempPath(), $"""oc-autosave-%s{(Guid.NewGuid().ToString("N"))}""")
         Directory.CreateDirectory dir |> ignore
         try
             let ocproj = Path.Combine(dir, "sample.ocproj")
             match ProjectFile.saveProject ocproj preEdit with
-            | Error e -> Assert.Fail(sprintf "saveProject failed: %A" e)
+            | Error e -> Assert.Fail($"saveProject failed: %A{e}")
             | Ok () ->
                 let before = File.ReadAllText ocproj
                 // Autosave a DIFFERENT (edited) project; the .ocproj must not change.
                 match Autosave.writeAutosave ocproj edited with
-                | Error e -> Assert.Fail(sprintf "writeAutosave failed: %A" e)
+                | Error e -> Assert.Fail($"writeAutosave failed: %A{e}")
                 | Ok () ->
                     let autosave = Autosave.autosavePath ocproj
                     Assert.True(File.Exists autosave, "autosave file exists")
