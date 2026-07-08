@@ -77,13 +77,16 @@ let scottPlotHost (plot : ScottPlot.Plot) : IView =
 ///
 /// There is no Avalonia-hostable WebView2 binding on this project's `net10.0` target:
 /// the `Microsoft.Web.WebView2` package ships its control assemblies for `net462` /
-/// Windows-desktop TFMs only and contributes no compile-time reference here (verified
-/// empirically — its `compile` asset set is empty under `net10.0`), and the headless
-/// platform carries no Evergreen runtime. So this returns `None` today and the adapter
-/// degrades to the §U1.8 placeholder (the same graceful path AC-U3.1 names for an
-/// absent WebView2). The `toEmbeddedHTML` → `NavigateToString` wiring lands unchanged
-/// once a Windows-desktop `NativeControlHost` WebView bridge is added (deferred; the
-/// app targets win-x64).
+/// Windows-desktop TFMs only and contributed no compile-time reference here (its
+/// `compile` asset set is empty under `net10.0`). Its build `.targets` only injected the
+/// desktop control references — including the WPF assembly that pulled a conflicting
+/// `WindowsBase 5.0.0.0` — so spec 0035 §0.6 (slice 018) DROPPED the package reference
+/// (`OpticalConstructor.Ui.fsproj`) to clear that MSB3277 conflict at the reference level;
+/// the headless platform carries no Evergreen runtime regardless. So this returns `None`
+/// today and the adapter degrades to the §U1.8 placeholder (the same graceful path AC-U3.1
+/// names for an absent WebView2). The `toEmbeddedHTML` → `NavigateToString` wiring — and the
+/// re-added, asset-scoped WebView2 reference — land once a Windows-desktop
+/// `NativeControlHost` WebView bridge is added (deferred; the app targets win-x64).
 ///
 /// The chart is taken lazily so the placeholder path never pays for building it
 /// (a Plotly 3-D surface forces an upstream `calculate3D` sweep): the value is forced

@@ -173,7 +173,18 @@
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
         <PackageReference Include="Plotly.NET" Version="5.1.0" />
         <PackageReference Include="OpenTK" Version="4.9.4" />
-        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+        <!-- Spec 0035 §0.6 (slice 018): the `Microsoft.Web.WebView2` package reference is
+             DROPPED to clear the MSB3277 WindowsBase conflict at the reference level (never
+             suppressed). On this `net10.0` target the package contributes NO compile-time
+             reference — its `lib` compile asset is `net462`-only (see ChartHosts.fs:78-86).
+             Its build `.targets` merely INJECT the desktop control `<Reference>`s, one of
+             which — `Microsoft.Web.WebView2.Wpf.dll` — depends on `WindowsBase 5.0.0.0` and
+             conflicts with the SDK ref pack's `WindowsBase 4.0.0.0`; that was the MSB3277 the
+             App / Ui / Tests / Ui.Tests builds emitted (it flows transitively from here, the
+             only project that declared the package). No `.fs` references a WebView2 type — the
+             `ChartHosts.webView2Host` seam degrades to the §U1.8 placeholder — so dropping the
+             reference changes no compiled behaviour. Re-add it, asset-scoped to exclude the WPF
+             assembly, when the deferred Windows-desktop `NativeControlHost` WebView bridge lands. -->
     </ItemGroup>
 
     <ItemGroup>
