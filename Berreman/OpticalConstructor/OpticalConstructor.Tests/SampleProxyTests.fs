@@ -27,6 +27,16 @@ module SampleProxyTests =
     let private minted () : Sample =
         { plate with id = newSampleId (); name = "Test plate (minted)" }
 
+    /// A structurally-empty structure — no films AND no substrate (spec 0035 step 012): the engine
+    /// mapping has nothing to expand, so the write-seam must reject a sample carrying it.
+    let private emptyStructure : SampleStructure =
+        { films = []; substrate = None; lower = None }
+
+    /// A fresh, NON-BLANK-named sample over the empty structure (a minted id, never seeded): its
+    /// name passes the blank-name rule so only the structure-content rule can reject it.
+    let private mintedEmpty () : Sample =
+        { minted () with structure = emptyStructure }
+
     /// FIXED literal ids for the round-trip tests (spec 0033 step 005): never seeded, never
     /// minted — the round-trips stay deterministic across runs.
     let private fixedFreshId : SampleId = Guid.Parse "d4c1a1f0-5a2e-4d0b-9b3c-7f8e6a5d4c3b" |> SampleId
@@ -138,6 +148,27 @@ module SampleProxyTests =
     let ``updateSample rejects a blank name as InvalidSample`` () =
         let proxy = freshProxy ()
         match proxy.updateSample { plate with name = "" } with
+        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
+
+    // Spec 0035 step 012 — the structure-content rule supersedes the name-only contract: a sample
+    // with no films AND no substrate is structurally empty and rejected on every save, even named.
+
+    [<Fact>]
+    let ``addSample rejects a structurally-empty sample (no films, no substrate) as InvalidSample even when named`` () =
+        let proxy = freshProxy ()
+        // A minted id + non-blank name — so the reject is the structural-emptiness rule, not the
+        // blank-name rule and not a duplicate/unknown-id miss.
+        match proxy.addSample (mintedEmpty ()) with
+        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
+
+    [<Fact>]
+    let ``updateSample rejects a structurally-empty sample (no films, no substrate) as InvalidSample even when named`` () =
+        let proxy = freshProxy ()
+        // plate.id is a KNOWN seeded id and its name is non-blank, so only the structure-content
+        // rule can reject this otherwise-valid update.
+        match proxy.updateSample { plate with structure = emptyStructure } with
         | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
 

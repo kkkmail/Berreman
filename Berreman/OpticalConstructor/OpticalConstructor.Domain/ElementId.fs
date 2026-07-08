@@ -591,11 +591,22 @@ module Library =
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
 
-    /// The blank-name validation the samples store's write functions share (spec 0033
-    /// steps 004/005): a `Sample` whose display name is empty/whitespace is `InvalidSample`.
+    /// The write-seam validation the samples store's write functions share. Two rules, in order:
+    /// (spec 0033 steps 004/005) a `Sample` whose display name is empty/whitespace is
+    /// `InvalidSample`; and (spec 0035 step 012) a `Sample` whose structure carries NO films AND
+    /// NO substrate (`films = []`, `substrate = None` on `SampleStructure`) is structurally empty —
+    /// there is nothing for the engine mapping to expand — and is likewise `InvalidSample`, even
+    /// when its name is non-blank. Both `addSample` and `updateSample` run this, so the guard holds
+    /// on every save.
     let private validateSample (s : Sample) : Result<unit, SampleError> =
+        let structurallyEmpty =
+            match s.structure.films, s.structure.substrate with
+            | [], None -> true
+            | _ -> false
         if String.IsNullOrWhiteSpace s.name
         then Error (InvalidSample $"sample '%s{string s.id.value}' has a blank name")
+        elif structurallyEmpty
+        then Error (InvalidSample $"sample '%s{string s.id.value}' has no films and no substrate")
         else Ok ()
 
     /// The real, stateful in-memory samples store behind the write-seam (spec 0033 step 005 —
