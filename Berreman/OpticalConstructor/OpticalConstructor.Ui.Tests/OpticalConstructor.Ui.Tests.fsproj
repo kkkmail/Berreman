@@ -127,6 +127,11 @@
              both real editor windows, and a referenced-material remove surfaces the typed
              refusal from the root-coupled samples store. -->
         <Compile Include="WireUiCompositionTests.fs" />
+        <!-- Spec 0035 (005): the CategoryControls component (UICOMP_XDUO_0005) — pure contract
+             (empty state + the stable intent-named UiIds and derived per-row ids) + a headless
+             structure proof (every UiIds control exists over a known State, the built-in row's
+             Remove is removed not greyed, and a simulated Add click invokes the add handler). -->
+        <Compile Include="CategoryControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
