@@ -314,6 +314,29 @@ module SampleEditorWindowTests =
         | Some reason -> Assert.Equal("the name is blank", reason)
         | None -> Assert.Fail("expected the proxy's typed reason as the status")
 
+    [<Fact>]
+    let ``the material picker narrows by a search fragment and by a category facet, still choosing by MaterialId`` () =
+        let m = newModel ()
+        // Unfiltered: every built-in entry is a picker option.
+        Assert.Equal<int>(List.length builtInEntries, List.length (filteredMaterials m))
+        // A name fragment narrows to the glasses (case-insensitive) and drops the crystal.
+        let searchedIds = filteredMaterials (m |> update (SetMaterialSearchText "glass")) |> List.map (fun e -> e.id)
+        Assert.True(List.contains MaterialIds.glass152 searchedIds, "a glass survives the 'glass' fragment")
+        Assert.False(List.contains MaterialIds.uniaxialCrystal searchedIds, "the crystal is dropped by the 'glass' fragment")
+        // The category facet narrows to the Crystal category and drops the glass.
+        let byCat = m |> update (SelectMaterialCategory (Some CategoryIds.crystal))
+        let catEntries = filteredMaterials byCat
+        Assert.NotEmpty(catEntries)
+        Assert.True(catEntries |> List.forall (fun e -> e.category = CategoryIds.crystal), "the Crystal facet must list only Crystal-category entries")
+        let catIds = catEntries |> List.map (fun e -> e.id)
+        Assert.True(List.contains MaterialIds.uniaxialCrystal catIds, "the crystal survives the Crystal facet")
+        Assert.False(List.contains MaterialIds.glass152 catIds, "a glass is dropped by the Crystal facet")
+        // Choosing a filtered option still dispatches ChooseMaterial with its MaterialId.
+        let chosen = byCat |> update (ChooseMaterial MaterialIds.uniaxialCrystal)
+        Assert.Equal<MaterialId option>(Some MaterialIds.uniaxialCrystal, chosen.chosenMaterial)
+        // The "All" facet (None) restores the full list.
+        Assert.Equal<int>(List.length builtInEntries, List.length (filteredMaterials (byCat |> update (SelectMaterialCategory None))))
+
     // ============================ headless semantic-tree proofs ============================
 
     /// Every fixed slice-mandated UiId (the window's own id is asserted on the window itself).
@@ -518,4 +541,37 @@ module SampleEditorWindowTests =
             Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window UiIds.qwotDerivedText)
             clickOn window UiIds.setLayerHeightButton
             Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window (UiIds.layerThickness 0))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the material picker filters by a search fragment and a category facet and still selects by MaterialId`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let crystalFacet = UiIds.materialCategoryOption (materialCategoryCode (Some CategoryIds.crystal))
+            // The picker's fixed surfaces are present, and initially every built-in option is
+            // listed — a glass and the anisotropic crystal among them.
+            Assert.True(isPresent window UiIds.materialSearchBox, "the material search box must be present")
+            Assert.True(isPresent window crystalFacet, "the Crystal category facet option must be present")
+            Assert.True(isPresent window (materialOptionId MaterialIds.glass152), "the glass option should be listed initially")
+            Assert.True(isPresent window (materialOptionId MaterialIds.uniaxialCrystal), "the crystal option should be listed initially")
+            // Typing a fragment narrows the options: "glass" keeps the glasses, drops the crystal.
+            setText window UiIds.materialSearchBox "glass"
+            Assert.True(isPresent window (materialOptionId MaterialIds.glass152), "a glass option must survive the 'glass' fragment")
+            Assert.False(isPresent window (materialOptionId MaterialIds.uniaxialCrystal), "the crystal option must be filtered out by the 'glass' fragment")
+            // Clear the search, then the category facet narrows to the Crystal category only.
+            setText window UiIds.materialSearchBox ""
+            clickOn window crystalFacet
+            Assert.True(isPresent window (materialOptionId MaterialIds.uniaxialCrystal), "the crystal option must survive the Crystal facet")
+            Assert.False(isPresent window (materialOptionId MaterialIds.glass152), "a glass option must be filtered out by the Crystal facet")
+            // Choosing the filtered (crystal) option still dispatches ChooseMaterial by MaterialId:
+            // Add-layer appends THAT chosen material, an anisotropic crystal, whose row carries the
+            // per-layer orientation editor (present ONLY for anisotropic materials).
+            clickOn window (materialOptionId MaterialIds.uniaxialCrystal)
+            clickOn window UiIds.addLayerButton
+            Assert.Equal("1", textOf window UiIds.filmsCount)
+            Assert.True(isPresent window (UiIds.layerOrientation 0), "the added layer must be the chosen anisotropic crystal — proving ChooseMaterial fired with its MaterialId")
             window.Close())
