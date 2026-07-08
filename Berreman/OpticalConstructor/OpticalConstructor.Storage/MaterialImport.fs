@@ -215,9 +215,8 @@ module MaterialImport =
     /// (formula 1 squares its resonances, formula 2 does not). The constant c₀
     /// rides as a resonance-free Sellmeier term (A = c₀, B = 0: c₀·λ²/λ² = c₀),
     /// so the whole page maps onto the catalogue `Sellmeier` model and its exact
-    /// `toEpsAxis` lowering — no oscillator identity re-derived here. The error
-    /// branch is unreachable (a Sellmeier model always lowers) but keeps the
-    /// match total.
+    /// `toEpsAxis` lowering — no oscillator identity re-derived here. `toEpsAxis`
+    /// is total, so the lowering cannot fail.
     let private sellmeierAxis (squaredResonance : bool) (nums : float[]) : Result<EpsAxisDispersion, ImportError> =
         let pairs = coefficientPairs nums.[1..]
         let model =
@@ -228,9 +227,7 @@ module MaterialImport =
                     wavelengthUnit = Micrometer
                     thermoOptic = None
                 }
-        match toEpsAxis model with
-        | Ok axis -> Ok axis
-        | Error (NotAFiniteTermSum reason) -> Error (MalformedYaml reason)
+        Ok (toEpsAxis model)
 
     /// RII formula 3 (polynomial): n² = c₀ + Σ cᵢ·λ^{pᵢ} — ε term data directly.
     let private polynomialAxis (nums : float[]) : Result<EpsAxisDispersion, ImportError> =

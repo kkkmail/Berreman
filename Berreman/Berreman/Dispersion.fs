@@ -301,16 +301,43 @@ module Dispersion =
 
 
     /// The dispersion of ONE principal axis: either separate real n and k
-    /// formulas (k = the zero formula for a transparent medium), or one complex
-    /// eps formula for inherently complex models (Lorentz / Drude).
+    /// formulas (k = the zero formula for a transparent medium), one complex
+    /// eps formula for inherently complex models (Lorentz / Drude), or an
+    /// evaluated-directly closure for the transcendental models (Tauc–Lorentz,
+    /// Gaussian, Forouhi–Bloomer, Brendel–Bormann) that are not finite term sums —
+    /// it carries a `WaveLength -> ComplexRefractionIndex` exactly as the engine's
+    /// own `EpsWithDisp` case does, and `complexIndex` applies it. A function-typed
+    /// case removes F#'s structural equality type-wide, so the type provides custom
+    /// equality: `RealNK` / `ComplexEps` compare structurally (keeping the
+    /// `DispersionModel` / `EpsWithDispValue` / `MaterialComplexity` equality the
+    /// round-trip tests use) and the evaluated case compares by closure reference.
+    [<CustomEquality; NoComparison>]
     type EpsAxisDispersion =
         | RealNK of n : DispersionFormula * k : DispersionFormula
         | ComplexEps of ComplexDispersionFormula
+        | EpsAxisEvaluated of (WaveLength -> ComplexRefractionIndex)
 
         member this.complexIndex (w : WaveLength) : ComplexRefractionIndex =
             match this with
             | RealNK (n, k) -> Complex (n.evaluate w, k.evaluate w) |> ComplexRefractionIndex
             | ComplexEps eps -> eps.evaluate w |> sqrt |> ComplexRefractionIndex
+            | EpsAxisEvaluated f -> f w
+
+        override this.Equals (o : obj) : bool =
+            match o with
+            | :? EpsAxisDispersion as other ->
+                match this, other with
+                | RealNK (n1, k1), RealNK (n2, k2) -> n1 = n2 && k1 = k2
+                | ComplexEps e1, ComplexEps e2 -> e1 = e2
+                | EpsAxisEvaluated f1, EpsAxisEvaluated f2 -> LanguagePrimitives.PhysicalEquality f1 f2
+                | _ -> false
+            | _ -> false
+
+        override this.GetHashCode () : int =
+            match this with
+            | RealNK (n, k) -> hash (0, n, k)
+            | ComplexEps e -> hash (1, e)
+            | EpsAxisEvaluated f -> LanguagePrimitives.PhysicalHash f
 
 
     /// One isotropic dispersion segment: a single axis over one interval.

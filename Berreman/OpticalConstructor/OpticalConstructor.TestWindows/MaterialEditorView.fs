@@ -273,7 +273,6 @@ let private parseFloat (s : string) : float option =
 
 let editErrorReason (e : MaterialComplexityEditError) : string =
     match e with
-    | SegmentNotLowerable reason
     | NoSuchSegment reason
     | LastSegmentNotRemovable reason -> reason
 

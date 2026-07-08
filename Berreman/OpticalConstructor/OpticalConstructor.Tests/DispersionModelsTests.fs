@@ -67,17 +67,16 @@ module DispersionModelsTests =
         Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, "constant uniaxial value")
         Assert.True(epsClose 1e-12 (uniaxialEps no ne) expected, "direct uniaxialEps helper")
         // Per-axis dispersive route: the same indices as one uniaxial segment tree.
-        match toEpsAxis (cnk 1.5 0.0), toEpsAxis (cnk 1.65 0.0) with
-        | Ok axisO, Ok axisE ->
-            let segment =
-                {
-                    wavelengthInterval = { lower = WaveLength.nm 400.0<nm>; upper = WaveLength.nm 700.0<nm> }
-                    ordinaryDispersion = axisO
-                    extraordinaryDispersion = axisE
-                }
-            let opDisp = toAnisotropicOpticalProperties (EpsWithDispValue (UniaxialDispersive [ segment ]))
-            Assert.True(epsClose 1e-12 (opDisp.epsWithDisp.getEps w) expected, "dispersive uniaxial segment tree")
-        | other -> Assert.Fail($"expected two lowered axes, got {other}")
+        let axisO = toEpsAxis (cnk 1.5 0.0)
+        let axisE = toEpsAxis (cnk 1.65 0.0)
+        let segment =
+            {
+                wavelengthInterval = { lower = WaveLength.nm 400.0<nm>; upper = WaveLength.nm 700.0<nm> }
+                ordinaryDispersion = axisO
+                extraordinaryDispersion = axisE
+            }
+        let opDisp = toAnisotropicOpticalProperties (EpsWithDispValue (UniaxialDispersive [ segment ]))
+        Assert.True(epsClose 1e-12 (opDisp.epsWithDisp.getEps w) expected, "dispersive uniaxial segment tree")
 
     [<Fact>]
     let ``ConstantNK composes to EpsWithoutDisp (no closure overhead)`` () =
@@ -172,14 +171,12 @@ module DispersionModelsTests =
 
     /// The lowered term data must reproduce `evaluate` at every grid wavelength.
     let private assertLoweringMatchesEvaluate (tol : float) (model : DispersionModel) =
-        match toEpsAxis model with
-        | Error e -> Assert.Fail($"expected a lowering, got Error {e}")
-        | Ok axis ->
-            let f = evaluate model
-            for w in visibleGrid do
-                let got = (axis.complexIndex w).value
-                let expected = (f w).value
-                Assert.True(closeC tol got expected, $"λ={w}: lowered {got} vs evaluate {expected}")
+        let axis = toEpsAxis model
+        let f = evaluate model
+        for w in visibleGrid do
+            let got = (axis.complexIndex w).value
+            let expected = (f w).value
+            Assert.True(closeC tol got expected, $"λ={w}: lowered {got} vs evaluate {expected}")
 
     [<Fact>]
     let ``AC-B5 Sellmeier lowering matches evaluate on the grid (micrometer abscissa)`` () =
@@ -195,7 +192,7 @@ module DispersionModelsTests =
                     thermoOptic = None
                 }
         match toEpsAxis model with
-        | Ok (ComplexEps _) -> ()
+        | ComplexEps _ -> ()
         | other -> Assert.Fail($"Sellmeier must lower to ComplexEps (√ of the ε term sum), got {other}")
         assertLoweringMatchesEvaluate 1e-8 model
 
@@ -210,7 +207,7 @@ module DispersionModelsTests =
     let ``AC-B5 Cauchy lowering is RealNK Laurent terms and matches evaluate on the grid`` () =
         let model = Cauchy { a = 1.5046; b = 0.0042; c = 0.00003; wavelengthUnit = Micrometer; thermoOptic = None }
         match toEpsAxis model with
-        | Ok (RealNK (_, k)) -> Assert.True(List.isEmpty k.terms, "k must be the zero formula")
+        | RealNK (_, k) -> Assert.True(List.isEmpty k.terms, "k must be the zero formula")
         | other -> Assert.Fail($"Cauchy must lower to RealNK, got {other}")
         assertLoweringMatchesEvaluate 1e-9 model
 
@@ -224,7 +221,7 @@ module DispersionModelsTests =
     let ``AC-B5 ConstantNK lowering is RealNK constants and matches evaluate on the grid`` () =
         let model = cnk 2.0 0.1
         match toEpsAxis model with
-        | Ok (RealNK _) -> ()
+        | RealNK _ -> ()
         | other -> Assert.Fail($"ConstantNK must lower to RealNK constants, got {other}")
         assertLoweringMatchesEvaluate 1e-12 model
 
@@ -301,10 +298,11 @@ module DispersionModelsTests =
         assertLoweringMatchesEvaluate 1e-8 model
 
     [<Fact>]
-    let ``AC-B5 transcendental models are a typed lowering error and evaluate directly`` () =
+    let ``AC-B5 transcendental models lower to the evaluated case and match evaluate`` () =
         // TaucLorentz / GaussianOscillator are not finite term sums (band-gap step,
-        // exp): toEpsAxis reports the typed error, and toOpticalProperties keeps them
-        // fully working by wrapping `evaluate` in the engine EpsWithDisp closure.
+        // exp): toEpsAxis lowers them to EpsAxisEvaluated carrying `evaluate`, so its
+        // complexIndex reproduces `evaluate` exactly and toOpticalProperties keeps
+        // them fully working through the evaluated segment.
         let tl =
             TaucLorentz
                 {
@@ -327,12 +325,14 @@ module DispersionModelsTests =
                     thermoOptic = None
                 }
         for model in [ tl; go ] do
-            match toEpsAxis model with
-            | Error (NotAFiniteTermSum _) -> ()
-            | other -> Assert.Fail($"expected Error (NotAFiniteTermSum _), got {other}")
+            let axis = toEpsAxis model
+            match axis with
+            | EpsAxisEvaluated _ -> ()
+            | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
             let f = evaluate model
             let op = toOpticalProperties model
             for w in visibleGrid do
+                Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
                 Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")
 
@@ -346,7 +346,7 @@ module DispersionModelsTests =
                 { terms = [ { lambda = 0.0; coefficients = [| 1.7; 0.1 |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = 1.0e-6 },
                 { terms = []; wavelengthScale = 1.0e-6 })
         let model = SumOfTerms axis
-        Assert.Equal(Ok axis, toEpsAxis model)
+        Assert.Equal<EpsAxisDispersion>(axis, toEpsAxis model)
         Assert.Equal(Meter, wavelengthUnitOf model)
         Assert.Equal(None, thermoOpticOf model)
         let f = evaluate model
@@ -356,11 +356,11 @@ module DispersionModelsTests =
     [<Fact>]
     let ``AC-B5 toEpsValue short-circuits ConstantNK and builds a single-segment tree otherwise`` () =
         match toEpsValue (cnk 2.0 0.1) with
-        | Ok (EpsWithoutDispValue (IsotropicAbsorbing _)) -> ()
+        | EpsWithoutDispValue (IsotropicAbsorbing _) -> ()
         | other -> Assert.Fail($"ConstantNK must become the constant value, got {other}")
         let sellmeier = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
         match toEpsValue sellmeier with
-        | Ok (EpsWithDispValue (IsotropicDispersive [ _ ])) -> ()
+        | EpsWithDispValue (IsotropicDispersive [ _ ]) -> ()
         | other -> Assert.Fail($"a lowerable model must become one isotropic segment, got {other}")
         let tl =
             TaucLorentz
@@ -373,9 +373,11 @@ module DispersionModelsTests =
                     wavelengthUnit = ElectronVolt
                     thermoOptic = None
                 }
+        // A transcendental model is now total too: one isotropic segment carrying
+        // the evaluated case (no lowering error).
         match toEpsValue tl with
-        | Error (NotAFiniteTermSum _) -> ()
-        | other -> Assert.Fail($"a transcendental model must be a typed lowering error, got {other}")
+        | EpsWithDispValue (IsotropicDispersive [ { dispersion = EpsAxisEvaluated _ } ]) -> ()
+        | other -> Assert.Fail($"a transcendental model must become one evaluated segment, got {other}")
 
     [<Fact>]
     let ``AC-B5 toOpticalProperties routes a lowerable model through the serializable tree`` () =
@@ -528,20 +530,21 @@ module DispersionModelsTests =
             Assert.True(closeC 1e-4 (fBb w).value (fLorentz w).value, $"λ={w}: BB {(fBb w).value} vs Lorentz {(fLorentz w).value}")
 
     [<Fact>]
-    let ``AC-B6 ForouhiBloomer and BrendelBormann are a typed lowering error and evaluate directly`` () =
-        // Slice 011's recorded route for non-finite-term models: `ComplexEps`
-        // carries pure term data and cannot hold a closure, so toEpsAxis
-        // surfaces the typed error and toOpticalProperties keeps both models
-        // fully working by wrapping `evaluate` in the engine EpsWithDisp
-        // closure.
+    let ``AC-B6 ForouhiBloomer and BrendelBormann lower to the evaluated case and match evaluate`` () =
+        // The transcendental models (band-gap step in k / Faddeeva-function Voigt
+        // broadening) are not finite term sums, so toEpsAxis lowers them to the
+        // evaluated case carrying `evaluate`; its complexIndex reproduces `evaluate`
+        // and toOpticalProperties keeps both models fully working through it.
         for model in [ forouhiBloomerASi; brendelBormannGold ] do
             Assert.Equal(ElectronVolt, wavelengthUnitOf model)
             Assert.Equal(None, thermoOpticOf model)
-            match toEpsAxis model with
-            | Error (NotAFiniteTermSum _) -> ()
-            | other -> Assert.Fail($"expected Error (NotAFiniteTermSum _), got {other}")
+            let axis = toEpsAxis model
+            match axis with
+            | EpsAxisEvaluated _ -> ()
+            | other -> Assert.Fail($"a transcendental model must lower to the evaluated case, got {other}")
             let f = evaluate model
             let op = toOpticalProperties model
             for w in visibleGrid do
+                Assert.Equal((f w).value, (axis.complexIndex w).value)
                 let expected = Eps.fromComplexRefractionIndex (f w)
                 Assert.True(epsClose 1e-12 (op.epsWithDisp.getEps w) expected, $"λ={w}")

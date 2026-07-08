@@ -364,6 +364,9 @@ module DispersionModels =
                 @ realFormulaParams "k" kF (fun f -> SumOfTerms (RealNK (nF, f)))
             | ComplexEps cF ->
                 complexFormulaParams "eps" cF (fun f -> SumOfTerms (ComplexEps f))
+            // The evaluated case (a transcendental model lowered to its closure)
+            // carries no finite term data, so it exposes no editable term scalars.
+            | EpsAxisEvaluated _ -> []
 
     /// Term count of the Faddeeva rational series below. Weideman shows N = 24
     /// already reaches near-machine accuracy over the closed upper half plane.
@@ -497,13 +500,6 @@ module DispersionModels =
     // formula together.
     // ==========================================================================
 
-    /// Why a model resists lowering to finite term data (§6.1): the transcendental
-    /// cases (band-gap step, exp) are not finite term sums — they stay named
-    /// `DispersionModel` cases evaluated directly through `evaluate`, and
-    /// `toOpticalProperties` wraps that closure instead.
-    type EpsAxisLoweringError =
-        | NotAFiniteTermSum of reason : string
-
     /// How a model's abscissa relates to the formula's reduced wavelength
     /// x = λ / wavelengthScale (`Dispersion.fs:238`): a length unit reads its
     /// abscissa as x itself; the energy-like units are reciprocal,
@@ -587,7 +583,7 @@ module DispersionModels =
         else
             [ complexPolyTerm (s / c0) 1 [| Complex.Zero; Complex.Zero; Complex.One |] ]
 
-    /// Lower a model to the per-axis serializable term data (§6.1): Cauchy to
+    /// Lower a model to the per-axis serializable dispersion (§6.1): Cauchy to
     /// `RealNK` Laurent terms (k = the zero formula); Sellmeier — via the
     /// oscillator identity Bᵢ·a²/(a²−cᵢ) = Bᵢ + Bᵢ·cᵢ/(a²−cᵢ) — to real-valued ε
     /// terms carried as `ComplexEps`, because a `RealNK` n-formula is a finite
@@ -598,33 +594,35 @@ module DispersionModels =
     /// cm⁻¹ — the oscillator convention) substitute abscissa = k/x and stay exact
     /// through `rationalXSquaredTerms`. TaucLorentz / GaussianOscillator /
     /// ForouhiBloomer / BrendelBormann are NOT finite term sums (band-gap steps,
-    /// exp, the Faddeeva function) — a typed error; they keep evaluating directly
-    /// through `evaluate`. The lowering is isothermal: like `evaluate`, it takes a `Some`
-    /// thermo-optic model at its reference temperature (Δn = 0); the operating
-    /// temperature enters only at the `evaluateAt` boundary (§D.12).
-    let toEpsAxis (model : DispersionModel) : Result<EpsAxisDispersion, EpsAxisLoweringError> =
+    /// exp, the Faddeeva function), so they lower to the evaluated case
+    /// `EpsAxisEvaluated` carrying `evaluate model` — the same closure route the
+    /// engine's own `EpsWithDisp` case takes — which makes the lowering TOTAL (all
+    /// ten models lower). The lowering is isothermal: like `evaluate`, a `Some`
+    /// thermo-optic model is taken at its reference temperature (Δn = 0); the
+    /// operating temperature enters only at the `evaluateAt` boundary (§D.12).
+    let toEpsAxis (model : DispersionModel) : EpsAxisDispersion =
         match model with
-        | SumOfTerms axis -> Ok axis
+        | SumOfTerms axis -> axis
         | ConstantNK c ->
             let scale =
                 match abscissaKindOf c.wavelengthUnit with
                 | LinearInX scale -> scale
                 | ReciprocalInX (scale, _) -> scale
-            Ok (RealNK (
+            RealNK (
                 { terms = [ realConstTerm c.n ]; wavelengthScale = scale },
-                { terms = [ realConstTerm c.k ]; wavelengthScale = scale }))
+                { terms = [ realConstTerm c.k ]; wavelengthScale = scale })
         | Cauchy c ->
             match abscissaKindOf c.wavelengthUnit with
             | LinearInX scale ->
                 // n(x) = A + B·x⁻² + C·x⁻⁴ — a real Laurent polynomial.
-                Ok (RealNK (
+                RealNK (
                     { terms = [ realConstTerm c.a; realInversePowerTerm c.b 2; realInversePowerTerm c.c 4 ]; wavelengthScale = scale },
-                    zeroFormula scale))
+                    zeroFormula scale)
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: n = A + (B/k²)·x² + (C/k⁴)·x⁴ — a plain polynomial.
-                Ok (RealNK (
+                RealNK (
                     { terms = [ { lambda = 0.0; coefficients = [| c.a; 0.0; c.b / (k * k); 0.0; c.c / (k * k * k * k) |]; power = 1; multiplier = 1.0 } ]; wavelengthScale = scale },
-                    zeroFormula scale))
+                    zeroFormula scale)
         | Sellmeier c ->
             match abscissaKindOf c.wavelengthUnit with
             | LinearInX scale ->
@@ -632,12 +630,12 @@ module DispersionModels =
                 let constant = complexConstTerm (Complex (1.0 + List.sum c.b, 0.0))
                 let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
                     complexPolyTerm (Complex (b * ci, 0.0)) (-1) [| Complex (-ci, 0.0); Complex.Zero; Complex.One |]
-                Ok (ComplexEps { terms = constant :: List.map2 oscillator c.b c.c; wavelengthScale = scale })
+                ComplexEps { terms = constant :: List.map2 oscillator c.b c.c; wavelengthScale = scale }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: Bᵢ·a²/(a²−cᵢ) = Bᵢ·k²/(k² − cᵢ·x²) — one inverse term each.
                 let oscillator (b : double) (ci : double) : ComplexDispersionTerm =
                     complexPolyTerm (Complex (b * k * k, 0.0)) (-1) [| Complex (k * k, 0.0); Complex.Zero; Complex (-ci, 0.0) |]
-                Ok (ComplexEps { terms = complexConstTerm Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = scale })
+                ComplexEps { terms = complexConstTerm Complex.One :: List.map2 oscillator c.b c.c; wavelengthScale = scale }
         | Lorentz c ->
             let constant = complexConstTerm (Complex (c.epsInf, 0.0))
             match abscissaKindOf c.wavelengthUnit with
@@ -645,12 +643,12 @@ module DispersionModels =
                 // ε = ε∞ + Σ sⱼ/(rⱼ² − x² − i·dⱼ·x): one literal inverse term per oscillator.
                 let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm =
                     complexPolyTerm (Complex (s, 0.0)) (-1) [| Complex (r * r, 0.0); Complex (0.0, -d); Complex (-1.0, 0.0) |]
-                Ok (ComplexEps { terms = constant :: List.map3 oscillator c.strength c.resonance c.damping; wavelengthScale = scale })
+                ComplexEps { terms = constant :: List.map3 oscillator c.strength c.resonance c.damping; wavelengthScale = scale }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: sⱼ/(rⱼ² − a² − i·dⱼ·a) = sⱼ·x²/(rⱼ²·x² − i·dⱼ·k·x − k²).
                 let oscillator (s : double) (r : double) (d : double) : ComplexDispersionTerm list =
                     rationalXSquaredTerms (Complex (s, 0.0)) (Complex (-k * k, 0.0)) (Complex (0.0, -d * k)) (Complex (r * r, 0.0))
-                Ok (ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = scale })
+                ComplexEps { terms = constant :: (List.map3 oscillator c.strength c.resonance c.damping |> List.concat); wavelengthScale = scale }
         | Drude c ->
             let constant = complexConstTerm (Complex (c.epsInf, 0.0))
             let negPlasmaSq = Complex (-c.plasmaFrequency * c.plasmaFrequency, 0.0)
@@ -658,19 +656,18 @@ module DispersionModels =
             | LinearInX scale ->
                 // ε = ε∞ − ωp²/(x² + i·γ·x).
                 let free = complexPolyTerm negPlasmaSq (-1) [| Complex.Zero; Complex (0.0, c.dampingFrequency); Complex.One |]
-                Ok (ComplexEps { terms = [ constant; free ]; wavelengthScale = scale })
+                ComplexEps { terms = [ constant; free ]; wavelengthScale = scale }
             | ReciprocalInX (scale, k) ->
                 // abscissa = k/x: −ωp²/(a² + i·γ·a) = −ωp²·x²/(k² + i·γ·k·x).
                 let free = rationalXSquaredTerms negPlasmaSq (Complex (k * k, 0.0)) (Complex (0.0, c.dampingFrequency * k)) Complex.Zero
-                Ok (ComplexEps { terms = constant :: free; wavelengthScale = scale })
-        | TaucLorentz _ ->
-            Error (NotAFiniteTermSum "TaucLorentz is piecewise transcendental (band-gap step); it stays a named case evaluated directly")
-        | GaussianOscillator _ ->
-            Error (NotAFiniteTermSum "GaussianOscillator is transcendental (exp); it stays a named case evaluated directly")
-        | ForouhiBloomer _ ->
-            Error (NotAFiniteTermSum "ForouhiBloomer is piecewise (band-gap step in k) with a conjugate-pole rational n; it stays a named case evaluated directly")
-        | BrendelBormann _ ->
-            Error (NotAFiniteTermSum "BrendelBormann is transcendental (Faddeeva-function Voigt broadening); it stays a named case evaluated directly")
+                ComplexEps { terms = constant :: free; wavelengthScale = scale }
+        // The transcendental models are not finite term sums (band-gap steps, exp,
+        // the Faddeeva function), so they lower to the evaluated case: the SAME
+        // `evaluate` closure the engine's `EpsWithDisp` case applies.
+        | TaucLorentz _
+        | GaussianOscillator _
+        | ForouhiBloomer _
+        | BrendelBormann _ -> EpsAxisEvaluated (evaluate model)
 
     /// Wrap an `EpsWithDisp` into an isotropic `OpticalPropertiesWithDisp` with the
     /// `Mu.vacuum`/`Rho.vacuum` dispersive defaults — mirroring `Silicon`'s record
@@ -693,32 +690,25 @@ module DispersionModels =
     /// The serializable eps value a model composes to (§D.6 / spec 0033 §B):
     /// `ConstantNK` short-circuits to the non-dispersive constant
     /// (`EpsWithoutDispValue`, `Dispersion.fs:379` — no closure overhead); every
-    /// other lowerable model becomes a single-segment isotropic tree over its
-    /// lowered term data; the transcendental cases carry no finite term data and
-    /// surface the typed lowering error (`toOpticalProperties` wraps `evaluate`
-    /// for them instead).
-    let toEpsValue (model : DispersionModel) : Result<EpsWithDispValue, EpsAxisLoweringError> =
+    /// other model becomes a single-segment isotropic tree over its lowered
+    /// dispersion. The transcendental cases lower to the evaluated segment (their
+    /// `EpsAxisEvaluated` closure), so this is TOTAL — no lowering error.
+    let toEpsValue (model : DispersionModel) : EpsWithDispValue =
         match model with
         | ConstantNK c ->
-            createComplex c.n c.k |> ComplexRefractionIndex |> IsotropicAbsorbing |> EpsWithoutDispValue |> Ok
+            createComplex c.n c.k |> ComplexRefractionIndex |> IsotropicAbsorbing |> EpsWithoutDispValue
         | _ ->
-            toEpsAxis model
-            |> Result.map (fun axis ->
-                EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = nominalInterval; dispersion = axis } ]))
+            EpsWithDispValue (IsotropicDispersive [ { wavelengthInterval = nominalInterval; dispersion = toEpsAxis model } ])
 
     /// Compose a model into the engine's `OpticalPropertiesWithDisp` (§D.6)
     /// through the serializable eps tree: `toEpsValue`, then
     /// `EpsWithDispValue.toEpsWithDisp` (`Dispersion.fs:383`), then the
     /// `isotropicProperties` vacuum-μ/ρ wrapper. `ConstantNK` still emits
-    /// `EpsWithoutDisp` (no closure overhead), and the transcendental named cases
-    /// — which have no finite term data — wrap `evaluate` directly; both routes
-    /// end at the same engine type.
+    /// `EpsWithoutDisp` (no closure overhead); the transcendental cases ride the
+    /// evaluated segment, whose `complexIndex` applies `evaluate` — identical to
+    /// wrapping the closure directly. One route, no lowering error.
     let toOpticalProperties (model : DispersionModel) : OpticalPropertiesWithDisp =
-        match toEpsValue model with
-        | Ok value -> value.toEpsWithDisp |> isotropicProperties
-        | Error (NotAFiniteTermSum _) ->
-            let f = evaluate model
-            (fun w -> Eps.fromComplexRefractionIndex (f w)) |> EpsWithDisp |> isotropicProperties
+        (toEpsValue model).toEpsWithDisp |> isotropicProperties
 
     /// Build a uniaxial principal-axis `Eps` from (n_o, n_e) through the engine's
     /// existing three-argument constructor, mapped as `(n_o, n_e, n_o)`

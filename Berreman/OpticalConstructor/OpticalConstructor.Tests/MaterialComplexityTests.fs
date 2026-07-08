@@ -9,6 +9,7 @@ open Berreman.Dispersion
 open OpticalProperties.Standard
 open OpticalProperties.Active
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open Xunit
 
@@ -300,3 +301,23 @@ module MaterialComplexityTests =
         let magneticBack = applyOk (SetMagneticDispersion ConstantComponents) magneticDispersive
         Assert.Equal<MaterialComplexity>(baselineMagnetic, derived magneticBack)
         Assert.Equal<MaterialComplexity>(derived magneticDispersive, derived (applyOk (SetMagneticDispersion DispersiveComponents) magneticBack))
+
+    [<Fact>]
+    let ``step 015: a transcendental dispersive segment derives and evaluates without rejection`` () =
+        // A dispersive segment whose model is transcendental (ForouhiBloomer, taken
+        // from the segment picker's default choices) now LOWERS to the evaluated
+        // case — toComplexity DERIVES it (no SegmentNotLowerable), and the derived
+        // eps reproduces `evaluate` across the grid.
+        let model = defaultModelChoices |> List.find (fun m -> modelKindCode m = "ForouhiBloomer")
+        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, model) ]
+        let c = derived st
+        match c.eps with
+        | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
+            match seg.dispersion with
+            | EpsAxisEvaluated _ -> ()
+            | other -> Assert.Fail($"the transcendental segment must lower to the evaluated case, got %A{other}")
+        | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
+        let f = evaluate model
+        for w in visibleGrid do
+            let expected = Eps.fromComplexRefractionIndex (f w)
+            Assert.True(epsClose 1e-12 (c.toProperties.epsWithDisp.getEps w) expected, $"derived eps at λ={w}")

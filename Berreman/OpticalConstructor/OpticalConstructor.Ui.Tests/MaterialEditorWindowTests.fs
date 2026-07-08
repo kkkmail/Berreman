@@ -246,19 +246,22 @@ module MaterialEditorWindowTests =
         let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, sellmeier) ]
         match (derived st).eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
-            match toEpsAxis sellmeier with
-            | Ok expected -> Assert.Equal<EpsAxisDispersion>(expected, seg.dispersion)
-            | Error e -> failwith $"the Sellmeier default must lower, got %A{e}"
+            Assert.Equal<EpsAxisDispersion>(toEpsAxis sellmeier, seg.dispersion)
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
 
     [<Fact>]
-    let ``ForouhiBloomer and BrendelBormann are pickable but surface the typed NotAFiniteTermSum reason`` () =
+    let ``ForouhiBloomer and BrendelBormann are pickable and lower to the evaluated segment`` () =
         for code in [ "ForouhiBloomer"; "BrendelBormann" ] do
             let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, modelOfKind code) ]
             Assert.Equal(code, modelKindCode st.segments.[0].model1)
-            match toComplexity st with
-            | Error (SegmentNotLowerable reason) -> Assert.Contains(code, reason)
-            | other -> Assert.Fail($"expected the typed lowering rejection for %s{code}, got %A{other}")
+            // The transcendental pick now DERIVES (no rejection): one isotropic
+            // dispersive segment carrying the evaluated case.
+            match (derived st).eps with
+            | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
+                match seg.dispersion with
+                | EpsAxisEvaluated _ -> ()
+                | other -> Assert.Fail($"expected the evaluated case for %s{code}, got %A{other}")
+            | other -> Assert.Fail($"expected one isotropic dispersive segment for %s{code}, got %A{other}")
 
     [<Fact>]
     let ``the raw SumOfTerms escape hatch is the identity under lowering`` () =
@@ -703,7 +706,7 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the segment editor adds segments and surfaces the typed reason for a non-lowerable pick`` () =
+    let ``the segment editor adds segments and a transcendental pick derives a dispersive eps`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
             let window = MaterialEditorWindow(materials, None)
@@ -714,12 +717,13 @@ module MaterialEditorWindowTests =
             Assert.False(isPresent window (UiIds.segmentLowerBox 1))
             clickOn window UiIds.addSegmentButton
             Assert.True(isPresent window (UiIds.segmentLowerBox 1), "AddSegment must append a second segment row")
-            // A non-lowerable pick is accepted (the entry is preserved) and the typed
-            // NotAFiniteTermSum reason surfaces through the derivation readout.
+            // A transcendental pick now LOWERS to the evaluated segment, so the entry
+            // DERIVES a dispersive eps instead of surfacing a rejection.
             clickOn window (UiIds.modelOption 0 "ForouhiBloomer")
-            Assert.Contains("ForouhiBloomer", textOf window UiIds.summaryText)
+            Assert.Contains("dispersive", textOf window UiIds.summaryText)
+            Assert.DoesNotContain("not derivable", textOf window UiIds.summaryText)
             clickOn window (UiIds.modelOption 0 "SumOfTerms")
-            Assert.DoesNotContain("ForouhiBloomer", textOf window UiIds.summaryText)
+            Assert.Contains("dispersive", textOf window UiIds.summaryText)
             window.Close())
 
     [<Fact>]

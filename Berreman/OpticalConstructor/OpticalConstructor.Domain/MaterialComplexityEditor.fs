@@ -148,13 +148,11 @@ type MaterialComplexityEditState =
         polderDispersion : PolderValue<DispersionFormula>
     }
 
-/// The typed rejections of the edit and derivation arms (errors as values,
-/// each case carrying a diagnostic `reason` — never a throw).
+/// The typed rejections of the edit arms (errors as values, each case carrying a
+/// diagnostic `reason` — never a throw). Derivation (`toComplexity`) no longer
+/// rejects: every `DispersionModel` lowers (the transcendental cases through the
+/// evaluated segment), so there is no `SegmentNotLowerable`.
 type MaterialComplexityEditError =
-    /// A segment's `DispersionModel` resists `toEpsAxis` lowering (the
-    /// transcendental catalogue cases — ForouhiBloomer / BrendelBormann /
-    /// TaucLorentz / GaussianOscillator carry no finite term data).
-    | SegmentNotLowerable of reason : string
     /// A segment edit aimed at an index outside the segment list.
     | NoSuchSegment of reason : string
     /// The dispersive eps needs at least one segment (the engine's segment
@@ -720,81 +718,48 @@ let private constantEps (state : MaterialComplexityEditState) : ConstantEpsValue
     | Biaxial, Transparent -> BiaxialTransparent (realIndex state.index1, realIndex state.index2, realIndex state.index3)
     | Biaxial, Absorbing -> BiaxialAbsorbing (state.index1, state.index2, state.index3)
 
-/// Lower one axis model via `DispersionModels.toEpsAxis`; the transcendental
-/// cases surface the typed reason (they carry no finite term data — Part G's
-/// honest-negative-scope precedent).
-let private lowerAxis (segmentIndex : int) (model : DispersionModel) : Result<EpsAxisDispersion, MaterialComplexityEditError> =
-    match toEpsAxis model with
-    | Ok axis -> Ok axis
-    | Error (NotAFiniteTermSum reason) -> Error (SegmentNotLowerable $"segment %d{segmentIndex}: %s{reason}")
-
-/// Sequence a Result-producing map over a list (first error wins).
-let private traverse (f : 'a -> Result<'b, 'e>) (xs : 'a list) : Result<'b list, 'e> =
-    List.foldBack
-        (fun x acc ->
-            match acc with
-            | Error e -> Error e
-            | Ok tail ->
-                match f x with
-                | Ok y -> Ok (y :: tail)
-                | Error e -> Error e)
-        xs
-        (Ok [])
-
 /// The dispersive eps of the current anisotropy: each edit segment lowers its
-/// active axis models into the engine's per-symmetry segment records.
-let private dispersiveEps (state : MaterialComplexityEditState) : Result<EpsDispersiveValue, MaterialComplexityEditError> =
-    let indexed = state.segments |> List.indexed
-    match indexed with
-    | [] -> Error (SegmentNotLowerable "the dispersive eps has no segments")
-    | _ ->
-        match state.anisotropy with
-        | Isotropic ->
-            indexed
-            |> traverse (fun (i, seg) ->
-                lowerAxis i seg.model1
-                |> Result.map (fun d -> { wavelengthInterval = seg.interval; dispersion = d }))
-            |> Result.map IsotropicDispersive
-        | Uniaxial ->
-            indexed
-            |> traverse (fun (i, seg) ->
-                lowerAxis i seg.model1
-                |> Result.bind (fun ordinary ->
-                    lowerAxis i seg.model2
-                    |> Result.map (fun extraordinary ->
-                        {
-                            wavelengthInterval = seg.interval
-                            ordinaryDispersion = ordinary
-                            extraordinaryDispersion = extraordinary
-                        })))
-            |> Result.map UniaxialDispersive
-        | Biaxial ->
-            indexed
-            |> traverse (fun (i, seg) ->
-                lowerAxis i seg.model1
-                |> Result.bind (fun x ->
-                    lowerAxis i seg.model2
-                    |> Result.bind (fun y ->
-                        lowerAxis i seg.model3
-                        |> Result.map (fun z ->
-                            {
-                                wavelengthInterval = seg.interval
-                                xDispersion = x
-                                yDispersion = y
-                                zDispersion = z
-                            }))))
-            |> Result.map BiaxialDispersive
+/// active axis models into the engine's per-symmetry segment records through
+/// `DispersionModels.toEpsAxis`. Lowering is TOTAL — every model lowers, the
+/// transcendental cases to the evaluated segment — so this never fails.
+let private dispersiveEps (state : MaterialComplexityEditState) : EpsDispersiveValue =
+    match state.anisotropy with
+    | Isotropic ->
+        state.segments
+        |> List.map (fun seg -> { wavelengthInterval = seg.interval; dispersion = toEpsAxis seg.model1 })
+        |> IsotropicDispersive
+    | Uniaxial ->
+        state.segments
+        |> List.map (fun seg ->
+            {
+                wavelengthInterval = seg.interval
+                ordinaryDispersion = toEpsAxis seg.model1
+                extraordinaryDispersion = toEpsAxis seg.model2
+            })
+        |> UniaxialDispersive
+    | Biaxial ->
+        state.segments
+        |> List.map (fun seg ->
+            {
+                wavelengthInterval = seg.interval
+                xDispersion = toEpsAxis seg.model1
+                yDispersion = toEpsAxis seg.model2
+                zDispersion = toEpsAxis seg.model3
+            })
+        |> BiaxialDispersive
 
 /// Derive the `MaterialComplexity` the state currently denotes. Each toggle
 /// off means its aspect's DEFAULT (constant eps / absent option) regardless of
-/// the stored facet — the lossless-uncheck mechanic.
+/// the stored facet — the lossless-uncheck mechanic. Derivation never fails now
+/// (every segment model lowers, the transcendental cases to the evaluated
+/// segment); the `Result` return is kept for the consumer contract, mirroring
+/// `ofComplexity`.
 let toComplexity (state : MaterialComplexityEditState) : Result<MaterialComplexity, MaterialComplexityEditError> =
-    let epsResult =
+    let eps =
         match state.dispersion with
-        | NonDispersive -> Ok (EpsWithoutDispValue (constantEps state))
-        | DispersiveSegments -> dispersiveEps state |> Result.map EpsWithDispValue
-    epsResult
-    |> Result.map (fun eps ->
+        | NonDispersive -> EpsWithoutDispValue (constantEps state)
+        | DispersiveSegments -> EpsWithDispValue (dispersiveEps state)
+    Ok
         {
             eps = eps
             magnetic =
@@ -819,7 +784,7 @@ let toComplexity (state : MaterialComplexityEditState) : Result<MaterialComplexi
                     // `toRhoWithDisp` evaluates each component's formula per wavelength and
                     // assembles the symmetry-class gyration tensor.
                     | DispersiveComponents -> Some (RhoWithDispValue { gyration = state.gyrationDispersion; hand = state.hand })
-        })
+        }
 
 // ---------------------------------------------------------------------------
 // ofComplexity — seed the ladder from an existing entry's edit model.
