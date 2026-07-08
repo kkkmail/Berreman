@@ -348,6 +348,31 @@ module Library =
     /// λ/4 at 10.6 nm — each EUV Mo/Si layer (2.65 nm, from MultilayerThinFilm_EUV.fsx).
     let private euvLayerThickness : Thickness = Thickness.nm (10.6 / 4.0 * oneNanometer)
 
+    /// A foldable STARTER multilayer structure (spec 0035 step 014): ONE `Repeated` period of a
+    /// two-layer glass (n=1.52) / vacuum cell at the 600 nm λ/4 thicknesses (the `multilayerQw`
+    /// seed's unit cell), `count = 1` — the minimal seed the Sample editor's Make-multilayer path
+    /// opens onto, ready for the `SampleStackEditor` K-stepper (`SetRepeatCount`) to build up into a
+    /// full stack. This is bare structure DATA, NOT a seeded `Sample`: the editor opens a brand-new
+    /// sample over it, so Save mints a fresh `SampleId` (`SampleId.create`) rather than reusing a
+    /// seeded id.
+    let starterMultilayerStructure : SampleStructure =
+        {
+            films =
+                [
+                    Repeated
+                        {
+                            cell =
+                                [
+                                    { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                    { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                ]
+                            count = 1
+                        }
+                ]
+            substrate = None
+            lower = None
+        }
+
     /// The seeded samples (spec §2a), let-bound so `seedEntries`, the grouping tree, and the tests
     /// all reference the SAME values programmatically — the id literals are never repeated (spec 0033
     /// step 002). Each id is a FIXED literal Guid parsed at seed construction, deterministic across

@@ -145,6 +145,16 @@ type EditorTarget =
     | NewSample
     | ExistingSample of SampleId
 
+/// How the Sample editor OPENS (spec 0035 step 014): a blank NEW sample (the Add verb), a NEW
+/// sample pre-seeded with a foldable starter multilayer period (the Make-multilayer verb — its
+/// distinct launcher path), or an EXISTING sample updated in place (the Edit verb). A DU — not a
+/// `Sample option` plus a bool — so the three open intents are NAMED. Both NEW intents map to the
+/// `NewSample` target (Save mints a fresh `SampleId`); they differ only in the seeded structure.
+type SampleEditorIntent =
+    | NewBlankSample
+    | NewSeededMultilayer
+    | EditSample of Sample
+
 /// The window's IO seam (the functional-proxy Context convention): the samples write-seam the
 /// Save verb persists through, plus the host's close request (the window passes `this.Close`;
 /// tests substitute recording stubs). Function-valued fields have no structural equality, so
@@ -383,11 +393,14 @@ let private emptyStructure : SampleStructure =
         lower = None
     }
 
-let init (context : SampleEditorContext) (materials : MaterialEntry list) (existing : Sample option) : Model =
+let init (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : Model =
     let target, name, description, substrate, structure =
-        match existing with
-        | Some s -> (ExistingSample s.id, s.name, s.description, s.substrate, s.structure)
-        | None -> (NewSample, "", "", ThinFilm, emptyStructure)
+        match intent with
+        // Both NEW intents target `NewSample` (Save mints a fresh id); the seeded multilayer path
+        // opens onto the Domain starter period (spec 0035 step 014), the blank Add onto nothing.
+        | NewBlankSample -> (NewSample, "", "", ThinFilm, emptyStructure)
+        | NewSeededMultilayer -> (NewSample, "", "", ThinFilm, starterMultilayerStructure)
+        | EditSample s -> (ExistingSample s.id, s.name, s.description, s.substrate, s.structure)
     {
         context = context
         target = target

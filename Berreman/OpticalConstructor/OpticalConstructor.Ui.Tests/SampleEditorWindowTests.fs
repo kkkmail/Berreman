@@ -127,7 +127,7 @@ module SampleEditorWindowTests =
 
     let private newModel () : Model =
         let _, context = recordingContext ()
-        init context builtInEntries None
+        init context builtInEntries NewBlankSample
 
     // ============================ pure control contract ============================
 
@@ -170,12 +170,29 @@ module SampleEditorWindowTests =
     let ``an existing sample seeds the editor and save targets its id`` () =
         let sample = threeFilmSample ()
         let _, context = recordingContext ()
-        let m = init context builtInEntries (Some sample)
+        let m = init context builtInEntries (EditSample sample)
         Assert.Equal(sample.name, m.name)
         Assert.Equal(sample.description, m.description)
         Assert.Equal(sample.substrate, m.substrate)
         Assert.Equal<SampleStructure>(sample.structure, m.editor.structure)
         Assert.Equal(ExistingSample sample.id, m.target)
+
+    [<Fact>]
+    let ``Make-multilayer opens a NEW sample seeded with a foldable 2-layer period, distinct from the blank Add`` () =
+        let _, context = recordingContext ()
+        let seeded = init context builtInEntries NewSeededMultilayer
+        // A NEW sample (Save mints a fresh id via addSample), NOT an existing one to update in place.
+        Assert.Equal(NewSample, seeded.target)
+        Assert.Equal("", seeded.name)
+        // Exactly ONE Repeated period group of a 2-layer cell — the foldable starter the K-stepper
+        // (SetRepeatCount) then builds up into a full stack.
+        match seeded.editor.structure.films with
+        | [ Repeated g ] ->
+            Assert.Equal(2, List.length g.cell)
+            Assert.True(g.count >= 1, "the starter period repeats at least once")
+        | films -> Assert.Fail($"expected one Repeated 2-layer period, got %A{films}")
+        // The blank Add path opens onto NOTHING — the two NEW intents are genuinely distinct.
+        Assert.Empty((init context builtInEntries NewBlankSample).editor.structure.films)
 
     [<Fact>]
     let ``toSample builds the sample from the model under the given id`` () =
@@ -195,7 +212,7 @@ module SampleEditorWindowTests =
     [<Fact>]
     let ``clicking a layer row toggles it in and out of the multi-selection`` () =
         let _, context = recordingContext ()
-        let m = init context builtInEntries (Some (threeFilmSample ()))
+        let m = init context builtInEntries (EditSample (threeFilmSample ()))
         let selected = m |> update (ToggleLayer (AtSingleLayer 0)) |> update (ToggleLayer (AtSingleLayer 1))
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0; AtSingleLayer 1 ], selected.editor.selection)
         let toggledOff = selected |> update (ToggleLayer (AtSingleLayer 0))
@@ -227,7 +244,7 @@ module SampleEditorWindowTests =
         // Stepping a group's count below 1 → InvalidRepeatCount, count unchanged.
         let _, context = recordingContext ()
         let grouped =
-            init context builtInEntries (Some (threeFilmSample ()))
+            init context builtInEntries (EditSample (threeFilmSample ()))
             |> update (ToggleLayer (AtSingleLayer 0))
             |> update (ToggleLayer (AtSingleLayer 1))
             |> update MakeRepeatBlockClicked
@@ -275,21 +292,21 @@ module SampleEditorWindowTests =
     let ``Save adds a NEW sample, updates an EXISTING one, and Cancel writes nothing`` () =
         // New → addSample, then close.
         let calls, context = recordingContext ()
-        init context builtInEntries None
+        init context builtInEntries NewBlankSample
         |> update (SetName "Fresh")
         |> update SaveClicked
         |> ignore
         Assert.Equal<string list>([ "add:Fresh"; "close" ], List.ofSeq calls)
         // Existing → updateSample, then close.
         let calls2, context2 = recordingContext ()
-        init context2 builtInEntries (Some (threeFilmSample ()))
+        init context2 builtInEntries (EditSample (threeFilmSample ()))
         |> update (SetName "Edited")
         |> update SaveClicked
         |> ignore
         Assert.Equal<string list>([ "update:Edited"; "close" ], List.ofSeq calls2)
         // Cancel → close only; the proxy is never reached.
         let calls3, context3 = recordingContext ()
-        init context3 builtInEntries (Some (threeFilmSample ()))
+        init context3 builtInEntries (EditSample (threeFilmSample ()))
         |> update (SetName "Discarded")
         |> update CancelClicked
         |> ignore
@@ -308,7 +325,7 @@ module SampleEditorWindowTests =
                 removeSample = fun _ -> Ok ()
             }
         let context : SampleEditorContext = { samples = failing; requestClose = fun () -> closes.Add "close" }
-        let m = init context builtInEntries None |> update SaveClicked
+        let m = init context builtInEntries NewBlankSample |> update SaveClicked
         Assert.Empty(closes)
         match m.status with
         | Some reason -> Assert.Equal("the name is blank", reason)
@@ -363,7 +380,7 @@ module SampleEditorWindowTests =
     let ``the window mounts with every slice-mandated UiId present`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, None)
+            let window = SampleEditorWindow(materials, samples, NewBlankSample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(matchesId UiIds.window window, "the window itself carries the SampleEditorWindow id")
@@ -376,7 +393,7 @@ module SampleEditorWindowTests =
     let ``acceptance: repeating a 2-layer selection K times expands the structure to 2K films`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, None)
+            let window = SampleEditorWindow(materials, samples, NewBlankSample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Build a 2-layer stack by UiIds: glass then vacuum.
@@ -412,7 +429,7 @@ module SampleEditorWindowTests =
     let ``acceptance: select-by-material bulk set-thickness updates only the matching layers`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, Some (threeFilmSample ()))
+            let window = SampleEditorWindow(materials, samples, EditSample (threeFilmSample ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Choose glass, select every glass layer, and bulk-set the thickness to 5 nm.
@@ -435,7 +452,7 @@ module SampleEditorWindowTests =
                 match samples.listSamples () with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = SampleEditorWindow(materials, samples, None)
+            let window = SampleEditorWindow(materials, samples, NewBlankSample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window UiIds.nameBox "Headless stack"
@@ -456,6 +473,40 @@ module SampleEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Make-multilayer opens the editor showing the seeded 2-layer period and Save persists a NEW sample`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples = freshProxies ()
+            let seededCount =
+                match samples.listSamples () with
+                | Ok all -> List.length all
+                | Error e -> failwith $"seed listing failed: %A{e}"
+            // The distinct Make-multilayer path: a NEW sample seeded with the foldable starter period.
+            let window = SampleEditorWindow(materials, samples, NewSeededMultilayer)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // The seeded 2-layer period renders as ONE collapsible super-row with two cell layers
+            // (distinct from a blank Add, which shows no rows).
+            Assert.True(isPresent window (UiIds.groupRow 0), "the seeded period super-row must render")
+            Assert.True(isPresent window (UiIds.cellLayerRow 0 0), "seeded cell layer 0 must render")
+            Assert.True(isPresent window (UiIds.cellLayerRow 0 1), "seeded cell layer 1 must render")
+            // Name it (the structure is already non-empty) and Save — the NEW sample persists
+            // through SampleProxy.addSample under a freshly minted SampleId.
+            setText window UiIds.nameBox "Headless multilayer"
+            clickOn window UiIds.saveButton
+            Assert.False(window.IsVisible)
+            match samples.listSamples () with
+            | Ok all ->
+                Assert.Equal(seededCount + 1, List.length all)
+                match all |> List.tryFind (fun s -> s.name = "Headless multilayer") with
+                | Some saved ->
+                    match saved.structure.films with
+                    | [ Repeated g ] -> Assert.Equal(2, List.length g.cell)
+                    | films -> Assert.Fail($"expected the seeded 2-layer period to persist, got %A{films}")
+                | None -> Assert.Fail("the new multilayer sample was not persisted")
+            | Error e -> Assert.Fail($"listSamples failed: %A{e}"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``acceptance: Save UPDATES an existing sample in place through SampleProxy.updateSample`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
@@ -464,7 +515,7 @@ module SampleEditorWindowTests =
                 match samples.listSamples () with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = SampleEditorWindow(materials, samples, Some existing)
+            let window = SampleEditorWindow(materials, samples, EditSample existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window UiIds.nameBox "Renamed film"
@@ -484,7 +535,7 @@ module SampleEditorWindowTests =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
             let existing = SeedSamples.glassFilm200
-            let window = SampleEditorWindow(materials, samples, Some existing)
+            let window = SampleEditorWindow(materials, samples, EditSample existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window UiIds.nameBox "Should not persist"
@@ -517,7 +568,7 @@ module SampleEditorWindowTests =
                     substrate = ThinFilm
                     description = "uniaxial over glass"
                 }
-            let window = SampleEditorWindow(materials, samples, Some sample)
+            let window = SampleEditorWindow(materials, samples, EditSample sample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window (UiIds.layerOrientation 0), "the anisotropic layer must carry its orientation editor")
@@ -529,7 +580,7 @@ module SampleEditorWindowTests =
     let ``the QWOT entry derives the read-only thickness in nanometres and Set thickness applies it`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, None)
+            let window = SampleEditorWindow(materials, samples, NewBlankSample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window (materialOptionId MaterialIds.glass152)
@@ -548,7 +599,7 @@ module SampleEditorWindowTests =
     let ``acceptance: the material picker filters by a search fragment and a category facet and still selects by MaterialId`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, None)
+            let window = SampleEditorWindow(materials, samples, NewBlankSample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let crystalFacet = UiIds.materialCategoryOption (materialCategoryCode (Some CategoryIds.crystal))

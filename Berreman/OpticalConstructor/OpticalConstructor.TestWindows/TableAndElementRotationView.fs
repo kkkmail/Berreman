@@ -120,9 +120,10 @@ type EditorLaunchers =
         /// step-3 `CategoryProxy` is threaded in (spec 0035 step 009) so the editor's create picker
         /// reads the LIVE catalogue — a category renamed through the proxy re-labels it on open.
         openMaterialEditor : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> MaterialLibrary.MaterialEntry option -> unit
-        /// Open the step-022 Sample editor: `None` = a new sample (Add / Make-multilayer),
-        /// `Some sample` = Edit.
-        openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> Library.Sample option -> unit
+        /// Open the step-022 Sample editor by intent (spec 0035 step 014): `NewBlankSample` = the
+        /// blank Add, `NewSeededMultilayer` = Make-multilayer's distinct path (a NEW sample seeded
+        /// with a foldable starter period), `EditSample s` = Edit an existing one in place.
+        openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> SampleEditorView.SampleEditorIntent -> unit
         /// Open the step-6 Category editor over the LIVE category write-seam (spec 0035 step 009):
         /// the Materials bay's "Categories…" verb reaches it through this seam so a headless test
         /// substitutes a recording launcher and observes exactly which editor the verb requested.
@@ -135,7 +136,7 @@ type EditorLaunchers =
     static member defaults : EditorLaunchers =
         {
             openMaterialEditor = fun materials categories existing -> MaterialEditorWindow(materials, existing, categories = categories).Show()
-            openSampleEditor = fun materials samples existing -> SampleEditorWindow(materials, samples, existing).Show()
+            openSampleEditor = fun materials samples intent -> SampleEditorWindow(materials, samples, intent).Show()
             openCategoryEditor = fun categories -> CategoryEditorWindow(categories).Show()
         }
 
@@ -445,8 +446,8 @@ type Msg =
     /// the proxy on its next render, so a category renamed there re-labels the facet + create picker).
     | MatOpenCategories
     /// Spec 0033 (024) — the LIBRARY (samples workbench) bay: the same verb vocabulary over
-    /// `searchSamples` / the step-022 editor; Make-multilayer is the second creation entry point
-    /// (a new sample — the stack editor's fold vocabulary IS the multilayer flow).
+    /// `searchSamples` / the step-022 editor; Make-multilayer is the second creation entry point —
+    /// a distinct path (spec 0035 step 014) opening a NEW sample seeded with a foldable period.
     | SmpSetSearchText of string
     | SmpSelectSubstrate of Library.SubstrateKind option
     | SmpSelectRow of Library.SampleId
@@ -883,16 +884,21 @@ let update (msg : Msg) (model : Model) : Model =
         { model with sampleQuery = { model.sampleQuery with substrate = substrate }; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpSelectRow id ->
         { model with selectedSample = Some id; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpAdd | SmpMakeMultilayer ->
-        // Both creation entry points open the step-022 editor on a NEW sample: the make-multilayer
-        // flow is the stack editor's fold vocabulary (MakeRepeatBlock + the repeat-count steppers).
-        model.launchers.openSampleEditor model.materials model.samples None
+    | SmpAdd ->
+        // The blank creation entry point: open the step-022 editor on a NEW, empty sample.
+        model.launchers.openSampleEditor model.materials model.samples SampleEditorView.NewBlankSample
+        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpMakeMultilayer ->
+        // The DISTINCT Make-multilayer launcher path (spec 0035 step 014): open a NEW sample
+        // pre-seeded with a foldable starter period the SampleStackEditor K-stepper builds up.
+        // Still a NewSample target, so Save mints a fresh SampleId — just seeded, not blank.
+        model.launchers.openSampleEditor model.materials model.samples SampleEditorView.NewSeededMultilayer
         { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpEdit ->
         (match model.selectedSample with
          | Some id ->
              match model.samples.tryGetSample id with
-             | Ok (Some sample) -> model.launchers.openSampleEditor model.materials model.samples (Some sample)
+             | Ok (Some sample) -> model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.EditSample sample)
              | Ok None | Error _ -> ()
          | None -> ())
         { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }

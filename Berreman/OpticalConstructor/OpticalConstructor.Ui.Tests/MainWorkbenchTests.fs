@@ -129,8 +129,12 @@ module MainWorkbenchTests =
                     fun _ _ existing ->
                         calls.Add(match existing with Some e -> "material-edit:" + e.name | None -> "material-add")
                 openSampleEditor =
-                    fun _ _ existing ->
-                        calls.Add(match existing with Some s -> "sample-edit:" + s.name | None -> "sample-add")
+                    fun _ _ intent ->
+                        calls.Add(
+                            match intent with
+                            | SampleEditorView.NewBlankSample -> "sample-add"
+                            | SampleEditorView.NewSeededMultilayer -> "sample-multilayer"
+                            | SampleEditorView.EditSample s -> "sample-edit:" + s.name)
                 openCategoryEditor = fun _ -> calls.Add "categories-open"
             }
         calls, launchers
@@ -354,11 +358,12 @@ module MainWorkbenchTests =
         Assert.Contains("sample-add", calls)
         m |> update (SmpSelectRow SeedSamples.multilayerQw.id) |> update SmpEdit |> ignore
         Assert.Contains("sample-edit:Quarter-wave glass/vacuum multilayer (41 layers)", calls)
-        // Make-multilayer is the second creation entry point: it opens the sample editor on a
-        // NEW sample (the stack editor's fold vocabulary is the multilayer flow).
+        // Make-multilayer is the second creation entry point, and its DISTINCT launcher path
+        // (spec 0035 step 014) opens the editor on a NEW sample SEEDED with a foldable period —
+        // not the blank Add. It records "sample-multilayer", proving the paths diverged.
         calls.Clear()
         update SmpMakeMultilayer m |> ignore
-        Assert.Equal<string list>([ "sample-add" ], List.ofSeq calls)
+        Assert.Equal<string list>([ "sample-multilayer" ], List.ofSeq calls)
         // Edit without a selection reaches no launcher.
         calls.Clear()
         update MatEdit m |> ignore
@@ -421,8 +426,8 @@ module MainWorkbenchTests =
                             opened.Add w
                             w.Show()
                     openSampleEditor =
-                        fun m s existing ->
-                            let w = SampleEditorWindow(m, s, existing)
+                        fun m s intent ->
+                            let w = SampleEditorWindow(m, s, intent)
                             opened.Add w
                             w.Show()
                     openCategoryEditor =
@@ -450,6 +455,48 @@ module MainWorkbenchTests =
             Assert.True(opened.[1].IsVisible, "the Sample editor window must be shown")
             Assert.Contains("Glass thin film", opened.[1].Title)
             opened.[1].Close()
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless acceptance: Make-multilayer opens a NEW editor seeded with a foldable 2-layer period and Save persists it`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples = freshStores ()
+            let seededCount =
+                match samples.listSamples () with
+                | Ok all -> List.length all
+                | Error e -> failwith $"seed listing failed: %A{e}"
+            // A recording launcher that still opens the REAL step-022 editor, so the proof is
+            // end-to-end: the Library bay's Make-multilayer verb click by UiId → the real editor,
+            // seeded. The other launchers stay the real defaults (untriggered here).
+            let opened = ResizeArray<Window>()
+            let launchers : EditorLaunchers =
+                { EditorLaunchers.defaults with
+                    openSampleEditor =
+                        fun m s intent ->
+                            let w = SampleEditorWindow(m, s, intent)
+                            opened.Add w
+                            w.Show() }
+            let window = mountMain { mainWith materials samples with launchers = launchers }
+            clickOn window (Ribbon.UiIds.tab BayNames.library)
+            clickOn window SampleLibraryControls.UiIds.makeMultilayerButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let editor = opened.[0]
+            Assert.True(editor.IsVisible, "the Sample editor window must be shown")
+            // Seeded, NOT blank: the foldable 2-layer period renders as one super-row + two cell rows.
+            Assert.True(isPresent editor (SampleEditorView.UiIds.groupRow 0), "the seeded period super-row must render")
+            Assert.True(isPresent editor (SampleEditorView.UiIds.cellLayerRow 0 0), "seeded cell layer 0 must render")
+            Assert.True(isPresent editor (SampleEditorView.UiIds.cellLayerRow 0 1), "seeded cell layer 1 must render")
+            // Name it and Save — a NEW sample persists through SampleProxy.addSample.
+            setText editor SampleEditorView.UiIds.nameBox "Bay multilayer"
+            clickOn editor SampleEditorView.UiIds.saveButton
+            Assert.False(editor.IsVisible)
+            match samples.listSamples () with
+            | Ok all ->
+                Assert.Equal(seededCount + 1, List.length all)
+                Assert.Contains(all, fun (s : Sample) -> s.name = "Bay multilayer")
+            | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             window.Close())
 
     [<Fact>]
