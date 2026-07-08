@@ -132,6 +132,12 @@
              structure proof (every UiIds control exists over a known State, the built-in row's
              Remove is removed not greyed, and a simulated Add click invokes the add handler). -->
         <Compile Include="CategoryControlsTests.fs" />
+        <!-- Spec 0035 (006): the CategoryEditorWindow component (UICOMP_XDUO_0006) — pure contract
+             + model tests for the MVU wiring over the step-4 CategoryEditor rendered through the
+             step-5 CategoryControls, plus headless UiIds-driven acceptance proofs over a stub
+             CategoryProxy (Add grows the list, Rename updates a name, a confirm-gated remove of a
+             referenced category surfaces CategoryStillReferenced with the list unchanged). -->
+        <Compile Include="CategoryEditorWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
