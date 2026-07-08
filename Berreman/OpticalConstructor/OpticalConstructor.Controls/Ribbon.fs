@@ -40,7 +40,8 @@ module Ribbon =
     module UiIds =
         /// The selectable tab for a bay — its name, prefixed so it cannot collide with other ids.
         let tab (name : string) : string = "RibbonTab_" + name
-        /// The content pane for a bay (always present; only the selected one is visible).
+        /// The single active content slot — named by the bay currently shown (only that one bay's
+        /// content is realized; switching bays recreates this slot rather than toggling visibility).
         let pane (name : string) : string = "RibbonPane_" + name
 
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
@@ -81,26 +82,39 @@ module Ribbon =
         | Some b -> Some b
         | None -> List.tryHead state.bays
 
-    /// The ribbon — a top tab strip of bay names, then EVERY bay's content pane with only the selected one
-    /// visible. We deliberately keep every pane present (not swap a single content node) because swapping
-    /// one node between two DIFFERENT controls makes FuncUI recycle a styled, named control into a
-    /// differently-named one ("Cannot set Name : styled element already styled"). With one stable pane per
-    /// bay, FuncUI only ever patches a pane against its own previous self, so no recycling across bays.
-    /// `onSelect` is the host's "show this bay" seam.
+    /// The ribbon — a top tab strip of bay names, then the ACTIVE bay's content in ONE keyed slot. Only the
+    /// selected bay's content is realized (no hidden panes): the single slot is KEYED by the active bay name
+    /// (`View.withKey` → FuncUI's `IView.ViewKey`), so when the active bay changes FuncUI CREATES a fresh
+    /// pane rather than patching the previous bay's control in place. That is what stops FuncUI from recycling
+    /// a styled, named control from a DIFFERENT bay into this slot ("Cannot set Name : styled element already
+    /// styled"): the diff sees the ViewKey change, treats the pane as new, and disposes the old one — so a
+    /// pane is only ever patched against its own previous self. `onSelect` is the host's "show this bay" seam.
     let view (state : State) (onSelect : string -> unit) : IView =
         let activeName = activeBay state |> Option.map (fun b -> b.name) |> Option.defaultValue ""
         let tabs =
             state.bays
             |> List.map (fun b -> tab b.name (b.name = activeName) onSelect)
-        let panes =
-            state.bays
-            |> List.map (fun b ->
-                Border.create [
-                    Border.name (UiIds.pane b.name)
-                    Border.isVisible (b.name = activeName)
-                    Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
-                    Border.child b.content
-                ] :> IView)
+        // The single active-bay content slot, KEYED by the active bay name so a bay change recreates the pane
+        // instead of recycling a styled, named control across two DIFFERENT bays. `UiIds.pane` names this one
+        // active slot. When there are no bays, an empty keyed placeholder keeps the slot present.
+        let activePane : IView =
+            match activeBay state with
+            | Some b ->
+                let pane =
+                    Border.create [
+                        Border.name (UiIds.pane b.name)
+                        Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
+                        Border.child b.content
+                    ]
+                    // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+                    // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+                    |> Avalonia.FuncUI.DSL.View.withKey b.name
+                pane :> IView
+            | None ->
+                let pane =
+                    Border.create [ Border.name (UiIds.pane activeName) ]
+                    |> Avalonia.FuncUI.DSL.View.withKey activeName
+                pane :> IView
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 6.0
@@ -112,7 +126,7 @@ module Ribbon =
                 ]
                 StackPanel.create [
                     StackPanel.orientation Orientation.Vertical
-                    StackPanel.children panes
+                    StackPanel.children [ activePane ]
                 ]
             ]
         ] :> IView

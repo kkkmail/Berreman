@@ -138,6 +138,11 @@
              CategoryProxy (Add grows the list, Rename updates a name, a confirm-gated remove of a
              referenced category surfaces CategoryStillReferenced with the list unchanged). -->
         <Compile Include="CategoryEditorWindowTests.fs" />
+        <!-- Spec 0035 (007): the generic Controls ribbon hosts ONLY the active bay's content in ONE
+             keyed slot (View.withKey) instead of every bay's pane with IsVisible toggles — headless
+             proofs that selecting each bay in turn realizes exactly that bay's content and no other
+             pane, with no styled-element recycling error over the live FuncUI patch path. -->
+        <Compile Include="RibbonPaneTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
