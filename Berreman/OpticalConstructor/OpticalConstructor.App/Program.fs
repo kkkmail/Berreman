@@ -137,7 +137,12 @@ type MainConstructorWindow() as this =
         // Add/Edit open the real editor windows.
         let samples = SampleProxy.createInMemory ()
         let materials = OpticalConstructor.Domain.MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
-        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples) TableAndElementRotationView.update TableAndElementRotationView.mainView
+        // Spec 0035 (009): the category WRITE store (STORE_XDUO_0003) joins the composition — its
+        // remove-block consults the live materials store through `materialsReferencingCategory`.
+        // The step-19 WIRE_UI slice owns the composition ACCEPTANCE; this call is mechanical so the
+        // solution builds against the threaded-`categories` `initMainWith`.
+        let categories = OpticalConstructor.Domain.MaterialLibrary.CategoryProxy.createInMemory (OpticalConstructor.Domain.MaterialLibrary.materialsReferencingCategory materials)
+        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples categories) TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 

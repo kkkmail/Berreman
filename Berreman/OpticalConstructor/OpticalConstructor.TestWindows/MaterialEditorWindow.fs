@@ -14,7 +14,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 /// Cancel closes without writing. An entry with `complexity = None` (engine-coded physics)
 /// opens VIEW-ONLY: no ladder, no Save affordance. Declared, not wired: no parent view or
 /// launcher opens it in this slice.
-type MaterialEditorWindow(materials : MaterialProxy, existing : MaterialEntry option) as this =
+type MaterialEditorWindow(materials : MaterialProxy, existing : MaterialEntry option, ?categories : CategoryProxy) as this =
     inherit HostWindow()
 
     do
@@ -26,9 +26,14 @@ type MaterialEditorWindow(materials : MaterialProxy, existing : MaterialEntry op
         AutomationProperties.SetAutomationId(this, MaterialEditorView.UiIds.window)
         this.Width <- 1150.0
         this.Height <- 980.0
+        // Spec 0035 (009): the create picker's live catalogue seam. The Main-screen launcher passes
+        // the SHARED store (so a rename in the Category editor re-labels this picker); a standalone
+        // open (no `categories` argument) defaults to a fresh in-memory catalogue of the built-ins.
+        let categoryProxy = defaultArg categories (CategoryProxy.createInMemory (fun _ -> []))
         let context : MaterialEditorView.MaterialEditorContext =
             {
                 materials = materials
+                categories = categoryProxy
                 requestClose = fun () -> this.Close()
             }
         Program.mkSimple (fun () -> MaterialEditorView.init context existing) MaterialEditorView.update MaterialEditorView.view

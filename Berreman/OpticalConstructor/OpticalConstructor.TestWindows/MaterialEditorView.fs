@@ -158,6 +158,10 @@ type EditorMode =
 type MaterialEditorContext =
     {
         materials : MaterialProxy
+        /// Spec 0035 (009): the category write-seam behind the create picker. The picker reads the
+        /// LIVE catalogue (`listCategories`) at render, so a category renamed through the SHARED
+        /// proxy (e.g. in the step-6 Category editor) re-labels this picker on the editor's next open.
+        categories : CategoryProxy
         requestClose : unit -> unit
     }
 
@@ -212,6 +216,15 @@ let private anisotropyLabel (anisotropy : Anisotropy) : string =
 /// through the seeded catalogue by `CategoryId` (spec 0035 step 001), not a closed-union match.
 let categoryCode (category : CategoryId) : string =
     categoryName category
+
+/// The create picker's category choices (spec 0035 step 009): the LIVE catalogue from the context's
+/// `CategoryProxy` (`listCategories`, re-read at render), EXCLUDING every `HiddenOnCreate` category
+/// (Vacuum) — those categorise seed entries but are not user-selectable creation targets, so they
+/// are REMOVED from the picker, not greyed. A store listing error yields no options (never a throw).
+let selectableCategories (m : Model) : MaterialCategory list =
+    match m.context.categories.listCategories () with
+    | Ok cats -> cats |> List.filter (fun c -> c.visibility <> HiddenOnCreate)
+    | Error _ -> []
 
 /// A handedness option's stable code (the derived UiIds key).
 let handednessCode (hand : Handedness) : string =
@@ -553,13 +566,15 @@ let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
             WrapPanel.create [
                 automationId UiIds.categoryPicker
                 WrapPanel.orientation Orientation.Horizontal
-                // The create picker offers ONLY the SelectableOnCreate catalogue categories
-                // (spec 0035 step 001): Vacuum is HiddenOnCreate — removed, not greyed.
+                // Spec 0035 (009): the create picker offers the LIVE catalogue minus every
+                // HiddenOnCreate category (Vacuum is removed, not greyed). Each option's id is the
+                // category's `CategoryId` Guid string — STABLE across a rename, so the option box is
+                // patched (only its label changes) rather than re-created — and its label is the
+                // record NAME, so a category renamed through the shared proxy re-labels the picker.
                 WrapPanel.children (
-                    standardCategories
-                    |> List.filter (fun c -> c.visibility = SelectableOnCreate)
+                    selectableCategories m
                     |> List.map (fun category ->
-                        clickBox (UiIds.categoryOption category.name) category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
+                        clickBox (UiIds.categoryOption (string category.id.value)) category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
             ] :> IView
         ]
     ] :> IView

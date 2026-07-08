@@ -106,7 +106,7 @@ module MaterialEditorWindowTests =
                 updateMaterial = fun e -> calls.Add("update:" + e.name); saved.Add e; Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
-        calls, saved, { materials = stub; requestClose = fun () -> calls.Add "close" }
+        calls, saved, { materials = stub; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> calls.Add "close" }
 
     /// Apply one edit message, failing the test on an unexpected typed rejection.
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
@@ -490,7 +490,7 @@ module MaterialEditorWindowTests =
                 updateMaterial = fun _ -> Error (InvalidMaterial "the name is blank")
                 removeMaterial = fun _ -> Ok ()
             }
-        let context : MaterialEditorContext = { materials = failing; requestClose = fun () -> closes.Add "close" }
+        let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
         let m = init context None |> update SaveClicked
         Assert.Empty(closes)
         match m.status with

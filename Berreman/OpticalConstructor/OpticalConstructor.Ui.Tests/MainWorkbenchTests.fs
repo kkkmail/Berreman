@@ -77,6 +77,16 @@ module MainWorkbenchTests =
         | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
         | None -> failwith $"%s{id} was not found in the visual tree"
 
+    /// The label text INSIDE the clickable Border carrying `id` (a facet / picker option box is a
+    /// Border with a single TextBlock child — its AutomationId is stable, only its label re-labels).
+    let private labelInside (window : Window) (id : string) : string =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        | Some b ->
+            match b.GetVisualDescendants() |> Seq.tryPick (function :? TextBlock as t -> Some t.Text | _ -> None) with
+            | Some text -> text
+            | None -> failwith $"%s{id} carries no text label"
+        | None -> failwith $"%s{id} was not found in the visual tree"
+
     /// Fresh, isolated in-memory stores per test — the SAME composition the App performs: the
     /// samples store first, then the materials store whose remove-block consults the LIVE
     /// samples through `samplesReferencing`.
@@ -85,9 +95,13 @@ module MainWorkbenchTests =
         let materials = MaterialProxy.createInMemory (samplesReferencing samples)
         materials, samples
 
-    /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App).
+    /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App). The
+    /// category store (spec 0035 step 009) is composed here from the materials store — its
+    /// `materialsReferencingCategory` lookup — exactly as the App root does; the built model exposes
+    /// it as `.categories`, so a test can rename through the SAME proxy the bay re-queries.
     let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : Model =
-        initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
 
     let private freshMain () : Model =
         let materials, samples = freshStores ()
@@ -112,11 +126,12 @@ module MainWorkbenchTests =
         let launchers : EditorLaunchers =
             {
                 openMaterialEditor =
-                    fun _ existing ->
+                    fun _ _ existing ->
                         calls.Add(match existing with Some e -> "material-edit:" + e.name | None -> "material-add")
                 openSampleEditor =
                     fun _ _ existing ->
                         calls.Add(match existing with Some s -> "sample-edit:" + s.name | None -> "sample-add")
+                openCategoryEditor = fun _ -> calls.Add "categories-open"
             }
         calls, launchers
 
@@ -150,6 +165,59 @@ module MainWorkbenchTests =
         Assert.Equal(AnyDispersion, dispersionFilterOfCode "all")
         Assert.Equal(Some Plate, substrateFacetOfCode (substrateFacetCode (Some Plate)))
         Assert.Equal<SubstrateKind option>(None, substrateFacetOfCode "all")
+
+    [<Fact>]
+    let ``the category facet code is the CategoryId Guid string, mapping round-trip for a user category too`` () =
+        // The code is now the Guid string (spec 0035 step 009), stable across a rename, and the
+        // inverse parses the Guid directly — so it round-trips for a USER category not in the seeded
+        // catalogue, which a name-derived code resolved through `standardCategories` could not.
+        Assert.Equal(string CategoryIds.glass.value, materialCategoryCode (Some CategoryIds.glass))
+        Assert.Equal("all", materialCategoryCode None)
+        let userId = CategoryId.create ()
+        Assert.Equal(Some userId, materialCategoryOfCode (materialCategoryCode (Some userId)))
+
+    // ============================ pure: category facet + create picker over the live catalogue ====
+
+    /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard on
+    /// update), failing the test on a typed rejection.
+    let private renameGlass (categories : CategoryProxy) (newName : string) : unit =
+        match categories.updateCategory { id = CategoryIds.glass; name = newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
+        | Ok () -> ()
+        | Error e -> Assert.Fail($"rename failed: %A{e}")
+
+    [<Fact>]
+    let ``the category facet lists the live catalogue with a leading all option, Guid codes and name labels, re-labelling on a proxy rename in the same projection`` () =
+        let m = freshMain ()
+        let before = materialsState m
+        // The leading option is the match-everything "all"; each other option carries a Guid code.
+        Assert.Equal("all", (List.head before.categoryOptions).code)
+        Assert.Equal("All", (List.head before.categoryOptions).label)
+        let glassCode = string CategoryIds.glass.value
+        Assert.Equal("Glass", (before.categoryOptions |> List.find (fun o -> o.code = glassCode)).label)
+        // Vacuum (HiddenOnCreate) is STILL a filterable facet — the facet lists the WHOLE catalogue.
+        Assert.Contains(before.categoryOptions, fun (o : MaterialsControls.FacetOption) -> o.code = string CategoryIds.vacuum.value)
+        // Rename Glass through the SAME proxy the bay re-queries: the stable Guid code is unchanged,
+        // only the label re-labels — resolved live in the very next projection (same render pass).
+        renameGlass m.categories "Glazing"
+        let after = materialsState m
+        Assert.Equal("Glazing", (after.categoryOptions |> List.find (fun o -> o.code = glassCode)).label)
+
+    [<Fact>]
+    let ``the material-editor create picker lists the live selectable catalogue, excludes HiddenOnCreate, and re-labels on a proxy rename`` () =
+        let materials, _ = freshStores ()
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let ctx : MaterialEditorView.MaterialEditorContext =
+            { materials = materials; categories = categories; requestClose = ignore }
+        let em = MaterialEditorView.init ctx None
+        let before = MaterialEditorView.selectableCategories em
+        // The four SelectableOnCreate built-ins are offered; Vacuum (HiddenOnCreate) is excluded.
+        Assert.Contains(before, fun (c : MaterialCategory) -> c.id = CategoryIds.glass)
+        Assert.DoesNotContain(before, fun (c : MaterialCategory) -> c.id = CategoryIds.vacuum)
+        // A rename through the shared proxy re-labels the picker on its next read.
+        renameGlass categories "Glazing"
+        let after = MaterialEditorView.selectableCategories em
+        Assert.Contains(after, fun (c : MaterialCategory) -> c.name = "Glazing")
+        Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name = "Glass")
 
     // ============================ pure: projections ============================
 
@@ -348,13 +416,18 @@ module MainWorkbenchTests =
             let launchers : EditorLaunchers =
                 {
                     openMaterialEditor =
-                        fun m existing ->
-                            let w = MaterialEditorWindow(m, existing)
+                        fun m categories existing ->
+                            let w = MaterialEditorWindow(m, existing, categories = categories)
                             opened.Add w
                             w.Show()
                     openSampleEditor =
                         fun m s existing ->
                             let w = SampleEditorWindow(m, s, existing)
+                            opened.Add w
+                            w.Show()
+                    openCategoryEditor =
+                        fun categories ->
+                            let w = CategoryEditorWindow(categories)
                             opened.Add w
                             w.Show()
                 }
@@ -492,4 +565,63 @@ module MainWorkbenchTests =
             // Returning to a table bay restores the canvas (and its gestures) below the strip.
             clickOn window (Ribbon.UiIds.tab BayNames.rotation)
             Assert.True(isPresent window UiIds.canvas, "returning to a table bay restores the table canvas")
+            window.Close())
+
+    // ============================ headless (ui-smoke): the category catalogue ============================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless acceptance: the Materials bay Categories verb opens the Category editor window`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples = freshStores ()
+            // Recording launchers that still open the REAL step-6 Category editor, so the proof is
+            // end-to-end: the Categories verb click by UiId → the real editor window is shown.
+            let opened = ResizeArray<Window>()
+            let launchers : EditorLaunchers =
+                {
+                    openMaterialEditor = fun _ _ _ -> ()
+                    openSampleEditor = fun _ _ _ -> ()
+                    openCategoryEditor =
+                        fun categories ->
+                            let w = CategoryEditorWindow(categories)
+                            opened.Add w
+                            w.Show()
+                }
+            let window = mountMain { mainWith materials samples with launchers = launchers }
+            clickOn window (Ribbon.UiIds.tab BayNames.materials)
+            clickOn window WorkbenchIds.categoriesButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            Assert.True(opened.[0].IsVisible, "the Category editor window must be shown")
+            Assert.True(matchesId CategoryEditorView.UiIds.window opened.[0], "the opened window must be the Category editor")
+            opened.[0].Close()
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless acceptance: a category renamed through the proxy re-labels the Materials facet and the create picker in the same render pass`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples = freshStores ()
+            let model0 = mainWith materials samples
+            let categories = model0.categories       // the SAME proxy the bay re-queries on render
+            let glassCode = string CategoryIds.glass.value
+            let window = mountMain model0
+            clickOn window (Ribbon.UiIds.tab BayNames.materials)
+            // Before: the facet option for Glass (found by its stable Guid id) reads "Glass".
+            Assert.Equal("Glass", labelInside window (MaterialsControls.UiIds.categoryOption glassCode))
+            // Rename Glass through the shared proxy, then dispatch a bay re-render.
+            renameGlass categories "Glazing"
+            setText window MaterialsControls.UiIds.searchBox "glass"
+            // The facet re-queries listCategories on that render: the stable Guid id is unchanged and
+            // the option re-labels to "Glazing" in the same render pass.
+            Assert.Equal("Glazing", labelInside window (MaterialsControls.UiIds.categoryOption glassCode))
+            // The create picker re-labels too: opening the editor over the SAME proxy shows "Glazing"
+            // for the same stable Guid id (Vacuum stays excluded from the picker).
+            let editor = MaterialEditorWindow(materials, None, categories = categories)
+            editor.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal("Glazing", labelInside editor (MaterialEditorView.UiIds.categoryOption glassCode))
+            Assert.False(isPresent editor (MaterialEditorView.UiIds.categoryOption (string CategoryIds.vacuum.value)),
+                         "the create picker excludes the HiddenOnCreate Vacuum category")
+            editor.Close()
             window.Close())
