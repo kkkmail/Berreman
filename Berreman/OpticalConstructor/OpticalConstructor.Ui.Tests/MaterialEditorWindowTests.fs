@@ -156,6 +156,14 @@ module MaterialEditorWindowTests =
         Assert.Equal("DispersionModelPicker_1", UiIds.segmentModelPicker 1)
         Assert.Equal("GyrationClassOption_Uniaxial", UiIds.gyrationClassOption "Uniaxial")
         Assert.Equal("AnisotropyOption_Biaxial", UiIds.anisotropyOption (anisotropyCode Biaxial))
+        // Spec 0035 (011): the two Constant/Dispersive component sub-toggles and the
+        // per-component dispersion-formula editor / box id families.
+        Assert.Equal("ActivityDispersiveToggle", UiIds.activityDispersiveToggle)
+        Assert.Equal("MagneticDispersiveToggle", UiIds.magneticDispersiveToggle)
+        Assert.Equal("GyrationFormulaEditor_g11", UiIds.gyrationComponentFormulaEditor "g11")
+        Assert.Equal("GyrationFormulaBox_g33_nt0c0", UiIds.gyrationComponentFormulaBox "g33" "nt0c0")
+        Assert.Equal("PolderFormulaEditor_muGyration", UiIds.polderComponentFormulaEditor "muGyration")
+        Assert.Equal("PolderFormulaBox_muDiagonal_nt0c0", UiIds.polderComponentFormulaBox "muDiagonal" "nt0c0")
 
     [<Fact>]
     let ``the default edit state derives the simplest material: transparent, isotropic, non-dispersive`` () =
@@ -712,4 +720,59 @@ module MaterialEditorWindowTests =
             Assert.Contains("ForouhiBloomer", textOf window UiIds.summaryText)
             clickOn window (UiIds.modelOption 0 "SumOfTerms")
             Assert.DoesNotContain("ForouhiBloomer", textOf window UiIds.summaryText)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the activity Dispersive sub-toggle swaps each gyration component for a formula editor and back`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // A uniaxial active medium's class carries exactly g11 and g33.
+            clickOn window (UiIds.anisotropyOption (anisotropyCode Uniaxial))
+            clickOn window UiIds.activeToggle
+            Assert.True(isPresent window UiIds.activityDispersiveToggle, "the activity rung must expose the Dispersive sub-toggle")
+            // Constant (the default sub-branch): the per-component constant boxes, no formula editor.
+            for code in [ "g11"; "g33" ] do
+                Assert.True(isPresent window (UiIds.gyrationComponentBox code), $"the constant %s{code} box must be present")
+                Assert.False(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} must have no formula editor while constant")
+            // Enabling Dispersive exposes a dispersion-formula editor per symmetry-allowed
+            // component; the constant boxes are gone.
+            clickOn window UiIds.activityDispersiveToggle
+            for code in [ "g11"; "g33" ] do
+                Assert.True(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
+                Assert.False(isPresent window (UiIds.gyrationComponentBox code), $"the constant %s{code} box must be removed under Dispersive")
+            // Unchecking restores the constant component boxes.
+            clickOn window UiIds.activityDispersiveToggle
+            for code in [ "g11"; "g33" ] do
+                Assert.True(isPresent window (UiIds.gyrationComponentBox code), $"unchecking must restore the constant %s{code} box")
+                Assert.False(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the magnetic Dispersive sub-toggle swaps the Polder components for formula editors and back`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickOn window UiIds.magneticToggle
+            Assert.True(isPresent window UiIds.magneticDispersiveToggle, "the magnetic rung must expose the Dispersive sub-toggle")
+            // Constant (default, scalar kind): the diagonal μ box, no formula editor.
+            Assert.True(isPresent window UiIds.muDiagonalBox, "the constant diagonal μ box must be present")
+            Assert.False(isPresent window (UiIds.polderComponentFormulaEditor "muDiagonal"), "no Polder formula editor while constant")
+            // Enabling Dispersive exposes the full-tensor Polder component formula editors;
+            // the constant box is gone.
+            clickOn window UiIds.magneticDispersiveToggle
+            for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
+                Assert.True(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
+            Assert.False(isPresent window UiIds.muDiagonalBox, "the constant diagonal μ box must be removed under Dispersive")
+            // Unchecking restores the constant component box.
+            clickOn window UiIds.magneticDispersiveToggle
+            Assert.True(isPresent window UiIds.muDiagonalBox, "unchecking must restore the constant diagonal μ box")
+            for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
+                Assert.False(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
             window.Close())
