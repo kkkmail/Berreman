@@ -54,6 +54,12 @@ module UiIds =
     let anisotropyToggle = "AnisotropyToggle"
     [<Literal>]
     let absorbingToggle = "AbsorbingToggle"
+    /// Spec 0035 (017): the eps branch is two mutually-exclusive options — Constant /
+    /// Dispersive — routed through the SAME `SetDispersion` message (`NonDispersive` /
+    /// `DispersiveSegments`), replacing the former sticky single Dispersive toggle. The
+    /// `dispersiveToggle` id is kept for the Dispersive option; `constantToggle` is its pair.
+    [<Literal>]
+    let constantToggle = "ConstantToggle"
     [<Literal>]
     let dispersiveToggle = "DispersiveToggle"
     [<Literal>]
@@ -617,13 +623,16 @@ let private anisotropyRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-/// The unlock toggles (spec 0033 gap G6). The eps MODEL choice leads: "Dispersive" OFF
-/// means a CONSTANT (non-dispersive) medium, whose transparent-vs-absorbing sub-choice is
-/// the `Absorbing` toggle — shown ONLY in the constant branch. A dispersive medium carries
-/// its absorption inside the formulas, so a constant-case absorbing toggle would be inert
-/// there and is REMOVED, not greyed (Part F). The optional activity / magnetic aspects
-/// follow; the activity toggle is REMOVED when the anisotropy choice offers no rotating
-/// gyration class (`availableGyrationClasses`).
+/// The unlock toggles (spec 0033 gap G6; spec 0035 step 017). The eps MODEL choice leads:
+/// two MUTUALLY-EXCLUSIVE options — Constant / Dispersive — select `NonDispersive` /
+/// `DispersiveSegments`, both routed through the SAME `SetDispersion` message, so the derived
+/// model is unchanged (this restyle is cosmetic — it replaces the former sticky single
+/// Dispersive toggle). The Constant branch's transparent-vs-absorbing sub-choice is the
+/// `Absorbing` toggle — shown ONLY in the Constant branch. A dispersive medium carries its
+/// absorption inside the formulas, so a constant-case absorbing toggle would be inert there
+/// and is REMOVED, not greyed (Part F). The optional activity / magnetic aspects follow; the
+/// activity toggle is REMOVED when the anisotropy choice offers no rotating gyration class
+/// (`availableGyrationClasses`).
 let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
     let absorbing = m.editor.transparency = Absorbing
     let dispersive = m.editor.dispersion = DispersiveSegments
@@ -634,13 +643,15 @@ let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
         StackPanel.children [
-            labelBlock "Dispersion model (off = constant n, k):"
+            labelBlock "Dispersion model:"
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [
+                        clickBox UiIds.constantToggle "Constant" (not dispersive) (fun () ->
+                            dispatch (EditorMsg (SetDispersion NonDispersive)))
                         clickBox UiIds.dispersiveToggle "Dispersive" dispersive (fun () ->
-                            dispatch (EditorMsg (SetDispersion (if dispersive then NonDispersive else DispersiveSegments))))
+                            dispatch (EditorMsg (SetDispersion DispersiveSegments)))
                     ]
                     @ (if dispersive then []
                        else

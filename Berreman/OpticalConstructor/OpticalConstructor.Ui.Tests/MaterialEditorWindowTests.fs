@@ -139,6 +139,8 @@ module MaterialEditorWindowTests =
         Assert.Equal("MaterialNameBox", UiIds.nameBox)
         Assert.Equal("AnisotropyToggle", UiIds.anisotropyToggle)
         Assert.Equal("AbsorbingToggle", UiIds.absorbingToggle)
+        // Spec 0035 (017): the eps branch is two mutually-exclusive options (Constant / Dispersive).
+        Assert.Equal("ConstantToggle", UiIds.constantToggle)
         Assert.Equal("DispersiveToggle", UiIds.dispersiveToggle)
         Assert.Equal("ActiveToggle", UiIds.activeToggle)
         Assert.Equal("MagneticToggle", UiIds.magneticToggle)
@@ -524,6 +526,7 @@ module MaterialEditorWindowTests =
                     UiIds.nameBox
                     UiIds.anisotropyToggle
                     UiIds.absorbingToggle
+                    UiIds.constantToggle
                     UiIds.dispersiveToggle
                     UiIds.activeToggle
                     UiIds.magneticToggle
@@ -596,11 +599,38 @@ module MaterialEditorWindowTests =
             Assert.NotEqual<string>(initial, textOf window UiIds.summaryText)
             clickOn window UiIds.absorbingToggle
             Assert.Equal(initial, textOf window UiIds.summaryText)
-            // The dispersive rung restores the same way.
+            // The eps branch is two mutually-exclusive options (spec 0035 step 017): choosing
+            // Dispersive changes the derived model; choosing Constant restores it losslessly.
             clickOn window UiIds.dispersiveToggle
             Assert.NotEqual<string>(initial, textOf window UiIds.summaryText)
-            clickOn window UiIds.dispersiveToggle
+            clickOn window UiIds.constantToggle
             Assert.Equal(initial, textOf window UiIds.summaryText)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the eps branch offers Constant and Dispersive as two mutually-exclusive options`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // Both options are present from the start — not a sticky single toggle (spec 0035 step 017).
+            Assert.True(isPresent window UiIds.constantToggle, "the Constant option must be offered")
+            Assert.True(isPresent window UiIds.dispersiveToggle, "the Dispersive option must be offered")
+            // The default is Constant: the constant index field shows, the segment editor does not.
+            Assert.True(isPresent window (UiIds.indexBox 1))
+            Assert.False(isPresent window (UiIds.segmentLowerBox 0))
+            Assert.DoesNotContain("dispersive", textOf window UiIds.summaryText)
+            // Choosing Dispersive selects DispersiveSegments (the segment editor appears)…
+            clickOn window UiIds.dispersiveToggle
+            Assert.Contains("dispersive", textOf window UiIds.summaryText)
+            Assert.True(isPresent window (UiIds.segmentLowerBox 0), "Dispersive selects the DispersiveSegments branch")
+            // …and choosing Constant selects NonDispersive again (mutually exclusive, not toggled off).
+            clickOn window UiIds.constantToggle
+            Assert.DoesNotContain("dispersive", textOf window UiIds.summaryText)
+            Assert.True(isPresent window (UiIds.indexBox 1), "Constant selects the NonDispersive branch")
+            Assert.False(isPresent window (UiIds.segmentLowerBox 0))
             window.Close())
 
     [<Fact>]
