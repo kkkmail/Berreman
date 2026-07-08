@@ -28,14 +28,17 @@ module RibbonPaneTests =
     let private marker (bayName : string) : string = "BayBody_" + bayName
 
     /// Four bays whose contents are all the SAME view type (TextBlock) with DIFFERENT names — the
-    /// exact shape that recycles a styled, named control if a single content slot is not keyed.
+    /// exact shape that recycles a styled, named control if a single content slot is not keyed. All are
+    /// `InRibbonPane` bays (their content docks in the ribbon's keyed pane), so "exactly this bay's pane
+    /// is realized" is the property under test; a `FullSurface` bay would render no in-ribbon pane at all.
     let private bayNames : string list = [ "Rotation"; "Move"; "Render"; "Materials" ]
 
     let private bays : Ribbon.Bay list =
         bayNames
         |> List.map (fun n ->
             ({ name = n
-               content = TextBlock.create [ TextBlock.name (marker n); TextBlock.text n ] :> IView } : Ribbon.Bay))
+               content = TextBlock.create [ TextBlock.name (marker n); TextBlock.text n ] :> IView
+               mode = Ribbon.InRibbonPane } : Ribbon.Bay))
 
     /// Every non-empty control `Name` realized anywhere in the window's visual tree.
     let private realizedNames (window : Window) : Set<string> =

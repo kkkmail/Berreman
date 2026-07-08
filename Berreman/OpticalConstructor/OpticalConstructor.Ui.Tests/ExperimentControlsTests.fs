@@ -70,11 +70,12 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``the ribbon offers every bay including Experiments, Details and the step-024 workbenches`` () =
-        // The step-024 workbenches sit with the Selector (the binding / collection bays);
-        // Details stays LAST (the 0027/026 pin). [spec 0033 gap G2 reorder deferred — see the log.]
+        // Spec 0035 (008): the step-024 workbenches (Materials, Library) are the LAST two bays —
+        // full-surface bays that replace the table canvas. Now that step-007 pane hosting is
+        // order-independent, the earlier Details-LAST pin / deferred reorder is retired.
         Assert.Equal<string list>(
             [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector
-              BayNames.materials; BayNames.library; BayNames.experiments; BayNames.details ],
+              BayNames.experiments; BayNames.details; BayNames.materials; BayNames.library ],
             BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore

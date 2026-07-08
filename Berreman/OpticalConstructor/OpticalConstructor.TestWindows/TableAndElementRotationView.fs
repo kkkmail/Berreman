@@ -232,11 +232,11 @@ module BayNames =
     /// rename: "Library" now names the samples collection, while element↔entry binding stays in the
     /// Selector bay.
     let library = "Library"
-    // spec 0033 gap G2 (deferred): the operator wants Materials & Library LAST, but reordering the
-    // ribbon panes breaks the Library bay's sample-row layout in the headless harness (and thus the
-    // real ribbon) — see 008-close-the-gaps-implementation-log.md §4. The original order stands until
-    // the Ribbon pane-hosting is made order-independent. Details stays LAST (the 0027/026 pin).
-    let all = [ rotation; move; add; render; selector; materials; library; experiments; details ]
+    // spec 0035 (008): Materials & Library are the LAST two bays — full-surface workbench bays that
+    // replace the table canvas rather than crowd the ribbon pane. Now that step-007 pane hosting is
+    // order-independent (one keyed slot per active bay), the earlier deferred-reorder / Details-LAST
+    // pin is retired: the sample-row layout no longer depends on where the workbenches sit.
+    let all = [ rotation; move; add; render; selector; experiments; details; materials; library ]
 
 let defaultElementZoom : float = 5.0
 
@@ -2257,22 +2257,24 @@ let private samplesBay (model : Model) (dispatch : Msg -> unit) : IView =
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
 let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
-    [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch) }
-      { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch) }
-      { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
-      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) }
-      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
-      { name = BayNames.materials; content = materialsBay model dispatch }
-      { name = BayNames.library; content = samplesBay model dispatch }
-      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) }
-      { name = BayNames.details; content = LayerBandsControls.view (detailsState model) } ]
+    [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.details; content = LayerBandsControls.view (detailsState model); mode = Ribbon.InRibbonPane }
+      // The step-024 workbenches are FULL-SURFACE bays (step 008): each fills the whole area below the
+      // ribbon strip in place of the table canvas, so its list / verbs are not cramped inside the pane.
+      { name = BayNames.materials; content = materialsBay model dispatch; mode = Ribbon.FullSurface }
+      { name = BayNames.library; content = samplesBay model dispatch; mode = Ribbon.FullSurface } ]
 
-let private mainControlBar (model : Model) (dispatch : Msg -> unit) : IView =
+let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 4.0
         StackPanel.children [
-            Ribbon.view { bays = mainBays model dispatch; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
+            Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
             TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ]
         ]
     ] :> IView
@@ -2287,22 +2289,49 @@ let private mainTableCanvas (model : Model) : IView =
         Canvas.children (mainTableViews model @ mainElementViews model)
     ] :> IView
 
-/// The Main screen view: the ribbon of large controls on top, the shared table + renderer-drawn elements
-/// below. Same selection / pan / zoom / rotate gestures as the test scene.
+/// The Main screen view: the ribbon of large controls on top, and BELOW the ribbon strip either the
+/// shared table (for an in-pane "table" bay — same selection / pan / zoom / rotate gestures as the test
+/// scene) or the active bay's OWN content (for a FULL-SURFACE workbench bay — Materials / Library — which
+/// fills that whole area and wires NO table gestures). The bays are built once and shared: the ribbon hosts
+/// the in-pane bays' content and shows only a tab for a full-surface bay, whose content is placed here below.
 let mainView (model : Model) (dispatch : Msg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
+    // a full-surface bay never realizes the canvas and must not wire the table gestures.
+    let tableSurface () : IView =
+        Border.create [
+            Border.background (brush (color 250 250 250))
+            Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
+            Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+            Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
+            Border.onPointerWheelChanged (fun e ->
+                e.Handled <- true
+                dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
+            Border.child (mainTableCanvas model)
+        ] :> IView
+    let bays = mainBays model dispatch
+    // The area BELOW the ribbon strip: a full-surface bay fills it with the bay's OWN content (no table
+    // canvas, no gestures — the workbench owns the whole surface); every in-pane / table bay keeps the
+    // shared table canvas and its pan / zoom / rotate gestures.
+    let belowStrip : IView =
+        match Ribbon.activeBay { bays = bays; selected = model.ribbon } with
+        | Some b ->
+            match b.mode with
+            | Ribbon.FullSurface ->
+                // KEY the full-surface slot by bay name: switching between the two full-surface bays
+                // (Materials ⇄ Library) then RECREATES the content instead of patching one workbench's
+                // styled, named rows into the other's ("Cannot set Name : styled element already styled")
+                // — the same keyed-slot discipline step 007 gave the ribbon pane. `View` is fully qualified
+                // (the DSL `View` module vs the `Types` `View<'t>` type are both in scope here).
+                let surface =
+                    Border.create [ Border.child b.content ]
+                    |> Avalonia.FuncUI.DSL.View.withKey b.name
+                surface :> IView
+            | Ribbon.InRibbonPane -> tableSurface ()
+        | None -> tableSurface ()
     DockPanel.create [
         DockPanel.children [
-            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar model dispatch) ]
-            Border.create [
-                Border.background (brush (color 250 250 250))
-                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
-                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
-                Border.onPointerWheelChanged (fun e ->
-                    e.Handled <- true
-                    dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
-                Border.child (mainTableCanvas model)
-            ]
+            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
+            belowStrip
         ]
     ] :> IView

@@ -465,3 +465,31 @@ module MainWorkbenchTests =
                     "the band view must draw its first band inside the panel")
                 Assert.Contains(bandTexts, fun t -> not (isNull t) && t.Contains "×20")
             window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless acceptance: Materials and Library are the LAST two full-surface bays with no table canvas, while a table bay keeps its canvas`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples = freshStores ()
+            let window = mountMain (mainWith materials samples)
+            // The two workbenches are the LAST two bays the ribbon offers (spec 0035 step 008 reorder).
+            Assert.Equal<string list>(
+                [ BayNames.materials; BayNames.library ],
+                BayNames.all |> List.rev |> List.truncate 2 |> List.rev)
+            // The default bay (Rotation) is a table bay: the shared table canvas is realized below the strip.
+            Assert.True(isPresent window UiIds.canvas, "a table bay keeps its table canvas below the ribbon strip")
+            // The Materials workbench is FULL-SURFACE: its list fills the area below the strip and the table
+            // canvas is GONE (the full-surface bay replaces the canvas and wires no table gestures).
+            clickOn window (Ribbon.UiIds.tab BayNames.materials)
+            Assert.True(isPresent window MaterialsControls.UiIds.searchBox, "the Materials workbench fills the surface below the strip")
+            Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)),
+                        "the Materials list is realized in the full-surface area")
+            Assert.False(isPresent window UiIds.canvas, "a full-surface Materials bay shows no table canvas")
+            // The Library (samples) workbench is likewise full-surface — no table canvas.
+            clickOn window (Ribbon.UiIds.tab BayNames.library)
+            Assert.True(isPresent window SampleLibraryControls.UiIds.searchBox, "the Library workbench fills the surface below the strip")
+            Assert.False(isPresent window UiIds.canvas, "a full-surface Library bay shows no table canvas")
+            // Returning to a table bay restores the canvas (and its gestures) below the strip.
+            clickOn window (Ribbon.UiIds.tab BayNames.rotation)
+            Assert.True(isPresent window UiIds.canvas, "returning to a table bay restores the table canvas")
+            window.Close())
