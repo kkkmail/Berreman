@@ -59,6 +59,14 @@ type MagneticChoice =
     | MagneticOff
     | MagneticOn
 
+/// The Constant vs Dispersive sub-branch of the OPTIONAL activity / magnetic
+/// rungs — the eps ladder's `DispersionChoice`, but for the SCALAR gyration /
+/// Polder components: each component is one `DispersionFormula` (no segments).
+/// A named two-case DU, never a naked bool.
+type ComponentDispersion =
+    | ConstantComponents
+    | DispersiveComponents
+
 /// The Polder-mu panel's shape choice: a scalar permeability or the full
 /// gyromagnetic tensor with its magnetization axis.
 type MuKind =
@@ -113,14 +121,31 @@ type MaterialComplexityEditState =
         /// `dispersion = DispersiveSegments`; never empty under the message arms).
         segments : EditSegment list
         activity : ActivityChoice
-        /// The symmetry-class gyration facet (read only while `ActivityOn`).
+        /// The activity rung's Constant vs Dispersive sub-branch (read only while
+        /// `ActivityOn`; selects the `gyration` or the `gyrationDispersion` facet).
+        activityDispersion : ComponentDispersion
+        /// The symmetry-class gyration CONSTANT facet (read while `ActivityOn` +
+        /// `ConstantComponents`).
         gyration : GyrationClass<RhoValue>
+        /// The symmetry-class gyration DISPERSIVE facet — one `DispersionFormula`
+        /// per symmetry-allowed component, kept class-synced with `gyration` (read
+        /// while `ActivityOn` + `DispersiveComponents`). Stored independently of the
+        /// constant facet, so unchecking Dispersive restores the constant losslessly.
+        gyrationDispersion : GyrationClass<DispersionFormula>
         hand : Handedness
         magnetic : MagneticChoice
+        /// The magnetic rung's Constant vs Dispersive sub-branch (read only while
+        /// `MagneticOn`; selects the `polder` or the `polderDispersion` facet).
+        magneticDispersion : ComponentDispersion
         muKind : MuKind
-        /// The Polder components (read only while `MagneticOn`; the scalar kind
-        /// reads `muDiagonal` alone).
+        /// The Polder CONSTANT components (read while `MagneticOn` +
+        /// `ConstantComponents`; the scalar kind reads `muDiagonal` alone).
         polder : PolderValue<MuValue>
+        /// The Polder DISPERSIVE components — one `DispersionFormula` each (read
+        /// while `MagneticOn` + `DispersiveComponents`; always the full Polder
+        /// tensor, as the engine's `MuWithDispValue` carries no scalar dispersive
+        /// case). Stored independently of the constant facet (lossless uncheck).
+        polderDispersion : PolderValue<DispersionFormula>
     }
 
 /// The typed rejections of the edit and derivation arms (errors as values,
@@ -135,9 +160,6 @@ type MaterialComplexityEditError =
     /// The dispersive eps needs at least one segment (the engine's segment
     /// selection extrapolates from the topmost segment and cannot run on none).
     | LastSegmentNotRemovable of reason : string
-    /// `ofComplexity` met a complexity this editor cannot represent yet
-    /// (dispersive gyration / Polder formulas) — the window shows it view-only.
-    | UnsupportedComplexity of reason : string
 
 /// The editor's message DU: one arm per ladder operation, applied by
 /// `applyMaterialComplexityMsg`.
@@ -166,16 +188,29 @@ type MaterialComplexityMsg =
     /// edit — spec 0033 comment 009 + the gap-G7 coefficient surface).
     | SetSegmentAxisModel of segmentIndex : int * axis : PrincipalAxisSlot * DispersionModel
     | SetActivity of ActivityChoice
+    /// Flip the activity rung's Constant vs Dispersive sub-branch (spec Part C —
+    /// the gyration analogue of `SetDispersion`).
+    | SetActivityDispersion of ComponentDispersion
     | ChooseGyrationClass of GyrationClass<RhoValue>
     /// Set one symmetry-allowed component of the current gyration tensor
     /// (spec 0033 gap G9 — the per-component entry).
     | SetGyrationComponent of GyrationComponent * RhoValue
+    /// Set one symmetry-allowed component's DISPERSIVE facet — the scalar
+    /// `DispersionFormula` the raw `SumOfTerms` surface edits (spec Part C).
+    | SetGyrationComponentDispersion of GyrationComponent * DispersionFormula
     | SetHandedness of Handedness
     | SetMagnetic of MagneticChoice
+    /// Flip the magnetic rung's Constant vs Dispersive sub-branch (spec Part C).
+    | SetMagneticDispersion of ComponentDispersion
     | SetMuKind of MuKind
     | SetMuDiagonal of MuValue
     | SetMuParallel of MuValue
     | SetMuGyration of MuValue
+    /// Set the DISPERSIVE facet of one Polder component — the scalar
+    /// `DispersionFormula` the raw `SumOfTerms` surface edits (spec Part C).
+    | SetMuDiagonalDispersion of DispersionFormula
+    | SetMuParallelDispersion of DispersionFormula
+    | SetMuGyrationDispersion of DispersionFormula
     | ChooseGyrationAxis of GyrationAxis
 
 // ---------------------------------------------------------------------------
@@ -195,6 +230,22 @@ let private constantFormula (value : float) : DispersionFormula =
     {
         terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
         wavelengthScale = float (toMeters Nanometer 1.0)
+    }
+
+/// The default dispersive gyration component: the constant active magnitude as a
+/// flat `DispersionFormula`, so switching Dispersive on starts from the constant
+/// value (the raw `SumOfTerms` identity the segment ladder also seeds from).
+let defaultGyrationFormula : DispersionFormula = constantFormula defaultGyrationComponent.value
+
+/// The default dispersive Polder facet: each component the constant Polder default
+/// (μ 1.0, μ∥ 1.0, gyration 0.1) as a flat `DispersionFormula`, so switching
+/// Dispersive on starts from the constant value.
+let defaultPolderDispersion : PolderValue<DispersionFormula> =
+    {
+        muDiagonal = constantFormula 1.0
+        muParallel = constantFormula 1.0
+        gyration = constantFormula 0.1
+        axis = GyrationAxis.defaultValue
     }
 
 /// The dispersion-model choices the segment picker offers, each seeded with a
@@ -382,7 +433,9 @@ let gyrationComponentLabel (comp : GyrationComponent) : string =
 /// their current value. Exactly the components the class's symmetry admits
 /// appear — one for the single-valued cubic/planar forms, two for uniaxial /
 /// monoclinic-m, and up to the full six for triclinic (spec 0033 gap G9).
-let gyrationComponents (gyration : GyrationClass<RhoValue>) : (GyrationComponent * RhoValue) list =
+/// Generic over the component value (`RhoValue` for the constant facet,
+/// `DispersionFormula` for the dispersive facet — spec Part C).
+let gyrationComponents (gyration : GyrationClass<'g>) : (GyrationComponent * 'g) list =
     match gyration with
     | CubicActive g -> [ (G11, g) ]
     | UniaxialActive u -> [ (G11, u.g11); (G33, u.g33) ]
@@ -395,7 +448,9 @@ let gyrationComponents (gyration : GyrationClass<RhoValue>) : (GyrationComponent
 /// Set ONE component of the gyration tensor to `value`, keeping the class and
 /// its other components. A component the class does not carry is a no-op — the
 /// symmetry forbids it and the picker never offers it (spec 0033 gap G9).
-let setGyrationComponent (comp : GyrationComponent) (value : RhoValue) (gyration : GyrationClass<RhoValue>) : GyrationClass<RhoValue> =
+/// Generic over the component value (`RhoValue` constant / `DispersionFormula`
+/// dispersive — spec Part C).
+let setGyrationComponent (comp : GyrationComponent) (value : 'g) (gyration : GyrationClass<'g>) : GyrationClass<'g> =
     match gyration with
     | CubicActive _ ->
         match comp with
@@ -451,9 +506,12 @@ let defaultState : MaterialComplexityEditState =
         index3 = ComplexRefractionIndex (createComplex defaultIndexValue 0.0)
         segments = [ defaultSegment ]
         activity = ActivityOff
+        activityDispersion = ConstantComponents
         gyration = CubicActive defaultGyrationComponent
+        gyrationDispersion = CubicActive defaultGyrationFormula
         hand = RightHanded
         magnetic = MagneticOff
+        magneticDispersion = ConstantComponents
         muKind = ScalarMuKind
         polder =
             {
@@ -462,6 +520,7 @@ let defaultState : MaterialComplexityEditState =
                 gyration = MuValue 0.1
                 axis = GyrationAxis.defaultValue
             }
+        polderDispersion = defaultPolderDispersion
     }
 
 /// The simplest material the ladder derives: transparent, isotropic,
@@ -508,6 +567,16 @@ let private snapGyration (anisotropy : Anisotropy) (gyration : GyrationClass<Rho
         | first :: _ -> first
         | [] -> gyration
 
+/// Re-shape the dispersive gyration facet to the constant facet's symmetry class,
+/// keeping the two class-synced (the class picker is driven by the single constant
+/// `gyration`). A genuine class change resets each dispersive component to the
+/// default formula — exactly as a class change resets the constant components to
+/// the default magnitude (`availableGyrationClasses`); a same-class re-pick keeps
+/// the user's edited formulas (the lossless discipline).
+let private syncGyrationDispersion (gyration : GyrationClass<RhoValue>) (gyrationDispersion : GyrationClass<DispersionFormula>) : GyrationClass<DispersionFormula> =
+    if gyrationClassCode gyration = gyrationClassCode gyrationDispersion then gyrationDispersion
+    else gyration.map (fun _ -> defaultGyrationFormula)
+
 let private checkSegmentIndex (segmentIndex : int) (segments : EditSegment list) : Result<unit, MaterialComplexityEditError> =
     if segmentIndex >= 0 && segmentIndex < List.length segments then Ok ()
     else Error (NoSuchSegment $"segment index %d{segmentIndex} is out of range (%d{List.length segments} segments)")
@@ -541,7 +610,11 @@ let applyMaterialComplexityMsg
             match state.activity with
             | ActivityOn -> snapGyration anisotropy state.gyration
             | ActivityOff -> state.gyration
-        Ok { state with anisotropy = anisotropy; gyration = gyration }
+        Ok
+            { state with
+                anisotropy = anisotropy
+                gyration = gyration
+                gyrationDispersion = syncGyrationDispersion gyration state.gyrationDispersion }
     | SetTransparency transparency -> Ok { state with transparency = transparency }
     | SetDispersion dispersion -> Ok { state with dispersion = dispersion }
     | SetPrincipalIndex (slot, index) ->
@@ -595,21 +668,40 @@ let applyMaterialComplexityMsg
         checkSegmentIndex segmentIndex state.segments
         |> Result.map (fun () ->
             { state with segments = mapSegment segmentIndex (setAxisModel slot model) state.segments })
-    | SetActivity ActivityOn -> Ok { state with activity = ActivityOn; gyration = snapGyration state.anisotropy state.gyration }
+    | SetActivity ActivityOn ->
+        let gyration = snapGyration state.anisotropy state.gyration
+        Ok
+            { state with
+                activity = ActivityOn
+                gyration = gyration
+                gyrationDispersion = syncGyrationDispersion gyration state.gyrationDispersion }
     | SetActivity ActivityOff -> Ok { state with activity = ActivityOff }
+    | SetActivityDispersion choice -> Ok { state with activityDispersion = choice }
     | ChooseGyrationClass gyration ->
-        // A same-class re-pick keeps the current components.
+        // A same-class re-pick keeps the current components (constant AND dispersive).
         if gyrationClassCode gyration = gyrationClassCode state.gyration then Ok state
-        else Ok { state with gyration = gyration }
+        else Ok { state with gyration = gyration; gyrationDispersion = syncGyrationDispersion gyration state.gyrationDispersion }
     | SetGyrationComponent (comp, value) ->
         Ok { state with gyration = setGyrationComponent comp value state.gyration }
+    | SetGyrationComponentDispersion (comp, formula) ->
+        Ok { state with gyrationDispersion = setGyrationComponent comp formula state.gyrationDispersion }
     | SetHandedness hand -> Ok { state with hand = hand }
     | SetMagnetic magnetic -> Ok { state with magnetic = magnetic }
+    | SetMagneticDispersion choice -> Ok { state with magneticDispersion = choice }
     | SetMuKind muKind -> Ok { state with muKind = muKind }
     | SetMuDiagonal value -> Ok { state with polder = { state.polder with muDiagonal = value } }
     | SetMuParallel value -> Ok { state with polder = { state.polder with muParallel = value } }
     | SetMuGyration value -> Ok { state with polder = { state.polder with gyration = value } }
-    | ChooseGyrationAxis axis -> Ok { state with polder = { state.polder with axis = axis } }
+    | SetMuDiagonalDispersion formula -> Ok { state with polderDispersion = { state.polderDispersion with muDiagonal = formula } }
+    | SetMuParallelDispersion formula -> Ok { state with polderDispersion = { state.polderDispersion with muParallel = formula } }
+    | SetMuGyrationDispersion formula -> Ok { state with polderDispersion = { state.polderDispersion with gyration = formula } }
+    // The magnetization axis is a single physical choice — set it on BOTH facets so
+    // a constant⇄dispersive toggle keeps the same tensor geometry.
+    | ChooseGyrationAxis axis ->
+        Ok
+            { state with
+                polder = { state.polder with axis = axis }
+                polderDispersion = { state.polderDispersion with axis = axis } }
 
 // ---------------------------------------------------------------------------
 // toComplexity — the pure derivation onto the serializable value trees.
@@ -709,13 +801,24 @@ let toComplexity (state : MaterialComplexityEditState) : Result<MaterialComplexi
                 match state.magnetic with
                 | MagneticOff -> None
                 | MagneticOn ->
-                    match state.muKind with
-                    | ScalarMuKind -> Some (MuWithoutDispValue (ScalarMu state.polder.muDiagonal))
-                    | GyromagneticMuKind -> Some (MuWithoutDispValue (GyromagneticMu state.polder))
+                    match state.magneticDispersion with
+                    | ConstantComponents ->
+                        match state.muKind with
+                        | ScalarMuKind -> Some (MuWithoutDispValue (ScalarMu state.polder.muDiagonal))
+                        | GyromagneticMuKind -> Some (MuWithoutDispValue (GyromagneticMu state.polder))
+                    // The dispersive branch is always the full Polder tensor — the engine's
+                    // `MuWithDispValue` carries no scalar dispersive case; `toMuWithDisp`
+                    // evaluates each component's formula per wavelength.
+                    | DispersiveComponents -> Some (MuWithDispValue state.polderDispersion)
             active =
                 match state.activity with
                 | ActivityOff -> None
-                | ActivityOn -> Some (RhoWithoutDispValue { gyration = state.gyration; hand = state.hand })
+                | ActivityOn ->
+                    match state.activityDispersion with
+                    | ConstantComponents -> Some (RhoWithoutDispValue { gyration = state.gyration; hand = state.hand })
+                    // `toRhoWithDisp` evaluates each component's formula per wavelength and
+                    // assembles the symmetry-class gyration tensor.
+                    | DispersiveComponents -> Some (RhoWithDispValue { gyration = state.gyrationDispersion; hand = state.hand })
         })
 
 // ---------------------------------------------------------------------------
@@ -743,9 +846,11 @@ let private seedSegment
 
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so
-/// `toComplexity (ofComplexity c) = Ok c` value-identically. Dispersive
-/// gyration / Polder formulas are not editable in this slice and return the
-/// typed `UnsupportedComplexity` (the window shows such an entry view-only).
+/// `toComplexity (ofComplexity c) = Ok c` value-identically. A dispersive
+/// gyration (`RhoWithDispValue`) or Polder μ (`MuWithDispValue`) seeds its
+/// per-component `DispersionFormula` facet directly (spec Part C — the
+/// `UnsupportedComplexity` view-only fallback is gone, §0.2). Seeding never
+/// fails; the `Result` return is kept for the consumer contract.
 let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEditState, MaterialComplexityEditError> =
     let epsSeed =
         match complexity.eps with
@@ -775,36 +880,48 @@ let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEd
                     Biaxial, segs |> List.map (fun s -> seedSegment s.wavelengthInterval s.xDispersion s.yDispersion s.zDispersion)
             Ok (anisotropy, defaultState.transparency, DispersiveSegments, defaultState.index1, defaultState.index2, defaultState.index3, segments)
     epsSeed
-    |> Result.bind (fun (anisotropy, transparency, dispersion, index1, index2, index3, segments) ->
-        let magneticSeed =
-            match complexity.magnetic with
-            | None -> Ok (MagneticOff, defaultState.muKind, defaultState.polder)
-            | Some (MuWithoutDispValue (ScalarMu mu)) -> Ok (MagneticOn, ScalarMuKind, { defaultState.polder with muDiagonal = mu })
-            | Some (MuWithoutDispValue (GyromagneticMu polder)) -> Ok (MagneticOn, GyromagneticMuKind, polder)
-            | Some (MuWithDispValue _) ->
-                Error (UnsupportedComplexity "this entry's Polder mu is dispersive (formula-valued); the editor covers constant mu only — view-only")
-        let activeSeed =
+    |> Result.map (fun (anisotropy, transparency, dispersion, index1, index2, index3, segments) ->
+        // Active: a constant gyration seeds the CONSTANT facet verbatim (the dispersive
+        // facet re-shapes to its class with default formulas); a dispersive gyration
+        // seeds the DISPERSIVE facet verbatim (the constant facet takes the class's
+        // default magnitudes) — either way the two facets stay class-synced.
+        let activity, activityDispersion, gyration, gyrationDispersion, hand =
             match complexity.active with
-            | None -> Ok (ActivityOff, defaultState.gyration, defaultState.hand)
-            | Some (RhoWithoutDispValue g) -> Ok (ActivityOn, g.gyration, g.hand)
-            | Some (RhoWithDispValue _) ->
-                Error (UnsupportedComplexity "this entry's gyration is dispersive (formula-valued); the editor covers constant gyration only — view-only")
-        magneticSeed
-        |> Result.bind (fun (magnetic, muKind, polder) ->
-            activeSeed
-            |> Result.map (fun (activity, gyration, hand) ->
-                {
-                    anisotropy = anisotropy
-                    transparency = transparency
-                    dispersion = dispersion
-                    index1 = index1
-                    index2 = index2
-                    index3 = index3
-                    segments = segments
-                    activity = activity
-                    gyration = gyration
-                    hand = hand
-                    magnetic = magnetic
-                    muKind = muKind
-                    polder = polder
-                })))
+            | None ->
+                ActivityOff, defaultState.activityDispersion, defaultState.gyration, defaultState.gyrationDispersion, defaultState.hand
+            | Some (RhoWithoutDispValue g) ->
+                ActivityOn, ConstantComponents, g.gyration, syncGyrationDispersion g.gyration defaultState.gyrationDispersion, g.hand
+            | Some (RhoWithDispValue g) ->
+                ActivityOn, DispersiveComponents, g.gyration.map (fun _ -> defaultGyrationComponent), g.gyration, g.hand
+        // Magnetic: a constant μ seeds the CONSTANT Polder facet verbatim; a dispersive
+        // μ seeds the DISPERSIVE facet verbatim (the constant facet takes the default,
+        // its axis matched to the dispersive tensor's).
+        let magnetic, magneticDispersion, muKind, polder, polderDispersion =
+            match complexity.magnetic with
+            | None ->
+                MagneticOff, defaultState.magneticDispersion, defaultState.muKind, defaultState.polder, defaultState.polderDispersion
+            | Some (MuWithoutDispValue (ScalarMu mu)) ->
+                MagneticOn, ConstantComponents, ScalarMuKind, { defaultState.polder with muDiagonal = mu }, defaultState.polderDispersion
+            | Some (MuWithoutDispValue (GyromagneticMu polder)) ->
+                MagneticOn, ConstantComponents, GyromagneticMuKind, polder, defaultState.polderDispersion
+            | Some (MuWithDispValue polderF) ->
+                MagneticOn, DispersiveComponents, defaultState.muKind, { defaultState.polder with axis = polderF.axis }, polderF
+        {
+            anisotropy = anisotropy
+            transparency = transparency
+            dispersion = dispersion
+            index1 = index1
+            index2 = index2
+            index3 = index3
+            segments = segments
+            activity = activity
+            activityDispersion = activityDispersion
+            gyration = gyration
+            gyrationDispersion = gyrationDispersion
+            hand = hand
+            magnetic = magnetic
+            magneticDispersion = magneticDispersion
+            muKind = muKind
+            polder = polder
+            polderDispersion = polderDispersion
+        })

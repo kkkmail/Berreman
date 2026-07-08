@@ -254,8 +254,7 @@ let editErrorReason (e : MaterialComplexityEditError) : string =
     match e with
     | SegmentNotLowerable reason
     | NoSuchSegment reason
-    | LastSegmentNotRemovable reason
-    | UnsupportedComplexity reason -> reason
+    | LastSegmentNotRemovable reason -> reason
 
 let private materialErrorReason (e : MaterialError) : string =
     match e with
