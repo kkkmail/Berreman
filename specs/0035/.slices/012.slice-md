@@ -1,0 +1,11 @@
+# Step 012 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.Domain/ElementId.fs extend validateSample (ElementId.fs:596), which today checks the name only, with a structure-content rule: a Sample whose structure has no films AND no substrate (films = [] and substrate = None on SampleStructure, ElementId.fs:103) is structurally empty and returns Error (InvalidSample reason). Both addSample and updateSample already run validateSample (ElementId.fs:641,651), so the guard applies on every save. Update the OpticalConstructor.Tests that save a structurally-empty sample to add stack content (they were pinning the name-only contract this decision supersedes), and add a test asserting a name-carrying but structurally-empty sample is rejected as InvalidSample.
+
+**Acceptance.** After the step, addSample and updateSample MUST reject a sample with no films and no substrate as Error (InvalidSample _) even when its name is non-blank, and the previously name-only empty-sample tests are updated to carry stack content and pass.

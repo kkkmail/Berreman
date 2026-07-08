@@ -1,0 +1,11 @@
+# Step 011 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [10]
+```
+
+**How to implement.** In OpticalConstructor.TestWindows/MaterialEditorView.fs surface the step-10 Constant/Dispersive sub-branch on the optically-active and magnetic rungs: a per-rung Dispersive sub-toggle that, when on, replaces each symmetry-allowed gyration component box and each Polder component box with a DispersionModel coefficient editor (the existing per-axis modelParameters / SumOfTerms box surface). Add stable intent-named UiIds for the two sub-toggles and the per-component formula editors. Headless tests in OpticalConstructor.Ui.Tests drive the window by UiIds: enabling the activity Dispersive sub-toggle exposes a formula box per symmetry-allowed gyration component, enabling the magnetic Dispersive sub-toggle exposes the Polder component formula boxes, and unchecking each restores the constant boxes.
+
+**Acceptance.** After the step, headless tests MUST show the activity and magnetic Dispersive sub-toggles exposing a per-component dispersion-formula editor for each symmetry-allowed component, and unchecking each sub-toggle restoring the constant component boxes.

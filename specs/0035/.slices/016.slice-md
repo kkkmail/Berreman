@@ -1,0 +1,11 @@
+# Step 016 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [15]
+```
+
+**How to implement.** Embed the shared dual-axis ScottPlot chart as the Material editor's live n/k preview and the Materials-bay View panel, replacing the primitive canvas. In OpticalConstructor.Controls expose an inline/embeddable form of the dual-axis ScottPlot chart control (an embeddable AvaPlot host reusing ExperimentChart / ChartStyle and the ChartWindow rebuild path, ChartWindow.fs:11-19, with the n-left / k-right axes) - not only the pop-out window. In OpticalConstructor.TestWindows/MaterialEditorView.fs embed that control as the live preview (MaterialEditorView.fs:856) and use it for the Materials-bay View panel, building the chart model through the unchanged NkDispersionChart.nkDispersionChart builder (NkDispersionChart.fs:55) and its nkDispersionStyle left/right assignment (:76); DELETE the primitive NkDispersionChart.inlineCanvas (NkDispersionChart.fs:108). Every model kind, including the four transcendental (step 15), draws n and k. The embedded control MUST render under the Avalonia.Headless ui-smoke frame without throwing so the gate stays green. Headless render tests in OpticalConstructor.Ui.Tests: the Material editor preview and the Materials View panel render one frame carrying the embedded chart, for a dispersive (including transcendental) and a non-dispersive entry.
+
+**Acceptance.** After the step, the Material editor preview and Materials View panel MUST embed the shared dual-axis ScottPlot chart (inlineCanvas deleted), draw n and k for every model kind including the four transcendental, and render under the headless ui-smoke frame without throwing.

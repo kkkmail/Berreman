@@ -1,0 +1,11 @@
+# Step 010 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.Domain/MaterialComplexityEditor.fs extend the optically-active and magnetic rungs to a Constant vs Dispersive sub-branch (the eps ladder pattern). Generalise MaterialComplexityEditState (MaterialComplexityEditor.fs:102) to store, per symmetry-allowed gyration component (gyrationComponents, :385) and per Polder component, BOTH the constant value (the current GyrationClass<RhoValue> at :117 / PolderValue<MuValue> at :123) AND a dispersive DispersionModel edited through the SAME DispersionModels.modelParameters + raw SumOfTerms surface built in 0033 (DispersionModels.fs:291), plus an activity and a magnetic Dispersive sub-toggle; unchecking Dispersive restores the constant losslessly (the module's existing lossless discipline). toComplexity (:699) builds RhoWithDispValue / MuWithDispValue from each component's DispersionFormula when the sub-toggle is on, RhoWithoutDispValue / MuWithoutDispValue otherwise. ofComplexity (:749) seeds from a dispersive RhoWithDispValue / MuWithDispValue and the UnsupportedComplexity case (:140,784,790) is DELETED (no view-only fallback, section 0.2). The engine toRhoWithDisp (OpticalProperties/Active.fs:152) and toMuWithDisp (Berreman/Berreman/Dispersion.fs:644) are UNCHANGED. Unit tests in OpticalConstructor.Tests: toComplexity of an on-Dispersive gyration and Polder builds the WithDisp value whose per-wavelength assembly equals the engine toRhoWithDisp / toMuWithDisp, and ofComplexity then toComplexity round-trips a dispersive rho and mu by sampled tensor value.
+
+**Acceptance.** After the step, a dispersive gyration and a dispersive Polder permeability MUST derive through toComplexity into RhoWithDispValue / MuWithDispValue whose per-wavelength assembly equals the engine builders, seed back through ofComplexity value-identically by sampled tensor, and the UnsupportedComplexity view-only case MUST no longer exist.

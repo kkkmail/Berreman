@@ -1,0 +1,26 @@
+{
+  "STORE_XDUO_0003": {
+    "lifecycle": "declared",
+    "declaringStep": 2,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0005": {
+    "lifecycle": "declared",
+    "declaringStep": 5,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0006": {
+    "lifecycle": "declared",
+    "declaringStep": 6,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  }
+}

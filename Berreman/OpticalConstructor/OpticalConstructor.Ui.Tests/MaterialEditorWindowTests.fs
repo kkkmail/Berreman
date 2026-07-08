@@ -106,7 +106,7 @@ module MaterialEditorWindowTests =
                 updateMaterial = fun e -> calls.Add("update:" + e.name); saved.Add e; Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
-        calls, saved, { materials = stub; requestClose = fun () -> calls.Add "close" }
+        calls, saved, { materials = stub; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> calls.Add "close" }
 
     /// Apply one edit message, failing the test on an unexpected typed rejection.
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
@@ -139,6 +139,8 @@ module MaterialEditorWindowTests =
         Assert.Equal("MaterialNameBox", UiIds.nameBox)
         Assert.Equal("AnisotropyToggle", UiIds.anisotropyToggle)
         Assert.Equal("AbsorbingToggle", UiIds.absorbingToggle)
+        // Spec 0035 (017): the eps branch is two mutually-exclusive options (Constant / Dispersive).
+        Assert.Equal("ConstantToggle", UiIds.constantToggle)
         Assert.Equal("DispersiveToggle", UiIds.dispersiveToggle)
         Assert.Equal("ActiveToggle", UiIds.activeToggle)
         Assert.Equal("MagneticToggle", UiIds.magneticToggle)
@@ -156,6 +158,14 @@ module MaterialEditorWindowTests =
         Assert.Equal("DispersionModelPicker_1", UiIds.segmentModelPicker 1)
         Assert.Equal("GyrationClassOption_Uniaxial", UiIds.gyrationClassOption "Uniaxial")
         Assert.Equal("AnisotropyOption_Biaxial", UiIds.anisotropyOption (anisotropyCode Biaxial))
+        // Spec 0035 (011): the two Constant/Dispersive component sub-toggles and the
+        // per-component dispersion-formula editor / box id families.
+        Assert.Equal("ActivityDispersiveToggle", UiIds.activityDispersiveToggle)
+        Assert.Equal("MagneticDispersiveToggle", UiIds.magneticDispersiveToggle)
+        Assert.Equal("GyrationFormulaEditor_g11", UiIds.gyrationComponentFormulaEditor "g11")
+        Assert.Equal("GyrationFormulaBox_g33_nt0c0", UiIds.gyrationComponentFormulaBox "g33" "nt0c0")
+        Assert.Equal("PolderFormulaEditor_muGyration", UiIds.polderComponentFormulaEditor "muGyration")
+        Assert.Equal("PolderFormulaBox_muDiagonal_nt0c0", UiIds.polderComponentFormulaBox "muDiagonal" "nt0c0")
 
     [<Fact>]
     let ``the default edit state derives the simplest material: transparent, isotropic, non-dispersive`` () =
@@ -238,19 +248,22 @@ module MaterialEditorWindowTests =
         let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, sellmeier) ]
         match (derived st).eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
-            match toEpsAxis sellmeier with
-            | Ok expected -> Assert.Equal<EpsAxisDispersion>(expected, seg.dispersion)
-            | Error e -> failwith $"the Sellmeier default must lower, got %A{e}"
+            Assert.Equal<EpsAxisDispersion>(toEpsAxis sellmeier, seg.dispersion)
         | other -> Assert.Fail($"expected one isotropic dispersive segment, got %A{other}")
 
     [<Fact>]
-    let ``ForouhiBloomer and BrendelBormann are pickable but surface the typed NotAFiniteTermSum reason`` () =
+    let ``ForouhiBloomer and BrendelBormann are pickable and lower to the evaluated segment`` () =
         for code in [ "ForouhiBloomer"; "BrendelBormann" ] do
             let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, modelOfKind code) ]
             Assert.Equal(code, modelKindCode st.segments.[0].model1)
-            match toComplexity st with
-            | Error (SegmentNotLowerable reason) -> Assert.Contains(code, reason)
-            | other -> Assert.Fail($"expected the typed lowering rejection for %s{code}, got %A{other}")
+            // The transcendental pick now DERIVES (no rejection): one isotropic
+            // dispersive segment carrying the evaluated case.
+            match (derived st).eps with
+            | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
+                match seg.dispersion with
+                | EpsAxisEvaluated _ -> ()
+                | other -> Assert.Fail($"expected the evaluated case for %s{code}, got %A{other}")
+            | other -> Assert.Fail($"expected one isotropic dispersive segment for %s{code}, got %A{other}")
 
     [<Fact>]
     let ``the raw SumOfTerms escape hatch is the identity under lowering`` () =
@@ -490,7 +503,7 @@ module MaterialEditorWindowTests =
                 updateMaterial = fun _ -> Error (InvalidMaterial "the name is blank")
                 removeMaterial = fun _ -> Ok ()
             }
-        let context : MaterialEditorContext = { materials = failing; requestClose = fun () -> closes.Add "close" }
+        let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
         let m = init context None |> update SaveClicked
         Assert.Empty(closes)
         match m.status with
@@ -513,6 +526,7 @@ module MaterialEditorWindowTests =
                     UiIds.nameBox
                     UiIds.anisotropyToggle
                     UiIds.absorbingToggle
+                    UiIds.constantToggle
                     UiIds.dispersiveToggle
                     UiIds.activeToggle
                     UiIds.magneticToggle
@@ -585,11 +599,38 @@ module MaterialEditorWindowTests =
             Assert.NotEqual<string>(initial, textOf window UiIds.summaryText)
             clickOn window UiIds.absorbingToggle
             Assert.Equal(initial, textOf window UiIds.summaryText)
-            // The dispersive rung restores the same way.
+            // The eps branch is two mutually-exclusive options (spec 0035 step 017): choosing
+            // Dispersive changes the derived model; choosing Constant restores it losslessly.
             clickOn window UiIds.dispersiveToggle
             Assert.NotEqual<string>(initial, textOf window UiIds.summaryText)
-            clickOn window UiIds.dispersiveToggle
+            clickOn window UiIds.constantToggle
             Assert.Equal(initial, textOf window UiIds.summaryText)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the eps branch offers Constant and Dispersive as two mutually-exclusive options`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // Both options are present from the start — not a sticky single toggle (spec 0035 step 017).
+            Assert.True(isPresent window UiIds.constantToggle, "the Constant option must be offered")
+            Assert.True(isPresent window UiIds.dispersiveToggle, "the Dispersive option must be offered")
+            // The default is Constant: the constant index field shows, the segment editor does not.
+            Assert.True(isPresent window (UiIds.indexBox 1))
+            Assert.False(isPresent window (UiIds.segmentLowerBox 0))
+            Assert.DoesNotContain("dispersive", textOf window UiIds.summaryText)
+            // Choosing Dispersive selects DispersiveSegments (the segment editor appears)…
+            clickOn window UiIds.dispersiveToggle
+            Assert.Contains("dispersive", textOf window UiIds.summaryText)
+            Assert.True(isPresent window (UiIds.segmentLowerBox 0), "Dispersive selects the DispersiveSegments branch")
+            // …and choosing Constant selects NonDispersive again (mutually exclusive, not toggled off).
+            clickOn window UiIds.constantToggle
+            Assert.DoesNotContain("dispersive", textOf window UiIds.summaryText)
+            Assert.True(isPresent window (UiIds.indexBox 1), "Constant selects the NonDispersive branch")
+            Assert.False(isPresent window (UiIds.segmentLowerBox 0))
             window.Close())
 
     [<Fact>]
@@ -695,7 +736,7 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the segment editor adds segments and surfaces the typed reason for a non-lowerable pick`` () =
+    let ``the segment editor adds segments and a transcendental pick derives a dispersive eps`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
             let window = MaterialEditorWindow(materials, None)
@@ -706,10 +747,66 @@ module MaterialEditorWindowTests =
             Assert.False(isPresent window (UiIds.segmentLowerBox 1))
             clickOn window UiIds.addSegmentButton
             Assert.True(isPresent window (UiIds.segmentLowerBox 1), "AddSegment must append a second segment row")
-            // A non-lowerable pick is accepted (the entry is preserved) and the typed
-            // NotAFiniteTermSum reason surfaces through the derivation readout.
+            // A transcendental pick now LOWERS to the evaluated segment, so the entry
+            // DERIVES a dispersive eps instead of surfacing a rejection.
             clickOn window (UiIds.modelOption 0 "ForouhiBloomer")
-            Assert.Contains("ForouhiBloomer", textOf window UiIds.summaryText)
+            Assert.Contains("dispersive", textOf window UiIds.summaryText)
+            Assert.DoesNotContain("not derivable", textOf window UiIds.summaryText)
             clickOn window (UiIds.modelOption 0 "SumOfTerms")
-            Assert.DoesNotContain("ForouhiBloomer", textOf window UiIds.summaryText)
+            Assert.Contains("dispersive", textOf window UiIds.summaryText)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the activity Dispersive sub-toggle swaps each gyration component for a formula editor and back`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // A uniaxial active medium's class carries exactly g11 and g33.
+            clickOn window (UiIds.anisotropyOption (anisotropyCode Uniaxial))
+            clickOn window UiIds.activeToggle
+            Assert.True(isPresent window UiIds.activityDispersiveToggle, "the activity rung must expose the Dispersive sub-toggle")
+            // Constant (the default sub-branch): the per-component constant boxes, no formula editor.
+            for code in [ "g11"; "g33" ] do
+                Assert.True(isPresent window (UiIds.gyrationComponentBox code), $"the constant %s{code} box must be present")
+                Assert.False(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} must have no formula editor while constant")
+            // Enabling Dispersive exposes a dispersion-formula editor per symmetry-allowed
+            // component; the constant boxes are gone.
+            clickOn window UiIds.activityDispersiveToggle
+            for code in [ "g11"; "g33" ] do
+                Assert.True(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
+                Assert.False(isPresent window (UiIds.gyrationComponentBox code), $"the constant %s{code} box must be removed under Dispersive")
+            // Unchecking restores the constant component boxes.
+            clickOn window UiIds.activityDispersiveToggle
+            for code in [ "g11"; "g33" ] do
+                Assert.True(isPresent window (UiIds.gyrationComponentBox code), $"unchecking must restore the constant %s{code} box")
+                Assert.False(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the magnetic Dispersive sub-toggle swaps the Polder components for formula editors and back`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, None)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickOn window UiIds.magneticToggle
+            Assert.True(isPresent window UiIds.magneticDispersiveToggle, "the magnetic rung must expose the Dispersive sub-toggle")
+            // Constant (default, scalar kind): the diagonal μ box, no formula editor.
+            Assert.True(isPresent window UiIds.muDiagonalBox, "the constant diagonal μ box must be present")
+            Assert.False(isPresent window (UiIds.polderComponentFormulaEditor "muDiagonal"), "no Polder formula editor while constant")
+            // Enabling Dispersive exposes the full-tensor Polder component formula editors;
+            // the constant box is gone.
+            clickOn window UiIds.magneticDispersiveToggle
+            for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
+                Assert.True(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
+            Assert.False(isPresent window UiIds.muDiagonalBox, "the constant diagonal μ box must be removed under Dispersive")
+            // Unchecking restores the constant component box.
+            clickOn window UiIds.magneticDispersiveToggle
+            Assert.True(isPresent window UiIds.muDiagonalBox, "unchecking must restore the constant diagonal μ box")
+            for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
+                Assert.False(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
             window.Close())

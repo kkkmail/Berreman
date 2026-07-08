@@ -12,16 +12,19 @@ open OpticalConstructor.Controls
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.TableAndElementRotationView
 
-/// Spec 0033 (026) — the WIRE_UI composition acceptance. Every proof here drives the REAL
-/// `OpticalConstructor.App.MainConstructorWindow` — the finalized composition root that builds
-/// the four in-memory proxies itself (the samples store first, then the materials store whose
-/// remove-block consults the LIVE samples through `samplesReferencing`, beside the library /
-/// experiments proxies) and injects them through `initMainWith` — NOT a test-side model with
-/// injected stores (that layer is `MainWorkbenchTests`). The editor windows are opened by the
-/// REAL `EditorLaunchers.defaults` and observed through the public global
-/// `Window.WindowOpenedEvent` (the seam the desktop lifetime itself uses for window tracking),
-/// so the proof is end-to-end: launcher-composed window → ribbon click by UiIds → bay over the
-/// root-wired store → verb click → the real editor window mounts headless.
+/// Spec 0033 (026) / 0035 (019) — the WIRE_UI composition acceptance. Every proof here drives the
+/// REAL `OpticalConstructor.App.MainConstructorWindow` — the finalized composition root that builds
+/// the five in-memory proxies itself (the samples store first, then the materials store whose
+/// remove-block consults the LIVE samples through `samplesReferencing`, then the category store whose
+/// remove-block consults the LIVE materials through `materialsReferencingCategory`, beside the library
+/// / experiments proxies) and injects all of them through `initMainWith` — NOT a test-side model with
+/// injected stores (that layer is `MainWorkbenchTests`). The editor windows are opened by the REAL
+/// `EditorLaunchers.defaults` and observed through the public global `Window.WindowOpenedEvent` (the
+/// seam the desktop lifetime itself uses for window tracking), so the proof is end-to-end:
+/// launcher-composed window → ribbon click by UiIds → reordered full-surface bay over the root-wired
+/// store → verb click → the real editor window mounts headless. Spec 0035 (019) adds the third editor:
+/// the Materials bay's "Categories…" verb opens the REAL Category editor over the root-wired
+/// `CategoryProxy`, so all three editor windows (Material / Sample / Category) are proven from the root.
 module WireUiCompositionTests =
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
@@ -162,4 +165,32 @@ module WireUiCompositionTests =
             Assert.Contains("Glass plate", message)
             Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)),
                         "the refused remove must leave the row listed")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``composition acceptance: Categories… on the REAL Main window opens the real Category editor over the root-wired CategoryProxy`` () =
+        HeadlessSession.run (fun () ->
+            let window = mountRoot ()
+            // Same window-tracking seam as the Material/Sample proof: subscribe only after the Main
+            // window is shown, so exactly the editor the verb requests arrives.
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            // Materials → Categories…: the REAL step-006 Category editor mounts headless over the
+            // root-composed CategoryProxy. The launcher passes `model.categories` — the proxy the
+            // composition root wired through `initMainWith` (over `materialsReferencingCategory`)
+            // beside the material / sample proxies — so this proves the CategoryProxy is wired at
+            // the root, and that the third editor window opens without throwing.
+            clickOn window (Ribbon.UiIds.tab BayNames.materials)
+            clickOn window WorkbenchIds.categoriesButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            Assert.True(opened.[0].IsVisible, "the Category editor window must be shown")
+            Assert.True(matchesId CategoryEditorView.UiIds.window opened.[0], "the opened window must be the Category editor")
+            opened.[0].Close()
             window.Close())

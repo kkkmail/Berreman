@@ -1,0 +1,15 @@
+# Step 003 — IMPLEMENT_CONTRACT STORE_XDUO_0003 CategoryProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0003
+name: CategoryProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [2]
+```
+
+**How to implement.** Implement CategoryProxy.createInMemory taking materialsReferencingCategory : CategoryId -> MaterialEntry list and closing over a ref Map<CategoryId, MaterialCategory> seeded from standardCategories - the elevated CategoryId is the Map key directly (the SampleProxy / MaterialProxy.createInMemory precedent, ElementId.fs:616,686). addCategory validates the name then hard-blocks a duplicate id (DuplicateCategoryId); updateCategory validates then replaces a known id and rejects an unknown one (UnknownCategoryId) - built-ins ARE renamable; removeCategory refuses a BuiltInCategory (BuiltInNotRemovable) and, for a UserCategory, returns CategoryStillReferenced naming the referencing materials whenever materialsReferencingCategory returns any (it never cascades, never silently deletes), else removes it. Add a module-level materialsReferencingCategory lookup over a MaterialProxy.listMaterials result (the samplesReferencing precedent, ElementId.fs:740) filtering entries whose category equals the id. Mutation stays inside the closure (the IO boundary). Unit tests in OpticalConstructor.Tests: add/rename/remove round-trips with fixed Guids, the referenced-category hard block, the built-in-not-removable block, and the duplicate-add rejection.
+
+**Acceptance.** After createInMemory lands, removeCategory on a category referenced by a seeded material MUST return Error CategoryStillReferenced and removeCategory on a built-in MUST return Error BuiltInNotRemovable, both leaving the store unchanged, while add/rename/remove of an unreferenced user category round-trip deterministically with fixed Guids.

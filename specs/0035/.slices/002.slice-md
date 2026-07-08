@@ -1,0 +1,16 @@
+# Step 002 — ADD_CONTRACT STORE_XDUO_0003 CategoryProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0003
+name: CategoryProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [1]
+```
+
+**How to implement.** In OpticalConstructor.Domain, beside the step-1 category catalogue, declare the mutating category write-seam following the LibraryProxy / MaterialProxy functional-proxy convention (ElementId.fs:276; MaterialLibrary.fs:389). Add CategoryError with UnknownCategoryId, DuplicateCategoryId, CategoryStillReferenced, BuiltInNotRemovable and InvalidCategory, each carrying reason : string; and the [<ReferenceEquality>] record CategoryProxy with listCategories : unit -> Result<MaterialCategory list, CategoryError>, addCategory : MaterialCategory -> Result<unit, CategoryError>, updateCategory : MaterialCategory -> Result<unit, CategoryError>, removeCategory : CategoryId -> Result<unit, CategoryError>. Add a validateCategory helper rejecting a blank name as InvalidCategory (the validateEntry precedent, MaterialLibrary.fs:430). Provide a mock (an inline stub record over a fixed category list) plus a mock-driven test in OpticalConstructor.Tests exercising every field through its exact signature.
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub CategoryProxy and exercise all four functions through their exact signatures, and it passes.

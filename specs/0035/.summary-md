@@ -1,0 +1,68 @@
+# Arc summary — spec 0035
+
+*This `.summary-md` is the narrative companion to the numbers, **not** a
+substitute for the stats tool. Read it together with `.stat-md` / `.stat-json`
+(the stats command runs separately and computes the counts, timings, and cost
+figures deliberately left out of this prose.)*
+
+## Outcome
+
+Green. All 19 slices (001–019) were implemented, gated, and committed on branch
+`0035`, ending on a clean `COMPLETE` at 2026-07-08 07:49:48Z. The final commit
+is `8e8aa87` (slice 019).
+
+## The one thing a future reader must know: the mid-arc halt
+
+This arc did not run start-to-finish in a single pass, and the reason is worth
+recording because neither the impl-logs nor `.manifest-arc-runner.log` explain
+it. The first launch — started as a Claude Code **background-Bash task** — booted
+cleanly and committed slices 001–004, then, at ~00:17:51Z, its **entire process
+tree was terminated from outside** while slice 005's worker was healthily mid-run
+(180 s in, transcript actively growing, nowhere near any timeout). The structured
+log simply stopped: no `ESCALATE`, no `INTERRUPTED`, no traceback, and the harness
+reported the task as `killed`/`stopped` rather than a normal non-zero exit.
+
+A fairly thorough investigation followed and **ruled out** every internal and
+environmental cause: crash/exception, escalation, worker timeout/hangup, lock
+conflict, machine sleep/power event, antivirus, and human UI action (the operator
+confirmed there was none). Two specific hypotheses were actively **falsified**:
+
+- *Collateral kill from stopping the monitor.* A controlled reproduction showed
+  sibling background tasks are process-isolated — hard-killing one task's process
+  leaves the other untouched — so an earlier `Stop-Process` on a mis-launched
+  monitor was not the cause.
+- *A monitor↔arc-runner file-access collision silently crashing the runner.* The
+  runner writes state via atomic tmp+`os.replace` on the main thread and has a
+  two-layer exception net that persists a traceback to `<manifest>.boot-failed.log`
+  and exits with a defined code. No such crash can be silent; and no
+  `.boot-failed.log` and no orphan `.state.json.tmp` were ever produced.
+
+The best-supported explanation is an **external, harness-level task-termination**,
+but the trigger is **unrecoverable** — Windows process auditing was off, there is
+no Sysmon/Defender action, and the harness keeps no on-disk stop-log. The mystery
+was never definitively closed; it was **mitigated** instead.
+
+## The decision that carried the arc to completion
+
+Rather than keep relaunching into the same machinery, the arc was **relaunched
+detached from the Claude Code harness** — via `Start-Process` in its own console —
+so a harness-side task-stop could not reach it. This resumed cleanly from slice
+005 (the runner's own restart logic reconciled the frozen `running` state) and ran
+straight through 006–019 to `COMPLETE` with no further intervention. That the
+detached run cleared slice 005 — the exact point the first run died — is itself
+evidence that the halt was external to the arc's own work, not anything specific
+to slice 005, the worker, or the repo.
+
+One smaller course-correction along the way: the live `arc_monitor` must run in a
+**visible console** (it has no GUI/TUI mode); an initial attempt to run it as a
+hidden background task was corrected early.
+
+## Everything else
+
+Slice-level implementation detail (what each slice built in
+`OpticalConstructor.Domain` / tests, e.g. the CategoryEditor work) lives in the
+per-slice impl-logs and is not repeated here. Setting the halt aside, the run
+itself was unremarkable — slices gated and committed in order without route-back
+storms or gate surprises. The durable operational record of the halt, the
+eliminations, and the detached-launch guidance is in
+`.manual/001-arc-halt-postmortem-and-detached-launch.md`.

@@ -45,10 +45,13 @@ module LayerBandsControlsTests =
     // ============================ the Details bay in the ribbon ============================
 
     [<Fact>]
-    let ``the ribbon offers the Details bay LAST, after Experiments`` () =
-        // [spec 0033 gap G2 reorder deferred — reordering the ribbon panes breaks the Library bay's
-        // sample-row layout in the headless harness; see the implementation log.]
-        Assert.Equal(BayNames.details, List.last BayNames.all)
+    let ``the ribbon offers the Details bay after Experiments, ahead of the full-surface workbenches`` () =
+        // Spec 0035 (008): the Materials & Library workbenches are the LAST two bays (full-surface bays
+        // that replace the table canvas); now that step-007 pane hosting is order-independent, the
+        // Details-LAST pin is retired. Details still sits immediately after Experiments.
+        Assert.Equal<string list>(
+            [ BayNames.materials; BayNames.library ],
+            BayNames.all |> List.rev |> List.truncate 2 |> List.rev)
         let m = initMain ()
         let bays = mainBays m ignore
         let names = bays |> List.map (fun b -> b.name)

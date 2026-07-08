@@ -1,0 +1,11 @@
+# Step 014 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Domain, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Give SmpMakeMultilayer a distinct launcher path (today SmpAdd and SmpMakeMultilayer both open a blank editor, TableAndElementRotationView.fs:428,855; the makeMultilayer handler is at :2065). Extend the Sample editor init with a new-with-seed SampleStructure path - distinct from the blank Add and from a Some existing update-in-place - that opens a NEW sample pre-seeded with a foldable starter period: one Repeated period group of a 2-layer cell (SampleStructure at ElementId.fs:103; PeriodGroup / Repeated at ElementId.fs:89,98) ready for the SampleStackEditor K-stepper (MakeRepeatBlock / SetRepeatCount, SampleStackEditor.fs:79). Save still mints a fresh SampleId (SampleId.create, ElementId.fs:45). Headless tests in OpticalConstructor.Ui.Tests: SmpMakeMultilayer opens the editor showing the seeded 2-layer period, and Save persists a new sample through SampleProxy.addSample.
+
+**Acceptance.** After the step, SmpMakeMultilayer MUST open a NEW sample seeded with a foldable 2-layer period (distinct from the blank Add), and Save MUST persist it through SampleProxy.addSample under a freshly minted SampleId, verified by headless tests.

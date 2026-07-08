@@ -130,14 +130,22 @@ type MainConstructorWindow() as this =
         let experiments = OpticalConstructor.Domain.Experiments.createInMemory ()
         // Spec 0033 (024/026): the material / sample WRITE stores (STORE_XDUO_0001/0002) join the
         // composition — the samples store first, then the materials store whose remove-block
-        // consults the LIVE samples through `samplesReferencing`. All four proxies inject through
-        // `initMainWith` (which seeds the REAL editor launchers, `EditorLaunchers.defaults`); the
-        // step-026 ui-smoke composition acceptance (`WireUiCompositionTests`) drives THIS window
-        // headless — the Selector / Materials / Library bays render over the wired stores and
-        // Add/Edit open the real editor windows.
+        // consults the LIVE samples through `samplesReferencing`. All FIVE proxies (library /
+        // experiments / materials / samples / categories) inject through `initMainWith` (which seeds
+        // the REAL editor launchers, `EditorLaunchers.defaults`); the ui-smoke composition acceptance
+        // (`WireUiCompositionTests`) drives THIS window headless — the reordered full-surface
+        // Materials / Library bays render over the wired stores and Add / Edit / Categories… open the
+        // three real editor windows.
         let samples = SampleProxy.createInMemory ()
         let materials = OpticalConstructor.Domain.MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
-        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples) TableAndElementRotationView.update TableAndElementRotationView.mainView
+        // Spec 0035 (009/019): the category WRITE store (STORE_XDUO_0003) joins the composition LAST —
+        // its remove-block consults the live materials store through `materialsReferencingCategory`.
+        // Step 009 threaded it through `initMainWith`; the step-019 WIRE_UI slice OWNS the composition
+        // acceptance — `WireUiCompositionTests` drives THIS window headless and the Materials bay's
+        // "Categories…" verb opens the real Category editor over this root-wired proxy, beside the
+        // Material / Sample editors.
+        let categories = OpticalConstructor.Domain.MaterialLibrary.CategoryProxy.createInMemory (OpticalConstructor.Domain.MaterialLibrary.materialsReferencingCategory materials)
+        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples categories) TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 

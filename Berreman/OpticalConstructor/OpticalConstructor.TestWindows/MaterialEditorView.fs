@@ -54,12 +54,25 @@ module UiIds =
     let anisotropyToggle = "AnisotropyToggle"
     [<Literal>]
     let absorbingToggle = "AbsorbingToggle"
+    /// Spec 0035 (017): the eps branch is two mutually-exclusive options — Constant /
+    /// Dispersive — routed through the SAME `SetDispersion` message (`NonDispersive` /
+    /// `DispersiveSegments`), replacing the former sticky single Dispersive toggle. The
+    /// `dispersiveToggle` id is kept for the Dispersive option; `constantToggle` is its pair.
+    [<Literal>]
+    let constantToggle = "ConstantToggle"
     [<Literal>]
     let dispersiveToggle = "DispersiveToggle"
     [<Literal>]
     let activeToggle = "ActiveToggle"
     [<Literal>]
     let magneticToggle = "MagneticToggle"
+    /// Spec 0035 (011) — the per-rung Constant/Dispersive sub-toggles: on the activity
+    /// rung and the magnetic rung, they flip each symmetry-allowed component between a
+    /// constant box and a dispersion-formula coefficient editor.
+    [<Literal>]
+    let activityDispersiveToggle = "ActivityDispersiveToggle"
+    [<Literal>]
+    let magneticDispersiveToggle = "MagneticDispersiveToggle"
     [<Literal>]
     let gyrationClassPicker = "GyrationClassPicker"
     [<Literal>]
@@ -136,6 +149,20 @@ module UiIds =
     /// A gyration-tensor COMPONENT entry (spec 0033 gap G9), by the component's
     /// stable code (`g11` / `g33` / …).
     let gyrationComponentBox (code : string) : string = "GyrationComponentBox_" + code
+    /// Spec 0035 (011): a gyration component's DISPERSION-FORMULA editor container (the
+    /// activity Dispersive sub-branch), by the component's stable code — the id the
+    /// headless proof probes for a per-component formula editor.
+    let gyrationComponentFormulaEditor (code : string) : string = "GyrationFormulaEditor_" + code
+    /// One coefficient entry inside a gyration component's dispersion-formula editor, by
+    /// the component code and the wrapped model parameter's key (the raw `SumOfTerms`
+    /// coefficient surface the segments already use).
+    let gyrationComponentFormulaBox (code : string) (key : string) : string = $"GyrationFormulaBox_{code}_{key}"
+    /// Spec 0035 (011): a Polder component's DISPERSION-FORMULA editor container (the
+    /// magnetic Dispersive sub-branch), by the component's stable code
+    /// (`muDiagonal` / `muParallel` / `muGyration`).
+    let polderComponentFormulaEditor (code : string) : string = "PolderFormulaEditor_" + code
+    /// One coefficient entry inside a Polder component's dispersion-formula editor.
+    let polderComponentFormulaBox (code : string) (key : string) : string = $"PolderFormulaBox_{code}_{key}"
 
 /// What Save targets: a brand-new entry (mint a fresh `MaterialId`) or an existing one (keep
 /// its id and update in place). A DU, not a naked bool.
@@ -158,6 +185,10 @@ type EditorMode =
 type MaterialEditorContext =
     {
         materials : MaterialProxy
+        /// Spec 0035 (009): the category write-seam behind the create picker. The picker reads the
+        /// LIVE catalogue (`listCategories`) at render, so a category renamed through the SHARED
+        /// proxy (e.g. in the step-6 Category editor) re-labels this picker on the editor's next open.
+        categories : CategoryProxy
         requestClose : unit -> unit
     }
 
@@ -174,7 +205,7 @@ type Model =
         mode : EditorMode
         name : string
         description : string
-        category : MaterialCategory
+        category : CategoryId
         editor : MaterialComplexityEditState
         /// A view-only entry's own engine properties (the preview's source there).
         presetProperties : OpticalPropertiesWithDisp option
@@ -185,7 +216,7 @@ type Model =
 type Msg =
     | SetName of string
     | SetDescription of string
-    | ChooseCategory of MaterialCategory
+    | ChooseCategory of CategoryId
     /// One ladder edit, routed through the pure Domain apply.
     | EditorMsg of MaterialComplexityMsg
     | SaveClicked
@@ -208,14 +239,19 @@ let private anisotropyLabel (anisotropy : Anisotropy) : string =
     | Uniaxial -> "Uniaxial"
     | Biaxial -> "Biaxial"
 
-/// A material category's stable code (the derived UiIds key).
-let categoryCode (category : MaterialCategory) : string =
-    match category with
-    | Glass -> "Glass"
-    | Metal -> "Metal"
-    | Semiconductor -> "Semiconductor"
-    | Crystal -> "Crystal"
-    | Vacuum -> "Vacuum"
+/// A material category's stable code (the derived UiIds key): the display name resolved
+/// through the seeded catalogue by `CategoryId` (spec 0035 step 001), not a closed-union match.
+let categoryCode (category : CategoryId) : string =
+    categoryName category
+
+/// The create picker's category choices (spec 0035 step 009): the LIVE catalogue from the context's
+/// `CategoryProxy` (`listCategories`, re-read at render), EXCLUDING every `HiddenOnCreate` category
+/// (Vacuum) — those categorise seed entries but are not user-selectable creation targets, so they
+/// are REMOVED from the picker, not greyed. A store listing error yields no options (never a throw).
+let selectableCategories (m : Model) : MaterialCategory list =
+    match m.context.categories.listCategories () with
+    | Ok cats -> cats |> List.filter (fun c -> c.visibility <> HiddenOnCreate)
+    | Error _ -> []
 
 /// A handedness option's stable code (the derived UiIds key).
 let handednessCode (hand : Handedness) : string =
@@ -243,10 +279,8 @@ let private parseFloat (s : string) : float option =
 
 let editErrorReason (e : MaterialComplexityEditError) : string =
     match e with
-    | SegmentNotLowerable reason
     | NoSuchSegment reason
-    | LastSegmentNotRemovable reason
-    | UnsupportedComplexity reason -> reason
+    | LastSegmentNotRemovable reason -> reason
 
 let private materialErrorReason (e : MaterialError) : string =
     match e with
@@ -320,7 +354,7 @@ let init (context : MaterialEditorContext) (existing : MaterialEntry option) : M
             mode = EditableMaterial
             name = ""
             description = ""
-            category = Glass
+            category = CategoryIds.glass
             editor = defaultState
             presetProperties = None
             status = None
@@ -557,10 +591,15 @@ let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
             WrapPanel.create [
                 automationId UiIds.categoryPicker
                 WrapPanel.orientation Orientation.Horizontal
+                // Spec 0035 (009): the create picker offers the LIVE catalogue minus every
+                // HiddenOnCreate category (Vacuum is removed, not greyed). Each option's id is the
+                // category's `CategoryId` Guid string — STABLE across a rename, so the option box is
+                // patched (only its label changes) rather than re-created — and its label is the
+                // record NAME, so a category renamed through the shared proxy re-labels the picker.
                 WrapPanel.children (
-                    [ Glass; Metal; Semiconductor; Crystal; Vacuum ]
+                    selectableCategories m
                     |> List.map (fun category ->
-                        clickBox (UiIds.categoryOption (categoryCode category)) (categoryCode category) (m.category = category) (fun () -> dispatch (ChooseCategory category))))
+                        clickBox (UiIds.categoryOption (string category.id.value)) category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
             ] :> IView
         ]
     ] :> IView
@@ -584,13 +623,16 @@ let private anisotropyRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-/// The unlock toggles (spec 0033 gap G6). The eps MODEL choice leads: "Dispersive" OFF
-/// means a CONSTANT (non-dispersive) medium, whose transparent-vs-absorbing sub-choice is
-/// the `Absorbing` toggle — shown ONLY in the constant branch. A dispersive medium carries
-/// its absorption inside the formulas, so a constant-case absorbing toggle would be inert
-/// there and is REMOVED, not greyed (Part F). The optional activity / magnetic aspects
-/// follow; the activity toggle is REMOVED when the anisotropy choice offers no rotating
-/// gyration class (`availableGyrationClasses`).
+/// The unlock toggles (spec 0033 gap G6; spec 0035 step 017). The eps MODEL choice leads:
+/// two MUTUALLY-EXCLUSIVE options — Constant / Dispersive — select `NonDispersive` /
+/// `DispersiveSegments`, both routed through the SAME `SetDispersion` message, so the derived
+/// model is unchanged (this restyle is cosmetic — it replaces the former sticky single
+/// Dispersive toggle). The Constant branch's transparent-vs-absorbing sub-choice is the
+/// `Absorbing` toggle — shown ONLY in the Constant branch. A dispersive medium carries its
+/// absorption inside the formulas, so a constant-case absorbing toggle would be inert there
+/// and is REMOVED, not greyed (Part F). The optional activity / magnetic aspects follow; the
+/// activity toggle is REMOVED when the anisotropy choice offers no rotating gyration class
+/// (`availableGyrationClasses`).
 let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
     let absorbing = m.editor.transparency = Absorbing
     let dispersive = m.editor.dispersion = DispersiveSegments
@@ -601,13 +643,15 @@ let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
         StackPanel.children [
-            labelBlock "Dispersion model (off = constant n, k):"
+            labelBlock "Dispersion model:"
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
                     [
+                        clickBox UiIds.constantToggle "Constant" (not dispersive) (fun () ->
+                            dispatch (EditorMsg (SetDispersion NonDispersive)))
                         clickBox UiIds.dispersiveToggle "Dispersive" dispersive (fun () ->
-                            dispatch (EditorMsg (SetDispersion (if dispersive then NonDispersive else DispersiveSegments))))
+                            dispatch (EditorMsg (SetDispersion DispersiveSegments)))
                     ]
                     @ (if dispersive then []
                        else
@@ -664,6 +708,42 @@ let private paramBoxWithUnit (autoId : string) (p : ModelParameter) (onCommit : 
         StackPanel.children (
             [ labelBlock (p.label + ":"); coeffNumberBox autoId 100.0 p.value onCommit ]
             @ (if p.unit = "" then [] else [ labelBlock p.unit ]))
+    ] :> IView
+
+// -- the dispersive-component formula surface (spec 0035 step 011) ----------------------------
+
+/// Wrap one scalar component's `DispersionFormula` (a gyration `g₍ᵢⱼ₎` or a Polder
+/// component — spec §C.0: a component IS a `DispersionFormula`) as the raw
+/// `SumOfTerms` model, so the SAME `modelParameters` coefficient surface the segments
+/// use edits it. The component is a single REAL formula, so the k slot is the empty
+/// formula — it contributes no boxes, and only the n formula's term scalars are exposed.
+let private formulaAsModel (formula : DispersionFormula) : DispersionModel =
+    SumOfTerms (RealNK (formula, { terms = []; wavelengthScale = formula.wavelengthScale }))
+
+/// Read the edited scalar formula back out of a wrapped component model (the n slot).
+/// `formulaAsModel` always builds `RealNK`, so the fallback is unreachable — it keeps
+/// the prior formula rather than throwing.
+let private formulaOfModel (fallback : DispersionFormula) (model : DispersionModel) : DispersionFormula =
+    match model with
+    | SumOfTerms (RealNK (n, _)) -> n
+    | _ -> fallback
+
+/// One scalar component's dispersion-formula coefficient editor (spec 0035 step 011 —
+/// the gyration / Polder analogue of `segmentParamsView`): the `modelParameters` boxes
+/// of the component's raw `SumOfTerms` formula inside a WrapPanel that carries
+/// `editorId` (the per-component container id the headless proof probes). Each edit
+/// rebuilds the formula and dispatches it through `dispatchFormula`. The boxes commit
+/// on focus loss (`coeffNumberBox`), never on the render echo — the gap-G7/G9 loop
+/// guard.
+let private componentFormulaView (editorId : string) (boxId : string -> string) (formula : DispersionFormula) (dispatchFormula : DispersionFormula -> unit) : IView =
+    let boxes =
+        modelParameters (formulaAsModel formula)
+        |> List.map (fun p ->
+            paramBoxWithUnit (boxId p.key) p (fun v -> dispatchFormula (formulaOfModel formula (p.update v))))
+    WrapPanel.create [
+        automationId editorId
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children boxes
     ] :> IView
 
 /// The coefficient-entry surface for ONE principal axis of a segment (spec 0033 gap G7 +
@@ -758,10 +838,46 @@ let private segmentsPanel (m : Model) (dispatch : Msg -> unit) : IView =
             @ [ verbButton UiIds.addSegmentButton "Add segment" true (fun () -> dispatch (EditorMsg AddSegment)) ])
     ] :> IView
 
+/// The gyration-component entry surface (the activity rung's Constant vs Dispersive
+/// sub-branch — spec 0035 step 011): under `ConstantComponents` the per-component
+/// constant `coeffNumberBox`es; under `DispersiveComponents` one dispersion-formula
+/// editor per symmetry-allowed component of `gyrationDispersion` (class-synced with
+/// `gyration`, so the component set matches the class picker either way).
+let private gyrationComponentsSection (m : Model) (dispatch : Msg -> unit) : IView =
+    match m.editor.activityDispersion with
+    | ConstantComponents ->
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children (
+                gyrationComponents m.editor.gyration
+                |> List.map (fun (comp, RhoValue value) ->
+                    labelled (gyrationComponentLabel comp + ":") (coeffNumberBox (UiIds.gyrationComponentBox (gyrationComponentCode comp)) 100.0 value (fun v ->
+                        dispatch (EditorMsg (SetGyrationComponent (comp, RhoValue v)))))))
+        ] :> IView
+    | DispersiveComponents ->
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.spacing 4.0
+            StackPanel.children (
+                gyrationComponents m.editor.gyrationDispersion
+                |> List.map (fun (comp, formula) ->
+                    let code = gyrationComponentCode comp
+                    StackPanel.create [
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.spacing 2.0
+                        StackPanel.children [
+                            labelBlock (gyrationComponentLabel comp + " (dispersion formula):")
+                            componentFormulaView (UiIds.gyrationComponentFormulaEditor code) (UiIds.gyrationComponentFormulaBox code) formula (fun f ->
+                                dispatch (EditorMsg (SetGyrationComponentDispersion (comp, f))))
+                        ]
+                    ] :> IView))
+        ] :> IView
+
 /// The symmetry-class gyration panel (the activity rung): the class picker CONSTRAINED by the
-/// anisotropy choice, and the handedness switch.
+/// anisotropy choice, the Constant/Dispersive component sub-toggle, and the handedness switch.
 let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
     let currentCode = gyrationClassCode m.editor.gyration
+    let dispersive = m.editor.activityDispersion = DispersiveComponents
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -777,15 +893,16 @@ let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
                         clickBox (UiIds.gyrationClassOption code) (gyrationClassLabel offered) (currentCode = code) (fun () ->
                             dispatch (EditorMsg (ChooseGyrationClass offered)))))
             ] :> IView
-            labelBlock "Gyration components (the symmetry-allowed g₍ᵢⱼ₎, typically ~10⁻⁵):"
+            labelBlock "Gyration component model (off = constant g):"
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children (
-                    gyrationComponents m.editor.gyration
-                    |> List.map (fun (comp, RhoValue value) ->
-                        labelled (gyrationComponentLabel comp + ":") (coeffNumberBox (UiIds.gyrationComponentBox (gyrationComponentCode comp)) 100.0 value (fun v ->
-                            dispatch (EditorMsg (SetGyrationComponent (comp, RhoValue v)))))))
+                WrapPanel.children [
+                    clickBox UiIds.activityDispersiveToggle "Dispersive components" dispersive (fun () ->
+                        dispatch (EditorMsg (SetActivityDispersion (if dispersive then ConstantComponents else DispersiveComponents))))
+                ]
             ] :> IView
+            labelBlock "Gyration components (the symmetry-allowed g₍ᵢⱼ₎, typically ~10⁻⁵):"
+            gyrationComponentsSection m dispatch
             labelBlock "Handedness (the enantiomorph — one overall sign):"
             WrapPanel.create [
                 automationId UiIds.handednessSwitch
@@ -799,30 +916,22 @@ let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-/// The Polder-mu panel (the magnetic rung): scalar vs gyromagnetic, the component entries,
-/// and — gyromagnetic only — the magnetization-axis picker.
+/// The Polder-mu panel (the magnetic rung): the Constant/Dispersive component sub-toggle,
+/// then — under Constant — scalar vs gyromagnetic + the constant component entries, or —
+/// under Dispersive — one dispersion-formula editor per Polder component (always the full
+/// tensor, as the engine's `MuWithDispValue` has no scalar case); the magnetization-axis
+/// picker follows whenever the tensor is the full gyromagnetic one.
 let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
     let kind = m.editor.muKind
+    let dispersive = m.editor.magneticDispersion = DispersiveComponents
     let (MuValue muDiagonal) = m.editor.polder.muDiagonal
     let (MuValue muParallel) = m.editor.polder.muParallel
     let (MuValue muGyration) = m.editor.polder.gyration
-    let kindOptions =
-        [ ScalarMuKind; GyromagneticMuKind ]
-        |> List.map (fun candidate ->
-            clickBox (UiIds.muKindOption (muKindCode candidate)) (muKindCode candidate) (kind = candidate) (fun () ->
-                dispatch (EditorMsg (SetMuKind candidate))))
-    let componentBoxes =
-        [ labelled "μ (diagonal):" (numberBox UiIds.muDiagonalBox 70.0 muDiagonal (fun v -> dispatch (EditorMsg (SetMuDiagonal (MuValue v))))) ]
-        @ (match kind with
-           | GyromagneticMuKind ->
-               [
-                   labelled "μ (parallel):" (numberBox UiIds.muParallelBox 70.0 muParallel (fun v -> dispatch (EditorMsg (SetMuParallel (MuValue v)))))
-                   labelled "g (gyration):" (numberBox UiIds.muGyrationBox 70.0 muGyration (fun v -> dispatch (EditorMsg (SetMuGyration (MuValue v)))))
-               ]
-           | ScalarMuKind -> [])
-    let axisRow =
-        match kind with
-        | GyromagneticMuKind ->
+    // The magnetization-axis picker: the axis is one physical choice shared by both facets
+    // (`ChooseGyrationAxis` sets it on each), so its highlight reads `m.editor.polder.axis`.
+    let axisRow (show : bool) : IView list =
+        if not show then []
+        else
             [
                 labelBlock "Magnetization axis (Z = Faraday; X/Y = Voigt):"
                 WrapPanel.create [
@@ -835,25 +944,68 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
                                 dispatch (EditorMsg (ChooseGyrationAxis axis)))))
                 ] :> IView
             ]
-        | ScalarMuKind -> []
+    let subToggleRow : IView =
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children [
+                clickBox UiIds.magneticDispersiveToggle "Dispersive components" dispersive (fun () ->
+                    dispatch (EditorMsg (SetMagneticDispersion (if dispersive then ConstantComponents else DispersiveComponents))))
+            ]
+        ] :> IView
+    let constantBody : IView list =
+        let kindOptions =
+            [ ScalarMuKind; GyromagneticMuKind ]
+            |> List.map (fun candidate ->
+                clickBox (UiIds.muKindOption (muKindCode candidate)) (muKindCode candidate) (kind = candidate) (fun () ->
+                    dispatch (EditorMsg (SetMuKind candidate))))
+        let componentBoxes =
+            [ labelled "μ (diagonal):" (numberBox UiIds.muDiagonalBox 70.0 muDiagonal (fun v -> dispatch (EditorMsg (SetMuDiagonal (MuValue v))))) ]
+            @ (match kind with
+               | GyromagneticMuKind ->
+                   [
+                       labelled "μ (parallel):" (numberBox UiIds.muParallelBox 70.0 muParallel (fun v -> dispatch (EditorMsg (SetMuParallel (MuValue v)))))
+                       labelled "g (gyration):" (numberBox UiIds.muGyrationBox 70.0 muGyration (fun v -> dispatch (EditorMsg (SetMuGyration (MuValue v)))))
+                   ]
+               | ScalarMuKind -> [])
+        [ WrapPanel.create [ WrapPanel.orientation Orientation.Horizontal; WrapPanel.children (kindOptions @ componentBoxes) ] :> IView ]
+        @ axisRow (kind = GyromagneticMuKind)
+    let dispersiveBody : IView list =
+        // The dispersive Polder is always the full tensor, so every component gets a
+        // formula editor and the axis always applies.
+        let editors =
+            [
+                "muDiagonal", "μ (diagonal, dispersion formula):", m.editor.polderDispersion.muDiagonal, (fun (f : DispersionFormula) -> SetMuDiagonalDispersion f)
+                "muParallel", "μ (parallel, dispersion formula):", m.editor.polderDispersion.muParallel, (fun f -> SetMuParallelDispersion f)
+                "muGyration", "g (gyration, dispersion formula):", m.editor.polderDispersion.gyration, (fun f -> SetMuGyrationDispersion f)
+            ]
+            |> List.map (fun (code, label, formula, toMsg) ->
+                StackPanel.create [
+                    StackPanel.orientation Orientation.Vertical
+                    StackPanel.spacing 2.0
+                    StackPanel.children [
+                        labelBlock label
+                        componentFormulaView (UiIds.polderComponentFormulaEditor code) (UiIds.polderComponentFormulaBox code) formula (fun f -> dispatch (EditorMsg (toMsg f)))
+                    ]
+                ] :> IView)
+        editors @ axisRow true
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
         StackPanel.children (
-            [
-                labelBlock "Polder μ:"
-                WrapPanel.create [ WrapPanel.orientation Orientation.Horizontal; WrapPanel.children (kindOptions @ componentBoxes) ] :> IView
-            ]
-            @ axisRow)
+            [ labelBlock "Polder μ:"; subToggleRow ]
+            @ (match m.editor.magneticDispersion with
+               | ConstantComponents -> constantBody
+               | DispersiveComponents -> dispersiveBody))
     ] :> IView
 
-// -- the live preview (the step-19 dual-axis n/k chart, inline) -------------------------------
+// -- the live preview (the step-19 dual-axis n/k chart, embedded) -----------------------------
 
-/// The inline dual-axis rendering of the step-19 chart — the ONE shared canvas renderer
-/// (`NkDispersionChart.inlineCanvas`, spec 0033 step 024: the Materials workbench's View panel
-/// draws through it too), under this editor's stable preview id.
+/// The embedded dual-axis rendering of the step-19 chart — the ONE shared ScottPlot chart control
+/// (`OpticalConstructor.Controls.EmbeddedChart`, spec 0035 step 016: the Materials workbench's View
+/// panel embeds it too), over the chart's paired `nkDispersionStyle` seed and under this editor's
+/// stable preview id.
 let private previewCanvas (chart : ExperimentChart) : IView =
-    NkDispersionChart.inlineCanvas UiIds.previewChart chart
+    OpticalConstructor.Controls.EmbeddedChart.create UiIds.previewChart chart (NkDispersionChart.nkDispersionStyle chart)
 
 let private previewSection (m : Model) : IView * string =
     let chartOpt = previewProperties m |> Option.map (fun p -> NkDispersionChart.nkDispersionChart p Nanometer previewRange)

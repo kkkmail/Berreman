@@ -1,0 +1,16 @@
+# Step 006 — ADD_COMPONENT UICOMP_XDUO_0006 CategoryEditorWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0006
+name: CategoryEditorWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.TestWindows
+touches: [OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [3, 4, 5]
+```
+
+**How to implement.** Create the Category editor window in OpticalConstructor.TestWindows beside the existing MaterialEditorWindow / SampleEditorWindow, over the step-4 CategoryEditor edit model and the step-5 CategoryControls. Add opens an inline UserCategory / SelectableOnCreate row; Rename edits name inline (built-ins renamable); Remove is confirm-gated inline and surfaces CategoryStillReferenced (naming the referencing materials) or BuiltInNotRemovable; Save calls the matching CategoryProxy verb (addCategory / updateCategory / removeCategory), Cancel discards; Save/Cancel sit in one row with distinct positive/negative styling. Stable UiIds reuse the step-5 constants plus CategoryEditorWindow. Headless tests in OpticalConstructor.Ui.Tests drive the window by UiIds over a stub CategoryProxy: add-then-list grows the list, rename updates the name, and removing a referenced category surfaces the block and leaves the list unchanged.
+
+**Acceptance.** After the step, headless tests MUST drive CategoryEditorWindow by UiIds over a stub CategoryProxy: Add grows the list, Rename updates a name, and removing a referenced or built-in category surfaces the typed block and leaves the list unchanged.

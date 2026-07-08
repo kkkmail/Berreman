@@ -12,6 +12,7 @@ open OpticalConstructor.Domain.BeamTree
 open OpticalConstructor.Domain.Project
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Storage
+open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Storage.Export
 open OpticalConstructor.Storage.MaterialLibrary
 open OpticalConstructor.Storage.DesignHistory
@@ -70,6 +71,65 @@ module ExportImportTests =
                     | Ok () -> ()
                     | Error e -> Assert.Fail($"entry failed materialEntry validation: %A{e}")
                 Assert.Equal(List.length entries, count)
+        finally
+            if File.Exists path then File.Delete path
+
+    // --- spec 0035 step 001: category survives the persistence seam by CategoryId ----
+    // Category became DATA (a seeded catalogue keyed by `CategoryId`); the library file carries the
+    // display NAME, so `dtoToEntry` must resolve that name back to the matching id on import and reject
+    // an unknown name as a typed error. These two facts pin the genuinely-new `tryFindCategoryByName`
+    // seam at the `exportMaterials`/`importMaterials` (Report.fs) boundary — the round-trip and its
+    // failure case.
+
+    [<Fact>]
+    let ``0035 category round-trips through export then import back to the matching CategoryId`` () =
+        // Export the built-ins and re-import so `dtoToEntry` runs `tryFindCategoryByName`: a persisted
+        // category NAME must resolve back to the SAME `CategoryId` the entry carried — no silent default,
+        // no drift across the id<->name hop. Restrict to entries carrying a description (the pre-existing
+        // DTO requires the `description` field present on read — see Gotchas); the described built-ins
+        // still span every seeded category (Glass/Metal/Semiconductor/Crystal/Vacuum).
+        let entries =
+            builtInEntries
+            |> List.filter (fun e -> match e.description with | Some _ -> true | None -> false)
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-cat-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        try
+            match exportMaterials path entries with
+            | Error e -> Assert.Fail($"export failed: %A{e}")
+            | Ok () ->
+                match importMaterials path with
+                | Error e -> Assert.Fail($"import failed: %A{e}")
+                | Ok imported ->
+                    Assert.Equal(List.length entries, List.length imported)
+                    // Align original and re-imported entries by their (order-stable) MaterialId and
+                    // assert the CategoryId is unchanged for every category, including HiddenOnCreate.
+                    let byId = entries |> List.map (fun e -> e.id, e.category) |> Map.ofList
+                    for e in imported do
+                        match Map.tryFind e.id byId with
+                        | Some expected -> Assert.Equal(expected, e.category)
+                        | None -> Assert.Fail($"re-imported an entry with an unexpected id %A{e.id}")
+                    // A crisp explicit anchor: the Glass entry's "Glass" name resolves to CategoryIds.glass,
+                    // and the Vacuum entry's name resolves to CategoryIds.vacuum (a HiddenOnCreate category).
+                    let glass = imported |> List.find (fun e -> e.id = MaterialIds.glass152)
+                    Assert.Equal(CategoryIds.glass, glass.category)
+                    let vacuum = imported |> List.find (fun e -> e.id = MaterialIds.vacuum)
+                    Assert.Equal(CategoryIds.vacuum, vacuum.category)
+        finally
+            if File.Exists path then File.Delete path
+
+    [<Fact>]
+    let ``0035 importMaterials fails with a typed JsonParseError on an unknown category name`` () =
+        // A library JSON whose category name is absent from the seeded catalogue is a typed
+        // `JsonParseError` at `dtoToEntry` (`tryFindCategoryByName` -> None), never a throw or a silent
+        // default to some fallback category. The id is a valid Guid and the `description` field is present,
+        // so deserialization reaches `dtoToEntry` and the CATEGORY branch is the one that fails.
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-cat-bad-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        let json = $"""[{{"id":"%s{Guid.NewGuid().ToString()}","name":"Test material","category":"NotAKnownCategory","description":"probe"}}]"""
+        File.WriteAllText(path, json, System.Text.UTF8Encoding false)
+        try
+            match importMaterials path with
+            | Error (JsonParseError msg) -> Assert.Contains("NotAKnownCategory", msg)
+            | Error e -> Assert.Fail($"expected JsonParseError on an unknown category, got %A{e}")
+            | Ok imported -> Assert.Fail($"expected a typed error, but import silently produced %d{List.length imported} entr(y/ies)")
         finally
             if File.Exists path then File.Delete path
 

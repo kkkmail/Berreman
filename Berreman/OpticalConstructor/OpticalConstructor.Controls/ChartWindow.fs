@@ -28,6 +28,138 @@ module ChartRender =
     /// Parse a `#RRGGBB` colour string into ScottPlot's `Color`.
     let colorOf (hex : string) : ScottPlot.Color = ScottPlot.Color.FromHex hex
 
+/// Spec 0035 (016) — the shared renderer-neutral → ScottPlot dual-axis (n-left / k-right) rendering: the
+/// ONE cartesian "rebuild path" the pop-out `ChartWindow` below AND the embeddable `EmbeddedChart` host
+/// both build their plot through, so the axis-side assignment, per-side auto bounds, legend / fonts, and
+/// number format live in exactly one place (no per-host reimplementation). Maps the pure `ChartStyle` onto
+/// ScottPlot at the IO boundary; the window layers polar + interactivity on top of these primitives.
+[<RequireQualifiedAccess>]
+module ChartPlot =
+
+    /// The ScottPlot vertical axis a side maps to (the one place the side → native-axis mapping lives).
+    let scottYAxis (plot : ScottPlot.Plot) (side : ChartStyle.AxisSide) : ScottPlot.IYAxis =
+        match side with
+        | ChartStyle.LeftAxis -> plot.Axes.Left
+        | ChartStyle.RightAxis -> plot.Axes.Right
+
+    /// The ScottPlot alignment a legend placement maps to.
+    let placementAlignment (p : ChartStyle.LegendPlacement) : ScottPlot.Alignment =
+        match p with
+        | ChartStyle.UpperLeft -> ScottPlot.Alignment.UpperLeft
+        | ChartStyle.UpperCenter -> ScottPlot.Alignment.UpperCenter
+        | ChartStyle.UpperRight -> ScottPlot.Alignment.UpperRight
+        | ChartStyle.MiddleLeft -> ScottPlot.Alignment.MiddleLeft
+        | ChartStyle.MiddleCenter -> ScottPlot.Alignment.MiddleCenter
+        | ChartStyle.MiddleRight -> ScottPlot.Alignment.MiddleRight
+        | ChartStyle.LowerLeft -> ScottPlot.Alignment.LowerLeft
+        | ChartStyle.LowerCenter -> ScottPlot.Alignment.LowerCenter
+        | ChartStyle.LowerRight -> ScottPlot.Alignment.LowerRight
+
+    /// The per-axis data bounds of the currently-visible series, each paired with its assigned side
+    /// (what "Auto" and the initial view fit to).
+    let dataBoundsVisible (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ChartStyle.ChartBounds =
+        let sided = chart.series |> List.mapi (fun i s -> s, ChartStyle.seriesStyleOf i style)
+        let visible = sided |> List.filter (fun (_, st) -> st.visible)
+        (match visible with [] -> sided | v -> v)
+        |> List.map (fun (s, st) -> s, st.axisSide)
+        |> ChartStyle.dataBounds
+
+    /// Whether anything currently plots against the right axis (drives whether its limits are pushed).
+    let rightAxisInUse (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : bool =
+        chart.series
+        |> List.mapi (fun i _ -> ChartStyle.seriesStyleOf i style)
+        |> List.exists (fun st -> st.visible && st.axisSide = ChartStyle.RightAxis)
+
+    /// Push the title / axis-label / tick-label font sizes onto the three axes.
+    let applyAxisFonts (plot : ScottPlot.Plot) (style : ChartStyle.ChartStyleState) : unit =
+        let setAxis (panel : obj) : unit =
+            match panel with
+            | :? ScottPlot.AxisPanels.AxisBase as a ->
+                a.Label.FontSize <- float32 style.font.axisLabels
+                a.TickLabelStyle.FontSize <- float32 style.font.tickLabels
+            | _ -> ()
+        setAxis plot.Axes.Bottom
+        setAxis plot.Axes.Left
+        setAxis plot.Axes.Right
+
+    /// Push the legend visibility / placement and all font sizes onto the plot.
+    let applyLegendAndFonts (plot : ScottPlot.Plot) (style : ChartStyle.ChartStyleState) : unit =
+        plot.Axes.Title.Label.FontSize <- float32 style.font.title
+        applyAxisFonts plot style
+        plot.Legend.IsVisible <- style.legend.visible
+        plot.Legend.Alignment <- placementAlignment style.legend.placement
+        plot.Legend.FontSize <- System.Nullable (float32 style.font.legend)
+
+    /// Push each axis's number format onto its tick generator.
+    let applyAxisFormat (plot : ScottPlot.Plot) (style : ChartStyle.ChartStyleState) : unit =
+        let setFmt (panel : obj) (fmt : ChartStyle.NumberFormat) : unit =
+            match panel with
+            | :? ScottPlot.AxisPanels.AxisBase as a ->
+                match a.TickGenerator with
+                | :? ScottPlot.TickGenerators.NumericAutomatic as na ->
+                    na.LabelFormatter <- System.Func<float, string>(fun v -> ChartStyle.formatValue fmt v)
+                | _ -> ()
+            | _ -> ()
+        setFmt plot.Axes.Bottom style.xAxis.format
+        setFmt plot.Axes.Left style.yAxisLeft.format
+        setFmt plot.Axes.Right style.yAxisRight.format
+
+    /// Push the per-side auto (or pinned) limits onto the axes.
+    let applyAxisLimits (plot : ScottPlot.Plot) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : unit =
+        let bounds = dataBoundsVisible chart style
+        let xlo, xhi = bounds.x
+        (if style.xAxis.auto then plot.Axes.SetLimitsX(xlo, xhi) else plot.Axes.SetLimitsX(style.xAxis.min, style.xAxis.max))
+        let ylo, yhi = bounds.yLeft
+        (if style.yAxisLeft.auto then plot.Axes.SetLimitsY(ylo, yhi, plot.Axes.Left) else plot.Axes.SetLimitsY(style.yAxisLeft.min, style.yAxisLeft.max, plot.Axes.Left))
+        // The right axis gets limits only once something plots against it (or the user pinned a manual
+        // range): an untouched ScottPlot axis keeps an unset range and renders NO ticks, so pushing a
+        // fallback 0…1 here would paint phantom tick labels on every single-axis chart's right edge.
+        if rightAxisInUse chart style || not style.yAxisRight.auto then
+            let rlo, rhi = bounds.yRight
+            (if style.yAxisRight.auto then plot.Axes.SetLimitsY(rlo, rhi, plot.Axes.Right) else plot.Axes.SetLimitsY(style.yAxisRight.min, style.yAxisRight.max, plot.Axes.Right))
+
+    /// Re-assert each scatter's look; `assignAxis` re-binds its Y-axis side (cartesian only — the polar
+    /// projection uses the hidden cartesian pair, so the window leaves the side alone there).
+    let applySeriesStyle (plot : ScottPlot.Plot) (scatters : ScottPlot.Plottables.Scatter list) (style : ChartStyle.ChartStyleState) (assignAxis : bool) : unit =
+        scatters
+        |> List.iteri (fun i sc ->
+            let st = ChartStyle.seriesStyleOf i style
+            sc.IsVisible <- st.visible
+            sc.LineWidth <- float32 st.thickness
+            sc.Color <- ChartRender.colorOf st.colorHex
+            sc.MarkerShape <- (if st.showMarkers then ScottPlot.MarkerShape.FilledCircle else ScottPlot.MarkerShape.None)
+            sc.MarkerSize <- 5.0f
+            if assignAxis then sc.Axes.YAxis <- scottYAxis plot st.axisSide)
+
+    /// Build the cartesian scatters — one per series, each bound to its assigned (left / right) Y axis.
+    /// Spec 0033 (018): the side is STYLE; n → left, k → right through the paired seed.
+    let buildCartesianScatters (plot : ScottPlot.Plot) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ScottPlot.Plottables.Scatter list =
+        chart.series
+        |> List.mapi (fun i s ->
+            let st = ChartStyle.seriesStyleOf i style
+            let xs = s.points |> List.map fst |> List.toArray
+            let ys = s.points |> List.map snd |> List.toArray
+            let sc = plot.Add.Scatter(xs, ys, System.Nullable (ChartRender.colorOf st.colorHex))
+            sc.LegendText <- s.name
+            sc.Axes.YAxis <- scottYAxis plot st.axisSide
+            sc)
+
+    /// The whole one-shot static cartesian render: clear the plot, build the dual-axis scatters, label the
+    /// axes, show the legend, then apply the series look + legend / fonts + number format + per-side limits.
+    /// The embeddable host renders through THIS; the interactive window instead re-applies the granular
+    /// pieces above as the user edits. Returns the scatters (n first, k second for the n/k chart).
+    let renderCartesian (plot : ScottPlot.Plot) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ScottPlot.Plottables.Scatter list =
+        plot.Clear()
+        let scatters = buildCartesianScatters plot chart style
+        plot.XLabel(chart.xLabel)
+        plot.YLabel(chart.yLabel)
+        plot.ShowLegend() |> ignore
+        applySeriesStyle plot scatters style true
+        applyLegendAndFonts plot style
+        applyAxisFormat plot style
+        applyAxisLimits plot chart style
+        scatters
+
 /// Stable automation ids for the chart window's controls (CLAUDE.md: centralize ids).
 [<RequireQualifiedAccess>]
 module ChartWindowIds =
@@ -89,95 +221,18 @@ type ChartWindow(chart : ExperimentChart) as this =
         let mutable marker : ScottPlot.Plottables.Marker = null
         let mutable readout : ScottPlot.Plottables.Text = null
 
-        let placementAlignment (p : ChartStyle.LegendPlacement) : ScottPlot.Alignment =
-            match p with
-            | ChartStyle.UpperLeft -> ScottPlot.Alignment.UpperLeft
-            | ChartStyle.UpperCenter -> ScottPlot.Alignment.UpperCenter
-            | ChartStyle.UpperRight -> ScottPlot.Alignment.UpperRight
-            | ChartStyle.MiddleLeft -> ScottPlot.Alignment.MiddleLeft
-            | ChartStyle.MiddleCenter -> ScottPlot.Alignment.MiddleCenter
-            | ChartStyle.MiddleRight -> ScottPlot.Alignment.MiddleRight
-            | ChartStyle.LowerLeft -> ScottPlot.Alignment.LowerLeft
-            | ChartStyle.LowerCenter -> ScottPlot.Alignment.LowerCenter
-            | ChartStyle.LowerRight -> ScottPlot.Alignment.LowerRight
+        // The cartesian rendering delegates to the SHARED `ChartPlot` path (spec 0035/016), so the
+        // dual-axis mapping the embeddable host also uses lives in ONE place; the closures below stay so
+        // every call site (and the polar / crosshair layers) reads the current mutable `style` / `scatters`.
+        let applyLegendAndFonts () : unit = ChartPlot.applyLegendAndFonts plot style
 
-        /// The ScottPlot vertical axis a side maps to (the one place the side → native-axis mapping lives).
-        let scottYAxis (side : ChartStyle.AxisSide) : ScottPlot.IYAxis =
-            match side with
-            | ChartStyle.LeftAxis -> plot.Axes.Left
-            | ChartStyle.RightAxis -> plot.Axes.Right
+        let applyAxisFormat () : unit = ChartPlot.applyAxisFormat plot style
 
-        /// The per-axis data bounds of the currently-visible series, each paired with its assigned side
-        /// (what "Auto" and the initial view fit to).
-        let dataBoundsVisible () : ChartStyle.ChartBounds =
-            let sided = chart.series |> List.mapi (fun i s -> s, ChartStyle.seriesStyleOf i style)
-            let visible = sided |> List.filter (fun (_, st) -> st.visible)
-            (match visible with [] -> sided | v -> v)
-            |> List.map (fun (s, st) -> s, st.axisSide)
-            |> ChartStyle.dataBounds
+        let applyAxisLimits () : unit = ChartPlot.applyAxisLimits plot chart style
 
-        /// Whether anything currently plots against the right axis (drives whether its limits are pushed).
-        let rightAxisInUse () : bool =
-            chart.series
-            |> List.mapi (fun i _ -> ChartStyle.seriesStyleOf i style)
-            |> List.exists (fun st -> st.visible && st.axisSide = ChartStyle.RightAxis)
-
-        let applyAxisFonts () : unit =
-            let setAxis (panel : obj) : unit =
-                match panel with
-                | :? ScottPlot.AxisPanels.AxisBase as a ->
-                    a.Label.FontSize <- float32 style.font.axisLabels
-                    a.TickLabelStyle.FontSize <- float32 style.font.tickLabels
-                | _ -> ()
-            setAxis plot.Axes.Bottom
-            setAxis plot.Axes.Left
-            setAxis plot.Axes.Right
-
-        let applyLegendAndFonts () : unit =
-            plot.Axes.Title.Label.FontSize <- float32 style.font.title
-            applyAxisFonts ()
-            plot.Legend.IsVisible <- style.legend.visible
-            plot.Legend.Alignment <- placementAlignment style.legend.placement
-            plot.Legend.FontSize <- System.Nullable (float32 style.font.legend)
-
-        let applyAxisFormat () : unit =
-            let setFmt (panel : obj) (fmt : ChartStyle.NumberFormat) : unit =
-                match panel with
-                | :? ScottPlot.AxisPanels.AxisBase as a ->
-                    match a.TickGenerator with
-                    | :? ScottPlot.TickGenerators.NumericAutomatic as na ->
-                        na.LabelFormatter <- System.Func<float, string>(fun v -> ChartStyle.formatValue fmt v)
-                    | _ -> ()
-                | _ -> ()
-            setFmt plot.Axes.Bottom style.xAxis.format
-            setFmt plot.Axes.Left style.yAxisLeft.format
-            setFmt plot.Axes.Right style.yAxisRight.format
-
-        let applyAxisLimits () : unit =
-            let bounds = dataBoundsVisible ()
-            let xlo, xhi = bounds.x
-            (if style.xAxis.auto then plot.Axes.SetLimitsX(xlo, xhi) else plot.Axes.SetLimitsX(style.xAxis.min, style.xAxis.max))
-            let ylo, yhi = bounds.yLeft
-            (if style.yAxisLeft.auto then plot.Axes.SetLimitsY(ylo, yhi, plot.Axes.Left) else plot.Axes.SetLimitsY(style.yAxisLeft.min, style.yAxisLeft.max, plot.Axes.Left))
-            // The right axis gets limits only once something plots against it (or the user pinned a manual
-            // range): an untouched ScottPlot axis keeps an unset range and renders NO ticks, so pushing a
-            // fallback 0…1 here would paint phantom tick labels on every single-axis chart's right edge.
-            if rightAxisInUse () || not style.yAxisRight.auto then
-                let rlo, rhi = bounds.yRight
-                (if style.yAxisRight.auto then plot.Axes.SetLimitsY(rlo, rhi, plot.Axes.Right) else plot.Axes.SetLimitsY(style.yAxisRight.min, style.yAxisRight.max, plot.Axes.Right))
-
-        let applySeriesStyle () : unit =
-            scatters
-            |> List.iteri (fun i sc ->
-                let st = ChartStyle.seriesStyleOf i style
-                sc.IsVisible <- st.visible
-                sc.LineWidth <- float32 st.thickness
-                sc.Color <- ChartRender.colorOf st.colorHex
-                sc.MarkerShape <- (if st.showMarkers then ScottPlot.MarkerShape.FilledCircle else ScottPlot.MarkerShape.None)
-                sc.MarkerSize <- 5.0f
-                // Re-assert the Y-axis side so flipping a series left ⇄ right takes effect on the next
-                // style application (polar projects onto the hidden cartesian pair; leave it alone there).
-                if not polar then sc.Axes.YAxis <- scottYAxis st.axisSide)
+        // `not polar` re-binds each scatter's Y-axis side — polar projects onto the hidden cartesian pair,
+        // so the side is left alone there (spec 0033/018).
+        let applySeriesStyle () : unit = ChartPlot.applySeriesStyle plot scatters style (not polar)
 
         /// Show / hide the rectangular (cartesian) axes. `Plot.Add.PolarAxis` HIDES them so the polar grid
         /// reads cleanly; returning to XY must show them again or the plot renders with no axes / ticks /
@@ -224,17 +279,9 @@ type ChartWindow(chart : ExperimentChart) as this =
                         sc.LegendText <- s.name
                         sc)
                 else
-                    chart.series
-                    |> List.mapi (fun i s ->
-                        let st = ChartStyle.seriesStyleOf i style
-                        let xs = s.points |> List.map fst |> List.toArray
-                        let ys = s.points |> List.map snd |> List.toArray
-                        let sc = plot.Add.Scatter(xs, ys, System.Nullable (ChartRender.colorOf st.colorHex))
-                        sc.LegendText <- s.name
-                        // Spec 0033 (018): each scatter plots against its assigned vertical axis — the
-                        // native left or right Y axis.
-                        sc.Axes.YAxis <- scottYAxis st.axisSide
-                        sc)
+                    // Spec 0035 (016): the cartesian dual-axis (n-left / k-right) build is the SHARED
+                    // rebuild path `ChartPlot.buildCartesianScatters`, reused by the embeddable host.
+                    ChartPlot.buildCartesianScatters plot chart style
             setupCrosshair ()
             applyStyle ()
 

@@ -26,17 +26,18 @@ module MaterialLibrary =
     /// Persisted-form DTO mirroring the `materialEntry` `$def`'s display fields. The
     /// engine's `OpticalPropertiesWithDisp` holds closures and cannot serialize, so
     /// the library file carries the schema's display metadata only (the analytic
-    /// dispersion model lives behind the §D.9 mapping, out of scope here). The
-    /// `category` field is the domain `MaterialCategory` DU itself: the shared
-    /// `ProjectJson.options` (`.WithUnionUnwrapFieldlessTags()`) round-trips this
-    /// four-case fieldless DU to/from its plain-string form (`"Glass"`/`"Metal"`/…)
-    /// — the one JSON stack already owns this mapping, so no hand-maintained
-    /// `MaterialCategory`↔string table lives here (§I.5/§I.8 "one stack only").
+    /// dispersion model lives behind the §D.9 mapping, out of scope here). Since the
+    /// closed `MaterialCategory` union became a seeded catalogue keyed by `CategoryId`
+    /// (spec 0035 step 001), the `category` field carries the category's DISPLAY NAME
+    /// (`"Glass"`/`"Metal"`/… — exactly the schema's `category` enum): export resolves
+    /// the id to its name through `categoryName`, import resolves the name back through
+    /// `tryFindCategoryByName`. A plain string here needs no custom converter — the one
+    /// JSON stack round-trips it as-is (§I.5/§I.8 "one stack only").
     type private MaterialEntryDto =
         {
             id : string
             name : string
-            category : MaterialCategory
+            category : string
             description : string option
         }
 
@@ -87,20 +88,24 @@ module MaterialLibrary =
     /// STRING form (spec 0033 step 002); a non-Guid id is a typed error — no legacy string-id path,
     /// no fallback, no migration.
     let private dtoToEntry (dto : MaterialEntryDto) : Result<MaterialEntry, StorageError> =
-        match MaterialId.tryCreate dto.id with
-        | Some id ->
+        // Both the elevated id and the category name are IO-boundary parses: an id that is
+        // not a Guid and a category name absent from the seeded catalogue are typed errors
+        // (spec 0033 step 002 / 0035 step 001), never a throw or a silent default.
+        match MaterialId.tryCreate dto.id, tryFindCategoryByName dto.category with
+        | Some id, Some category ->
             Ok
                 {
                     id = id
                     name = dto.name
-                    category = dto.category
+                    category = category.id
                     description = dto.description
                     properties = vacuumProperties
                     // The metadata-only library file carries no dispersion data; the
                     // rebuilt entry is view-only until the §D.9 mapping lands.
                     complexity = None
                 }
-        | None -> Error (JsonParseError $"materialEntry id '%s{dto.id}' is not a Guid")
+        | None, _ -> Error (JsonParseError $"materialEntry id '%s{dto.id}' is not a Guid")
+        | _, None -> Error (JsonParseError $"materialEntry category '%s{dto.category}' is not a known category")
 
     /// Import a material library (§I.8 / AC-I10). A document that begins with `[`/`{`
     /// is the canonical library JSON `exportMaterials` wrote (deserialized through the
@@ -148,11 +153,10 @@ module MaterialLibrary =
                     // The elevated MaterialId crosses the JSON boundary as its Guid string form.
                     dict.["id"] <- box (string e.id.value)
                     dict.["name"] <- box e.name
-                    // The MaterialCategory DU is serialized by the shared
-                    // ProjectJson.options (fieldless-tag unwrap) — its runtime type
-                    // drives the converter, so this writes "Glass"/"Metal"/… with no
-                    // hand-maintained category→string map (§I.5/§I.8 one-stack rule).
-                    dict.["category"] <- box e.category
+                    // The category id resolves to its display name through the seeded
+                    // catalogue (spec 0035 step 001), writing "Glass"/"Metal"/… — exactly
+                    // the schema's `category` enum (§I.5/§I.8 one-stack rule).
+                    dict.["category"] <- box (categoryName e.category)
                     match e.description with
                     | Some d -> dict.["description"] <- box d
                     | None -> ()

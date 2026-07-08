@@ -44,7 +44,7 @@ open OpticalConstructor.Domain.Units
 type Filter =
     {
         search : string
-        category : MaterialLibrary.MaterialCategory option
+        category : MaterialLibrary.CategoryId option
         selected : MaterialLibrary.MaterialId option
     }
 
@@ -57,7 +57,7 @@ module Filter =
 /// case (R-1).
 type MaterialsMsg =
     | SetSearch of string
-    | SetCategory of MaterialLibrary.MaterialCategory option
+    | SetCategory of MaterialLibrary.CategoryId option
     | SelectMaterial of MaterialLibrary.MaterialId
 
 /// Pure dispatcher over the filter state (R-1).
@@ -144,7 +144,7 @@ let private selectedNode (model : ConstructionPage.Model) : BeamNode =
 // ---------------------------------------------------------------------------
 
 /// A category filter button (R-1): clicking sets/clears the category filter.
-let private categoryButton (dispatch : MaterialsMsg -> unit) (label : string) (cat : MaterialLibrary.MaterialCategory option) (active : MaterialLibrary.MaterialCategory option) : IView =
+let private categoryButton (dispatch : MaterialsMsg -> unit) (label : string) (cat : MaterialLibrary.CategoryId option) (active : MaterialLibrary.CategoryId option) : IView =
     Button.create [
         Button.content label
         Button.background (if cat = active then Brushes.SteelBlue :> IBrush else Brushes.Transparent :> IBrush)
@@ -173,13 +173,14 @@ let private filterBar (filter : Filter) (dispatch : MaterialsMsg -> unit) : IVie
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 4.0
-                StackPanel.children [
-                    categoryButton dispatch "All" None filter.category
-                    categoryButton dispatch "Glass" (Some MaterialLibrary.Glass) filter.category
-                    categoryButton dispatch "Metal" (Some MaterialLibrary.Metal) filter.category
-                    categoryButton dispatch "Semiconductor" (Some MaterialLibrary.Semiconductor) filter.category
-                    categoryButton dispatch "Crystal" (Some MaterialLibrary.Crystal) filter.category
-                ]
+                // The category filter buttons are built from the seeded catalogue
+                // (spec 0035 step 001) — the `SelectableOnCreate` categories, in catalogue
+                // order — so a new category flows through without a code edit here.
+                StackPanel.children (
+                    (categoryButton dispatch "All" None filter.category)
+                    :: (MaterialLibrary.standardCategories
+                        |> List.filter (fun c -> c.visibility = MaterialLibrary.SelectableOnCreate)
+                        |> List.map (fun c -> categoryButton dispatch c.name (Some c.id) filter.category)))
             ]
         ]
     ] :> IView

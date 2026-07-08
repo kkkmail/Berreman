@@ -102,6 +102,12 @@ module UiIds =
     let statusText = "SampleEditorStatus"
     [<Literal>]
     let materialPicker = "SampleMaterialPicker"
+    // The searchable material picker's fixed surfaces (spec 0035 step 013): the search box and
+    // the catalogue-driven category facet container, mirroring the Materials bay.
+    [<Literal>]
+    let materialSearchBox = "SampleMaterialSearchBox"
+    [<Literal>]
+    let materialCategoryFilter = "SampleMaterialCategoryFilter"
     [<Literal>]
     let stackTable = "SampleStackTable"
     [<Literal>]
@@ -129,12 +135,25 @@ module UiIds =
     let materialOption (materialId : string) : string = "SampleMaterialOption_" + materialId
     /// A SubstrateKind facet option's clickable id, by its stable code.
     let substrateOption (code : string) : string = "SampleSubstrateKind_" + code
+    /// A material-category facet option's clickable id, by its stable code (`All` for the
+    /// no-narrowing facet, else the CategoryId's Guid string form).
+    let materialCategoryOption (code : string) : string = "SampleMaterialCategory_" + code
 
 /// What Save targets: a brand-new sample (mint a fresh `SampleId`) or an existing one (keep
 /// its id and update in place). A DU, not a naked bool.
 type EditorTarget =
     | NewSample
     | ExistingSample of SampleId
+
+/// How the Sample editor OPENS (spec 0035 step 014): a blank NEW sample (the Add verb), a NEW
+/// sample pre-seeded with a foldable starter multilayer period (the Make-multilayer verb — its
+/// distinct launcher path), or an EXISTING sample updated in place (the Edit verb). A DU — not a
+/// `Sample option` plus a bool — so the three open intents are NAMED. Both NEW intents map to the
+/// `NewSample` target (Save mints a fresh `SampleId`); they differ only in the seeded structure.
+type SampleEditorIntent =
+    | NewBlankSample
+    | NewSeededMultilayer
+    | EditSample of Sample
 
 /// The window's IO seam (the functional-proxy Context convention): the samples write-seam the
 /// Save verb persists through, plus the host's close request (the window passes `this.Close`;
@@ -170,6 +189,10 @@ type Model =
         editor : SampleStackEditState
         materials : MaterialEntry list
         chosenMaterial : MaterialId option
+        /// The live material-search fragment the picker filters its options by (empty matches all).
+        materialSearchText : string
+        /// The selected material-category facet — `None` is the "All" facet (no category narrowing).
+        materialCategory : CategoryId option
         /// Film indices of the period groups whose super-row is collapsed (expanded default).
         collapsedGroups : Set<int>
         thicknessText : string
@@ -188,6 +211,10 @@ type Msg =
     | SetDescription of string
     | SetSubstrate of SubstrateKind
     | ChooseMaterial of MaterialId
+    /// The material-picker search box: filter the picker's options by a case-insensitive name fragment.
+    | SetMaterialSearchText of string
+    /// The material-picker category facet: narrow the picker to one category (`None` is the "All" facet).
+    | SelectMaterialCategory of CategoryId option
     /// A row click: adds an unselected position to the multi-selection, removes a selected one.
     | ToggleLayer of LayerPosition
     | ClearSelectionClicked
@@ -315,6 +342,30 @@ let private substrateLabel (kind : SubstrateKind) : string =
     | Plate -> "Plate"
     | Wedge -> "Wedge"
 
+/// The picker's material options after the search fragment AND the category facet narrow the
+/// resolved list (the list the window loads ONCE from `MaterialProxy.listMaterials`). Reuses the
+/// Domain search seam (`MaterialLibrary.byQuery`) — no new filter is coded here; the dispersion
+/// facet stays `AnyDispersion` since this picker offers only the search box and the category facet.
+let filteredMaterials (m : Model) : MaterialEntry list =
+    byQuery { text = m.materialSearchText; category = m.materialCategory; dispersion = AnyDispersion } { entries = m.materials }
+
+/// A material-category facet option's stable code (the derived UiIds key): `All` for the
+/// no-narrowing facet, else the CategoryId's Guid string form.
+let materialCategoryCode (category : CategoryId option) : string =
+    match category with
+    | None -> "All"
+    | Some c -> string c.value
+
+/// The category facet options (spec 0035 step 013): the "All" facet, then the step-1 seeded
+/// `SelectableOnCreate` categories in catalogue order. Catalogue-driven — mirroring the Materials
+/// bay facet (`OpticalConstructor.Ui/MaterialsView.fs`) — so a new seeded category flows through
+/// without a code edit here.
+let private materialCategoryFacets : (CategoryId option * string) list =
+    (None, "All")
+    :: (standardCategories
+        |> List.filter (fun c -> c.visibility = SelectableOnCreate)
+        |> List.map (fun c -> (Some c.id, c.name)))
+
 let private orientationDegrees (o : CrystalOrientation) : float * float * float =
     match o with
     | PrimaryAxes -> (0.0, 0.0, 0.0)
@@ -342,11 +393,14 @@ let private emptyStructure : SampleStructure =
         lower = None
     }
 
-let init (context : SampleEditorContext) (materials : MaterialEntry list) (existing : Sample option) : Model =
+let init (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : Model =
     let target, name, description, substrate, structure =
-        match existing with
-        | Some s -> (ExistingSample s.id, s.name, s.description, s.substrate, s.structure)
-        | None -> (NewSample, "", "", ThinFilm, emptyStructure)
+        match intent with
+        // Both NEW intents target `NewSample` (Save mints a fresh id); the seeded multilayer path
+        // opens onto the Domain starter period (spec 0035 step 014), the blank Add onto nothing.
+        | NewBlankSample -> (NewSample, "", "", ThinFilm, emptyStructure)
+        | NewSeededMultilayer -> (NewSample, "", "", ThinFilm, starterMultilayerStructure)
+        | EditSample s -> (ExistingSample s.id, s.name, s.description, s.substrate, s.structure)
     {
         context = context
         target = target
@@ -356,6 +410,8 @@ let init (context : SampleEditorContext) (materials : MaterialEntry list) (exist
         editor = SampleStackEditState.ofStructure structure
         materials = materials
         chosenMaterial = None
+        materialSearchText = ""
+        materialCategory = None
         collapsedGroups = Set.empty
         thicknessText = ""
         qwotText = ""
@@ -400,6 +456,8 @@ let update (msg : Msg) (m : Model) : Model =
     | SetDescription s -> { m with description = s }
     | SetSubstrate kind -> { m with substrate = kind }
     | ChooseMaterial id -> { m with chosenMaterial = Some id }
+    | SetMaterialSearchText s -> { m with materialSearchText = s }
+    | SelectMaterialCategory category -> { m with materialCategory = category }
     | ToggleLayer position ->
         if Set.contains position m.editor.selection
         then { m with editor = { m.editor with selection = Set.remove position m.editor.selection } }
@@ -641,20 +699,57 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
                     clickBox (UiIds.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
     ] :> IView
 
-/// The picker stacks the label ABOVE the wrap panel so the panel is measured at the window's
-/// finite width and actually wraps — inside a horizontal StackPanel it would be offered
-/// infinite width and run every option off-screen (found by the headless click proofs).
+/// The picker's search box (spec 0035 step 013): a live case-insensitive name fragment that
+/// narrows the options. A plain string field committed on `onTextChanged` (idempotent echo, the
+/// `nameBox` shape) — NOT a large-state rebuild, so no FuncUI render-loop risk.
+let private materialSearchRow (m : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            labelBlock "Search:"
+            TextBox.create [
+                TextBox.name UiIds.materialSearchBox
+                TextBox.width 220.0
+                TextBox.text m.materialSearchText
+                TextBox.onTextChanged (SetMaterialSearchText >> dispatch)
+            ] :> IView
+        ]
+    ] :> IView
+
+/// The catalogue-driven category facet (spec 0035 step 013): one clickable option per step-1
+/// seeded `SelectableOnCreate` category plus "All", the selected facet highlighted. Mirrors the
+/// Materials bay facet and the sibling `substrateRow` — a NAMED WrapPanel of AutomationId'd boxes.
+let private materialCategoryRow (m : Model) (dispatch : Msg -> unit) : IView =
+    WrapPanel.create [
+        WrapPanel.name UiIds.materialCategoryFilter
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children (
+            materialCategoryFacets
+            |> List.map (fun (category, label) ->
+                clickBox (UiIds.materialCategoryOption (materialCategoryCode category)) label (m.materialCategory = category) (fun () -> dispatch (SelectMaterialCategory category))))
+    ] :> IView
+
+/// The picker stacks the label ABOVE the search box, the category facet, and the wrap panel of
+/// material options so the panel is measured at the window's finite width and actually wraps —
+/// inside a horizontal StackPanel it would be offered infinite width and run every option
+/// off-screen (found by the headless click proofs). The search box and the category facet narrow
+/// the options (spec 0035 step 013), filtering the list the window loaded once from
+/// `MaterialProxy.listMaterials`; selection stays by `MaterialId` (`ChooseMaterial of MaterialId`
+/// is unchanged).
 let private materialRow (m : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
         StackPanel.children [
             labelBlock "Material:"
+            materialSearchRow m dispatch
+            materialCategoryRow m dispatch
             WrapPanel.create [
                 WrapPanel.name UiIds.materialPicker
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children (
-                    m.materials
+                    filteredMaterials m
                     |> List.map (fun entry ->
                         let idString = string entry.id.value
                         clickBox (UiIds.materialOption idString) entry.name (m.chosenMaterial = Some entry.id) (fun () -> dispatch (ChooseMaterial entry.id))))

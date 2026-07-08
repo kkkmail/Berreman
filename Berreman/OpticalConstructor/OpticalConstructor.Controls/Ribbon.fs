@@ -20,12 +20,24 @@ open Avalonia.FuncUI.Types
 /// record of functions (the control's own `Handlers` — our functional-proxy seam), not baked in.
 module Ribbon =
 
-    /// One large control docked in the ribbon: a display `name` (shown in the top strip) and its already
-    /// bound `content` view.
+    /// Where a Bay's content is placed once its tab is selected — a two-case content MODE (never a
+    /// bool). `InRibbonPane`: the content docks in the ribbon's own content pane, directly below the tab
+    /// strip (the small "control" bays — rotation, move, render, …). `FullSurface`: the ribbon shows ONLY
+    /// this bay's tab and hands its content to the HOST, which lays it out across the whole surface below
+    /// the strip (a workbench-scale bay that would be cramped inside the pane). A third placement later is
+    /// a non-breaking DU case, not a new bool.
+    type BayContentMode =
+        | InRibbonPane
+        | FullSurface
+
+    /// One large control docked in the ribbon: a display `name` (shown in the top strip), its already
+    /// bound `content` view, and the `mode` that decides whether the ribbon hosts that content in its own
+    /// content pane or hands it to the host to fill the surface below the tab strip.
     type Bay =
         {
             name : string
             content : IView
+            mode : BayContentMode
         }
 
     /// The ribbon's state: the bays to offer and which one is selected (by name).
@@ -40,7 +52,8 @@ module Ribbon =
     module UiIds =
         /// The selectable tab for a bay — its name, prefixed so it cannot collide with other ids.
         let tab (name : string) : string = "RibbonTab_" + name
-        /// The content pane for a bay (always present; only the selected one is visible).
+        /// The single active content slot — named by the bay currently shown (only that one bay's
+        /// content is realized; switching bays recreates this slot rather than toggling visibility).
         let pane (name : string) : string = "RibbonPane_" + name
 
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
@@ -61,7 +74,9 @@ module Ribbon =
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 4.0, 0.0))
+            // Right gap between tabs and a bottom gap so a WRAPPED second row of tabs (the strip wraps
+            // when the bays do not fit one row — see the tab container below) does not touch the first.
+            Border.margin (Thickness(0.0, 0.0, 4.0, 4.0))
             Border.verticalAlignment VerticalAlignment.Center
             Border.child (
                 TextBlock.create [
@@ -81,38 +96,59 @@ module Ribbon =
         | Some b -> Some b
         | None -> List.tryHead state.bays
 
-    /// The ribbon — a top tab strip of bay names, then EVERY bay's content pane with only the selected one
-    /// visible. We deliberately keep every pane present (not swap a single content node) because swapping
-    /// one node between two DIFFERENT controls makes FuncUI recycle a styled, named control into a
-    /// differently-named one ("Cannot set Name : styled element already styled"). With one stable pane per
-    /// bay, FuncUI only ever patches a pane against its own previous self, so no recycling across bays.
-    /// `onSelect` is the host's "show this bay" seam.
+    /// The ribbon — a top tab strip of bay names, then (for an IN-PANE bay) the ACTIVE bay's content in ONE
+    /// keyed slot. Only the selected bay's content is realized (no hidden panes): the single slot is KEYED by
+    /// the active bay name (`View.withKey` → FuncUI's `IView.ViewKey`), so when the active bay changes FuncUI
+    /// CREATES a fresh pane rather than patching the previous bay's control in place. That is what stops FuncUI
+    /// from recycling a styled, named control from a DIFFERENT bay into this slot ("Cannot set Name : styled
+    /// element already styled"): the diff sees the ViewKey change, treats the pane as new, and disposes the old
+    /// one — so a pane is only ever patched against its own previous self. A `FullSurface` bay renders NO
+    /// in-ribbon pane: the ribbon shows only its tab and the HOST fills the surface below this strip with the
+    /// bay's content. `onSelect` is the host's "show this bay" seam.
     let view (state : State) (onSelect : string -> unit) : IView =
         let activeName = activeBay state |> Option.map (fun b -> b.name) |> Option.defaultValue ""
         let tabs =
             state.bays
             |> List.map (fun b -> tab b.name (b.name = activeName) onSelect)
-        let panes =
-            state.bays
-            |> List.map (fun b ->
-                Border.create [
-                    Border.name (UiIds.pane b.name)
-                    Border.isVisible (b.name = activeName)
-                    Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
-                    Border.child b.content
-                ] :> IView)
+        // The active-bay content region. An IN-PANE bay renders its content in ONE keyed slot, KEYED by the
+        // active bay name so a bay change recreates the pane instead of recycling a styled, named control
+        // across two DIFFERENT bays (`UiIds.pane` names this slot). A FULL-SURFACE bay renders no pane here —
+        // the host places its content below the whole strip — so the content region stays empty for it (and
+        // for the no-bays case, keeping exactly one realized pane, never two).
+        let paneChildren : IView list =
+            match activeBay state with
+            | Some b ->
+                match b.mode with
+                | InRibbonPane ->
+                    let pane =
+                        Border.create [
+                            Border.name (UiIds.pane b.name)
+                            Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
+                            Border.child b.content
+                        ]
+                        // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+                        // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+                        |> Avalonia.FuncUI.DSL.View.withKey b.name
+                    [ pane :> IView ]
+                | FullSurface -> []
+            | None -> []
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 6.0
             StackPanel.margin (Thickness 8.0)
             StackPanel.children [
-                StackPanel.create [
-                    StackPanel.orientation Orientation.Horizontal
-                    StackPanel.children tabs
+                // WRAP the tab strip: a plain horizontal StackPanel lays all bay tabs on one row and lets
+                // them overflow past the window's right edge, so a tab beyond the edge is present but
+                // un-clickable (its centre falls outside the window). A WrapPanel flows the tabs onto a
+                // second row when they do not fit, keeping every bay tab on-screen and reachable — which
+                // the reorder (Materials / Library LAST) needs, since nine bays overflow a narrow window.
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.children tabs
                 ]
                 StackPanel.create [
                     StackPanel.orientation Orientation.Vertical
-                    StackPanel.children panes
+                    StackPanel.children paneChildren
                 ]
             ]
         ] :> IView

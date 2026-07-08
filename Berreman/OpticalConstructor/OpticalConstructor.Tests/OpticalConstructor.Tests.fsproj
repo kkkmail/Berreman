@@ -87,6 +87,15 @@
              SampleQuery/SampleError and the mock/stub SampleProxy exercised through all six
              functions' exact signatures. -->
         <Compile Include="SampleProxyTests.fs" />
+        <!-- Spec 0035 step 002 (ADD_CONTRACT STORE_XDUO_0003): the mutating category write-seam —
+             CategoryError and the mock/stub CategoryProxy exercised through all four functions'
+             exact signatures (declared contract: interface + mock + test, no real store yet). -->
+        <Compile Include="CategoryProxyTests.fs" />
+        <!-- Spec 0035 step 004 (IMPLEMENT): the pure CategoryEditor edit model over the seeded
+             MaterialCategory catalogue — every message arm (BeginAddCategory / SetCategoryName /
+             RemoveCategoryRow) without a window, the Begin-then-name acceptance, the blank-name
+             InvalidCategory, and the commit projection into add/rename/remove intents. -->
+        <Compile Include="CategoryEditorTests.fs" />
         <!-- Spec 0033 step 013 (AC-B7): the MaterialComplexity edit-model option tree —
              toProperties vacuum defaults, Polder/PlanarActive assembly through
              toMuWithDisp/toRhoWithDisp, and the re-expressed built-in seeds pinned against

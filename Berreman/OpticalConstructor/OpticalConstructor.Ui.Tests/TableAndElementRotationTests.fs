@@ -168,8 +168,9 @@ module TableAndElementRotationTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Main ribbon shows the bay tabs and reveals ONLY the selected bay's controls`` () =
         HeadlessSession.run (fun () ->
-            // Every bay's pane is present (so FuncUI never recycles across bays), so we assert on EFFECTIVE
-            // visibility — only the selected bay's controls are actually shown.
+            // The ribbon realizes ONLY the active bay's content in one keyed slot (step 007), so a
+            // non-selected bay's controls are absent from the tree; effective visibility of the shown
+            // names therefore isolates exactly the selected bay's controls.
             let visibleNames (model : Model) : Set<string> =
                 let mutable m = model
                 let dispatch (msg : Msg) = m <- update msg m

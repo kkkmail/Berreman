@@ -127,6 +127,28 @@
              both real editor windows, and a referenced-material remove surfaces the typed
              refusal from the root-coupled samples store. -->
         <Compile Include="WireUiCompositionTests.fs" />
+        <!-- Spec 0035 (005): the CategoryControls component (UICOMP_XDUO_0005) — pure contract
+             (empty state + the stable intent-named UiIds and derived per-row ids) + a headless
+             structure proof (every UiIds control exists over a known State, the built-in row's
+             Remove is removed not greyed, and a simulated Add click invokes the add handler). -->
+        <Compile Include="CategoryControlsTests.fs" />
+        <!-- Spec 0035 (006): the CategoryEditorWindow component (UICOMP_XDUO_0006) — pure contract
+             + model tests for the MVU wiring over the step-4 CategoryEditor rendered through the
+             step-5 CategoryControls, plus headless UiIds-driven acceptance proofs over a stub
+             CategoryProxy (Add grows the list, Rename updates a name, a confirm-gated remove of a
+             referenced category surfaces CategoryStillReferenced with the list unchanged). -->
+        <Compile Include="CategoryEditorWindowTests.fs" />
+        <!-- Spec 0035 (007): the generic Controls ribbon hosts ONLY the active bay's content in ONE
+             keyed slot (View.withKey) instead of every bay's pane with IsVisible toggles — headless
+             proofs that selecting each bay in turn realizes exactly that bay's content and no other
+             pane, with no styled-element recycling error over the live FuncUI patch path. -->
+        <Compile Include="RibbonPaneTests.fs" />
+        <!-- Spec 0035 (016): the shared dual-axis ScottPlot chart (OpticalConstructor.Controls.EmbeddedChart)
+             embedded as the Material editor's n/k preview and the Materials-bay View panel (inlineCanvas
+             deleted) — headless render proofs that the embedded control carries n (left) / k (right), draws
+             n and k for every model kind incl. the four transcendental, and rasterizes one frame; and both
+             host sites embed the AvaPlot and render for a dispersive (incl. transcendental) + non-dispersive. -->
+        <Compile Include="EmbeddedChartTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

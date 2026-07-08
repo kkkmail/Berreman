@@ -54,12 +54,22 @@
              the multilayer entry point. Domain-free (rows and facet options are host-flattened; the
              host owns the SampleProxy search seam). -->
         <Compile Include="SampleLibraryControls.fs" />
+        <!-- Spec 0035 (005): the Category-manager list surface (UICOMP_XDUO_0005) — an editable
+             category list with an inline name box per row and Add / Rename(save) / Remove verbs, a
+             built-in row whose Remove is omitted (removed, not greyed), and an inline block-message
+             slot for the store's CategoryStillReferenced / BuiltInNotRemovable refusals. Domain-free
+             (rows are host-flattened from the CategoryEditor working set). -->
+        <Compile Include="CategoryControls.fs" />
         <!-- Spec 0033 (017): the renderer-neutral chart model and the pop-out ScottPlot chart window,
              REAL-MOVED here from OpticalConstructor.TestWindows so both hosts (TestWindows and Ui)
              share ONE type identity. ExperimentChart.fs (the pure model: ExperimentChart / ChartFont /
              ChartStyle) compiles before ChartWindow.fs (the ScottPlot IO seam that maps it). -->
         <Compile Include="ExperimentChart.fs" />
         <Compile Include="ChartWindow.fs" />
+        <!-- Spec 0035 (016): the inline / embeddable form of the shared dual-axis ScottPlot chart (the
+             editor's live n/k preview and the Materials-bay View panel embed this AvaPlot host, built
+             through ChartPlot's shared rebuild path), replacing the deleted primitive inlineCanvas. -->
+        <Compile Include="EmbeddedChart.fs" />
     </ItemGroup>
 
     <ItemGroup>

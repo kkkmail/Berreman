@@ -66,6 +66,14 @@
              the sample editor (spec 0033 step 024). -->
         <Compile Include="MaterialEditorView.fs" />
         <Compile Include="MaterialEditorWindow.fs" />
+        <!-- Spec 0035 (006): the Category editor window (UICOMP_XDUO_0006) — the category
+             manager over the step-4 Domain CategoryEditor edit model rendered through the
+             step-5 CategoryControls surface: inline Add (UserCategory / SelectableOnCreate),
+             inline Rename (built-ins renamable), a confirm-gated Remove surfacing the store's
+             typed CategoryStillReferenced / BuiltInNotRemovable, and the per-row Save +
+             window-level Save/Cancel through CategoryProxy. View (pure MVU) + HostWindow pair. -->
+        <Compile Include="CategoryEditorView.fs" />
+        <Compile Include="CategoryEditorWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <Compile Include="TableAndElementRotationWindow.fs" />
         <!-- Spec 0027 task 010: the element-movement test (single element, slide along the beam). -->

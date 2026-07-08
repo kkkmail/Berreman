@@ -72,6 +72,12 @@
              offering, and the restated advisory gain rule. Depends on
              DispersionModels/MaterialLibrary above. -->
         <Compile Include="MaterialComplexityEditor.fs" />
+        <!-- Spec 0035 (004): the pure, Avalonia-free CATEGORY edit model over the seeded
+             MaterialCategory catalogue — state + message DU (BeginAddCategory / SetCategoryName /
+             RemoveCategoryRow) + a Result-returning apply, plus the commit projection into the
+             add/rename/remove intents the host dispatches to CategoryProxy. Reuses the step-2
+             CategoryError (blank name -> InvalidCategory). Depends only on MaterialLibrary above. -->
+        <Compile Include="CategoryEditor.fs" />
     </ItemGroup>
 
     <ItemGroup>

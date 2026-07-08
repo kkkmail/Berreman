@@ -64,10 +64,10 @@ module MaterialProxyTests =
 
     [<Fact>]
     let ``searchMaterials filters by category`` () =
-        match (freshProxy ()).searchMaterials { MaterialQuery.empty with category = Some Crystal } with
+        match (freshProxy ()).searchMaterials { MaterialQuery.empty with category = Some CategoryIds.crystal } with
         | Ok entries ->
             Assert.NotEmpty entries
-            Assert.All(entries, fun e -> Assert.Equal(Crystal, e.category))
+            Assert.All(entries, fun e -> Assert.Equal(CategoryIds.crystal, e.category))
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -90,7 +90,7 @@ module MaterialProxyTests =
     let ``searchMaterials composes the text, category, and dispersion facets`` () =
         // "si" matches Silicon / Silicon (Si, EUV) / Langasite... — the dispersion facet narrows to
         // the two function-backed entries and the category facet then isolates the semiconductor.
-        let q = { text = "si"; category = Some Semiconductor; dispersion = OnlyDispersive }
+        let q = { text = "si"; category = Some CategoryIds.semiconductor; dispersion = OnlyDispersive }
         match (freshProxy ()).searchMaterials q with
         | Ok [ only ] -> Assert.Equal<MaterialId>(MaterialIds.silicon, only.id)
         | other -> Assert.Fail($"expected exactly the silicon entry, got %A{other}")

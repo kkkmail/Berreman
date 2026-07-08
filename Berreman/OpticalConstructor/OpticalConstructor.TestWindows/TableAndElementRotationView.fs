@@ -116,19 +116,28 @@ type RemoveConfirm<'id> =
 [<ReferenceEquality>]
 type EditorLaunchers =
     {
-        /// Open the step-023 Material editor: `None` = a new entry (Add), `Some entry` = Edit.
-        openMaterialEditor : MaterialLibrary.MaterialProxy -> MaterialLibrary.MaterialEntry option -> unit
-        /// Open the step-022 Sample editor: `None` = a new sample (Add / Make-multilayer),
-        /// `Some sample` = Edit.
-        openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> Library.Sample option -> unit
+        /// Open the step-023 Material editor: `None` = a new entry (Add), `Some entry` = Edit. The
+        /// step-3 `CategoryProxy` is threaded in (spec 0035 step 009) so the editor's create picker
+        /// reads the LIVE catalogue — a category renamed through the proxy re-labels it on open.
+        openMaterialEditor : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> MaterialLibrary.MaterialEntry option -> unit
+        /// Open the step-022 Sample editor by intent (spec 0035 step 014): `NewBlankSample` = the
+        /// blank Add, `NewSeededMultilayer` = Make-multilayer's distinct path (a NEW sample seeded
+        /// with a foldable starter period), `EditSample s` = Edit an existing one in place.
+        openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> SampleEditorView.SampleEditorIntent -> unit
+        /// Open the step-6 Category editor over the LIVE category write-seam (spec 0035 step 009):
+        /// the Materials bay's "Categories…" verb reaches it through this seam so a headless test
+        /// substitutes a recording launcher and observes exactly which editor the verb requested.
+        openCategoryEditor : MaterialLibrary.CategoryProxy -> unit
     }
 
-    /// The real launchers — the step-022/023 editor windows themselves (compiled before this
-    /// file since spec 0033 step 024). Never invoked by a render, only by an Add/Edit dispatch.
+    /// The real launchers — the step-022/023/006 editor windows themselves (compiled before this
+    /// file since spec 0033 step 024 / spec 0035 step 006). Never invoked by a render, only by an
+    /// Add/Edit/Categories dispatch.
     static member defaults : EditorLaunchers =
         {
-            openMaterialEditor = fun materials existing -> MaterialEditorWindow(materials, existing).Show()
-            openSampleEditor = fun materials samples existing -> SampleEditorWindow(materials, samples, existing).Show()
+            openMaterialEditor = fun materials categories existing -> MaterialEditorWindow(materials, existing, categories = categories).Show()
+            openSampleEditor = fun materials samples intent -> SampleEditorWindow(materials, samples, intent).Show()
+            openCategoryEditor = fun categories -> CategoryEditorWindow(categories).Show()
         }
 
 type Model =
@@ -181,6 +190,11 @@ type Model =
         /// Spec 0033 (024): the injected samples WRITE seam (STORE_XDUO_0002) behind the Library
         /// (samples workbench) bay.
         samples : Library.SampleProxy
+        /// Spec 0035 (009): the injected category WRITE seam (STORE_XDUO_0003) behind the Materials
+        /// bay's category facet, its "Categories…" verb (which opens the step-6 editor over THIS
+        /// proxy), and the material editor's create picker. The bay projection re-queries it on
+        /// EVERY render, so a category add/rename/remove re-labels the facet in the same render pass.
+        categories : MaterialLibrary.CategoryProxy
         /// The Materials bay's live search query — the `MaterialQuery` DATA (text + category +
         /// dispersion facets) the search box / facet selectors drive through `searchMaterials`.
         materialQuery : MaterialLibrary.MaterialQuery
@@ -232,11 +246,11 @@ module BayNames =
     /// rename: "Library" now names the samples collection, while element↔entry binding stays in the
     /// Selector bay.
     let library = "Library"
-    // spec 0033 gap G2 (deferred): the operator wants Materials & Library LAST, but reordering the
-    // ribbon panes breaks the Library bay's sample-row layout in the headless harness (and thus the
-    // real ribbon) — see 008-close-the-gaps-implementation-log.md §4. The original order stands until
-    // the Ribbon pane-hosting is made order-independent. Details stays LAST (the 0027/026 pin).
-    let all = [ rotation; move; add; render; selector; materials; library; experiments; details ]
+    // spec 0035 (008): Materials & Library are the LAST two bays — full-surface workbench bays that
+    // replace the table canvas rather than crowd the ribbon pane. Now that step-007 pane hosting is
+    // order-independent (one keyed slot per active bay), the earlier deferred-reorder / Details-LAST
+    // pin is retired: the sample-row layout no longer depends on where the workbenches sit.
+    let all = [ rotation; move; add; render; selector; experiments; details; materials; library ]
 
 let defaultElementZoom : float = 5.0
 
@@ -256,10 +270,14 @@ let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
 module private DefaultStores =
     open OpticalConstructor.Domain.Library
 
-    let create () : MaterialLibrary.MaterialProxy * SampleProxy =
+    /// Spec 0035 (009): the category store joins the composition LAST — its remove-block consults
+    /// the live materials store through `materialsReferencingCategory` (the `samplesReferencing`
+    /// precedent), so a category referenced by a seeded material is not silently removable.
+    let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
         let samples = SampleProxy.createInMemory ()
         let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
-        materials, samples
+        let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+        materials, samples, categories
 
 /// The shared scene seed: the standard table, the straight top-down view, the given elements, the
 /// table selected first, an add/remove `palette`, and the injected proxies (the read-only Library
@@ -271,6 +289,7 @@ let initWith
     (experiments : Experiments.ExperimentProxy)
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
+    (categories : MaterialLibrary.CategoryProxy)
     (elements : TestElement list)
     (palette : CatalogueKind list) : Model =
     {
@@ -291,6 +310,7 @@ let initWith
         pendingEntry = None
         materials = materials
         samples = samples
+        categories = categories
         materialQuery = MaterialLibrary.MaterialQuery.empty
         selectedMaterial = None
         materialRemoveConfirm = NoRemoveConfirm
@@ -308,8 +328,8 @@ let initWith
 /// the central ray, no add/remove palette. Behaviour is unchanged from before — the palette is empty.
 /// The proxies default to the in-memory mocks/stores (the test scene never shows the ribbon bays).
 let init () : Model =
-    let materials, samples = DefaultStores.create ()
-    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
+    let materials, samples, categories = DefaultStores.create ()
+    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
@@ -320,7 +340,8 @@ let initMainWith
     (library : Library.LibraryProxy)
     (experiments : Experiments.ExperimentProxy)
     (materials : MaterialLibrary.MaterialProxy)
-    (samples : Library.SampleProxy) : Model =
+    (samples : Library.SampleProxy)
+    (categories : MaterialLibrary.CategoryProxy) : Model =
     // The light source snaps to the table's LEFT edge and the detector to the RIGHT edge — i.e. the
     // central-ray endpoints, which sit exactly on the plate edges (`defaultSourceDetectorDistance` = the
     // table length). Added elements land between them on the beam. The source/detector get DETERMINISTIC
@@ -330,6 +351,7 @@ let initMainWith
         experiments
         materials
         samples
+        categories
         [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
           { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
         [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
@@ -338,8 +360,8 @@ let initMainWith
 /// The Main scene with the default in-memory mock proxies / stores (the test default; the composition
 /// root injects its own proxies via `initMainWith`).
 let initMain () : Model =
-    let materials, samples = DefaultStores.create ()
-    initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples
+    let materials, samples, categories = DefaultStores.create ()
+    initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
 
 type Msg =
     | RotateR1By of float
@@ -410,7 +432,7 @@ type Msg =
     /// metadata + n/k-chart panel. Facet picks carry the DOMAIN facet — the option-code mapping
     /// happens in the bay handlers at the control boundary.
     | MatSetSearchText of string
-    | MatSelectCategory of MaterialLibrary.MaterialCategory option
+    | MatSelectCategory of MaterialLibrary.CategoryId option
     | MatSelectDispersion of MaterialLibrary.DispersionFilter
     | MatSelectRow of MaterialLibrary.MaterialId
     | MatAdd
@@ -419,9 +441,13 @@ type Msg =
     | MatRequestRemove
     | MatConfirmRemove
     | MatCancelRemove
+    /// Spec 0035 (009): the Materials bay's "Categories…" verb — open the step-6 Category editor
+    /// over the live `CategoryProxy` through the launcher seam (a pure launch; the bay re-queries
+    /// the proxy on its next render, so a category renamed there re-labels the facet + create picker).
+    | MatOpenCategories
     /// Spec 0033 (024) — the LIBRARY (samples workbench) bay: the same verb vocabulary over
-    /// `searchSamples` / the step-022 editor; Make-multilayer is the second creation entry point
-    /// (a new sample — the stack editor's fold vocabulary IS the multilayer flow).
+    /// `searchSamples` / the step-022 editor; Make-multilayer is the second creation entry point —
+    /// a distinct path (spec 0035 step 014) opening a NEW sample seeded with a foldable period.
     | SmpSetSearchText of string
     | SmpSelectSubstrate of Library.SubstrateKind option
     | SmpSelectRow of Library.SampleId
@@ -805,8 +831,14 @@ let update (msg : Msg) (model : Model) : Model =
     | MatSelectRow id ->
         { model with selectedMaterial = Some id; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
     | MatAdd ->
-        model.launchers.openMaterialEditor model.materials None
+        model.launchers.openMaterialEditor model.materials model.categories None
         { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
+    | MatOpenCategories ->
+        // A pure launch of the step-6 Category editor over the live category store — no query
+        // change. The bay re-queries `listCategories` on its next render, so a category
+        // added/renamed/removed in that editor re-labels the facet and the create picker.
+        model.launchers.openCategoryEditor model.categories
+        model
     | MatEdit ->
         // Edit opens the step-023 editor on the selected entry, resolved through the proxy at
         // dispatch time. (The bay REMOVES the Edit verb for a view-only selection; an entry with
@@ -814,7 +846,7 @@ let update (msg : Msg) (model : Model) : Model =
         (match model.selectedMaterial with
          | Some id ->
              match model.materials.tryGetMaterial id with
-             | Ok (Some entry) -> model.launchers.openMaterialEditor model.materials (Some entry)
+             | Ok (Some entry) -> model.launchers.openMaterialEditor model.materials model.categories (Some entry)
              | Ok None | Error _ -> ()
          | None -> ())
         { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
@@ -852,16 +884,21 @@ let update (msg : Msg) (model : Model) : Model =
         { model with sampleQuery = { model.sampleQuery with substrate = substrate }; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpSelectRow id ->
         { model with selectedSample = Some id; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpAdd | SmpMakeMultilayer ->
-        // Both creation entry points open the step-022 editor on a NEW sample: the make-multilayer
-        // flow is the stack editor's fold vocabulary (MakeRepeatBlock + the repeat-count steppers).
-        model.launchers.openSampleEditor model.materials model.samples None
+    | SmpAdd ->
+        // The blank creation entry point: open the step-022 editor on a NEW, empty sample.
+        model.launchers.openSampleEditor model.materials model.samples SampleEditorView.NewBlankSample
+        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
+    | SmpMakeMultilayer ->
+        // The DISTINCT Make-multilayer launcher path (spec 0035 step 014): open a NEW sample
+        // pre-seeded with a foldable starter period the SampleStackEditor K-stepper builds up.
+        // Still a NewSample target, so Save mints a fresh SampleId — just seeded, not blank.
+        model.launchers.openSampleEditor model.materials model.samples SampleEditorView.NewSeededMultilayer
         { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpEdit ->
         (match model.selectedSample with
          | Some id ->
              match model.samples.tryGetSample id with
-             | Ok (Some sample) -> model.launchers.openSampleEditor model.materials model.samples (Some sample)
+             | Ok (Some sample) -> model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.EditSample sample)
              | Ok None | Error _ -> ()
          | None -> ())
         { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
@@ -1897,6 +1934,9 @@ module WorkbenchIds =
     let materialViewPanel = "MaterialViewPanel"
     [<Literal>]
     let materialNkChart = "MaterialWorkbenchNkChart"
+    /// Spec 0035 (009): the Materials bay's "Categories…" verb — opens the step-6 Category editor.
+    [<Literal>]
+    let categoriesButton = "ManageCategoriesButton"
     [<Literal>]
     let samplesMessage = "SamplesWorkbenchMessage"
     [<Literal>]
@@ -1906,33 +1946,35 @@ module WorkbenchIds =
     [<Literal>]
     let sampleViewPanel = "SampleViewPanel"
 
-/// The category facet's domain choices, in display order (the "all" option is `None`).
-let materialCategories : MaterialLibrary.MaterialCategory list =
-    [ MaterialLibrary.Glass; MaterialLibrary.Metal; MaterialLibrary.Semiconductor; MaterialLibrary.Crystal; MaterialLibrary.Vacuum ]
-
 /// The stable option code of a category facet choice (`None` = the match-everything "all") —
-/// the string the control dispatches back and `materialCategoryOfCode` inverts.
-let materialCategoryCode (category : MaterialLibrary.MaterialCategory option) : string =
+/// the string the control dispatches back and `materialCategoryOfCode` inverts (spec 0035 step 009).
+/// The code is the category's `CategoryId` Guid string: STABLE across a rename (only the option's
+/// label changes), and unique per category — unlike a name-derived code, which would collide if two
+/// categories shared a display name and would move under a rename.
+let materialCategoryCode (category : MaterialLibrary.CategoryId option) : string =
     match category with
     | None -> "all"
-    | Some MaterialLibrary.Glass -> "glass"
-    | Some MaterialLibrary.Metal -> "metal"
-    | Some MaterialLibrary.Semiconductor -> "semiconductor"
-    | Some MaterialLibrary.Crystal -> "crystal"
-    | Some MaterialLibrary.Vacuum -> "vacuum"
+    | Some id -> string id.value
 
-let private materialCategoryLabel (category : MaterialLibrary.MaterialCategory option) : string =
-    match category with
-    | None -> "All"
-    | Some MaterialLibrary.Glass -> "Glass"
-    | Some MaterialLibrary.Metal -> "Metal"
-    | Some MaterialLibrary.Semiconductor -> "Semiconductor"
-    | Some MaterialLibrary.Crystal -> "Crystal"
-    | Some MaterialLibrary.Vacuum -> "Vacuum"
+/// The inverse code → facet mapping: "all" (or any unparsable code) is the match-everything `None`;
+/// a Guid code maps to that `CategoryId` directly (spec 0035 step 009 — the facet offers only codes
+/// it minted from `listCategories`, so a round-trip is exact for built-in AND user categories).
+let materialCategoryOfCode (code : string) : MaterialLibrary.CategoryId option =
+    match System.Guid.TryParse code with
+    | true, g -> Some (MaterialLibrary.CategoryId g)
+    | _ -> None
 
-/// The inverse code → facet mapping (an unknown code is the match-everything "all").
-let materialCategoryOfCode (code : string) : MaterialLibrary.MaterialCategory option =
-    materialCategories |> List.tryFind (fun c -> materialCategoryCode (Some c) = code)
+/// Resolve a category's display NAME from the LIVE catalogue (spec 0035 step 009): the store's
+/// `listCategories` is the source of truth, so a renamed category reads its new name here too (the
+/// View panel's label stays consistent with the facet). An id the store no longer holds falls back
+/// to the seeded `categoryName` (a diagnostic, never a throw).
+let private liveCategoryName (categories : MaterialLibrary.CategoryProxy) (id : MaterialLibrary.CategoryId) : string =
+    match categories.listCategories () with
+    | Ok cats ->
+        match cats |> List.tryFind (fun c -> c.id = id) with
+        | Some c -> c.name
+        | None -> MaterialLibrary.categoryName id
+    | Error _ -> MaterialLibrary.categoryName id
 
 /// The dispersion facet's choices, in display order.
 let dispersionFilters : MaterialLibrary.DispersionFilter list =
@@ -1997,11 +2039,20 @@ let materialsState (model : Model) : MaterialsControls.State =
                         | None -> MaterialsControls.ViewOnly
                  } : MaterialsControls.Row))
         | Error _ -> []
+    // Spec 0035 (009): the category facet lists the LIVE catalogue (`listCategories`, re-queried on
+    // every render), plus the match-everything "all" option. Each option's code is the category's
+    // `CategoryId` Guid string (stable across a rename) and its label is the record's NAME, so a
+    // category added/renamed/removed through the proxy re-labels the facet in the same render pass.
+    let listedCategories =
+        match model.categories.listCategories () with
+        | Ok cats -> cats
+        | Error _ -> []
     {
         searchText = model.materialQuery.text
         categoryOptions =
-            None :: (materialCategories |> List.map Some)
-            |> List.map (fun c -> ({ code = materialCategoryCode c; label = materialCategoryLabel c } : MaterialsControls.FacetOption))
+            ({ code = materialCategoryCode None; label = "All" } : MaterialsControls.FacetOption)
+            :: (listedCategories
+                |> List.map (fun c -> ({ code = materialCategoryCode (Some c.id); label = c.name } : MaterialsControls.FacetOption)))
         selectedCategory = materialCategoryCode model.materialQuery.category
         dispersionOptions =
             dispersionFilters
@@ -2133,9 +2184,9 @@ let private materialsMessageRow (model : Model) : IView list =
           ] :> IView ]
 
 /// The Materials View panel: the entry's read-only metadata plus the step-19 dual-axis n/k
-/// chart over the editor's preview range, drawn by the ONE shared inline renderer
-/// (`NkDispersionChart.inlineCanvas`). Resolved through the proxy at render time, so a removed
-/// entry's panel vanishes with its row.
+/// chart over the editor's preview range, embedded through the ONE shared ScottPlot chart control
+/// (`OpticalConstructor.Controls.EmbeddedChart`, spec 0035 step 016). Resolved through the proxy at
+/// render time, so a removed entry's panel vanishes with its row.
 let private materialViewPanel (model : Model) : IView list =
     match model.viewedMaterial with
     | None -> []
@@ -2156,14 +2207,14 @@ let private materialViewPanel (model : Model) : IView list =
                           StackPanel.children [
                               TextBlock.create [
                                   TextBlock.fontWeight FontWeight.SemiBold
-                                  TextBlock.text $"%s{entry.name} — %s{(materialCategoryLabel (Some entry.category))}%s{editability}"
+                                  TextBlock.text $"%s{entry.name} — %s{liveCategoryName model.categories entry.category}%s{editability}"
                               ]
                               TextBlock.create [
                                   TextBlock.textWrapping TextWrapping.Wrap
                                   TextBlock.maxWidth 760.0
                                   TextBlock.text (entry.description |> Option.defaultValue "")
                               ]
-                              NkDispersionChart.inlineCanvas WorkbenchIds.materialNkChart chart
+                              OpticalConstructor.Controls.EmbeddedChart.create WorkbenchIds.materialNkChart chart (NkDispersionChart.nkDispersionStyle chart)
                           ]
                       ])
               ] :> IView ]
@@ -2235,14 +2286,27 @@ let private sampleViewPanel (model : Model) : IView list =
               ] :> IView ]
         | Ok None | Error _ -> []
 
-/// The Materials bay content: the shared list surface, then the host-added inline confirm /
-/// message / View-panel rows.
+/// Spec 0035 (009): the Materials bay's catalogue-management row — the "Categories…" verb that
+/// opens the step-6 Category editor over the live `CategoryProxy` through the launcher seam. A host
+/// surface the domain-free `MaterialsControls` does not carry (it is a category action, not a
+/// material-row verb), styled like the other host-added workbench buttons.
+let private categoriesRow (dispatch : Msg -> unit) : IView =
+    WrapPanel.create [
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children [
+            workbenchButton WorkbenchIds.categoriesButton "Categories…" (fun () -> dispatch MatOpenCategories)
+        ]
+    ] :> IView
+
+/// The Materials bay content: the shared list surface, the host-added "Categories…" verb, then the
+/// host-added inline confirm / message / View-panel rows.
 let private materialsBay (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 4.0
         StackPanel.children (
-            [ MaterialsControls.view (materialsState model) (materialsHandlers dispatch) ]
+            [ MaterialsControls.view (materialsState model) (materialsHandlers dispatch)
+              categoriesRow dispatch ]
             @ materialConfirmRow model dispatch
             @ materialsMessageRow model
             @ materialViewPanel model)
@@ -2263,22 +2327,24 @@ let private samplesBay (model : Model) (dispatch : Msg -> unit) : IView =
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
 let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
-    [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch) }
-      { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch) }
-      { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch) }
-      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch) }
-      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch) }
-      { name = BayNames.materials; content = materialsBay model dispatch }
-      { name = BayNames.library; content = samplesBay model dispatch }
-      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch) }
-      { name = BayNames.details; content = LayerBandsControls.view (detailsState model) } ]
+    [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.details; content = LayerBandsControls.view (detailsState model); mode = Ribbon.InRibbonPane }
+      // The step-024 workbenches are FULL-SURFACE bays (step 008): each fills the whole area below the
+      // ribbon strip in place of the table canvas, so its list / verbs are not cramped inside the pane.
+      { name = BayNames.materials; content = materialsBay model dispatch; mode = Ribbon.FullSurface }
+      { name = BayNames.library; content = samplesBay model dispatch; mode = Ribbon.FullSurface } ]
 
-let private mainControlBar (model : Model) (dispatch : Msg -> unit) : IView =
+let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 4.0
         StackPanel.children [
-            Ribbon.view { bays = mainBays model dispatch; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
+            Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
             TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ]
         ]
     ] :> IView
@@ -2293,22 +2359,49 @@ let private mainTableCanvas (model : Model) : IView =
         Canvas.children (mainTableViews model @ mainElementViews model)
     ] :> IView
 
-/// The Main screen view: the ribbon of large controls on top, the shared table + renderer-drawn elements
-/// below. Same selection / pan / zoom / rotate gestures as the test scene.
+/// The Main screen view: the ribbon of large controls on top, and BELOW the ribbon strip either the
+/// shared table (for an in-pane "table" bay — same selection / pan / zoom / rotate gestures as the test
+/// scene) or the active bay's OWN content (for a FULL-SURFACE workbench bay — Materials / Library — which
+/// fills that whole area and wires NO table gestures). The bays are built once and shared: the ribbon hosts
+/// the in-pane bays' content and shows only a tab for a full-surface bay, whose content is placed here below.
 let mainView (model : Model) (dispatch : Msg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
+    // a full-surface bay never realizes the canvas and must not wire the table gestures.
+    let tableSurface () : IView =
+        Border.create [
+            Border.background (brush (color 250 250 250))
+            Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
+            Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+            Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
+            Border.onPointerWheelChanged (fun e ->
+                e.Handled <- true
+                dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
+            Border.child (mainTableCanvas model)
+        ] :> IView
+    let bays = mainBays model dispatch
+    // The area BELOW the ribbon strip: a full-surface bay fills it with the bay's OWN content (no table
+    // canvas, no gestures — the workbench owns the whole surface); every in-pane / table bay keeps the
+    // shared table canvas and its pan / zoom / rotate gestures.
+    let belowStrip : IView =
+        match Ribbon.activeBay { bays = bays; selected = model.ribbon } with
+        | Some b ->
+            match b.mode with
+            | Ribbon.FullSurface ->
+                // KEY the full-surface slot by bay name: switching between the two full-surface bays
+                // (Materials ⇄ Library) then RECREATES the content instead of patching one workbench's
+                // styled, named rows into the other's ("Cannot set Name : styled element already styled")
+                // — the same keyed-slot discipline step 007 gave the ribbon pane. `View` is fully qualified
+                // (the DSL `View` module vs the `Types` `View<'t>` type are both in scope here).
+                let surface =
+                    Border.create [ Border.child b.content ]
+                    |> Avalonia.FuncUI.DSL.View.withKey b.name
+                surface :> IView
+            | Ribbon.InRibbonPane -> tableSurface ()
+        | None -> tableSurface ()
     DockPanel.create [
         DockPanel.children [
-            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar model dispatch) ]
-            Border.create [
-                Border.background (brush (color 250 250 250))
-                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
-                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
-                Border.onPointerWheelChanged (fun e ->
-                    e.Handled <- true
-                    dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
-                Border.child (mainTableCanvas model)
-            ]
+            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
+            belowStrip
         ]
     ] :> IView

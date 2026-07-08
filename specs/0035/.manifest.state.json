@@ -1,0 +1,143 @@
+{
+  "manifest": "C:\\GitHub\\Berreman\\specs\\0035\\.manifest",
+  "branch": "0035",
+  "started_utc": "2026-07-07T22:56:30Z",
+  "last_updated_utc": "2026-07-08T07:49:48Z",
+  "completed_slices": [
+    {
+      "index": 0,
+      "path": "specs\\0035\\.slices\\001.slice-md",
+      "commit": "5f7cc59ecafcf0d46d8064d8d7fc4d2c4b84bf70",
+      "manual": false,
+      "utc": "2026-07-07T23:34:00Z"
+    },
+    {
+      "index": 1,
+      "path": "specs\\0035\\.slices\\002.slice-md",
+      "commit": "8d8b883c6c07c2e8d170a35f2dad82de12a0fe5e",
+      "manual": false,
+      "utc": "2026-07-07T23:43:27Z"
+    },
+    {
+      "index": 2,
+      "path": "specs\\0035\\.slices\\003.slice-md",
+      "commit": "1bf670db26350b3d72acef4513cab3b9c045a358",
+      "manual": false,
+      "utc": "2026-07-07T23:58:19Z"
+    },
+    {
+      "index": 3,
+      "path": "specs\\0035\\.slices\\004.slice-md",
+      "commit": "666a90ae76227f30f798354b9a3feb0acf8c10e6",
+      "manual": false,
+      "utc": "2026-07-08T00:14:51Z"
+    },
+    {
+      "index": 4,
+      "path": "specs\\0035\\.slices\\005.slice-md",
+      "commit": "b93cba64d04652c2f6593fe571b75fff7709dc23",
+      "manual": false,
+      "utc": "2026-07-08T01:12:38Z"
+    },
+    {
+      "index": 5,
+      "path": "specs\\0035\\.slices\\006.slice-md",
+      "commit": "dff27c911411e1eba7e63f038ca2cd7160c87620",
+      "manual": false,
+      "utc": "2026-07-08T01:41:42Z"
+    },
+    {
+      "index": 6,
+      "path": "specs\\0035\\.slices\\007.slice-md",
+      "commit": "63007d1f841623ba26d3d2ace29f3ed569791932",
+      "manual": false,
+      "utc": "2026-07-08T02:10:26Z"
+    },
+    {
+      "index": 7,
+      "path": "specs\\0035\\.slices\\008.slice-md",
+      "commit": "ef4438aa1312a2c91b5affb40000feaa07456c89",
+      "manual": false,
+      "utc": "2026-07-08T03:11:39Z"
+    },
+    {
+      "index": 8,
+      "path": "specs\\0035\\.slices\\009.slice-md",
+      "commit": "c5577fa172345a9da0121b7091157c65062fa35f",
+      "manual": false,
+      "utc": "2026-07-08T03:41:16Z"
+    },
+    {
+      "index": 9,
+      "path": "specs\\0035\\.slices\\010.slice-md",
+      "commit": "ddd9e473a263b26cb6a5dc7ce30454eff32e5543",
+      "manual": false,
+      "utc": "2026-07-08T04:15:52Z"
+    },
+    {
+      "index": 10,
+      "path": "specs\\0035\\.slices\\011.slice-md",
+      "commit": "5d8ad13b755fe32a32c5c3b5230c8a0628c1680f",
+      "manual": false,
+      "utc": "2026-07-08T04:35:34Z"
+    },
+    {
+      "index": 11,
+      "path": "specs\\0035\\.slices\\012.slice-md",
+      "commit": "d820f03d1d07fb136f87d0895848e13024175f97",
+      "manual": false,
+      "utc": "2026-07-08T04:46:40Z"
+    },
+    {
+      "index": 12,
+      "path": "specs\\0035\\.slices\\013.slice-md",
+      "commit": "11e1e0f1580e21a6a286a7758ba62f82cd6d8467",
+      "manual": false,
+      "utc": "2026-07-08T05:04:52Z"
+    },
+    {
+      "index": 13,
+      "path": "specs\\0035\\.slices\\014.slice-md",
+      "commit": "5bc70830106e499e3195a15fbab246442f4f332a",
+      "manual": false,
+      "utc": "2026-07-08T05:29:43Z"
+    },
+    {
+      "index": 14,
+      "path": "specs\\0035\\.slices\\015.slice-md",
+      "commit": "6a77130bbc76b6fc756b7b2d52b3c8f8089d420a",
+      "manual": false,
+      "utc": "2026-07-08T06:05:37Z"
+    },
+    {
+      "index": 15,
+      "path": "specs\\0035\\.slices\\016.slice-md",
+      "commit": "8f9b6c4bc683dde7291fa18112b8958be555083c",
+      "manual": false,
+      "utc": "2026-07-08T07:03:08Z"
+    },
+    {
+      "index": 16,
+      "path": "specs\\0035\\.slices\\017.slice-md",
+      "commit": "8beebb5d4b1958b552720dc227422628ef2b8b39",
+      "manual": false,
+      "utc": "2026-07-08T07:16:16Z"
+    },
+    {
+      "index": 17,
+      "path": "specs\\0035\\.slices\\018.slice-md",
+      "commit": "de47c034dee803fb4edfc03fdea63f791b4ae983",
+      "manual": false,
+      "utc": "2026-07-08T07:36:28Z"
+    },
+    {
+      "index": 18,
+      "path": "specs\\0035\\.slices\\019.slice-md",
+      "commit": "8e8aa87ff9782de683c7c70276c9704ae309d3cb",
+      "manual": false,
+      "utc": "2026-07-08T07:49:48Z"
+    }
+  ],
+  "current_slice": null,
+  "remaining_slices": []
+}

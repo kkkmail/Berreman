@@ -1,0 +1,11 @@
+# Step 004 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [2]
+```
+
+**How to implement.** Add a pure, Avalonia-free Domain edit model CategoryEditor (a new OpticalConstructor.Domain module) mirroring the message-DU discipline of MaterialComplexityEditor (state + one message DU + a Result-returning apply): a state record over the current MaterialCategory list plus any in-progress inline edit, and messages BeginAddCategory (mints CategoryId.create () as a UserCategory / SelectableOnCreate row with a blank name), SetCategoryName of CategoryId * string, and RemoveCategoryRow of CategoryId, plus a commit projection producing the add / rename / remove intents the host dispatches to CategoryProxy. Rejections (blank name) reuse the typed CategoryError from step 2. Every message arm is unit-tested without a window in OpticalConstructor.Tests.
+
+**Acceptance.** After the step, applying BeginAddCategory then SetCategoryName over the CategoryEditor state MUST yield a UserCategory / SelectableOnCreate row carrying the typed name, and a blank name MUST surface the typed InvalidCategory, verified by pure unit tests.

@@ -1,0 +1,344 @@
+# Spec 0035 — Materials & Library remaining gaps: editable categories, full-surface ribbon bays, dispersive ρ/μ, sample & material-editor polish
+
+Full spec authored from the operator's preliminary spec
+`specs/0033/.manual/010-remaining-gaps-and-additions-preliminary-spec.md`. It
+closes the gaps left open after the 0033 cycle (G1, G2, G4, G5, G10, G14.3–G14.5,
+plus the G6 presentation polish and two 0033 implementation gaps in the
+material-editor preview). The ordered work lives in `.spec-jsonl`; this document
+carries only the binding constraints, the contract table, and the per-part
+orientation.
+
+## 0. Binding constraints (every part)
+
+0.1 **Elevate every primitive** (CLAUDE.md). New ids are single-case DUs with a
+`.value` accessor plus `create`; enumerated conditions are named multi-case DUs
+(no naked `bool`, no `enum`); every `*Error` case carries `reason : string` or a
+typed payload; public functions have explicit concrete signatures. The category
+change follows the existing elevated-id precedent `MaterialId`
+(`…Domain/MaterialLibrary.fs:27`) and `SampleId` (`…Domain/ElementId.fs:41`).
+
+0.2 **No legacy, no fallback, no migration.** Categories change from the closed
+multi-case union `MaterialCategory` (`…Domain/MaterialLibrary.fs:67`) to an open
+`CategoryId`-keyed set with NO compatibility shim: nothing is serialized, so
+there is nothing to migrate, and every app start re-seeds the catalogue in
+memory. The `UnsupportedComplexity` view-only fallback for dispersive ρ/μ
+(`…Domain/MaterialComplexityEditor.fs:140,784,790`) and the
+`NotAFiniteTermSum` / `SegmentNotLowerable` transcendental-rejection path
+(`…Domain/DispersionModels.fs:505,666`; `MaterialComplexityEditor.fs:132,637`)
+are REMOVED, not paralleled — the positive restatement is "every dispersion model
+and every dispersive activity/magnetic entry is first-class, editable, and
+drawable."
+
+0.3 **All catalogue IO stays mocked and in-memory.** The new `CategoryProxy` is a
+`[<ReferenceEquality>]` record of camelCase `Result`-returning functions built by
+a `createInMemory` closing over a private mutable `Map`, exactly like
+`SampleProxy.createInMemory` / `MaterialProxy.createInMemory`
+(`…Domain/ElementId.fs:616,686`) and the `LibraryProxy` shape
+(`…Domain/ElementId.fs:276`). This spec writes NO catalogue files to disk and
+adds NO JSON-schema, versioning, or import/export work.
+
+0.4 **UI is testable without a window** (CLAUDE.md WinForms-portability rule).
+Every new editor surface is a pure Domain edit model plus a `Handlers`/message
+record; behaviour is unit-tested in Domain, structure/interaction in the
+`Avalonia.Headless` `ui-smoke` gate. Every new interactive control carries a
+stable, intent-named `[<Literal>]` automation id in one `[<RequireQualifiedAccess>]`
+ids module, following `MaterialEditorView` / `SampleEditorView`.
+
+0.5 **Interpolated strings, never `sprintf`** (CLAUDE.md); four-space indent,
+opening `{` on its own line, a space before every annotation colon, `camelCase`
+record fields.
+
+0.6 **Zero warnings from our code** (CLAUDE.md). Every slice MUST leave the build
+free of any compiler warning originating in our code — F# `FS####` and MSBuild
+warnings from our project configuration alike. The only exempt warnings are the
+third-party NuGet advisories outside our control (`NU1701`, `NU1901`–`NU1904`).
+In particular, if the build emits **`MSB3277`** (conflicting assembly versions)
+from the WebView2 reference chain the Ui project carries
+(`Microsoft.Web.WebView2`, `…Ui/OpticalConstructor.Ui.fsproj:176`, used by the
+ChartHosts adapters, `:75,80`), it MUST be resolved at the reference level
+(constrain or drop the offending reference) — never suppressed.
+
+0.7 **Destructive-action / operator UX** (operator checklist, condensed — the new
+Category editor is a sub-page reached from the Materials bay, with a destructive
+Remove). The Category editor is opened by a `Categories…` verb on the Materials
+bay (discoverability); every proxy verb is synchronous and in-memory, so there
+are NO background jobs, NO progress UI, and NO pre-confirmation gate; after every
+verb the editor re-queries `CategoryProxy` in the same MVU render pass (no manual
+reload); Save/Cancel sit in one row with a visible gap and distinct
+positive/negative styling; Remove is confirm-gated inline and has NO undo,
+justified because the catalogue is in-memory session state a restart re-seeds; no
+committable files are produced, so there is no `.gitignore` interaction. (The
+spec-writer web pages' hidden-controls treatment does not apply: these are
+desktop ribbon bays, not web pages.)
+
+## Contract table (ids minted by the cycle)
+
+| Placeholder | kind | declared in | role |
+|---|---|---|---|
+| `<STORE:CategoryProxy>` | proxy | OpticalConstructor.Domain | mutating category-catalogue write-seam |
+| `<UICOMP:CategoryControls>` | component | OpticalConstructor.Controls | Category-manager control (domain-free) |
+| `<UICOMP:CategoryEditorWindow>` | component | OpticalConstructor.TestWindows | category editor window |
+
+---
+
+## Part A — Categories: an open, editable, Guid-keyed set (CRITICAL — land first)
+
+### A.0 Problem statement
+
+Today a material's category is a closed compile-time union
+`MaterialCategory = Glass | Metal | Semiconductor | Crystal | Vacuum`
+(`…Domain/MaterialLibrary.fs:67`), stored directly on `MaterialEntry.category`
+(`:119`) and `MaterialQuery.category` (`:368`), filtered by `byCategory` (`:146`)
+and `byQuery` (`:417`), and hardcoded again in the material-editor create picker
+(`…TestWindows/MaterialEditorView.fs:551,561`) and the Materials-bay category
+facet (`…TestWindows/TableAndElementRotationView.fs:1910,1915,1924,1934,2002`).
+The operator's decision (preliminary spec §10) is that categories become an
+**open, editable set** the user can add to, rename, and remove, keyed by a stable
+`Guid` primary key with a renamable (and therefore translatable) display name.
+This is the most load-bearing change in the spec — it re-types a domain field read
+across the tree — so it lands first.
+
+Recorded decisions (from the operator, preliminary spec §10):
+
+- **Categories are data, not a union.** `MaterialCategory` becomes a small record
+  `{ id : CategoryId; name : string; visibility : CategoryVisibility; origin :
+  CategoryOrigin }` in a runtime catalogue; `MaterialEntry.category` and
+  `MaterialQuery.category` reference the **`CategoryId`** primary key (a rename is
+  one edit, never a sweep). The display name resolves through the catalogue by id.
+- **Vacuum is a special built-in category, hidden from the create picker.** A real
+  `BuiltInCategory` category the single seeded vacuum material
+  (`…Domain/MaterialLibrary.fs:314`) references, but never offered when creating a
+  NEW material — modelled by `CategoryVisibility = SelectableOnCreate |
+  HiddenOnCreate` (never a naked `bool`), Vacuum being `HiddenOnCreate`.
+- **Built-ins are renamable but not removable; user categories are removable
+  subject to a reference hard-block.** `CategoryOrigin = BuiltInCategory |
+  UserCategory`. The Guid is the identity, so even a built-in's display label may
+  change/translate; only removal is blocked for built-ins.
+- **Removal never cascades.** `CategoryProxy.removeCategory` HARD-BLOCKS with a
+  typed `CategoryStillReferenced` while any `MaterialEntry.category` names it —
+  mirroring `MaterialProxy.removeMaterial`'s `MaterialStillReferenced` hard-block
+  (`…Domain/MaterialLibrary.fs:135`; assembled in `ElementId.fs:715`) — and
+  refuses a built-in with `BuiltInNotRemovable`. The referencing lookup is a
+  `materialsReferencingCategory` seam over the live materials store, exactly as
+  `samplesReferencing` feeds material removal today (`…Domain/ElementId.fs:740`).
+
+### A.1 Seeded catalogue and re-pointing
+
+The current five categories seed with FIXED literal Guids (deterministic tests),
+mirroring `MaterialLibrary.MaterialIds` (`…Domain/MaterialLibrary.fs:51`): Glass,
+Metal, Semiconductor, Crystal as `BuiltInCategory` / `SelectableOnCreate`, and
+Vacuum as `BuiltInCategory` / `HiddenOnCreate`. Re-seed every
+`MaterialEntry.category` (`…Domain/MaterialLibrary.fs:252` onward) to the matching
+seeded `CategoryId`, and re-express `byCategory` / `byQuery` as `CategoryId`
+filters. The create picker (`MaterialEditorView.categoryRow`) offers only
+`SelectableOnCreate` categories (Vacuum removed — not greyed); the Materials-bay
+facet (`TableAndElementRotationView.materialCategories` / `…Code` / `…Label` /
+`…OfCode`, `:1910`) is driven by the catalogue, its option code the `CategoryId`
+Guid string and its label the category `name`, and it MAY still list a
+`HiddenOnCreate` category that some entry uses so such entries stay filterable.
+
+### A.2 The mutating category proxy and the manager surface
+
+`<STORE:CategoryProxy>` is the mutating write-seam: `listCategories`,
+`addCategory` (rejects a duplicate id), `updateCategory` (rename; rejects an
+unknown id), `removeCategory` (the hard-block above). `CategoryError` carries
+`UnknownCategoryId`, `DuplicateCategoryId`, `CategoryStillReferenced`,
+`BuiltInNotRemovable`, and `InvalidCategory` (blank name), each with a `reason`.
+`<UICOMP:CategoryControls>` is the domain-free manager control (the
+`LibraryControls` shape) over a pure `CategoryEditor` Domain edit model (Add mints
+`CategoryId.create ()` and a `UserCategory` / `SelectableOnCreate` row; Rename
+edits `name`; Remove is confirm-gated and surfaces the typed block), and
+`<UICOMP:CategoryEditorWindow>` hosts it in `OpticalConstructor.TestWindows`
+beside the existing editor windows, launched by the Materials-bay `Categories…`
+verb.
+
+**Translation note (positive scope).** The mutable `name` field is what a future
+per-locale name table would populate; wiring `Localization` is NOT this spec — the
+data model only stops blocking it.
+
+---
+
+## Part B — Ribbon hosting: single active pane, full-surface bays, last-two ordering
+
+### B.0 Problem statement
+
+`Ribbon.view` renders EVERY bay's content pane in one vertical `StackPanel` with
+`IsVisible` toggles (`…Controls/Ribbon.fs:90,95-103`), and the module comment there
+(`:84-89`) records why: swapping one shared content node between two different
+controls makes FuncUI recycle a styled, named control across bays. That coupling
+is exactly why moving the Library bay to the end regressed its sample-row layout
+last cycle, so the "Details stays LAST" pin and the deferred reorder still stand
+(`…TestWindows/TableAndElementRotationView.fs:235-239`).
+
+Two changes land together, the hosting fix first:
+
+- **Order-independent hosting.** Make `Ribbon.view` host only the ACTIVE bay's
+  content in a single stable, keyed content slot (keyed so FuncUI never recycles a
+  styled/named control across bays — the hazard the all-panes design was avoiding).
+  Once pane hosting is order-independent, reordering is safe.
+- **Full-surface bays.** A bay declares its content mode as a two-case DU (never a
+  `bool`): a table bay keeps the canvas plus its pan/zoom/rotate gestures; a
+  full-surface bay replaces the canvas area entirely with the bay's own content.
+  `mainView` (`…TestWindows/TableAndElementRotationView.fs:2298`) wires the table
+  canvas and pointer/wheel handlers ONLY for a table bay; the Materials and Library
+  bays become full-surface. With hosting order-independent, make **Materials and
+  Library the last two** bays in `mainBays` (`:2265`) and `BayNames.all` (`:239`),
+  retiring the Details-LAST pin.
+
+---
+
+## Part C — Dispersive gyration ρ and Polder μ editing
+
+### C.0 Problem statement
+
+`MaterialComplexityEditor.ofComplexity` returns the typed `UnsupportedComplexity`
+for a formula-valued `RhoWithDispValue` / `MuWithDispValue`
+(`…Domain/MaterialComplexityEditor.fs:784,790`), so such an entry opens view-only;
+the edit state carries only the CONSTANT gyration (`gyration : GyrationClass<RhoValue>`,
+`:117`) and Polder (`polder : PolderValue<MuValue>`, `:123`), and `toComplexity`
+builds only the `RhoWithoutDispValue` / `MuWithoutDispValue` constant cases
+(`:713,718`). The engine assembly for the dispersive cases already exists and is
+UNCHANGED by this spec: `RhoWithDispValue.toRhoWithDisp` evaluates each component's
+`DispersionFormula` per wavelength (`…OpticalProperties/Active.fs:152`), and
+`MuWithDispValue.toMuWithDisp` does the same for the Polder tensor
+(`Berreman/Berreman/Dispersion.fs:644`). Only the EDITOR must lift the func-valued
+data.
+
+Extend both rungs to a **Constant vs Dispersive** sub-branch, mirroring the eps
+ladder: each symmetry-allowed gyration component (the components
+`gyrationComponents` already exposes, `…Domain/MaterialComplexityEditor.fs:385`)
+and each Polder component becomes a `DispersionFormula` edited through the SAME
+`DispersionModels.modelParameters` + raw `SumOfTerms` coefficient surface built in
+0033 (`…Domain/DispersionModels.fs:291`). The edit state generalises so unchecking
+Dispersive restores the constant losslessly (the ladder's lossless-uncheck
+mechanic, commented on `toComplexity` at `…Domain/MaterialComplexityEditor.fs:697`);
+`toComplexity` builds `RhoWithDispValue` / `MuWithDispValue` under the
+sub-toggle, and `ofComplexity` seeds from a dispersive ρ / μ — the
+`UnsupportedComplexity` case is deleted (§0.2).
+
+---
+
+## Part D — Sample-editor polish
+
+### D.0 Problem statement
+
+Three independent sample-editor gaps (preliminary spec §7):
+
+- **Empty-sample validation (G14.5).** `validateSample` checks the name only
+  (`…Domain/ElementId.fs:596`). A sample with **no films AND no substrate** is
+  structurally empty and MUST be refused on save with the typed `InvalidSample`
+  (add the structure-content rule beside the name rule). The new rule is proven by
+  a negative case in `…OpticalConstructor.Tests/SampleProxyTests.fs`, beside the
+  blank-name rejection (`:120`): `addSample` of a films-empty / substrate-`None`
+  sample MUST return `InvalidSample`. No save test needs a content edit — every
+  seed builds `filmStructure` (a film, no substrate, `…Domain/ElementId.fs:329`)
+  or `plateStructure` (a substrate, no films, `:337`), so none is structurally
+  empty.
+- **Searchable material picker (G14.3).** The picker in
+  `SampleEditorView.materialRow` (`…TestWindows/SampleEditorView.fs:647`) is a flat
+  snapshot of `MaterialProxy.listMaterials`. Add a search box plus a category facet
+  (mirroring the Materials bay, catalogue-driven), filtering the resolved list; the
+  by-`MaterialId` selection contract (`ChooseMaterial of MaterialId`, `:190`) is
+  kept.
+- **Distinct *Make multilayer* (G14.4).** `SmpAdd` and `SmpMakeMultilayer` both
+  open a blank editor today (`…TestWindows/TableAndElementRotationView.fs:428,855`).
+  Give `SmpMakeMultilayer` a launcher path that opens a NEW sample pre-seeded with a
+  foldable starter period (a 2-layer `Repeated` cell ready for the K-stepper over
+  `SampleStackEditor`, `…Domain/SampleStackEditor.fs:79`), distinct from the blank
+  `Add`; extend the editor `init` with a "new-with-seed `SampleStructure`" path
+  (not a `Some existing`, which means update-in-place) so Save still mints a fresh
+  `SampleId`.
+
+---
+
+## Part E — Material-editor dispersion preview & transcendental models
+
+### E.0 Problem statement
+
+Three material-editor fixes (preliminary spec §8) — two are 0033 implementation
+gaps, one is presentation polish.
+
+- **Transcendental models are not usable in a dispersive segment today (0033
+  implementation gap).** `DispersionModels.toEpsAxis` returns
+  `Error (NotAFiniteTermSum _)` for Tauc–Lorentz, Gaussian, Forouhi–Bloomer and
+  Brendel–Bormann (`…Domain/DispersionModels.fs:666-673`), so a dispersive segment
+  carrying one fails `MaterialComplexityEditor.toComplexity` with
+  `SegmentNotLowerable` (`:634,699,132`) — no properties, no chart, no save. Yet
+  these models evaluate perfectly: `DispersionModels.evaluate` returns
+  `WaveLength -> ComplexRefractionIndex` for every model
+  (`…Domain/DispersionModels.fs:486`), and `toOpticalProperties` already wraps that
+  closure for them (`:716`). Make them first-class in a dispersive segment: the core
+  per-axis `EpsAxisDispersion` (`Berreman/Berreman/Dispersion.fs:306`) gains a case
+  representing an **evaluated-directly** model whose `complexIndex` routes through
+  `evaluate`; `toEpsAxis` lowers the four to it instead of erroring, and the editor
+  stops surfacing `SegmentNotLowerable`. The finite-term models keep lowering to
+  `RealNK` / `ComplexEps` (`Berreman/Berreman/Dispersion.fs:307-308`) exactly as
+  today; only the transcendental four take the evaluated route.
+
+  Two constraints bound HOW the new case is shaped, and the step's `how_to` commits
+  to them:
+
+  1. **Layering.** The core `Berreman.Dispersion` module cannot reference the
+     Domain's `DispersionModel`, so the new case carries the evaluation the way the
+     engine's own `EpsWithDisp of (WaveLength -> Eps)` case in the SAME file already
+     does (`Berreman/Berreman/Dispersion.fs:11-12`) — a `WaveLength ->
+     ComplexRefractionIndex` closure, built by `toEpsAxis` from the Domain's
+     `evaluate`. The `EvaluatedModel of DispersionModel` shape the preliminary spec
+     sketched is not buildable (it would invert the project layering); this is the
+     resolved form.
+  2. **Equality.** A function-typed union case removes F# structural equality
+     type-wide, which the existing `Assert.Equal(model, back)` and
+     `Assert.Equal(Ok axis, toEpsAxis model)` tests depend on
+     (`…OpticalConstructor.Tests/DispersionModelsTests.fs:121,349`). So
+     `EpsAxisDispersion` MUST keep supporting equality — a `[<CustomEquality>]`
+     whose `RealNK` / `ComplexEps` data cases compare structurally and whose
+     evaluated case compares by closure reference — so that `DispersionModel`,
+     `EpsWithDispValue` and `MaterialComplexity` keep the equality those tests use.
+
+  The transcendental round-trip acceptance is by SAMPLED n/k (the lowered case's
+  `complexIndex` equals `DispersionModels.evaluate` across a wavelength grid), NOT
+  structural `=` on the closure.
+
+- **Reuse the shared chart control for the n/k preview (0033 implementation gap).**
+  The editor's live n/k preview and the Materials-bay View panel both render through
+  a primitive hand-rolled FuncUI canvas (`NkDispersionChart.inlineCanvas`,
+  `…TestWindows/NkDispersionChart.fs:108`; used at
+  `…TestWindows/MaterialEditorView.fs:856`) — it neither looks nor behaves like the
+  experiment chart. 0033 Part D already REAL-MOVED the shared ScottPlot chart into
+  `OpticalConstructor.Controls` with the dual n-left / k-right Y axes
+  (`…Controls/ExperimentChart.fs`, `…Controls/ChartWindow.fs`), but only as the
+  pop-out window (`ChartWindow.fs:11-19`); the editor never embedded it. Expose an
+  inline/embeddable form of that dual-axis ScottPlot control and embed it as the
+  editor preview and the Materials View panel, so a dispersion curve here is the
+  experiment chart; delete `NkDispersionChart.inlineCanvas`. The pure chart-model
+  builder `NkDispersionChart.nkDispersionChart` (`:55`) is reused unchanged. Every
+  model kind — including the four transcendental — draws n and k. The embedded
+  control MUST render under the headless `ui-smoke` frame without throwing so the
+  gate stays green.
+
+- **Constant-vs-Dispersive presentation (G6).** The primary eps branch is a sticky
+  `Dispersive` toggle ("off = constant n, k", `…TestWindows/MaterialEditorView.fs:594,604`).
+  Present it as two mutually-exclusive options (Constant / Dispersive) so the branch
+  reads as a choice; update the `absorbingToggle` / `dispersiveToggle` acceptance
+  tests (`:56,58`) to the two-option model. Cosmetic — the presentation change MUST
+  NOT alter the `MaterialComplexity` that `MaterialComplexityEditor.toComplexity`
+  (`…Domain/MaterialComplexityEditor.fs:699`) derives; it only restyles the eps
+  branch's toggle.
+
+---
+
+## References
+
+- Surrogate (Guid) primary key vs natural key — <https://en.wikipedia.org/wiki/Surrogate_key>
+- Referential integrity & restrict-on-delete (no cascade) — <https://en.wikipedia.org/wiki/Referential_integrity>
+- Separating a stable id from a translatable display label (i18n of user data) — <https://www.w3.org/International/questions/qa-international-multilingual>
+- NN/g — Tabs, Used Right — <https://www.nngroup.com/articles/tabs-used-right/>
+- Avalonia `TabControl` / `ContentControl` (single realized content region) — <https://docs.avaloniaui.net/docs/reference/controls/tabcontrol>
+- NN/g — Progressive Disclosure — <https://www.nngroup.com/articles/progressive-disclosure/>
+- Microsoft Learn — progressive-disclosure controls (remove, don't disable) — <https://learn.microsoft.com/en-us/windows/win32/uxguide/ctrl-progressive-disclosure-controls>
+- Optical activity tensor forms by point group (arXiv:2501.03684) — <https://arxiv.org/abs/2501.03684>
+- Quartz gyration dispersion (class 32) — *Appl. Opt.* 48(28), 5307 (2009) — <https://opg.optica.org/ao/abstract.cfm?uri=ao-48-28-5307>
+- Polder (gyromagnetic μ) tensor — <https://en.wikipedia.org/wiki/Polder_tensor>
+- Tauc–Lorentz model — <https://en.wikipedia.org/wiki/Tauc%E2%80%93Lorentz_model>
+- Forouhi–Bloomer model — <https://en.wikipedia.org/wiki/Forouhi%E2%80%93Bloomer_model>
+- Rakić et al., Brendel–Bormann metal optics (1998) — <https://pubmed.ncbi.nlm.nih.gov/18286006/>
