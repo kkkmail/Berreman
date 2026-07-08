@@ -1,0 +1,29 @@
+# Code judge — 019.slice-md cycle 1
+
+## Inputs read
+
+- Slice spec: `C:\GitHub\Berreman\specs\0035\.slices\019.slice-md`
+- State-of-the-world: `C:\GitHub\Berreman\specs\0035\.slices\019-state-of-the-world.md`
+- Impl-log: `C:\GitHub\Berreman\specs\0035\.slices\019-impl-log.md`
+- Gate results: build pass / unit-tests pass / constructor-unit-tests pass / ui-smoke pass / ui-tests pass
+- Critic critiques: (none — Berreman declares no project critics and none were supplied this cycle)
+
+## Rationale
+
+This is the `WIRE_UI` composition-acceptance slice for the category catalogue. The slice spec asks for two things: (1) the `CategoryProxy.createInMemory` (backed by `materialsReferencingCategory`) built beside the existing sample/material/library/experiments proxies and injected through `initMainWith` with the launcher path otherwise unchanged; (2) the ui-smoke suite rendering the reordered full-surface Materials/Library bays and all three editor windows (Material / Sample / Category) headless without throwing, with every gate at or above baseline. All five deterministic gates are reported `pass`, and the supervisor only spawns this sub-loop on green gates, so the `count_at_least` obligation (ui-smoke 105 → 106) is already satisfied by the gate engine.
+
+I read the diff directly (`git diff HEAD`) to reconcile the worker's central claim — that the root wiring is not new work this round but was landed by slice 009, making `Program.fs` a comment-only touch. The diff confirms this precisely: in `OpticalConstructor.App/Program.fs` the only `+`/`-` lines are comment text; the load-bearing lines `let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)` and `initMainWith library experiments materials samples categories` appear as unchanged context. So the CategoryProxy genuinely IS wired at the root beside the material/sample proxies, and the launcher path is untouched — the acceptance's wiring requirement holds. The worker recorded this interpretation choice in the impl-log Gotchas per the "don't ask the user" rule, citing the 0033/026 WIRE_UI precedent where the acceptance step likewise confirmed the root final rather than re-wiring. That is the most defensible reading of the slice text and it is consistent with the surrounding code.
+
+The substantive new surface this round is the added ui-smoke fact in `WireUiCompositionTests.fs`. I verified every symbol it touches resolves to a real seam: `WorkbenchIds.categoriesButton` (`"ManageCategoriesButton"`, `TableAndElementRotationView.fs:1939`), the `categoriesButton` host verb dispatching `MatOpenCategories` (line 2297), the update handler calling `model.launchers.openCategoryEditor model.categories` (lines 836–840), and `defaults.openCategoryEditor = fun categories -> CategoryEditorWindow(categories).Show()` (line 140). `CategoryEditorView.UiIds.window` is `"CategoryEditorWindow"`. The fact reuses the exact `mountRoot` / `Window.WindowOpenedEvent.Raised` / `clickOn` / `matchesId` pattern of the already-passing Material/Sample proof block a few lines above it, subscribing only after the Main window shows so exactly the requested editor arrives. Because the launcher receives `model.categories` — the proxy the root composed over `materialsReferencingCategory` — opening the real `CategoryEditorWindow` from the Materials bay is genuine end-to-end proof that the CategoryProxy is root-wired, distinct from `MainWorkbenchTests` (injected stores) and `CategoryEditorWindowTests` (stub proxy). This is the new externally-observable behavior, and it is exercised by a test in the diff, satisfying the done-green test-coverage criterion. The comment-only `Program.fs` change adds no new public surface, so it triggers no separate coverage obligation.
+
+The SoW and impl-log line up with the diff: both declare a comment-only `Program.fs` touch plus one new ui-smoke composition fact, expected baselines carried forward for the other three suites (unit-tests 119, constructor 447, ui-tests 329) and ui-smoke 105 → 106 — which matches exactly what the diff and gate results show. The remaining `.manifest.state.json`/`.claude/` churn is the arc-runner's/harness's own files, correctly left alone. Deferred items (disk-backed proxies, driving the editor's own verbs, external UIA) are legitimately out of this slice's scope and already covered elsewhere or unrequested.
+
+No critic raised any finding (none ran), no gate is missing or unrun, and there is no self-contradiction between the log and the code. Every done-green condition is met and none of the route-back or escalate triggers fire. Verdict: `done-green`.
+
+## Verdict
+
+done-green
+
+```json
+{"verdict": "done-green", "rationale": "All five gates pass (ui-smoke 105->106 satisfying count_at_least). The diff confirms the worker's claim: Program.fs is comment-only, with the CategoryProxy root-wiring (let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials); initMainWith library experiments materials samples categories) present as unchanged context — landed by slice 009, per the documented 0033/026 WIRE_UI precedent the worker recorded in Gotchas. The new WireUiCompositionTests ui-smoke fact exercises the sole new behavior end-to-end: Materials bay 'Categories…' -> MatOpenCategories -> launchers.openCategoryEditor model.categories -> CategoryEditorWindow.Show(), observed via Window.WindowOpenedEvent, proving the CategoryProxy is root-wired and the third editor opens headless without throwing. All referenced symbols (WorkbenchIds.categoriesButton, CategoryEditorView.UiIds.window, mountRoot/clickOn/matchesId seams) resolve to real code, and the fact mirrors the passing Material/Sample proof block. SoW and impl-log align with the diff; no critics ran; no route-back or escalate trigger fires.", "retry_hint": ""}
+```
