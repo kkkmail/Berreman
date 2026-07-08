@@ -66,6 +66,10 @@
              ChartStyle) compiles before ChartWindow.fs (the ScottPlot IO seam that maps it). -->
         <Compile Include="ExperimentChart.fs" />
         <Compile Include="ChartWindow.fs" />
+        <!-- Spec 0035 (016): the inline / embeddable form of the shared dual-axis ScottPlot chart (the
+             editor's live n/k preview and the Materials-bay View panel embed this AvaPlot host, built
+             through ChartPlot's shared rebuild path), replacing the deleted primitive inlineCanvas. -->
+        <Compile Include="EmbeddedChart.fs" />
     </ItemGroup>
 
     <ItemGroup>

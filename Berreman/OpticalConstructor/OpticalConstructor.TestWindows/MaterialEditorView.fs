@@ -987,13 +987,14 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
                | DispersiveComponents -> dispersiveBody))
     ] :> IView
 
-// -- the live preview (the step-19 dual-axis n/k chart, inline) -------------------------------
+// -- the live preview (the step-19 dual-axis n/k chart, embedded) -----------------------------
 
-/// The inline dual-axis rendering of the step-19 chart — the ONE shared canvas renderer
-/// (`NkDispersionChart.inlineCanvas`, spec 0033 step 024: the Materials workbench's View panel
-/// draws through it too), under this editor's stable preview id.
+/// The embedded dual-axis rendering of the step-19 chart — the ONE shared ScottPlot chart control
+/// (`OpticalConstructor.Controls.EmbeddedChart`, spec 0035 step 016: the Materials workbench's View
+/// panel embeds it too), over the chart's paired `nkDispersionStyle` seed and under this editor's
+/// stable preview id.
 let private previewCanvas (chart : ExperimentChart) : IView =
-    NkDispersionChart.inlineCanvas UiIds.previewChart chart
+    OpticalConstructor.Controls.EmbeddedChart.create UiIds.previewChart chart (NkDispersionChart.nkDispersionStyle chart)
 
 let private previewSection (m : Model) : IView * string =
     let chartOpt = previewProperties m |> Option.map (fun p -> NkDispersionChart.nkDispersionChart p Nanometer previewRange)

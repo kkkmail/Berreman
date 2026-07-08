@@ -143,6 +143,12 @@
              proofs that selecting each bay in turn realizes exactly that bay's content and no other
              pane, with no styled-element recycling error over the live FuncUI patch path. -->
         <Compile Include="RibbonPaneTests.fs" />
+        <!-- Spec 0035 (016): the shared dual-axis ScottPlot chart (OpticalConstructor.Controls.EmbeddedChart)
+             embedded as the Material editor's n/k preview and the Materials-bay View panel (inlineCanvas
+             deleted) — headless render proofs that the embedded control carries n (left) / k (right), draws
+             n and k for every model kind incl. the four transcendental, and rasterizes one frame; and both
+             host sites embed the AvaPlot and render for a dispersive (incl. transcendental) + non-dispersive. -->
+        <Compile Include="EmbeddedChartTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

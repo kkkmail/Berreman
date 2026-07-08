@@ -2184,9 +2184,9 @@ let private materialsMessageRow (model : Model) : IView list =
           ] :> IView ]
 
 /// The Materials View panel: the entry's read-only metadata plus the step-19 dual-axis n/k
-/// chart over the editor's preview range, drawn by the ONE shared inline renderer
-/// (`NkDispersionChart.inlineCanvas`). Resolved through the proxy at render time, so a removed
-/// entry's panel vanishes with its row.
+/// chart over the editor's preview range, embedded through the ONE shared ScottPlot chart control
+/// (`OpticalConstructor.Controls.EmbeddedChart`, spec 0035 step 016). Resolved through the proxy at
+/// render time, so a removed entry's panel vanishes with its row.
 let private materialViewPanel (model : Model) : IView list =
     match model.viewedMaterial with
     | None -> []
@@ -2214,7 +2214,7 @@ let private materialViewPanel (model : Model) : IView list =
                                   TextBlock.maxWidth 760.0
                                   TextBlock.text (entry.description |> Option.defaultValue "")
                               ]
-                              NkDispersionChart.inlineCanvas WorkbenchIds.materialNkChart chart
+                              OpticalConstructor.Controls.EmbeddedChart.create WorkbenchIds.materialNkChart chart (NkDispersionChart.nkDispersionStyle chart)
                           ]
                       ])
               ] :> IView ]
