@@ -1,0 +1,106 @@
+# Stats for 0035
+
+Generated: 2026-07-08T13:40:17Z (schema 7, tool 7)
+
+## TL;DR
+
+| arc_status | wall_clock_s | total_usd | slices | top_anomaly |
+| --- | --- | --- | --- | --- |
+| COMPLETE | 42302.000 | (none) | 19 | idle_gaps_over_30min |
+
+## timing
+
+| key | value |
+| --- | --- |
+| arc_started_at | 2026-07-07T20:04:46Z |
+| arc_ended_at | 2026-07-08T07:49:48Z |
+| total_wall_clock_seconds | 42302.000 |
+| spec_writer_seconds | 7960.000 |
+| splitter_seconds | (none) |
+| arc_runner_seconds | 31998.000 |
+| idle_gap_seconds | 29182.000 |
+| largest_gaps | 2026-07-08T06:05:43Z=+2560s, 2026-07-08T00:14:56Z=+2381s, 2026-07-08T05:29:48Z=+1816s, 2026-07-08T02:39:12Z=+1755s |
+
+## cost
+
+| key | value |
+| --- | --- |
+| total_usd | (none) |
+| total_tokens | (none) |
+| by_phase | (empty) |
+| by_role | splitter=(none), arc_runner_worker=(none), architecture_critic=(none), reuse_critic=(none), code_judge=(none), resolver=(none), spec_author=(none), claim_checker=(none), gate_keeper=(none), handoff_verifier=(none) |
+| by_slice | (empty) |
+| cost_per_accepted_slice | (none) |
+| review_share | (none) |
+
+## iterations
+
+| key | value |
+| --- | --- |
+| spec_writer.cycles_by_intent | spec=2, claim-check=2, gates=1, handoff=1 |
+| splitter.rounds | 0 |
+| splitter.verifier_iterations_per_round | max=0 median=0.000 |
+| arc_runner.slice_attempts_total | 23 |
+| arc_runner.slices_with_retries | 4 |
+| arc_runner.review_cycles_per_slice | max=2 median=1.000 |
+| arc_runner.resolver_invocations | 0 |
+| arc_runner.route_backs_total | 1 |
+| arc_runner.max_route_backs_per_slice | 1 |
+
+## outcomes
+
+| key | value |
+| --- | --- |
+| arc_status | COMPLETE |
+| arc_escalation_trigger | (none) |
+| gate_pass_rate | 0.981 |
+| gates_failed_top | ui-smoke: failures=1 last=2026-07-08T02:39:06+00:00 exit=1; build: failures=1 last=2026-07-08T06:49:24+00:00 exit=1 |
+| hangup_count | 0 |
+| operator_overrides | 0 |
+
+## sizes
+
+| key | value |
+| --- | --- |
+| spec_md_bytes | 21440 |
+| spec_md_lines | 344 |
+| spec_md_section_count | 16 |
+| slice_count | 19 |
+| gate_count_chosen | 95 |
+| gate_count_proposed_open | 0 |
+| per_slice | slice 001=sow:6098b impl:10069b tests:0; slice 002=sow:5539b impl:6452b tests:0; slice 003=sow:6422b impl:6685b tests:0; slice 004=sow:6809b impl:5345b tests:0; slice 005=sow:7583b impl:5383b tests:0; slice 006=sow:9754b impl:2664b tests:0; slice 007=sow:7146b impl:2808b tests:0; slice 008=sow:10153b impl:5508b tests:0; slice 009=sow:8003b impl:7090b tests:0; slice 010=sow:7288b impl:6671b tests:0; slice 011=sow:6489b impl:5682b tests:0; slice 012=sow:3830b impl:3894b tests:0; slice 013=sow:5095b impl:7895b tests:0; slice 014=sow:5100b impl:5297b tests:0; slice 015=sow:6647b impl:7325b tests:0; slice 016=sow:7486b impl:8759b tests:0; slice 017=sow:3117b impl:4649b tests:0; slice 018=sow:4231b impl:6055b tests:0; slice 019=sow:7227b impl:4807b tests:0 |
+| git | files_touched=400, lines_added=31902, lines_removed=16655, commit_count=28 |
+
+## agent_mix
+
+| role | agent_name | runs | escalations |
+| --- | --- | --- | --- |
+| splitter | (none) | 0 | 0 |
+| arc_runner_worker | (none) | 0 | 0 |
+| architecture_critic | (none) | 0 | 0 |
+| reuse_critic | (none) | 0 | 0 |
+| code_judge | claude-opus-4-7 | 20 | 0 |
+| resolver | (none) | 0 | 0 |
+| spec_author | (none) | 0 | 0 |
+| claim_checker | (none) | 0 | 0 |
+| gate_keeper | (none) | 0 | 0 |
+| handoff_verifier | (none) | 0 | 0 |
+| implement_worker | claude-opus-4-7 | 17 | 0 |
+| add_contract_worker | claude-opus-4-7 | 1 | 0 |
+| implement_contract_worker | claude-opus-4-7 | 1 | 0 |
+| add_component_worker | claude-opus-4-7 | 3 | 0 |
+| wire_ui_worker | claude-opus-4-7 | 1 | 0 |
+
+## anomalies
+
+| category | entries |
+| --- | --- |
+| review_cost_exceeds_worker | (none) |
+| resolver_invocations_gt_one | (none) |
+| gates_over_estimate | (none) |
+| idle_gaps_over_30min | 2026-07-08T00:14:56Z=2381.0; 2026-07-08T05:29:48Z=1816.0; 2026-07-08T06:05:43Z=2560.0 |
+| escalations | (none) |
+| hangups | (none) |
+| operator_overrides | (none) |
+
+

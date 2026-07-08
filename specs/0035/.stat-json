@@ -1,0 +1,318 @@
+{
+  "timing": {
+    "arc_started_at": "2026-07-07T20:04:46Z",
+    "arc_ended_at": "2026-07-08T07:49:48Z",
+    "total_wall_clock_seconds": 42302.0,
+    "spec_writer_seconds": 7960.0,
+    "splitter_seconds": null,
+    "arc_runner_seconds": 31998.0,
+    "idle_gap_seconds": 29182.0,
+    "largest_gaps": [
+      {
+        "at": "2026-07-08T06:05:43Z",
+        "seconds": 2560.0
+      },
+      {
+        "at": "2026-07-08T00:14:56Z",
+        "seconds": 2381.0
+      },
+      {
+        "at": "2026-07-08T05:29:48Z",
+        "seconds": 1816.0
+      },
+      {
+        "at": "2026-07-08T02:39:12Z",
+        "seconds": 1755.0
+      }
+    ]
+  },
+  "cost": {
+    "total_usd": null,
+    "total_tokens": null,
+    "by_phase": {},
+    "by_role": {
+      "splitter": null,
+      "arc_runner_worker": null,
+      "architecture_critic": null,
+      "reuse_critic": null,
+      "code_judge": null,
+      "resolver": null,
+      "spec_author": null,
+      "claim_checker": null,
+      "gate_keeper": null,
+      "handoff_verifier": null
+    },
+    "by_slice": {},
+    "cost_per_accepted_slice": null,
+    "review_share": null,
+    "row_warnings": {}
+  },
+  "iterations": {
+    "spec_writer": {
+      "cycles_by_intent": {
+        "spec": 2,
+        "claim-check": 2,
+        "gates": 1,
+        "handoff": 1
+      }
+    },
+    "splitter": {
+      "rounds": 0,
+      "verifier_iterations_per_round": {
+        "max": 0,
+        "median": 0.0
+      }
+    },
+    "arc_runner": {
+      "slice_attempts_total": 23,
+      "slices_with_retries": 4,
+      "review_cycles_per_slice": {
+        "max": 2,
+        "median": 1.0
+      },
+      "resolver_invocations": 0,
+      "route_backs_total": 1,
+      "max_route_backs_per_slice": 1
+    }
+  },
+  "outcomes": {
+    "arc_status": "COMPLETE",
+    "arc_escalation_trigger": null,
+    "gate_pass_rate": 0.9809523809523809,
+    "gates_failed_top": [
+      {
+        "name": "ui-smoke",
+        "failures": 1,
+        "last_capture": "2026-07-08T02:39:06+00:00",
+        "last_exit_code": 1
+      },
+      {
+        "name": "build",
+        "failures": 1,
+        "last_capture": "2026-07-08T06:49:24+00:00",
+        "last_exit_code": 1
+      }
+    ],
+    "hangup_count": 0,
+    "operator_overrides": 0
+  },
+  "sizes": {
+    "spec_md_bytes": 21440,
+    "spec_md_lines": 344,
+    "spec_md_section_count": 16,
+    "slice_count": 19,
+    "gate_count_chosen": 95,
+    "gate_count_proposed_open": 0,
+    "per_slice": {
+      "slice 001": {
+        "sow_bytes": 6098,
+        "impl_log_bytes": 10069,
+        "selected_test_classes_count": 0
+      },
+      "slice 002": {
+        "sow_bytes": 5539,
+        "impl_log_bytes": 6452,
+        "selected_test_classes_count": 0
+      },
+      "slice 003": {
+        "sow_bytes": 6422,
+        "impl_log_bytes": 6685,
+        "selected_test_classes_count": 0
+      },
+      "slice 004": {
+        "sow_bytes": 6809,
+        "impl_log_bytes": 5345,
+        "selected_test_classes_count": 0
+      },
+      "slice 005": {
+        "sow_bytes": 7583,
+        "impl_log_bytes": 5383,
+        "selected_test_classes_count": 0
+      },
+      "slice 006": {
+        "sow_bytes": 9754,
+        "impl_log_bytes": 2664,
+        "selected_test_classes_count": 0
+      },
+      "slice 007": {
+        "sow_bytes": 7146,
+        "impl_log_bytes": 2808,
+        "selected_test_classes_count": 0
+      },
+      "slice 008": {
+        "sow_bytes": 10153,
+        "impl_log_bytes": 5508,
+        "selected_test_classes_count": 0
+      },
+      "slice 009": {
+        "sow_bytes": 8003,
+        "impl_log_bytes": 7090,
+        "selected_test_classes_count": 0
+      },
+      "slice 010": {
+        "sow_bytes": 7288,
+        "impl_log_bytes": 6671,
+        "selected_test_classes_count": 0
+      },
+      "slice 011": {
+        "sow_bytes": 6489,
+        "impl_log_bytes": 5682,
+        "selected_test_classes_count": 0
+      },
+      "slice 012": {
+        "sow_bytes": 3830,
+        "impl_log_bytes": 3894,
+        "selected_test_classes_count": 0
+      },
+      "slice 013": {
+        "sow_bytes": 5095,
+        "impl_log_bytes": 7895,
+        "selected_test_classes_count": 0
+      },
+      "slice 014": {
+        "sow_bytes": 5100,
+        "impl_log_bytes": 5297,
+        "selected_test_classes_count": 0
+      },
+      "slice 015": {
+        "sow_bytes": 6647,
+        "impl_log_bytes": 7325,
+        "selected_test_classes_count": 0
+      },
+      "slice 016": {
+        "sow_bytes": 7486,
+        "impl_log_bytes": 8759,
+        "selected_test_classes_count": 0
+      },
+      "slice 017": {
+        "sow_bytes": 3117,
+        "impl_log_bytes": 4649,
+        "selected_test_classes_count": 0
+      },
+      "slice 018": {
+        "sow_bytes": 4231,
+        "impl_log_bytes": 6055,
+        "selected_test_classes_count": 0
+      },
+      "slice 019": {
+        "sow_bytes": 7227,
+        "impl_log_bytes": 4807,
+        "selected_test_classes_count": 0
+      }
+    },
+    "git": {
+      "files_touched": 400,
+      "lines_added": 31902,
+      "lines_removed": 16655,
+      "commit_count": 28
+    }
+  },
+  "agent_mix": {
+    "roles": {
+      "splitter": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "arc_runner_worker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "architecture_critic": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "reuse_critic": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "code_judge": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 20,
+        "escalations": 0
+      },
+      "resolver": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "spec_author": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "claim_checker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "gate_keeper": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "handoff_verifier": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "implement_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 17,
+        "escalations": 0
+      },
+      "add_contract_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      },
+      "implement_contract_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      },
+      "add_component_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 3,
+        "escalations": 0
+      },
+      "wire_ui_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      }
+    }
+  },
+  "anomalies": {
+    "review_cost_exceeds_worker": [],
+    "resolver_invocations_gt_one": [],
+    "gates_over_estimate": [],
+    "idle_gaps_over_30min": [
+      {
+        "entity": "2026-07-08T00:14:56Z",
+        "value": 2381.0
+      },
+      {
+        "entity": "2026-07-08T05:29:48Z",
+        "value": 1816.0
+      },
+      {
+        "entity": "2026-07-08T06:05:43Z",
+        "value": 2560.0
+      }
+    ],
+    "escalations": [],
+    "hangups": [],
+    "operator_overrides": []
+  },
+  "meta": {
+    "schema_version": 7,
+    "spec_id": "0035",
+    "generated_at": "2026-07-08T13:40:17Z",
+    "tool_version": 7,
+    "warnings": []
+  }
+}
