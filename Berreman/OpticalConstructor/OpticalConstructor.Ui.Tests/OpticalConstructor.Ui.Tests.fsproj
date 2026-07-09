@@ -168,8 +168,8 @@
              lives ONLY here, never in the pure OpticalConstructor.Tests project. The
              .XUnit helper is intentionally omitted: it binds to xUnit v2, while this
              project stays on xunit.v3 (see TestApp.fs). Versions track Avalonia 11.3.4. -->
-        <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     </ItemGroup>
 
     <ItemGroup>
