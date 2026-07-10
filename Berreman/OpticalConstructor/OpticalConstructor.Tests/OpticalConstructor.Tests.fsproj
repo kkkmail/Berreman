@@ -50,18 +50,21 @@
         <!-- Persistence II (§I.5-I.8, slice 013). -->
         <Compile Include="HistoryTests.fs" />
         <Compile Include="ExportImportTests.fs" />
-        <!-- Part J UX shell I (§J.1-J.5, slice 014). -->
+        <!-- Part J UX shell I (§J.1-J.5, slice 014). TemplatesTests left with the
+             retired Templates module (spec 0038 Part B.1). -->
         <Compile Include="RepeatBuilderTests.fs" />
-        <Compile Include="TemplatesTests.fs" />
         <Compile Include="SchematicGeometryTests.fs" />
         <!-- Part J UX shell II (§J.6-J.9, slice 015). -->
         <Compile Include="ValidationTests.fs" />
         <Compile Include="EnvironmentRoundTripTests.fs" />
+        <!-- Spec 0038 Part B.1 (step 002): the surviving AppShell layout seam — the
+             Avalonia-free setPanelVisible reducer over the persisted PanelLayout. -->
+        <Compile Include="AppShellLayoutTests.fs" />
         <!-- Part J UX shell III (§J.10-J.12, slice 016, LAST). The AC-J12
              SystemView3D geometry portion is added to SchematicGeometryTests.fs
-             (registered above) per the slice's files-in-scope. -->
+             (registered above) per the slice's files-in-scope. HelpGalleryTests
+             left with the retired Help module (spec 0038 Part B.1). -->
         <Compile Include="JobRunnerCancelTests.fs" />
-        <Compile Include="HelpGalleryTests.fs" />
         <!-- Spec 0026 Part G/H (slice 007): element-group + experiment-collection domain
              (member modes, lossless swap) and the separate groups/collections library
              round-trip + schema validation. Pure Domain + Storage (Avalonia-free). -->

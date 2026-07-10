@@ -21,118 +21,43 @@
         <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
-    <!-- Slice 001 ships an empty placeholder; later UI slices add the MVU
-         model/update (no Avalonia type in the model, per P3) and view bodies. -->
+    <!-- Spec 0038 Part B.1 (step 002): the dead Elmish shell is retired. The old
+         root MVU surface (Shell/Ribbon/ConstructionView/ConstructorView/panel views)
+         and every module it alone kept alive are deleted, not paralleled. What
+         remains are the pure, tested cores (StackEditor, Schematic, Sources,
+         SynthesisFitPage, the Part H chart data builders, RepeatBuilder, Validation,
+         MaterialPreview, JobRunner, SystemView3D), the persisted-environment spine
+         (Localization → UserEnvironment → the trimmed AppShell theme/layout seam),
+         and the Ui.fs placeholder. Later 0038 steps REAL-MOVE the workbench in here. -->
     <ItemGroup>
         <Compile Include="Ui.fs" />
         <Compile Include="MaterialPreview.fs" />
         <Compile Include="StackEditor.fs" />
         <Compile Include="Sources\SourceEditorView.fs" />
         <Compile Include="Sources\PolarizationPicker.fs" />
-        <Compile Include="ConstructionPage.fs" />
         <Compile Include="SynthesisFitPage.fs" />
-        <!-- Part H charts (slice 012): ChartSettings + SeriesData first, then the
-             views that consume them. -->
+        <!-- Part H chart data (slice 012): ChartSettings + SeriesData first, then
+             the builders that consume them. -->
         <Compile Include="Charts\ChartSettings.fs" />
         <Compile Include="Charts\SeriesData.fs" />
-        <Compile Include="Charts\Plot1DView.fs" />
-        <Compile Include="Charts\Plot3DView.fs" />
         <Compile Include="Charts\Readout.fs" />
         <Compile Include="Charts\PolarizationPlots.fs" />
-        <Compile Include="Charts\CieView.fs" />
-        <!-- Part J UX shell I (slice 014): RepeatBuilder before Templates (the
-             DBR template calls RepeatBuilder.expand); Schematic and Workspace
-             consume StackEditor / the Part H charts already compiled above. -->
         <Compile Include="RepeatBuilder.fs" />
-        <Compile Include="Templates.fs" />
         <Compile Include="Schematic.fs" />
-        <Compile Include="Workspace.fs" />
         <!-- Spec 0026 Part I (slice 003): EN/RU localization. The pure runtime
              string loader + completeness check; defines the `Language` DU
              UserEnvironment's `language` field reuses, so it compiles FIRST. -->
         <Compile Include="Localization.fs" />
         <!-- Part J UX shell II (slice 015): UserEnvironment (EnvironmentSettings/
-             Preferences) first; Validation is standalone; AppShell consumes the
-             UserEnvironment theme/layout types and is authored against the public
-             MIT FuncUI DSL (the audit-gated clone stays UNREFERENCED). -->
+             Preferences) first; Validation is standalone; AppShell keeps the
+             theme/layout seam over the UserEnvironment types (spec 0038 B.1). -->
         <Compile Include="UserEnvironment.fs" />
         <Compile Include="Validation.fs" />
         <Compile Include="AppShell.fs" />
-        <!-- Part J UX shell III (slice 016, LAST): JobRunner (the shared background
-             sweep/fit harness) is standalone; Help builds gallery samples through the
-             Templates open path compiled above; SystemView3D consumes the BeamTree.
-             No FuncUI-clone reference is added (the clone stays UNREFERENCED). -->
+        <!-- JobRunner (the shared background sweep/fit harness) is standalone;
+             SystemView3D consumes the BeamTree. -->
         <Compile Include="JobRunner.fs" />
-        <Compile Include="Help.fs" />
         <Compile Include="SystemView3D.fs" />
-        <!-- spec 0024 Part U5 (slice 002): the shared renderer-host adapters and the
-             chart panel view, composed before the root surface. ChartHosts is the
-             single hosting seam U3/U4/U6/U8 reuse; ChartView consumes it + the frozen
-             Charts builders above. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
-        <Compile Include="ChartHosts.fs" />
-        <Compile Include="ChartView.fs" />
-        <!-- spec 0024 Part U3 (slice 004): the materials panel view. Reuses the
-             slice-002 ChartHosts WebView2 adapter for the Plotly dispersion preview,
-             the frozen MaterialPreview / MaterialLibrary / StackEditor seams, and the
-             ConstructionPage edit route. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
-        <Compile Include="MaterialsView.fs" />
-        <!-- spec 0024 Part U4 (slice 005): the sources panel view. Reuses the slice-002
-             ChartHosts AvaPlot adapter for the polarization ellipse and the WebView2
-             adapter for the Poincaré sphere, plus the frozen SourceEditorView /
-             PolarizationPicker / PolarizationPlots seams. Public MIT FuncUI DSL only;
-             clone UNREFERENCED. -->
-        <Compile Include="SourceView.fs" />
-        <!-- spec 0024 Part U6 (slice 006): the results panel view (schematic +
-             ray overlay + multi-system comparison). Reuses the slice-002 ChartHosts
-             Canvas adapter for the schematic/ray and the AvaPlot adapter for the
-             comparison overlay, plus the frozen Schematic / Workspace seams. Public
-             MIT FuncUI DSL only; clone UNREFERENCED. -->
-        <Compile Include="ResultsView.fs" />
-        <!-- spec 0024 Part U7 (slice 007): the synthesis/fit page view. Reuses the
-             slice-002 ChartHosts AvaPlot adapter for the fit-vs-measured overlay and
-             the frozen SynthesisFitPage seam (progress / accept-gate / overlay); the
-             background run is wired in Shell.fs (§0.4/§0.5). Public MIT FuncUI DSL
-             only; clone UNREFERENCED. -->
-        <Compile Include="FitView.fs" />
-        <!-- spec 0024 Part U8 (slice 008): the lifecycle toolbar (+ IoMsg) and the
-             2-D-orthographic 3-D system view, composed before the root surface.
-             LifecycleView owns the open/save/new/template/gallery sub-message Shell
-             wraps; SystemView3DView renders the frozen SystemView3D geometry on the
-             slice-002 Canvas host. Public MIT FuncUI DSL only; clone UNREFERENCED. -->
-        <Compile Include="LifecycleView.fs" />
-        <Compile Include="SystemView3DView.fs" />
-        <!-- Spec 0026 Part C / Part J (slice 004): the standardized control flavours,
-             the net-new top-down table layout geometry + drawing weights, and the one
-             standard cylinder drawer. Pure projections (no Avalonia type) reusing
-             SchematicColor; Controls precedes ConstructionView, which now draws its CTA
-             colours from Controls (J.2). ConstructorTable owns the named drawing-weight
-             constants Drawer consumes, so it compiles first. Schematic.fs is left
-             untouched (the top-down surface is net-new). Public MIT FuncUI DSL only. -->
-        <Compile Include="Controls.fs" />
-        <Compile Include="ConstructorTable.fs" />
-        <Compile Include="Drawer.fs" />
-        <!-- Spec 0026 Part E (slice 005): the centralized command registry and the FuncUI
-             Canvas MVU page. Commands is pure (no Avalonia type) and persistence-agnostic
-             (it consumes the slice-003 UserEnvironment KeyMap only as string overrides),
-             so it compiles after UserEnvironment and before ConstructorView, which drives
-             the slice-004 ConstructorTable/Drawer geometry. Public MIT FuncUI DSL only. -->
-        <Compile Include="Commands.fs" />
-        <Compile Include="ConstructorView.fs" />
-        <!-- Spec 0026 Part D / Part F (slice 006): the ribbon-and-menu shell + the
-             standard element catalogue, and the context-sensitive local help. LocalHelp
-             is pure (Commands + Localization only) and owns the command-label-key mapping
-             the ribbon reuses, so it compiles first; Ribbon then projects the ribbon tabs
-             and collapsed menus from the ONE slice-005 Commands registry and renders over
-             the slice-005 ConstructorView page. Both take plain shell callbacks (never
-             referencing Shell), so the compile order stays acyclic. Public MIT FuncUI DSL
-             only; the audit-gated clone stays UNREFERENCED. -->
-        <Compile Include="LocalHelp.fs" />
-        <Compile Include="Ribbon.fs" />
-        <!-- spec 0024 Part U1 (slice 001): the read-only stack-panel view and the
-             root MVU surface, composed LAST over every sibling module above. Authored
-             against the public MIT FuncUI DSL + Elmish; the clone stays UNREFERENCED. -->
-        <Compile Include="ConstructionView.fs" />
-        <Compile Include="Shell.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
