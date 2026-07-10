@@ -345,3 +345,4 @@ ASALocalRun/
 # files, judge MDs, cost ledger) stays committable as the audit trail.
 /specs/*/.artifacts/*console*.log
 /specs/*/.artifacts/finalize-commit.log
+/specs/*/.artifacts/
