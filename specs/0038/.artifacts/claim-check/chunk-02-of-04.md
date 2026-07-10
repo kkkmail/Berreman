@@ -11,21 +11,21 @@
       "id": 2,
       "phrase": "no `appsettings.json` exists (user preferences live in `environment.json`, `…Ui/UserEnvironment.fs:181-185`)",
       "spec_location": "Part C §C.0",
-      "evidence": "Glob **/appsettings.json over C:/GitHub/Berreman -> 0 files. Read OpticalConstructor.Ui/UserEnvironment.fs:181 -> `type EnvironmentSettings` (favorites/lastFolders/recentFiles at :183-185, `preferences` field at :192); Grep 'environment.json' -> :338 `Path.Combine(dir, \"environment.json\")` is the persisted file name.",
+      "evidence": "Glob **/appsettings.json over C:/GitHub/Berreman -> 0 files. Read OpticalConstructor.Ui/UserEnvironment.fs:181 -> `type EnvironmentSettings` (favorites/lastFolders/recentFiles at :183-185); Grep 'environment.json' -> :338 `Path.Combine(dir, \"environment.json\")` is the persisted file name.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 3,
       "phrase": "`Softellect.Sys` **10.1.301.54**, already referenced by `…Storage/OpticalConstructor.Storage.fsproj`",
       "spec_location": "Part C §C.0",
-      "evidence": "Grep OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj -> line 74 `<PackageReference Include=\"Softellect.Sys\" Version=\"10.1.301.54\" />`; obj/project.assets.json resolves `Softellect.Sys/10.1.301.54`.",
+      "evidence": "Read OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj -> line 74 `<PackageReference Include=\"Softellect.Sys\" Version=\"10.1.301.54\" />`; obj/project.assets.json resolves `Softellect.Sys/10.1.301.54`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 4,
       "phrase": "its `tryCreate` opens `appsettings.json`, its `SetOnMissing = true` writes missing keys' defaults back, and it exposes typed `get*OrDefault` accessors and `tryGetConnectionString`",
       "spec_location": "Part C §C.0",
-      "evidence": "Verified against the Softellect source checkout C:/GitHub/Softellect/Sys/AppSettings.fs (not the package binary): `let SetOnMissing = true` :16, `type AppSettingsProvider` :411, typed accessors getString/Int/Decimal/Double/Guid/Bool/FolderName/FileNameOrDefault :412-419, `tryGetConnectionString` :439, `static member tryCreate` overloads :478-484 opening the default `appSettingsFile`.",
+      "evidence": "Verified against the Softellect source checkout C:/GitHub/Softellect/Sys/AppSettings.fs: `let SetOnMissing = true` :16, `type AppSettingsProvider` :411, typed accessors getString/Int/Decimal/Double/Guid/Bool/FolderName/FileNameOrDefault :412-419, `tryGetConnectionString` :439, `static member tryCreate` overloads :471-484 (the argless :484 opening the default `appSettingsFile`). Member names AppSettingsProvider/tryCreate/SetOnMissing/tryGetConnectionString/OrDefault also all present in the cached Softellect.Sys.dll binary.",
       "verdict": "CONFIRMED"
     },
     {
@@ -88,7 +88,7 @@
       "id": 13,
       "phrase": "the existing verbs Add / Edit / Remove / Categories… rewired to the window",
       "spec_location": "Part E §E.0",
-      "evidence": "Anchored via the adjacent materialsBay pointer. MaterialsControls.fs verb row: Add :251, Edit :245-246, Remove :254 (button ids Add/Edit/RemoveMaterialButton :111-115); the host-added 'Categories…' verb at TableAndElementRotationView.fs:2297 (`categoriesRow`), composed into `materialsBay` at :2309. All four verbs exist today.",
+      "evidence": "Anchored via the adjacent materialsBay pointer. MaterialsControls.fs verb row: Add :251, Edit :245-246, Remove :254 (button ids Add/Edit/RemoveMaterialButton :111-115); the host-added 'Categories…' verb at TableAndElementRotationView.fs:2297 (`categoriesRow` :2293), composed into `materialsBay` at :2308-2309. All four verbs exist today.",
       "verdict": "CONFIRMED"
     },
     {
@@ -109,7 +109,7 @@
       "id": 16,
       "phrase": "Seeded SAMPLES remain `UserManaged` (they are editable examples today — recorded interpretation)",
       "spec_location": "Part F §F.0",
-      "evidence": "Inferred assumption-shape phrase ('editable examples today' — not in the trigger list). Seeded samples are `SeedSamples.all` mapped into `seedEntries` (ElementId.fs:532-533) and seed `SampleProxy.createInMemory` (comment :314-316); `SampleProxy` (:318-326) exposes updateSample/removeSample and Grep '[Pp]rotect' over OpticalConstructor.Domain -> 0 hits, so no protection concept exists today — seeded samples are ordinary editable entries.",
+      "evidence": "Inferred assumption-shape phrase ('editable examples today' — not in the trigger list). Seeded samples are `SeedSamples.all` mapped into `seedEntries` (ElementId.fs:532-533); `SampleProxy` (:318-326) exposes updateSample/removeSample over any sample, and Grep 'EntryProtection|ProtectedBuiltIn' over the repo -> 0 hits, so no protection concept exists today — seeded samples are ordinary editable entries (the editor's `EditSample` intent edits an existing sample in place, TableAndElementRotationView.fs:123-126).",
       "verdict": "CONFIRMED"
     },
     {

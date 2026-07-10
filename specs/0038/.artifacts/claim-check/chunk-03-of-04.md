@@ -11,7 +11,7 @@
       "id": 2,
       "phrase": "nothing is persisted yet, so the check is a seam — `versionsInUse : unit -> Set<VersionRef>` computed from the in-memory experiment store",
       "spec_location": "§H.0",
-      "evidence": "Negative current-state claim (phrase inferred). Grep 'Experiment' over OpticalConstructor.Storage/*.fs -> 0 hits (constructor experiments have no persistence); grep MaterialVersionId|SampleVersionId|VersionRef|EntryLifecycle|ProtectedBuiltIn repo-wide -> 0 hits (version identities do not exist yet, so no persisted artefact can reference a version); ProjectJson.fs serializes no scene/element/experiment content.",
+      "evidence": "Negative current-state claim (phrase inferred). Grep 'Experiment' over OpticalConstructor.Storage/*.fs -> 0 hits (constructor experiments have no persistence); grep MaterialVersionId|SampleVersionId|VersionRef|EntryLifecycle over the production tree -> 0 files (version identities do not exist yet, so nothing persisted can reference a version); grep ConstructionPage|ProjectFile|saveProject over OpticalConstructor.App and OpticalConstructor.TestWindows -> 0 hits (the live constructor has no project save wiring). The in-memory experiment store exists: Experiments.createInMemory wired at Program.fs:130.",
       "verdict": "CONFIRMED"
     },
     {
@@ -25,7 +25,7 @@
       "id": 4,
       "phrase": "Both registered proxies re-shape in place per §0.2",
       "spec_location": "§H.0",
-      "evidence": "Phrase inferred ('registered proxies' implies existing wiring); the §0.2 anchor lies outside this chunk. MaterialProxy.createInMemory documented and implemented at ElementId.fs:769 with the live SampleProxy store referenced at ElementId.fs:772; composition-root createInMemory wiring present in OpticalConstructor.App/Program.fs. 'Both' read from Part-H context as the material + sample proxies.",
+      "evidence": "Phrase inferred ('registered proxies' implies existing wiring); the §0.2 anchor lies outside this chunk. MaterialProxy.createInMemory documented at ElementId.fs:769-771 with the live step-005 SampleProxy store it is backed by; both wired at the composition root (Program.fs:139-140). 'Both' read from Part-H context as the material + sample proxies.",
       "verdict": "CONFIRMED"
     },
     {
@@ -39,14 +39,14 @@
       "id": 6,
       "phrase": "the OLD toggle-based `Groups.ExperimentCollection` (`…Domain/Groups.fs:114-129`)",
       "spec_location": "§I.0",
-      "evidence": "type ExperimentCollection at Groups.fs:114-129 (record 114-125 + static create 127-129); toggle-based as claimed — experiments/elements/groups are all Toggle list fields.",
+      "evidence": "module Groups at Groups.fs:13; type ExperimentCollection at Groups.fs:114-129 (record 114-125 + static create 128-129); toggle-based as claimed — experiments/elements/groups are all Toggle list fields.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 7,
       "phrase": "persisted inside the groups JSON whose load/save lives in `…Storage/GroupsLibrary.fs`",
       "spec_location": "§I.0",
-      "evidence": "OpticalConstructor.Storage/GroupsLibrary.fs exists: load at :115, save at :127, schema validate-on-load per :81; Groups.fs:144-147 GroupsLibrary record holds collections : ExperimentCollection list, the value that JSON file carries.",
+      "evidence": "OpticalConstructor.Storage/GroupsLibrary.fs exists: let load at :115, let save at :127; Groups.fs:144-147 GroupsLibrary record holds collections : ExperimentCollection list, the value that JSON file carries.",
       "verdict": "CONFIRMED"
     },
     {
@@ -60,7 +60,7 @@
       "id": 9,
       "phrase": "is renamed `WorkbenchToggleSet` (type rename only — the JSON shape is unchanged)",
       "spec_location": "§I.0",
-      "evidence": "Trigger 'unchanged'. Forward-looking constraint whose referenced existing artefact resolves: Groups.fs:111-113 doc — collections are stored in the SAME separate JSON file as groups and round-trip through it (AC-H1) — and GroupsLibrary.fs owns that file's load/save/schema, so the JSON shape the rename must preserve exists.",
+      "evidence": "Trigger 'unchanged'. Forward-looking constraint whose referenced existing artefact resolves: Groups.fs:111-113 doc — collections are stored in the SAME separate JSON file as groups (G.3) and round-trip through it (AC-H1) — and GroupsLibrary.fs owns that file's load/save/schema, so the JSON shape the rename must preserve exists.",
       "verdict": "CONFIRMED"
     },
     {
@@ -74,7 +74,7 @@
       "id": 11,
       "phrase": "NO disk format, `.ocproj` stays unwired (operator, Q25)",
       "spec_location": "§I.0",
-      "evidence": "Inferred ('stays'). The .ocproj seam exists (ProjectFile.fs:17 let extension = \".ocproj\") but carries no scene/experiment-collection content today: grep scene|placement|element over ProjectJson.fs -> only a matrix comment at :29; grep 'Experiment' over Storage/*.fs -> 0 hits. Scene/experiment-collection persistence is currently not wired into .ocproj, matching the claim.",
+      "evidence": "Inferred ('stays'). The .ocproj seam exists (ProjectFile.fs:17 let extension = \".ocproj\"; ProjectJson serializes the OLDER OpticalConstructorProject, Project.fs:26) but the live app wires none of it: grep ConstructionPage|ProjectFile|saveProject over OpticalConstructor.App and OpticalConstructor.TestWindows -> 0 hits, and grep 'Experiment' over Storage/*.fs -> 0 hits — scene/experiment-collection persistence is not wired into .ocproj today, matching the claim.",
       "verdict": "CONFIRMED"
     },
     {
@@ -88,7 +88,7 @@
       "id": 13,
       "phrase": "the readout/Details keep the text",
       "spec_location": "§J.0",
-      "evidence": "Phrase inferred ('keep' = unchanged). Both artefacts exist in TableAndElementRotationView.fs: readout automation id at :42 with TextBlocks at :1133/:2348 and readoutText at :1088; the Details bay at :237-239 ('the selected element's bound Library entry') with the bound-entry readout noted at :1297.",
+      "evidence": "Phrase inferred ('keep' = unchanged). Both artefacts exist in TableAndElementRotationView.fs: readout automation id at :42 with readoutText at :1088 and TextBlocks at :1133/:2348; the Details bay at :237-239 ('the selected element's bound Library entry') with the bound-entry readout noted at :1297.",
       "verdict": "CONFIRMED"
     },
     {
@@ -123,7 +123,7 @@
       "id": 18,
       "phrase": "`MuWithDispValue.toMuWithDisp`, `Berreman/Berreman/Dispersion.fs:671`",
       "spec_location": "§K.0",
-      "evidence": "member this.toMuWithDisp : MuWithDisp at exactly Berreman/Berreman/Dispersion.fs:671, on type MuWithDispValue (:667); the :662-666 doc confirms the Polder tensor semantics the spec describes.",
+      "evidence": "member this.toMuWithDisp : MuWithDisp at exactly Berreman/Berreman/Dispersion.fs:671, on type MuWithDispValue (:667); the :664-666 doc confirms the Polder tensor semantics the spec describes.",
       "verdict": "CONFIRMED"
     },
     {
@@ -158,7 +158,7 @@
       "id": 23,
       "phrase": "wiring the inert `EnvironmentSettings.lastFolders` (`…Ui/UserEnvironment.fs:184`, persisted but never read by any picker)",
       "spec_location": "§L.0",
-      "evidence": "lastFolders : string list at exactly UserEnvironment.fs:184; EnvironmentSettings is persisted per the :176-180 doc. Repo-wide grep for lastFolders -> only the definition, the empty default (:240) and EnvironmentRoundTripTests (:55,:98); no picker reads it — the negative half of the claim holds.",
+      "evidence": "lastFolders : string list at exactly UserEnvironment.fs:184; EnvironmentSettings is persisted per the :176-180 doc and the environment schema JSON. Repo-wide grep for lastFolders -> only the definition, the empty default (:240), the schema, and EnvironmentRoundTripTests (:55,:98); no picker reads it — the negative half of the claim holds.",
       "verdict": "CONFIRMED"
     },
     {
@@ -207,14 +207,14 @@
       "id": 30,
       "phrase": "Today's implementation of the proxy is the in-memory stores, i.e. seeding runs with no database at all",
       "spec_location": "§M.0",
-      "evidence": "Phrase inferred ('Today's implementation' is current-state phrasing; the SeedingProxy itself is new, the stores it wraps exist). createInMemory implementations exist in Domain (MaterialLibrary.fs, ElementId.fs) and are wired at the App composition root (Program.fs); 14 files reference createInMemory.",
+      "evidence": "Phrase inferred ('Today's implementation' is current-state phrasing; the SeedingProxy itself is new, the stores it wraps exist). createInMemory implementations exist in Domain (MaterialProxy/SampleProxy in ElementId.fs, CategoryProxy at MaterialLibrary.fs:572, Library/Experiments) and are wired at the App composition root (Program.fs:129-147).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 31,
       "phrase": "Two parallel recent-file stores exist",
       "spec_location": "§N.0",
-      "evidence": "Numeric-count claim, re-derived: grep recentFiles -> only EnvironmentSettings.recentFiles (Ui/UserEnvironment.fs:185, default :241, round-trip tests); the only other recent-file mechanism is the Storage/RecentFiles.fs module. Live count = 2, matches the cited count.",
+      "evidence": "Numeric-count claim, re-derived: grep recentFiles -> only EnvironmentSettings.recentFiles (Ui/UserEnvironment.fs:185, default :241, schema, round-trip tests); the only other recent-file mechanism is the Storage/RecentFiles.fs module. Live count = 2, matches the cited count.",
       "verdict": "CONFIRMED"
     },
     {
@@ -228,21 +228,21 @@
       "id": 33,
       "phrase": "the bounded-MRU module `…Storage/RecentFiles.fs` … (the Storage module, keeping its pure `bump` invariant)",
       "spec_location": "§N.0",
-      "evidence": "OpticalConstructor.Storage/RecentFiles.fs exists; let bump (path : string) (existing : string list) : string list at :38 — pure MRU (case-insensitive dedupe, push front, truncate to maxRecent), kept separate from the IO per the :35-37 doc.",
+      "evidence": "OpticalConstructor.Storage/RecentFiles.fs exists (module RecentFiles at :16); let bump (path : string) (existing : string list) : string list at :38 — pure MRU, bounded per the HistoryTests fold of 20 paths truncating to 16 (:82-85).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 34,
       "phrase": "replacing the per-control `UiIds` modules (id VALUES unchanged, so tests only re-point)",
       "spec_location": "§N.0",
-      "evidence": "Class-anchored grep 'module UiIds' -> 21 definitions: 11 across OpticalConstructor.Controls (CategoryControls, MaterialsControls, RendererControls, ElementPaletteControls, RayPositionControls, LibraryControls, SampleLibraryControls, Ribbon, LayerBandsControls, RotationControls, ExperimentControls) and 10 across OpticalConstructor.TestWindows views — the per-control modules exist as the plural claims.",
+      "evidence": "Class-anchored grep 'module UiIds' -> 21 definitions: 11 across OpticalConstructor.Controls (CategoryControls, ElementPaletteControls, ExperimentControls, LayerBandsControls, LibraryControls, MaterialsControls, RayPositionControls, RendererControls, Ribbon, RotationControls, SampleLibraryControls) and 10 across OpticalConstructor.TestWindows views — the per-control modules exist as the plural claims.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 35,
       "phrase": "The product launcher becomes `Main / Inverse / Materials / Library` (this order)",
       "spec_location": "§N.0 (also anchors §L.0 'The launcher's `Inverse`')",
-      "evidence": "Inferred ('becomes' implies an existing launcher). LauncherWindow at OpticalConstructor.App/Program.fs:156 ('The simple launcher form (Spec 0027): Main opens the existing Optical Constructor window', :152), set as the startup window at :252.",
+      "evidence": "Inferred ('becomes' implies an existing launcher). LauncherWindow at OpticalConstructor.App/Program.fs:156 ('The simple launcher form (Spec 0027): `Main` opens the existing Optical Constructor window', :152-153), set as the startup window at :252.",
       "verdict": "CONFIRMED"
     }
   ]

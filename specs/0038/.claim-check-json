@@ -1,698 +1,684 @@
 {
   "data_version": 7,
-  "spec_md_sha": "aa511b7ba99ee42922acf2ce787d0639a44bd270638b6733478e6b2a09445616",
+  "spec_md_sha": "342b71cf013441b69d104ca628f7a01c2ee3315a079d5f2e717ecc0ce4874252",
   "claims": [
     {
       "id": 1,
-      "phrase": "Full spec authored from the operator's preliminary spec `specs/0038/.manual/006-ui-standardization-preliminary-spec.md` (operator decisions Q1–Q24 of `003`, Q25–Q29 of `005`, and the three approved interpretation calls of its §17 are binding).",
-      "spec_location": "intro ¶1",
-      "evidence": "Inferred assumption-shape (cites existing operator artefacts; not in the trigger list). Glob specs/0038/.manual/ -> 006-ui-standardization-preliminary-spec.md, 003-comments.txt, 005-comments.txt all exist. Grep 003-comments.txt for Q1..Q24 -> 24 hits; Grep 005-comments.txt -> Q25–Q29 present (lines 4-10); Grep 006 -> '## 17. Decisions (from the operator, this cycle) + recorded interpretations' at line 561.",
+      "phrase": "Full spec authored from the operator's preliminary spec `specs/0038/.manual/006-ui-standardization-preliminary-spec.md` (operator decisions Q1–Q24 of `003`, Q25–Q29 of `005`, and the three approved interpretation calls of its §17 are binding)",
+      "spec_location": "header paragraph",
+      "evidence": "[inferred existing-artefact claim; phrase not in the trigger list] Glob specs/0038/.manual/* -> 006-ui-standardization-preliminary-spec.md, 003-comments.txt, and 005-comments.txt all present.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 2,
-      "phrase": "The ordered work lives in `.spec-jsonl`",
-      "spec_location": "intro ¶1",
-      "evidence": "Inferred assumption-shape (points at an existing bundle artefact). Glob specs/0038/.spec-* -> .spec-jsonl exists beside .spec-md and .spec-bundle.",
+      "phrase": "Follow the existing elevated-id precedents `MaterialId` (`…Domain/MaterialLibrary.fs:27`)",
+      "spec_location": "§0.1",
+      "evidence": "Read OpticalConstructor.Domain/MaterialLibrary.fs:27 -> `type MaterialId =` (single-case DU over Guid with `.value` :30, `create` :31, `tryCreate` :33).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 3,
-      "phrase": "Follow the existing elevated-id precedents `MaterialId` (`…Domain/MaterialLibrary.fs:27`)",
+      "phrase": "and `SampleId` / the preset DUs (`…Domain/ElementId.fs:139-192`)",
       "spec_location": "§0.1",
-      "evidence": "Read OpticalConstructor.Domain/MaterialLibrary.fs:27 -> `type MaterialId = | MaterialId of Guid` with .value (:30), create (:31), tryCreate (:33) — the elevated single-case DU as claimed.",
+      "evidence": "Read OpticalConstructor.Domain/ElementId.fs:139-192 -> `Sample` (:139, field `id : SampleId` at :141), `SourcePreset` :152, `DetectorKind` :161, `DetectorPreset` :165, `PolarizerKind` :174, `PolarizerPreset` :179, `LibraryEntry` :188 — the preset DUs are exactly inside the cited range. `type SampleId` itself is declared at :41 of the same file and is referenced inside the range.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 4,
-      "phrase": "and `SampleId` / the preset DUs (`…Domain/ElementId.fs:139-192`)",
-      "spec_location": "§0.1",
-      "evidence": "Read OpticalConstructor.Domain/ElementId.fs:139-192 -> Sample record (:139, field `id : SampleId` at :141), SourcePreset (:152), DetectorKind (:161), DetectorPreset (:165), PolarizerKind (:174), PolarizerPreset (:179), LibraryEntry (:188) — the preset DUs sit inside the cited range. Note: the `type SampleId` declaration itself (single-case Guid DU with .value/create) is at ElementId.fs:41, outside the cited range; the range covers its use plus the preset DUs.",
+      "phrase": "the Main-flow composition builds every store in memory at startup (`…App/Program.fs:129-147`, `createInMemory` proxies over the Domain seeds)",
+      "spec_location": "§0.2",
+      "evidence": "[inferred existing-wiring claim] Read OpticalConstructor.App/Program.fs:129-147 -> `Library.createInMemory ()` :129, `Experiments.createInMemory ()` :130, `SampleProxy.createInMemory ()` :139, `MaterialProxy.createInMemory (samplesReferencing samples)` :140, `CategoryProxy.createInMemory (...)` :147 — all five stores built in memory inside `MainConstructorWindow`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 5,
-      "phrase": "Nothing library-related is serialized yet, so re-typed structures replace old ones cleanly and every app start re-seeds in memory.",
+      "phrase": "The only library-shaped serialization in the tree is metadata-only and unwired from that composition — the §I.8 share/export file format (`…Storage/Report.fs:17-24`, module `MaterialLibrary`, whose persisted `MaterialEntryDto` at `:36` carries display metadata only)",
       "spec_location": "§0.2",
-      "evidence": "Inferred assumption-shape ('yet' = current-state claim); no <file>:<symbol> pointer. Grep contradicts the flat reading: OpticalConstructor.Storage/Report.fs:17-24 declares a 'Shareable material-library file format (§I.8 / R-4)' — module MaterialLibrary with a persisted-form MaterialEntryDto (:36) and schema-validated canonical-JSON export/import of `MaterialEntry list`; OpticalConstructor.Storage/MaterialImport.fs also imports/exports MaterialEntry (importRefractiveIndexInfo :407, importCsv :432, exportCsv :459). The narrower reading does hold: the live composition re-seeds in memory (OpticalConstructor.App/Program.fs:129-147, createInMemory over builtInEntries/seedEntries) and neither OpticalConstructor.App nor OpticalConstructor.TestWindows references any library file IO. Spec-writer should anchor/qualify the sentence (e.g. no persisted library STATE; the §I.8 share/export format in Storage/Report.fs is metadata-only and unwired from the Main flow).",
-      "verdict": "REFUTED-NO-POINTER"
+      "evidence": "Read OpticalConstructor.Storage/Report.fs:17-24 -> module doc comment at :17-23, `module MaterialLibrary` at :24; `type private MaterialEntryDto` at :36 with fields id/name/category/description only (comment: 'the library file carries the schema's display metadata only'). Grep for OpticalConstructor.Storage under OpticalConstructor.App -> only a prose comment at Program.fs:128; App.fsproj carries no Storage ProjectReference — unwired from the Main-flow composition.",
+      "verdict": "CONFIRMED"
     },
     {
       "id": 6,
-      "phrase": "The registered write-seam contracts `STORE_XDUO_0001 MaterialProxy` (`…Domain/MaterialLibrary.fs:506`) … keep their names, kinds, and declaring project",
+      "phrase": "and the import/export helpers (`…Storage/MaterialImport.fs` — `importRefractiveIndexInfo` `:407`, `importCsv` `:432`, `exportCsv` `:459`)",
       "spec_location": "§0.2",
-      "evidence": "Read MaterialLibrary.fs:496-514 -> doc comment names contract STORE_XDUO_0001; `[<ReferenceEquality>] type MaterialProxy` at :505-506, declared in OpticalConstructor.Domain as a record of Result-returning functions.",
+      "evidence": "Grep OpticalConstructor.Storage/MaterialImport.fs -> `let importRefractiveIndexInfo` :407, `let importCsv` :432, `let exportCsv` :459 — all three at exactly the cited lines.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 7,
-      "phrase": "and `STORE_XDUO_0002 SampleProxy` (`…Domain/ElementId.fs:318`)",
+      "phrase": "The registered write-seam contracts `STORE_XDUO_0001 MaterialProxy` (`…Domain/MaterialLibrary.fs:506`) ... keep their names, kinds, and declaring project",
       "spec_location": "§0.2",
-      "evidence": "Read ElementId.fs:309-326 -> doc comment names contract STORE_XDUO_0002; `[<ReferenceEquality>] type SampleProxy` at :317-318, declared in OpticalConstructor.Domain.",
+      "evidence": "Read/Grep OpticalConstructor.Domain/MaterialLibrary.fs -> `type MaterialProxy =` at :506 with contract comment 'spec 0033 steps 003/006, contract STORE_XDUO_0001' at :496; declared in OpticalConstructor.Domain as stated.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 8,
-      "phrase": "(the 0035 precedent of re-typing `MaterialEntry.category` through the same surface)",
+      "phrase": "and `STORE_XDUO_0002 SampleProxy` (`…Domain/ElementId.fs:318`)",
       "spec_location": "§0.2",
-      "evidence": "Class-anchored. Grep MaterialLibrary.fs -> :93-94 doc records that `MaterialEntry.category` and `MaterialQuery.category` are `CategoryId`-typed (spec 0035 step 001) — the re-typing precedent exists as described.",
+      "evidence": "Read/Grep OpticalConstructor.Domain/ElementId.fs -> `type SampleProxy =` at :318 with contract comment 'spec 0033 steps 004/005, contract STORE_XDUO_0002' at :309; declared in OpticalConstructor.Domain as stated.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 9,
-      "phrase": "the one persisted user file this spec touches, `environment.json`, is loaded totally with defaults on shape mismatch (`…App/Program.fs:33-35`)",
+      "phrase": "(the 0035 precedent of re-typing `MaterialEntry.category` through the same surface)",
       "spec_location": "§0.2",
-      "evidence": "Read App/Program.fs:33-35 -> comment: '`load` is total and falls back to the built-in `defaults` on a missing/invalid settings file'; :37 performs the load at startup.",
+      "evidence": "[class-anchored] Read OpticalConstructor.Domain/MaterialLibrary.fs:230-238 -> `type MaterialEntry` with `category : CategoryId` at :234; Storage/Report.fs:30-31 records 'the closed MaterialCategory union became a seeded catalogue keyed by CategoryId (spec 0035 step 001)' — the re-typing precedent exists as described.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 10,
-      "phrase": "the existing seam (`SampleProxy.createInMemory`, `…Domain/ElementId.fs:652`; `MaterialProxy.createInMemory`, `:722`)",
-      "spec_location": "§0.3",
-      "evidence": "Read ElementId.fs:650-652 -> `type SampleProxy with static member createInMemory` at :652; ElementId.fs:720-722 -> `type MaterialProxy with static member createInMemory` at :722. Both close over private `ref` Maps and both proxy types carry [<ReferenceEquality>], matching the claim.",
+      "phrase": "The one persisted user file this spec touches, `environment.json`, is loaded totally with defaults on shape mismatch (`…App/Program.fs:33-35`)",
+      "spec_location": "§0.2",
+      "evidence": "Read OpticalConstructor.App/Program.fs:33-35 -> doc comment: '`load` is total and falls back to the built-in `defaults` on a missing/invalid settings file'; `UserEnvironment.load (UserEnvironment.settingsPath ())` invoked at :37.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 11,
-      "phrase": "`.ocproj` stays unwired",
+      "phrase": "the existing seam (`SampleProxy.createInMemory`, `…Domain/ElementId.fs:652`",
       "spec_location": "§0.3",
-      "evidence": "Inferred assumption-shape (current-state claim), class-anchored on the `.ocproj` token. Grep 'ProjectFile|ocproj' -> 0 hits in OpticalConstructor.App and OpticalConstructor.TestWindows (the live Main flow); the machinery exists in OpticalConstructor.Storage (ProjectFile.fs) and is consumed only by the retired Ui shell (Shell.fs, ConstructionPage.fs) and tests. Operator confirmation at specs/0038/.manual/005-comments.txt:4 (Q25: '.ocproj are not wired yet').",
+      "evidence": "Read OpticalConstructor.Domain/ElementId.fs:652 -> `static member createInMemory () : SampleProxy =` inside `type SampleProxy with` (:650); closes over a `ref Map` seeded from `seedEntries` per :639-654.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 12,
-      "phrase": "(a) the existing `environment.json` persistence (`…Ui/UserEnvironment.fs`)",
+      "phrase": "`MaterialProxy.createInMemory`, `:722`)",
       "spec_location": "§0.3",
-      "evidence": "Glob -> OpticalConstructor.Ui/UserEnvironment.fs exists (the only UserEnvironment.fs in the tree); App/Program.fs:37 loads it at startup.",
+      "evidence": "Read OpticalConstructor.Domain/ElementId.fs:722 -> `static member createInMemory (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =` — the bare `:722` resolves in the same file as the preceding pointer (the type augmentation lives in ElementId.fs per MaterialLibrary.fs:502).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 13,
-      "phrase": "(c) the thin measured-data CSV file-read adapter behind `ExperimentDataProxy` (approved interpretation, preliminary §17.2)",
+      "phrase": "This spec writes NO catalogue, scene, or experiment files to disk and adds NO schema or import/export work; `.ocproj` stays unwired.",
       "spec_location": "§0.3",
-      "evidence": "Inferred assumption-shape (cites an existing operator-document section). Grep .manual/006-ui-standardization-preliminary-spec.md -> '## 17. Decisions (from the operator, this cycle) + recorded interpretations' at :561, and the document itself carries the same cross-reference 'parsers + `ExperimentDataProxy` (+ thin file adapter per §17.2)' at :624.",
+      "evidence": "[inferred existing-state claim, phrase 'stays unwired'] Grep 'ocproj' under Berreman/OpticalConstructor -> hits only in OpticalConstructor.Storage (ProjectFile/Autosave), the retired Ui shell paths exercised by tests, and test projects; the Main-flow composition (App/Program.fs:118-150) builds only in-memory proxies and App.fsproj carries no Storage ProjectReference — `.ocproj` is not wired into the Main flow today.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 14,
-      "phrase": "the documented pattern at `…Controls/MaterialsControls.fs:139-146`",
-      "spec_location": "§0.4",
-      "evidence": "Read Controls/MaterialsControls.fs:139-146 -> explanatory comment (:139-144) plus `automationId` helper (:145-146) setting AutomationProperties.AutomationId through FuncUI's attr builder — exactly the documented pattern claimed.",
+      "phrase": "The only real IO permitted: (a) the existing `environment.json` persistence (`…Ui/UserEnvironment.fs`)",
+      "spec_location": "§0.3",
+      "evidence": "Glob -> OpticalConstructor.Ui/UserEnvironment.fs exists; App/Program.fs:37 loads it at startup (`UserEnvironment.load (UserEnvironment.settingsPath ())`).",
       "verdict": "CONFIRMED"
     },
     {
       "id": 15,
-      "phrase": "the WebView2 chain was already resolved in 0035",
-      "spec_location": "§0.6",
-      "evidence": "Grep *.fsproj for WebView2 -> only OpticalConstructor.Ui.fsproj:176-187, a comment recording 'Spec 0035 §0.6 (slice 018): the Microsoft.Web.WebView2 package reference is DROPPED to clear the MSB3277 WindowsBase conflict at the reference level (never suppressed)'. No project references the package today.",
+      "phrase": "they use `AutomationProperties.AutomationId` (the documented pattern at `…Controls/MaterialsControls.fs:139-146`)",
+      "spec_location": "§0.4",
+      "evidence": "Read OpticalConstructor.Controls/MaterialsControls.fs:139-146 -> explanatory comment ('a freely-mutable attached property — unlike `Control.Name`', membership-change rationale) at :139-144 and `let private automationId (autoId : string) : IAttr<Border>` at :145-146 — exactly the cited range.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 16,
-      "phrase": "`appsettings.json` and the three new project folders collide with nothing in the root `.gitignore` (checked: only build dirs, `*.binz`, `*.autosave`, and arc-runner logs are ignored)",
-      "spec_location": "§0.7",
-      "evidence": "Read /.gitignore -> no pattern matches 'appsettings.json' or an 'OpticalConstructor.*' folder name, so the no-collision core holds. The parenthetical inventory is an under-description: the file is the full VisualStudio template (also ignores *.log, *.user, /data, node_modules/, .idea/, x64/, etc. — lines 6-331) plus *.binz (:336), *.autosave (:340) and the arc-runner log rules (:346-347); none of the extra patterns collide with the files this spec commits either.",
+      "phrase": "The relocation and the new projects MUST NOT reintroduce `MSB3277` (the WebView2 chain was already resolved in 0035)",
+      "spec_location": "§0.6",
+      "evidence": "Read OpticalConstructor.Ui/OpticalConstructor.Ui.fsproj:176-187 -> comment 'Spec 0035 §0.6 (slice 018): the `Microsoft.Web.WebView2` package reference is DROPPED to clear the MSB3277 WindowsBase conflict at the reference level (never suppressed)'; specs/0035/.spec-md:55-57 names the same chain. Resolution is recorded in the tree.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 17,
-      "phrase": "seed-push seam over the existing Domain seeds (`<STORE:SeedingProxy>` row)",
-      "spec_location": "Contract table",
-      "evidence": "Plural class-anchored reference ('the existing Domain seeds'). Grep OpticalConstructor.Domain -> `let builtInEntries : MaterialEntry list` (MaterialLibrary.fs:363) and `let seedEntries : LibraryEntry list` (ElementId.fs:532); both feed the createInMemory stores at App/Program.fs:129-147. The Domain seeds exist.",
+      "phrase": "`appsettings.json` and the three new project folders collide with nothing in the root `.gitignore` (checked: only build dirs, `*.binz`, `*.autosave`, and arc-runner logs are ignored)",
+      "spec_location": "§0.7 (Committable files)",
+      "evidence": "Read C:/GitHub/Berreman/.gitignore (348 lines) -> no pattern matches `appsettings.json` or an `OpticalConstructor.*` project-folder name; `*.binz` :336, `*.autosave` :340, arc-runner logs :346-347 present. The file is the full VisualStudio template (build results, caches, user-specific files, `*.log`, etc.), so the 'only …' enumeration is a coarse summary, but every ignored pattern is a build/tooling artifact and the no-collision assertion holds.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 18,
-      "phrase": "`LibraryControls` sets the write-once `Border.name` on generated, unkeyed rows (`leafRow`, `…Controls/LibraryControls.fs:112`",
-      "spec_location": "§A.0",
-      "evidence": "Read Controls/LibraryControls.fs:105-126 -> `leafRow` (:105) sets `Border.name id` at :112 on a generated row; no View.withKey in the builder.",
+      "phrase": "`<STORE:SeedingProxy>` | proxy | OpticalConstructor.Seeding | seed-push seam over the existing Domain seeds",
+      "spec_location": "Contract table",
+      "evidence": "[class-anchored] Grep under OpticalConstructor.Domain -> `let seedEntries : LibraryEntry list` ElementId.fs:532, `let seedExperiments : Experiment list` ElementId.fs:1084, seeded built-in category catalogue MaterialLibrary.fs:114 and default seeded in-memory library MaterialLibrary.fs:463 — the Domain seeds exist.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 19,
-      "phrase": "`actionButton`, `:148`)",
+      "phrase": "`LibraryControls` sets the write-once `Border.name` on generated, unkeyed rows (`leafRow`, `…Controls/LibraryControls.fs:112`",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/LibraryControls.fs:146-158 -> `actionButton` (:146) sets `Border.name id` at :148.",
+      "evidence": "Read OpticalConstructor.Controls/LibraryControls.fs:105-126 -> `let private leafRow` at :105 builds `Border.create [ Border.name id; ... ]` with `Border.name id` at exactly :112; rows are generated per entry via `rowView` (:136-143) with no `View.withKey`.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 20,
-      "phrase": "The cure already exists in the same project — the freely-mutable `AutomationProperties.AutomationId` helper with the explanatory comment (`…Controls/MaterialsControls.fs:139-146`)",
+      "phrase": "`actionButton`, `:148`)",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/MaterialsControls.fs:139-146 -> comment + `automationId` AttrBuilder helper present exactly there, in the same OpticalConstructor.Controls project as LibraryControls.fs.",
+      "evidence": "Read OpticalConstructor.Controls/LibraryControls.fs:146-154 -> `let private actionButton` at :146 builds `Border.create [ Border.name id; ... ]` with `Border.name id` at exactly :148.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 21,
-      "phrase": "and the same precedent noted in `…Controls/ExperimentControls.fs:261-266`",
+      "phrase": "The cure already exists in the same project — the freely-mutable `AutomationProperties.AutomationId` helper with the explanatory comment (`…Controls/MaterialsControls.fs:139-146`)",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/ExperimentControls.fs:261-269 -> comment block (:261-267) documenting AutomationProperties.AutomationId for reorderable lists ('Avalonia forbids changing a styled control's Name'), with the `automationId` helper at :268.",
+      "evidence": "Read OpticalConstructor.Controls/MaterialsControls.fs:139-146 -> the `automationId` helper (AttrBuilder over `AutomationProperties.AutomationIdProperty`) with the membership-change explanatory comment, at exactly the cited range, in the same OpticalConstructor.Controls project as LibraryControls.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 22,
-      "phrase": "Latent copies of the hazard: `…Controls/RotationControls.fs:119`",
+      "phrase": "and the same precedent noted in `…Controls/ExperimentControls.fs:261-266`",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/RotationControls.fs:117-120 -> `clickBox` sets `Border.name id` at :119.",
+      "evidence": "Read OpticalConstructor.Controls/ExperimentControls.fs:261-266 -> comment: reorderable lists 'carry an `AutomationProperties.AutomationId` (freely mutable ...) instead of `Border.name`', with the `automationId` helper immediately below at :268.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 23,
-      "phrase": "`…Controls/RayPositionControls.fs:71`",
+      "phrase": "Latent copies of the hazard: `…Controls/RotationControls.fs:119`",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/RayPositionControls.fs:69-72 -> `clickBox` sets `Border.name id` at :71.",
+      "evidence": "Read OpticalConstructor.Controls/RotationControls.fs:117-119 -> `clickBox` builds `Border.create [ Border.name id; ... ]` with `Border.name id` at exactly :119.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 24,
-      "phrase": "`…Controls/ElementPaletteControls.fs:55`",
+      "phrase": "`…Controls/RayPositionControls.fs:71`",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/ElementPaletteControls.fs:53-56 -> `clickBox` sets `Border.name id` at :55.",
+      "evidence": "Read OpticalConstructor.Controls/RayPositionControls.fs:69-71 -> `clickBox` builds `Border.create [ Border.name id; ... ]` with `Border.name id` at exactly :71.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 25,
-      "phrase": "and `…Controls/ExperimentControls.fs:240,581`",
+      "phrase": "`…Controls/ElementPaletteControls.fs:55`",
       "spec_location": "§A.0",
-      "evidence": "Read Controls/ExperimentControls.fs -> `Border.name id` at :240 (optionBoxV) and :581 (actionButton). (The :240 site's own comment (:232-237) explains it keeps a STABLE name and only flips visibility — whether it is truly hazardous is a semantic judgement outside this audit; the cited lines exist as claimed.)",
+      "evidence": "Read OpticalConstructor.Controls/ElementPaletteControls.fs:53-55 -> `clickBox` builds `Border.create [ Border.name id; ... ]` with `Border.name id` at exactly :55.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 26,
-      "phrase": "The screen users actually see is `TableAndElementRotationView.mainView` in `OpticalConstructor.TestWindows` (`…TestWindows/TableAndElementRotationView.fs:2367`)",
-      "spec_location": "§B.0",
-      "evidence": "Read TestWindows/TableAndElementRotationView.fs:2367 -> `let mainView (model : Model) (dispatch : Msg -> unit) : IView`; App/Program.fs:148 mounts it and the launcher's Main button opens that window (:176).",
+      "phrase": "and `…Controls/ExperimentControls.fs:240,581`",
+      "spec_location": "§A.0",
+      "evidence": "Grep `\\.name` in OpticalConstructor.Controls/ExperimentControls.fs -> `Border.name id` at exactly :240 and :581.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 27,
-      "phrase": "hosted by `MainConstructorWindow` (`…App/Program.fs:118-150`)",
+      "phrase": "The screen users actually see is `TableAndElementRotationView.mainView` in **`OpticalConstructor.TestWindows`** (`…TestWindows/TableAndElementRotationView.fs:2367`)",
       "spec_location": "§B.0",
-      "evidence": "Read App/Program.fs:118-150 -> `type MainConstructorWindow` at :118; mounts TableAndElementRotationView.mainView via Program.mkSimple at :148-150.",
+      "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs:2367 -> `let mainView (model : Model) (dispatch : Msg -> unit) : IView =` ('The Main screen view' doc at :2362-2366); the file lives in the OpticalConstructor.TestWindows project.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 28,
-      "phrase": "the composition comment records that the old constructor shell \"is kept but no longer opened by the launcher's Main button\" (`…App/Program.fs:112-117`)",
+      "phrase": "hosted by `MainConstructorWindow` (`…App/Program.fs:118-150`)",
       "spec_location": "§B.0",
-      "evidence": "Read App/Program.fs:112-117 -> the comment ends '(The old constructor shell — `MainWindow` above — is kept but no longer opened by the launcher's Main button.)' at :116-117 — the quoted text exists inside the cited range.",
+      "evidence": "Read OpticalConstructor.App/Program.fs:118-150 -> `type MainConstructorWindow() as this` at :118 mounts `TableAndElementRotationView.mainView` via `Program.mkSimple ... TableAndElementRotationView.mainView` at :148.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 29,
-      "phrase": "The operator's decision (005/Q26–Q27): the workbench REAL-MOVES into `OpticalConstructor.Ui` … and the seven diagnostic scenes … move to a tiny new executable `OpticalConstructor.TestWindows.App`",
+      "phrase": "The `OpticalConstructor.Ui` Elmish shell is dead code for the Main flow — the composition comment records that the old constructor shell \"is kept but no longer opened by the launcher's Main button\" (`…App/Program.fs:112-117`)",
       "spec_location": "§B.0",
-      "evidence": "Inferred assumption-shape (cites an existing operator artefact). Grep specs/0038/.manual/005-comments.txt -> 'Q26. Agree on the proposal.' (:7) and 'Q27. Agree on the proposal to give test windows their own tiny executable.' (:8).",
+      "evidence": "Read OpticalConstructor.App/Program.fs:112-117 -> doc comment ends '(The old constructor shell — `MainWindow` above — is kept but no longer opened by the launcher's Main button.)' — exact quoted text at the cited range; the launcher's Main button at :176 opens `MainConstructorWindow().Show()`, not the Elmish shell.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 30,
       "phrase": "the seven diagnostic scenes currently on the product launcher (`…App/Program.fs:177-224`)",
       "spec_location": "§B.0",
-      "evidence": "Numeric-count claim re-derived: Read App/Program.fs:177-224 -> exactly 7 test-scene buttons declared there (tableTest :177, elementTest :184, tableElementTest :191, elementMovementTest :198, rendererTest :205, snapTest :212, snapReflected :219). Live count == cited count (7).",
+      "evidence": "[numeric-count claim] Read OpticalConstructor.App/Program.fs:177-224 -> exactly seven test-scene buttons: TableRotation :177, ElementRotation :184, TableAndElementRotation :191, ElementMovement :198, RendererTest :205, SnapToBeam :212, SnapToReflected :219. Live count 7 == cited count 7.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 31,
-      "phrase": "`UserEnvironment.fs` is live (`…App/Program.fs:37`) and stays",
-      "spec_location": "§B.1",
-      "evidence": "Read App/Program.fs:37 -> `let settings = UserEnvironment.load (UserEnvironment.settingsPath ())` — consumed at startup.",
+      "phrase": "after which `OpticalConstructor.App` drops its `OpticalConstructor.TestWindows` project reference entirely — test code leaves the product dependency graph",
+      "spec_location": "§B.0",
+      "evidence": "[inferred existing-wiring claim: the reference to be dropped must exist today] Grep OpticalConstructor.App/OpticalConstructor.App.fsproj -> `<ProjectReference Include=\"..\\OpticalConstructor.TestWindows\\OpticalConstructor.TestWindows.fsproj\" />` at :50.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 32,
-      "phrase": "The Fluent theme seam the `App` type uses (`AppShell.themeVariant`, `…App/Program.fs:244`) survives as a function",
-      "spec_location": "§B.1",
-      "evidence": "Read App/Program.fs:244 -> `this.RequestedThemeVariant <- AppShell.themeVariant Startup.settings.theme` inside `type App` (:239).",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 33,
-      "phrase": "the rest of the dead shell (the `MainWindow` host, `Shell.fs`, `Ribbon.fs`, `MaterialsView.fs`, `ConstructionPage.fs`, `ConstructorView.fs`, `LifecycleView.fs`, `Templates.fs`, `Help.fs`, and every Ui module plus Ui.Tests test left without a live consumer by those deletions) is removed, not paralleled",
-      "spec_location": "§B.1",
-      "evidence": "Glob OpticalConstructor.Ui/*.fs -> Shell.fs, Ribbon.fs, MaterialsView.fs, ConstructionPage.fs, ConstructorView.fs, LifecycleView.fs, Templates.fs, Help.fs all exist; the `MainWindow` HostWindow is at App/Program.fs:87-110. Every named artefact slated for removal resolves.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 34,
       "phrase": "The five domain proxies are created INSIDE `MainConstructorWindow` (`…App/Program.fs:129-147`), so a second window cannot share the stores",
       "spec_location": "Part C §C.0",
       "evidence": "Read OpticalConstructor.App/Program.fs:118-150 -> `type MainConstructorWindow` at :118; exactly five proxies constructed in its `do` block: library (:129), experiments (:130), samples (:139), materials (:140), categories (:147); comment at :133-134 says 'All FIVE proxies (library / experiments / materials / samples / categories) inject through initMainWith'. Numeric count re-derived: 5 == 5.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 35,
+      "id": 33,
       "phrase": "no `appsettings.json` exists (user preferences live in `environment.json`, `…Ui/UserEnvironment.fs:181-185`)",
       "spec_location": "Part C §C.0",
-      "evidence": "Glob **/appsettings.json over C:/GitHub/Berreman -> 0 files. Read OpticalConstructor.Ui/UserEnvironment.fs:181 -> `type EnvironmentSettings` (favorites/lastFolders/recentFiles at :183-185, `preferences` field at :192); Grep 'environment.json' -> :338 `Path.Combine(dir, \"environment.json\")` is the persisted file name.",
+      "evidence": "Glob **/appsettings.json over C:/GitHub/Berreman -> 0 files. Read OpticalConstructor.Ui/UserEnvironment.fs:181 -> `type EnvironmentSettings` (favorites/lastFolders/recentFiles at :183-185); Grep 'environment.json' -> :338 `Path.Combine(dir, \"environment.json\")` is the persisted file name.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 34,
+      "phrase": "`Softellect.Sys` **10.1.301.54**, already referenced by `…Storage/OpticalConstructor.Storage.fsproj`",
+      "spec_location": "Part C §C.0",
+      "evidence": "Read OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj -> line 74 `<PackageReference Include=\"Softellect.Sys\" Version=\"10.1.301.54\" />`; obj/project.assets.json resolves `Softellect.Sys/10.1.301.54`.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 35,
+      "phrase": "its `tryCreate` opens `appsettings.json`, its `SetOnMissing = true` writes missing keys' defaults back, and it exposes typed `get*OrDefault` accessors and `tryGetConnectionString`",
+      "spec_location": "Part C §C.0",
+      "evidence": "Verified against the Softellect source checkout C:/GitHub/Softellect/Sys/AppSettings.fs: `let SetOnMissing = true` :16, `type AppSettingsProvider` :411, typed accessors getString/Int/Decimal/Double/Guid/Bool/FolderName/FileNameOrDefault :412-419, `tryGetConnectionString` :439, `static member tryCreate` overloads :471-484 (the argless :484 opening the default `appSettingsFile`). Member names AppSettingsProvider/tryCreate/SetOnMissing/tryGetConnectionString/OrDefault also all present in the cached Softellect.Sys.dll binary.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 36,
-      "phrase": "`Softellect.Sys` **10.1.301.54**, already referenced by `…Storage/OpticalConstructor.Storage.fsproj`",
-      "spec_location": "Part C §C.0",
-      "evidence": "Grep OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj -> line 74 `<PackageReference Include=\"Softellect.Sys\" Version=\"10.1.301.54\" />`; obj/project.assets.json resolves `Softellect.Sys/10.1.301.54`.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 37,
-      "phrase": "its `tryCreate` opens `appsettings.json`, its `SetOnMissing = true` writes missing keys' defaults back, and it exposes typed `get*OrDefault` accessors and `tryGetConnectionString`",
-      "spec_location": "Part C §C.0",
-      "evidence": "Verified against the Softellect source checkout C:/GitHub/Softellect/Sys/AppSettings.fs (not the package binary): `let SetOnMissing = true` :16, `type AppSettingsProvider` :411, typed accessors getString/Int/Decimal/Double/Guid/Bool/FolderName/FileNameOrDefault :412-419, `tryGetConnectionString` :439, `static member tryCreate` overloads :478-484 opening the default `appSettingsFile`.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 38,
       "phrase": "a host-layer `WindowRegistry` (mutable host state OUTSIDE the Elmish model, the registered-storage-provider pattern at `…App/Program.fs:96` in today's tree)",
       "spec_location": "Part C §C.0",
       "evidence": "Read OpticalConstructor.App/Program.fs:96 -> `this.Opened.Add(fun _ -> Shell.setStorageProvider this.StorageProvider)`; comment :93-95 says the IStorageProvider is 'held OUTSIDE the root model' — the cited registered-storage-provider pattern.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 39,
+      "id": 37,
       "phrase": "moving the id-mint off the save path (`newMaterialId` at `…TestWindows/MaterialEditorView.fs:416`)",
       "spec_location": "Part C §C.0",
       "evidence": "Read OpticalConstructor.TestWindows/MaterialEditorView.fs:416 -> `| NewMaterial -> m.context.materials.addMaterial (entryUnder (newMaterialId ()))` — the id is minted inside the save handler, exactly as claimed.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 40,
+      "id": 38,
       "phrase": "The seam generalizes the existing `EditorLaunchers` function-record (`…TestWindows/TableAndElementRotationView.fs:116-141`)",
       "spec_location": "Part C §C.0",
       "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs:116-141 -> `[<ReferenceEquality>] type EditorLaunchers` at :116-131 (openMaterialEditor / openSampleEditor / openCategoryEditor) with `static member defaults` at :136-141. Range matches exactly.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 41,
+      "id": 39,
       "phrase": "the dispersion-model facet is per axis/segment over the ten `DispersionModel` cases, `…Domain/DispersionModels.fs:168-178`",
       "spec_location": "Part D §D.0",
       "evidence": "Read OpticalConstructor.Domain/DispersionModels.fs:168-178 -> `type DispersionModel` with cases Sellmeier, Cauchy, Lorentz, Drude, TaucLorentz, GaussianOscillator, ForouhiBloomer, BrendelBormann, ConstantNK, SumOfTerms. Numeric count re-derived: 10 == 10; range matches exactly.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 42,
+      "id": 40,
       "phrase": "Physics-derived offers reuse `availableGyrationClasses` (`…Domain/MaterialComplexityEditor.fs:373`), never re-derived",
       "spec_location": "Part D §D.0",
       "evidence": "Read OpticalConstructor.Domain/MaterialComplexityEditor.fs:373 -> `let availableGyrationClasses (anisotropy : Anisotropy) : GyrationClass<RhoValue> list =` at exactly the cited line.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 43,
+      "id": 41,
       "phrase": "Material facets extract from `MaterialEntry.properties` (`…Domain/MaterialLibrary.fs:230-238`)",
       "spec_location": "Part D §D.0",
       "evidence": "Read OpticalConstructor.Domain/MaterialLibrary.fs:230-238 -> `type MaterialEntry` record spanning exactly :230-238 with `properties : OpticalPropertiesWithDisp` at :236.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 44,
+      "id": 42,
       "phrase": "the domain-free rendering control (pure `State` + `Handlers`, the `…Controls/MaterialsControls.fs` shape)",
       "spec_location": "Part E §E.0",
       "evidence": "Grep OpticalConstructor.Controls/MaterialsControls.fs -> `type State` at :51 and `type Handlers` at :82 — the cited pure State + Handlers shape exists in the cited file.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 45,
+      "id": 43,
       "phrase": "the embeddable dual-axis chart, `…Controls/EmbeddedChart.fs`",
       "spec_location": "Part E §E.0",
       "evidence": "Read OpticalConstructor.Controls/EmbeddedChart.fs:13-22 -> module EmbeddedChart, doc comment: 'the inline / embeddable form of the shared dual-axis ScottPlot chart' (n on the LEFT axis, k on the RIGHT).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 46,
+      "id": 44,
       "phrase": "the existing verbs Add / Edit / Remove / Categories… rewired to the window",
       "spec_location": "Part E §E.0",
-      "evidence": "Anchored via the adjacent materialsBay pointer. MaterialsControls.fs verb row: Add :251, Edit :245-246, Remove :254 (button ids Add/Edit/RemoveMaterialButton :111-115); the host-added 'Categories…' verb at TableAndElementRotationView.fs:2297 (`categoriesRow`), composed into `materialsBay` at :2309. All four verbs exist today.",
+      "evidence": "Anchored via the adjacent materialsBay pointer. MaterialsControls.fs verb row: Add :251, Edit :245-246, Remove :254 (button ids Add/Edit/RemoveMaterialButton :111-115); the host-added 'Categories…' verb at TableAndElementRotationView.fs:2297 (`categoriesRow` :2293), composed into `materialsBay` at :2308-2309. All four verbs exist today.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 47,
+      "id": 45,
       "phrase": "The Materials bay is REMOVED from the ribbon (`materialsBay` in `mainBays`, `…TestWindows/TableAndElementRotationView.fs:2339`)",
       "spec_location": "Part E §E.0",
       "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs:2339 -> `{ name = BayNames.materials; content = materialsBay model dispatch; mode = Ribbon.FullSurface }` inside `mainBays` (:2329) — exactly the cited line; `materialsBay` defined at :2303.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 48,
+      "id": 46,
       "phrase": "the seeded presets (`pol-lp` / `pol-cp-left` / `pol-cp-right` / `det-intensity` / `det-ellipsometer` / `src-600`, `…Domain/ElementId.fs:535-540`)",
       "spec_location": "Part F §F.0",
       "evidence": "Read OpticalConstructor.Domain/ElementId.fs:535-540 -> det-intensity :535, det-ellipsometer :536, pol-lp :537, pol-cp-left :538, pol-cp-right :539, src-600 :540 inside `seedEntries`. All six ids at exactly the cited range.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 49,
+      "id": 47,
       "phrase": "Seeded SAMPLES remain `UserManaged` (they are editable examples today — recorded interpretation)",
       "spec_location": "Part F §F.0",
-      "evidence": "Inferred assumption-shape phrase ('editable examples today' — not in the trigger list). Seeded samples are `SeedSamples.all` mapped into `seedEntries` (ElementId.fs:532-533) and seed `SampleProxy.createInMemory` (comment :314-316); `SampleProxy` (:318-326) exposes updateSample/removeSample and Grep '[Pp]rotect' over OpticalConstructor.Domain -> 0 hits, so no protection concept exists today — seeded samples are ordinary editable entries.",
+      "evidence": "Inferred assumption-shape phrase ('editable examples today' — not in the trigger list). Seeded samples are `SeedSamples.all` mapped into `seedEntries` (ElementId.fs:532-533); `SampleProxy` (:318-326) exposes updateSample/removeSample over any sample, and Grep 'EntryProtection|ProtectedBuiltIn' over the repo -> 0 hits, so no protection concept exists today — seeded samples are ordinary editable entries (the editor's `EditSample` intent edits an existing sample in place, TableAndElementRotationView.fs:123-126).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 50,
+      "id": 48,
       "phrase": "`ComputedIdeal` synthesizes through the existing `Propagation.inputStokes` / `analyzerMueller` (`…Domain/Propagation.fs:54-89`) exactly as today",
       "spec_location": "Part F §F.0",
       "evidence": "Read OpticalConstructor.Domain/Propagation.fs:54-89 -> `let inputStokes (kind : PolarizerKind) (theta : Angle) : StokesVector` at :54 and `let analyzerMueller (kind : PolarizerKind) (theta : Angle) : MuellerMatrix` at :67, ending :89. Range matches exactly.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 51,
+      "id": 49,
       "phrase": "the whole `LibraryEntry` corpus (`…Domain/ElementId.fs:188-192`, via `LibraryProxy` `:276-281` + `SampleProxy` for the sample verbs)",
       "spec_location": "Part F §F.0",
       "evidence": "Read OpticalConstructor.Domain/ElementId.fs -> `type LibraryEntry` DU (SampleItem/SourceItem/DetectorItem/PolarizerItem) at :188-192; `[<ReferenceEquality>] type LibraryProxy` at :276-281 (entriesForKind/libraryTrees/tryGetEntry); `type SampleProxy` at :318-326 with the sample verbs (listSamples/searchSamples/tryGetSample/addSample/updateSample/removeSample). All three pointers resolve.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 52,
+      "id": 50,
       "phrase": "the Library bay (`samplesBay`, `…TestWindows/TableAndElementRotationView.fs:2340`) is removed the same way as Materials",
       "spec_location": "Part F §F.0",
       "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs:2340 -> `{ name = BayNames.library; content = samplesBay model dispatch; mode = Ribbon.FullSurface }` inside `mainBays` — exactly the cited line; `samplesBay` defined at :2316.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 53,
+      "id": 51,
       "phrase": "a changed table selection or a vanished target cancels/closes the open Select window (the pending-bind-clears precedent, `…TestWindows/TableAndElementRotationView.fs:941-944`)",
       "spec_location": "Part G §G.0",
       "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs:941-944 -> comment 'a changed selection clears any pending (unconfirmed) Library bind' with `let pending = if selection = model.selection then model.pendingEntry else None` — the cited precedent at exactly the cited range.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 54,
+      "id": 52,
       "phrase": "both paths converge on the SAME bind message that commits `placement.valueId` (`…TestWindows/TableAndElementRotationView.fs:768,780`)",
       "spec_location": "Part G §G.0",
       "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs -> :768 (BindValueId) and :780 (ConfirmBindValueId) both execute `{ e with placement = { e.placement with valueId = Some entryId } }` — the valueId commit sits at exactly the two cited lines.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 55,
+      "id": 53,
       "phrase": "every new table element except a sample is created pre-bound to its seeded default — light source → `src-600`, detector → `det-intensity`, and the polarizer palette exposes THREE add buttons LP / CPL / CPR pre-binding `pol-lp` / `pol-cp-left` / `pol-cp-right`",
       "spec_location": "Part G §G.0",
       "evidence": "The five named seeded defaults all exist as seeded Library entries: src-600 (ElementId.fs:540), det-intensity (:535), pol-lp (:537), pol-cp-left (:538), pol-cp-right (:539). The pre-binding behaviour itself is new; the assumption audited is that the referenced seed ids exist.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 56,
+      "id": 54,
       "phrase": "with `CatalogueKind` UNCHANGED (`…Domain/Placement.fs:93-101`)",
       "spec_location": "Part G §G.0",
       "evidence": "Read OpticalConstructor.Domain/Placement.fs:93-101 -> `type CatalogueKind` with cases LightSource/LinearPolarizer/CircularPolarizer/Sample/Lens/FlatMirror/CurvedMirror/Detector spanning exactly :93-101.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 57,
+      "id": 55,
       "phrase": "Samples stay unbound (the inverse hook)",
       "spec_location": "Part G §G.0",
       "evidence": "Inferred assumption-shape phrase ('stay' = unchanged-behaviour claim; anchored via the adjacent Placement.fs pointer). Today every new element's placement is created unbound: `valueId = None` in the placement construction default at Placement.fs:208, so samples staying unbound is the current mechanism.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 58,
+      "id": 56,
       "phrase": "The silent ideal-analyzer fallback — the `Option.defaultValue Library.IdealLinear` tail of `runAnalyzerKind` (`…TestWindows/TableAndElementRotationView.fs:1407-1427`) — is retired",
       "spec_location": "Part G §G.0",
       "evidence": "Read OpticalConstructor.TestWindows/TableAndElementRotationView.fs:1407-1427 -> `let private runAnalyzerKind` at :1407 ending with `|> Option.defaultValue Library.IdealLinear` at :1427. Range matches exactly.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 59,
+      "id": 57,
       "phrase": "The sample editor's `WrapPanel` material picker (`…TestWindows/SampleEditorView.fs:740-758`) is replaced by the Materials window in Select state",
       "spec_location": "Part G §G.0",
       "evidence": "Read OpticalConstructor.TestWindows/SampleEditorView.fs:740-758 -> `let private materialRow` at :740 containing `WrapPanel.create` (:748, id UiIds.materialPicker) listing material options, ending :758. Range matches exactly.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 60,
+      "id": 58,
       "phrase": "the material list re-queries the proxy when a Select window returns and on window activation, replacing the load-once snapshot (`…TestWindows/SampleEditorWindow.fs:32-35`)",
       "spec_location": "Part G §G.0",
       "evidence": "Read OpticalConstructor.TestWindows/SampleEditorWindow.fs:32-35 -> `let entries = match materials.listMaterials () with | Ok list -> list | Error _ -> []` — the one-time snapshot resolved at window construction, at exactly the cited range (doc comment :12-13: 'material choices are resolved ONCE').",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 61,
+      "id": 59,
       "phrase": "`MaterialId` / `SampleId` stay the stable identities",
       "spec_location": "§H.0",
       "evidence": "Class-anchored grep: type MaterialId at Berreman/OpticalConstructor/OpticalConstructor.Domain/MaterialLibrary.fs:27; type SampleId at Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:41 — exactly one definition each. Trigger 'stay' inferred (implies the identity types exist today).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 62,
+      "id": 60,
       "phrase": "nothing is persisted yet, so the check is a seam — `versionsInUse : unit -> Set<VersionRef>` computed from the in-memory experiment store",
       "spec_location": "§H.0",
-      "evidence": "Negative current-state claim (phrase inferred). Grep 'Experiment' over OpticalConstructor.Storage/*.fs -> 0 hits (constructor experiments have no persistence); grep MaterialVersionId|SampleVersionId|VersionRef|EntryLifecycle|ProtectedBuiltIn repo-wide -> 0 hits (version identities do not exist yet, so no persisted artefact can reference a version); ProjectJson.fs serializes no scene/element/experiment content.",
+      "evidence": "Negative current-state claim (phrase inferred). Grep 'Experiment' over OpticalConstructor.Storage/*.fs -> 0 hits (constructor experiments have no persistence); grep MaterialVersionId|SampleVersionId|VersionRef|EntryLifecycle over the production tree -> 0 files (version identities do not exist yet, so nothing persisted can reference a version); grep ConstructionPage|ProjectFile|saveProject over OpticalConstructor.App and OpticalConstructor.TestWindows -> 0 hits (the live constructor has no project save wiring). The in-memory experiment store exists: Experiments.createInMemory wired at Program.fs:130.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 63,
+      "id": 61,
       "phrase": "Deletion remains hard-blocked while referenced (the `MaterialStillReferenced` block, `…Domain/ElementId.fs:755-765`)",
       "spec_location": "§H.0",
       "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Domain/ElementId.fs:750-767 — removeMaterial's samplesReferencing branch spans exactly 755-765 and ends in Error (MaterialStillReferenced ...) at line 765.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 64,
+      "id": 62,
       "phrase": "Both registered proxies re-shape in place per §0.2",
       "spec_location": "§H.0",
-      "evidence": "Phrase inferred ('registered proxies' implies existing wiring); the §0.2 anchor lies outside this chunk. MaterialProxy.createInMemory documented and implemented at ElementId.fs:769 with the live SampleProxy store referenced at ElementId.fs:772; composition-root createInMemory wiring present in OpticalConstructor.App/Program.fs. 'Both' read from Part-H context as the material + sample proxies.",
+      "evidence": "Phrase inferred ('registered proxies' implies existing wiring); the §0.2 anchor lies outside this chunk. MaterialProxy.createInMemory documented at ElementId.fs:769-771 with the live step-005 SampleProxy store it is backed by; both wired at the composition root (Program.fs:139-140). 'Both' read from Part-H context as the material + sample proxies.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 65,
+      "id": 63,
       "phrase": "`Experiments.Experiment` holds only the varied element today (`…Domain/ElementId.fs:909-917`)",
       "spec_location": "§I.0",
       "evidence": "module Experiments at ElementId.fs:796; type Experiment at exactly 909-917 with fields id/elementId/elementLabel/variable/measurement/range — the varied element only, no setup/element-descriptor list.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 66,
+      "id": 64,
       "phrase": "the OLD toggle-based `Groups.ExperimentCollection` (`…Domain/Groups.fs:114-129`)",
       "spec_location": "§I.0",
-      "evidence": "type ExperimentCollection at Groups.fs:114-129 (record 114-125 + static create 127-129); toggle-based as claimed — experiments/elements/groups are all Toggle list fields.",
+      "evidence": "module Groups at Groups.fs:13; type ExperimentCollection at Groups.fs:114-129 (record 114-125 + static create 128-129); toggle-based as claimed — experiments/elements/groups are all Toggle list fields.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 67,
+      "id": 65,
       "phrase": "persisted inside the groups JSON whose load/save lives in `…Storage/GroupsLibrary.fs`",
       "spec_location": "§I.0",
-      "evidence": "OpticalConstructor.Storage/GroupsLibrary.fs exists: load at :115, save at :127, schema validate-on-load per :81; Groups.fs:144-147 GroupsLibrary record holds collections : ExperimentCollection list, the value that JSON file carries.",
+      "evidence": "OpticalConstructor.Storage/GroupsLibrary.fs exists: let load at :115, let save at :127; Groups.fs:144-147 GroupsLibrary record holds collections : ExperimentCollection list, the value that JSON file carries.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 68,
+      "id": 66,
       "phrase": "per the doc at `…Domain/Groups.fs:141-143`",
       "spec_location": "§I.0",
       "evidence": "Read Groups.fs:141-143 — the doc reads: '`OpticalConstructor.Storage/GroupsLibrary.fs` owns the load/save and schema validation of this value; it is kept apart from any per-project `.ocproj`.' — exactly what the spec cites.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 69,
+      "id": 67,
       "phrase": "is renamed `WorkbenchToggleSet` (type rename only — the JSON shape is unchanged)",
       "spec_location": "§I.0",
-      "evidence": "Trigger 'unchanged'. Forward-looking constraint whose referenced existing artefact resolves: Groups.fs:111-113 doc — collections are stored in the SAME separate JSON file as groups and round-trip through it (AC-H1) — and GroupsLibrary.fs owns that file's load/save/schema, so the JSON shape the rename must preserve exists.",
+      "evidence": "Trigger 'unchanged'. Forward-looking constraint whose referenced existing artefact resolves: Groups.fs:111-113 doc — collections are stored in the SAME separate JSON file as groups (G.3) and round-trip through it (AC-H1) — and GroupsLibrary.fs owns that file's load/save/schema, so the JSON shape the rename must preserve exists.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 70,
+      "id": 68,
       "phrase": "*experiment collection* means the live constructor concept exclusively (its `commit`, `…Domain/ElementId.fs:1010`)",
       "spec_location": "§I.0",
       "evidence": "let commit (c : ExperimentCollection) : ExperimentCollection at exactly ElementId.fs:1010, inside the Experiments module (the live constructor concept).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 71,
+      "id": 69,
       "phrase": "NO disk format, `.ocproj` stays unwired (operator, Q25)",
       "spec_location": "§I.0",
-      "evidence": "Inferred ('stays'). The .ocproj seam exists (ProjectFile.fs:17 let extension = \".ocproj\") but carries no scene/experiment-collection content today: grep scene|placement|element over ProjectJson.fs -> only a matrix comment at :29; grep 'Experiment' over Storage/*.fs -> 0 hits. Scene/experiment-collection persistence is currently not wired into .ocproj, matching the claim.",
+      "evidence": "Inferred ('stays'). The .ocproj seam exists (ProjectFile.fs:17 let extension = \".ocproj\"; ProjectJson serializes the OLDER OpticalConstructorProject, Project.fs:26) but the live app wires none of it: grep ConstructionPage|ProjectFile|saveProject over OpticalConstructor.App and OpticalConstructor.TestWindows -> 0 hits, and grep 'Experiment' over Storage/*.fs -> 0 hits — scene/experiment-collection persistence is not wired into .ocproj today, matching the claim.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 72,
+      "id": 70,
       "phrase": "The renderer input `Drawable` (`…TestWindows/ElementRenderer.fs:26-32`) gains a three-valued `BindingState`",
       "spec_location": "§J.0",
       "evidence": "type Drawable at exactly OpticalConstructor.TestWindows/ElementRenderer.fs:26-32 (fields placement/centre/zoom/opticalSign) — the existing renderer input the part extends.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 73,
+      "id": 71,
       "phrase": "the readout/Details keep the text",
       "spec_location": "§J.0",
-      "evidence": "Phrase inferred ('keep' = unchanged). Both artefacts exist in TableAndElementRotationView.fs: readout automation id at :42 with TextBlocks at :1133/:2348 and readoutText at :1088; the Details bay at :237-239 ('the selected element's bound Library entry') with the bound-entry readout noted at :1297.",
+      "evidence": "Phrase inferred ('keep' = unchanged). Both artefacts exist in TableAndElementRotationView.fs: readout automation id at :42 with readoutText at :1088 and TextBlocks at :1133/:2348; the Details bay at :237-239 ('the selected element's bound Library entry') with the bound-entry readout noted at :1297.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 74,
+      "id": 72,
       "phrase": "the union of that material's defined dispersion segments (`EditSegment.interval`, `…Domain/MaterialComplexityEditor.fs:100-102`)",
       "spec_location": "§J.0",
       "evidence": "type EditSegment at MaterialComplexityEditor.fs:100 with interval : WaveLengthInterval at :102 — the cited symbol sits inside the cited range.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 75,
+      "id": 73,
       "phrase": "The Material editor's `DockPanel` layout squeezes the ladder and the preview into one column (`…TestWindows/MaterialEditorView.fs:1067-1132`)",
       "spec_location": "§K.0",
       "evidence": "let view at MaterialEditorView.fs:1067 ending :1132; DockPanel.create at :1071 and :1106; ladder panels stacked Dock.Top (:1096-1124) above the centre-filling preview (:1130) in a single column — no splitter, matching the claim.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 76,
+      "id": 74,
       "phrase": "The single-curve preview (`n = Re[√ε₁₁]` / `k = Im[√ε₁₁]` only — `…TestWindows/NkDispersionChart.fs:40-64`)",
       "spec_location": "§K.0",
       "evidence": "NkDispersionChart.fs:40-42 samples Complex.Sqrt of (getEps w)[0,0] (ε₁₁); nkDispersionChart (:48-64) emits exactly two series, 'n' (Real) and 'k' (Imaginary) — no per-axis or gyration/mu curves.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 77,
+      "id": 75,
       "phrase": "series assembled through the engine's `RhoWithDispValue.toRhoWithDisp`, `OpticalProperties/Active.fs:152`",
       "spec_location": "§K.0",
       "evidence": "member this.toRhoWithDisp : RhoWithDisp at exactly Berreman/OpticalProperties/Active.fs:152, on type RhoWithDispValue (:146).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 78,
+      "id": 76,
       "phrase": "`MuWithDispValue.toMuWithDisp`, `Berreman/Berreman/Dispersion.fs:671`",
       "spec_location": "§K.0",
-      "evidence": "member this.toMuWithDisp : MuWithDisp at exactly Berreman/Berreman/Dispersion.fs:671, on type MuWithDispValue (:667); the :662-666 doc confirms the Polder tensor semantics the spec describes.",
+      "evidence": "member this.toMuWithDisp : MuWithDisp at exactly Berreman/Berreman/Dispersion.fs:671, on type MuWithDispValue (:667); the :664-666 doc confirms the Polder tensor semantics the spec describes.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 79,
+      "id": 77,
       "phrase": "today `CancelClicked` closes silently (`…TestWindows/MaterialEditorView.fs:423-424`)",
       "spec_location": "§K.0",
       "evidence": "MaterialEditorView.fs:423-424 — '| CancelClicked -> m.context.requestClose ()' with no dirty-state confirmation, exactly the silent close the spec describes.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 80,
+      "id": 78,
       "phrase": "today `CancelClicked` closes silently (`…TestWindows/SampleEditorView.fs:549-550`)",
       "spec_location": "§K.0",
       "evidence": "SampleEditorView.fs:549-550 — '| CancelClicked -> m.context.requestClose ()' with no dirty-state confirmation, same silent-close pattern.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 81,
+      "id": 79,
       "phrase": "no hint ⇒ no experiment chart; hint ⇒ chart as today",
       "spec_location": "§L.0",
       "evidence": "Trigger 'as today'; no file pointer in the sentence, resolved class-anchored: 'experiment chart' maps to the single definition type ExperimentChart at OpticalConstructor.Controls/ExperimentChart.fs:18 (exactly one grep match) — the existing chart mechanism the claim defers to exists.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 82,
+      "id": 80,
       "phrase": "the text-taking precedent `SpectralImport.parseSpectrumCsv`, `…Storage/SpectralImport.fs`",
       "spec_location": "§L.0",
       "evidence": "let parseSpectrumCsv (csvText : string) : Result<(WaveLength * float) list, SpectrumImportError> at OpticalConstructor.Storage/SpectralImport.fs:46 — pure, text-taking, Result-returning, matching the cited precedent.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 83,
+      "id": 81,
       "phrase": "wiring the inert `EnvironmentSettings.lastFolders` (`…Ui/UserEnvironment.fs:184`, persisted but never read by any picker)",
       "spec_location": "§L.0",
-      "evidence": "lastFolders : string list at exactly UserEnvironment.fs:184; EnvironmentSettings is persisted per the :176-180 doc. Repo-wide grep for lastFolders -> only the definition, the empty default (:240) and EnvironmentRoundTripTests (:55,:98); no picker reads it — the negative half of the claim holds.",
+      "evidence": "lastFolders : string list at exactly UserEnvironment.fs:184; EnvironmentSettings is persisted per the :176-180 doc and the environment schema JSON. Repo-wide grep for lastFolders -> only the definition, the empty default (:240), the schema, and EnvironmentRoundTripTests (:55,:98); no picker reads it — the negative half of the claim holds.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 84,
+      "id": 82,
       "phrase": "connection strings from `appsettings.json` via `AppSettingsProvider.tryGetConnectionString`",
       "spec_location": "§M.0",
       "evidence": "Inferred class-anchored claim (API assumed existing). Resolves in the external Softellect codebase the same sentence models on: type AppSettingsProvider at C:/GitHub/Softellect/Sys/AppSettings.fs:411 with member tryGetConnectionString at :439.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 85,
+      "id": 83,
       "phrase": "modeled on the STL example (`C:/GitHub/Softellect/Apps/DistrProc/Migrations/Common/CommonDbContext.cs`)",
       "spec_location": "§M.0",
       "evidence": "File exists on disk at the cited absolute path (1,696 bytes, checked via ls).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 86,
+      "id": 84,
       "phrase": "the EXISTING Domain seed values — `standardCategories` (`…Domain/MaterialLibrary.fs:118`)",
       "spec_location": "§M.0",
       "evidence": "let standardCategories : MaterialCategory list at exactly MaterialLibrary.fs:118.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 87,
+      "id": 85,
       "phrase": "`builtInEntries` (`:363`)",
       "spec_location": "§M.0",
       "evidence": "let builtInEntries : MaterialEntry list at exactly MaterialLibrary.fs:363.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 88,
+      "id": 86,
       "phrase": "`SeedSamples` (`…Domain/ElementId.fs:381`)",
       "spec_location": "§M.0",
       "evidence": "module SeedSamples at exactly ElementId.fs:381; the :376-380 doc confirms ids are FIXED literal Guids, consistent with 'seeded Guids are frozen forever'.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 89,
+      "id": 87,
       "phrase": "`seedEntries` (`:532`)",
       "spec_location": "§M.0",
       "evidence": "let seedEntries : LibraryEntry list at exactly ElementId.fs:532.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 90,
+      "id": 88,
       "phrase": "Today's implementation of the proxy is the in-memory stores, i.e. seeding runs with no database at all",
       "spec_location": "§M.0",
-      "evidence": "Phrase inferred ('Today's implementation' is current-state phrasing; the SeedingProxy itself is new, the stores it wraps exist). createInMemory implementations exist in Domain (MaterialLibrary.fs, ElementId.fs) and are wired at the App composition root (Program.fs); 14 files reference createInMemory.",
+      "evidence": "Phrase inferred ('Today's implementation' is current-state phrasing; the SeedingProxy itself is new, the stores it wraps exist). createInMemory implementations exist in Domain (MaterialProxy/SampleProxy in ElementId.fs, CategoryProxy at MaterialLibrary.fs:572, Library/Experiments) and are wired at the App composition root (Program.fs:129-147).",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 91,
+      "id": 89,
       "phrase": "Two parallel recent-file stores exist",
       "spec_location": "§N.0",
-      "evidence": "Numeric-count claim, re-derived: grep recentFiles -> only EnvironmentSettings.recentFiles (Ui/UserEnvironment.fs:185, default :241, round-trip tests); the only other recent-file mechanism is the Storage/RecentFiles.fs module. Live count = 2, matches the cited count.",
+      "evidence": "Numeric-count claim, re-derived: grep recentFiles -> only EnvironmentSettings.recentFiles (Ui/UserEnvironment.fs:185, default :241, schema, round-trip tests); the only other recent-file mechanism is the Storage/RecentFiles.fs module. Live count = 2, matches the cited count.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 92,
+      "id": 90,
       "phrase": "`EnvironmentSettings.recentFiles` (`…Ui/UserEnvironment.fs:185`)",
       "spec_location": "§N.0",
       "evidence": "recentFiles : string list at exactly UserEnvironment.fs:185.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 93,
+      "id": 91,
       "phrase": "the bounded-MRU module `…Storage/RecentFiles.fs` … (the Storage module, keeping its pure `bump` invariant)",
       "spec_location": "§N.0",
-      "evidence": "OpticalConstructor.Storage/RecentFiles.fs exists; let bump (path : string) (existing : string list) : string list at :38 — pure MRU (case-insensitive dedupe, push front, truncate to maxRecent), kept separate from the IO per the :35-37 doc.",
+      "evidence": "OpticalConstructor.Storage/RecentFiles.fs exists (module RecentFiles at :16); let bump (path : string) (existing : string list) : string list at :38 — pure MRU, bounded per the HistoryTests fold of 20 paths truncating to 16 (:82-85).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 92,
+      "phrase": "replacing the per-control `UiIds` modules (id VALUES unchanged, so tests only re-point)",
+      "spec_location": "§N.0",
+      "evidence": "Class-anchored grep 'module UiIds' -> 21 definitions: 11 across OpticalConstructor.Controls (CategoryControls, ElementPaletteControls, ExperimentControls, LayerBandsControls, LibraryControls, MaterialsControls, RayPositionControls, RendererControls, Ribbon, RotationControls, SampleLibraryControls) and 10 across OpticalConstructor.TestWindows views — the per-control modules exist as the plural claims.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 93,
+      "phrase": "The product launcher becomes `Main / Inverse / Materials / Library` (this order)",
+      "spec_location": "§N.0 (also anchors §L.0 'The launcher's `Inverse`')",
+      "evidence": "Inferred ('becomes' implies an existing launcher). LauncherWindow at OpticalConstructor.App/Program.fs:156 ('The simple launcher form (Spec 0027): `Main` opens the existing Optical Constructor window', :152-153), set as the startup window at :252.",
       "verdict": "CONFIRMED"
     },
     {
       "id": 94,
-      "phrase": "replacing the per-control `UiIds` modules (id VALUES unchanged, so tests only re-point)",
-      "spec_location": "§N.0",
-      "evidence": "Class-anchored grep 'module UiIds' -> 21 definitions: 11 across OpticalConstructor.Controls (CategoryControls, MaterialsControls, RendererControls, ElementPaletteControls, RayPositionControls, LibraryControls, SampleLibraryControls, Ribbon, LayerBandsControls, RotationControls, ExperimentControls) and 10 across OpticalConstructor.TestWindows views — the per-control modules exist as the plural claims.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 95,
-      "phrase": "The product launcher becomes `Main / Inverse / Materials / Library` (this order)",
-      "spec_location": "§N.0 (also anchors §L.0 'The launcher's `Inverse`')",
-      "evidence": "Inferred ('becomes' implies an existing launcher). LauncherWindow at OpticalConstructor.App/Program.fs:156 ('The simple launcher form (Spec 0027): Main opens the existing Optical Constructor window', :152), set as the startup window at :252.",
-      "verdict": "CONFIRMED"
-    },
-    {
-      "id": 96,
       "phrase": "Two parallel recent-file stores exist — `EnvironmentSettings.recentFiles` (`…Ui/UserEnvironment.fs:185`) and the bounded-MRU module `…Storage/RecentFiles.fs`",
-      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 492-504)",
+      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 501-513)",
       "evidence": "Numeric-count claim (two stores), re-derived: Grep 'recentFiles|RecentFiles|recent\\.json' over Berreman/**/*.fs returns exactly 2 production files — Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs and Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs (the only other 2 hits are test files HistoryTests.fs / EnvironmentRoundTripTests.fs, which are consumers, not stores). Live count = 2 matches the cited count.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 97,
+      "id": 95,
       "phrase": "`EnvironmentSettings.recentFiles` (`…Ui/UserEnvironment.fs:185`)",
-      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 492-504)",
+      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 501-513)",
       "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Ui/UserEnvironment.fs:185 -> `recentFiles : string list` is exactly the field at line 185, inside `type EnvironmentSettings` declared at line 181. Pointer resolves precisely.",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 98,
+      "id": 96,
       "phrase": "the bounded-MRU module `…Storage/RecentFiles.fs` — ONE remains (the Storage module, keeping its pure `bump` invariant; the environment field is removed)",
-      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 492-504)",
-      "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs -> `module RecentFiles` at :16, `[<Literal>] let maxRecent = 16` bound at :21-22, and pure `bump (path : string) (existing : string list) : string list` at :38 (case-insensitive dedup, push-to-front, List.truncate maxRecent — a bounded MRU whose invariant is IO-free, matching 'pure bump invariant').",
+      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 501-513)",
+      "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Storage/RecentFiles.fs -> `[<Literal>] let maxRecent = 16` at :21-22 and pure `bump (path : string) (existing : string list) : string list` at :38 (case-insensitive dedup, push-to-front, List.truncate maxRecent — a bounded MRU whose invariant is IO-free, matching 'pure bump invariant').",
       "verdict": "CONFIRMED"
     },
     {
-      "id": 99,
+      "id": 97,
       "phrase": "replacing the per-control `UiIds` modules (id VALUES unchanged, so tests only re-point)",
-      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 492-504)",
-      "evidence": "Trigger 'unchanged' + definite-article 'the per-control UiIds modules'. Class-anchored: Grep 'module UiIds' -> 21 production matches (11 under OpticalConstructor.Controls: SampleLibraryControls.fs:88, RotationControls.fs:62, Ribbon.fs:52, RendererControls.fs:112, RayPositionControls.fs:41, ElementPaletteControls.fs:42, MaterialsControls.fs:101, CategoryControls.fs:71, LibraryControls.fs:77, LayerBandsControls.fs:43, ExperimentControls.fs:193; 10 under OpticalConstructor.TestWindows view files). The multiple matches ARE the claim's content (the spec asserts plural per-control modules), so multi-match confirms rather than ambiguates. Spot-check Ribbon.fs:51-57 shows [<RequireQualifiedAccess>] module UiIds with stable string id values; MaterialsControls.fs / SampleLibraryControls.fs / CategoryControls.fs carry [<Literal>] ids — the id values the spec says stay unchanged exist today.",
+      "spec_location": "§N.0 Problem statement (chunk 4/4, .spec-md lines 501-513)",
+      "evidence": "Trigger 'unchanged' + definite-article 'the per-control UiIds modules'. Class-anchored: Grep 'module UiIds' -> 21 production matches (11 under OpticalConstructor.Controls: SampleLibraryControls.fs:88, RotationControls.fs:62, Ribbon.fs:52, RendererControls.fs:112, RayPositionControls.fs:41, MaterialsControls.fs:101, LibraryControls.fs:77, LayerBandsControls.fs:43, ExperimentControls.fs:193, ElementPaletteControls.fs:42, CategoryControls.fs:71; 10 under OpticalConstructor.TestWindows view files). The multiple matches ARE the claim's content (the spec asserts plural per-control modules), so multi-match confirms rather than ambiguates. The id values the spec says stay unchanged exist today as [<Literal>]/string ids inside those modules.",
       "verdict": "CONFIRMED"
     }
   ],
