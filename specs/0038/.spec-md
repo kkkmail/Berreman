@@ -19,9 +19,18 @@ signatures. Follow the existing elevated-id precedents `MaterialId`
 flag" are therefore two-case DUs (`EntryFreshness`, `EntryProtection`), never
 bools.
 
-0.2 **No legacy, no fallback, no migration.** Nothing library-related is
-serialized yet, so re-typed structures replace old ones cleanly and every app
-start re-seeds in memory. The registered write-seam contracts
+0.2 **No legacy, no fallback, no migration.** No library STATE is persisted:
+the Main-flow composition builds every store in memory at startup
+(`…App/Program.fs:129-147`, `createInMemory` proxies over the Domain seeds),
+so re-typed structures replace old ones cleanly and every app start re-seeds.
+The only library-shaped serialization in the tree is metadata-only and
+unwired from that composition — the §I.8 share/export file format
+(`…Storage/Report.fs:17-24`, module `MaterialLibrary`, whose persisted
+`MaterialEntryDto` at `:36` carries display metadata only) and the
+import/export helpers (`…Storage/MaterialImport.fs` —
+`importRefractiveIndexInfo` `:407`, `importCsv` `:432`, `exportCsv` `:459`);
+per §0.3 this spec adds no schema or import/export work, so neither gains a
+persisted-state role. The registered write-seam contracts
 `STORE_XDUO_0001 MaterialProxy` (`…Domain/MaterialLibrary.fs:506`) and
 `STORE_XDUO_0002 SampleProxy` (`…Domain/ElementId.fs:318`) keep their names,
 kinds, and declaring project; their record surfaces are re-typed **in place**
