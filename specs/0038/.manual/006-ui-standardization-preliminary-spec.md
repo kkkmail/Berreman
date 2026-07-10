@@ -4,9 +4,10 @@
 agreed discussion `001` → `005` (`001-task.txt`, `002` comments, `003` answers,
 `004` round 2, `005` answers). This document is the input to the next spec-writer →
 arc-runner cycle; every type named below is a *target shape*, not final. It changes
-no files. Numbered decisions from the discussion are recorded in §17; three small
-interpretation calls I made where 005 left latitude are flagged **[INTERPRETATION]**
-inline and repeated in §17 for easy veto.
+no files. Numbered decisions from the discussion are recorded in §17; the three
+interpretation calls made where 005 left latitude were reviewed and **approved by
+the operator after 006** — they are flagged **[DECIDED]** inline and recorded as
+binding decisions in §17.
 
 ---
 
@@ -110,7 +111,7 @@ experiment files to disk and adds **no** schema/migration work; every app start
 re-seeds. `.ocproj` stays unwired. The only real IO permitted: (a) the existing
 `environment.json` user-settings persistence, (b) `appsettings.json` through
 `Softellect.Sys.AppSettings` only, and (c) the thin measured-data CSV file-read
-adapter of §15 **[INTERPRETATION — see §17]**.
+adapter of §15 **[DECIDED — see §17]**.
 
 3.3 **UI is testable without a window.** Every new surface is a pure Domain edit
 model + a handlers/message record; behaviour is unit-tested in Domain,
@@ -366,7 +367,7 @@ except a sample is created pre-bound to its seeded default — light source →
 add buttons: **LP** (→ `pol-lp`), **CPL** (→ `pol-cp-left`), **CPR**
 (→ `pol-cp-right`) — `CatalogueKind` is unchanged (LP ⇒ `LinearPolarizer`,
 CPL/CPR ⇒ `CircularPolarizer`); only the palette and the pre-bound entry differ
-**[INTERPRETATION — see §17]**. Samples stay unbound (that is the inverse hook,
+**[DECIDED — see §17]**. Samples stay unbound (that is the inverse hook,
 §15).
 
 10.3 **Behavior as data** (target shape):
@@ -519,7 +520,7 @@ type ExperimentDataProxy =
 ```
 
 with a mock for every test and a thin real-file adapter (read text → pure parser)
-as the runtime wiring **[INTERPRETATION — see §17]**.
+as the runtime wiring **[DECIDED — see §17]**.
 
 15.5 **Last folder**: the file picker starts at the persisted last folder and
 updates it only on a confirmed selection (cancel changes nothing) — wiring the
@@ -574,7 +575,8 @@ IO proxied without real IO (Q25); workbench → `.Ui` (Q26); test-windows exe
 (Q27); defaults LP/CPL/CPR (Q28); upfront Guid + is-new marker for new entities
 (005 window-policy note).
 
-Interpretations I recorded where 005 left latitude — veto in the next NNN if wrong:
+Interpretations recorded where 005 left latitude — **all three reviewed and
+approved by the operator after 006; they are binding decisions**:
 
 1. **[Q28 palette]** "We need default LP, CPL, CPR" is implemented as three add
    buttons (LP / CPL / CPR), each pre-binding its ideal entry; `CatalogueKind`
@@ -582,8 +584,7 @@ Interpretations I recorded where 005 left latitude — veto in the next NNN if w
 2. **[CSV read]** "No real IO" (005/Q25) is read as covering scene/experiment
    *persistence*; the measured-data CSV **file read** stays a thin real adapter
    behind `ExperimentDataProxy` (001 asked for a file-choose + proxy-load flow;
-   all tests use mocks/in-memory streams). If you want zero real IO including
-   this, the adapter is dropped and the picker only records the path.
+   all tests use mocks/in-memory streams).
 3. **[Is-new marker]** "guid + is new = true flag" (005) is modelled as
    `EntryFreshness = NewUnsaved | Persisted` per the no-naked-bool rule.
 
