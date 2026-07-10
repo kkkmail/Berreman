@@ -1,0 +1,11 @@
+# Step 018 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: [3, 14]
+```
+
+**How to implement.** Pre-bind every new table element except a sample to its seeded default: the palette add path binds LightSource to src-600 and Detector to det-intensity (seed ids, ElementId.fs:535-540), and the polarizer palette exposes THREE add buttons — LP (pol-lp), CPL (pol-cp-left), CPR (pol-cp-right) — with CatalogueKind UNCHANGED (LP maps to LinearPolarizer, CPL/CPR to CircularPolarizer — Placement.fs:93-101): only the palette label and the pre-bound entry differ. ElementPaletteControls grows the two extra polarizer buttons with stable ids. Samples stay UNBOUND — that is the inverse hook. RETIRE the silent ideal-analyzer fallback: replace the Option.defaultValue Library.IdealLinear tail of runAnalyzerKind (today TestWindows/TableAndElementRotationView.fs:1407-1427) with reading the bound polarizer entry's kind; when the scene holds NO bound polarizer the experiment surface reports a typed 'no analyzer present' status instead of silently assuming an ideal linear analyzer. Headless/unit tests: each palette add lands pre-bound to its seed id; a new sample is unbound; the three polarizer buttons map to the unchanged kinds; no code path defaults to IdealLinear silently.
+
+**Acceptance.** After the step, adding a source/detector/LP/CPL/CPR element lands pre-bound to its seeded entry while a new sample stays unbound, the palette shows three polarizer buttons over unchanged CatalogueKinds, and the silent IdealLinear fallback no longer exists — verified by headless and unit tests.

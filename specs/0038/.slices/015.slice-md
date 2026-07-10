@@ -1,0 +1,16 @@
+# Step 015 — ADD_COMPONENT UICOMP_XDUO_0010 LibraryWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0010
+name: LibraryWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Ui
+touches: [OpticalConstructor.Ui, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [8, 11, 12, 14]
+```
+
+**How to implement.** Create the single-instance Library WINDOW in OpticalConstructor.Ui over the WHOLE LibraryEntry corpus — samples, sources, polarizers, detectors (LibraryProxy, ElementId.fs:276-281, plus SampleProxy for the sample verbs) — through FacetedTreeControls with the seeded default representation 'By kind': the kind facet first, the step-11 sample facets on the sample subtree, and the PolarizerCategory facet on polarizers. Verbs rewired from the Library bay: Add sample / Make multilayer / Edit / Remove as today (editors through WindowLauncher; Remove keeps its confirm gate and typed blocks and REFUSES a ProtectedBuiltIn entry with a typed reason). REMOVE the Library bay (samplesBay from mainBays — today TestWindows/TableAndElementRotationView.fs:2340 — and its BayNames entry) and add the right-aligned 'Library…' strip button through WindowLauncher (LibraryWindowKey); thread the window factory into the App composition mechanically (step 47 owns the composition acceptance). Stable intent-named ids. Headless tests: single-instance behaviour, the by-kind tree lists every entry kind with counts, sample verbs operate over the shared stores, and Remove on a protected entry surfaces the typed refusal and changes nothing.
+
+**Acceptance.** After the step, the Library bay is gone, the 'Library…' strip button opens a single-instance Library window whose by-kind faceted tree lists every entry kind with counts and whose verbs work over the shared stores, and removing a protected entry is refused with a typed message — verified headless.

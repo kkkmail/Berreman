@@ -1,10 +1,12 @@
 namespace OpticalConstructor.Controls
 
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -94,6 +96,15 @@ module LibraryControls =
     let private pendingBackground = color 255 224 160
     let private idleBorder = color 120 120 120
 
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
+    /// `Control.Name`) through FuncUI's attr builder. The leaf rows live in a KIND-CONSTRAINED list
+    /// whose MEMBERSHIP changes with the selection, and the Confirm / Cancel actions live in a panel
+    /// that comes and goes with the pending choice — so FuncUI can shift a sibling onto a reused
+    /// control's slot. Avalonia forbids renaming a styled control, and an AutomationId survives that
+    /// reuse (the `MaterialsControls` precedent).
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
     /// How a leaf row is currently highlighted: the confirmed bound entry, the pending (selected-not-yet-
     /// confirmed) entry, or neither.
     type private RowHighlight =
@@ -101,37 +112,48 @@ module LibraryControls =
         | RowPending
         | RowPlain
 
-    /// A clickable leaf row (a styled, named Border), highlighted when it is the bound or pending entry.
+    /// A clickable leaf row (a styled Border carrying a reuse-safe AutomationId), highlighted when it
+    /// is the bound or pending entry. The row is KEYED by its id so a membership change recreates the
+    /// box at a shifted slot instead of patching another entry's styled control in place.
     let private leafRow (id : string) (label : string) (depth : int) (highlight : RowHighlight) (enabled : bool) (onClick : unit -> unit) : IView =
         let background =
             match highlight with
             | RowBound -> boundBackground
             | RowPending -> pendingBackground
             | RowPlain -> idleBackground
-        Border.create [
-            Border.name id
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush background)
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 4.0))
-            Border.margin (Thickness(float (12 * depth), 0.0, 6.0, 4.0))
-            Border.horizontalAlignment HorizontalAlignment.Left
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
-            // highlight changes (matching the other bars) so a reused row can't keep a stale handler.
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (label, highlight)))
-        ] :> IView
+        let row =
+            Border.create [
+                automationId id
+                Border.isEnabled enabled
+                Border.opacity (if enabled then 1.0 else 0.4)
+                Border.background (brush background)
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(10.0, 4.0))
+                Border.margin (Thickness(float (12 * depth), 0.0, 6.0, 4.0))
+                Border.horizontalAlignment HorizontalAlignment.Left
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
+                // highlight changes (matching the other bars) so a reused row can't keep a stale handler.
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (label, highlight)))
+            ]
+            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+            |> Avalonia.FuncUI.DSL.View.withKey id
+        row :> IView
 
-    /// A non-selectable group-header row (a plain, indented label — no id, no click).
+    /// A non-selectable group-header row (a plain, indented label — no id, no click), keyed by its
+    /// label + depth so membership shifts never patch one header's slot into another's.
     let private headerRow (label : string) (depth : int) : IView =
-        TextBlock.create [
-            TextBlock.text label
-            TextBlock.fontWeight FontWeight.SemiBold
-            TextBlock.margin (Thickness(float (12 * depth), 4.0, 0.0, 2.0))
-        ] :> IView
+        let header =
+            TextBlock.create [
+                TextBlock.text label
+                TextBlock.fontWeight FontWeight.SemiBold
+                TextBlock.margin (Thickness(float (12 * depth), 4.0, 0.0, 2.0))
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey $"LibraryHeader_%d{depth}_%s{label}"
+        header :> IView
 
     let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
         if r.entryId = "" then headerRow r.label r.depth
@@ -142,20 +164,25 @@ module LibraryControls =
                 else RowPlain
             leafRow (UiIds.entry r.entryId) r.label r.depth highlight state.enabled (fun () -> handlers.selectEntry r.entryId)
 
-    // -- The Confirm / Cancel action buttons of the pending bind. --
+    // -- The Confirm / Cancel action buttons of the pending bind. The panel they live in comes and
+    // goes with the pending choice, so they are regenerable: a reuse-safe AutomationId (never a
+    // write-once `Name`), keyed by that id.
     let private actionButton (id : string) (label : string) (accent : bool) (onClick : unit -> unit) : IView =
-        Border.create [
-            Border.name id
-            Border.background (brush (if accent then boundBackground else idleBackground))
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label)))
-        ] :> IView
+        let button =
+            Border.create [
+                automationId id
+                Border.background (brush (if accent then boundBackground else idleBackground))
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(12.0, 5.0))
+                Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (id, label)))
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey id
+        button :> IView
 
     /// The pending-bind confirm panel: the pending entry's name, its FULL description, and Confirm / Cancel
     /// (shown only while an entry is pending — i.e. selected but not yet committed).

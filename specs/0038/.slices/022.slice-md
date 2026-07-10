@@ -1,0 +1,11 @@
+# Step 022 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [20, 21]
+```
+
+**How to implement.** Mirror step 21 for the registered SampleProxy (STORE_XDUO_0002, ElementId.fs:318; createInMemory :652), in place: versions per SampleId, saveSample through the SAME step-20 decision function with VersionsInUse, latest-active listing with the include-inactive switch, by-SampleVersionId resolve ignoring lifecycle, lifecycle verbs, and removal hard-blocks extended to used versions. ALSO re-type the material references a sample carries to VERSIONS (spec-md Part H: references point at a version): SampleStructure's substrate/film material ids (ElementId.fs:103; builders filmStructure/plateStructure :329,337) become MaterialVersionId, the seeds pinning version one of the seeded materials, and resolution flowing through step 21's by-version resolve. Update the stack editor, sample editor, facet extractors, and every other consumer mechanically. Tests: the step-21 suite mirrored for samples plus a sample-layer version-pin round-trip (a layer keeps resolving its pinned material version after the material mints a newer one).
+
+**Acceptance.** After the step, SampleProxy is versioned under the shared decision rule, sample layers pin MaterialVersionId (seeds at version one) and keep resolving their pinned version after the material evolves, and all consumers compile with tests green.

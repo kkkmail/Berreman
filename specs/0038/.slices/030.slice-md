@@ -1,0 +1,11 @@
+# Step 030 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [3, 18]
+```
+
+**How to implement.** Extend the renderer input Drawable (Ui/ElementRenderer.fs after the move; today TestWindows/ElementRenderer.fs:26-32) with bindingState : BindingState where BindingState = BoundElement | UnboundElement | NotBindableElement. The host computes it from placement.valueId — bound when Some; Lens, FlatMirror, and CurvedMirror are NotBindableElement and render normally (Placement.fs:93-101). UnboundElement draws a DASHED outline with a ghosted (reduced-opacity) fill — a PATTERN difference, not a hue difference (colorblind-safe); BoundElement stays solid as today; the readout and Details bay keep stating the binding in text. Headless render tests: an unbound sample renders dashed and ghosted, a pre-bound polarizer renders solid, a lens renders normally — one frame each without throwing.
+
+**Acceptance.** After the step, headless frames MUST show dashed-and-ghosted unbound elements, solid bound elements, and normal not-bindable elements, with the Details text unchanged.

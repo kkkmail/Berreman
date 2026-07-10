@@ -1,0 +1,11 @@
+# Step 024 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** Rename the OLD toggle-based Groups.ExperimentCollection (Groups.fs:114-129) to WorkbenchToggleSet — a TYPE rename only: the GroupsLibrary record (Groups.fs:144-148) and its persisted groups JSON shape are unchanged (the type name never appears in the JSON), and the Storage load/save in OpticalConstructor.Storage/GroupsLibrary.fs re-points mechanically. After this step 'experiment collection' names the live constructor concept exclusively (the Experiments module's collection — its commit at ElementId.fs:1010). Update every reference and test.
+
+**Acceptance.** After the step, no type named Groups.ExperimentCollection exists, WorkbenchToggleSet round-trips the same groups JSON, and the only ExperimentCollection type in the tree is the live Experiments one — build and tests green.

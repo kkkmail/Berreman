@@ -1,0 +1,11 @@
+# Step 010 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [9]
+```
+
+**How to implement.** Add the numeric bucket builder every NumericAttribute branch uses (in Facets.fs or a sibling FacetBuckets module): bucket boundaries from the 1-2-5 log ladder spanning the CURRENTLY CONSTRAINED population's min/max; empty buckets dropped; adjacent buckets merged fewest-items-first while the bucket count exceeds ThicknessBucketCap (step 5, default 8); half-open [lo, hi) intervals; a single distinct value collapses to one exact-value bucket; display labels like '10-20 nm (7)' using nm below 1 µm and µm at or above; buckets recomputed on every constraint change; a manual min-max entry applies as an ordinary NumericRangeSelection constraint chip, never a special path. Unit tests: ladder boundary generation, fewest-first merge order under the cap, half-open edge membership, single-value collapse, nm/µm label switch, and recomputation under a narrowed population; an FsCheck property that every item lands in exactly one bucket.
+
+**Acceptance.** After the step, pure tests MUST prove the 1-2-5 ladder boundaries, fewest-first merging to the cap, half-open membership, exact-value collapse, unit-switched labels, and the exactly-one-bucket property.

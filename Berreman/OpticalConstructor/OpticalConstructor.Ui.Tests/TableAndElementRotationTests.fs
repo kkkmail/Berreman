@@ -178,9 +178,19 @@ module TableAndElementRotationTests =
                 window.Content <- Component(fun _ -> mainView m dispatch)
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
+                // The clickable boxes carry an `AutomationProperties.AutomationId` (spec 0038 sweep);
+                // sliders / panels keep their `Name` — collect BOTH id kinds into the visible set.
                 let ns =
                     window.GetVisualDescendants()
-                    |> Seq.choose (function :? Control as c when not (isNull c.Name) && c.IsEffectivelyVisible -> Some c.Name | _ -> None)
+                    |> Seq.collect (fun v ->
+                        match v with
+                        | :? Control as c when c.IsEffectivelyVisible ->
+                            seq {
+                                if not (isNull c.Name) then yield c.Name
+                                let autoId = Avalonia.Automation.AutomationProperties.GetAutomationId c
+                                if not (isNull autoId) then yield autoId
+                            }
+                        | _ -> Seq.empty)
                     |> Set.ofSeq
                 window.Close()
                 ns
@@ -431,7 +441,7 @@ module TableAndElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->
@@ -469,7 +479,7 @@ module TableAndElementRotationTests =
             // stable id); the static test scene (empty palette) renders none.
             let removeButtons =
                 window.GetVisualDescendants()
-                |> Seq.choose (function :? Border as b when b.Name = ElementPaletteControls.UiIds.removeSelected -> Some b | _ -> None)
+                |> Seq.choose (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = ElementPaletteControls.UiIds.removeSelected -> Some b | _ -> None)
                 |> Seq.toList
             Assert.Equal(1, List.length removeButtons)
             window.Close())

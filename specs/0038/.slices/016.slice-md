@@ -1,0 +1,11 @@
+# Step 016 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Domain, OpticalConstructor.Ui.Tests]
+depends_on: [13, 15]
+```
+
+**How to implement.** Give BOTH windows the mode DU — the same window in code, never a copy. In Domain: KindConstraint (the constrained CatalogueKind), SelectionTarget = TableElementTarget of ElementId | SampleLayerTarget of LayerPosition, SelectionContext = { constraint : KindConstraint; target : SelectionTarget; onSelected : selected-entry callback; onCancelled : unit callback }, LibraryWindowMode = Browse | Select of SelectionContext. In Select state the window pre-applies the kind constraint as NON-REMOVABLE (no breadcrumb chip) and adds exactly TWO buttons in one row with distinct positive/negative styling — 'Select' (returns the highlighted entry through onSelected, then closes) and 'Close' (onCancelled) — everything else IS the ordinary window, so add-on-the-fly works because it is the library. WindowLauncher opens Select-state windows modal or modeless per the step-5 switch, and a second Select open RE-TARGETS the existing single instance. Staleness rules (modeless default): a changed table selection or the target's disappearance cancels and closes the open Select window (the pending-bind-clears precedent — today TestWindows/TableAndElementRotationView.fs:941-944); a second Choose closes the first; onSelected dispatches a TARGETED message and a vanished target is a no-op plus a status line, never a throw. Headless tests: Select state shows the two buttons and the non-removable constraint; Select returns the entry and closes; a selection change closes the window; a vanished target no-ops with a status line.
+
+**Acceptance.** After the step, headless tests MUST prove the Select/Close pair, the pre-applied non-removable kind constraint, targeted onSelected dispatch, close-on-selection-change, and the vanished-target no-op for both windows' Select states.

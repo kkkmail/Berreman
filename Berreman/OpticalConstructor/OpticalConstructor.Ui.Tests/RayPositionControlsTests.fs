@@ -34,12 +34,22 @@ module RayPositionControlsTests =
             window.Content <- Component(fun _ -> ElementMovementView.view model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            let names =
+            // The clickable boxes carry an `AutomationProperties.AutomationId` (spec 0038 sweep); the
+            // text field keeps its `Name` — collect BOTH id kinds and assert against the union.
+            let ids =
                 window.GetVisualDescendants()
-                |> Seq.choose (function :? Control as c when not (isNull c.Name) -> Some c.Name | _ -> None)
+                |> Seq.collect (fun v ->
+                    match v with
+                    | :? Control as c ->
+                        seq {
+                            if not (isNull c.Name) then yield c.Name
+                            let autoId = Avalonia.Automation.AutomationProperties.GetAutomationId c
+                            if not (isNull autoId) then yield autoId
+                        }
+                    | _ -> Seq.empty)
                 |> Set.ofSeq
             window.Close()
-            Assert.Contains(RayPositionControls.UiIds.minus, names)
-            Assert.Contains(RayPositionControls.UiIds.plus, names)
-            Assert.Contains(RayPositionControls.UiIds.field, names)
-            Assert.Contains(RayPositionControls.UiIds.reset, names))
+            Assert.Contains(RayPositionControls.UiIds.minus, ids)
+            Assert.Contains(RayPositionControls.UiIds.plus, ids)
+            Assert.Contains(RayPositionControls.UiIds.field, ids)
+            Assert.Contains(RayPositionControls.UiIds.reset, ids))

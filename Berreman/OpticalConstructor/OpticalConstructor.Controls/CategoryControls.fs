@@ -145,18 +145,25 @@ module CategoryControls =
         let removeVerb =
             if r.isBuiltIn then []
             else [ button (UiIds.rowRemoveButton r.categoryId) "Remove" false (fun () -> handlers.removeCategory r.categoryId) ]
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 6.0
-            StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-            StackPanel.children (
-                [
-                    nameBox
-                    button (UiIds.rowSaveButton r.categoryId) "Save" false (fun () -> handlers.saveCategory r.categoryId)
-                    button (UiIds.rowCancelButton r.categoryId) "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
-                ]
-                @ removeVerb)
-        ] :> IView
+        let row =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 6.0
+                StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                StackPanel.children (
+                    [
+                        nameBox
+                        button (UiIds.rowSaveButton r.categoryId) "Save" false (fun () -> handlers.saveCategory r.categoryId)
+                        button (UiIds.rowCancelButton r.categoryId) "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
+                    ]
+                    @ removeVerb)
+            ]
+            // Keyed by the category id (`View.withKey`, spec 0038): adding / removing a row recreates
+            // the rows that shift slots instead of patching one row's controls into another's.
+            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+            |> Avalonia.FuncUI.DSL.View.withKey r.categoryId
+        row :> IView
 
     /// The category list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : State) (handlers : Handlers) : IView =

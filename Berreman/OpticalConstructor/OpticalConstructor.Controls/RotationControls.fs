@@ -3,12 +3,14 @@ namespace OpticalConstructor.Controls
 open System
 open System.Globalization
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Interactivity
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -112,11 +114,19 @@ module RotationControls =
     let private formatDegrees (v : float) : string =
         System.String.Format(CultureInfo.InvariantCulture, "{0:0.##}", v)
 
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
+    /// `Control.Name`) through FuncUI's attr builder. The reset pair swaps its label / action in
+    /// place while the bar re-renders per host update, so the boxes are regenerable — Avalonia
+    /// forbids renaming a styled control, and an AutomationId survives control reuse (the
+    /// `MaterialsControls` precedent).
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
     /// A small clickable, button-styled Border. `active` lights it up with the accent (task 009).
     /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
     let private clickBox (id : string) (label : string) (enabled : bool) (active : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
         Border.create [
-            Border.name id
+            automationId id
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush (if active then activeBackground else idleBackground))
@@ -185,10 +195,10 @@ module RotationControls =
 
     let mutable private armedAxis : Axis option = None
 
-    let private axisOfButtonName (name : string) : Axis option =
-        if name = UiIds.r1Minus || name = UiIds.r1Plus then Some R1
-        elif name = UiIds.r2Minus || name = UiIds.r2Plus then Some R2
-        elif name = UiIds.r3Minus || name = UiIds.r3Plus then Some R3
+    let private axisOfButtonId (autoId : string) : Axis option =
+        if autoId = UiIds.r1Minus || autoId = UiIds.r1Plus then Some R1
+        elif autoId = UiIds.r2Minus || autoId = UiIds.r2Plus then Some R2
+        elif autoId = UiIds.r3Minus || autoId = UiIds.r3Plus then Some R3
         else None
 
     /// Paint one axis +/- button (a `clickBox` Border with a `TextBlock` child) armed or idle.
@@ -199,12 +209,14 @@ module RotationControls =
         | :? TextBlock as t -> t.FontWeight <- (if isArmed then FontWeight.Bold else FontWeight.Normal)
         | _ -> ()
 
-    /// Restyle every axis button currently in a window for the current `armedAxis`.
+    /// Restyle every axis button currently in a window for the current `armedAxis`. The buttons are
+    /// found by their `AutomationProperties.AutomationId` (the boxes carry no `Name` since the
+    /// spec-0038 sweep).
     let private restyleBar (top : TopLevel) : unit =
         for v in top.GetVisualDescendants() do
             match v with
-            | :? Border as b when not (isNull b.Name) ->
-                match axisOfButtonName b.Name with
+            | :? Border as b ->
+                match axisOfButtonId (AutomationProperties.GetAutomationId b) with
                 | Some axis -> styleButton b (b.IsEnabled && armedAxis = Some axis)
                 | None -> ()
             | _ -> ()
@@ -232,10 +244,11 @@ module RotationControls =
         let armed (axis : Axis) (groupEnabled : bool) : bool = groupEnabled && activeAxis = Some axis
         let lockButton =
             clickBox UiIds.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleR3Lock ())
-        // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two named buttons (plus a
-        // prompt) keep their `Name` across the swap — only the label / action / prompt change. A
-        // structural swap to differently-named buttons made FuncUI reuse a Border and re-set its Name,
-        // which Avalonia forbids once it is styled ("Cannot set Name : styled element already styled").
+        // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two buttons (plus a
+        // prompt) keep their stable automation ids across the swap — only the label / action / prompt
+        // change. A structural swap to differently-identified buttons made FuncUI reuse a Border and
+        // re-set its then-`Name`, which Avalonia forbids once it is styled ("Cannot set Name : styled
+        // element already styled") — the ids are AutomationIds now, but the in-place swap stays.
         let armedConfirm = state.confirm <> NoConfirm
         let prompt =
             match state.confirm with

@@ -1,0 +1,11 @@
+# Step 037 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Domain, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [15, 25, 29, 36]
+```
+
+**How to implement.** Wire the inverse constructor state and the collection builder. Inverse state: an initInverse beside initMainWith (today TestWindows/TableAndElementRotationView.fs:339-358) seeding the scene with the sample element present but UNBOUND (step 30 draws it dashed) or bound to a HINT sample chosen through the Library window's Select state; with NO hint the experiment chart surface is ABSENT; with a hint the chart behaves as today. Collection builder: grow the Experiments bay into named experiment collections — create/rename a collection of step-25 experiments (each possibly sample-less or dark), attach ONE data file per experiment through a file picker whose chosen DataFilePath loads through ExperimentDataProxy (intensity or ellipsometric per the experiment's detector kind) with the per-experiment parse/validation status shown inline as typed messages; collections save/list/load through ExperimentCollectionProxy. Thread the proxies through the App composition mechanically (step 47 owns the composition acceptance). Headless tests over mock proxies: inverse init has an unbound sample and no chart; binding a hint restores the chart; attaching a file records the typed per-experiment status; a collection round-trips through save/list/load.
+
+**Acceptance.** After the step, the inverse state opens with an unbound sample and no experiment chart, a hint restores the chart, per-experiment file attachment shows typed parse/validation status over mock proxies, and collections round-trip — verified headless.

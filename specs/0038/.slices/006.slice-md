@@ -1,0 +1,11 @@
+# Step 006 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.App, OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [3]
+```
+
+**How to implement.** Hoist proxy construction out of the MainConstructorWindow constructor (OpticalConstructor.App/Program.fs:129-147) into ONE app-scope composition value built at startup before any window opens: a record (the *Context convention) bundling the five proxies — LibraryProxy, ExperimentProxy, MaterialProxy, SampleProxy, CategoryProxy — plus the step-5 settings record, injected into MainConstructorWindow and every window opened later, so launcher-opened and constructor-opened windows share the same in-memory stores. The parameterless DefaultStores composition (Ui/TableAndElementRotationView.fs after step 3's move; today at TestWindows/TableAndElementRotationView.fs:270-280) stays the test-scene default. Headless test: two surfaces composed from the app scope observe the same store — a material added through one is listed by the other.
+
+**Acceptance.** After the step, the five proxies are created exactly once at startup and injected into every window, and a headless test proves two surfaces over the app scope share one store.

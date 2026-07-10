@@ -191,7 +191,7 @@ module LibraryControlsTests =
             // Click Confirm — now it binds the selected element's valueId.
             let findConfirm () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = LibraryControls.UiIds.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = LibraryControls.UiIds.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findConfirm () with
             | None -> Assert.Fail("the Confirm button was not visible in the Selector bay")
             | Some b ->
@@ -203,4 +203,116 @@ module LibraryControlsTests =
                     Dispatcher.UIThread.RunJobs()
                     Assert.Equal(Some glass1mmId, (elem 2 model).placement.valueId)
                 else Assert.Fail("the Confirm button has no on-screen position")
+            window.Close())
+
+    // ============================ FuncUI recycling regressions (spec 0038) ============================
+    // The leaf rows are GENERATED from a kind-constrained list whose membership changes with the
+    // selection, so a re-render can shift one entry onto another's reused control. A `Border.name`
+    // there made FuncUI re-set a styled element's `Name` and throw "Cannot set Name : styled element
+    // already styled" (the live Selector-bay crash); the rows now carry a freely-mutable
+    // `AutomationProperties.AutomationId` and are keyed with `View.withKey`. These drive the bay
+    // through a REAL re-rendering Component (the app's Elmish patch path) to guard that.
+
+    /// A Border in `window` carrying this automation id (the converted boxes carry no `Name`).
+    let private borderWithId (window : Window) (id : string) : Border option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function
+            | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id && b.IsEffectivelyVisible -> Some b
+            | _ -> None)
+
+    let private clickIn (window : Window) (id : string) : unit =
+        match borderWithId window id with
+        | Some b ->
+            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+            if c.HasValue then
+                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            else Assert.Fail($"%s{id} has no on-screen position")
+        | None -> Assert.Fail($"%s{id} not found")
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a leaf-row membership shift re-renders without a styled-element rename throw`` () =
+        // The mechanism regression, at the control level: rows [alpha; beta; gamma] → [beta; gamma]
+        // shifts 'beta' onto 'alpha''s reused Border (same type, same slot). With `Border.name` this
+        // threw "Cannot set Name : styled element already styled"; the AutomationId + ViewKey sweep
+        // recreates the shifted rows instead.
+        HeadlessSession.run (fun () ->
+            let rowFor (id : string) (label : string) : LibraryControls.Row =
+                { label = label; depth = 0; entryId = id; isBound = false }
+            let fullRows = [ rowFor "alpha" "Alpha"; rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
+            let shiftedRows = [ rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
+            let stateFor (rows : LibraryControls.Row list) : LibraryControls.State =
+                { LibraryControls.empty with rows = rows; kindLabel = "Sample"; enabled = true }
+            let handlers : LibraryControls.Handlers =
+                { selectEntry = ignore; confirmEntry = ignore; cancelEntry = ignore }
+            let setRows : (LibraryControls.Row list -> unit) ref = ref (fun _ -> ())
+            let host =
+                Component(fun ctx ->
+                    let rows = ctx.useState fullRows
+                    setRows.Value <- rows.Set
+                    LibraryControls.view (stateFor rows.Current) handlers)
+            let window = Window(Width = 640.0, Height = 480.0, Content = host)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // Shift the membership (the first leaf disappears) — must not throw…
+            setRows.Value shiftedRows
+            Dispatcher.UIThread.RunJobs()
+            // …and back to the full list (the reverse shift).
+            setRows.Value fullRows
+            Dispatcher.UIThread.RunJobs()
+            let hasEntry (id : string) : bool =
+                match borderWithId window (LibraryControls.UiIds.entry id) with
+                | Some _ -> true
+                | None -> false
+            Assert.True(hasEntry "alpha" && hasEntry "beta" && hasEntry "gamma",
+                        "the re-rendered leaf rows were not locatable by AutomationId")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Selector bay survives select, bind, and kind-change re-renders`` () =
+        // The acceptance drive over the LIVE main view: select an entry (pending), bind it (Confirm),
+        // then change the selected element's KIND twice — rows collapse for a polarizer and rebuild for
+        // a fresh sample — with every step re-rendering through the FuncUI patch path.
+        HeadlessSession.run (fun () ->
+            let seed = withSampleSelected () |> update (SelectBay BayNames.selector)
+            let latest : Model ref = ref seed
+            let dispatchRef : (Msg -> unit) ref = ref ignore
+            let comp =
+                Component(fun ctx ->
+                    let st = ctx.useState seed
+                    latest.Value <- st.Current
+                    let dispatch (msg : Msg) =
+                        let m = update msg st.Current
+                        latest.Value <- m
+                        st.Set m
+                    dispatchRef.Value <- dispatch
+                    mainView st.Current dispatch)
+            let window = Window(Width = 980.0, Height = canvasHeight + 360.0, Content = comp)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // SELECT: click a leaf entry — the pending confirm panel renders on the patched tree.
+            clickIn window (LibraryControls.UiIds.entry glass1mmId)
+            Assert.Equal(Some glass1mmId, latest.Value.pendingEntry)
+            // BIND: click Confirm — the pending entry commits to the selected element's valueId.
+            clickIn window LibraryControls.UiIds.confirm
+            Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
+            let sampleLeafShown () : bool =
+                match borderWithId window (LibraryControls.UiIds.entry glass1mmId) with
+                | Some _ -> true
+                | None -> false
+            // KIND-CHANGE 1: add (and select) a polarizer — no library entries for its kind, so the
+            // leaf rows COLLAPSE on the re-render.
+            dispatchRef.Value (AddElement LinearPolarizer)
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(sampleLeafShown (), "a sample leaf row survived the polarizer kind-change")
+            // KIND-CHANGE 2: add (and select) another sample — the full sample tree REBUILDS.
+            dispatchRef.Value (AddElement Sample)
+            Dispatcher.UIThread.RunJobs()
+            Assert.True(sampleLeafShown (), "the sample leaf rows did not rebuild after the kind-change back")
+            // The first sample kept its binding across the re-renders.
+            Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
             window.Close())

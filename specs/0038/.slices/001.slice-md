@@ -1,0 +1,11 @@
+# Step 001 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.Controls convert every generated or regenerable clickable Border from the write-once Border.name to the freely-mutable AutomationProperties.AutomationId, following the documented in-project pattern (MaterialsControls.automationId, MaterialsControls.fs:139-146): LibraryControls.leafRow (Border.name at LibraryControls.fs:112) and LibraryControls.actionButton (:148) — the live Selector-bay crash 'Cannot set Name : styled element already styled' — plus the latent copies RotationControls.clickBox (RotationControls.fs:119), RayPositionControls.clickBox (RayPositionControls.fs:71), ElementPaletteControls.clickBox (ElementPaletteControls.fs:55), and ExperimentControls.optionBoxV / actionButton (ExperimentControls.fs:240,581 — the module already documents the AutomationId precedent at :261-266). Key every variable-membership generated list item with View.withKey. NO behaviour change: labels, layout, handlers, and message flow stay identical; headless tests that located these controls by Name switch to AutomationProperties.GetAutomationId.
+
+**Acceptance.** After the sweep, no generated or regenerable row/box in OpticalConstructor.Controls sets StyledElement.Name; a headless test drives the Selector bay through select, bind, and kind-change re-renders without a styled-element rename throw; every existing headless test still locates its controls.

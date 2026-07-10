@@ -1,0 +1,11 @@
+# Step 043 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: [2]
+```
+
+**How to implement.** Collapse the two recent-files stores into ONE: keep OpticalConstructor.Storage/RecentFiles.fs (the bounded-MRU module with the pure bump invariant and its own recent.json) as the single recent-files mechanism, and REMOVE the EnvironmentSettings.recentFiles field (Ui/UserEnvironment.fs:185) and its default (:241); any consumer surviving the step-2 shell retirement re-points to Storage.RecentFiles. The environment loader's total-load contract keeps old environment.json files loading (the dropped field is ignored) — no migration code. Update tests.
+
+**Acceptance.** After the step, EnvironmentSettings carries no recentFiles field, Storage.RecentFiles is the only recent-files store in the tree, and build plus tests are green.

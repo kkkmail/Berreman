@@ -1,0 +1,11 @@
+# Step 020 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** New Domain module (e.g. OpticalConstructor.Domain/Lifecycle.fs): VersionNumber single-case int DU with .value, .next, and a first value; MaterialVersionId = { materialId : MaterialId; version : VersionNumber }; SampleVersionId = { sampleId : SampleId; version : VersionNumber }; EntryLifecycle = ActiveEntry | InactiveEntry; VersionRef = MaterialVersionRef of MaterialVersionId | SampleVersionRef of SampleVersionId; and the used-seam record VersionsInUse = { versionsInUse : unit -> Set<VersionRef> } (computed from the in-memory experiment store by step 25; truthful later when persistence arrives). Express the version-creation rule ONCE as a pure decision function shared by both stores: inputs are the stored latest version's physics payload, the incoming save (physics + metadata), and whether that version is used; output a DU MutateInPlace | MintNextVersion | KeepCurrent — an unused version mutates in place, a used version with STRUCTURALLY DIFFERENT physics mints the next, an identical physics save keeps the current version, and metadata-only edits (name, description, category) NEVER version regardless of use. Unit tests enumerate the used/unused x physics-changed/identical x metadata-only decision table.
+
+**Acceptance.** After the step, pure tests MUST prove the decision table: unused edits mutate in place, used physics changes mint the next version, identical saves keep the version, and metadata-only edits never version.

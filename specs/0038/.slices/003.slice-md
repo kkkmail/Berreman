@@ -1,0 +1,11 @@
+# Step 003 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.TestWindows, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [2]
+```
+
+**How to implement.** REAL-MOVE the workbench from OpticalConstructor.TestWindows into OpticalConstructor.Ui (no file-linking; one fsproj per folder; namespaces become OpticalConstructor.Ui): TableAndElementRotationView.fs, TableScene.fs, SceneInput.fs, Catalogue.fs, ElementRenderer.fs, MaterialEditorView.fs/MaterialEditorWindow.fs, SampleEditorView.fs/SampleEditorWindow.fs, CategoryEditorView.fs/CategoryEditorWindow.fs, NkDispersionChart.fs. The diagnostic scene views/windows (TableRotation, ElementRotation, ElementMovement, RendererTest, SnapToBeam, SnapToReflected, TableAndElementRotationWindow) STAY in OpticalConstructor.TestWindows, which gains a project reference to OpticalConstructor.Ui and opens the moved namespaces. Order the moved files in the Ui fsproj after UserEnvironment.fs. OpticalConstructor.App already references Ui; update its opens. Ui.Tests drive the same views under the new namespaces. The move MUST NOT reintroduce MSB3277 or any our-code warning.
+
+**Acceptance.** After the move, the workbench modules compile inside OpticalConstructor.Ui under OpticalConstructor.Ui namespaces, OpticalConstructor.TestWindows holds only the diagnostic scenes and references Ui, the launcher Main and all seven test windows still open, and build plus both test suites are green with no new warnings.

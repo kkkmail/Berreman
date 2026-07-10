@@ -1,0 +1,16 @@
+# Step 004 — ADD_COMPONENT UICOMP_XDUO_0007 TestLauncherWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0007
+name: TestLauncherWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.TestWindows.App
+touches: [OpticalConstructor.TestWindows.App, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [3]
+```
+
+**How to implement.** Create the new executable project Berreman/OpticalConstructor/OpticalConstructor.TestWindows.App (net10.0, x64, WinExe — mirror OpticalConstructor.App.fsproj's Avalonia package set; add it to Berreman.slnx) hosting TestLauncherWindow: its own Avalonia Application + entry point and one button per diagnostic scene currently on the product launcher (OpticalConstructor.App/Program.fs:177-224 — Table Rotations, Element Rotations, Table + Element Rotations, Element Movement, Renderers, Snap to Beam, Snap to Reflected), each with a stable Name and AutomationId. Then REMOVE those seven buttons from the product LauncherWindow and DROP OpticalConstructor.App's project reference to OpticalConstructor.TestWindows — test code leaves the product dependency graph; the product launcher keeps Main only (Inverse/Materials/Library land in step 45). Ui.Tests references the new project and renders the window headless.
+
+**Acceptance.** After the step, OpticalConstructor.TestWindows.App builds as its own executable whose TestLauncherWindow renders all seven scene buttons under a headless frame, and OpticalConstructor.App no longer references OpticalConstructor.TestWindows while its launcher still opens Main.

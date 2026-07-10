@@ -2,10 +2,12 @@ namespace OpticalConstructor.Controls
 
 open System.Globalization
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -64,11 +66,18 @@ module RayPositionControls =
     let private formatMeters (v : float) : string =
         System.String.Format(CultureInfo.InvariantCulture, "{0:+0.000;-0.000;0.000}", v)
 
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
+    /// `Control.Name`) through FuncUI's attr builder: the bar's boxes are regenerable per host
+    /// re-render, and Avalonia forbids renaming a styled control — an AutomationId survives control
+    /// reuse (the `MaterialsControls` precedent).
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
     /// A small clickable, button-styled Border, matching `RotationControls`. `e.Handled <- true` drops
     /// FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
     let private clickBox (id : string) (label : string) (enabled : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
         Border.create [
-            Border.name id
+            automationId id
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush idleBackground)

@@ -1,0 +1,11 @@
+# Step 019 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [16]
+```
+
+**How to implement.** Replace the sample editor's WrapPanel material picker (today TestWindows/SampleEditorView.fs:740-758) with a per-layer 'Choose material…' verb opening the MATERIALS window in Select state targeted at that LayerPosition (step-16 SelectionContext with SampleLayerTarget; the staleness rules apply — a deleted row makes the return a no-op plus status line). The editor RE-QUERIES MaterialProxy.listMaterials whenever a Select window returns and on window activation, replacing the load-once snapshot (today TestWindows/SampleEditorWindow.fs:32-35); live cross-window notifications are OUT OF SCOPE. The by-MaterialId selection contract (ChooseMaterial) is unchanged. Headless tests: Choose material… opens the Materials window in Select state targeted at the row; the returned selection binds that row's material; deleting the row first makes the return a no-op; a material added through another window appears after activation re-query.
+
+**Acceptance.** After the step, the sample editor picks materials through the Materials window's Select state targeted by LayerPosition with vanished-row no-op, and its material list refreshes on Select-return and window activation — verified headless.

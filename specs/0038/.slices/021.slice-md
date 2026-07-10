@@ -1,0 +1,11 @@
+# Step 021 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [20]
+```
+
+**How to implement.** Re-shape the registered MaterialProxy (STORE_XDUO_0001) IN PLACE — same record name, kind, and declaring project (MaterialLibrary.fs:506; createInMemory ElementId.fs:722); no temporary, no shim (spec-md 0.2). The store becomes versions per MaterialId: listMaterials lists LATEST ACTIVE versions with an explicit include-inactive switch (a two-case DU, not a bool) for the show-inactive toggle; a by-MaterialVersionId resolve serves reference resolution and IGNORES lifecycle; saveMaterial applies the step-20 decision function against the injected VersionsInUse (mutate / mint next / keep); metadata edits update in place on every version-decision branch; lifecycle verbs markMaterialInactive / markMaterialActive / supersedeMaterial (a superseded version behaves as inactive automatically); removeMaterial keeps the MaterialStillReferenced hard-block (ElementId.fs:755-765) and ADDITIONALLY refuses any material with a used version via a new typed MaterialError case carrying the reason. The library edits the LATEST version only; older versions are view-only resolution targets. Update every consumer mechanically (bays/windows/editors list latest-active; facets unchanged in behaviour). Tests: version growth per the decision table over a stubbed VersionsInUse, latest-active default listing, inactive hidden from offers yet resolvable by version, supersede behaving as inactive, and both removal blocks.
+
+**Acceptance.** After the step, MaterialProxy exposes versioned save/resolve/lifecycle with the shared decision rule enforced, default listing returns latest active versions, used versions are un-deletable with typed refusals, and all consumers compile with tests green.

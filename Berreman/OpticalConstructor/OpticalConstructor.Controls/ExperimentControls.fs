@@ -229,15 +229,22 @@ module ExperimentControls =
     let private editingBackground = color 255 224 160
     let private idleBorder = color 120 120 120
 
-    /// A clickable, styled, named Border, highlighted when it is the chosen option. `visible` toggles the
-    /// box in place (rather than adding / removing it from the list): a named Avalonia control's `Name`
-    /// cannot be changed once styled, so a bounded selector whose MEMBERS change (e.g. the variable set
-    /// per element kind) must keep every box present with a STABLE name and only flip visibility — otherwise
-    /// FuncUI recycles a named box into a differently-named one and throws "Cannot set Name : … already
-    /// styled" (the same reason the Ribbon keeps all panes present). See `variableRow`.
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`)
+    /// through FuncUI's attr builder, so a reused control in a reorderable list can take a new id. Every
+    /// generated or regenerable clickable box here carries one (never a write-once `Name`): Avalonia
+    /// forbids renaming a styled control, and an AutomationId survives control reuse. Tests query it via
+    /// `AutomationProperties.GetAutomationId` (the automation contract CLAUDE.md prescribes).
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+    /// A clickable, styled Border, highlighted when it is the chosen option. `visible` toggles the
+    /// box in place (rather than adding / removing it from the list): a bounded selector whose MEMBERS
+    /// change (e.g. the variable set per element kind) keeps every box present at a STABLE slot and only
+    /// flips visibility, so the boxes' click subscriptions stay coherent across kind changes (and the
+    /// child-list length stays stable — see `rangeRow`). The id is a reuse-safe AutomationId.
     let private optionBoxV (id : string) (label : string) (chosen : bool) (enabled : bool) (visible : bool) (onClick : unit -> unit) : IView =
         Border.create [
-            Border.name id
+            automationId id
             Border.isVisible visible
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
@@ -259,30 +266,29 @@ module ExperimentControls =
         optionBoxV id label chosen enabled true onClick
 
     /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
-    /// control onto a different item's slot when an item is removed; Avalonia forbids changing a styled
-    /// control's `Name`, so these carry an `AutomationProperties.AutomationId` (freely mutable, and the
-    /// automation contract CLAUDE.md prescribes) instead of `Border.name`. Tests query it via
-    /// `AutomationProperties.GetAutomationId`.
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`)
-    /// through FuncUI's attr builder, so a reused control in a reorderable list can take a new id.
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
+    /// control onto a different item's slot when an item is removed, so the box carries a reuse-safe
+    /// AutomationId AND is KEYED by it (`View.withKey`) — a membership change recreates the box at the
+    /// shifted slot instead of patching another item's styled control in place.
     let private idOptionBox (autoId : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-        Border.create [
-            automationId autoId
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush (if chosen then chosenBackground else idleBackground))
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
-        ] :> IView
+        let keyedBox =
+            Border.create [
+                automationId autoId
+                Border.isEnabled enabled
+                Border.opacity (if enabled then 1.0 else 0.4)
+                Border.background (brush (if chosen then chosenBackground else idleBackground))
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(10.0, 5.0))
+                Border.margin (Thickness(0.0, 0.0, 8.0, 6.0))
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
+            ]
+            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+            |> Avalonia.FuncUI.DSL.View.withKey autoId
+        keyedBox :> IView
 
     /// A section heading (the numbered step labels).
     let private heading (text : string) : IView =
@@ -412,23 +418,29 @@ module ExperimentControls =
     /// The result block under the editor: the ellipsometer single-point Ψ/Δ text when present, plus the
     /// inline chart (double-click opens the pop-out window) and the prose description.
     let private resultBlock (state : State) (handlers : Handlers) : IView list =
+        // Both sub-blocks come and go with the state (variable membership in the bay's child list), so
+        // every item is KEYED: when the Ψ/Δ readout toggles and the chart items shift a slot, FuncUI
+        // recreates them instead of cross-patching one styled control into another.
         let psiBlock =
             match state.psiDelta with
             | Some (psiDeg, deltaDeg) ->
-                [ TextBlock.create [
-                      TextBlock.name UiIds.psiDelta
-                      TextBlock.text $"Ψ = %.2f{psiDeg}°   Δ = %.2f{deltaDeg}°"
-                  ] :> IView ]
+                let psiText =
+                    TextBlock.create [
+                        TextBlock.name UiIds.psiDelta
+                        TextBlock.text $"Ψ = %.2f{psiDeg}°   Δ = %.2f{deltaDeg}°"
+                    ]
+                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.psiDelta
+                [ psiText :> IView ]
             | None -> []
         let chartBlock =
             match state.series with
             | [] -> []
             | _ ->
-                [
-                    // An explicit, always-reliable way to open the pop-out interactive window — the earlier
-                    // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
+                // An explicit, always-reliable way to open the pop-out interactive window — the earlier
+                // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
+                let openButton =
                     Border.create [
-                        Border.name UiIds.openChart
+                        automationId UiIds.openChart
                         Border.isEnabled state.enabled
                         Border.background (brush chosenBackground)
                         Border.borderBrush (brush idleBorder)
@@ -439,7 +451,9 @@ module ExperimentControls =
                         Border.horizontalAlignment HorizontalAlignment.Left
                         Border.child (TextBlock.create [ TextBlock.text "Open chart window ↗" ])
                         Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
-                    ] :> IView
+                    ]
+                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.openChart
+                let chartBox =
                     Border.create [
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
@@ -451,15 +465,18 @@ module ExperimentControls =
                         // Double-click ALSO opens the pop-out window — via Avalonia's built-in DoubleTapped
                         // gesture (more reliable than a hand-rolled PointerPressed ClickCount check).
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
-                    ] :> IView
+                    ]
+                    |> Avalonia.FuncUI.DSL.View.withKey "ExperimentChartBox"
+                let descriptionText =
                     TextBlock.create [
                         TextBlock.name UiIds.description
                         TextBlock.text state.description
                         TextBlock.fontSize 11.0
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.maxWidth 360.0
-                    ] :> IView
-                ]
+                    ]
+                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.description
+                [ openButton :> IView; chartBox :> IView; descriptionText :> IView ]
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).
@@ -575,10 +592,11 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    // -- A plain action button (Add / Update / New). --
+    // -- A plain action button (Add / Update / New). Regenerable (the Add label swaps to "Update
+    // experiment" in place), so it carries a reuse-safe AutomationId, never a write-once `Name`. --
     let private actionButton (id : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
         Border.create [
-            Border.name id
+            automationId id
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush (if accent then chosenBackground else idleBackground))
@@ -619,31 +637,36 @@ module ExperimentControls =
 
     /// One collection row: the experiment description (single-click Edit, highlighted while editing;
     /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
+    /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
+    /// instead of patching one row's controls into another's.
     let private collectionRow (handlers : Handlers) (r : ExperimentRow) : IView =
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 0.0
-            StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-            StackPanel.children [
-                Border.create [
-                    automationId (UiIds.editButton r.id)
-                    Border.background (brush (if r.isEditing then editingBackground else idleBackground))
-                    Border.borderBrush (brush idleBorder)
-                    Border.borderThickness 1.0
-                    Border.cornerRadius (CornerRadius 3.0)
-                    Border.padding (Thickness(10.0, 4.0))
-                    Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
-                    Border.maxWidth 300.0
-                    Border.child (TextBlock.create [ TextBlock.text r.description; TextBlock.textWrapping TextWrapping.Wrap ])
-                    // Single-click edits; double-click opens the chart window for this experiment (the same
-                    // "View" action as the button beside it — Avalonia's DoubleTapped gesture).
-                    Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
-                    Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
-                ] :> IView
-                rowActionButton (UiIds.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
-                rowActionButton (UiIds.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
+        let row =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 0.0
+                StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                StackPanel.children [
+                    Border.create [
+                        automationId (UiIds.editButton r.id)
+                        Border.background (brush (if r.isEditing then editingBackground else idleBackground))
+                        Border.borderBrush (brush idleBorder)
+                        Border.borderThickness 1.0
+                        Border.cornerRadius (CornerRadius 3.0)
+                        Border.padding (Thickness(10.0, 4.0))
+                        Border.margin (Thickness(0.0, 0.0, 6.0, 0.0))
+                        Border.maxWidth 300.0
+                        Border.child (TextBlock.create [ TextBlock.text r.description; TextBlock.textWrapping TextWrapping.Wrap ])
+                        // Single-click edits; double-click opens the chart window for this experiment (the same
+                        // "View" action as the button beside it — Avalonia's DoubleTapped gesture).
+                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
+                        Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
+                    ] :> IView
+                    rowActionButton (UiIds.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
+                    rowActionButton (UiIds.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
+                ]
             ]
-        ] :> IView
+            |> Avalonia.FuncUI.DSL.View.withKey r.id
+        row :> IView
 
     /// The collection block: a heading and the added-experiment rows (or a hint when empty).
     let private collectionBlock (state : State) (handlers : Handlers) : IView list =

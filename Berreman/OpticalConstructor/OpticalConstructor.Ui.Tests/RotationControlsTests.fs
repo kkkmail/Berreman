@@ -49,13 +49,18 @@ module RotationControlsTests =
     /// The light-accent fill the bar paints onto an armed axis's buttons (#CCE8FF, from the control).
     let private accent : Color = Color.FromRgb(204uy, 232uy, 255uy)
 
-    let private borderNamed (w : Window) (name : string) : Border option =
+    /// The bar's boxes carry a freely-mutable `AutomationProperties.AutomationId` (not a write-once
+    /// `Name`) since the spec-0038 sweep — locate them by that id.
+    let private borderWithId (w : Window) (id : string) : Border option =
         w.GetVisualDescendants()
-        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = name -> Some b | _ -> None)
+        |> Seq.choose (fun v ->
+            match v with
+            | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id -> Some b
+            | _ -> None)
         |> Seq.tryHead
 
-    let private backgroundColor (w : Window) (name : string) : Color option =
-        match borderNamed w name with
+    let private backgroundColor (w : Window) (id : string) : Color option =
+        match borderWithId w id with
         | Some b -> (match b.Background with | :? SolidColorBrush as s -> Some s.Color | _ -> None)
         | None -> None
 
@@ -87,7 +92,7 @@ module RotationControlsTests =
 
     /// The "Lock R3" / "Unlock R3" button's current label.
     let private lockLabel (window : Window) : string =
-        match borderNamed window RotationControls.UiIds.lockR3 with
+        match borderWithId window RotationControls.UiIds.lockR3 with
         | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
         | None -> "<not found>"
 
@@ -122,8 +127,8 @@ module RotationControlsTests =
 
             window.Close())
 
-    let private buttonLabel (window : Window) (name : string) : string =
-        match borderNamed window name with
+    let private buttonLabel (window : Window) (id : string) : string =
+        match borderWithId window id with
         | Some b -> (match b.Child with | :? TextBlock as t -> t.Text | _ -> "<no text>")
         | None -> "<not found>"
 
@@ -186,8 +191,8 @@ module RotationControlsTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
 
-            let click (name : string) : unit =
-                match borderNamed window name with
+            let click (id : string) : unit =
+                match borderWithId window id with
                 | Some b ->
                     let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
                     if c.HasValue then
@@ -195,8 +200,8 @@ module RotationControlsTests =
                         Dispatcher.UIThread.RunJobs()
                         window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
                         Dispatcher.UIThread.RunJobs()
-                    else Assert.Fail($"%s{name} has no on-screen position")
-                | None -> Assert.Fail($"%s{name} not found")
+                    else Assert.Fail($"%s{id} has no on-screen position")
+                | None -> Assert.Fail($"%s{id} not found")
 
             // Reset → arms; the SAME button now reads "Yes" and clicking it CONFIRMS (one reset, no cancel).
             click RotationControls.UiIds.reset

@@ -1,0 +1,11 @@
+# Step 033 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [3]
+```
+
+**How to implement.** Add unsaved-edit confirmation to BOTH editors. Capture the edit state at load (init) and define dirty = structural inequality between the captured and the current edit state (plain records/DUs; function-valued context fields excluded; no dirty flags to maintain). Intercept BOTH exits: CancelClicked (today MaterialEditorView.fs:423-424 and SampleEditorView.fs:549-550 close silently) and the window chrome via OnClosing on the two HostWindows. When dirty, show a confirm surface offering 'Discard changes' / 'Keep editing' in one row with distinct negative/positive styling; when pristine, close silently as today. Headless tests: pristine cancel closes immediately; an edited editor's Cancel shows the confirm; Keep editing returns to the editor; Discard closes without saving; the OnClosing path is equally gated.
+
+**Acceptance.** After the step, a dirty editor MUST NOT close silently through Cancel or the window chrome — the Discard/Keep confirm gates both — while a pristine editor closes immediately, verified headless.

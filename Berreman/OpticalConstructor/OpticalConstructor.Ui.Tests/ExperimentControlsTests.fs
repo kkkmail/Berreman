@@ -418,7 +418,7 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let findAdd () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.addButton && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when matchesId ExperimentControls.UiIds.addButton b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findAdd () with
             | None -> Assert.Fail("the Add button was not visible")
             | Some b ->
@@ -712,7 +712,7 @@ module ExperimentControlsTests =
             window.Content <- Component(fun _ -> ExperimentControls.view state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.openChart -> Some b | _ -> None) with
+            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId ExperimentControls.UiIds.openChart b -> Some b | _ -> None) with
             | Some b ->
                 match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
                 | p when p.HasValue ->

@@ -1,0 +1,15 @@
+# Step 029 — IMPLEMENT_CONTRACT STORE_XDUO_0005 ExperimentCollectionProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0005
+name: ExperimentCollectionProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [28]
+```
+
+**How to implement.** Implement ExperimentCollectionProxy.createInMemory closing over a ref Map<CollectionName, ExperimentCollectionSnapshot> (the same createInMemory precedent): saveCollection validates the name and upserts; tryLoadCollection and listCollections read the map. Round-trip unit tests over deterministic data: a collection holding a full E1 setup, a sample-less E2, and a dark E3 — with and without DataFilePath attachments — saves, lists, and loads value-identically.
+
+**Acceptance.** After the step, in-memory round-trips preserve ordered setups, optional sample/source shapes including the dark experiment, and DataFilePath attachments — unit-verified.

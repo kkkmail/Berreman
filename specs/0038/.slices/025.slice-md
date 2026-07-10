@@ -1,0 +1,11 @@
+# Step 025 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.Tests]
+depends_on: [20, 21, 22, 24]
+```
+
+**How to implement.** Grow Experiments.Experiment (ElementId.fs:909-917) into a FULL setup: an ordered setup list of ElementDescriptor records — each carrying the CatalogueKind, a placement/orientation summary, and the bound entry reference BY VERSION where versioned (a step-20 VersionRef for sample/material-backed bindings; protected presets bind by entry id) — with the varied element identified WITHIN the list, replacing the single elementId/elementLabel pair. Sample and light source are OPTIONAL: E1 = source+polarizer+sample+rotating polarizer, E2 = the same without a sample, and E3 = an empty dark-line setup are all constructible. The detector kind is part of the chain and determines the expected data-file shape (consumed by step 34). Declare DataFilePath (single-case elevated path DU, .value at the IO boundary) and an optional per-experiment attachment slot dataFileOpt : DataFilePath option. The Experiments bay builds descriptors from the live scene on commit (ElementId.fs:1010). Implement the step-20 VersionsInUse over the experiment store's descriptors and inject it into the step-21/22 saves. Update ExperimentProxy and seedExperiments (ElementId.fs:1076-1094) mechanically. Tests: E1/E2/E3 construct and describe; a bound version appears in versionsInUse and unlocks the used-version rules; committing from a scene captures the ordered chain including the detector kind.
+
+**Acceptance.** After the step, an Experiment carries an ordered descriptor setup with optional sample and source, dark-line experiments construct, commit captures the live chain with versioned bindings, and versionsInUse reflects descriptor references — unit-verified.

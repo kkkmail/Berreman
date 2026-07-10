@@ -129,40 +129,50 @@ module SampleLibraryControls =
     let private automationId (autoId : string) : IAttr<Border> =
         AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
 
-    /// A clickable, styled box (a facet option or a listed row), highlighted when chosen.
+    /// A clickable, styled box (a facet option or a listed row), highlighted when chosen, KEYED by its
+    /// id (`View.withKey`, spec 0038) so a membership change recreates a shifted box instead of
+    /// patching another item's styled control in place.
     /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or
     /// the highlight changes so a reused box can't keep a stale handler.
     let private clickBox (autoId : string) (label : string) (chosen : bool) (onClick : unit -> unit) : IView =
-        Border.create [
-            automationId autoId
-            Border.background (brush (if chosen then chosenBackground else idleBackground))
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 4.0))
-            Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
-        ] :> IView
+        let keyedBox =
+            Border.create [
+                automationId autoId
+                Border.background (brush (if chosen then chosenBackground else idleBackground))
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(10.0, 4.0))
+                Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
+            ]
+            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+            |> Avalonia.FuncUI.DSL.View.withKey autoId
+        keyedBox :> IView
 
     /// A verb button (Add / Edit / Remove / View / Make multilayer), accented when it is the
-    /// primary verb.
+    /// primary verb, keyed by its id (matching `clickBox` — spec 0038).
     let private verbButton (autoId : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-        Border.create [
-            automationId autoId
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush (if accent then chosenBackground else idleBackground))
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
-        ] :> IView
+        let keyedButton =
+            Border.create [
+                automationId autoId
+                Border.isEnabled enabled
+                Border.opacity (if enabled then 1.0 else 0.4)
+                Border.background (brush (if accent then chosenBackground else idleBackground))
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(12.0, 5.0))
+                Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey autoId
+        keyedButton :> IView
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the materials workbench's search field).
