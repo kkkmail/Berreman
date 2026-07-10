@@ -1,0 +1,90 @@
+{
+  "UICOMP_XDUO_0007": {
+    "lifecycle": "declared",
+    "declaringStep": 4,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "SVC_XDUO_0001": {
+    "lifecycle": "declared",
+    "declaringStep": 7,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0008": {
+    "lifecycle": "declared",
+    "declaringStep": 12,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0009": {
+    "lifecycle": "declared",
+    "declaringStep": 13,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0010": {
+    "lifecycle": "declared",
+    "declaringStep": 15,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0004": {
+    "lifecycle": "declared",
+    "declaringStep": 26,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0005": {
+    "lifecycle": "declared",
+    "declaringStep": 28,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0006": {
+    "lifecycle": "declared",
+    "declaringStep": 35,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "UICOMP_XDUO_0011": {
+    "lifecycle": "declared",
+    "declaringStep": 39,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0007": {
+    "lifecycle": "declared",
+    "declaringStep": 40,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  },
+  "STORE_XDUO_0008": {
+    "lifecycle": "declared",
+    "declaringStep": 41,
+    "implementStep": null,
+    "openTemporary": false,
+    "consumers": [],
+    "temporaries": []
+  }
+}
