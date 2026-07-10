@@ -1,0 +1,152 @@
+repo_root:                C:/GitHub/Berreman
+branch:                   0038
+data_version:             7
+worker_timeout_sec:       14400
+worker_hangup_idle_sec:   3600
+worker_review_max_cycles: 3
+max_total_route_backs:    4
+---
+```yaml
+slice_gates:
+  - slice: 001
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 002
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 003
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 004
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 005
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 006
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 007
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 008
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 009
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 010
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 011
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 012
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 013
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 014
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 015
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 016
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 017
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 018
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 019
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 020
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 021
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 022
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 023
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 024
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 025
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 026
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 027
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 028
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 029
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 030
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 031
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 032
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 033
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 034
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 035
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 036
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 037
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 038
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 039
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 040
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 041
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 042
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 043
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 044
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 045
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 046
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+  - slice: 047
+    gates: [build, unit-tests, constructor-unit-tests, ui-smoke, ui-tests]
+```
+.slices/001.slice-md
+.slices/002.slice-md
+.slices/003.slice-md
+.slices/004.slice-md
+.slices/005.slice-md
+.slices/006.slice-md
+.slices/007.slice-md
+.slices/008.slice-md
+.slices/009.slice-md
+.slices/010.slice-md
+.slices/011.slice-md
+.slices/012.slice-md
+.slices/013.slice-md
+.slices/014.slice-md
+.slices/015.slice-md
+.slices/016.slice-md
+.slices/017.slice-md
+.slices/018.slice-md
+.slices/019.slice-md
+.slices/020.slice-md
+.slices/021.slice-md
+.slices/022.slice-md
+.slices/023.slice-md
+.slices/024.slice-md
+.slices/025.slice-md
+.slices/026.slice-md
+.slices/027.slice-md
+.slices/028.slice-md
+.slices/029.slice-md
+.slices/030.slice-md
+.slices/031.slice-md
+.slices/032.slice-md
+.slices/033.slice-md
+.slices/034.slice-md
+.slices/035.slice-md
+.slices/036.slice-md
+.slices/037.slice-md
+.slices/038.slice-md
+.slices/039.slice-md
+.slices/040.slice-md
+.slices/041.slice-md
+.slices/042.slice-md
+.slices/043.slice-md
+.slices/044.slice-md
+.slices/045.slice-md
+.slices/046.slice-md
+.slices/047.slice-md

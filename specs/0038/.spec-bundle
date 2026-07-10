@@ -2,7 +2,7 @@
   "spec_id": "0038",
   "ticket": null,
   "created": "2026-07-10T12:44:16Z",
-  "status": "in-authoring",
+  "status": "handed-off",
   "gates": [
     "build",
     "unit-tests",
