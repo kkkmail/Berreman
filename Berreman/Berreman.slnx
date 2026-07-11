@@ -23,6 +23,9 @@
   <Project Path="OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj">
     <Platform Project="x64" />
   </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Database/OpticalConstructor.Database.csproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj">
     <Platform Project="x64" />
   </Project>

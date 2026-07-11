@@ -199,10 +199,24 @@
              ExperimentDataError from both fields (never a throw); an empty-but-existing file yields the
              parser's EmptyDataFile, proving the adapter reads then delegates and adds no parsing logic. -->
         <Compile Include="ExperimentDataStoreTests.fs" />
+        <!-- Spec 0038 Part M (step 040, ADD_COMPONENT STORE_XDUO_0007): the EFC-wiring
+             proof. The ONLY consumer of OpticalConstructor.Database — reads the provider
+             choice + connection string from a fixture appsettings.json (the step-5
+             ConfigKey literals, via AppSettingsProvider.tryGetConnectionString), parses
+             the provider into a DU, runs the initial migration against SQLite on a temp
+             file under the test output, and asserts the Test table exists + round-trips a
+             row. No MSSQL server anywhere. -->
+        <Compile Include="TestDbMigrationTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <Content Include="fixtures\Si.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <!-- Spec 0038 Part M (step 040): the EFC-wiring proof's appsettings fixture,
+             read by an explicit fixtures/ path so it never collides with the App's own
+             appsettings.json that also lands in the test output root. -->
+        <Content Include="fixtures\database-appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="fixtures\sample-nk.csv">
@@ -245,6 +259,11 @@
              the version BerremanTests pins; run via Check.One inside a [<Fact>] (the
              solution's established FsCheck-under-xunit pattern). -->
         <PackageReference Include="FsCheck" Version="3.3.3" />
+        <!-- Spec 0038 Part M (step 040): the EFC-wiring proof drives the SQLite provider
+             directly (UseSqlite / SqliteConnectionStringBuilder / Database.Migrate) and
+             needs the native SQLite assets in the test output. Version-matched to the
+             OpticalConstructor.Database project reference (net10.0). -->
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -262,6 +281,11 @@
         <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
+        <!-- Spec 0038 Part M (step 040): App carries the step-5 ConfigKey literals the
+             EFC-wiring proof reads; Database is the C# EFC project under test. This test
+             project is the ONLY consumer of OpticalConstructor.Database. -->
+        <ProjectReference Include="..\OpticalConstructor.App\OpticalConstructor.App.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Database\OpticalConstructor.Database.csproj" />
     </ItemGroup>
 
 </Project>
