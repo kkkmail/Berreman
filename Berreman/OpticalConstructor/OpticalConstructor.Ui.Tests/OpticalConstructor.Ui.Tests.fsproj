@@ -155,6 +155,13 @@
              (gate `ui-smoke`): two REAL Main windows over ONE app scope share the stores —
              a material added through one window's real editor is listed by the other. -->
         <Compile Include="AppContextTests.fs" />
+        <!-- Spec 0038 Part C (step 007, SVC_XDUO_0001 — declared): the WindowLauncher
+             contract, mock-driven — pure signature pins (modality decision, typed
+             forget/factory errors, id-keyed editor keys + EntryFreshness; gate
+             `ui-tests`) plus registry behaviour over stub-built windows (second
+             open activates, two editor keys create two windows, forget re-creates;
+             gate `ui-smoke`). -->
+        <Compile Include="WindowLauncherTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -86,6 +86,12 @@
              default). Last in the list so later Part C/E/F window files can consume
              both the workbench and the context. -->
         <Compile Include="AppContext.fs" />
+        <!-- Spec 0038 Part C (step 007, SVC_XDUO_0001 — declared): the window
+             open/activate seam (WindowKey / EntryFreshness / the WindowLauncher
+             function record + its mock). Step 008 implements the real launcher
+             over the host-layer WindowRegistry; ordered after AppContext.fs so
+             the implementation can bake the app scope's settings in. -->
+        <Compile Include="WindowLauncher.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
