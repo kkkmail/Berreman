@@ -155,6 +155,15 @@
              Experiments.ExperimentCollection type; compiles after Experiments.fs (reuses its
              Experiment). -->
         <Compile Include="ExperimentCollectionStore.fs" />
+        <!-- Spec 0038 Part I (step 031): the pure OUT-OF-BAND dispersion diagnostic — given the
+             materials reachable through an element's binding and the wavelengths an experiment
+             requests (a fixed λ, or a wavelength sweep's full range), flag every reachable material
+             whose DEFINED dispersion segments do not cover the request (constant / coded materials
+             never flag), carrying per-material defined-vs-requested ranges as typed data plus the
+             tooltip/Details text. Depends on MaterialLibrary (MaterialComplexity/MaterialEntry),
+             Experiments (VariableParameter/VariableRange/Experiment) and Units (the nm seam); nothing
+             else depends on it, so it compiles last. -->
+        <Compile Include="OutOfBandDiagnostic.fs" />
     </ItemGroup>
 
     <ItemGroup>

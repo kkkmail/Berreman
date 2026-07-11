@@ -171,6 +171,12 @@
              per-experiment attachments value-identically; plus the upsert, load-miss, blank-name
              rejection, and multi-collection listing. -->
         <Compile Include="ExperimentCollectionRoundTripTests.fs" />
+        <!-- Spec 0038 Part I (step 031): the pure out-of-band dispersion diagnostic — a fixed 600 nm
+             request inside a 300-700 nm segment does not flag, a 200-800 nm sweep against the same
+             segment flags (naming the material + both ranges), adjacent multi-segment unions cover a
+             spanning request while a gap does not, constant + coded-preset materials never flag, and
+             the requested-wavelengths derivation + tooltip/Details text. -->
+        <Compile Include="OutOfBandDiagnosticTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

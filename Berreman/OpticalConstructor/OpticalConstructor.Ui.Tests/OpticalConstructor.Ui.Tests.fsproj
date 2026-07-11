@@ -76,6 +76,11 @@
              (bindingStateOf) plus headless proofs that an unbound element renders dashed + ghosted, a
              bound one solid, and a not-bindable lens normally, in both the shape and wireframe looks. -->
         <Compile Include="ElementRendererBindingTests.fs" />
+        <!-- Spec 0038 step 031: the out-of-band dispersion warning badge — the pure host
+             derivation (a wavelength sweep past a bound sample's defined dispersion flags exactly
+             that element; a fixed in-band request flags none) plus the headless proof that the
+             flagged element renders the badge with its tooltip text (gate `ui-tests`). -->
+        <Compile Include="OutOfBandBadgeTests.fs" />
         <!-- Spec 0027 task 010: the snap-to-beam test window. -->
         <Compile Include="SnapToBeamTests.fs" />
         <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->

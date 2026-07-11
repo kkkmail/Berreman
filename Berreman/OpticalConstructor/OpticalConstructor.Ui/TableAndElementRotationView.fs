@@ -43,6 +43,11 @@ module UiIds =
     let unlockR3 = "TeUnlockR3Button"
     let reset = "TeResetButton"
     let readout = "TeReadout"
+    /// Spec 0038 (031): the out-of-band dispersion warning badge on scene element index `i` — an
+    /// indexed id (the `LayerBandsControls.UiIds.band` pattern) so a headless test addresses the
+    /// per-element badge. Its hover tooltip names the offending material(s) and both wavelength ranges.
+    let badgePrefix = "OutOfBandBadge_"
+    let outOfBandBadge (i : int) : string = $"%s{badgePrefix}%d{i}"
 
 // ---------------------------------------------------------------------------
 // Wheel gesture map: the rotations act on whatever is selected; Ctrl+Alt(+Shift) zoom the
@@ -1583,6 +1588,98 @@ let private runInputStokes (model : Model) : StokesVector =
         | _ -> None)
     |> Option.defaultValue Propagation.unpolarizedStokes
 
+// ---------------------------------------------------------------------------
+// Spec 0038 (031): the OUT-OF-BAND dispersion diagnostic overlay. Independent of the step-30
+// bound/unbound cue: for every element the materials reachable through its binding are checked
+// against the wavelengths the scene requests (the Experiments-bay draft's wavelength sweep, or the
+// fixed source λ). A material whose DEFINED dispersion segments do not cover the request raises a
+// small warning badge with a hover tooltip naming the offending material(s) and both ranges; the
+// same text lands in the Details bay. The diagnostic itself is the pure Domain
+// `OutOfBandDiagnostic`; the host only resolves reachability and renders the badge.
+// ---------------------------------------------------------------------------
+
+/// Every pinned material VERSION a sample's structure references (its film layers — a repeat cell
+/// counted once — its substrate plate, and its lower half-space), deduplicated.
+let private sampleMaterialVersions (s : Library.Sample) : MaterialLibrary.MaterialVersionId list =
+    let filmVersions =
+        s.structure.films
+        |> List.collect (fun item ->
+            match item with
+            | Library.SingleLayer l -> [ l.materialId ]
+            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId))
+    let substrateVersions = s.structure.substrate |> Option.toList |> List.map (fun l -> l.materialId)
+    let lowerVersions = s.structure.lower |> Option.toList
+    filmVersions @ substrateVersions @ lowerVersions |> List.distinct
+
+/// The materials reachable through an element's binding (spec 0038 step 031): a bound sample's layer
+/// material VERSIONS resolved to their entries through the versioned material store; a source /
+/// detector / polarizer / unbound element reaches none. (No table element binds a material DIRECTLY
+/// today — only samples carry materials — so the sample path is the sole reachability route.)
+let private reachableMaterialEntries (model : Model) (e : TestElement) : MaterialLibrary.MaterialEntry list =
+    match boundEntry model e with
+    | Some (Library.SampleItem s) ->
+        sampleMaterialVersions s
+        |> List.choose (fun mvid ->
+            match model.materials.resolveVersion mvid with
+            | Ok (Some entry) -> Some entry
+            | Ok None | Error _ -> None)
+    | Some _ | None -> []
+
+/// The wavelengths the scene currently requests (spec 0038 step 031): the Experiments-bay draft's
+/// wavelength sweep (its nm range) when one is being configured, otherwise the fixed source λ (the
+/// existing `runWaveLength`, which defaults to 600 nm for an absent source).
+let private sceneRequestedWavelengths (model : Model) : OutOfBandDiagnostic.RequestedWavelengths =
+    OutOfBandDiagnostic.requestedWavelengthsFor
+        (runWaveLength model)
+        model.experimentCollection.draft.variable
+        model.experimentCollection.draft.range
+
+/// The out-of-band warning text for element `e`, if any (spec 0038 step 031). Public so the Details
+/// bay and the badge overlay share ONE derivation and a headless test can drive it directly.
+let outOfBandWarningFor (model : Model) (e : TestElement) : string option =
+    OutOfBandDiagnostic.checkMaterialsOutOfBand (reachableMaterialEntries model e) (sceneRequestedWavelengths model)
+    |> OutOfBandDiagnostic.coverageWarning
+
+/// Attach an AutomationId to a badge TextBlock through FuncUI's attr builder (the
+/// `workbenchAutomationId` precedent — a scene overlay has variable membership, so it carries an
+/// AutomationId, never a write-once `Name`).
+let private badgeAutomationId (autoId : string) : IAttr<TextBlock> =
+    AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+/// Attach a hover tooltip (Avalonia's attached `ToolTip.Tip`) to a badge TextBlock — a NEW pattern
+/// (no prior tooltip in the app), set the same attr-builder way as the AutomationId above.
+let private badgeToolTip (text : string) : IAttr<TextBlock> =
+    AttrBuilder<TextBlock>.CreateProperty<obj>(ToolTip.TipProperty, box text, ValueNone)
+
+/// The out-of-band warning badge for element index `i`, drawn at its projected centre `c` (spec 0038
+/// step 031): a small "⚠" glyph with a hover tooltip = `text` (the offending material(s) and both
+/// ranges) and a per-index AutomationId so a headless test can address it.
+let outOfBandBadge (i : int) (c : ScreenPoint) (text : string) : IView =
+    TextBlock.create [
+        TextBlock.left (c.sx - 18.0)
+        TextBlock.top (c.sy - 26.0)
+        TextBlock.text "⚠"
+        TextBlock.fontWeight FontWeight.Bold
+        TextBlock.foreground (brush (color 200 60 40))
+        badgeAutomationId (UiIds.outOfBandBadge i)
+        badgeToolTip text
+    ] :> IView
+
+/// The out-of-band warning badges for every flagged element in the scene (spec 0038 step 031). Public
+/// so a headless test renders them without mounting the whole workbench; appended to the main canvas.
+let outOfBandBadges (model : Model) : IView list =
+    let project = projectPt model.view
+    let centres = snappedCentres model
+    model.elements
+    |> List.mapi (fun i e ->
+        match outOfBandWarningFor model e with
+        | Some text ->
+            Map.tryFind i centres
+            |> Option.map (fun centre -> outOfBandBadge i (project centre) text)
+            |> Option.toList
+        | None -> [])
+    |> List.concat
+
 /// The ideal polarizer kind of a bound polarizer entry, when its behaviour is `ComputedIdeal` (spec 0038
 /// Part F). The rotate-R1 / sweep runners below drive the kind-typed pipeline sweeps, so a
 /// `ConstantMueller` polarizer — no seed and no editor can produce one yet — is skipped exactly like a
@@ -2123,12 +2220,18 @@ let private detailsState (model : Model) : LayerBandsControls.State =
     match model.selection with
     | ElementSelected i ->
         let e = List.item i model.elements
-        match boundEntry model e with
-        | Some (Library.SampleItem s) -> sampleBandsState s
-        | Some entry ->
-            ({ title = $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.State)
-        | None ->
-            ({ title = "No Library entry bound — pick one in the Selector bay to see its details."; bands = [] } : LayerBandsControls.State)
+        let baseState =
+            match boundEntry model e with
+            | Some (Library.SampleItem s) -> sampleBandsState s
+            | Some entry ->
+                ({ title = $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.State)
+            | None ->
+                ({ title = "No Library entry bound — pick one in the Selector bay to see its details."; bands = [] } : LayerBandsControls.State)
+        // Spec 0038 (031): surface the SAME out-of-band warning text the badge tooltip shows, so the
+        // Details bay states the offending material(s) and both ranges in prose besides the schematic cue.
+        match outOfBandWarningFor model e with
+        | Some warning -> { baseState with title = $"%s{baseState.title}\n⚠ %s{warning}" }
+        | None -> baseState
     | TableSelected | NothingSelected ->
         ({ title = "Select an element to see what it is."; bands = [] } : LayerBandsControls.State)
 
@@ -2351,7 +2454,9 @@ let private mainTableCanvas (model : Model) : IView =
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
-        Canvas.children (mainTableViews model @ mainElementViews model)
+        // Spec 0038 (031): the out-of-band dispersion badges overlay the drawn elements — appended
+        // last so they sit on top of the schematic; an in-band scene contributes none.
+        Canvas.children (mainTableViews model @ mainElementViews model @ outOfBandBadges model)
     ] :> IView
 
 /// The Main screen view: the ribbon of large controls on top, and BELOW the ribbon strip either the
