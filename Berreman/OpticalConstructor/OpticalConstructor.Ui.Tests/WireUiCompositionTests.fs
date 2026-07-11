@@ -27,10 +27,13 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// materials surface is now the single-instance Materials WINDOW behind the ribbon strip's
 /// right-aligned `Materials…` button, so the material-side proofs go strip button → real
 /// Materials window over the root-wired stores → verb click → the real Material / Category
-/// editors mount headless.
+/// editors mount headless. Spec 0038 (015): the Library (samples) workbench bay left the same
+/// way — the sample-side proofs go `Library…` strip button → real Library window → verb click →
+/// the real Sample editor.
 module WireUiCompositionTests =
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
+    module LW = OpticalConstructor.Ui.LibraryWindowView
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
     /// workbench rows / verb buttons live in variable-membership lists, so they carry an
@@ -135,16 +138,31 @@ module WireUiCompositionTests =
         Assert.True(opened.[0].IsVisible, "the Materials window must be shown")
         opened.[0]
 
+    /// Open the REAL single-instance Library window through the ribbon strip's right-aligned
+    /// `Library…` button (spec 0038 step 015) and hand it back for driving. The caller MUST
+    /// close it — the shared `WindowRegistry` keys it under `LibraryWindowKey` (the
+    /// `openMaterialsWindow` discipline above).
+    let private openLibraryWindow (root : Window) : Window =
+        let opened, sub = trackOpened ()
+        use _sub = sub
+        clickOn root WorkbenchIds.openLibraryButton
+        Dispatcher.UIThread.RunJobs()
+        Assert.Equal(1, opened.Count)
+        Assert.True(matchesId LW.UiIds.window opened.[0], "the strip button must open the Library window")
+        Assert.True(opened.[0].IsVisible, "the Library window must be shown")
+        opened.[0]
+
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``composition acceptance: the REAL Main window renders every ribbon bay, with the Selector / Library bays and the Materials window over the root-wired stores`` () =
+    let ``composition acceptance: the REAL Main window renders every ribbon bay, with the Selector bay and the Materials / Library windows over the root-wired stores`` () =
         HeadlessSession.run (fun () ->
             let window = mountRoot ()
             Assert.True(window.IsVisible, "the Main window must open headless")
             // One frame per bay, on the real window (the whole ribbon surface — a bay whose
-            // content throws fails the sweep here). Spec 0038 step 013: no Materials tab in
-            // the roster any more.
+            // content throws fails the sweep here). Spec 0038 steps 013/015: neither workbench
+            // tab is in the roster any more.
             Assert.DoesNotContain("Materials", BayNames.all)
+            Assert.DoesNotContain("Library", BayNames.all)
             for bay in BayNames.all do
                 clickOn window (Ribbon.UiIds.tab bay)
                 Assert.True(window.IsVisible, $"the %s{bay} bay must render one frame without throwing")
@@ -162,12 +180,16 @@ module WireUiCompositionTests =
                         "the Materials window must list the seeded silicon entry from the root-wired store")
             materialsWindow.Close()
             Dispatcher.UIThread.RunJobs()
-            // Library: the samples workbench lists the SEEDED store — the root wired a live
-            // SampleProxy.
-            clickOn window (Ribbon.UiIds.tab BayNames.library)
-            Assert.True(isPresent window SampleLibraryControls.UiIds.searchBox, "the Library bay must mount its search box")
-            Assert.True(isPresent window (SampleLibraryControls.UiIds.row (string SeedSamples.glassFilm600.id.value)),
-                        "the Library bay must list the seeded glassFilm600 row from the root-wired store")
+            // Library: the strip button opens the REAL single-instance Library window, whose
+            // by-kind faceted tree lists BOTH the seeded live samples store and the read-only
+            // preset entries — the root wired live proxies, not empty stand-ins.
+            let libraryWindow = openLibraryWindow window
+            Assert.True(isPresent libraryWindow (LW.UiIds.entryNode (string SeedSamples.glassFilm600.id.value)),
+                        "the Library window must list the seeded glassFilm600 sample from the root-wired store")
+            Assert.True(isPresent libraryWindow (LW.UiIds.entryNode "src-600"),
+                        "the Library window must list the seeded source preset from the root-wired proxy")
+            libraryWindow.Close()
+            Dispatcher.UIThread.RunJobs()
             window.Close())
 
     [<Fact>]
@@ -189,18 +211,24 @@ module WireUiCompositionTests =
             Assert.True(opened.[0].IsVisible, "the Material editor window must be shown")
             Assert.True(matchesId MaterialEditorView.UiIds.window opened.[0], "the opened window must be the Material editor")
             opened.[0].Close()
-            // Library → narrow, select, Edit: the REAL step-022 Sample editor mounts, seeded
-            // with the picked sample.
-            clickOn window (Ribbon.UiIds.tab BayNames.library)
-            setText window SampleLibraryControls.UiIds.searchBox "n=1.75"
-            clickOn window (SampleLibraryControls.UiIds.row (string SeedSamples.glassFilm600.id.value))
-            clickOn window SampleLibraryControls.UiIds.editButton
+            // Library window (spec 0038 step 015) → narrow, select the leaf, Edit: the REAL
+            // step-022 Sample editor mounts, seeded with the picked sample.
+            clickOn window WorkbenchIds.openLibraryButton
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
-            Assert.True(opened.[1].IsVisible, "the Sample editor window must be shown")
-            Assert.True(matchesId SampleEditorView.UiIds.window opened.[1], "the opened window must be the Sample editor")
-            Assert.Contains("Glass thin film", opened.[1].Title)
-            opened.[1].Close()
+            let libraryWindow = opened.[1]
+            Assert.True(matchesId LW.UiIds.window libraryWindow, "the strip button must open the Library window")
+            commitFilter libraryWindow "n=1.75"
+            clickOn libraryWindow (LW.UiIds.entryNode (string SeedSamples.glassFilm600.id.value))
+            clickOn libraryWindow LW.UiIds.editButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(3, opened.Count)
+            Assert.True(opened.[2].IsVisible, "the Sample editor window must be shown")
+            Assert.True(matchesId SampleEditorView.UiIds.window opened.[2], "the opened window must be the Sample editor")
+            Assert.Contains("Glass thin film", opened.[2].Title)
+            opened.[2].Close()
+            libraryWindow.Close()
+            Dispatcher.UIThread.RunJobs()
             // The root coupling itself: removing a REFERENCED material through the real
             // Materials window surfaces the typed refusal NAMING the referencing sample — the
             // materials store's remove-block consults the LIVE samples store

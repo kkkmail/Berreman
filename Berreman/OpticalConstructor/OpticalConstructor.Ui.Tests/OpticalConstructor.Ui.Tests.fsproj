@@ -176,6 +176,16 @@
              operate over the shared app-scoped stores through the real editors, a category
              rename re-labels the category facet, and gating renders zero rows until Show/Search. -->
         <Compile Include="MaterialsWindowTests.fs" />
+        <!-- Spec 0038 Part F (step 015, UICOMP_XDUO_0010): the Library window — pure MVU/
+             projection tests (the by-kind tree with per-kind counts, the polarizer-category and
+             lifted sample facets, the FIRST numeric-facet host: film-thickness buckets + manual
+             min–max range, the protected-remove refusal and confirm-gate discipline; gate
+             `ui-tests`) plus the headless acceptance (gate `ui-smoke`): the ribbon strip button
+             opens ONE window (second click activates), the by-kind tree lists every entry kind
+             with counts, the sample verbs operate over the shared app-scoped stores through the
+             real Sample editor, and removing a protected entry surfaces the typed refusal and
+             changes nothing. -->
+        <Compile Include="LibraryWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

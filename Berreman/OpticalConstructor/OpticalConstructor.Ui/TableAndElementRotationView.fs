@@ -97,44 +97,35 @@ type DragState =
     | Pressed of ScreenPoint
     | Panning of ScreenPoint
 
-/// Which remove (if any) a workbench bay is awaiting inline confirmation for (spec 0033
-/// step 024). The pending case CARRIES the id the Remove click targeted, so a selection change
-/// between Remove and Confirm can never delete a different entry — the
-/// `RotationControls.ResetConfirm` confirm-gating shape, with a payload. Genuinely generic:
-/// the Library bay instantiates it at `SampleId` (the Materials bay's `MaterialId` instantiation
-/// moved into the step-013 Materials window as its own `MaterialRemoveGate`).
-type RemoveConfirm<'id> =
-    | NoRemoveConfirm
-    | ConfirmingRemove of 'id
-
-/// The side-effecting "open an editor window" seam behind the workbench Add / Edit verbs
-/// (spec 0033 step 024). Opening a `Window` is IO (the `openChartWindowHook` precedent), so the
-/// verbs reach it through an injected function record (the functional-proxy convention): a
-/// headless test substitutes recording launchers — possibly still constructing the real
-/// windows — and observes exactly which editor a verb requested. Function-valued fields have no
-/// structural equality, so the record compares by reference (the model keeps its
-/// Elmish-required equality).
+/// The side-effecting "open a window" seam behind the workbench strip buttons (spec 0033
+/// step 024 / spec 0038 steps 013+015). Opening a `Window` is IO (the `openChartWindowHook`
+/// precedent), so the verbs reach it through an injected function record (the functional-proxy
+/// convention): a headless test substitutes recording launchers — possibly still constructing
+/// the real windows — and observes exactly which window a verb requested. Function-valued
+/// fields have no structural equality, so the record compares by reference (the model keeps
+/// its Elmish-required equality).
 [<ReferenceEquality>]
 type EditorLaunchers =
     {
-        /// Open the step-022 Sample editor by intent (spec 0035 step 014): `NewBlankSample` = the
-        /// blank Add, `NewSeededMultilayer` = Make-multilayer's distinct path (a NEW sample seeded
-        /// with a foldable starter period) — both carrying the id the verb minted at open (spec
-        /// 0038 step 008) — `EditSample s` = Edit an existing one in place.
-        openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> SampleEditorView.SampleEditorIntent -> unit
         /// Open the SINGLE-INSTANCE Materials window (spec 0038 step 013, UICOMP_XDUO_0009) over
         /// the app-scope material + category stores — the ribbon strip's `Materials…` button
         /// reaches it through this seam, so a headless test substitutes a recording launcher and
         /// observes the request. The Material / Category editor launchers the retired Materials
         /// bay carried here moved INTO that window's own composition (`MaterialsWindow`).
         openMaterialsWindow : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
+        /// Open the SINGLE-INSTANCE Library window (spec 0038 step 015, UICOMP_XDUO_0010) over
+        /// the read-only Library seam plus the app-scope samples + materials stores — the ribbon
+        /// strip's `Library…` button reaches it through this seam. The Sample-editor launcher
+        /// the retired Library bay carried here (`openSampleEditor`) moved INTO that window's
+        /// own composition (`LibraryWindow`), the step-013 Materials precedent.
+        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> unit
     }
 
     /// The real launchers — spec 0038 step 008: every verb-opened window goes THROUGH the
-    /// SVC_XDUO_0001 window-policy seam over the host-layer `WindowRegistry`, so a second Edit
-    /// of the same entity ACTIVATES its live editor instead of stacking a copy, while every
-    /// Add-minted id gets its own window; the Materials window is single-instance under
-    /// `MaterialsWindowKey` (step 013). Windows are Browse-mode opens (`BrowseOpen` — always
+    /// SVC_XDUO_0001 window-policy seam over the host-layer `WindowRegistry`, so a second open
+    /// ACTIVATES the live window instead of stacking a copy; the Materials window is
+    /// single-instance under `MaterialsWindowKey` (step 013) and the Library window under
+    /// `LibraryWindowKey` (step 015). Windows are Browse-mode opens (`BrowseOpen` — always
     /// `Show`n), so the Select-state modality switch is never consulted on this path; the
     /// step-016 Select windows compose their own `SelectOpen` launchers over the app scope's
     /// `AppContext.settings`. A launcher record is built per dispatch (closures over the
@@ -151,17 +142,12 @@ type EditorLaunchers =
                     WindowLauncher.BrowseOpen
             launcher.openOrActivate key |> ignore
         {
-            openSampleEditor =
-                fun materials samples intent ->
-                    let key =
-                        match intent with
-                        | SampleEditorView.NewBlankSample mintedId
-                        | SampleEditorView.NewSeededMultilayer mintedId -> WindowLauncher.SampleEditorKey mintedId
-                        | SampleEditorView.EditSample s -> WindowLauncher.SampleEditorKey s.id
-                    openBrowse key (fun () -> SampleEditorWindow(materials, samples, intent) :> Window)
             openMaterialsWindow =
                 fun materials categories ->
                     openBrowse WindowLauncher.MaterialsWindowKey (fun () -> MaterialsWindow(materials, categories) :> Window)
+            openLibraryWindow =
+                fun library samples materials ->
+                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, materials) :> Window)
         }
 
 type Model =
@@ -207,28 +193,19 @@ type Model =
         /// bind). Clicking a Library entry sets this and shows its full description; Confirm commits it to
         /// the selected element's `valueId`, Cancel clears it.
         pendingEntry : string option
-        /// Spec 0033 (024): the injected materials WRITE seam (STORE_XDUO_0001). The Library bay's
-        /// editors resolve layer materials through it, and — spec 0038 step 013 — the strip
-        /// button's Materials window operates over THIS store (the bay it replaced is gone).
+        /// Spec 0033 (024): the injected materials WRITE seam (STORE_XDUO_0001). Spec 0038
+        /// steps 013/015: the strip buttons' Materials and Library windows operate over THIS
+        /// store (the bays they replaced are gone).
         materials : MaterialLibrary.MaterialProxy
-        /// Spec 0033 (024): the injected samples WRITE seam (STORE_XDUO_0002) behind the Library
-        /// (samples workbench) bay.
+        /// Spec 0033 (024): the injected samples WRITE seam (STORE_XDUO_0002). Spec 0038
+        /// step 015: the strip button's Library window (and the Sample editors it opens)
+        /// operates over THIS store — the samples workbench bay it replaced is gone.
         samples : Library.SampleProxy
         /// Spec 0035 (009): the injected category WRITE seam (STORE_XDUO_0003) behind the material
         /// editor's create picker and — spec 0038 step 013 — the Materials window's category facet
         /// and its "Categories…" verb.
         categories : MaterialLibrary.CategoryProxy
-        /// The Library bay's live samples search query (text + substrate facet).
-        sampleQuery : Library.SampleQuery
-        /// The Library bay's selected row (the Edit / Remove / View verbs' target).
-        selectedSample : Library.SampleId option
-        /// Which sample remove (if any) awaits its inline confirmation.
-        sampleRemoveConfirm : RemoveConfirm<Library.SampleId>
-        /// The last samples-store refusal, surfaced as the bay's inline message.
-        samplesError : Library.SampleError option
-        /// The sample whose read-only metadata + band view the View verb opened (a toggle).
-        viewedSample : Library.SampleId option
-        /// Spec 0033 (024): the editor-window launcher seam behind the workbench Add / Edit verbs.
+        /// Spec 0033 (024): the window launcher seam behind the workbench strip buttons.
         launchers : EditorLaunchers
     }
 
@@ -248,16 +225,12 @@ module BayNames =
     /// Spec 0027 (026): the Details bay — the selected element's bound Library entry (what it is, its full
     /// description, and a layer-stack band view for a multilayer sample).
     let details = "Details"
-    /// Spec 0033 (024): the Library bay — the SAMPLES workbench (the step-016 `SampleLibraryControls`
-    /// surface over the step-005 `SampleProxy` write seam). The label freed by the step-014 Selector
-    /// rename: "Library" now names the samples collection, while element↔entry binding stays in the
-    /// Selector bay.
-    let library = "Library"
-    // Spec 0038 step 013: the Materials bay is REMOVED from the ribbon — the materials workbench is
-    // now the single-instance Materials WINDOW (UICOMP_XDUO_0009), opened by the tab-strip row's
-    // right-aligned "Materials…" button. Library stays the last, full-surface bay (Part F removes it
-    // the same way).
-    let all = [ rotation; move; add; render; selector; experiments; details; library ]
+    // Spec 0038 steps 013/015: the Materials AND Library bays are REMOVED from the ribbon — the
+    // materials workbench is the single-instance Materials WINDOW (UICOMP_XDUO_0009) and the
+    // samples/library workbench the single-instance Library WINDOW (UICOMP_XDUO_0010), each
+    // opened by its right-aligned tab-strip-row button. No full-surface bay remains; every bay
+    // keeps the shared table canvas below the strip.
+    let all = [ rotation; move; add; render; selector; experiments; details ]
 
 let defaultElementZoom : float = 5.0
 
@@ -318,11 +291,6 @@ let initWith
         materials = materials
         samples = samples
         categories = categories
-        sampleQuery = Library.SampleQuery.empty
-        selectedSample = None
-        sampleRemoveConfirm = NoRemoveConfirm
-        samplesError = None
-        viewedSample = None
         launchers = EditorLaunchers.defaults
     }
 
@@ -434,19 +402,13 @@ type Msg =
     /// `WindowRegistry` under `MaterialsWindowKey`). The Materials BAY and its `Mat…` verb
     /// vocabulary left the ribbon with this step; the window carries the verbs now.
     | OpenMaterialsWindow
-    /// Spec 0033 (024) — the LIBRARY (samples workbench) bay: the search + verb vocabulary over
-    /// `searchSamples` / the step-022 editor; Make-multilayer is the second creation entry point —
-    /// a distinct path (spec 0035 step 014) opening a NEW sample seeded with a foldable period.
-    | SmpSetSearchText of string
-    | SmpSelectSubstrate of Library.SubstrateKind option
-    | SmpSelectRow of Library.SampleId
-    | SmpAdd
-    | SmpMakeMultilayer
-    | SmpEdit
-    | SmpView
-    | SmpRequestRemove
-    | SmpConfirmRemove
-    | SmpCancelRemove
+    /// Spec 0038 (015) — the ribbon tab-strip row's right-aligned "Library…" button: open the
+    /// SINGLE-INSTANCE Library window (UICOMP_XDUO_0010) over the read-only Library seam plus
+    /// the app-scope samples + materials stores through the launcher seam (a second click
+    /// ACTIVATES the live window — the shared `WindowRegistry` under `LibraryWindowKey`). The
+    /// LIBRARY (samples workbench) BAY and its `Smp…` verb vocabulary left the ribbon with this
+    /// step; the window carries the verbs now.
+    | OpenLibraryWindow
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -814,60 +776,15 @@ let update (msg : Msg) (model : Model) : Model =
         // live window. No model change: the window runs its own MVU loop over the same stores.
         model.launchers.openMaterialsWindow model.materials model.categories
         model
-    // -- Spec 0033 (024): the Library (samples workbench) bay. A query / selection change also
-    // -- disarms a pending remove confirmation and clears the inline message — a stale confirm or
-    // -- refusal never outlives the state it referred to. The bay projection re-queries the proxy
-    // -- on every render, so each arm's write (if any) shows in the same render pass.
-    | SmpSetSearchText text ->
-        { model with sampleQuery = { model.sampleQuery with text = text }; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpSelectSubstrate substrate ->
-        { model with sampleQuery = { model.sampleQuery with substrate = substrate }; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpSelectRow id ->
-        { model with selectedSample = Some id; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpAdd ->
-        // The blank creation entry point: open the step-022 editor on a NEW, empty sample whose
-        // SampleId is minted HERE — at the window-open dispatch (spec 0038 step 008).
-        model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.NewBlankSample (Library.newSampleId ()))
-        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpMakeMultilayer ->
-        // The DISTINCT Make-multilayer launcher path (spec 0035 step 014): open a NEW sample
-        // pre-seeded with a foldable starter period the SampleStackEditor K-stepper builds up.
-        // Still a NEW target — the fresh SampleId is minted here at open (spec 0038 step 008),
-        // just seeded, not blank.
-        model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.NewSeededMultilayer (Library.newSampleId ()))
-        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpEdit ->
-        (match model.selectedSample with
-         | Some id ->
-             match model.samples.tryGetSample id with
-             | Ok (Some sample) -> model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.EditSample sample)
-             | Ok None | Error _ -> ()
-         | None -> ())
-        { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpView ->
-        let viewed =
-            match model.selectedSample, model.viewedSample with
-            | Some selected, Some shown when selected = shown -> None
-            | selected, _ -> selected
-        { model with viewedSample = viewed; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
-    | SmpRequestRemove ->
-        match model.selectedSample with
-        | Some id -> { model with sampleRemoveConfirm = ConfirmingRemove id; samplesError = None }
-        | None -> model
-    | SmpConfirmRemove ->
-        match model.sampleRemoveConfirm with
-        | ConfirmingRemove id ->
-            match model.samples.removeSample id with
-            | Ok () ->
-                { model with
-                    sampleRemoveConfirm = NoRemoveConfirm
-                    samplesError = None
-                    selectedSample = (if model.selectedSample = Some id then None else model.selectedSample)
-                    viewedSample = (if model.viewedSample = Some id then None else model.viewedSample) }
-            | Error err ->
-                { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = Some err }
-        | NoRemoveConfirm -> model
-    | SmpCancelRemove -> { model with sampleRemoveConfirm = NoRemoveConfirm }
+    | OpenLibraryWindow ->
+        // Spec 0038 step 015: a pure launch of the single-instance Library window
+        // (UICOMP_XDUO_0010) over the read-only Library seam plus the app-scope samples +
+        // materials stores — the launcher seam's shared registry keys it under
+        // `LibraryWindowKey`, so a second click ACTIVATES the live window. No model change: the
+        // window runs its own MVU loop over the same stores (the retired samples-workbench bay's
+        // query/selection/confirm state lives in the window's own model now).
+        model.launchers.openLibraryWindow model.library model.samples model.materials
+        model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -1862,100 +1779,35 @@ let private detailsState (model : Model) : LayerBandsControls.State =
         ({ title = "Select an element to see what it is."; bands = [] } : LayerBandsControls.State)
 
 // ---------------------------------------------------------------------------
-// Spec 0033 (024) — the LIBRARY (samples) workbench bay: the step-016 list surface
-// (`SampleLibraryControls`) wired over the step-005 WRITE seam. The control is domain-free, so
-// the host flattens each search result into `Row`s and the facet into coded `FacetOption`s here
-// — exactly as `libraryState` / `flattenNode` do for the Selector — and the projection
-// re-queries its proxy on EVERY render, so a verb's write refreshes the list in the same render
-// pass. The host adds three surfaces the control does not carry: the inline confirm-gated
-// Remove row, the inline store-refusal message, and the View panel (read-only metadata + the
-// Details-bay band view). The MATERIALS bay that used to sit beside it moved into the
-// single-instance Materials WINDOW (spec 0038 step 013, `MaterialsWindowView`) — the ribbon
-// strip's right-aligned "Materials…" button below is what remains of it here.
+// Spec 0038 steps 013/015 — the workbench strip buttons. The MATERIALS bay moved into the
+// single-instance Materials WINDOW (step 013, `MaterialsWindowView`) and the LIBRARY (samples)
+// workbench bay into the single-instance Library WINDOW (step 015, `LibraryWindowView`); the
+// ribbon tab-strip row's right-aligned "Library…" / "Materials…" buttons below are what remain
+// of them here. (`SampleLibraryControls` stays in the Controls project with its own tests until
+// a later sweep retires it — the `MaterialsControls` precedent.)
 // ---------------------------------------------------------------------------
 
 /// Stable intent-named ids for the workbench surfaces THIS host adds around the shared controls
-/// (whose own ids live in `SampleLibraryControls.UiIds`; the Materials window's live in
-/// `MaterialsWindowView.UiIds`).
+/// (the Materials window's ids live in `MaterialsWindowView.UiIds`; the Library window's in
+/// `LibraryWindowView.UiIds`).
 [<RequireQualifiedAccess>]
 module WorkbenchIds =
     /// Spec 0038 (013): the ribbon tab-strip row's right-aligned button — opens the
     /// single-instance Materials window through the launcher seam.
     [<Literal>]
     let openMaterialsButton = "OpenMaterialsWindowButton"
+    /// Spec 0038 (015): the ribbon tab-strip row's right-aligned button — opens the
+    /// single-instance Library window through the launcher seam.
     [<Literal>]
-    let samplesMessage = "SamplesWorkbenchMessage"
-    [<Literal>]
-    let removeSampleConfirm = "RemoveSampleConfirmButton"
-    [<Literal>]
-    let removeSampleCancel = "RemoveSampleCancelButton"
-    [<Literal>]
-    let sampleViewPanel = "SampleViewPanel"
-
-/// The substrate facet's choices, in display order (`None` = the match-everything "all").
-let substrateFacets : Library.SubstrateKind option list =
-    [ None; Some Library.ThinFilm; Some Library.Plate; Some Library.Wedge ]
-
-let substrateFacetCode (substrate : Library.SubstrateKind option) : string =
-    match substrate with
-    | None -> "all"
-    | Some Library.ThinFilm -> "thinfilm"
-    | Some Library.Plate -> "plate"
-    | Some Library.Wedge -> "wedge"
-
-let private substrateFacetLabel (substrate : Library.SubstrateKind option) : string =
-    match substrate with
-    | None -> "All"
-    | Some Library.ThinFilm -> "Thin film"
-    | Some Library.Plate -> "Plate"
-    | Some Library.Wedge -> "Wedge"
-
-let substrateFacetOfCode (code : string) : Library.SubstrateKind option =
-    substrateFacets
-    |> List.choose id
-    |> List.tryFind (fun k -> substrateFacetCode (Some k) = code)
-
-/// The Library (samples workbench) bay state — the `SampleQuery` through `searchSamples`,
-/// flattened to `SampleLibraryControls.Row`s. Public so the bay projection is unit-testable
-/// without a window.
-let samplesState (model : Model) : SampleLibraryControls.State =
-    let rows =
-        match model.samples.searchSamples model.sampleQuery with
-        | Ok found -> found |> List.map (fun s -> ({ sampleId = string s.id.value; label = s.name } : SampleLibraryControls.Row))
-        | Error _ -> []
-    {
-        searchText = model.sampleQuery.text
-        substrateOptions =
-            substrateFacets
-            |> List.map (fun k -> ({ code = substrateFacetCode k; label = substrateFacetLabel k } : SampleLibraryControls.FacetOption))
-        selectedSubstrate = substrateFacetCode model.sampleQuery.substrate
-        rows = rows
-        selectedId = model.selectedSample |> Option.map (fun id -> string id.value)
-    }
-
-let private samplesHandlers (dispatch : Msg -> unit) : SampleLibraryControls.Handlers =
-    {
-        setSearchText = fun text -> dispatch (SmpSetSearchText text)
-        selectSubstrate = fun code -> dispatch (SmpSelectSubstrate (substrateFacetOfCode code))
-        selectSample =
-            fun idStr ->
-                match System.Guid.TryParse idStr with
-                | true, g -> dispatch (SmpSelectRow (Library.SampleId g))
-                | _ -> ()
-        addSample = fun () -> dispatch SmpAdd
-        editSample = fun () -> dispatch SmpEdit
-        removeSample = fun () -> dispatch SmpRequestRemove
-        viewSample = fun () -> dispatch SmpView
-        makeMultilayer = fun () -> dispatch SmpMakeMultilayer
-    }
+    let openLibraryButton = "OpenLibraryWindowButton"
 
 /// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through
-/// FuncUI's attr builder — the confirm buttons / panels appear and disappear with the model, so
-/// they carry AutomationIds (the MaterialsControls discipline).
+/// FuncUI's attr builder — the strip buttons live in a variable-membership row, so they carry
+/// AutomationIds (the MaterialsControls discipline).
 let private workbenchAutomationId (autoId : string) : IAttr<Border> =
     AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
 
-/// A small clickable verb box for the host-added confirm rows (the MaterialsControls button look).
+/// A small clickable verb box for the host-added strip buttons (the MaterialsControls button look).
 let private workbenchButton (autoId : string) (label : string) (onClick : unit -> unit) : IView =
     Border.create [
         workbenchAutomationId autoId
@@ -1970,88 +1822,10 @@ let private workbenchButton (autoId : string) (label : string) (onClick : unit -
         Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
     ] :> IView
 
-let private workbenchMessageColor = color 178 34 34
-
-/// The Library bay's inline remove confirmation (samples remove is not reference-blocked — the
-/// gate is the user's own confirm).
-let private sampleConfirmRow (model : Model) (dispatch : Msg -> unit) : IView list =
-    match model.sampleRemoveConfirm with
-    | NoRemoveConfirm -> []
-    | ConfirmingRemove id ->
-        let name =
-            match model.samples.tryGetSample id with
-            | Ok (Some s) -> s.name
-            | Ok None | Error _ -> string id.value
-        [ WrapPanel.create [
-              WrapPanel.orientation Orientation.Horizontal
-              WrapPanel.children [
-                  TextBlock.create [
-                      TextBlock.text $"Remove sample '%s{name}'?"
-                      TextBlock.verticalAlignment VerticalAlignment.Center
-                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
-                  ]
-                  workbenchButton WorkbenchIds.removeSampleConfirm "Remove" (fun () -> dispatch SmpConfirmRemove)
-                  workbenchButton WorkbenchIds.removeSampleCancel "Cancel" (fun () -> dispatch SmpCancelRemove)
-              ]
-          ] :> IView ]
-
-let private samplesMessageRow (model : Model) : IView list =
-    match model.samplesError with
-    | None -> []
-    | Some err ->
-        let text =
-            match err with
-            | Library.UnknownSampleId reason
-            | Library.DuplicateSampleId reason
-            | Library.InvalidSample reason -> reason
-        [ TextBlock.create [
-              TextBlock.name WorkbenchIds.samplesMessage
-              TextBlock.foreground (brush workbenchMessageColor)
-              TextBlock.textWrapping TextWrapping.Wrap
-              TextBlock.maxWidth 760.0
-              TextBlock.text text
-          ] :> IView ]
-
-/// The Library View panel: the sample's read-only metadata plus the `LayerBandsControls` band
-/// view over its "×N"-collapsed stack — exactly what the Details bay renders for a bound sample
-/// (the shared `sampleBandsState`).
-let private sampleViewPanel (model : Model) : IView list =
-    match model.viewedSample with
-    | None -> []
-    | Some id ->
-        match model.samples.tryGetSample id with
-        | Ok (Some s) ->
-            [ Border.create [
-                  workbenchAutomationId WorkbenchIds.sampleViewPanel
-                  Border.child (
-                      StackPanel.create [
-                          StackPanel.orientation Orientation.Vertical
-                          StackPanel.spacing 2.0
-                          StackPanel.children [
-                              TextBlock.create [
-                                  TextBlock.fontWeight FontWeight.SemiBold
-                                  TextBlock.text $"%s{s.name} — %s{(substrateFacetLabel (Some s.substrate))}"
-                              ]
-                              LayerBandsControls.view (sampleBandsState s)
-                          ]
-                      ])
-              ] :> IView ]
-        | Ok None | Error _ -> []
-
-/// The Library (samples workbench) bay content.
-let private samplesBay (model : Model) (dispatch : Msg -> unit) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.spacing 4.0
-        StackPanel.children (
-            [ SampleLibraryControls.view (samplesState model) (samplesHandlers dispatch) ]
-            @ sampleConfirmRow model dispatch
-            @ samplesMessageRow model
-            @ sampleViewPanel model)
-    ] :> IView
-
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
+/// (Spec 0038 step 015: no FULL-SURFACE bay remains — the samples workbench that used the mode is the
+/// Library WINDOW now; the mode itself stays in the generic Ribbon control.)
 let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
     [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch); mode = Ribbon.InRibbonPane }
@@ -2059,22 +1833,19 @@ let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch); mode = Ribbon.InRibbonPane }
-      { name = BayNames.details; content = LayerBandsControls.view (detailsState model); mode = Ribbon.InRibbonPane }
-      // The step-024 samples workbench is a FULL-SURFACE bay (step 008): it fills the whole area
-      // below the ribbon strip in place of the table canvas, so its list / verbs are not cramped
-      // inside the pane. (The Materials bay that sat beside it is now the Materials WINDOW —
-      // spec 0038 step 013.)
-      { name = BayNames.library; content = samplesBay model dispatch; mode = Ribbon.FullSurface } ]
+      { name = BayNames.details; content = LayerBandsControls.view (detailsState model); mode = Ribbon.InRibbonPane } ]
 
 let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 4.0
         StackPanel.children [
-            // The tab-strip row: the ribbon fills it; the right-aligned "Materials…" button
-            // (spec 0038 step 013) rides its right edge, TOP-aligned beside the tab strip, and
-            // opens the single-instance Materials window through the launcher seam. Docked-right
-            // FIRST so the ribbon (the fill child) can never push it off-screen.
+            // The tab-strip row: the ribbon fills it; the right-aligned "Materials…" (spec 0038
+            // step 013) and "Library…" (step 015) buttons ride its right edge, TOP-aligned
+            // beside the tab strip, each opening its single-instance window through the launcher
+            // seam. Docked-right FIRST so the ribbon (the fill child) can never push them
+            // off-screen; Materials… docks first and therefore sits rightmost (its step-013
+            // position), Library… lands immediately left of it.
             DockPanel.create [
                 DockPanel.children [
                     Border.create [
@@ -2082,6 +1853,12 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
                         Border.verticalAlignment VerticalAlignment.Top
                         Border.margin (Thickness(0.0, 8.0, 8.0, 0.0))
                         Border.child (workbenchButton WorkbenchIds.openMaterialsButton "Materials…" (fun () -> dispatch OpenMaterialsWindow))
+                    ]
+                    Border.create [
+                        Border.dock Dock.Right
+                        Border.verticalAlignment VerticalAlignment.Top
+                        Border.margin (Thickness(0.0, 8.0, 0.0, 0.0))
+                        Border.child (workbenchButton WorkbenchIds.openLibraryButton "Library…" (fun () -> dispatch OpenLibraryWindow))
                     ]
                     Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
                 ]
@@ -2102,9 +1879,11 @@ let private mainTableCanvas (model : Model) : IView =
 
 /// The Main screen view: the ribbon of large controls on top, and BELOW the ribbon strip either the
 /// shared table (for an in-pane "table" bay — same selection / pan / zoom / rotate gestures as the test
-/// scene) or the active bay's OWN content (for the FULL-SURFACE Library workbench bay — which fills that
-/// whole area and wires NO table gestures). The bays are built once and shared: the ribbon hosts the
-/// in-pane bays' content and shows only a tab for a full-surface bay, whose content is placed here below.
+/// scene) or the active bay's OWN content (for a FULL-SURFACE bay — which fills that whole area and
+/// wires NO table gestures; spec 0038 step 015: no current bay uses the mode — the samples workbench
+/// that did is the Library WINDOW now — but the keyed slot stays for any future full-surface bay).
+/// The bays are built once and shared: the ribbon hosts the in-pane bays' content and shows only a
+/// tab for a full-surface bay, whose content is placed here below.
 let mainView (model : Model) (dispatch : Msg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
     // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:

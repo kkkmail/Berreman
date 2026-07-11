@@ -82,7 +82,12 @@ type MainConstructorWindow(context : AppContext) as this =
         // Materials-window factory threads the same way: the ribbon strip's `Materials…` button
         // opens the single-instance `MaterialsWindow` through `defaults.openMaterialsWindow`
         // over `context.materials` / `context.categories` under `MaterialsWindowKey` — no
-        // extra composition here (step 47 owns the composition acceptance). The ui-smoke
+        // extra composition here (step 47 owns the composition acceptance). The step-015
+        // Library-window factory likewise: the strip's `Library…` button opens the
+        // single-instance `LibraryWindow` through `defaults.openLibraryWindow` over
+        // `context.library` / `context.samples` / `context.materials` under
+        // `LibraryWindowKey` — the retired samples-workbench bay's editors now open from
+        // inside that window over the same stores. The ui-smoke
         // composition acceptance (`WireUiCompositionTests`, and the step-006 two-surface proof
         // in `AppContextTests`) drives THIS window headless over a context composed the same way.
         Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories) TableAndElementRotationView.update TableAndElementRotationView.mainView

@@ -399,34 +399,6 @@ module MainSceneMsgTests =
         let m = initMain ()
         Assert.Equal<Model>(m, update (ExpRemove "not-a-number") m)
 
-    // ======= the workbench bay's disarm-on-query-change discipline (0033/024) =======
-    // A pending remove confirmation (and the inline refusal message) never outlives
-    // the query/selection state it referred to. (The Materials bay's twin tests moved
-    // with the bay into the step-013 Materials window — `MaterialsWindowTests`.)
-
-    /// The Library (samples) bay with a pending remove confirmation on a seeded sample.
-    let private armedSamples () : Model =
-        initMain () |> update (SmpSelectRow SeedSamples.glassFilm600.id) |> update SmpRequestRemove
-
-    [<Fact>]
-    let ``a search-text edit disarms a pending sample remove`` () =
-        let armed = armedSamples ()
-        Assert.Equal(ConfirmingRemove SeedSamples.glassFilm600.id, armed.sampleRemoveConfirm)
-        Assert.Equal(NoRemoveConfirm, (update (SmpSetSearchText "film") armed).sampleRemoveConfirm)
-
-    [<Fact>]
-    let ``a substrate facet change disarms a pending sample remove`` () =
-        Assert.Equal(NoRemoveConfirm, (update (SmpSelectSubstrate (Some ThinFilm)) (armedSamples ())).sampleRemoveConfirm)
-
-    [<Fact>]
-    let ``a sample row re-selection disarms the pending remove`` () =
-        Assert.Equal(NoRemoveConfirm, (update (SmpSelectRow SeedSamples.glassFilm600.id) (armedSamples ())).sampleRemoveConfirm)
-
-    [<Fact>]
-    let ``SmpRequestRemove without a selection is inert`` () =
-        let m = initMain ()
-        Assert.Equal<Model>(m, update SmpRequestRemove m)
-
-    [<Fact>]
-    let ``SmpCancelRemove disarms the pending sample remove`` () =
-        Assert.Equal(NoRemoveConfirm, (update SmpCancelRemove (armedSamples ())).sampleRemoveConfirm)
+    // The workbench bays' disarm-on-query-change discipline moved WITH the bays into their
+    // windows: the Materials bay's twins live in `MaterialsWindowTests` (spec 0038 step 013)
+    // and the Library (samples) bay's in `LibraryWindowTests` (spec 0038 step 015).

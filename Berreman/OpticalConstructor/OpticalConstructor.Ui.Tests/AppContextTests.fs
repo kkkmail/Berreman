@@ -20,9 +20,10 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// (settings carried verbatim, the materials→samples remove-block coupling, one scope = one
 /// store / two scopes = two stores — gate `ui-tests`), and the slice's headless acceptance
 /// (gate `ui-smoke`): TWO real Main windows composed from ONE app scope observe the same store
-/// — a sample added through one window's real editor is listed by the other window's bay.
-/// (The proof rode the Materials bay until spec 0038 step 013 moved that bay into the
-/// single-instance Materials window; the Library bay carries the same two-surface argument.)
+/// — a sample added through one window's real editor is listed by the other window's surface.
+/// (The proof rode the workbench bays until spec 0038 steps 013/015 moved them into the
+/// single-instance Materials / Library windows; each Main window's `Library…` strip button now
+/// carries the same two-surface argument through the Library window.)
 module AppContextTests =
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
@@ -132,8 +133,8 @@ module AppContextTests =
             let second = OpticalConstructor.App.MainConstructorWindow(context)
             second.Show()
             Dispatcher.UIThread.RunJobs()
-            // Observe the editor the REAL launcher seam opens (subscribed only after both Main
-            // windows are shown, so exactly the editor arrives — the WireUiCompositionTests seam).
+            // Observe the windows the REAL launcher seam opens (subscribed only after both Main
+            // windows are shown — the WireUiCompositionTests seam).
             let opened = ResizeArray<Window>()
             use _sub =
                 Window.WindowOpenedEvent.Raised
@@ -141,13 +142,18 @@ module AppContextTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            // Surface 1: Library bay → Make-multilayer → the REAL Sample editor over the SHARED
-            // store (the seeded-period creation path, so a plain name + Save persists).
-            clickOn first (Ribbon.UiIds.tab BayNames.library)
-            clickOn first SampleLibraryControls.UiIds.makeMultilayerButton
+            // Surface 1: the Library… strip button (spec 0038 step 015) → the REAL Library
+            // window → Make-multilayer → the REAL Sample editor over the SHARED store (the
+            // seeded-period creation path, so a plain name + Save persists).
+            clickOn first WorkbenchIds.openLibraryButton
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
-            let editor = opened.[0]
+            let libraryOfFirst = opened.[0]
+            Assert.True(matchesId LibraryWindowView.UiIds.window libraryOfFirst, "the strip button must open the Library window")
+            clickOn libraryOfFirst LibraryWindowView.UiIds.makeMultilayerButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(2, opened.Count)
+            let editor = opened.[1]
             Assert.True(matchesId SampleEditorView.UiIds.window editor, "the opened window must be the Sample editor")
             setText editor SampleEditorView.UiIds.nameBox "Shared-scope sample"
             clickOn editor SampleEditorView.UiIds.saveButton
@@ -160,15 +166,21 @@ module AppContextTests =
                     | Some sample -> sample.id
                     | None -> failwith "the saved sample must be in the app-scope store"
                 | Error e -> failwith $"listSamples failed: %A{e}"
-            // Surface 2: opening ITS Library bay re-queries the SAME store in that render pass —
-            // the added sample is listed by the other window.
-            clickOn second (Ribbon.UiIds.tab BayNames.library)
-            Assert.True(isPresent second (SampleLibraryControls.UiIds.row (string savedId.value)),
-                        "the second Main window must list the sample added through the first")
-            // And surface 1 lists it on its own next render (leave the bay and come back).
-            clickOn first (Ribbon.UiIds.tab BayNames.rotation)
-            clickOn first (Ribbon.UiIds.tab BayNames.library)
-            Assert.True(isPresent first (SampleLibraryControls.UiIds.row (string savedId.value)),
-                        "the first Main window must list the sample it added")
+            // Close the first surface's Library window — the registry is app-global, so the
+            // second surface's strip click must CREATE afresh over the same scope, not activate
+            // a stale window.
+            libraryOfFirst.Close()
+            Dispatcher.UIThread.RunJobs()
+            // Surface 2: ITS strip button opens a fresh Library window that re-queries the SAME
+            // store — the added sample is listed by the other window.
+            clickOn second WorkbenchIds.openLibraryButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(3, opened.Count)
+            let libraryOfSecond = opened.[2]
+            Assert.True(matchesId LibraryWindowView.UiIds.window libraryOfSecond, "the strip button must open the Library window")
+            Assert.True(isPresent libraryOfSecond (LibraryWindowView.UiIds.entryNode (string savedId.value)),
+                        "the second Main window's Library window must list the sample added through the first")
+            libraryOfSecond.Close()
+            Dispatcher.UIThread.RunJobs()
             second.Close()
             first.Close())

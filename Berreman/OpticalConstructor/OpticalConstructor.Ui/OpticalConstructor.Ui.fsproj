@@ -94,6 +94,14 @@
              scene, whose EditorLaunchers.defaults opens the window under MaterialsWindowKey. -->
         <Compile Include="MaterialsWindowView.fs" />
         <Compile Include="MaterialsWindow.fs" />
+        <!-- Spec 0038 Part F (step 015, UICOMP_XDUO_0010): the single-instance Library window —
+             the step-012 FacetedTreeControls over the step-011 library facet catalogue (default
+             representation "By kind"), a view panel, and the Add sample / Make multilayer /
+             Edit / Remove verbs rewired from the retired Library bay. The pure view first, then
+             the HostWindow composition root; both BEFORE the workbench scene, whose
+             EditorLaunchers.defaults opens the window under LibraryWindowKey. -->
+        <Compile Include="LibraryWindowView.fs" />
+        <Compile Include="LibraryWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <!-- Spec 0038 Part C (step 006): the ONE app-scope composition record — the
              five domain proxies plus the step-005 WorkbenchSettings, built once at

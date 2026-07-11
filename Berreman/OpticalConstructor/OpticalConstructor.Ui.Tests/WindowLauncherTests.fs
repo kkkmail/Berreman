@@ -13,9 +13,11 @@
 /// distinct upfront-minted Guids persist through `addMaterial` — since spec
 /// 0038 step 013 those verbs live on the REAL Materials window (its context
 /// launchers bake the editor keys), so the proofs drive that window; a sample
-/// Add still goes through `EditorLaunchers.defaults.openSampleEditor`. Every
-/// real-registry test CLOSES the windows it opens — the registry is
-/// app-global, so a leaked key would couple tests.
+/// Add composes the SAME Browse launcher the step-015 Library window bakes
+/// (`EditorLaunchers.defaults` lost `openSampleEditor` when the samples
+/// workbench moved into that window). Every real-registry test CLOSES the
+/// windows it opens — the registry is app-global, so a leaked key would
+/// couple tests.
 namespace OpticalConstructor.Ui.Tests
 
 open Avalonia
@@ -489,8 +491,15 @@ module WindowLauncherTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
-            launchers.openSampleEditor materials samples (SampleEditorView.NewBlankSample minted)
+            // The SAME Browse-mode composition the step-015 Library window bakes for its
+            // Add-sample verb: the real launcher over the shared registry, keyed by the
+            // upfront-minted id (spec 0038 step 008).
+            let launcher =
+                WindowLauncher.create
+                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
+                    SelectWindowModality.defaultValue
+                    BrowseOpen
+            launcher.openOrActivate (SampleEditorKey minted) |> ignore
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]

@@ -91,16 +91,16 @@ module LibraryControlsTests =
         Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
 
     [<Fact>]
-    let ``the ribbon offers the Selector bay; Library now names the samples workbench`` () =
+    let ``the ribbon offers the Selector bay; the Library workbench left for its window`` () =
         // The Selector bay is present, in order, after Render (the Experiments bay was added in Phase 2,
         // so `BayNames.all` is now longer than the original five; assert membership + the prefix order
         // rather than an exact five-element list). Spec 0033 step 014 renamed the bay label from
-        // "Library" to "Selector" (same behaviour) — and spec 0033 step 024 REUSES the freed label:
-        // "Library" is offered again, now as the SAMPLES WORKBENCH bay, distinct from the Selector.
+        // "Library" to "Selector" (same behaviour); spec 0033 step 024 reused the freed label for the
+        // SAMPLES WORKBENCH bay — which spec 0038 step 015 moved into the single-instance Library
+        // WINDOW, so no "Library" bay is offered any more (the Selector alone keeps binding duty).
         Assert.Equal("Selector", BayNames.selector)
         Assert.Contains(BayNames.selector, BayNames.all)
-        Assert.Equal("Library", BayNames.library)
-        Assert.Contains(BayNames.library, BayNames.all)
+        Assert.DoesNotContain("Library", BayNames.all)
         Assert.Equal<string list>(
             [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector ],
             BayNames.all |> List.truncate 5)
@@ -170,8 +170,8 @@ module LibraryControlsTests =
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            // The ribbon shows a Selector tab (spec 0033 step 014); the Library tab is the
-            // step-024 SAMPLES WORKBENCH, not this Selector bay.
+            // The ribbon shows a Selector tab (spec 0033 step 014); NO Library tab remains —
+            // the samples workbench is the Library WINDOW now (spec 0038 step 015).
             let tabNames =
                 window.GetVisualDescendants()
                 |> Seq.choose (function
@@ -179,7 +179,7 @@ module LibraryControlsTests =
                     | _ -> None)
                 |> List.ofSeq
             Assert.Contains(Ribbon.UiIds.tab BayNames.selector, tabNames)
-            Assert.Contains(Ribbon.UiIds.tab BayNames.library, tabNames)
+            Assert.DoesNotContain(Ribbon.UiIds.tab "Library", tabNames)
             // The pending entry's full description is shown (and the element is NOT bound yet).
             Assert.Equal(None, (elem 2 model).placement.valueId)
             let descriptionShown () : bool =
