@@ -197,9 +197,10 @@ module WindowLauncherTests =
         open OpticalConstructor.Domain.Library
         open OpticalConstructor.Domain.Lifecycle
         open OpticalConstructor.Domain.MaterialStore
+        open OpticalConstructor.Domain.SampleStore
 
         let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
-            let samples = SampleProxy.createInMemory ()
+            let samples = SampleProxy.createInMemory VersionsInUse.empty
             let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
             let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
             materials, samples, categories

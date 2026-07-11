@@ -507,7 +507,7 @@ module LibraryFacets =
                     | SampleItem sample ->
                         sample.structure.substrate
                         |> Option.toList
-                        |> List.choose (fun layer -> materialName materials layer.materialId)
+                        |> List.choose (fun layer -> materialName materials layer.materialId.materialId)
                         |> List.map (fun name -> DiscreteValue (DiscreteKey name))
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }
@@ -554,7 +554,7 @@ module LibraryFacets =
                     match entry with
                     | SampleItem sample ->
                         filmLayers sample.structure
-                        |> List.choose (fun layer -> materialName materials layer.materialId)
+                        |> List.choose (fun layer -> materialName materials layer.materialId.materialId)
                         |> List.distinct
                         |> List.map (fun name -> DiscreteValue (DiscreteKey name))
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []

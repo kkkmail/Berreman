@@ -188,13 +188,28 @@ module Propagation =
             lower : OpticalPropertiesWithDisp
         }
 
+    /// Resolve a pinned material VERSION to its dispersive engine properties through the versioned
+    /// material store's by-version resolve (spec 0038 Part H, step 022): the layer's pinned
+    /// `MaterialVersionId` resolves to the EXACT version it was built against, IGNORING lifecycle, so
+    /// a later mint of the material's `.next` version never rewrites an existing sample's physics. An
+    /// unresolved version (unknown id, or a version the store never held) is a typed
+    /// `Error (UnknownMaterialId _)` — never a fallback.
+    let resolveMaterialVersion (materials : MaterialProxy) (mvid : MaterialVersionId) : Result<OpticalPropertiesWithDisp, MaterialError> =
+        materials.resolveVersion mvid
+        |> Result.bind (fun entryOpt ->
+            match entryOpt with
+            | Some e -> Ok e.properties
+            | None -> Error (UnknownMaterialId $"unknown material version '%s{string mvid.materialId.value}' v%d{mvid.version.value}"))
+
     /// Resolve every material a sample's structure references to its `OpticalPropertiesWithDisp`
-    /// through the material library (spec 0033 step 001). An unknown id is a typed
-    /// `Error (UnknownMaterialId _)` — never a fallback. Hosts call this ONCE per run and surface the
-    /// error as a message.
-    let resolveSampleMaterials (lib : MaterialLibrary) (sample : Sample) : Result<ResolvedSample, MaterialError> =
+    /// through the VERSIONED material store's by-version resolve (spec 0033 step 001; re-based on
+    /// versioned references at spec 0038 step 022). Each layer pins a `MaterialVersionId`, resolved
+    /// through `resolveMaterialVersion` so a pinned version keeps resolving after the material
+    /// evolves. An unknown/absent version is a typed `Error (UnknownMaterialId _)` — never a
+    /// fallback. Hosts call this ONCE per run and surface the error as a message.
+    let resolveSampleMaterials (materials : MaterialProxy) (sample : Sample) : Result<ResolvedSample, MaterialError> =
         let resolveLayer (l : SampleLayer) : Result<ResolvedLayer, MaterialError> =
-            resolveMaterialWithDisp lib l.materialId
+            resolveMaterialVersion materials l.materialId
             |> Result.map (fun p ->
                 {
                     layerWithDisp = { propertiesWithDisp = p; thickness = l.thickness }
@@ -220,7 +235,7 @@ module Propagation =
                 let lowerResult =
                     match sample.structure.lower with
                     | None -> Ok OpticalProperties.vacuum.dispersive
-                    | Some id -> resolveMaterialWithDisp lib id
+                    | Some mvid -> resolveMaterialVersion materials mvid
                 match lowerResult with
                 | Error e -> Error e
                 | Ok lower -> Ok { name = sample.name; films = films; substrate = substrate; lower = lower }

@@ -16,6 +16,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Controls
@@ -113,7 +114,7 @@ module SampleEditorWindowTests =
     /// (samples first, then materials whose remove-block consults the LIVE samples, then
     /// categories whose remove-block consults the LIVE materials).
     let private freshProxies () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         materials, samples, categories
@@ -143,11 +144,16 @@ module SampleEditorWindowTests =
         let calls = ResizeArray<string>()
         let stub : SampleProxy =
             {
-                listSamples = fun () -> Ok []
+                listSamples = fun _ -> Ok []
                 searchSamples = fun _ -> Ok []
                 tryGetSample = fun _ -> Ok None
-                addSample = fun s -> calls.Add("add:" + s.name); Ok ()
-                updateSample = fun s -> calls.Add("update:" + s.name); Ok ()
+                resolveVersion = fun _ -> Ok None
+                // Spec 0038 step 022: the ONE versioned `saveSample` records the Save (the mirror of
+                // the material editor's collapse — `addSample`/`updateSample` are gone).
+                saveSample = fun s -> calls.Add("save:" + s.name); Ok ()
+                markSampleInactive = fun _ -> Ok ()
+                markSampleActive = fun _ -> Ok ()
+                supersedeSample = fun _ -> Ok ()
                 removeSample = fun _ -> Ok ()
             }
         calls,
@@ -160,8 +166,10 @@ module SampleEditorWindowTests =
 
     let private nmT (t : float) : Thickness = Thickness.nm (t * 1.0<nm>)
 
+    // The layer pins version one of the material (spec 0038 step 022 — a `SampleLayer` carries a
+    // `MaterialVersionId`); `.materialId.materialId` recovers the identity in the assertions below.
     let private layerOf (materialId : MaterialId) (thicknessNm : float) : SampleLayer =
-        { materialId = materialId; thickness = nmT thicknessNm; orientation = PrimaryAxes }
+        { materialId = MaterialVersionId.firstOf materialId; thickness = nmT thicknessNm; orientation = PrimaryAxes }
 
     /// films = [ glass 100 nm; vacuum 50 nm; glass 100 nm ] — the select-by-material shape.
     let private threeFilmSample () : Sample =
@@ -291,7 +299,7 @@ module SampleEditorWindowTests =
         let m = newModel () |> update (ChooseMaterial MaterialIds.glass175) |> update AddLayerClicked
         match m.editor.structure.films with
         | [ SingleLayer l ] ->
-            Assert.Equal(MaterialIds.glass175, l.materialId)
+            Assert.Equal(MaterialIds.glass175, l.materialId.materialId)
             Assert.Equal<Thickness>(defaultLayerThickness, l.thickness)
             Assert.Equal(PrimaryAxes, l.orientation)
         | films -> Assert.Fail($"expected one single layer, got %A{films}")
@@ -357,22 +365,22 @@ module SampleEditorWindowTests =
         Assert.Equal("∞", thicknessLabel Infinity)
 
     [<Fact>]
-    let ``Save adds a NEW sample, updates an EXISTING one, and Cancel writes nothing`` () =
-        // NewUnsaved → addSample under the UPFRONT-minted id (spec 0038 step 008 — the mint
-        // happened at window open, not here), then close.
+    let ``Save persists a NEW sample and an EXISTING one through saveSample, and Cancel writes nothing`` () =
+        // NewUnsaved → saveSample under the UPFRONT-minted id (spec 0038 steps 008/022 — the mint
+        // happened at window open; the store inserts version 1), then close.
         let calls, context = recordingContext ()
         init context builtInEntries (NewBlankSample (newSampleId ()))
         |> update (SetName "Fresh")
         |> update SaveClicked
         |> ignore
-        Assert.Equal<string list>([ "add:Fresh"; "close" ], List.ofSeq calls)
-        // Existing → updateSample, then close.
+        Assert.Equal<string list>([ "save:Fresh"; "close" ], List.ofSeq calls)
+        // Existing → the SAME saveSample (the store runs the decision rule), then close.
         let calls2, context2 = recordingContext ()
         init context2 builtInEntries (EditSample (threeFilmSample ()))
         |> update (SetName "Edited")
         |> update SaveClicked
         |> ignore
-        Assert.Equal<string list>([ "update:Edited"; "close" ], List.ofSeq calls2)
+        Assert.Equal<string list>([ "save:Edited"; "close" ], List.ofSeq calls2)
         // Cancel → close only; the proxy is never reached.
         let calls3, context3 = recordingContext ()
         init context3 builtInEntries (EditSample (threeFilmSample ()))
@@ -386,11 +394,14 @@ module SampleEditorWindowTests =
         let closes = ResizeArray<string>()
         let failing : SampleProxy =
             {
-                listSamples = fun () -> Ok []
+                listSamples = fun _ -> Ok []
                 searchSamples = fun _ -> Ok []
                 tryGetSample = fun _ -> Ok None
-                addSample = fun _ -> Error (InvalidSample "the name is blank")
-                updateSample = fun _ -> Error (InvalidSample "the name is blank")
+                resolveVersion = fun _ -> Ok None
+                saveSample = fun _ -> Error (InvalidSample "the name is blank")
+                markSampleInactive = fun _ -> Ok ()
+                markSampleActive = fun _ -> Ok ()
+                supersedeSample = fun _ -> Ok ()
                 removeSample = fun _ -> Ok ()
             }
         let context : SampleEditorContext =
@@ -569,7 +580,7 @@ module SampleEditorWindowTests =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
             let seededCount =
-                match samples.listSamples () with
+                match samples.listSamples ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
             let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
@@ -580,7 +591,7 @@ module SampleEditorWindowTests =
             clickOn window UiIds.addLayerButton
             clickOn window UiIds.saveButton
             Assert.False(window.IsVisible)
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all ->
                 Assert.Equal(seededCount + 1, List.length all)
                 match all |> List.tryFind (fun s -> s.name = "Headless stack") with
@@ -596,7 +607,7 @@ module SampleEditorWindowTests =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
             let seededCount =
-                match samples.listSamples () with
+                match samples.listSamples ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
             // The distinct Make-multilayer path: a NEW sample seeded with the foldable starter period.
@@ -613,7 +624,7 @@ module SampleEditorWindowTests =
             setText window UiIds.nameBox "Headless multilayer"
             clickOn window UiIds.saveButton
             Assert.False(window.IsVisible)
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all ->
                 Assert.Equal(seededCount + 1, List.length all)
                 match all |> List.tryFind (fun s -> s.name = "Headless multilayer") with
@@ -631,7 +642,7 @@ module SampleEditorWindowTests =
             let materials, samples, categories = freshProxies ()
             let existing = SeedSamples.glassFilm200
             let seededCount =
-                match samples.listSamples () with
+                match samples.listSamples ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
             let window = SampleEditorWindow(materials, samples, categories, EditSample existing)
@@ -644,7 +655,7 @@ module SampleEditorWindowTests =
             | Ok (Some updated) -> Assert.Equal("Renamed film", updated.name)
             | Ok None -> Assert.Fail("the existing sample vanished")
             | Error e -> Assert.Fail($"tryGetSample failed: %A{e}")
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Equal(seededCount, List.length all)
             | Error e -> Assert.Fail($"listSamples failed: %A{e}"))
 
@@ -836,7 +847,7 @@ module SampleEditorWindowTests =
                     name = "Awaiting the fresh oxide"
                     structure =
                         {
-                            films = [ SingleLayer { materialId = mintedId; thickness = nmT 100.0; orientation = PrimaryAxes } ]
+                            films = [ SingleLayer { materialId = MaterialVersionId.firstOf mintedId; thickness = nmT 100.0; orientation = PrimaryAxes } ]
                             substrate = None
                             lower = None
                         }
@@ -907,7 +918,7 @@ module SampleEditorWindowTests =
         let bound = update (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
         let materialAt (i : int) (model : Model) : MaterialId =
             match List.item i model.editor.structure.films with
-            | SingleLayer layer -> layer.materialId
+            | SingleLayer layer -> layer.materialId.materialId
             | Repeated _ -> failwith $"films item %d{i} is unexpectedly a repeat group"
         Assert.Equal(MaterialIds.glass175, materialAt 1 bound)
         Assert.Equal(MaterialIds.glass152, materialAt 0 bound)

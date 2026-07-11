@@ -6,6 +6,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 
 /// Spec 0038 Part H step 021 (contract STORE_XDUO_0001) — the mutating materials write-seam
 /// re-typed IN PLACE into the VERSIONED store. `MaterialProxy.createInMemory samplesReferencing
@@ -33,7 +34,7 @@ module MaterialProxyTests =
     /// referencing lookup is backed by it (`samplesReferencing` — the composition-root wiring; the
     /// `MaterialStillReferenced` block).
     let private composedProxies () : SampleProxy * MaterialProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         samples, MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
 
     /// A built-in EDITABLE template entry (fixed id, non-dispersive glass, `complexity = Some`) the
@@ -300,7 +301,7 @@ module MaterialProxyTests =
         match proxy.tryGetMaterial MaterialIds.glass152 with
         | Ok (Some _) -> ()
         | other -> Assert.Fail($"expected the glass entry to survive, got %A{other}")
-        match samples.listSamples () with
+        match samples.listSamples ActiveOnly with
         | Ok _ -> ()
         | Error err -> Assert.Fail($"%A{err}")
 

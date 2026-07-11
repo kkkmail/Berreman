@@ -323,6 +323,7 @@ module private DefaultStores =
     open OpticalConstructor.Domain.Library
     open OpticalConstructor.Domain.Lifecycle           // VersionsInUse.empty
     open OpticalConstructor.Domain.MaterialStore       // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
+    open OpticalConstructor.Domain.SampleStore         // SampleProxy.createInMemory (versioned, spec 0038 step 022)
 
     /// Spec 0035 (009): the category store joins the composition LAST — its remove-block consults
     /// the live materials store through `materialsReferencingCategory` (the `samplesReferencing`
@@ -330,7 +331,7 @@ module private DefaultStores =
     /// materials store is versioned (spec 0038 step 021) and takes the `VersionsInUse` seam —
     /// empty for the test scenes, which hold no persisted experiments.
     let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
         materials, samples, categories
@@ -1586,7 +1587,10 @@ let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.
 /// `None` = no sample bound; `Some (Error _)` = the sample references an unknown material id, which the
 /// chart surfaces as its message (a typed error, never a fallback).
 let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSample, MaterialLibrary.MaterialError> option =
-    runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials materialLibrary)
+    // Resolution flows through the LIVE versioned material store's by-version resolve (spec 0038
+    // step 022): each layer's pinned `MaterialVersionId` resolves to the exact version it was built
+    // against, so a later mint never rewrites a bound sample's physics.
+    runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials model.materials)
 
 /// The human-readable message a failed sample-material resolution surfaces on the chart. Every error
 /// case carries a diagnostic `reason` (spec 0033 steps 002/003); only `UnknownMaterialId` can actually
@@ -2004,15 +2008,15 @@ let private sampleBandSpecs (sample : Library.Sample) : (MaterialLibrary.Materia
         sample.structure.films
         |> List.collect (fun item ->
             match item with
-            | Library.SingleLayer l -> [ l.materialId, layerBandThickness l, 1 ]
-            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId, layerBandThickness l, g.count))
+            | Library.SingleLayer l -> [ l.materialId.materialId, layerBandThickness l, 1 ]
+            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId.materialId, layerBandThickness l, g.count))
     let substrateBands =
         match sample.structure.substrate with
-        | Some l -> [ l.materialId, layerBandThickness l, 1 ]
+        | Some l -> [ l.materialId.materialId, layerBandThickness l, 1 ]
         | None -> []
     let lowerBands =
         match sample.structure.lower with
-        | Some materialId -> [ materialId, SemiInfinite, 1 ]
+        | Some mvid -> [ mvid.materialId, SemiInfinite, 1 ]
         | None -> []
     filmBands @ substrateBands @ lowerBands
 

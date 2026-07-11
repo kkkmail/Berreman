@@ -48,6 +48,20 @@ module Library =
     /// collision `elementId` documents; this is the unambiguous call site for qualified callers).
     let newSampleId () : SampleId = SampleId.create ()
 
+    /// A specific version of a sample entry (spec 0038 Part H): the sample identity plus the version
+    /// number. Mirrors `MaterialVersionId` (`MaterialLibrary.fs`) — a versioned binding (an
+    /// experiment descriptor, step 25) pins the exact version it was built against, so a later mint
+    /// of the sample's `.next` version never silently rewrites an existing experiment's physics.
+    /// Moved here from `Lifecycle.fs` at step 022 (which compiles AFTER this file) so the versioned
+    /// `SampleProxy` record below can name it while the record stays re-typed IN PLACE — the exact
+    /// move step 021 made for `MaterialVersionId` (a version-id type lives with its identity type).
+    /// `VersionNumber` is in scope through the `open …MaterialLibrary` above.
+    type SampleVersionId =
+        {
+            sampleId : SampleId
+            version : VersionNumber
+        }
+
     /// Whether a sample's geometry is a thin film, a thick plate, or a wedge (spec §2a). A DU, not a
     /// bool/enum, so the sample editor can add geometries case-by-case (compiler-guided).
     type SubstrateKind =
@@ -79,7 +93,13 @@ module Library =
     /// (spec 0033 step 002) — the same key `resolveMaterialWithDisp` looks up.
     type SampleLayer =
         {
-            materialId : MaterialId
+            /// The pinned material VERSION this layer is built against (spec 0038 Part H, step 022 —
+            /// references point at a version, not merely a material): re-typed IN PLACE from
+            /// `MaterialId` to `MaterialVersionId`, resolved through the versioned material store's
+            /// by-version `resolveVersion` (`Propagation.resolveMaterialVersion`), so a later mint of
+            /// the material's `.next` version never rewrites this layer's physics. The seeds and
+            /// freshly-authored layers pin version one (`MaterialVersionId.firstOf`).
+            materialId : MaterialVersionId
             thickness : Thickness
             orientation : CrystalOrientation
         }
@@ -104,7 +124,11 @@ module Library =
         {
             films : StackItem list
             substrate : SampleLayer option
-            lower : MaterialId option
+            /// The lower half-space material VERSION (`None` = vacuum). Re-typed IN PLACE from
+            /// `MaterialId option` to `MaterialVersionId option` at step 022 — every material
+            /// reference a sample carries points at a version (spec 0038 Part H), resolved through
+            /// the by-version resolve; the seeds pin version one (`MaterialVersionId.firstOf`).
+            lower : MaterialVersionId option
         }
 
         /// The flattened film layers in order — each `Repeated` expands to `count` copies of its cell
@@ -121,16 +145,19 @@ module Library =
         /// reference), the substrate plate's material, and the lower half-space material.
         /// Pure — the referencing lookup `MaterialProxy.removeMaterial` consults is built
         /// over this (`samplesReferencing`).
+        /// Every material IDENTITY the structure references (spec 0033 step 006; re-based on the
+        /// versioned layers at step 022 — the removal hard-block is per material identity, so this
+        /// projects each pinned `MaterialVersionId` down to its `MaterialId`, dropping the version).
         member this.referencedMaterials : Set<MaterialId> =
             let filmMaterialIds =
                 this.films
                 |> List.collect (fun item ->
                     match item with
-                    | SingleLayer l -> [ l.materialId ]
-                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId))
+                    | SingleLayer l -> [ l.materialId.materialId ]
+                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId.materialId))
             let substrateMaterialIds =
-                this.substrate |> Option.toList |> List.map (fun l -> l.materialId)
-            let lowerMaterialIds = this.lower |> Option.toList
+                this.substrate |> Option.toList |> List.map (fun l -> l.materialId.materialId)
+            let lowerMaterialIds = this.lower |> Option.toList |> List.map (fun mvid -> mvid.materialId)
             filmMaterialIds @ substrateMaterialIds @ lowerMaterialIds |> Set.ofList
 
     /// A cut-out plate (spec §2a): a material structure cut to a plate / thin-film geometry → Layer(s)/an
@@ -372,39 +399,66 @@ module Library =
         | UnknownSampleId of reason : string
         | DuplicateSampleId of reason : string
         | InvalidSample of reason : string
+        /// Spec 0038 Part H (step 022): removal is additionally hard-blocked when ANY version of the
+        /// sample is currently bound by a live experiment (the injected `VersionsInUse` seam — the
+        /// mirror of the material store's `MaterialVersionInUse`). A used version can never be
+        /// deleted; the case names the offending versions so the refusal is actionable in a log.
+        | SampleVersionInUse of reason : string
 
     /// The mutating samples write-seam (spec 0033 steps 004/005, contract STORE_XDUO_0002 —
-    /// IMPLEMENTED lifecycle): the same functional-proxy shape as step 003's `MaterialProxy`
-    /// (`MaterialLibrary.fs`) — a record of camelCase `Result`-returning functions; a test
-    /// substitutes a stub of the SAME shape. Function-valued fields have no structural equality,
-    /// so the proxy compares by reference — a host model holding one keeps its (Elmish-required)
-    /// equality. The real, stateful in-memory store behind this surface is
-    /// `SampleProxy.createInMemory` (declared as a type augmentation below `seedEntries`, which
-    /// seeds it).
+    /// IMPLEMENTED lifecycle; re-typed IN PLACE at spec 0038 Part H step 022 into the VERSIONED
+    /// surface, the exact mirror of step 021's `MaterialProxy`): the functional-proxy convention —
+    /// a record of camelCase `Result`-returning functions; a test substitutes a stub of the SAME
+    /// shape. Function-valued fields have no structural equality, so the proxy compares by reference
+    /// — a host model holding one keeps its (Elmish-required) equality. The store is now versions
+    /// per `SampleId`:
+    ///
+    /// - `listSamples scope` — the LATEST version of each sample, filtered by `scope` (`ActiveOnly`
+    ///   for offers, `IncludeInactive` for the show-inactive toggle);
+    /// - `searchSamples q` — the name / substrate facets over the latest-ACTIVE versions (offers);
+    /// - `tryGetSample id` — the latest version's sample, if any;
+    /// - `resolveVersion svid` — the EXACT version's sample, IGNORING lifecycle (reference
+    ///   resolution: an experiment binding a superseded/inactive version still resolves it);
+    /// - `saveSample sample` — applies the step-20 shared `decideVersioning` rule against the
+    ///   injected `VersionsInUse` (a new sample inserts version 1; an existing one mutates in
+    ///   place, mints the next version, or is a no-op) — it replaces the old `addSample`/`updateSample`;
+    /// - `markSampleInactive` / `markSampleActive` — retire / revive the latest version;
+    /// - `supersedeSample` — retire the latest version (a superseded version behaves as inactive);
+    /// - `removeSample id` — deletes an unused sample and refuses any sample carrying a used
+    ///   version (`SampleVersionInUse`); an unknown id is `UnknownSampleId`.
+    ///
+    /// The real, stateful in-memory store behind this surface is `SampleProxy.createInMemory` (a
+    /// type augmentation in `SampleStore.fs`, after `Lifecycle.fs`: it needs the shared
+    /// `decideVersioning` rule and the `VersionsInUse` seam).
     [<ReferenceEquality>]
     type SampleProxy =
         {
-            listSamples : unit -> Result<Sample list, SampleError>
+            listSamples : InactiveVisibility -> Result<Sample list, SampleError>
             searchSamples : SampleQuery -> Result<Sample list, SampleError>
             tryGetSample : SampleId -> Result<Sample option, SampleError>
-            addSample : Sample -> Result<unit, SampleError>
-            updateSample : Sample -> Result<unit, SampleError>
+            resolveVersion : SampleVersionId -> Result<Sample option, SampleError>
+            saveSample : Sample -> Result<unit, SampleError>
+            markSampleInactive : SampleId -> Result<unit, SampleError>
+            markSampleActive : SampleId -> Result<unit, SampleError>
+            supersedeSample : SampleId -> Result<unit, SampleError>
             removeSample : SampleId -> Result<unit, SampleError>
         }
 
-    /// A single-layer thin-film structure between vacuum (the common seed shape).
+    /// A single-layer thin-film structure between vacuum (the common seed shape). The layer pins
+    /// version one of the material (spec 0038 step 022 — the seeds carry version-pinned references).
     let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
-            films = [ SingleLayer { materialId = materialId; thickness = thickness; orientation = PrimaryAxes } ]
+            films = [ SingleLayer { materialId = MaterialVersionId.firstOf materialId; thickness = thickness; orientation = PrimaryAxes } ]
             substrate = None
             lower = None
         }
 
-    /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer).
+    /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer). The plate
+    /// pins version one of the material (spec 0038 step 022).
     let private plateStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
             films = []
-            substrate = Some { materialId = materialId; thickness = thickness; orientation = PrimaryAxes }
+            substrate = Some { materialId = MaterialVersionId.firstOf materialId; thickness = thickness; orientation = PrimaryAxes }
             lower = None
         }
 
@@ -430,8 +484,8 @@ module Library =
                         {
                             cell =
                                 [
-                                    { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                    { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                    { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                    { materialId = MaterialVersionId.firstOf MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                 ]
                             count = 1
                         }
@@ -504,12 +558,12 @@ module Library =
                                     {
                                         cell =
                                             [
-                                                { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 20
                                     }
-                                SingleLayer { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                SingleLayer { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
                             ]
                         substrate = None
                         lower = None
@@ -530,8 +584,8 @@ module Library =
                                     {
                                         cell =
                                             [
-                                                { materialId = MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 100
                                     }
@@ -576,9 +630,9 @@ module Library =
                 name = "Langasite film on silicon (10 µm, dispersive)"
                 structure =
                     {
-                        films = [ SingleLayer { materialId = MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
+                        films = [ SingleLayer { materialId = MaterialVersionId.firstOf MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
                         substrate = None
-                        lower = Some MaterialIds.silicon
+                        lower = Some (MaterialVersionId.firstOf MaterialIds.silicon)
                     }
                 substrate = ThinFilm
                 description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
@@ -686,14 +740,15 @@ module Library =
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
 
-    /// The write-seam validation the samples store's write functions share. Two rules, in order:
+    /// The write-seam validation the samples store's `saveSample` runs. Two rules, in order:
     /// (spec 0033 steps 004/005) a `Sample` whose display name is empty/whitespace is
     /// `InvalidSample`; and (spec 0035 step 012) a `Sample` whose structure carries NO films AND
     /// NO substrate (`films = []`, `substrate = None` on `SampleStructure`) is structurally empty —
     /// there is nothing for the engine mapping to expand — and is likewise `InvalidSample`, even
-    /// when its name is non-blank. Both `addSample` and `updateSample` run this, so the guard holds
-    /// on every save.
-    let private validateSample (s : Sample) : Result<unit, SampleError> =
+    /// when its name is non-blank. Not private: the real store is a type augmentation in
+    /// `SampleStore.fs`, and an optional extension in another file cannot reach a module-private
+    /// binding (the `validateEntry` precedent, `MaterialLibrary.fs`).
+    let validateSample (s : Sample) : Result<unit, SampleError> =
         let structurallyEmpty =
             match s.structure.films, s.structure.substrate with
             | [], None -> true
@@ -704,87 +759,25 @@ module Library =
         then Error (InvalidSample $"sample '%s{string s.id.value}' has no films and no substrate")
         else Ok ()
 
-    /// The real, stateful in-memory samples store behind the write-seam (spec 0033 step 005 —
-    /// IMPLEMENT_CONTRACT STORE_XDUO_0002; replaces the step-004 validate-only mock).
-    /// `createInMemory` closes over a `ref` `Map<SampleId, Sample>` seeded from the samples in
-    /// `seedEntries` — the elevated `SampleId` is the Map key directly. Mutation stays INSIDE
-    /// the closure (the IO boundary), so the logic holding the proxy stays pure: reads answer
-    /// from the current map; `searchSamples` matches the name fragment case-insensitively, then
-    /// the `SubstrateKind` facet; `addSample` persists a fresh sample and rejects an id the
-    /// store already holds (`DuplicateSampleId`); `updateSample` replaces a known sample and
-    /// rejects an unknown id (`UnknownSampleId`); `removeSample` deletes a known id and rejects
-    /// an unknown one; both writes keep the step-004 blank-name validation (`InvalidSample`).
-    /// Deterministic under test — every entry carries its own id, no clock, no IO. (A static
-    /// member, not a module `let`: `createInMemory` at module level already builds the
-    /// `LibraryProxy`; the augmentation sits here because it needs `seedEntries` above.)
-    type SampleProxy with
-
-        static member createInMemory () : SampleProxy =
-            let seeded =
-                seedEntries
-                |> List.choose (fun e ->
-                    match e with
-                    | SampleItem s -> Some (s.id, s)
-                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> None)
-            let store = ref (Map.ofList seeded)
-            let currentSamples () : Sample list =
-                store.Value |> Map.toList |> List.map snd
-            let unknown (id : SampleId) : SampleError =
-                UnknownSampleId $"unknown sample id '%s{string id.value}'"
-            {
-                listSamples = fun () -> Ok (currentSamples ())
-                searchSamples =
-                    fun q ->
-                        let byText =
-                            currentSamples ()
-                            |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
-                        match q.substrate with
-                        | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
-                        | None -> Ok byText
-                tryGetSample = fun id -> Ok (store.Value |> Map.tryFind id)
-                addSample =
-                    fun sample ->
-                        validateSample sample
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind sample.id with
-                            | Some existing ->
-                                Error (DuplicateSampleId $"sample id '%s{string sample.id.value}' already names '%s{existing.name}'")
-                            | None ->
-                                store.Value <- store.Value |> Map.add sample.id sample
-                                Ok ())
-                updateSample =
-                    fun sample ->
-                        validateSample sample
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind sample.id with
-                            | Some _ ->
-                                store.Value <- store.Value |> Map.add sample.id sample
-                                Ok ()
-                            | None -> Error (unknown sample.id))
-                removeSample =
-                    fun id ->
-                        match store.Value |> Map.tryFind id with
-                        | Some _ ->
-                            store.Value <- store.Value |> Map.remove id
-                            Ok ()
-                        | None -> Error (unknown id)
-            }
-
-    // The real, stateful in-memory materials store behind the write-seam (STORE_XDUO_0001) moved
-    // to `MaterialStore.fs` at spec 0038 Part H step 021: the versioned store needs the shared
-    // `decideVersioning` rule (`Lifecycle.fs`, which compiles AFTER this file because it needs
-    // `SampleId` from `Library` above), so its `createInMemory` augmentation can no longer live
-    // here. Its `samplesReferencing` composition lookup stays below (it is `SampleProxy`-typed).
+    // The real, stateful in-memory samples store behind the write-seam (STORE_XDUO_0002) moved to
+    // `SampleStore.fs` at spec 0038 Part H step 022 (mirroring the material store's step-021 move):
+    // the VERSIONED store needs the shared `decideVersioning` rule and the `VersionsInUse` seam
+    // (`Lifecycle.fs`, which compiles AFTER this file because it needs `SampleId` from `Library`
+    // above), so its `createInMemory` augmentation can no longer live here. The `SampleProxy` record
+    // itself stays re-typed IN PLACE above; `validateSample` (public, just above) is shared by the
+    // store; `samplesReferencing` (its composition lookup) stays below (it is `SampleProxy`-typed).
 
     /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
     /// step 006): every sample the samples store currently holds whose structure references
-    /// the material. Backed by the LIVE step-005 `SampleProxy` store — once the referencing
-    /// samples are removed the material becomes removable; there is no snapshot to refresh.
-    /// The in-memory `listSamples` is total (always `Ok`); the signature carries no error
-    /// channel, so a future store whose listing can fail must supply its own conservative
-    /// lookup instead of this one.
+    /// the material. Backed by the LIVE `SampleProxy` store — once the referencing samples are
+    /// removed the material becomes removable; there is no snapshot to refresh. Lists the
+    /// latest-ACTIVE versions (`ActiveOnly`): a retired sample no longer offers new use, so it no
+    /// longer holds a material from removal (the material's own used-version block still guards any
+    /// version a live experiment binds). The in-memory `listSamples` is total (always `Ok`); the
+    /// signature carries no error channel, so a future store whose listing can fail must supply its
+    /// own conservative lookup instead of this one.
     let samplesReferencing (samples : SampleProxy) (id : MaterialId) : Sample list =
-        match samples.listSamples () with
+        match samples.listSamples ActiveOnly with
         | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)
         | Error _ -> []
 

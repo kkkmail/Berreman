@@ -103,7 +103,7 @@ module AppContextTests =
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
         // …and the SECOND surface no longer lists it — one store, not a copy per window.
-        match second.samples.listSamples () with
+        match second.samples.listSamples ActiveOnly with
         | Ok all -> Assert.DoesNotContain(SeedSamples.glassFilm600.id, all |> List.map (fun s -> s.id))
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
@@ -114,7 +114,7 @@ module AppContextTests =
         match scopeA.samples.removeSample SeedSamples.glassFilm600.id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
-        match scopeB.samples.listSamples () with
+        match scopeB.samples.listSamples ActiveOnly with
         | Ok all -> Assert.Contains(SeedSamples.glassFilm600.id, all |> List.map (fun s -> s.id))
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
@@ -160,7 +160,7 @@ module AppContextTests =
             Assert.False(editor.IsVisible, "Save must persist the entry and close the editor")
             // The id was minted at the verb dispatch — recover it through the SHARED app-scope store.
             let savedId =
-                match context.samples.listSamples () with
+                match context.samples.listSamples ActiveOnly with
                 | Ok all ->
                     match all |> List.tryFind (fun s -> s.name = "Shared-scope sample") with
                     | Some sample -> sample.id

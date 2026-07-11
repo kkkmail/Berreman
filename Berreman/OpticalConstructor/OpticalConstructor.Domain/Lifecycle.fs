@@ -16,18 +16,12 @@ module Lifecycle =
 
     // `VersionNumber` and `MaterialVersionId` were moved to `MaterialLibrary.fs` at step 021 so
     // the versioned `MaterialProxy` record (re-typed IN PLACE in that file, which compiles before
-    // this one) can name them; they are still in scope here through the `open …MaterialLibrary`
-    // above (`MaterialVersionId` needs only `MaterialId`, which likewise lives there). Every other
-    // lifecycle type below stays here — the shared foundation both stores call.
-
-    /// A specific version of a sample entry (§H): the sample identity plus the version
-    /// number. Mirrors `MaterialVersionId` — a versioned sample binding pins the exact
-    /// version it was built against.
-    type SampleVersionId =
-        {
-            sampleId : SampleId
-            version : VersionNumber
-        }
+    // this one) can name them; `SampleVersionId` was likewise moved to `ElementId.fs`'s `Library`
+    // module at step 022 (next to `SampleId`) so the in-place versioned `SampleProxy` record can
+    // name it. All three stay in scope here through the `open …MaterialLibrary` / `open …Library`
+    // above — the principle recorded at step 021: a version-id type lives with its identity type
+    // (`MaterialVersionId` by `MaterialId`, `SampleVersionId` by `SampleId`). Every other lifecycle
+    // type below stays here — the shared foundation both stores call.
 
     /// Whether a library entry (a specific version) is live or retired (§H). A named
     /// two-case DU, never a naked bool: an `InactiveEntry` is superseded / soft-deleted —

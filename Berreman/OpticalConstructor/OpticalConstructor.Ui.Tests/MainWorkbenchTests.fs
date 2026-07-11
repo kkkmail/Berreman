@@ -14,6 +14,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -64,7 +65,7 @@ module MainWorkbenchTests =
     /// samples store first, then the materials store whose remove-block consults the LIVE
     /// samples through `samplesReferencing`.
     let private freshStores () : MaterialProxy * SampleProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         materials, samples
 

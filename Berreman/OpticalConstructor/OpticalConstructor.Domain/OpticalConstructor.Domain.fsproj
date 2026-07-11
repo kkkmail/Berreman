@@ -124,6 +124,12 @@
              lives HERE because it applies the shared decideVersioning rule from Lifecycle.fs
              above and its samplesReferencing parameter is Sample-typed (Library, ElementId.fs). -->
         <Compile Include="MaterialStore.fs" />
+        <!-- Spec 0038 Part H (step 022): the versioned in-memory SAMPLE store behind the registered
+             SampleProxy write-seam (STORE_XDUO_0002). The SampleProxy record stays re-typed in place
+             in ElementId.fs; its createInMemory augmentation lives HERE because it applies the shared
+             decideVersioning rule from Lifecycle.fs above and takes the VersionsInUse seam. Mirrors
+             MaterialStore.fs. -->
+        <Compile Include="SampleStore.fs" />
     </ItemGroup>
 
     <ItemGroup>

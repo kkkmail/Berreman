@@ -248,7 +248,7 @@ let private presetKinds : CatalogueKind list =
 /// it twice). The proxy's own STATIC seeded samples are excluded in favour of the live store.
 let liveEntries (context : LibraryWindowContext) : LibraryEntry list =
     let samples =
-        match context.samples.listSamples () with
+        match context.samples.listSamples ActiveOnly with
         | Ok stored -> stored |> List.map SampleItem
         | Error _ -> []
     let presets =
@@ -927,6 +927,7 @@ let private messageRow (m : Model) : IView list =
                 match sampleError with
                 | UnknownSampleId reason
                 | DuplicateSampleId reason
+                | SampleVersionInUse reason
                 | InvalidSample reason -> reason
         [ TextBlock.create [
               automationId<TextBlock> UiIds.message

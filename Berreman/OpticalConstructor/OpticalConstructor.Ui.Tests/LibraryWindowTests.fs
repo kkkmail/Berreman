@@ -17,6 +17,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -120,7 +121,7 @@ module LibraryWindowTests =
     /// Fresh, isolated in-memory stores per test — the SAME composition the App performs (the
     /// samples store first, then materials whose remove-block consults the LIVE samples).
     let private freshStores () : LibraryProxy * SampleProxy * MaterialProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         Library.createInMemory (), samples, materials
 
@@ -442,7 +443,7 @@ module LibraryWindowTests =
         // Nothing changed: the corpus, the stores, the selection.
         Assert.Equal(17, (LW.facetedState refused).resultCount)
         Assert.Contains("src-600", filteredEntryIds refused)
-        match samples.listSamples () with
+        match samples.listSamples ActiveOnly with
         | Ok all -> Assert.Equal(11, List.length all)
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
         // A confirm after the refusal is inert too — there is no armed gate to fire.
@@ -474,7 +475,7 @@ module LibraryWindowTests =
         | Some e -> Assert.Fail($"expected no error, got %A{e}")
         Assert.DoesNotContain(glassFilm600EntryId, filteredEntryIds removed)
         Assert.Equal<string option>(None, removed.selectedEntryId)
-        match samples.listSamples () with
+        match samples.listSamples ActiveOnly with
         | Ok all -> Assert.Equal(10, List.length all)
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
@@ -676,7 +677,7 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.False(editor.IsVisible, "Save must close the editor")
             // The save landed in the SHARED store…
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name = "Library window sample")
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             // …and the window's next dispatch-driven render re-queries it: committing the
@@ -704,7 +705,7 @@ module LibraryWindowTests =
             // Nothing changed: the entry is still listed and the samples store untouched.
             Assert.True(isPresent window (LW.UiIds.entryNode "src-600"))
             Assert.Equal("1 results", textOf window FacetedTreeControls.UiIds.resultCount)
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Equal(11, List.length all)
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             window.Close())
@@ -721,7 +722,7 @@ module LibraryWindowTests =
             clickOn window LW.UiIds.removeConfirmButton
             Assert.False(isPresent window (LW.UiIds.entryNode glassFilm600EntryId),
                          "the removed sample's row must leave the tree in the same render pass")
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Equal(10, List.length all)
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             window.Close())
@@ -760,7 +761,7 @@ module LibraryWindowTests =
             setText editor SampleEditorView.UiIds.nameBox "Window multilayer"
             clickOn editor SampleEditorView.UiIds.saveButton
             Assert.False(editor.IsVisible)
-            match samples.listSamples () with
+            match samples.listSamples ActiveOnly with
             | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name = "Window multilayer")
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             window.Close())

@@ -445,6 +445,7 @@ let private sampleErrorReason (e : SampleError) : string =
     match e with
     | UnknownSampleId reason
     | DuplicateSampleId reason
+    | SampleVersionInUse reason
     | InvalidSample reason -> reason
 
 let private materialErrorReason (e : MaterialError) : string =
@@ -494,7 +495,9 @@ let update (msg : Msg) (m : Model) : Model =
             | None -> m.materials |> List.tryHead |> Option.map (fun e -> e.id)
         match materialIdOpt with
         | Some id ->
-            applyStack (AddLayer { materialId = id; thickness = defaultLayerThickness; orientation = PrimaryAxes }) m
+            // Pin the chosen material's current version (spec 0038 step 022 — `firstOf`: every
+            // material lives at v1 until step 25's real `VersionsInUse` can drive a mint).
+            applyStack (AddLayer { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes }) m
         | None -> { m with status = Some "no materials are available to add a layer from" }
     | SelectByMaterialClicked ->
         match m.chosenMaterial with
@@ -512,7 +515,7 @@ let update (msg : Msg) (m : Model) : Model =
             | Some _ | None -> { m with status = Some "enter a positive thickness in nm (or a QWOT wavelength with a chosen material)" }
     | SetLayerMaterialClicked ->
         match m.chosenMaterial with
-        | Some id -> applyStack (SetMaterialOfSelected id) m
+        | Some id -> applyStack (SetMaterialOfSelected (MaterialVersionId.firstOf id)) m
         | None -> { m with status = Some "choose a material to set" }
     | SetOrientationText (slot, s) ->
         match slot with
@@ -543,7 +546,7 @@ let update (msg : Msg) (m : Model) : Model =
         // the inline picker is gone; the vanished-row no-op chooses nothing).
         if isValidPosition m.editor.structure position then
             let single = { m.editor with selection = Set.ofList [ position ] }
-            match applySampleStackMsg (SetMaterialOfSelected materialId) single with
+            match applySampleStackMsg (SetMaterialOfSelected (MaterialVersionId.firstOf materialId)) single with
             | Ok next -> { m with editor = { next with selection = m.editor.selection }; chosenMaterial = Some materialId; status = None }
             | Error e -> { m with status = Some (stackErrorReason e) }
         else
@@ -561,21 +564,21 @@ let update (msg : Msg) (m : Model) : Model =
         // Qualify the Domain case — the view `Msg` also has a `SetSubstrate` (the geometry
         // facet), so the bare name would resolve to the wrong DU.
         match m.chosenMaterial with
-        | Some id -> applyStack (SampleStackMsg.SetSubstrate (Some { materialId = id; thickness = defaultLayerThickness; orientation = PrimaryAxes })) m
+        | Some id -> applyStack (SampleStackMsg.SetSubstrate (Some { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes })) m
         | None -> { m with status = Some "choose a material to set as the substrate plate" }
     | ClearSubstrateClicked -> applyStack (SampleStackMsg.SetSubstrate None) m
     | SetLowerClicked ->
         match m.chosenMaterial with
-        | Some id -> applyStack (SampleStackMsg.SetLower (Some id)) m
+        | Some id -> applyStack (SampleStackMsg.SetLower (Some (MaterialVersionId.firstOf id))) m
         | None -> { m with status = Some "choose a material to set as the lower half-space" }
     | ClearLowerClicked -> applyStack (SampleStackMsg.SetLower None) m
     | SaveClicked ->
-        // Spec 0038 step 008: Save routes on the freshness of the upfront id — the id-mint
-        // left this path (it happens at window open, `SampleEditorIntent`).
-        let saved =
-            match m.target.freshness with
-            | WindowLauncher.NewUnsaved -> m.context.samples.addSample (toSample m.target.sampleId m)
-            | WindowLauncher.Persisted -> m.context.samples.updateSample (toSample m.target.sampleId m)
+        // Spec 0038 step 022: Save routes through the ONE versioned `saveSample` (the mirror of
+        // the material editor's collapse — `addSample`/`updateSample` are gone): a NewUnsaved id
+        // inserts version 1, a Persisted id runs the shared `decideVersioning` rule (mutate in
+        // place while unused, mint the next version when a bound version's structure changes). The
+        // upfront-minted id (`SampleEditorIntent`) still drives which case the store takes.
+        let saved = m.context.samples.saveSample (toSample m.target.sampleId m)
         match saved with
         | Ok () ->
             m.context.requestClose ()
@@ -825,11 +828,11 @@ let private layerRowView
     (indent : float)
     (layer : SampleLayer) : IView =
     let selected = Set.contains position m.editor.selection
-    let entryOpt = m.materials |> List.tryFind (fun e -> e.id = layer.materialId)
+    let entryOpt = m.materials |> List.tryFind (fun e -> e.id = layer.materialId.materialId)
     let materialName =
         match entryOpt with
         | Some entry -> entry.name
-        | None -> $"unknown material %s{string layer.materialId.value}"
+        | None -> $"unknown material %s{string layer.materialId.materialId.value}"
     let orientationEditor =
         match entryOpt with
         | Some entry when isAnisotropicEntry entry -> [ orientationEditorView dispatch position orientationId layer.orientation ]
@@ -981,11 +984,11 @@ let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
 let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
     let substrateText =
         match m.editor.structure.substrate with
-        | Some layer -> $"{nameOfMaterialId m layer.materialId} ({thicknessLabel layer.thickness})"
+        | Some layer -> $"{nameOfMaterialId m layer.materialId.materialId} ({thicknessLabel layer.thickness})"
         | None -> "none"
     let lowerText =
         match m.editor.structure.lower with
-        | Some id -> nameOfMaterialId m id
+        | Some mvid -> nameOfMaterialId m mvid.materialId
         | None -> "vacuum"
     let summary (autoId : string) (text : string) : IView =
         TextBlock.create [

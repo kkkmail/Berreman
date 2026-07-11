@@ -17,6 +17,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
@@ -137,7 +138,7 @@ module MaterialsWindowTests =
     /// (samples first, then materials whose remove-block consults the LIVE samples, then
     /// categories whose remove-block consults the LIVE materials).
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         materials, samples, categories
@@ -900,7 +901,7 @@ module MaterialsWindowTests =
             let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
             // The workbench staleness machinery is window-agnostic: the session handle closes
             // whichever Select-state window it points at.
-            let sceneSamples = SampleProxy.createInMemory ()
+            let sceneSamples = SampleProxy.createInMemory VersionsInUse.empty
             let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples) VersionsInUse.empty
             let sceneCategories = CategoryProxy.createInMemory (materialsReferencingCategory sceneMaterials)
             let model0 =

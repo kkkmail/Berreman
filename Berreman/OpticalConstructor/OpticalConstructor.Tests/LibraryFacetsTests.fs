@@ -166,8 +166,10 @@ module LibraryFacetsTests =
 
     // ---- synthetic samples ----
 
+    // The layer pins version one of the material (spec 0038 step 022 — a `SampleLayer` carries a
+    // `MaterialVersionId`; the facet extractors project it back to the identity).
     let private layer (materialId : MaterialId) (thicknessNm : float) : SampleLayer =
-        { materialId = materialId; thickness = Thickness.nm (thicknessNm * 1.0<nm>); orientation = PrimaryAxes }
+        { materialId = MaterialVersionId.firstOf materialId; thickness = Thickness.nm (thicknessNm * 1.0<nm>); orientation = PrimaryAxes }
 
     let private filmSample (idText : string) (name : string) (films : StackItem list) : Sample =
         {

@@ -18,6 +18,7 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.MaterialStore
+open OpticalConstructor.Domain.SampleStore
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.MaterialEditorView
@@ -86,7 +87,7 @@ module MaterialEditorWindowTests =
 
     /// Fresh, isolated in-memory stores per test (the composition the App would perform).
     let private freshProxies () : MaterialProxy * SampleProxy =
-        let samples = SampleProxy.createInMemory ()
+        let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         materials, samples
 

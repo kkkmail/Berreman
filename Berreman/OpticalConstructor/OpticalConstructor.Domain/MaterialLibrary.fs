@@ -531,6 +531,15 @@ module MaterialLibrary =
             version : VersionNumber
         }
 
+        /// The version-ONE reference of a material (spec 0038 step 022) — the pin the seeded
+        /// samples and freshly-authored sample layers carry. At this in-memory step every material
+        /// lives at version 1 (an unused version's edit mutates in place; a mint needs a USED
+        /// version, and `VersionsInUse` is `empty` until step 25), so `firstOf` IS the material's
+        /// current latest version. Centralised so step 25 (real `VersionsInUse`) has ONE place to
+        /// revisit pin-latest — the seeds and the editor both pin through here.
+        static member firstOf (materialId : MaterialId) : MaterialVersionId =
+            { materialId = materialId; version = VersionNumber.first }
+
     /// Whether a store listing shows only the LIVE (latest-active) entries or also the retired
     /// ones (spec 0038 Part H, step 021): a named two-case DU, never a naked bool. `ActiveOnly` —
     /// the default the offers use (pickers, Select mode, facet counts) — yields the latest version
