@@ -164,6 +164,16 @@
              Experiments (VariableParameter/VariableRange/Experiment) and Units (the nm seam); nothing
              else depends on it, so it compiles last. -->
         <Compile Include="OutOfBandDiagnostic.fs" />
+        <!-- Spec 0038 Part I (step 034): the pure measured-data PARSERS (text in, values out) — strict
+             schema-v1 intensity (labels row ignored, then invariant-culture X,Y rows) and ellipsometric
+             (wavelength_nm,psi_deg,delta_deg with optional aoi_deg) parsers over elevated point types,
+             the ExperimentDataError channel, and validateAgainstExperiment (series vs a step-25
+             experiment's varied parameter / range / detector kind, a LOUD typed range/units mismatch,
+             never a silent trim). Follows the SpectralImport.parseSpectrumCsv text-taking precedent so
+             filesystem IO and exceptions stay out; reuses Units (the sole unit seam), the engine Angle,
+             and Experiments/Library (VariableParameter/VariableRange/DetectorKind). Nothing else in the
+             Domain depends on it, so it compiles last. -->
+        <Compile Include="MeasuredData.fs" />
     </ItemGroup>
 
     <ItemGroup>

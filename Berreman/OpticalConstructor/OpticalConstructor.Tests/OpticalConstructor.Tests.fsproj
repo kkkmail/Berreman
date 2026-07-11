@@ -177,6 +177,14 @@
              spanning request while a gap does not, constant + coded-preset materials never flag, and
              the requested-wavelengths derivation + tooltip/Details text. -->
         <Compile Include="OutOfBandDiagnosticTests.fs" />
+        <!-- Spec 0038 Part I (step 034): the pure measured-data parsers + validation — a good intensity
+             CSV parses X,Y with the labels row ignored (CRLF tolerated), a malformed row / wrong column
+             count / empty / header-only reject with typed ExperimentDataErrors; the 3- and 4-column
+             ellipsometric schema parses wavelength via the Units seam and Ψ/Δ/aoi as angles, a bad header
+             or bad row rejects; and validateAgainstExperiment yields DataUnitsMismatch (wrong shape for
+             the detector) and DataRangeMismatch (abscissa outside the range, never trimmed). Every case
+             runs against an in-memory string — no file IO. -->
+        <Compile Include="MeasuredDataTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
