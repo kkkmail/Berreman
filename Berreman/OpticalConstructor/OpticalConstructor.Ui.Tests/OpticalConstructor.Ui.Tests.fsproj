@@ -72,6 +72,10 @@
         <Compile Include="RendererTestTests.fs" />
         <!-- Spec 0027 task 018: the shared renderer control (config DU + presets + transparency). -->
         <Compile Include="RendererControlsTests.fs" />
+        <!-- Spec 0038 step 030: the shared renderer's value-binding cue — the pure host derivation
+             (bindingStateOf) plus headless proofs that an unbound element renders dashed + ghosted, a
+             bound one solid, and a not-bindable lens normally, in both the shape and wireframe looks. -->
+        <Compile Include="ElementRendererBindingTests.fs" />
         <!-- Spec 0027 task 010: the snap-to-beam test window. -->
         <Compile Include="SnapToBeamTests.fs" />
         <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->

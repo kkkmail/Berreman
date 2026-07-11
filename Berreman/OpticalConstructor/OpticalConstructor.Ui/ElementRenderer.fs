@@ -7,6 +7,7 @@
 module OpticalConstructor.Ui.ElementRenderer
 
 open Avalonia
+open Avalonia.Collections
 open Avalonia.Controls
 open Avalonia.Controls.Shapes
 open Avalonia.Media
@@ -19,22 +20,45 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
 
+/// Whether an element's optical value is BOUND to a library entry, still UNBOUND, or belongs to a kind that
+/// carries no bindable material value at all (a lens / mirror is pure geometry). The host derives it with
+/// `bindingStateOf`; the renderer turns UnboundElement into a colourblind-safe PATTERN cue (a dashed outline
+/// and a ghosted fill), leaves BoundElement solid, and draws NotBindableElement normally — the readout and
+/// the Details bay state the same binding in text besides.
+type BindingState =
+    | BoundElement
+    | UnboundElement
+    | NotBindableElement
+
 /// A drawable element: its spec placement (used for ORIENTATION + box + kind), its full 3-D table-frame
 /// `centre` (so an element snapped OUT of the table plane, e.g. after an R3-tilted mirror, is drawn off the
-/// plane — not flattened to the 2-D placement point), a per-element visual draw zoom, and a schematic
-/// optical sign for lens / curved-mirror caps (+1 converging, −1 diverging, 0 flat).
+/// plane — not flattened to the 2-D placement point), a per-element visual draw zoom, a schematic optical
+/// sign for lens / curved-mirror caps (+1 converging, −1 diverging, 0 flat), and its value-binding state (so
+/// an unbound element reads as dashed-and-ghosted without any hue change).
 type Drawable =
     {
         placement : ElementPlacement
         centre : Vector3
         zoom : float
         opticalSign : int
+        bindingState : BindingState
     }
 
 /// The 2-D placement point as a 3-D table-frame centre (z = 0): the centre for an element that sits ON the
 /// table plane (the renderer test, and any non-snapped element).
 let centreOfPlacement (p : ElementPlacement) : Vector3 =
     Vector3.create (p.placementPoint.x / 1.0<meter>) (p.placementPoint.y / 1.0<meter>) 0.0
+
+/// The value-binding cue for a placement (Spec 0038 step 030). A lens and a flat / curved mirror are pure
+/// geometry with no bindable material value, so they are NotBindableElement (drawn normally); every other
+/// kind is BoundElement once its `valueId` is set and UnboundElement while it is still `None`.
+let bindingStateOf (p : ElementPlacement) : BindingState =
+    match p.catalogueKind with
+    | Lens | FlatMirror | CurvedMirror -> NotBindableElement
+    | LightSource | LinearPolarizer | CircularPolarizer | Sample | Detector ->
+        match p.valueId with
+        | Some _ -> BoundElement
+        | None -> UnboundElement
 
 /// Draws ONE element through the live `project`, given whether it is selected. The whole point of the
 /// abstraction is that the chosen renderer is the only one that draws.
@@ -69,6 +93,31 @@ let private lineT (a : ScreenPoint) (b : ScreenPoint) (c : Color) (alpha : float
     Line.create [ Line.startPoint (toPoint a); Line.endPoint (toPoint b); Line.stroke (brushA alpha c); Line.strokeThickness w ] :> IView
 
 let private strokeOf (selected : bool) : Color = if selected then selectedStroke else edgeColor
+
+/// The dash pattern an UNBOUND element's outline is drawn with — a colourblind-safe PATTERN cue (dash-then-
+/// gap in stroke-thickness units), never a hue change; a bound element keeps a solid outline.
+let private unboundDash : float list = [ 4.0; 3.0 ]
+
+/// How much an UNBOUND element's face fill is GHOSTED: its opacity is scaled to this fraction so the unbound
+/// state reads as faint-and-dashed rather than merely a different colour.
+let private ghostFill : float = 0.3
+
+/// Whether a drawable is the UNBOUND case — the only binding state that changes the draw (dashed + ghosted).
+let private isUnbound (e : Drawable) : bool =
+    match e.bindingState with
+    | UnboundElement -> true
+    | BoundElement | NotBindableElement -> false
+
+/// A cap polygon (a filled ring on a plane). When the element is UNBOUND its outline is DASHED and its fill
+/// is GHOSTED (opacity scaled by `ghostFill`); otherwise it is drawn solid, exactly as before.
+let private capPolygon (pts : Point list) (fillC : Color) (faceOpacity : float) (strokeC : Color) (w : float) (unbound : bool) : IView =
+    let fillOp = if unbound then faceOpacity * ghostFill else faceOpacity
+    Polygon.create
+        [ Polygon.points pts
+          Polygon.fill (brushA fillOp fillC)
+          Polygon.stroke (brush strokeC)
+          Polygon.strokeThickness w
+          if unbound then Polygon.strokeDashArray (AvaloniaList<float>(unboundDash)) ] :> IView
 
 /// The fill colour the SHAPE renderer gives each kind — a quick read of an element's "nature".
 let private kindColor (k : CatalogueKind) : Color =
@@ -145,9 +194,10 @@ let private cylinderViews (cfg : RendererControls.State) (project : Vector3 -> S
     let r = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
     let sc = strokeOf selected
     let w = if selected then 2.5 else 1.5
-    [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 c (-halfLen) r); Polygon.fill (brushA 0.0 plateColor); Polygon.stroke (brush sc); Polygon.strokeThickness (w * 0.7) ] :> IView ]
+    let unbound = isUnbound e
+    [ capPolygon (capPts project n1 n2 n3 c (-halfLen) r) plateColor 0.0 sc (w * 0.7) unbound ]
     @ railViews project n1 n2 n3 c halfLen (-halfLen) r cfg.rails cfg.railOpacity (w * 0.7)
-    @ [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 c halfLen r); Polygon.fill (brushA cfg.faceOpacity (kindColor e.placement.catalogueKind)); Polygon.stroke (brush sc); Polygon.strokeThickness w ] :> IView ]
+    @ [ capPolygon (capPts project n1 n2 n3 c halfLen r) (kindColor e.placement.catalogueKind) cfg.faceOpacity sc w unbound ]
 
 /// A lens — the cylinder with two SPHERICAL caps that FIT THE BOUNDING BOX (biconvex apexes out to the box
 /// faces for a converging sign, biconcave rims at the faces for diverging).
@@ -217,9 +267,18 @@ let wireframeRenderer : ElementRenderer =
                 let corners = elementCorners e |> List.map (project >> toPoint) |> List.toArray
                 let boxColor = if selected then selectedStroke else elementColor
                 let weight = if selected then 2.5 else 1.0
+                // No fill in the wireframe look, so the unbound cue is the dashed box edges alone (a PATTERN
+                // difference); the always-solid N1 / N2 normals stay solid so the orientation reads cleanly.
+                let unbound = isUnbound e
                 let edges =
                     TableView.plateEdges
-                    |> List.map (fun (a, b) -> Line.create [ Line.startPoint corners.[a]; Line.endPoint corners.[b]; Line.stroke (brush boxColor); Line.strokeThickness weight ] :> IView)
+                    |> List.map (fun (a, b) ->
+                        Line.create
+                            [ Line.startPoint corners.[a]
+                              Line.endPoint corners.[b]
+                              Line.stroke (brush boxColor)
+                              Line.strokeThickness weight
+                              if unbound then Line.strokeDashArray (AvaloniaList<float>(unboundDash)) ] :> IView)
                 edges @ normalsViews project selected e
     }
 

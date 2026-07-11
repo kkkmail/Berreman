@@ -1391,9 +1391,11 @@ let private mainElementViews (model : Model) : IView list =
     model.elements
     |> List.mapi (fun i e ->
         // The CENTRE is the full 3-D snapped position (so an element snapped out of the table plane after an
-        // R3-tilted mirror is drawn off the plane); `drawnPlacement` carries the orientation.
+        // R3-tilted mirror is drawn off the plane); `drawnPlacement` carries the orientation. The binding
+        // state is derived from that placement's `valueId`, so an unbound element draws dashed-and-ghosted.
+        let placement = drawnPlacement model i
         renderer.draw project (model.selection = ElementSelected i)
-            { placement = drawnPlacement model i; centre = nodes.[i].position; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind })
+            { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind; bindingState = ElementRenderer.bindingStateOf placement })
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is

@@ -91,7 +91,8 @@ let init () : Model =
         { placement = placement
           centre = ElementRenderer.centreOfPlacement placement
           zoom = 3.5
-          opticalSign = sign }
+          opticalSign = sign
+          bindingState = ElementRenderer.bindingStateOf placement }
     {
         table = Table.defaultTable
         view = Table.defaultView
