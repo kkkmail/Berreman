@@ -185,6 +185,13 @@
              the detector) and DataRangeMismatch (abscissa outside the range, never trimmed). Every case
              runs against an in-memory string — no file IO. -->
         <Compile Include="MeasuredDataTests.fs" />
+        <!-- Spec 0038 Part I (035, ADD_CONTRACT STORE_XDUO_0006): the measured-data LOAD seam — the
+             DECLARED [<ReferenceEquality>] ExperimentDataProxy (tryLoadIntensity / tryLoadEllipsometric).
+             The inline mock keyed by path (canned series built through the step-34 parsers) + the
+             mock-driven test exercising both fields through their EXACT signatures: a hit returns the
+             canned series, an unknown path returns a typed ExperimentDataError (never a throw), and the
+             proxy compares by reference. Declared contract: types + mock + test, no real store yet. -->
+        <Compile Include="ExperimentDataProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
