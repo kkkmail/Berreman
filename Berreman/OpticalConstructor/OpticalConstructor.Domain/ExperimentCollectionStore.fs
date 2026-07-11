@@ -76,3 +76,35 @@ module ExperimentCollectionStore =
             tryLoadCollection : CollectionName -> Result<ExperimentCollectionSnapshot option, ExperimentCollectionError>
             listCollections : unit -> Result<CollectionName list, ExperimentCollectionError>
         }
+
+    type ExperimentCollectionProxy with
+
+        /// Spec 0038 (029, IMPLEMENT_CONTRACT STORE_XDUO_0005) — the real, stateful IN-MEMORY
+        /// experiment-collection store behind the DECLARED `ExperimentCollectionProxy` seam (the
+        /// `SceneProxy.createInMemory` precedent, `Scene.fs`): a `ref` `Map<CollectionName,
+        /// ExperimentCollectionSnapshot>` captured INSIDE the closure (the IO boundary), so logic
+        /// holding the proxy stays pure and a test substitutes this whole `createInMemory` (or a stub
+        /// of the same shape). Starts EMPTY — a fresh session has no saved collections.
+        /// `saveCollection` upserts (insert or overwrite under the snapshot's OWN `name`), RE-validating
+        /// that name through `CollectionName.tryCreate` so a directly-constructed blank key is rejected
+        /// as `InvalidCollection` rather than silently stored; `tryLoadCollection` / `listCollections`
+        /// read the map. Unlike `SceneProxy.saveScene` the name lives INSIDE the snapshot (the slice
+        /// pins that signature), so there is no separate `name` argument. This is an INTRINSIC
+        /// augmentation staying in this file (the `SceneProxy.createInMemory` precedent): it needs no
+        /// type compiled after this module. A future disk-backed `create` in `OpticalConstructor.Storage`
+        /// swaps this out with no change to the host that holds the proxy.
+        static member createInMemory () : ExperimentCollectionProxy =
+            let store = ref (Map.empty : Map<CollectionName, ExperimentCollectionSnapshot>)
+            {
+                saveCollection =
+                    fun (snapshot : ExperimentCollectionSnapshot) ->
+                        match CollectionName.tryCreate snapshot.name.value with
+                        | Ok validName ->
+                            store.Value <- store.Value |> Map.add validName snapshot
+                            Ok ()
+                        | Error e -> Error e
+
+                tryLoadCollection = fun (name : CollectionName) -> Ok (store.Value |> Map.tryFind name)
+
+                listCollections = fun () -> Ok (store.Value |> Map.toList |> List.map fst)
+            }

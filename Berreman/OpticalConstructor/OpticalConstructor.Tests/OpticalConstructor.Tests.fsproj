@@ -162,6 +162,15 @@
              (the optional DataFilePath attachment riding along per experiment). Declared contract:
              types + inline map-backed mock + test, no real store yet. -->
         <Compile Include="ExperimentCollectionProxyTests.fs" />
+        <!-- Spec 0038 step 029 (IMPLEMENT_CONTRACT STORE_XDUO_0005): the experiment-collection
+             persistence seam is implemented — the real in-memory
+             ExperimentCollectionProxy.createInMemory (ref-map store). Drives the acceptance
+             round-trip saveCollection -> listCollections -> tryLoadCollection over a collection of a
+             full E1 setup, a sample-less E2, and a dark E3 (with and without DataFilePath
+             attachments), reproducing ordered setups, the optional sample/source/dark shapes, and the
+             per-experiment attachments value-identically; plus the upsert, load-miss, blank-name
+             rejection, and multi-collection listing. -->
+        <Compile Include="ExperimentCollectionRoundTripTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
