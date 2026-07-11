@@ -1219,3 +1219,206 @@ module LibraryWindowTests =
              | Some _ -> Assert.Fail "the window-side close must clear the session handle")
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
+
+    // ============================ step 023 — lifecycle (pure) ============================
+
+    /// A sample a seeded template (glassFilm600) supplies two DISTINCT versions of, under ONE id —
+    /// the multi-version history the live store never grows until step 25, proven here through a
+    /// stub proxy: `resolveVersion` serves v1 and v2, `tryGetSample` / `listSamples` the latest.
+    let private twoVersionSamples () : SampleId * Sample * Sample * SampleProxy =
+        let template = SeedSamples.glassFilm600
+        let id = newSampleId ()
+        let v1 = { template with id = id; name = "Versioned sample v1" }
+        let v2 = { template with id = id; name = "Versioned sample v2" }
+        let proxy : SampleProxy =
+            {
+                listSamples = fun _ -> Ok [ v2 ]
+                searchSamples = fun _ -> Ok [ v2 ]
+                tryGetSample = fun sid -> Ok (if sid = id then Some v2 else None)
+                resolveVersion =
+                    fun svid ->
+                        if svid.sampleId = id then
+                            match svid.version.value with
+                            | 1 -> Ok (Some v1)
+                            | 2 -> Ok (Some v2)
+                            | _ -> Ok None
+                        else Ok None
+                saveSample = fun _ -> Ok ()
+                markSampleInactive = fun _ -> Ok ()
+                markSampleActive = fun _ -> Ok ()
+                supersedeSample = fun _ -> Ok ()
+                removeSample = fun _ -> Ok ()
+            }
+        id, v1, v2, proxy
+
+    [<Fact>]
+    let ``the step-023 lifecycle UiIds are the stable intent-named ids`` () =
+        Assert.Equal("LibraryShowInactiveToggle", LW.UiIds.showInactiveToggle)
+        Assert.Equal("LibraryMarkInactiveButton", LW.UiIds.markInactiveButton)
+        Assert.Equal("LibraryMarkActiveButton", LW.UiIds.markActiveButton)
+        Assert.Equal("LibrarySupersedeButton", LW.UiIds.supersedeButton)
+        Assert.Equal("LibraryLifecycleConfirmButton", LW.UiIds.lifecycleConfirmButton)
+        Assert.Equal("LibraryLifecycleCancelButton", LW.UiIds.lifecycleCancelButton)
+        Assert.Equal("LibraryVersionsPanel", LW.UiIds.versionsPanel)
+        Assert.Equal("LibraryViewOnlyNote", LW.UiIds.viewOnlyNote)
+        Assert.Equal("LibraryVersionRow_2", LW.UiIds.versionRow (VersionNumber 2))
+
+    [<Fact>]
+    let ``no lifecycle verbs on a protected preset; a sample offers Mark inactive and Supersede`` () =
+        let _, m = freshModel ()
+        // A protected preset (ProtectedBuiltIn) offers NONE (removed, not greyed).
+        let preset = LW.update (LW.SelectEntry "src-600") m
+        Assert.Empty(LW.offeredLifecycleActions preset)
+        // A UserManaged sample offers Mark inactive + Supersede…
+        let sample = LW.update (LW.SelectEntry glassFilm600EntryId) m
+        Assert.Equal<LW.LifecycleAction list>([ LW.MarkInactiveAction; LW.SupersedeAction ], LW.offeredLifecycleActions sample)
+
+    [<Fact>]
+    let ``the show-inactive toggle scopes samples, badges retired ones, and keeps references resolving`` () =
+        let samples, m = freshModelWithStores ()
+        let retired =
+            m
+            |> LW.update (LW.SelectEntry glassFilm600EntryId)
+            |> LW.update LW.RequestMarkInactive
+            |> LW.update LW.ConfirmLifecycle
+        Assert.Equal(LW.NoPendingLifecycle, retired.lifecycleGate)
+        // Default scope EXCLUDES the retired sample (17 → 16); the badge count is 1.
+        Assert.DoesNotContain(glassFilm600EntryId, filteredEntryIds retired)
+        Assert.Equal(16, (LW.facetedState retired).resultCount)
+        Assert.Equal(1, LW.inactiveCount retired)
+        // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
+        match samples.resolveVersion { sampleId = SeedSamples.glassFilm600.id; version = VersionNumber.first } with
+        | Ok (Some sample) -> Assert.Equal(SeedSamples.glassFilm600.id, sample.id)
+        | other -> Assert.Fail($"the retired sample's version must still resolve, got %A{other}")
+        // The toggle reveals it, badged, in the tree.
+        let shown = LW.update LW.ToggleShowInactive retired
+        Assert.Equal(IncludeInactive, shown.showInactive)
+        Assert.Contains(glassFilm600EntryId, filteredEntryIds shown)
+        Assert.Equal(17, (LW.facetedState shown).resultCount)
+        let leaf =
+            (LW.facetedState shown).tree
+            |> List.head
+            |> fun entries -> entries.children |> List.find (fun n -> n.code = LW.entryNodeCode glassFilm600EntryId)
+        Assert.Contains("inactive", leaf.label)
+        // Presets never badge — a source leaf keeps its bare name.
+        let srcLeaf =
+            (LW.facetedState shown).tree
+            |> List.head
+            |> fun entries -> entries.children |> List.find (fun n -> n.code = LW.entryNodeCode "src-600")
+        Assert.DoesNotContain("inactive", srcLeaf.label)
+
+    [<Fact>]
+    let ``a sample lifecycle verb is confirm-gated and a vanished sample surfaces a typed refusal`` () =
+        let samples, m = freshModelWithStores ()
+        let armed =
+            m
+            |> LW.update (LW.SelectEntry glassFilm600EntryId)
+            |> LW.update LW.RequestSupersede
+        Assert.Equal(LW.PendingLifecycle (SeedSamples.glassFilm600.id, LW.SupersedeAction), armed.lifecycleGate)
+        // A query change disarms.
+        Assert.Equal(LW.NoPendingLifecycle, (LW.update (LW.CommitTextFilter "x") armed).lifecycleGate)
+        // The sample vanishes behind the window's back, then Confirm meets the typed store block.
+        match samples.removeSample SeedSamples.glassFilm600.id with
+        | Ok () -> ()
+        | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
+        let refused = LW.update LW.ConfirmLifecycle armed
+        match refused.lastError with
+        | Some (LW.SampleLifecycleRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
+        | other -> Assert.Fail($"expected SampleLifecycleRefused UnknownSampleId, got %A{other}")
+
+    [<Fact>]
+    let ``the view panel enumerates sample versions and an older version is view-only while Edit targets the latest`` () =
+        let id, _, v2, samples = twoVersionSamples ()
+        let library = Library.createInMemory ()
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+        let _, context = stubContext library samples materials
+        let entryId = string id.value
+        let selected = LW.init context Browse |> LW.update (LW.SelectEntry entryId)
+        Assert.Equal<int list>([ 1; 2 ], LW.selectedVersions selected |> List.map (fun (v, _) -> v.value))
+        Assert.Equal<VersionNumber option>(None, selected.viewedVersion)
+        // The Edit affordance targets the LATEST sample (v2).
+        match LW.editableSample selected with
+        | Some sample -> Assert.Equal(v2.name, sample.name)
+        | None -> Assert.Fail "the latest version must remain editable"
+        // Viewing an OLDER version records it; a new selection resets to the latest.
+        let older = LW.update (LW.ViewVersion (VersionNumber 1)) selected
+        Assert.Equal<VersionNumber option>(Some (VersionNumber 1), older.viewedVersion)
+        Assert.Equal<VersionNumber option>(None, (LW.update (LW.SelectEntry entryId) older).viewedVersion)
+
+    // ============================ step 023 — lifecycle (headless) ============================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (023): a protected library entry shows NO lifecycle verbs; a sample shows them`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let window = mountLibraryWindow library samples materials
+            // The protected source: none of the three lifecycle verbs render.
+            commitFilter window "Monochromatic"
+            clickOn window (LW.UiIds.entryNode "src-600")
+            Assert.False(isPresent window LW.UiIds.markInactiveButton, "a protected entry shows no Mark inactive verb")
+            Assert.False(isPresent window LW.UiIds.supersedeButton, "a protected entry shows no Supersede verb")
+            Assert.False(isPresent window LW.UiIds.markActiveButton, "a protected entry shows no Mark active verb")
+            // A sample: the lifecycle verbs are present (removed, not greyed — they exist here).
+            commitFilter window "n=1.75"
+            clickOn window (LW.UiIds.entryNode glassFilm600EntryId)
+            Assert.True(isPresent window LW.UiIds.markInactiveButton, "a sample offers Mark inactive")
+            Assert.True(isPresent window LW.UiIds.supersedeButton, "a sample offers Supersede")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (023): marking a sample inactive hides it, the toggle reveals it badged, and its reference still resolves`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let window = mountLibraryWindow library samples materials
+            commitFilter window "n=1.75"
+            clickOn window (LW.UiIds.entryNode glassFilm600EntryId)
+            clickOn window LW.UiIds.markInactiveButton
+            clickOn window LW.UiIds.lifecycleConfirmButton
+            // Gone from the default (ActiveOnly) tree…
+            commitFilter window ""
+            Assert.False(isPresent window (LW.UiIds.entryNode glassFilm600EntryId),
+                         "the retired sample must leave the default tree")
+            // …but its version still resolves IGNORING lifecycle (the table keeps drawing it).
+            match samples.resolveVersion { sampleId = SeedSamples.glassFilm600.id; version = VersionNumber.first } with
+            | Ok (Some _) -> ()
+            | other -> Assert.Fail($"the retired sample's version must still resolve, got %A{other}")
+            // The show-inactive toggle carries the count badge and reveals the sample, badged.
+            Assert.Contains("(1)", textOf window LW.UiIds.showInactiveToggle)
+            clickOn window LW.UiIds.showInactiveToggle
+            Assert.True(isPresent window (LW.UiIds.entryNode glassFilm600EntryId),
+                        "the toggle must reveal the retired sample in the tree")
+            Assert.Contains("inactive", textOf window (LW.UiIds.entryNode glassFilm600EntryId))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (023): an older sample version opens VIEW-ONLY inline while the latest stays editable`` () =
+        HeadlessSession.run (fun () ->
+            let id, _, _, samples = twoVersionSamples ()
+            let library = Library.createInMemory ()
+            let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
+            let _, context = stubContext library samples materials
+            let entryId = string id.value
+            // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree
+            // mounting precedent) so the version-row clicks drive the pure update.
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple (fun () -> LW.init context Browse) LW.update LW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickOn window (LW.UiIds.entryNode entryId)
+            // The version list renders both versions; the latest view carries NO view-only note.
+            Assert.True(isPresent window LW.UiIds.versionsPanel, "the view panel must list the sample's versions")
+            Assert.True(isPresent window (LW.UiIds.versionRow (VersionNumber 1)))
+            Assert.True(isPresent window (LW.UiIds.versionRow (VersionNumber 2)))
+            Assert.False(isPresent window LW.UiIds.viewOnlyNote, "the latest version is editable — no view-only note")
+            Assert.True(isPresent window LW.UiIds.editButton, "the latest version keeps the Edit verb")
+            // Clicking the OLDER version opens it view-only inline (no Save path).
+            clickOn window (LW.UiIds.versionRow (VersionNumber 1))
+            Assert.True(isPresent window LW.UiIds.viewOnlyNote, "an older version must render the view-only note")
+            Assert.Contains("view-only", textOf window LW.UiIds.viewOnlyNote)
+            Assert.True(isPresent window LW.UiIds.editButton, "the library still edits the latest version")
+            window.Close())

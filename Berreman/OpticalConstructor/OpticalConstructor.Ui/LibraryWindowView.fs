@@ -38,6 +38,7 @@ open OpticalConstructor.Domain.FacetBuckets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -55,6 +56,24 @@ open OpticalConstructor.Controls
 type LibraryRemoveGate =
     | NoPendingRemove
     | PendingRemove of SampleId
+
+/// Which lifecycle transition a confirm gate targets (spec 0038 step 023): a named DU — never a
+/// bare string — so the confirm prose and the proxy call both read from ONE value. `Supersede` and
+/// `MarkInactive` both retire the latest version (they share `InactiveEntry` in the store — steps
+/// 021/022), but stay DISTINCT actions so the verb the user pressed is what the confirm prompt
+/// names and a future step can diverge them.
+type LifecycleAction =
+    | MarkInactiveAction
+    | MarkActiveAction
+    | SupersedeAction
+
+/// Which lifecycle verb (if any) awaits its inline confirmation, carrying the `SampleId` the verb
+/// click targeted (the `LibraryRemoveGate` confirm-gating shape). Only a SAMPLE can arm this — a
+/// protected preset exposes no lifecycle verbs at all. Parallel to `removeGate`, never armed at the
+/// same time (arming either disarms the other), so the step-015 remove tests stay intact.
+type SampleLifecycleGate =
+    | NoPendingLifecycle
+    | PendingLifecycle of SampleId * LifecycleAction
 
 /// Whether the user has explicitly materialized a tree the result count gated behind the
 /// Show/Search button (spec 0038 §0.7). Sticky for the window's lifetime: once shown, later
@@ -76,6 +95,9 @@ type LibraryWindowError =
     /// The samples store refused the confirmed remove — the typed `SampleError` carries its
     /// own reason.
     | SampleRemoveRefused of SampleError
+    /// The samples store refused a confirmed lifecycle verb (spec 0038 step 023 — e.g. the sample
+    /// vanished behind the window's back) — the typed `SampleError` carries its own reason.
+    | SampleLifecycleRefused of SampleError
 
 /// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
 /// representation order): a stable `code` the control dispatches back, the picker label, and
@@ -175,8 +197,20 @@ type Model =
         /// (`LibraryEntry.entryId` / `tryGetEntry` — a sample's elevated `SampleId` crosses it
         /// as its Guid string form; the workbench `pendingEntry` precedent).
         selectedEntryId : string option
+        /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
+        /// (the default — pickers/facet counts exclude retired samples) or `IncludeInactive` (the
+        /// toggle adds retired samples to the tree, badged). The Domain DU, never a bool. Presets
+        /// carry no lifecycle, so the toggle only affects the sample half of the corpus. Select
+        /// mode ignores this and always lists `ActiveOnly` (a retired entry is never a valid pick).
+        showInactive : InactiveVisibility
         /// Which sample remove (if any) awaits its inline confirmation.
         removeGate : LibraryRemoveGate
+        /// Which lifecycle verb (if any) awaits its inline confirmation.
+        lifecycleGate : SampleLifecycleGate
+        /// Which OLDER version of the selected SAMPLE the view panel is showing read-only
+        /// (`None` = the latest, the editable default; `Some v` = version `v` view-only — spec
+        /// 0038 step 023). Reset to `None` on every selection change.
+        viewedVersion : VersionNumber option
         /// The last typed refusal, surfaced as the inline message — never a cascade, never a
         /// dialog.
         lastError : LibraryWindowError option
@@ -191,7 +225,10 @@ let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry
         representation = byKindRepresentation
         buildRequest = NoTreeBuildRequest
         selectedEntryId = None
+        showInactive = ActiveOnly
         removeGate = NoPendingRemove
+        lifecycleGate = NoPendingLifecycle
+        viewedVersion = None
         lastError = None
     }
 
@@ -218,6 +255,19 @@ type Msg =
     | RequestRemoveSelected
     | ConfirmRemove
     | CancelRemove
+    /// The show-inactive/superseded toggle (spec 0038 step 023): flip the sample scope between
+    /// `ActiveOnly` and `IncludeInactive`.
+    | ToggleShowInactive
+    /// The lifecycle verbs on the selected SAMPLE, confirm-gated inline (spec 0038 step 023).
+    /// `Request…` arms the gate; `ConfirmLifecycle` runs the matching proxy verb (a refusal
+    /// surfaces as the typed inline message); `CancelLifecycle` disarms.
+    | RequestMarkInactive
+    | RequestMarkActive
+    | RequestSupersede
+    | ConfirmLifecycle
+    | CancelLifecycle
+    /// Show an OLDER version of the selected sample read-only in the view panel (spec 0038 step 023).
+    | ViewVersion of VersionNumber
     /// The Select-state pair (spec 0038 step 016). 'Select' returns the HIGHLIGHTED entry
     /// through the session's `onSelected` (a targeted dispatch), then closes; no highlight →
     /// inert. 'Close' fires `onCancelled`, then closes.
@@ -246,9 +296,9 @@ let private presetKinds : CatalogueKind list =
 /// polarizers) from the read-only `LibraryProxy`, deduped by `entryId` (a compound/custom
 /// polarizer serves BOTH polarizer kinds — spec 0038 step 014 — so `entriesForKind` can return
 /// it twice). The proxy's own STATIC seeded samples are excluded in favour of the live store.
-let liveEntries (context : LibraryWindowContext) : LibraryEntry list =
+let liveEntries (context : LibraryWindowContext) (scope : InactiveVisibility) : LibraryEntry list =
     let samples =
-        match context.samples.listSamples ActiveOnly with
+        match context.samples.listSamples scope with
         | Ok stored -> stored |> List.map SampleItem
         | Error _ -> []
     let presets =
@@ -270,8 +320,16 @@ let liveEntries (context : LibraryWindowContext) : LibraryEntry list =
 /// every count, offer, tree row and selection already lives inside it.
 /// `LibraryEntry.forKinds` is the existing kind-eligibility rule (a compound/custom polarizer
 /// serves BOTH polarizer kinds — spec 0038 step 014), never re-derived.
+/// The scope the corpus lists samples at (spec 0038 step 023): `ActiveOnly` in Select mode (a
+/// retired sample is never a valid pick target), else the window's `showInactive` toggle. The
+/// default `ActiveOnly` keeps offers, facet counts and Select byte-for-byte the step-022 behaviour.
+let effectiveScope (m : Model) : InactiveVisibility =
+    match m.mode with
+    | Select _ -> ActiveOnly
+    | Browse -> m.showInactive
+
 let constrainedEntries (m : Model) : LibraryEntry list =
-    let entries = liveEntries m.context
+    let entries = liveEntries m.context (effectiveScope m)
     match m.mode with
     | Browse -> entries
     | Select context -> entries |> List.filter (fun e -> e.forKinds |> List.contains context.kindConstraint.value)
@@ -330,6 +388,93 @@ let editableSample (m : Model) : Sample option =
     match selectedEntry m with
     | Some (SampleItem sample) -> Some sample
     | Some (SourceItem _ | DetectorItem _ | PolarizerItem _) | None -> None
+
+// ---------------------------------------------------------------------------
+// Lifecycle (spec 0038 step 023): only SAMPLES version and retire (presets are
+// protected — no version store, no lifecycle verbs). The active-id set, the
+// selected sample's live/retired state, the offered verbs, the version list.
+// ---------------------------------------------------------------------------
+
+/// The sample ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass).
+/// A sample present in `IncludeInactive` but NOT here has a retired latest version; that is how the
+/// window distinguishes an inactive sample to badge it and to offer Mark active.
+let private activeSampleIds (m : Model) : Set<SampleId> =
+    match m.context.samples.listSamples ActiveOnly with
+    | Ok samples -> samples |> List.map (fun s -> s.id) |> Set.ofList
+    | Error _ -> Set.empty
+
+/// A selected SAMPLE's lifecycle (spec 0038 step 023): `ActiveEntry` when its latest version is in
+/// the active set, `InactiveEntry` when it resolves but its latest is retired, `None` when it no
+/// longer resolves.
+let sampleLifecycle (m : Model) (id : SampleId) : EntryLifecycle option =
+    match m.context.samples.tryGetSample id with
+    | Ok (Some _) ->
+        if Set.contains id (activeSampleIds m) then Some ActiveEntry else Some InactiveEntry
+    | Ok None | Error _ -> None
+
+/// The lifecycle verbs offered for the current selection (spec 0038 step 023) — the ONE source of
+/// truth the verbs row renders from and the tests assert against. `ProtectedBuiltIn` entries (the
+/// presets) offer NONE (removed, not greyed — requirement 2); a `UserManaged` non-sample has no
+/// version store, so none either; a selected SAMPLE offers Mark inactive + Supersede… when active,
+/// Mark active when retired. Any Select-mode selection offers none.
+let offeredLifecycleActions (m : Model) : LifecycleAction list =
+    match m.mode with
+    | Select _ -> []
+    | Browse ->
+        match selectedEntry m with
+        | None -> []
+        | Some entry ->
+            match entry.protection with
+            | ProtectedBuiltIn -> []
+            | UserManaged ->
+                match entry with
+                | SampleItem sample ->
+                    match sampleLifecycle m sample.id with
+                    | Some ActiveEntry -> [ MarkInactiveAction; SupersedeAction ]
+                    | Some InactiveEntry -> [ MarkActiveAction ]
+                    | None -> []
+                | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
+
+/// The number of samples whose latest version is retired (spec 0038 step 023) — the visible count
+/// badge on the show-inactive toggle. Read over the whole samples store (not the filtered corpus),
+/// so the badge is a stable "N retired exist" hint whether the toggle is on or off.
+let inactiveCount (m : Model) : int =
+    let active = activeSampleIds m
+    match m.context.samples.listSamples IncludeInactive with
+    | Ok all -> all |> List.filter (fun s -> not (Set.contains s.id active)) |> List.length
+    | Error _ -> 0
+
+/// Whether a library entry (its latest version) is a retired sample, for the tree-leaf badge.
+/// Presets never retire.
+let private isEntryInactive (activeIds : Set<SampleId>) (entry : LibraryEntry) : bool =
+    match entry with
+    | SampleItem sample -> not (Set.contains sample.id activeIds)
+    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> false
+
+/// The badge appended to a retired sample's tree-leaf label when the show-inactive toggle reveals
+/// it (spec 0038 step 023). Supersede and mark-inactive share `InactiveEntry`, so it reads
+/// "inactive" for both.
+let inactiveBadge : string = " — inactive"
+
+/// The stored versions of a SAMPLE, ascending (latest last), enumerated by probing the proxy's
+/// by-version `resolveVersion` from version 1 upward until it resolves nothing (spec 0038 step 023
+/// — the store exposes no list-versions field). In the live in-memory store this is a single
+/// version until step 25 (mints need a used version, and `VersionsInUse` is empty); a stub proxy
+/// returns a longer history. The `1000` cap is an unreachable runaway guard.
+let selectedVersionsOf (samples : SampleProxy) (id : SampleId) : (VersionNumber * Sample) list =
+    let rec loop (version : VersionNumber) (acc : (VersionNumber * Sample) list) : (VersionNumber * Sample) list =
+        if version.value > 1000 then List.rev acc
+        else
+            match samples.resolveVersion { sampleId = id; version = version } with
+            | Ok (Some sample) -> loop version.next ((version, sample) :: acc)
+            | Ok None | Error _ -> List.rev acc
+    loop VersionNumber.first []
+
+/// The selected SAMPLE's versions (empty for a preset, no selection, or a vanished id).
+let selectedVersions (m : Model) : (VersionNumber * Sample) list =
+    match editableSample m with
+    | Some sample -> selectedVersionsOf m.context.samples sample.id
+    | None -> []
 
 // ---------------------------------------------------------------------------
 // Numeric range tokens (the domain-free control speaks string codes; every
@@ -418,6 +563,26 @@ module UiIds =
     let removeCancelButton = "LibraryRemoveCancelButton"
     [<Literal>]
     let message = "LibraryWindowMessage"
+    /// The lifecycle surface (spec 0038 step 023): the show-inactive toggle, the three verbs, the
+    /// lifecycle confirm pair, the versions panel and its per-version rows, and the view-only note.
+    [<Literal>]
+    let showInactiveToggle = "LibraryShowInactiveToggle"
+    [<Literal>]
+    let markInactiveButton = "LibraryMarkInactiveButton"
+    [<Literal>]
+    let markActiveButton = "LibraryMarkActiveButton"
+    [<Literal>]
+    let supersedeButton = "LibrarySupersedeButton"
+    [<Literal>]
+    let lifecycleConfirmButton = "LibraryLifecycleConfirmButton"
+    [<Literal>]
+    let lifecycleCancelButton = "LibraryLifecycleCancelButton"
+    [<Literal>]
+    let versionsPanel = "LibraryVersionsPanel"
+    [<Literal>]
+    let viewOnlyNote = "LibraryViewOnlyNote"
+    /// A clickable version row in the view panel's version list, by its version number.
+    let versionRow (version : VersionNumber) : string = "LibraryVersionRow_" + string version.value
     /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
     [<Literal>]
     let selectButton = "LibrarySelectButton"
@@ -436,7 +601,15 @@ module UiIds =
 /// message — a stale confirm or refusal never outlives the state it referred to (the retired
 /// bay's disarm discipline).
 let private disarmed (m : Model) : Model =
-    { m with removeGate = NoPendingRemove; lastError = None }
+    { m with removeGate = NoPendingRemove; lifecycleGate = NoPendingLifecycle; lastError = None }
+
+/// Arm the lifecycle confirm gate on the selected SAMPLE (spec 0038 step 023) — clears the remove
+/// gate and the inline message so at most one confirm is ever pending. A non-sample or empty
+/// selection is inert (its verbs never render).
+let private requestLifecycle (action : LifecycleAction) (m : Model) : Model =
+    match editableSample m with
+    | Some sample -> { m with lifecycleGate = PendingLifecycle (sample.id, action); removeGate = NoPendingRemove; lastError = None }
+    | None -> m
 
 let update (msg : Msg) (m : Model) : Model =
     match msg with
@@ -457,7 +630,8 @@ let update (msg : Msg) (m : Model) : Model =
     | RequestTreeBuild ->
         { m with buildRequest = RequestedTreeBuild }
     | SelectEntry id ->
-        { disarmed m with selectedEntryId = Some id }
+        // A new selection shows its LATEST version (the editable default) and disarms both gates.
+        { disarmed m with selectedEntryId = Some id; viewedVersion = None }
     | AddSample ->
         // Add mints the sample's SampleId HERE — at the window-open dispatch, off the save path
         // (spec 0038 step 008) — so the launcher's registry keys the new editor by the SAME id
@@ -515,6 +689,35 @@ let update (msg : Msg) (m : Model) : Model =
         // Cancel only ever disarms — it never dismisses the inline message (the next query /
         // selection change clears it).
         { m with removeGate = NoPendingRemove }
+    | ToggleShowInactive ->
+        let flipped =
+            match m.showInactive with
+            | ActiveOnly -> IncludeInactive
+            | IncludeInactive -> ActiveOnly
+        { disarmed m with showInactive = flipped }
+    | RequestMarkInactive -> requestLifecycle MarkInactiveAction m
+    | RequestMarkActive -> requestLifecycle MarkActiveAction m
+    | RequestSupersede -> requestLifecycle SupersedeAction m
+    | ConfirmLifecycle ->
+        match m.lifecycleGate with
+        | PendingLifecycle (id, action) ->
+            let outcome =
+                match action with
+                | MarkInactiveAction -> m.context.samples.markSampleInactive id
+                | MarkActiveAction -> m.context.samples.markSampleActive id
+                | SupersedeAction -> m.context.samples.supersedeSample id
+            match outcome with
+            | Ok () -> { m with lifecycleGate = NoPendingLifecycle; lastError = None }
+            | Error err ->
+                // The store refused (e.g. the sample vanished behind the window's back) — surface
+                // the typed reason inline and leave the store and selection untouched.
+                { m with lifecycleGate = NoPendingLifecycle; lastError = Some (SampleLifecycleRefused err) }
+        | NoPendingLifecycle -> m
+    | CancelLifecycle ->
+        // Cancel only ever disarms — the next query / selection change clears any inline message.
+        { m with lifecycleGate = NoPendingLifecycle }
+    | ViewVersion version ->
+        { m with viewedVersion = Some version }
     | ConfirmSelect ->
         // Spec 0038 step 016: 'Select' returns the HIGHLIGHTED entry through the session's
         // onSelected — a TARGETED dispatch (the requesting surface routes it by the context's
@@ -600,6 +803,10 @@ let facetedState (m : Model) : FacetedTreeControls.State =
     let inputs = projectionInputs m
     let filtered = Facets.filter inputs.defs inputs.appliedAll inputs.corpus
     let resultCount = List.length filtered
+    // The active sample-id set, for the retired-sample leaf badge (spec 0038 step 023): with the
+    // toggle off the sample corpus is `ActiveOnly`, so no leaf ever badges; with it on, a retired
+    // sample's latest version reads `label — inactive` (presets never badge).
+    let activeIds = activeSampleIds m
     // The host decides gating (result count above the Domain threshold, no explicit build yet);
     // the control only obeys (step 012). A gated pass projects NO tree at all — the whole point
     // is skipping the one potentially heavy render (§0.7).
@@ -696,7 +903,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                         |> List.map (fun entry ->
                             ({
                                 code = entryNodeCode entry.entryId
-                                label = entry.displayName
+                                label = (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
                                 countOpt = None
                                 expansion = FacetedTreeControls.ExpandedNode
                                 children = []
@@ -872,9 +1079,18 @@ let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
           ]
           |> Avalonia.FuncUI.DSL.View.withKey UiIds.selectConstraint) :> IView ]
 
+/// One lifecycle verb box (spec 0038 step 023), by its action.
+let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) : IView =
+    match action with
+    | MarkInactiveAction -> verbButton UiIds.markInactiveButton "Mark inactive" (fun () -> dispatch RequestMarkInactive)
+    | MarkActiveAction -> verbButton UiIds.markActiveButton "Mark active" (fun () -> dispatch RequestMarkActive)
+    | SupersedeAction -> verbButton UiIds.supersedeButton "Supersede…" (fun () -> dispatch RequestSupersede)
+
 /// The verbs row: Add sample and Make multilayer always; Edit only for a SAMPLE selection (a
 /// preset has no editor — the verb is removed, not greyed); Remove while an entry is selected
-/// (a protected entry's Remove REFUSES with the typed reason instead of arming the gate).
+/// (a protected entry's Remove REFUSES with the typed reason instead of arming the gate); the
+/// lifecycle verbs from `offeredLifecycleActions` (only for a UserManaged sample — a protected
+/// preset exposes NONE, spec 0038 step 023).
 let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
@@ -888,8 +1104,23 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
                | None -> [])
             @ (match selectedEntry m with
                | Some _ -> [ verbButton UiIds.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
-               | None -> []))
+               | None -> [])
+            @ (offeredLifecycleActions m |> List.map (lifecycleButton dispatch)))
     ] :> IView
+
+/// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
+/// visible count badge — `Show inactive (N)` while hidden, `Hide inactive (N)` while shown.
+/// Browse-mode only (Select always lists `ActiveOnly`).
+let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
+    match m.mode with
+    | Select _ -> []
+    | Browse ->
+        let n = inactiveCount m
+        let label =
+            match m.showInactive with
+            | ActiveOnly -> $"Show inactive (%d{n})"
+            | IncludeInactive -> $"Hide inactive (%d{n})"
+        [ verbButton UiIds.showInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a sample remove is armed.
 let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
@@ -913,6 +1144,35 @@ let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
               ]
           ] :> IView ]
 
+/// The inline lifecycle confirmation (spec 0038 step 023) — present only while a lifecycle verb is
+/// armed. The prompt NAMES the sample and the transition (the verb the user pressed); Confirm runs
+/// the matching proxy verb, Cancel disarms.
+let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+    match m.lifecycleGate with
+    | NoPendingLifecycle -> []
+    | PendingLifecycle (id, action) ->
+        let name =
+            match m.context.samples.tryGetSample id with
+            | Ok (Some sample) -> sample.name
+            | Ok None | Error _ -> string id.value
+        let prompt =
+            match action with
+            | MarkInactiveAction -> $"Mark sample '%s{name}' inactive?"
+            | MarkActiveAction -> $"Mark sample '%s{name}' active?"
+            | SupersedeAction -> $"Supersede sample '%s{name}'?"
+        [ WrapPanel.create [
+              WrapPanel.orientation Orientation.Horizontal
+              WrapPanel.children [
+                  TextBlock.create [
+                      TextBlock.text prompt
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  verbButton UiIds.lifecycleConfirmButton "Confirm" (fun () -> dispatch ConfirmLifecycle)
+                  verbButton UiIds.lifecycleCancelButton "Cancel" (fun () -> dispatch CancelLifecycle)
+              ]
+          ] :> IView ]
+
 /// The inline typed-refusal message. Every case carries its diagnostic reason — never a
 /// cascade, never a dialog.
 let private messageRow (m : Model) : IView list =
@@ -923,7 +1183,8 @@ let private messageRow (m : Model) : IView list =
             match err with
             | ProtectedEntryRefused reason
             | PresetNotRemovable reason -> reason
-            | SampleRemoveRefused sampleError ->
+            | SampleRemoveRefused sampleError
+            | SampleLifecycleRefused sampleError ->
                 match sampleError with
                 | UnknownSampleId reason
                 | DuplicateSampleId reason
@@ -937,37 +1198,95 @@ let private messageRow (m : Model) : IView list =
               TextBlock.text text
           ] :> IView ]
 
+/// The version list (spec 0038 step 023): one clickable row per stored SAMPLE version, the latest
+/// marked `(latest)` and the currently-viewed one marked `▸`. Clicking a row shows THAT version in
+/// the panel — the latest editable through the Edit verb, an older one view-only. Absent for a
+/// preset or a single-version sample (the common case in the live store until step 25).
+let private versionsRow (versions : (VersionNumber * Sample) list) (latest : VersionNumber) (shown : VersionNumber) (dispatch : Msg -> unit) : IView list =
+    match versions with
+    | [] | [ _ ] -> []
+    | _ ->
+        [ StackPanel.create [
+              automationId<StackPanel> UiIds.versionsPanel
+              StackPanel.orientation Orientation.Horizontal
+              StackPanel.spacing 0.0
+              StackPanel.children (
+                  TextBlock.create [
+                      TextBlock.text "Versions:"
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  :: (versions
+                      |> List.map (fun (version, _) ->
+                          let marker = if version = shown then "▸ " else ""
+                          let latestTag = if version = latest then " (latest)" else ""
+                          verbButton (UiIds.versionRow version) $"%s{marker}v%d{version.value}%s{latestTag}" (fun () -> dispatch (ViewVersion version)))))
+          ] :> IView ]
+
 /// The view panel: the selected entry's kind, protection state and FULL description (the
-/// Library confirm-step / Details prose — `fullDescription` spells out what the entry IS).
-/// Resolved through the live corpus at render time, so a removed sample's panel vanishes with
-/// its row. The retired bay's View verb is subsumed by selection.
-let private viewPanel (m : Model) : IView list =
+/// Library confirm-step / Details prose — `fullDescription` spells out what the entry IS), plus a
+/// SAMPLE's version list (spec 0038 step 023). By default it shows the LATEST version (the editable
+/// one — the library always edits the latest); selecting an OLDER sample version shows it
+/// VIEW-ONLY (a `viewOnlyNote`, no Save path — older versions have no editor). Resolved through the
+/// live corpus at render time, so a removed sample's panel vanishes with its row. The retired bay's
+/// View verb is subsumed by selection.
+let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
     match selectedEntry m with
     | None -> []
     | Some entry ->
-        let protectionNote =
-            match entry.protection with
-            | ProtectedBuiltIn -> " — protected built-in"
-            | UserManaged -> ""
+        let versions =
+            match entry with
+            | SampleItem sample -> selectedVersionsOf m.context.samples sample.id
+            | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
+        let latestVersion =
+            match versions |> List.map fst with
+            | [] -> VersionNumber.first
+            | numbers -> List.max numbers
+        let shownVersion =
+            match m.viewedVersion with
+            | Some v when versions |> List.exists (fun (vn, _) -> vn = v) -> v
+            | _ -> latestVersion
+        let viewingOlder = (not (List.isEmpty versions)) && shownVersion <> latestVersion
+        let shownOlderSample = versions |> List.tryPick (fun (vn, s) -> if vn = shownVersion && viewingOlder then Some s else None)
+        let displayName, description, note =
+            match shownOlderSample with
+            | Some sample -> sample.name, sample.description, $" (version {shownVersion.value} — view-only)"
+            | None ->
+                let protectionNote =
+                    match entry.protection with
+                    | ProtectedBuiltIn -> " — protected built-in"
+                    | UserManaged -> ""
+                entry.displayName, entry.fullDescription, protectionNote
+        let viewOnlyNote : IView list =
+            if viewingOlder then
+                [ TextBlock.create [
+                      automationId<TextBlock> UiIds.viewOnlyNote
+                      TextBlock.foreground (brush idleBorder)
+                      TextBlock.textWrapping TextWrapping.Wrap
+                      TextBlock.maxWidth 380.0
+                      TextBlock.text $"Viewing version %d{shownVersion.value} (view-only) — the library edits the latest, version %d{latestVersion.value}."
+                  ] :> IView ]
+            else []
         [ Border.create [
               automationId<Border> UiIds.viewPanel
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
                       StackPanel.spacing 2.0
-                      StackPanel.children [
-                          TextBlock.create [
-                              TextBlock.fontWeight FontWeight.SemiBold
-                              TextBlock.textWrapping TextWrapping.Wrap
-                              TextBlock.maxWidth 380.0
-                              TextBlock.text $"%s{entry.displayName} — %s{(entryKindKey entry).value}%s{protectionNote}"
-                          ]
-                          TextBlock.create [
-                              TextBlock.textWrapping TextWrapping.Wrap
-                              TextBlock.maxWidth 380.0
-                              TextBlock.text entry.fullDescription
-                          ]
-                      ]
+                      StackPanel.children (
+                          [ TextBlock.create [
+                                TextBlock.fontWeight FontWeight.SemiBold
+                                TextBlock.textWrapping TextWrapping.Wrap
+                                TextBlock.maxWidth 380.0
+                                TextBlock.text $"%s{displayName} — %s{(entryKindKey entry).value}%s{note}"
+                            ] :> IView
+                            TextBlock.create [
+                                TextBlock.textWrapping TextWrapping.Wrap
+                                TextBlock.maxWidth 380.0
+                                TextBlock.text description
+                            ] :> IView ]
+                          @ viewOnlyNote
+                          @ versionsRow versions latestVersion shownVersion dispatch)
                   ])
           ] :> IView ]
 
@@ -991,10 +1310,12 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                                 StackPanel.spacing 6.0
                                 StackPanel.children (
                                     selectModeRows m dispatch
+                                    @ toggleRow m dispatch
                                     @ [ verbsRow m dispatch ]
                                     @ confirmRow m dispatch
+                                    @ lifecycleConfirmRow m dispatch
                                     @ messageRow m
-                                    @ viewPanel m)
+                                    @ viewPanel m dispatch)
                             ])
                     ])
             ]

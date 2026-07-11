@@ -33,6 +33,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
@@ -47,6 +48,23 @@ open OpticalConstructor.Controls
 type MaterialRemoveGate =
     | NoPendingRemove
     | PendingRemove of MaterialId
+
+/// Which lifecycle transition a confirm gate targets (spec 0038 step 023): a named DU — never a
+/// bare string — so the confirm prose and the proxy call both read from ONE value. `Supersede`
+/// and `MarkInactive` both retire the latest version (they share `InactiveEntry` in the store —
+/// steps 021/022), but stay DISTINCT actions so the verb the user pressed is what the confirm
+/// prompt names and a future step can diverge them (e.g. make supersede irreversible).
+type LifecycleAction =
+    | MarkInactiveAction
+    | MarkActiveAction
+    | SupersedeAction
+
+/// Which lifecycle verb (if any) awaits its inline confirmation, carrying the id the verb click
+/// targeted (the `MaterialRemoveGate` confirm-gating shape). Parallel to `removeGate`, never armed
+/// at the same time (arming either disarms the other), so the step-013 remove tests stay intact.
+type MaterialLifecycleGate =
+    | NoPendingLifecycle
+    | PendingLifecycle of MaterialId * LifecycleAction
 
 /// Whether the user has explicitly materialized a tree the result count gated behind the
 /// Show/Search button (spec 0038 §0.7). Sticky for the window's lifetime: once shown, later
@@ -150,10 +168,22 @@ type Model =
         representation : MaterialsRepresentation
         /// Whether the user has explicitly materialized a gated tree.
         buildRequest : TreeBuildRequest
-        /// The selected entry (the Edit / Remove verbs' target and the view panel's subject).
+        /// The selected entry (the Edit / Remove / lifecycle verbs' target and the view panel's
+        /// subject).
         selectedId : MaterialId option
+        /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
+        /// (the default — pickers/facet counts exclude retired entries) or `IncludeInactive` (the
+        /// toggle adds them to the tree, badged). The Domain DU, never a bool. Select mode ignores
+        /// this and always lists `ActiveOnly` (a retired entry is never a valid pick target).
+        showInactive : InactiveVisibility
         /// Which remove (if any) awaits its inline confirmation.
         removeGate : MaterialRemoveGate
+        /// Which lifecycle verb (if any) awaits its inline confirmation.
+        lifecycleGate : MaterialLifecycleGate
+        /// Which OLDER version of the selected entry the view panel is showing read-only
+        /// (`None` = the latest, the editable default; `Some v` = version `v` view-only — spec
+        /// 0038 step 023). Reset to `None` on every selection change.
+        viewedVersion : VersionNumber option
         /// The last store refusal, surfaced as the inline message — `MaterialStillReferenced`
         /// NAMES the referencing samples; never a cascade, never a dialog.
         lastError : MaterialError option
@@ -168,7 +198,10 @@ let init (context : MaterialsWindowContext) (mode : LibraryWindowMode<MaterialEn
         representation = byCategoryRepresentation
         buildRequest = NoTreeBuildRequest
         selectedId = None
+        showInactive = ActiveOnly
         removeGate = NoPendingRemove
+        lifecycleGate = NoPendingLifecycle
+        viewedVersion = None
         lastError = None
     }
 
@@ -194,6 +227,19 @@ type Msg =
     | ConfirmRemove
     | CancelRemove
     | OpenCategories
+    /// The show-inactive/superseded toggle (spec 0038 step 023): flip the corpus scope between
+    /// `ActiveOnly` and `IncludeInactive`.
+    | ToggleShowInactive
+    /// The lifecycle verbs, confirm-gated inline (spec 0038 step 023). `Request…` arms the gate on
+    /// the selected entry; `ConfirmLifecycle` runs the matching proxy verb (a refusal surfaces as
+    /// the typed inline message); `CancelLifecycle` disarms.
+    | RequestMarkInactive
+    | RequestMarkActive
+    | RequestSupersede
+    | ConfirmLifecycle
+    | CancelLifecycle
+    /// Show an OLDER version of the selected entry read-only in the view panel (spec 0038 step 023).
+    | ViewVersion of VersionNumber
     /// The Select-state pair (spec 0038 step 016). 'Select' returns the HIGHLIGHTED entry
     /// through the session's `onSelected` (a targeted dispatch), then closes; no highlight →
     /// inert. 'Close' fires `onCancelled`, then closes.
@@ -260,6 +306,15 @@ type private ProjectionInputs =
         corpus : MaterialEntry list
     }
 
+/// The scope the corpus projection lists at (spec 0038 step 023): `ActiveOnly` in Select mode (a
+/// retired entry is never a valid pick target — Select ALWAYS excludes inactive/superseded), else
+/// the window's `showInactive` toggle. The default `ActiveOnly` keeps offers, facet counts and
+/// Select byte-for-byte the step-021 behaviour.
+let effectiveScope (m : Model) : InactiveVisibility =
+    match m.mode with
+    | Select _ -> ActiveOnly
+    | Browse -> m.showInactive
+
 let private projectionInputs (m : Model) : ProjectionInputs =
     let textDef = textFilterDef materialTextFilterKey "Text" (fun (e : MaterialEntry) -> e.name) m.textFilter
     let defs = textDef :: liveMaterialFacets m.context.categories
@@ -268,9 +323,10 @@ let private projectionInputs (m : Model) : ProjectionInputs =
         | "" -> []
         | _ -> [ textFilterConstraint materialTextFilterKey ]
     let corpus =
-        // Latest ACTIVE versions only — the show-inactive toggle (a later step) will pass
-        // `IncludeInactive`; the offers/facets default to active (spec 0038 step 021).
-        match m.context.materials.listMaterials ActiveOnly with
+        // Latest version of each material at the effective scope — `ActiveOnly` by default (offers
+        // / facets / Select exclude retired entries, spec 0038 step 021), `IncludeInactive` when
+        // the show-inactive toggle is on (spec 0038 step 023).
+        match m.context.materials.listMaterials (effectiveScope m) with
         | Ok entries -> entries
         | Error _ -> []
     {
@@ -306,6 +362,84 @@ let editableSelection (m : Model) : MaterialEntry option =
         | Some _ -> Some entry
         | None -> None
     | None -> None
+
+// ---------------------------------------------------------------------------
+// Lifecycle (spec 0038 step 023): the active-id set, the selected entry's
+// live/retired state, the offered verbs, and the version enumeration.
+// ---------------------------------------------------------------------------
+
+/// The ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass). A
+/// material present in `IncludeInactive` but NOT here has a retired latest version; that is how the
+/// window distinguishes an inactive entry to badge it and to offer Mark active.
+let private activeMaterialIds (m : Model) : Set<MaterialId> =
+    match m.context.materials.listMaterials ActiveOnly with
+    | Ok entries -> entries |> List.map (fun e -> e.id) |> Set.ofList
+    | Error _ -> Set.empty
+
+/// The selected entry's lifecycle (spec 0038 step 023): `ActiveEntry` when its latest version is
+/// in the active set, `InactiveEntry` when it resolves but its latest is retired, `None` when no
+/// entry is selected or the id no longer resolves.
+let selectedLifecycle (m : Model) : EntryLifecycle option =
+    match m.selectedId with
+    | None -> None
+    | Some id ->
+        match m.context.materials.tryGetMaterial id with
+        | Ok (Some _) ->
+            if Set.contains id (activeMaterialIds m) then Some ActiveEntry else Some InactiveEntry
+        | Ok None | Error _ -> None
+
+/// The lifecycle verbs offered for the current selection (spec 0038 step 023) — the ONE source of
+/// truth the verbs row renders from and the tests assert against. An active selection offers
+/// Mark inactive + Supersede…; a retired one offers Mark active; a bare Browse-mode selection with
+/// no resolvable entry — or any Select-mode selection — offers none. Materials carry no protection
+/// (`MaterialEntry` has no `EntryProtection`; the store has no built-in guard), so EVERY material
+/// is lifecycle-eligible here (unlike the Library window's protected presets).
+let offeredLifecycleActions (m : Model) : LifecycleAction list =
+    match m.mode with
+    | Select _ -> []
+    | Browse ->
+        match selectedLifecycle m with
+        | Some ActiveEntry -> [ MarkInactiveAction; SupersedeAction ]
+        | Some InactiveEntry -> [ MarkActiveAction ]
+        | None -> []
+
+/// The number of materials whose latest version is retired (spec 0038 step 023) — the visible
+/// count badge on the show-inactive toggle. Read over the whole store (not the filtered corpus) so
+/// the badge is a stable "N retired exist" hint whether the toggle is on or off.
+let inactiveCount (m : Model) : int =
+    let active = activeMaterialIds m
+    match m.context.materials.listMaterials IncludeInactive with
+    | Ok all -> all |> List.filter (fun e -> not (Set.contains e.id active)) |> List.length
+    | Error _ -> 0
+
+/// Whether an entry (its latest version) is retired, for the tree-leaf badge.
+let private isEntryInactive (activeIds : Set<MaterialId>) (entry : MaterialEntry) : bool =
+    not (Set.contains entry.id activeIds)
+
+/// The badge appended to a retired entry's tree-leaf label when the show-inactive toggle reveals
+/// it (spec 0038 step 023). Supersede and mark-inactive share `InactiveEntry` in the store, so the
+/// badge reads "inactive" for both.
+let inactiveBadge : string = " — inactive"
+
+/// The stored versions of a material, ascending (latest last), enumerated by probing the proxy's
+/// by-version `resolveVersion` from version 1 upward until it resolves nothing (spec 0038 step 023
+/// — the store exposes no list-versions field). In the live in-memory store this is a single
+/// version until step 25 (mints need a used version, and `VersionsInUse` is empty); a stub proxy
+/// returns a longer history. The `1000` cap is an unreachable runaway guard, never hit in practice.
+let selectedVersionsOf (materials : MaterialProxy) (id : MaterialId) : (VersionNumber * MaterialEntry) list =
+    let rec loop (version : VersionNumber) (acc : (VersionNumber * MaterialEntry) list) : (VersionNumber * MaterialEntry) list =
+        if version.value > 1000 then List.rev acc
+        else
+            match materials.resolveVersion { materialId = id; version = version } with
+            | Ok (Some entry) -> loop version.next ((version, entry) :: acc)
+            | Ok None | Error _ -> List.rev acc
+    loop VersionNumber.first []
+
+/// The selected entry's versions (empty when nothing is selected or the id no longer resolves).
+let selectedVersions (m : Model) : (VersionNumber * MaterialEntry) list =
+    match m.selectedId with
+    | Some id -> selectedVersionsOf m.context.materials id
+    | None -> []
 
 // ---------------------------------------------------------------------------
 // Tree node codes (host-supplied stable tokens, unique across the whole tree).
@@ -351,6 +485,26 @@ module UiIds =
     let removeCancelButton = "MaterialsRemoveCancelButton"
     [<Literal>]
     let message = "MaterialsWindowMessage"
+    /// The lifecycle surface (spec 0038 step 023): the show-inactive toggle, the three verbs, the
+    /// lifecycle confirm pair, the versions panel and its per-version rows, and the view-only note.
+    [<Literal>]
+    let showInactiveToggle = "MaterialsShowInactiveToggle"
+    [<Literal>]
+    let markInactiveButton = "MaterialsMarkInactiveButton"
+    [<Literal>]
+    let markActiveButton = "MaterialsMarkActiveButton"
+    [<Literal>]
+    let supersedeButton = "MaterialsSupersedeButton"
+    [<Literal>]
+    let lifecycleConfirmButton = "MaterialsLifecycleConfirmButton"
+    [<Literal>]
+    let lifecycleCancelButton = "MaterialsLifecycleCancelButton"
+    [<Literal>]
+    let versionsPanel = "MaterialsVersionsPanel"
+    [<Literal>]
+    let viewOnlyNote = "MaterialsViewOnlyNote"
+    /// A clickable version row in the view panel's version list, by its version number.
+    let versionRow (version : VersionNumber) : string = "MaterialsVersionRow_" + string version.value
     /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
     [<Literal>]
     let selectButton = "MaterialsSelectButton"
@@ -369,7 +523,14 @@ module UiIds =
 /// message — a stale confirm or refusal never outlives the state it referred to (the retired
 /// bay's disarm discipline).
 let private disarmed (m : Model) : Model =
-    { m with removeGate = NoPendingRemove; lastError = None }
+    { m with removeGate = NoPendingRemove; lifecycleGate = NoPendingLifecycle; lastError = None }
+
+/// Arm the lifecycle confirm gate on the current selection (spec 0038 step 023) — clears the
+/// remove gate and the inline message so at most one confirm is ever pending. No selection is inert.
+let private requestLifecycle (action : LifecycleAction) (m : Model) : Model =
+    match m.selectedId with
+    | Some id -> { m with lifecycleGate = PendingLifecycle (id, action); removeGate = NoPendingRemove; lastError = None }
+    | None -> m
 
 let update (msg : Msg) (m : Model) : Model =
     match msg with
@@ -390,7 +551,8 @@ let update (msg : Msg) (m : Model) : Model =
     | RequestTreeBuild ->
         { m with buildRequest = RequestedTreeBuild }
     | SelectEntry id ->
-        { disarmed m with selectedId = Some id }
+        // A new selection shows its LATEST version (the editable default) and disarms both gates.
+        { disarmed m with selectedId = Some id; viewedVersion = None }
     | AddMaterial ->
         // Add mints the entry's MaterialId HERE — at the window-open dispatch, off the save
         // path (spec 0038 step 008) — so the launcher's registry keys the new editor by the
@@ -433,6 +595,35 @@ let update (msg : Msg) (m : Model) : Model =
         // category facet in the same render pass.
         m.context.openCategoryEditor ()
         m
+    | ToggleShowInactive ->
+        let flipped =
+            match m.showInactive with
+            | ActiveOnly -> IncludeInactive
+            | IncludeInactive -> ActiveOnly
+        { disarmed m with showInactive = flipped }
+    | RequestMarkInactive -> requestLifecycle MarkInactiveAction m
+    | RequestMarkActive -> requestLifecycle MarkActiveAction m
+    | RequestSupersede -> requestLifecycle SupersedeAction m
+    | ConfirmLifecycle ->
+        match m.lifecycleGate with
+        | PendingLifecycle (id, action) ->
+            let outcome =
+                match action with
+                | MarkInactiveAction -> m.context.materials.markMaterialInactive id
+                | MarkActiveAction -> m.context.materials.markMaterialActive id
+                | SupersedeAction -> m.context.materials.supersedeMaterial id
+            match outcome with
+            | Ok () -> { m with lifecycleGate = NoPendingLifecycle; lastError = None }
+            | Error err ->
+                // The store refused (e.g. the entry vanished behind the window's back) — surface
+                // the typed reason inline and leave the store and selection untouched.
+                { m with lifecycleGate = NoPendingLifecycle; lastError = Some err }
+        | NoPendingLifecycle -> m
+    | CancelLifecycle ->
+        // Cancel only ever disarms — the next query / selection change clears any inline message.
+        { m with lifecycleGate = NoPendingLifecycle }
+    | ViewVersion version ->
+        { m with viewedVersion = Some version }
     | ConfirmSelect ->
         // Spec 0038 step 016: 'Select' returns the HIGHLIGHTED entry through the session's
         // onSelected — a TARGETED dispatch (the requesting surface routes it by the context's
@@ -518,6 +709,10 @@ let facetedState (m : Model) : FacetedTreeControls.State =
     let inputs = projectionInputs m
     let filtered = Facets.filter inputs.defs inputs.appliedAll inputs.corpus
     let resultCount = List.length filtered
+    // The active-id set, for the retired-entry leaf badge (spec 0038 step 023): with the toggle
+    // off the corpus is `ActiveOnly`, so no leaf ever badges; with it on, a retired latest version
+    // reads `label — inactive`.
+    let activeIds = activeMaterialIds m
     // The host decides gating (result count above the Domain threshold, no explicit build yet);
     // the control only obeys (step 012). A gated pass projects NO tree at all — the whole point
     // is skipping the one potentially heavy render (§0.7).
@@ -585,7 +780,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                         |> List.map (fun entry ->
                             ({
                                 code = entryNodeCode entry.id
-                                label = entry.name
+                                label = (if isEntryInactive activeIds entry then entry.name + inactiveBadge else entry.name)
                                 countOpt = None
                                 expansion = FacetedTreeControls.ExpandedNode
                                 children = []
@@ -735,8 +930,17 @@ let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
           ]
           |> Avalonia.FuncUI.DSL.View.withKey UiIds.selectConstraint) :> IView ]
 
+/// One lifecycle verb box (spec 0038 step 023), by its action.
+let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) : IView =
+    match action with
+    | MarkInactiveAction -> verbButton UiIds.markInactiveButton "Mark inactive" (fun () -> dispatch RequestMarkInactive)
+    | MarkActiveAction -> verbButton UiIds.markActiveButton "Mark active" (fun () -> dispatch RequestMarkActive)
+    | SupersedeAction -> verbButton UiIds.supersedeButton "Supersede…" (fun () -> dispatch RequestSupersede)
+
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
-/// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected.
+/// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected; the
+/// lifecycle verbs from `offeredLifecycleActions` (Mark inactive + Supersede… for an active
+/// selection, Mark active for a retired one — spec 0038 step 023).
 let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
@@ -748,8 +952,23 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
             @ (match m.selectedId with
                | Some _ -> [ verbButton UiIds.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
+            @ (offeredLifecycleActions m |> List.map (lifecycleButton dispatch))
             @ [ verbButton UiIds.categoriesButton "Categories…" (fun () -> dispatch OpenCategories) ])
     ] :> IView
+
+/// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
+/// visible count badge — `Show inactive (N)` while hidden, `Hide inactive (N)` while shown.
+/// Browse-mode only (Select always lists `ActiveOnly`).
+let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
+    match m.mode with
+    | Select _ -> []
+    | Browse ->
+        let n = inactiveCount m
+        let label =
+            match m.showInactive with
+            | ActiveOnly -> $"Show inactive (%d{n})"
+            | IncludeInactive -> $"Hide inactive (%d{n})"
+        [ verbButton UiIds.showInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a remove is armed.
 let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
@@ -770,6 +989,35 @@ let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
                   ]
                   verbButton UiIds.removeConfirmButton "Remove" (fun () -> dispatch ConfirmRemove)
                   verbButton UiIds.removeCancelButton "Cancel" (fun () -> dispatch CancelRemove)
+              ]
+          ] :> IView ]
+
+/// The inline lifecycle confirmation (spec 0038 step 023) — present only while a lifecycle verb is
+/// armed. The prompt NAMES the entry and the transition (the verb the user pressed); Confirm runs
+/// the matching proxy verb, Cancel disarms.
+let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+    match m.lifecycleGate with
+    | NoPendingLifecycle -> []
+    | PendingLifecycle (id, action) ->
+        let name =
+            match m.context.materials.tryGetMaterial id with
+            | Ok (Some entry) -> entry.name
+            | Ok None | Error _ -> string id.value
+        let prompt =
+            match action with
+            | MarkInactiveAction -> $"Mark material '%s{name}' inactive?"
+            | MarkActiveAction -> $"Mark material '%s{name}' active?"
+            | SupersedeAction -> $"Supersede material '%s{name}'?"
+        [ WrapPanel.create [
+              WrapPanel.orientation Orientation.Horizontal
+              WrapPanel.children [
+                  TextBlock.create [
+                      TextBlock.text prompt
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  verbButton UiIds.lifecycleConfirmButton "Confirm" (fun () -> dispatch ConfirmLifecycle)
+                  verbButton UiIds.lifecycleCancelButton "Cancel" (fun () -> dispatch CancelLifecycle)
               ]
           ] :> IView ]
 
@@ -794,38 +1042,93 @@ let private messageRow (m : Model) : IView list =
               TextBlock.text text
           ] :> IView ]
 
-/// The view panel: the selected entry's read-only metadata plus the dual-axis n/k chart over
-/// the editor's preview range, embedded through the ONE shared ScottPlot chart control.
-/// Resolved through the proxy at render time, so a removed entry's panel vanishes with its row.
-let private viewPanel (m : Model) : IView list =
+/// The version list (spec 0038 step 023): one clickable row per stored version, the latest marked
+/// `(latest)` and the currently-viewed one marked `▸`. Clicking a row shows THAT version in the
+/// panel — the latest editable through the Edit verb, an older one view-only. Absent when the
+/// selection resolves to a single version (the common case in the live store until step 25).
+let private versionsRow (m : Model) (versions : (VersionNumber * MaterialEntry) list) (latest : VersionNumber) (shown : VersionNumber) (dispatch : Msg -> unit) : IView list =
+    match versions with
+    | [] | [ _ ] -> []
+    | _ ->
+        [ StackPanel.create [
+              automationId<StackPanel> UiIds.versionsPanel
+              StackPanel.orientation Orientation.Horizontal
+              StackPanel.spacing 0.0
+              StackPanel.children (
+                  TextBlock.create [
+                      TextBlock.text "Versions:"
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  :: (versions
+                      |> List.map (fun (version, _) ->
+                          let marker = if version = shown then "▸ " else ""
+                          let latestTag = if version = latest then " (latest)" else ""
+                          verbButton (UiIds.versionRow version) $"%s{marker}v%d{version.value}%s{latestTag}" (fun () -> dispatch (ViewVersion version)))))
+          ] :> IView ]
+
+/// The view panel: the selected entry's read-only metadata plus the dual-axis n/k chart over the
+/// editor's preview range, embedded through the ONE shared ScottPlot chart control, plus the
+/// version list (spec 0038 step 023). By default it shows the LATEST version (the editable one —
+/// the library always edits the latest); selecting an OLDER version shows it VIEW-ONLY (a
+/// `viewOnlyNote`, no Save path — older versions have no editor). Resolved through the proxy at
+/// render time, so a removed entry's panel vanishes with its row.
+let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
     match selectedEntry m with
     | None -> []
-    | Some entry ->
-        let chart = NkDispersionChart.nkDispersionChart entry.properties Nanometer MaterialEditorView.previewRange
+    | Some latestEntry ->
+        let versions = selectedVersionsOf m.context.materials latestEntry.id
+        let latestVersion =
+            match versions |> List.map fst with
+            | [] -> VersionNumber.first
+            | numbers -> List.max numbers
+        let shownVersion =
+            match m.viewedVersion with
+            | Some v when versions |> List.exists (fun (vn, _) -> vn = v) -> v
+            | _ -> latestVersion
+        let shownEntry =
+            versions
+            |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
+            |> Option.defaultValue latestEntry
+        let viewingOlder = shownVersion <> latestVersion
+        let chart = NkDispersionChart.nkDispersionChart shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
-            match entry.complexity with
-            | Some _ -> ""
-            | None -> " (view-only engine preset)"
+            if viewingOlder then $" (version {shownVersion.value} — view-only)"
+            else
+                match shownEntry.complexity with
+                | Some _ -> ""
+                | None -> " (view-only engine preset)"
+        let viewOnlyNote : IView list =
+            if viewingOlder then
+                [ TextBlock.create [
+                      automationId<TextBlock> UiIds.viewOnlyNote
+                      TextBlock.foreground (brush idleBorder)
+                      TextBlock.textWrapping TextWrapping.Wrap
+                      TextBlock.maxWidth 380.0
+                      TextBlock.text $"Viewing version %d{shownVersion.value} (view-only) — the library edits the latest, version %d{latestVersion.value}."
+                  ] :> IView ]
+            else []
         [ Border.create [
               automationId<Border> UiIds.viewPanel
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
                       StackPanel.spacing 2.0
-                      StackPanel.children [
-                          TextBlock.create [
-                              TextBlock.fontWeight FontWeight.SemiBold
-                              TextBlock.textWrapping TextWrapping.Wrap
-                              TextBlock.maxWidth 380.0
-                              TextBlock.text $"%s{entry.name} — %s{liveCategoryName m.context.categories entry.category}%s{editability}"
-                          ]
-                          TextBlock.create [
-                              TextBlock.textWrapping TextWrapping.Wrap
-                              TextBlock.maxWidth 380.0
-                              TextBlock.text (entry.description |> Option.defaultValue "")
-                          ]
-                          EmbeddedChart.create UiIds.viewPanelChart chart (NkDispersionChart.nkDispersionStyle chart)
-                      ]
+                      StackPanel.children (
+                          [ TextBlock.create [
+                                TextBlock.fontWeight FontWeight.SemiBold
+                                TextBlock.textWrapping TextWrapping.Wrap
+                                TextBlock.maxWidth 380.0
+                                TextBlock.text $"%s{shownEntry.name} — %s{liveCategoryName m.context.categories shownEntry.category}%s{editability}"
+                            ] :> IView
+                            TextBlock.create [
+                                TextBlock.textWrapping TextWrapping.Wrap
+                                TextBlock.maxWidth 380.0
+                                TextBlock.text (shownEntry.description |> Option.defaultValue "")
+                            ] :> IView ]
+                          @ viewOnlyNote
+                          @ versionsRow m versions latestVersion shownVersion dispatch
+                          @ [ EmbeddedChart.create UiIds.viewPanelChart chart (NkDispersionChart.nkDispersionStyle chart) ])
                   ])
           ] :> IView ]
 
@@ -847,10 +1150,12 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                                 StackPanel.spacing 6.0
                                 StackPanel.children (
                                     selectModeRows m dispatch
+                                    @ toggleRow m dispatch
                                     @ [ verbsRow m dispatch ]
                                     @ confirmRow m dispatch
+                                    @ lifecycleConfirmRow m dispatch
                                     @ messageRow m
-                                    @ viewPanel m)
+                                    @ viewPanel m dispatch)
                             ])
                     ])
             ]

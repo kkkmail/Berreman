@@ -963,3 +963,224 @@ module MaterialsWindowTests =
             Assert.False(isPresent editor (SampleEditorView.UiIds.layerRow 0), "no layer row may appear from a vanished-target return")
             editor.Close()
             Dispatcher.UIThread.RunJobs())
+
+    // ============================ step 023 — lifecycle (pure) ============================
+
+    /// A material an editable template (glass152) supplies two DISTINCT versions of, under ONE id —
+    /// the multi-version history the live store never grows until step 25, proven here through a
+    /// stub proxy: `resolveVersion` serves v1 and v2, `tryGetMaterial` / `listMaterials` the latest.
+    let private twoVersionMaterials () : MaterialId * MaterialEntry * MaterialEntry * MaterialProxy =
+        let template = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
+        let id = newMaterialId ()
+        let v1 = { template with id = id; name = "Versioned material v1" }
+        let v2 = { template with id = id; name = "Versioned material v2" }
+        let proxy : MaterialProxy =
+            {
+                listMaterials = fun _ -> Ok [ v2 ]
+                searchMaterials = fun _ -> Ok [ v2 ]
+                tryGetMaterial = fun mid -> Ok (if mid = id then Some v2 else None)
+                resolveVersion =
+                    fun mvid ->
+                        if mvid.materialId = id then
+                            match mvid.version.value with
+                            | 1 -> Ok (Some v1)
+                            | 2 -> Ok (Some v2)
+                            | _ -> Ok None
+                        else Ok None
+                saveMaterial = fun _ -> Ok ()
+                markMaterialInactive = fun _ -> Ok ()
+                markMaterialActive = fun _ -> Ok ()
+                supersedeMaterial = fun _ -> Ok ()
+                removeMaterial = fun _ -> Ok ()
+            }
+        id, v1, v2, proxy
+
+    [<Fact>]
+    let ``the step-023 lifecycle UiIds are the stable intent-named ids`` () =
+        Assert.Equal("MaterialsShowInactiveToggle", MW.UiIds.showInactiveToggle)
+        Assert.Equal("MaterialsMarkInactiveButton", MW.UiIds.markInactiveButton)
+        Assert.Equal("MaterialsMarkActiveButton", MW.UiIds.markActiveButton)
+        Assert.Equal("MaterialsSupersedeButton", MW.UiIds.supersedeButton)
+        Assert.Equal("MaterialsLifecycleConfirmButton", MW.UiIds.lifecycleConfirmButton)
+        Assert.Equal("MaterialsLifecycleCancelButton", MW.UiIds.lifecycleCancelButton)
+        Assert.Equal("MaterialsVersionsPanel", MW.UiIds.versionsPanel)
+        Assert.Equal("MaterialsViewOnlyNote", MW.UiIds.viewOnlyNote)
+        Assert.Equal("MaterialsVersionRow_2", MW.UiIds.versionRow (VersionNumber 2))
+
+    [<Fact>]
+    let ``the show-inactive toggle scopes the corpus, badges retired entries, and keeps references resolving`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        // Mark an UNREFERENCED material (glass200) inactive through the window's own verbs.
+        let retired =
+            MW.init context Browse
+            |> MW.update (MW.SelectEntry MaterialIds.glass200)
+            |> MW.update MW.RequestMarkInactive
+            |> MW.update MW.ConfirmLifecycle
+        Assert.Equal(MW.NoPendingLifecycle, retired.lifecycleGate)
+        // Default scope EXCLUDES it (pickers / facet counts), and the badge count is 1.
+        Assert.DoesNotContain(MaterialIds.glass200, filteredIds retired)
+        Assert.Equal(11, (MW.facetedState retired).resultCount)
+        Assert.Equal(1, MW.inactiveCount retired)
+        // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
+        match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
+        | Ok (Some entry) -> Assert.Equal(MaterialIds.glass200, entry.id)
+        | other -> Assert.Fail($"the retired material's version must still resolve, got %A{other}")
+        // The toggle reveals it, badged, in the tree.
+        let shown = MW.update MW.ToggleShowInactive retired
+        Assert.Equal(IncludeInactive, shown.showInactive)
+        Assert.Contains(MaterialIds.glass200, filteredIds shown)
+        Assert.Equal(12, (MW.facetedState shown).resultCount)
+        let leaf =
+            (MW.facetedState shown).tree
+            |> List.head
+            |> fun entries -> entries.children |> List.find (fun n -> n.code = MW.entryNodeCode MaterialIds.glass200)
+        Assert.Contains("inactive", leaf.label)
+        // A second toggle hides them again.
+        Assert.Equal(ActiveOnly, (MW.update MW.ToggleShowInactive shown).showInactive)
+
+    [<Fact>]
+    let ``lifecycle verbs follow the selection's live-retired state, are confirm-gated, and a vanished id surfaces a typed refusal`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        let m = MW.init context Browse
+        // No selection → no lifecycle verbs.
+        Assert.Empty(MW.offeredLifecycleActions m)
+        // An ACTIVE selection offers Mark inactive + Supersede…
+        let selected = MW.update (MW.SelectEntry MaterialIds.glass200) m
+        Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], MW.offeredLifecycleActions selected)
+        // Confirm-gated: Request arms with the id, a query change disarms.
+        let armed = MW.update MW.RequestMarkInactive selected
+        Assert.Equal(MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction), armed.lifecycleGate)
+        Assert.Equal(MW.NoPendingLifecycle, (MW.update (MW.CommitTextFilter "x") armed).lifecycleGate)
+        // Confirm retires it; the SAME selection now offers Mark active alone.
+        let retired = MW.update MW.ConfirmLifecycle armed
+        Assert.Equal<MW.LifecycleAction list>([ MW.MarkActiveAction ], MW.offeredLifecycleActions retired)
+        // Mark active revives it (back in the active listing).
+        let revived = retired |> MW.update MW.RequestMarkActive |> MW.update MW.ConfirmLifecycle
+        Assert.Contains(MaterialIds.glass200, filteredIds revived)
+        Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], MW.offeredLifecycleActions revived)
+        // A vanished id: arm, remove the material behind the window's back, then confirm → the
+        // typed store refusal surfaces inline and nothing is silently swallowed.
+        let armedAgain = revived |> MW.update MW.RequestSupersede
+        match materials.removeMaterial MaterialIds.glass200 with
+        | Ok () -> ()
+        | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
+        let refused = MW.update MW.ConfirmLifecycle armedAgain
+        match refused.lastError with
+        | Some (UnknownMaterialId reason) -> Assert.Contains("unknown material id", reason)
+        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
+
+    [<Fact>]
+    let ``supersede retires the latest version exactly like mark-inactive`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        let superseded =
+            MW.init context Browse
+            |> MW.update (MW.SelectEntry MaterialIds.glass200)
+            |> MW.update MW.RequestSupersede
+            |> MW.update MW.ConfirmLifecycle
+        Assert.DoesNotContain(MaterialIds.glass200, filteredIds superseded)
+        // Still resolvable by version (superseded behaves as inactive — steps 021/022).
+        match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
+        | Ok (Some _) -> ()
+        | other -> Assert.Fail($"a superseded version must still resolve, got %A{other}")
+
+    [<Fact>]
+    let ``marking a material inactive removes it from a Select-mode corpus while its reference still resolves`` () =
+        let materials, _, categories = freshStores ()
+        // Retire glass200 through a Browse window over the SHARED store…
+        let _, browseCtx = stubContext materials categories
+        MW.init browseCtx Browse
+        |> MW.update (MW.SelectEntry MaterialIds.glass200)
+        |> MW.update MW.RequestMarkInactive
+        |> MW.update MW.ConfirmLifecycle
+        |> ignore
+        // …a Select-state window over the SAME store no longer offers it (Select forces ActiveOnly).
+        let _, selectCtx = stubContext materials categories
+        let events, selection = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+        let selectModel = MW.init selectCtx (Select selection)
+        ignore events
+        Assert.DoesNotContain(MaterialIds.glass200, filteredIds selectModel)
+        Assert.Equal(11, (MW.facetedState selectModel).resultCount)
+        // The bound reference still resolves — a layer already pinning it keeps drawing.
+        match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
+        | Ok (Some _) -> ()
+        | other -> Assert.Fail($"the bound reference must still resolve, got %A{other}")
+
+    [<Fact>]
+    let ``the view panel enumerates versions and an older version is view-only while Edit targets the latest`` () =
+        let id, _, v2, materials = twoVersionMaterials ()
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let _, context = stubContext materials categories
+        let selected = MW.init context Browse |> MW.update (MW.SelectEntry id)
+        // Both versions are enumerated (ascending), and the default view is the LATEST.
+        Assert.Equal<int list>([ 1; 2 ], MW.selectedVersions selected |> List.map (fun (v, _) -> v.value))
+        Assert.Equal<VersionNumber option>(None, selected.viewedVersion)
+        // The Edit affordance targets the LATEST editable entry (v2).
+        match MW.editableSelection selected with
+        | Some entry -> Assert.Equal(v2.name, entry.name)
+        | None -> Assert.Fail "the latest version must remain editable"
+        // Viewing an OLDER version records it; the latest is not "older".
+        let older = MW.update (MW.ViewVersion (VersionNumber 1)) selected
+        Assert.Equal<VersionNumber option>(Some (VersionNumber 1), older.viewedVersion)
+        // A new selection resets the view back to the latest.
+        Assert.Equal<VersionNumber option>(None, (MW.update (MW.SelectEntry id) older).viewedVersion)
+
+    // ============================ step 023 — lifecycle (headless) ============================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (023): marking a material inactive hides it, the toggle reveals it badged, and its reference still resolves`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            // Select the unreferenced glass200 and mark it inactive through the confirm gate.
+            commitFilter window "2.00"
+            clickOn window (MW.UiIds.entryNode MaterialIds.glass200)
+            clickOn window MW.UiIds.markInactiveButton
+            clickOn window MW.UiIds.lifecycleConfirmButton
+            // Its row is gone from the default (ActiveOnly) tree…
+            Assert.False(isPresent window (MW.UiIds.entryNode MaterialIds.glass200),
+                         "the retired material must leave the default tree in the same render pass")
+            // …but its version still resolves IGNORING lifecycle (the table keeps drawing it).
+            match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
+            | Ok (Some _) -> ()
+            | other -> Assert.Fail($"the retired material's version must still resolve, got %A{other}")
+            // The show-inactive toggle carries the count badge and reveals the entry, badged.
+            Assert.Contains("(1)", textOf window MW.UiIds.showInactiveToggle)
+            clickOn window MW.UiIds.showInactiveToggle
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass200),
+                        "the toggle must reveal the retired entry in the tree")
+            Assert.Contains("inactive", textOf window (MW.UiIds.entryNode MaterialIds.glass200))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (023): an older material version opens VIEW-ONLY inline while the latest stays editable`` () =
+        HeadlessSession.run (fun () ->
+            let id, _, _, materials = twoVersionMaterials ()
+            let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+            let _, context = stubContext materials categories
+            // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree
+            // mounting precedent) so the version-row clicks drive the pure update.
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple (fun () -> MW.init context Browse) MW.update MW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            clickOn window (MW.UiIds.entryNode id)
+            // The version list renders both versions; the latest view carries NO view-only note.
+            Assert.True(isPresent window MW.UiIds.versionsPanel, "the view panel must list the entry's versions")
+            Assert.True(isPresent window (MW.UiIds.versionRow (VersionNumber 1)))
+            Assert.True(isPresent window (MW.UiIds.versionRow (VersionNumber 2)))
+            Assert.False(isPresent window MW.UiIds.viewOnlyNote, "the latest version is editable — no view-only note")
+            Assert.True(isPresent window MW.UiIds.editButton, "the latest version keeps the Edit verb")
+            // Clicking the OLDER version opens it view-only inline (no Save path).
+            clickOn window (MW.UiIds.versionRow (VersionNumber 1))
+            Assert.True(isPresent window MW.UiIds.viewOnlyNote, "an older version must render the view-only note")
+            Assert.Contains("view-only", textOf window MW.UiIds.viewOnlyNote)
+            // The library still edits the LATEST — the Edit verb is unchanged by viewing an older version.
+            Assert.True(isPresent window MW.UiIds.editButton, "the Edit verb still targets the latest version")
+            window.Close())
