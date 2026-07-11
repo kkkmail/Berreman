@@ -1333,15 +1333,26 @@ let private runWaveLength (model : Model) : WaveLength =
         | _ -> None)
     |> Option.defaultValue (WaveLength.nm 600.0<nm>)
 
-/// The input Stokes vector from the FIRST polarizer element bound to an ideal-polarizer preset (its R1 is
-/// the polarizer's orientation). No input polarizer → unpolarized natural light (spec R1).
+/// The input Stokes vector from the FIRST polarizer element bound to a polarizer preset (its R1 is the
+/// polarizer's orientation), synthesized through the behaviour seam (spec 0038 Part F —
+/// `Propagation.behaviorInputStokes` routes `ComputedIdeal` through the same `inputStokes` as before).
+/// No input polarizer → unpolarized natural light (spec R1).
 let private runInputStokes (model : Model) : StokesVector =
     model.elements
     |> List.tryPick (fun e ->
         match boundEntry model e with
-        | Some (Library.PolarizerItem p) -> Some (Propagation.inputStokes p.kind e.placement.r1)
+        | Some (Library.PolarizerItem p) -> Some (Propagation.behaviorInputStokes p.behavior e.placement.r1)
         | _ -> None)
     |> Option.defaultValue Propagation.unpolarizedStokes
+
+/// The ideal polarizer kind of a bound polarizer entry, when its behaviour is `ComputedIdeal` (spec 0038
+/// Part F). The rotate-R1 / sweep runners below drive the kind-typed pipeline sweeps, so a
+/// `ConstantMueller` polarizer — no seed and no editor can produce one yet — is skipped exactly like a
+/// non-polarizer element until those runners go behaviour-typed (Part G reworks this resolution anyway).
+let private idealKindOf (p : Library.PolarizerPreset) : Library.PolarizerKind option =
+    match p.behavior with
+    | Library.ComputedIdeal kind -> Some kind
+    | Library.ConstantMueller _ -> None
 
 /// The analyzer's polarizer kind for the rotate-R1 experiment: the VARIED element if it is bound to a
 /// polarizer preset, else the first polarizer bound in the scene, else an ideal linear analyzer (so the
@@ -1354,7 +1365,7 @@ let private runAnalyzerKind (model : Model) (varied : Library.ElementId option) 
             |> List.tryFind (fun e -> e.id = chosen)
             |> Option.bind (fun e ->
                 match boundEntry model e with
-                | Some (Library.PolarizerItem p) -> Some p.kind
+                | Some (Library.PolarizerItem p) -> idealKindOf p
                 | _ -> None)
         | None -> None
     match variedKind with
@@ -1363,7 +1374,7 @@ let private runAnalyzerKind (model : Model) (varied : Library.ElementId option) 
         model.elements
         |> List.choose (fun e ->
             match boundEntry model e with
-            | Some (Library.PolarizerItem p) -> Some p.kind
+            | Some (Library.PolarizerItem p) -> idealKindOf p
             | _ -> None)
         |> List.tryLast
         |> Option.defaultValue Library.IdealLinear
@@ -1409,13 +1420,14 @@ let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
         $"Cannot run: material library error (%s{reason})."
 
 /// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
-/// a polarizer preset, with its live R1 as the orientation. `None` when no analyzer is present (the sweep
-/// then reads the raw sample output, spec R1).
+/// a `ComputedIdeal` polarizer preset, with its live R1 as the orientation. `None` when no analyzer is
+/// present (the sweep then reads the raw sample output, spec R1). The kind-typed sweep builders drive
+/// this, so a `ConstantMueller` polarizer is skipped like a non-polarizer (see `idealKindOf`).
 let private runAnalyzerOpt (model : Model) : (Library.PolarizerKind * Angle) option =
     model.elements
     |> List.tryPick (fun e ->
         match boundEntry model e with
-        | Some (Library.PolarizerItem p) -> Some (p.kind, e.placement.r1)
+        | Some (Library.PolarizerItem p) -> idealKindOf p |> Option.map (fun k -> k, e.placement.r1)
         | _ -> None)
 
 /// A `ChartSeries` from named (x, y) points.

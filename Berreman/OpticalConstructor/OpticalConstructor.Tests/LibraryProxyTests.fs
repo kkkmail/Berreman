@@ -43,7 +43,7 @@ module LibraryProxyTests =
         | Ok entries ->
             Assert.Equal(1, List.length entries)
             match entries with
-            | [ PolarizerItem p ] -> Assert.Equal(IdealLinear, p.kind)
+            | [ PolarizerItem p ] -> Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, p.behavior)
             | _ -> Assert.Fail("expected exactly one ideal linear polarizer")
         | Error err -> Assert.Fail($"%A{err}")
 
@@ -54,7 +54,7 @@ module LibraryProxyTests =
             Assert.Equal(2, List.length entries)
             let kinds =
                 entries
-                |> List.choose (function PolarizerItem p -> Some p.kind | _ -> None)
+                |> List.choose (function PolarizerItem { behavior = ComputedIdeal k } -> Some k | _ -> None)
                 |> Set.ofList
             Assert.Equal<Set<PolarizerKind>>(Set.ofList [ IdealCircularLeft; IdealCircularRight ], kinds)
         | Error err -> Assert.Fail($"%A{err}")
@@ -87,11 +87,11 @@ module LibraryProxyTests =
 
     [<Fact>]
     let ``forKinds maps each entry case to its valid catalogue kinds`` () =
-        let lp = PolarizerItem { id = "x"; name = "lp"; kind = IdealLinear }
-        let cpL = PolarizerItem { id = "y"; name = "cpL"; kind = IdealCircularLeft }
-        let cpR = PolarizerItem { id = "z"; name = "cpR"; kind = IdealCircularRight }
-        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm> }
-        let det = DetectorItem { id = "d"; name = "d"; kind = Intensity }
+        let lp = PolarizerItem { id = "x"; name = "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
+        let cpL = PolarizerItem { id = "y"; name = "cpL"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = UserManaged }
+        let cpR = PolarizerItem { id = "z"; name = "cpR"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = UserManaged }
+        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; protection = UserManaged }
+        let det = DetectorItem { id = "d"; name = "d"; kind = Intensity; protection = UserManaged }
         let smp =
             SampleItem
                 {
@@ -130,11 +130,11 @@ module LibraryProxyTests =
     [<Fact>]
     let ``a non-Sample entry's fullDescription is prose built from its kind`` () =
         // The detectors / polarizers / source describe what they DO (so a bare name is never the whole story).
-        let det = DetectorItem { id = "d"; name = "d"; kind = Ellipsometer }
+        let det = DetectorItem { id = "d"; name = "d"; kind = Ellipsometer; protection = UserManaged }
         Assert.Contains("Ψ", det.fullDescription)
-        let lp = PolarizerItem { id = "x"; name = "lp"; kind = IdealLinear }
+        let lp = PolarizerItem { id = "x"; name = "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
         Assert.Contains("linear", lp.fullDescription)
-        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm> }
+        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; protection = UserManaged }
         Assert.Contains("500", src.fullDescription)
 
     [<Fact>]
@@ -206,7 +206,7 @@ module LibraryProxyTests =
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =
         // The functional-proxy seam: a test substitutes in-memory stub functions for the proxy fields.
-        let onlyDetector = DetectorItem { id = "stub-det"; name = "Stub detector"; kind = Intensity }
+        let onlyDetector = DetectorItem { id = "stub-det"; name = "Stub detector"; kind = Intensity; protection = UserManaged }
         let stub : LibraryProxy =
             {
                 entriesForKind = fun kind -> if kind = Detector then Ok [ onlyDetector ] else Ok []

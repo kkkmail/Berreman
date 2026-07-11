@@ -132,6 +132,12 @@
              dispersion-model facet, any-constituent sample matching, and per-film
              thicknesses flowing into the step-010 buckets. -->
         <Compile Include="LibraryFacetsTests.fs" />
+        <!-- Spec 0038 Part F (step 014): ideal elements become ordinary protected entries and
+             polarizer behaviour becomes data — ComputedIdeal parity with the existing
+             analyzerMueller/inputStokes synthesis, the R(−θ)·M·R(θ) component rotation, the
+             ORDERED ConstantMueller compound product, EntryProtection over the seeds, and the
+             polarizer-category facet. -->
+        <Compile Include="PolarizerBehaviorTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -148,12 +148,23 @@ module Library =
             description : string
         }
 
+    /// Whether a library entry is a seeded built-in the user must not delete, inactivate, or
+    /// supersede, or an ordinary user-managed entry (spec 0038 Part F — the notion "ideal element"
+    /// disappears; the seeded presets become ordinary PROTECTED entries). A two-case DU, not a bool:
+    /// protection is DATA on each preset record so a future user-created preset is `UserManaged`
+    /// without a type change. Samples carry no field — every sample (seeded or user-created) is
+    /// `UserManaged` (they are editable examples — recorded interpretation, spec F.0).
+    type EntryProtection =
+        | ProtectedBuiltIn
+        | UserManaged
+
     /// A monochromatic source preset — defines λ (spec Q3: source = wavelength).
     type SourcePreset =
         {
             id : string
             name : string
             waveLength : WaveLength
+            protection : EntryProtection
         }
 
     /// The detector type fixes the measurement (spec §4): Intensity records S0; Ellipsometer records
@@ -167,20 +178,63 @@ module Library =
             id : string
             name : string
             kind : DetectorKind
+            protection : EntryProtection
         }
 
-    /// Ideal polarizers only now (spec Q2); non-ideal variants are added later. The circular cases
+    /// The ideal polarizer kinds the pipeline synthesizes analytically (spec Q2). The circular cases
     /// carry handedness (left / right).
     type PolarizerKind =
         | IdealLinear
         | IdealCircularLeft
         | IdealCircularRight
 
+    /// One component of a compound constant-Mueller polarizer (spec 0038 Part F): a 4×4 Mueller
+    /// matrix stored at REFERENCE orientation plus the component's fixed angular offset within the
+    /// compound. Nothing is stored rotated — the Stokes/Mueller pipeline rotates the component at
+    /// run time as R(−θ)·M·R(θ) (`Propagation.componentMueller`).
+    type MuellerComponent =
+        {
+            matrix : MuellerMatrix
+            offset : Angle
+        }
+
+    /// A polarizer's physics as DATA (spec 0038 Part F): `ComputedIdeal` synthesizes through the
+    /// EXISTING `Propagation.inputStokes` / `analyzerMueller` exactly as today; `ConstantMueller`
+    /// is an ORDERED component list (light-traversal order — the first component is the first
+    /// surface light hits) whose compound matrix the Stokes/Mueller pipeline evaluates on demand
+    /// (`Propagation.compoundMueller`). ConstantMueller entries live ONLY in the Stokes/Mueller
+    /// pipeline — they never enter the Berreman stack; their dedicated editor is a non-breaking
+    /// future addition this DU enables.
+    type PolarizerBehavior =
+        | ComputedIdeal of PolarizerKind
+        | ConstantMueller of MuellerComponent list
+
+    /// The polarizer classification facet value (spec 0038 Part F — the Library window's polarizer
+    /// facet): linear, circular, the two compound orders (named in light-traversal order), or a
+    /// custom Mueller stack.
+    type PolarizerCategory =
+        | LpCategory
+        | CpCategory
+        | LpCpCategory
+        | CpLpCategory
+        | CustomMueller
+
+        /// The human-readable facet/branch label (the discrete facet key doubles as the label).
+        member this.label : string =
+            match this with
+            | LpCategory -> "Linear"
+            | CpCategory -> "Circular"
+            | LpCpCategory -> "Linear + circular"
+            | CpLpCategory -> "Circular + linear"
+            | CustomMueller -> "Custom Mueller"
+
     type PolarizerPreset =
         {
             id : string
             name : string
-            kind : PolarizerKind
+            behavior : PolarizerBehavior
+            category : PolarizerCategory
+            protection : EntryProtection
         }
 
     /// The choosable, kind-constrained Library things (spec §2a). The entry id IS the `valueId`
@@ -208,6 +262,16 @@ module Library =
             | DetectorItem d -> d.name
             | PolarizerItem p -> p.name
 
+        /// Whether this entry is a protected built-in or user-managed (spec 0038 Part F). The
+        /// presets carry protection as data; a sample is ALWAYS `UserManaged` — seeded samples are
+        /// editable examples (recorded interpretation, spec F.0).
+        member this.protection : EntryProtection =
+            match this with
+            | SampleItem _ -> UserManaged
+            | SourceItem s -> s.protection
+            | DetectorItem d -> d.protection
+            | PolarizerItem p -> p.protection
+
         /// The FULL, human-readable description of what this entry IS (spec 0027 / 026 — the Library
         /// confirm step and the Details element-view show it before / after binding). A sample carries its
         /// own curated `description` (materials + thicknesses + stack); the other presets get prose built
@@ -223,23 +287,26 @@ module Library =
                 | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
                 | Ellipsometer -> "Ellipsometer — records the ellipsometric angles Ψ and Δ."
             | PolarizerItem p ->
-                match p.kind with
-                | IdealLinear -> "Ideal linear polarizer — transmits the linear component along its R1 orientation."
-                | IdealCircularLeft -> "Ideal circular polarizer (left-handed) — transmits left-circular light."
-                | IdealCircularRight -> "Ideal circular polarizer (right-handed) — transmits right-circular light."
+                match p.behavior with
+                | ComputedIdeal IdealLinear -> "Ideal linear polarizer — transmits the linear component along its R1 orientation."
+                | ComputedIdeal IdealCircularLeft -> "Ideal circular polarizer (left-handed) — transmits left-circular light."
+                | ComputedIdeal IdealCircularRight -> "Ideal circular polarizer (right-handed) — transmits right-circular light."
+                | ConstantMueller components ->
+                    $"%s{p.category.label} polarizer — %d{List.length components} constant Mueller component(s) at fixed offsets, evaluated in the Stokes/Mueller pipeline."
 
         /// The catalogue kinds this entry is valid for (kind-constrained selection, §2a). A polarizer
-        /// entry serves either the LinearPolarizer role (the ideal LP) or the CircularPolarizer role
-        /// (the two CP presets) — never both.
+        /// entry serves the role its CATEGORY names: linear (the ideal LP), circular (the two CP
+        /// presets), or — for the compound/custom categories (spec 0038 Part F) — either role.
         member this.forKinds : CatalogueKind list =
             match this with
             | SampleItem _ -> [ CatalogueKind.Sample ]
             | SourceItem _ -> [ LightSource ]
             | DetectorItem _ -> [ Detector ]
             | PolarizerItem p ->
-                match p.kind with
-                | IdealLinear -> [ LinearPolarizer ]
-                | IdealCircularLeft | IdealCircularRight -> [ CircularPolarizer ]
+                match p.category with
+                | LpCategory -> [ LinearPolarizer ]
+                | CpCategory -> [ CircularPolarizer ]
+                | LpCpCategory | CpLpCategory | CustomMueller -> [ LinearPolarizer; CircularPolarizer ]
 
     /// A node-path label (a tree grouping level: "Samples", "Glass", a glass kind, …). Elevated so a
     /// label is never a bare string in the domain.
@@ -528,16 +595,19 @@ module Library =
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
     /// LP + two ideal CP, and one monochromatic source. Every sample's stack is DATA (spec 0033
     /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
-    /// the samples are the named `SeedSamples` values (spec 0033 step 002).
+    /// the samples are the named `SeedSamples` values (spec 0033 step 002). The six presets are
+    /// ordinary PROTECTED entries (spec 0038 Part F — `ProtectedBuiltIn`); the seeded samples stay
+    /// `UserManaged` (editable examples). The three ideals are `ComputedIdeal` behaviour data that
+    /// still synthesizes through `Propagation.inputStokes` / `analyzerMueller` exactly as before.
     let seedEntries : LibraryEntry list =
         (SeedSamples.all |> List.map SampleItem)
         @ [
-            DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity }
-            DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer }
-            PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; kind = IdealLinear }
-            PolarizerItem { id = "pol-cp-left"; name = "Ideal circular polarizer (left)"; kind = IdealCircularLeft }
-            PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; kind = IdealCircularRight }
-            SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm> }
+            DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn }
+            DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer; protection = ProtectedBuiltIn }
+            PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
+            PolarizerItem { id = "pol-cp-left"; name = "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
+            PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
+            SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm>; protection = ProtectedBuiltIn }
         ]
 
     /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically

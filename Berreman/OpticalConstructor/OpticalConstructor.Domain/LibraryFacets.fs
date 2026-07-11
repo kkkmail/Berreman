@@ -360,6 +360,7 @@ module LibraryFacets =
     // =======================================================================
 
     let entryKindFacetKey : AttributeKey = AttributeKey "entry-kind"
+    let polarizerCategoryFacetKey : AttributeKey = AttributeKey "polarizer-category"
     let sampleSubstrateMaterialKey : AttributeKey = AttributeKey "sample-substrate-material"
     let sampleHasThinFilmsKey : AttributeKey = AttributeKey "sample-has-thin-films"
     let sampleFilmMaterialKey : AttributeKey = AttributeKey "sample-film-material"
@@ -372,6 +373,11 @@ module LibraryFacets =
         | SourceItem _ -> DiscreteKey "Source"
         | DetectorItem _ -> DiscreteKey "Detector"
         | PolarizerItem _ -> DiscreteKey "Polarizer"
+
+    /// The branch key of a polarizer category (spec 0038 Part F — `PolarizerCategory` is the
+    /// polarizer facet value; the DU's own label doubles as the branch label).
+    let polarizerCategoryKey (category : PolarizerCategory) : DiscreteKey =
+        DiscreteKey category.label
 
     /// The two vocabulary keys of the thin-films facet.
     let hasThinFilmsValue : DiscreteKey = DiscreteKey "Has thin films"
@@ -430,6 +436,26 @@ module LibraryFacets =
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
             extract = fun entry -> [ DiscreteValue (entryKindKey entry) ]
+        }
+
+    /// The polarizer-category facet (spec 0038 Part F): `PolarizerCategory` as the facet value,
+    /// offered only for polarizer entries — every other kind is inapplicable, so the facet vanishes
+    /// entirely over a polarizer-free population.
+    let private polarizerCategoryDef : AttributeDef<LibraryEntry> =
+        {
+            key = polarizerCategoryFacetKey
+            name = "Polarizer type"
+            kind = DiscreteAttribute
+            appliesTo =
+                fun entry ->
+                    match entry with
+                    | PolarizerItem _ -> ApplicableAttribute
+                    | SampleItem _ | SourceItem _ | DetectorItem _ -> InapplicableAttribute
+            extract =
+                fun entry ->
+                    match entry with
+                    | PolarizerItem p -> [ DiscreteValue (polarizerCategoryKey p.category) ]
+                    | SampleItem _ | SourceItem _ | DetectorItem _ -> []
         }
 
     /// One material facet lifted to samples (§7.4): applicable when ANY
@@ -561,11 +587,12 @@ module LibraryFacets =
 
     /// The LIBRARY-ENTRY facet catalogue over a material corpus (the corpus
     /// resolves constituent ids to entries and display names), in default
-    /// representation order: the kind facet, every material facet lifted to
-    /// samples as the distinct union over constituent materials, then the
-    /// sample-structural facets.
+    /// representation order: the kind facet, the polarizer-category facet
+    /// (spec 0038 Part F — the non-sample facet, right after kind), every
+    /// material facet lifted to samples as the distinct union over
+    /// constituent materials, then the sample-structural facets.
     let libraryFacets (materials : MaterialEntry list) : AttributeDef<LibraryEntry> list =
-        [ entryKindDef ]
+        [ entryKindDef; polarizerCategoryDef ]
         @ (materialFacets |> List.map (liftToSamples materials))
         @ [
             substrateMaterialDef materials

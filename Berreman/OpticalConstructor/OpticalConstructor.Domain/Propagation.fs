@@ -35,6 +35,12 @@ module Propagation =
     let muellerOfRows (rows : float list list) : MuellerMatrix =
         rows |> RealMatrix.create |> RealMatrix4x4 |> MuellerMatrix
 
+    /// Read one element out of a `MuellerMatrix` (the read seam mirroring `muellerOfRows` — the IO
+    /// seam to the engine's `RealMatrix4x4`; tests compare matrices through this).
+    let muellerElement (mm : MuellerMatrix) (i : int) (j : int) : float =
+        let (MuellerMatrix m) = mm
+        m.[i, j]
+
     /// Read S0..S3 out of a `StokesVector` (the IO seam to the engine's `RealVector4`).
     let stokesComponents (sv : StokesVector) : float * float * float * float =
         let (StokesVector (RealVector4 rv)) = sv
@@ -96,6 +102,60 @@ module Propagation =
               [ 0.0; 1.0; 0.0; 0.0 ]
               [ 0.0; 0.0; 1.0; 0.0 ]
               [ 0.0; 0.0; 0.0; 1.0 ] ]
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0038 Part F (step 014) — constant-Mueller polarizer evaluation. `PolarizerBehavior` is DATA in
+    // the Library domain; its evaluation lives ONLY here, in the Stokes/Mueller pipeline (a ConstantMueller
+    // entry never enters the Berreman stack). `ComputedIdeal` keeps synthesizing through the EXISTING
+    // `inputStokes` / `analyzerMueller` above, exactly as before.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// The standard Stokes rotation matrix R(θ) (frame rotation by θ):
+    ///   [[1,0,0,0],[0,cos2θ,sin2θ,0],[0,−sin2θ,cos2θ,0],[0,0,0,1]].
+    /// The sign convention is pinned by `rotateMueller`: R(−θ)·LP₀·R(θ) must reproduce
+    /// `analyzerMueller IdealLinear θ` exactly.
+    let rotationMueller (theta : Angle) : MuellerMatrix =
+        let c = cos (2.0 * theta.value)
+        let s = sin (2.0 * theta.value)
+        muellerOfRows
+            [ [ 1.0; 0.0; 0.0; 0.0 ]
+              [ 0.0; c; s; 0.0 ]
+              [ 0.0; -s; c; 0.0 ]
+              [ 0.0; 0.0; 0.0; 1.0 ] ]
+
+    /// A polarizing element stored at reference orientation, physically rotated to θ (spec 0038 Part F):
+    /// R(−θ)·M·R(θ).
+    let rotateMueller (theta : Angle) (m : MuellerMatrix) : MuellerMatrix =
+        rotationMueller (Angle (- theta.value)) * (m * rotationMueller theta)
+
+    /// One compound component at its own fixed offset within the compound: the stored
+    /// reference-orientation matrix rotated by `offset` — R(−offset)·M·R(offset).
+    let componentMueller (c : MuellerComponent) : MuellerMatrix =
+        rotateMueller c.offset c.matrix
+
+    /// The compound's Mueller matrix: the ORDERED product of the offset-rotated components. The list is
+    /// in light-traversal order (the FIRST component is the first surface light hits), so the product is
+    /// Mₙ·…·M₂·M₁ and `compoundMueller components * sv` applies the first component first.
+    let compoundMueller (components : MuellerComponent list) : MuellerMatrix =
+        components |> List.fold (fun acc c -> componentMueller c * acc) identityMueller
+
+    /// A polarizer behaviour's Mueller matrix at the element's live orientation `theta` (its R1):
+    /// `ComputedIdeal` synthesizes through the EXISTING `analyzerMueller` exactly as today;
+    /// `ConstantMueller` rotates the WHOLE compound by θ — algebraically identical to rotating each
+    /// component by (θ + offset), since R(a)·R(b) = R(a+b).
+    let behaviorMueller (behavior : PolarizerBehavior) (theta : Angle) : MuellerMatrix =
+        match behavior with
+        | ComputedIdeal kind -> analyzerMueller kind theta
+        | ConstantMueller components -> rotateMueller theta (compoundMueller components)
+
+    /// The input Stokes vector a polarizer behaviour produces at orientation `theta` (spec 0038 Part F):
+    /// `ComputedIdeal` keeps the EXISTING unit-intensity `inputStokes` synthesis exactly as today;
+    /// `ConstantMueller` applies the rotated compound to unpolarized natural light — un-normalized, so
+    /// the compound's own throughput attenuates S0 (there is no analytic kind to normalize by).
+    let behaviorInputStokes (behavior : PolarizerBehavior) (theta : Angle) : StokesVector =
+        match behavior with
+        | ComputedIdeal kind -> inputStokes kind theta
+        | ConstantMueller _ -> behaviorMueller behavior theta * unpolarizedStokes
 
     /// One resolved layer of a sample (spec 0033 step 020): the dispersive engine layer plus the
     /// crystal orientation the system builder applies AT BUILD TIME — nothing is stored rotated.
