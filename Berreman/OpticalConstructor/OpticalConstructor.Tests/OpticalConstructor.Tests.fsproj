@@ -192,6 +192,13 @@
              canned series, an unknown path returns a typed ExperimentDataError (never a throw), and the
              proxy compares by reference. Declared contract: types + mock + test, no real store yet. -->
         <Compile Include="ExperimentDataProxyTests.fs" />
+        <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the REAL file-backed
+             ExperimentDataProxy — ExperimentDataStore.createFileBacked. A temp file written under the
+             test output round-trips a known intensity and a known ellipsometric series (the store's
+             parsed result equals the step-34 parser's own output); a missing path yields a typed
+             ExperimentDataError from both fields (never a throw); an empty-but-existing file yields the
+             parser's EmptyDataFile, proving the adapter reads then delegates and adds no parsing logic. -->
+        <Compile Include="ExperimentDataStoreTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

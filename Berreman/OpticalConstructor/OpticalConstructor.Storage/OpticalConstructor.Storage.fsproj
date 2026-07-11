@@ -44,6 +44,11 @@
         <Compile Include="History.fs" />
         <Compile Include="Export.fs" />
         <Compile Include="Report.fs" />
+        <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the real file-backed adapter
+             behind the step-035 ExperimentDataProxy — the ONLY new real IO this spec permits
+             (spec-md §0.3c). Reads the data file text at the boundary and delegates to the step-34
+             pure MeasuredData parsers; depends only on the Domain project reference. -->
+        <Compile Include="ExperimentDataStore.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 
