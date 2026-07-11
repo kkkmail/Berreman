@@ -104,3 +104,34 @@ module Scene =
             tryLoadScene : SceneName -> Result<SceneSnapshot option, SceneStoreError>
             listScenes : unit -> Result<SceneName list, SceneStoreError>
         }
+
+    type SceneProxy with
+
+        /// Spec 0038 (027, IMPLEMENT_CONTRACT STORE_XDUO_0004) — the real, stateful IN-MEMORY scene
+        /// store behind the DECLARED `SceneProxy` seam (the `SampleProxy.createInMemory` precedent,
+        /// `SampleStore.fs`): a `ref` `Map<SceneName, SceneSnapshot>` captured INSIDE the closure
+        /// (the IO boundary), so logic holding the proxy stays pure and a test substitutes this whole
+        /// `create` (or a stub of the same shape). Starts EMPTY — a fresh session has no saved scenes.
+        /// `saveScene` upserts (insert or overwrite under the name), RE-validating the name through
+        /// `SceneName.tryCreate` so a directly-constructed blank key is rejected as `InvalidScene`
+        /// rather than silently stored; `tryLoadScene` / `listScenes` read the map. This is an
+        /// INTRINSIC augmentation staying in this file (the `CategoryProxy.createInMemory` precedent,
+        /// `MaterialLibrary.fs`): it needs no type compiled after `Scene.fs`, unlike the versioned
+        /// `SampleProxy` store whose `decideVersioning` rule forces it into `SampleStore.fs`. A future
+        /// disk-backed `create` in `OpticalConstructor.Storage` swaps this out with no change to the
+        /// host that holds the proxy.
+        static member createInMemory () : SceneProxy =
+            let store = ref (Map.empty : Map<SceneName, SceneSnapshot>)
+            {
+                saveScene =
+                    fun (name : SceneName) (snapshot : SceneSnapshot) ->
+                        match SceneName.tryCreate name.value with
+                        | Ok validName ->
+                            store.Value <- store.Value |> Map.add validName snapshot
+                            Ok ()
+                        | Error e -> Error e
+
+                tryLoadScene = fun (name : SceneName) -> Ok (store.Value |> Map.tryFind name)
+
+                listScenes = fun () -> Ok (store.Value |> Map.toList |> List.map fst)
+            }

@@ -414,6 +414,43 @@ let initMain () : Model =
     let materials, samples, categories = DefaultStores.create ()
     initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
 
+// ---------------------------------------------------------------------------
+// Scene capture / restore (spec 0038 step 027, IMPLEMENT_CONTRACT STORE_XDUO_0004).
+// The pure, Avalonia-free projection between the LIVE workbench `Model` and the Domain
+// `Scene.SceneSnapshot` the `SceneProxy` persists — no window, no live handle, so a headless
+// test round-trips them. The proxy stores the DATA; these two functions are how the host turns
+// its live scene into that data and back.
+// ---------------------------------------------------------------------------
+
+/// Project the live workbench model into a pure `Scene.SceneSnapshot`: the placed `elements`
+/// (each element's serializable id, its full `placement` — which already carries the
+/// `catalogueKind` tag and the `valueId` Library binding — and its draw `zoom`), the table `view`
+/// state, and the `snapChain` flag elevated to `Scene.SnapMode`. The inverse is `restoreScene`.
+let captureScene (model : Model) : Scene.SceneSnapshot =
+    {
+        Scene.SceneSnapshot.elements =
+            model.elements
+            |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = e.zoom })
+        view = model.view
+        snap = Scene.SnapMode.create model.snapChain
+    }
+
+/// The inverse of `captureScene` — apply a saved `Scene.SceneSnapshot` back onto a live model,
+/// replacing the placed `elements`, the table `view` state, and the snap flag (`SnapMode.value`),
+/// and leaving every OTHER field (the injected proxies, palette, render config, experiment
+/// collection, launchers) untouched. The `selection` resets to the table and `drag` clears: the
+/// loaded elements are a FRESH set, so a stale `ElementSelected` index would no longer address the
+/// same element. Pure and window-free.
+let restoreScene (snapshot : Scene.SceneSnapshot) (model : Model) : Model =
+    { model with
+        elements =
+            snapshot.elements
+            |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom })
+        view = snapshot.view
+        snapChain = snapshot.snap.value
+        selection = TableSelected
+        drag = NotPressed }
+
 type Msg =
     | RotateR1By of float
     | RotateR2By of float

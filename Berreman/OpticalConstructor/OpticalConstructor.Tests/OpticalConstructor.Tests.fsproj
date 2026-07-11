@@ -148,6 +148,13 @@
              SceneProxy exercised through saveScene / tryLoadScene / listScenes' exact signatures
              (declared contract: types + inline map-backed mock + test, no real store yet). -->
         <Compile Include="SceneProxyTests.fs" />
+        <!-- Spec 0038 step 027 (IMPLEMENT_CONTRACT STORE_XDUO_0004): the scene persistence seam
+             is implemented — the real in-memory SceneProxy.createInMemory (ref-map store) plus the
+             pure captureScene / restoreScene pair in the workbench host. Drives the acceptance
+             round-trip capture -> saveScene -> tryLoadScene -> restoreScene onto a different base
+             model, reproducing element ids, kinds, placements, bindings, and view state; plus the
+             upsert, load-miss, and blank-name rejection. -->
+        <Compile Include="SceneRoundTripTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
