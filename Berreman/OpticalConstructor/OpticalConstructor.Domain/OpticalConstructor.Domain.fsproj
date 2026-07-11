@@ -83,6 +83,12 @@
              add/rename/remove intents the host dispatches to CategoryProxy. Reuses the step-2
              CategoryError (blank name -> InvalidCategory). Depends only on MaterialLibrary above. -->
         <Compile Include="CategoryEditor.fs" />
+        <!-- Spec 0038 Part D (step 009): the generic faceted-navigation engine — pure,
+             Avalonia-free, generic over the item type (defs + constraints as values;
+             filter / countFor / breadcrumbCounts / buildTree as naive folds; the plain-text
+             filter as an ordinary constraint). Depends on nothing; step 010's numeric
+             bucket builder and step 011's concrete facet catalogues compile after it. -->
+        <Compile Include="Facets.fs" />
     </ItemGroup>
 
     <ItemGroup>

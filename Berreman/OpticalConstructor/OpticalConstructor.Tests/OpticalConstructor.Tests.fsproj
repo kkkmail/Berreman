@@ -114,6 +114,12 @@
              non-positive thresholds, constructed directly with no file IO (the
              AppSettingsProvider seam lives only in the App composition root). -->
         <Compile Include="WorkbenchSettingsTests.fs" />
+        <!-- Spec 0038 Part D (step 009): the generic faceted-navigation engine over a fixed
+             six-item corpus — OR within a facet / AND across facets, multi-valued extraction
+             counted per branch, half-open + degenerate numeric ranges, zero-count branches
+             absent, inapplicable attributes omitted, cumulative breadcrumb after-counts, and
+             the plain-text filter as an ordinary constraint. -->
+        <Compile Include="FacetsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
