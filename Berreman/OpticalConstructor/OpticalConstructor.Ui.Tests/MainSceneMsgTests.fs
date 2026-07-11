@@ -5,14 +5,14 @@
 /// kind, the Move-bay clamps, the Render-bay config clamps, exact-angle setting with
 /// its normalization and R3-lock semantics, the confirm-gated rotation resets, the
 /// wheel zoom clamps, the confirm-gated Library bind, pointer drag-threshold
-/// behaviour, the Experiments-bay host guards, and the Materials/Library workbench
-/// bays' disarm-on-query-change discipline.
+/// behaviour, the Experiments-bay host guards, and the Library (samples) workbench
+/// bay's disarm-on-query-change discipline. (The Materials bay's twin discipline moved
+/// with the bay into the step-013 Materials window — see `MaterialsWindowTests`.)
 namespace OpticalConstructor.Ui.Tests
 
 open Xunit
 open Berreman.Constants
 open OpticalConstructor.Controls
-open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
@@ -399,57 +399,10 @@ module MainSceneMsgTests =
         let m = initMain ()
         Assert.Equal<Model>(m, update (ExpRemove "not-a-number") m)
 
-    // ======= the workbench bays' disarm-on-query-change discipline (0033/024) =======
+    // ======= the workbench bay's disarm-on-query-change discipline (0033/024) =======
     // A pending remove confirmation (and the inline refusal message) never outlives
-    // the query/selection state it referred to.
-
-    /// The Materials bay with a pending remove confirmation on the seeded glass entry.
-    let private armedMaterials () : Model =
-        initMain () |> update (MatSelectRow MaterialIds.glass152) |> update MatRequestRemove
-
-    [<Fact>]
-    let ``a search-text edit disarms a pending material remove`` () =
-        let armed = armedMaterials ()
-        Assert.Equal(ConfirmingRemove MaterialIds.glass152, armed.materialRemoveConfirm)
-        Assert.Equal(NoRemoveConfirm, (update (MatSetSearchText "si") armed).materialRemoveConfirm)
-
-    [<Fact>]
-    let ``a category facet change disarms a pending material remove`` () =
-        Assert.Equal(NoRemoveConfirm, (update (MatSelectCategory None) (armedMaterials ())).materialRemoveConfirm)
-
-    [<Fact>]
-    let ``a dispersion facet change disarms a pending material remove`` () =
-        Assert.Equal(NoRemoveConfirm, (update (MatSelectDispersion OnlyDispersive) (armedMaterials ())).materialRemoveConfirm)
-
-    [<Fact>]
-    let ``a row re-selection re-targets the verbs and disarms the pending remove`` () =
-        let m = update (MatSelectRow MaterialIds.silicon) (armedMaterials ())
-        Assert.Equal(Some MaterialIds.silicon, m.selectedMaterial)
-        Assert.Equal(NoRemoveConfirm, m.materialRemoveConfirm)
-
-    [<Fact>]
-    let ``MatRequestRemove without a selection is inert`` () =
-        let m = initMain ()
-        Assert.Equal<Model>(m, update MatRequestRemove m)
-
-    [<Fact>]
-    let ``MatCancelRemove disarms but leaves the inline refusal visible`` () =
-        // Confirming the remove of the seeded, referenced glass entry surfaces the
-        // typed refusal; cancel only ever disarms — it never dismisses the message.
-        let refused = update MatConfirmRemove (armedMaterials ())
-        match refused.materialsError with
-        | Some (MaterialStillReferenced _) -> ()
-        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
-        let cancelled = update MatCancelRemove refused
-        Assert.Equal(NoRemoveConfirm, cancelled.materialRemoveConfirm)
-        match cancelled.materialsError with
-        | Some _ -> ()
-        | None -> Assert.Fail "the refusal must stay visible after a mere cancel"
-
-    [<Fact>]
-    let ``the inline refusal clears on the next query edit`` () =
-        let refused = update MatConfirmRemove (armedMaterials ())
-        Assert.Equal(None, (update (MatSetSearchText "si") refused).materialsError)
+    // the query/selection state it referred to. (The Materials bay's twin tests moved
+    // with the bay into the step-013 Materials window — `MaterialsWindowTests`.)
 
     /// The Library (samples) bay with a pending remove confirmation on a seeded sample.
     let private armedSamples () : Model =

@@ -75,10 +75,14 @@ type MainConstructorWindow(context : AppContext) as this =
         // built here; they arrive as the injected app-scope `context` built once at startup
         // (`Startup.context`), so every Main window the launcher opens shares the same stores.
         // All five inject through `initMainWith` (which seeds the REAL editor launchers,
-        // `EditorLaunchers.defaults` — since spec 0038 step 008 those open every editor
+        // `EditorLaunchers.defaults` — since spec 0038 step 008 those open every verb window
         // through the SVC_XDUO_0001 `WindowLauncher` over the host-layer WindowRegistry, so a
         // second Edit of the same entity ACTIVATES its live editor window), and the editor
-        // windows the workbench verbs open write to the SAME app-scope stores. The ui-smoke
+        // windows the workbench verbs open write to the SAME app-scope stores. The step-013
+        // Materials-window factory threads the same way: the ribbon strip's `Materials…` button
+        // opens the single-instance `MaterialsWindow` through `defaults.openMaterialsWindow`
+        // over `context.materials` / `context.categories` under `MaterialsWindowKey` — no
+        // extra composition here (step 47 owns the composition acceptance). The ui-smoke
         // composition acceptance (`WireUiCompositionTests`, and the step-006 two-surface proof
         // in `AppContextTests`) drives THIS window headless over a context composed the same way.
         Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories) TableAndElementRotationView.update TableAndElementRotationView.mainView

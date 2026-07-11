@@ -87,6 +87,13 @@
         <Compile Include="MaterialEditorWindow.fs" />
         <Compile Include="CategoryEditorView.fs" />
         <Compile Include="CategoryEditorWindow.fs" />
+        <!-- Spec 0038 Part E (step 013, UICOMP_XDUO_0009): the single-instance Materials window —
+             the step-012 FacetedTreeControls over the step-011 material facets, a view panel, and
+             the Add / Edit / Remove / Categories… verbs rewired from the retired Materials bay.
+             The pure view first, then the HostWindow composition root; both BEFORE the workbench
+             scene, whose EditorLaunchers.defaults opens the window under MaterialsWindowKey. -->
+        <Compile Include="MaterialsWindowView.fs" />
+        <Compile Include="MaterialsWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
         <!-- Spec 0038 Part C (step 006): the ONE app-scope composition record — the
              five domain proxies plus the step-005 WorkbenchSettings, built once at

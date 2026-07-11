@@ -16,19 +16,19 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Spec 0033 (024) — the Main-screen MATERIALS and LIBRARY workbench bays: the step-015/016
-/// list surfaces (`MaterialsControls` / `SampleLibraryControls`) wired over the step-005/006
-/// write seams (`MaterialProxy` / `SampleProxy`) in `TableAndElementRotationView`. Two layers,
-/// the repo precedent: pure tests for the host projections / the `Mat…`/`Smp…` update arms, and
-/// headless proofs that DRIVE THE REAL ELMISH LOOP BY UiIds — the slice acceptance: search
-/// filters the rows, Add/Edit open the step-022/023 editor windows, removing a REFERENCED
-/// material surfaces the `MaterialStillReferenced` message and leaves the store unchanged, and
-/// removing an unreferenced entry updates the list in the same render pass.
+/// Spec 0033 (024) / 0038 (013) — the Main-screen LIBRARY (samples) workbench bay: the step-016
+/// list surface (`SampleLibraryControls`) wired over the step-005 write seam (`SampleProxy`) in
+/// `TableAndElementRotationView`. Two layers, the repo precedent: pure tests for the host
+/// projections / the `Smp…` update arms and the launcher seam, and headless proofs that DRIVE
+/// THE REAL ELMISH LOOP BY UiIds. The MATERIALS bay these tests used to cover beside it is now
+/// the single-instance Materials WINDOW (spec 0038 step 013) — its coverage lives in
+/// `MaterialsWindowTests`; what remains here is the workbench side: the bay roster without a
+/// Materials bay, the strip button's launcher seam, and the samples workbench itself.
 module MainWorkbenchTests =
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
     /// workbench rows / facet options / verb buttons live in variable-membership lists, so they
-    /// carry an AutomationId — the MaterialsControls precedent).
+    /// carry an AutomationId — the SampleLibraryControls precedent).
     let private matchesId (id : string) (c : Control) : bool =
         c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
 
@@ -70,23 +70,6 @@ module MainWorkbenchTests =
         | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail($"%s{id} was not found")
 
-    /// The text of the TextBlock carrying `id`.
-    let private textOf (window : Window) (id : string) : string =
-        match tryFindControl window id with
-        | Some (:? TextBlock as tb) -> tb.Text
-        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
-        | None -> failwith $"%s{id} was not found in the visual tree"
-
-    /// The label text INSIDE the clickable Border carrying `id` (a facet / picker option box is a
-    /// Border with a single TextBlock child — its AutomationId is stable, only its label re-labels).
-    let private labelInside (window : Window) (id : string) : string =
-        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
-        | Some b ->
-            match b.GetVisualDescendants() |> Seq.tryPick (function :? TextBlock as t -> Some t.Text | _ -> None) with
-            | Some text -> text
-            | None -> failwith $"%s{id} carries no text label"
-        | None -> failwith $"%s{id} was not found in the visual tree"
-
     /// Fresh, isolated in-memory stores per test — the SAME composition the App performs: the
     /// samples store first, then the materials store whose remove-block consults the LIVE
     /// samples through `samplesReferencing`.
@@ -95,10 +78,9 @@ module MainWorkbenchTests =
         let materials = MaterialProxy.createInMemory (samplesReferencing samples)
         materials, samples
 
-    /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App). The
-    /// category store (spec 0035 step 009) is composed here from the materials store — its
-    /// `materialsReferencingCategory` lookup — exactly as the App root does; the built model exposes
-    /// it as `.categories`, so a test can rename through the SAME proxy the bay re-queries.
+    /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App).
+    /// The category store (spec 0035 step 009) is composed here from the materials store — its
+    /// `materialsReferencingCategory` lookup — exactly as the App root does.
     let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : Model =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
@@ -119,20 +101,14 @@ module MainWorkbenchTests =
         Dispatcher.UIThread.RunJobs()
         window
 
-    /// A recording launcher pair (the functional-proxy seam — tests observe which editor a
-    /// verb requested without opening a window). The NEW intents record their upfront-minted
-    /// id (spec 0038 step 008 — the verb mints at the window-open dispatch), so a test can
-    /// also pin that two Adds mint two DISTINCT ids.
+    /// A recording launcher pair (the functional-proxy seam — tests observe which window a
+    /// verb requested without opening one). The NEW sample intents record their upfront-minted
+    /// id (spec 0038 step 008 — the verb mints at the window-open dispatch); the strip button's
+    /// Materials-window request records its tag (spec 0038 step 013).
     let private recordingLaunchers () : ResizeArray<string> * EditorLaunchers =
         let calls = ResizeArray<string>()
         let launchers : EditorLaunchers =
             {
-                openMaterialEditor =
-                    fun _ _ intent ->
-                        calls.Add(
-                            match intent with
-                            | MaterialEditorView.EditMaterial e -> "material-edit:" + e.name
-                            | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}")
                 openSampleEditor =
                     fun _ _ intent ->
                         calls.Add(
@@ -140,12 +116,9 @@ module MainWorkbenchTests =
                             | SampleEditorView.NewBlankSample mintedId -> $"sample-add:{mintedId.value}"
                             | SampleEditorView.NewSeededMultilayer _ -> "sample-multilayer"
                             | SampleEditorView.EditSample s -> "sample-edit:" + s.name)
-                openCategoryEditor = fun _ -> calls.Add "categories-open"
+                openMaterialsWindow = fun _ _ -> calls.Add "materials-window"
             }
         calls, launchers
-
-    let private rowIds (state : MaterialsControls.State) : string list =
-        state.rows |> List.map (fun r -> r.materialId)
 
     let private sampleRowIds (state : SampleLibraryControls.State) : string list =
         state.rows |> List.map (fun r -> r.sampleId)
@@ -153,39 +126,26 @@ module MainWorkbenchTests =
     // ============================ pure: bay roster ============================
 
     [<Fact>]
-    let ``the workbench bay names are Materials and Library and both are offered by the ribbon`` () =
-        Assert.Equal("Materials", BayNames.materials)
+    let ``the ribbon offers no Materials bay any more — Library is the one full-surface workbench bay`` () =
+        // Spec 0038 step 013: the Materials bay left the ribbon (the Materials WINDOW carries
+        // the workbench now); the Library (samples) bay stays, LAST, beside the Selector.
         Assert.Equal("Library", BayNames.library)
-        Assert.Contains(BayNames.materials, BayNames.all)
         Assert.Contains(BayNames.library, BayNames.all)
-        // The samples workbench reuses the label the step-014 Selector rename freed — the
-        // Selector bay itself is unchanged and distinct.
         Assert.Contains(BayNames.selector, BayNames.all)
+        Assert.DoesNotContain("Materials", BayNames.all)
+        Assert.Equal(Some BayNames.library, List.tryLast BayNames.all)
         let m = freshMain ()
         let bays = mainBays m ignore
         Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
 
     [<Fact>]
-    let ``the workbench facet code maps round-trip`` () =
-        Assert.Equal(Some CategoryIds.glass, materialCategoryOfCode (materialCategoryCode (Some CategoryIds.glass)))
-        Assert.Equal(Some CategoryIds.crystal, materialCategoryOfCode (materialCategoryCode (Some CategoryIds.crystal)))
-        Assert.Equal<CategoryId option>(None, materialCategoryOfCode "all")
-        Assert.Equal(OnlyDispersive, dispersionFilterOfCode (dispersionFilterCode OnlyDispersive))
-        Assert.Equal(AnyDispersion, dispersionFilterOfCode "all")
+    let ``the samples substrate facet code map round-trips`` () =
         Assert.Equal(Some Plate, substrateFacetOfCode (substrateFacetCode (Some Plate)))
+        Assert.Equal(Some Wedge, substrateFacetOfCode (substrateFacetCode (Some Wedge)))
+        Assert.Equal(Some ThinFilm, substrateFacetOfCode (substrateFacetCode (Some ThinFilm)))
         Assert.Equal<SubstrateKind option>(None, substrateFacetOfCode "all")
 
-    [<Fact>]
-    let ``the category facet code is the CategoryId Guid string, mapping round-trip for a user category too`` () =
-        // The code is now the Guid string (spec 0035 step 009), stable across a rename, and the
-        // inverse parses the Guid directly — so it round-trips for a USER category not in the seeded
-        // catalogue, which a name-derived code resolved through `standardCategories` could not.
-        Assert.Equal(string CategoryIds.glass.value, materialCategoryCode (Some CategoryIds.glass))
-        Assert.Equal("all", materialCategoryCode None)
-        let userId = CategoryId.create ()
-        Assert.Equal(Some userId, materialCategoryOfCode (materialCategoryCode (Some userId)))
-
-    // ============================ pure: category facet + create picker over the live catalogue ====
+    // ============================ pure: the create picker over the live catalogue ====
 
     /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard on
     /// update), failing the test on a typed rejection.
@@ -193,23 +153,6 @@ module MainWorkbenchTests =
         match categories.updateCategory { id = CategoryIds.glass; name = newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
         | Ok () -> ()
         | Error e -> Assert.Fail($"rename failed: %A{e}")
-
-    [<Fact>]
-    let ``the category facet lists the live catalogue with a leading all option, Guid codes and name labels, re-labelling on a proxy rename in the same projection`` () =
-        let m = freshMain ()
-        let before = materialsState m
-        // The leading option is the match-everything "all"; each other option carries a Guid code.
-        Assert.Equal("all", (List.head before.categoryOptions).code)
-        Assert.Equal("All", (List.head before.categoryOptions).label)
-        let glassCode = string CategoryIds.glass.value
-        Assert.Equal("Glass", (before.categoryOptions |> List.find (fun o -> o.code = glassCode)).label)
-        // Vacuum (HiddenOnCreate) is STILL a filterable facet — the facet lists the WHOLE catalogue.
-        Assert.Contains(before.categoryOptions, fun (o : MaterialsControls.FacetOption) -> o.code = string CategoryIds.vacuum.value)
-        // Rename Glass through the SAME proxy the bay re-queries: the stable Guid code is unchanged,
-        // only the label re-labels — resolved live in the very next projection (same render pass).
-        renameGlass m.categories "Glazing"
-        let after = materialsState m
-        Assert.Equal("Glazing", (after.categoryOptions |> List.find (fun o -> o.code = glassCode)).label)
 
     [<Fact>]
     let ``the material-editor create picker lists the live selectable catalogue, excludes HiddenOnCreate, and re-labels on a proxy rename`` () =
@@ -231,41 +174,6 @@ module MainWorkbenchTests =
     // ============================ pure: projections ============================
 
     [<Fact>]
-    let ``materialsState lists every stored material and editability follows the step-013 complexity`` () =
-        let m = freshMain ()
-        let st = materialsState m
-        Assert.Equal(12, List.length st.rows)
-        Assert.Equal("", st.searchText)
-        Assert.Equal("all", st.selectedCategory)
-        Assert.Equal("all", st.selectedDispersion)
-        let editabilityOf (id : MaterialId) : MaterialsControls.MaterialEditability =
-            (st.rows |> List.find (fun r -> r.materialId = string id.value)).editability
-        Assert.Equal(MaterialsControls.Editable, editabilityOf MaterialIds.glass152)
-        Assert.Equal(MaterialsControls.ViewOnly, editabilityOf MaterialIds.silicon)
-        Assert.Equal(MaterialsControls.ViewOnly, editabilityOf MaterialIds.vacuum)
-        Assert.Equal(MaterialsControls.ViewOnly, editabilityOf MaterialIds.langasite)
-
-    [<Fact>]
-    let ``the materials search text and facet selectors drive searchMaterials`` () =
-        let m = freshMain ()
-        // Name-fragment search: the four transparent glasses.
-        let byText = update (MatSetSearchText "glass") m
-        Assert.Equal(4, List.length (materialsState byText).rows)
-        Assert.Contains(string MaterialIds.glass152.value, rowIds (materialsState byText))
-        Assert.DoesNotContain(string MaterialIds.silicon.value, rowIds (materialsState byText))
-        // The category facet: the four crystals.
-        let byCategory = update (MatSelectCategory (Some CategoryIds.crystal)) m
-        Assert.Equal(4, List.length (materialsState byCategory).rows)
-        Assert.Contains(string MaterialIds.langasite.value, rowIds (materialsState byCategory))
-        // The dispersion facet: only the wavelength-dependent presets.
-        let byDispersion = update (MatSelectDispersion OnlyDispersive) m
-        Assert.Equal(2, List.length (materialsState byDispersion).rows)
-        Assert.Contains(string MaterialIds.silicon.value, rowIds (materialsState byDispersion))
-        // Facets compose: no glass is a crystal.
-        let composed = m |> update (MatSetSearchText "glass") |> update (MatSelectCategory (Some CategoryIds.crystal))
-        Assert.Empty((materialsState composed).rows)
-
-    [<Fact>]
     let ``samplesState lists the seeded samples and the search text + substrate facet drive searchSamples`` () =
         let m = freshMain ()
         Assert.Equal(11, List.length (samplesState m).rows)
@@ -278,59 +186,6 @@ module MainWorkbenchTests =
         Assert.DoesNotContain(string SeedSamples.glassFilm600.id.value, sampleRowIds (samplesState byFacet))
 
     // ============================ pure: confirm-gated remove ============================
-
-    [<Fact>]
-    let ``Remove is confirm-gated: request arms the inline confirm, Cancel backs out, no selection is inert`` () =
-        let m = freshMain ()
-        // No selection → the request is inert.
-        Assert.Equal(NoRemoveConfirm, (update MatRequestRemove m).materialRemoveConfirm)
-        let armed = m |> update (MatSelectRow MaterialIds.glass200) |> update MatRequestRemove
-        Assert.Equal(ConfirmingRemove MaterialIds.glass200, armed.materialRemoveConfirm)
-        let cancelled = update MatCancelRemove armed
-        Assert.Equal(NoRemoveConfirm, cancelled.materialRemoveConfirm)
-        // Nothing was removed by arming/cancelling.
-        Assert.Equal(12, List.length (materialsState cancelled).rows)
-
-    [<Fact>]
-    let ``acceptance (pure): removing a REFERENCED material surfaces MaterialStillReferenced and leaves the store unchanged`` () =
-        let materials, samples = freshStores ()
-        let m = mainWith materials samples
-        let refused =
-            m
-            |> update (MatSelectRow MaterialIds.glass152)
-            |> update MatRequestRemove
-            |> update MatConfirmRemove
-        match refused.materialsError with
-        | Some (MaterialStillReferenced reason) ->
-            Assert.Contains("still referenced", reason)
-            // The block NAMES the referencing samples (never a cascade).
-            Assert.Contains("Glass plate (n=1.52, 1 mm)", reason)
-        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
-        // The store is unchanged and the projection still lists the entry.
-        match materials.listMaterials () with
-        | Ok entries ->
-            Assert.Equal(12, List.length entries)
-            Assert.Contains(MaterialIds.glass152, entries |> List.map (fun e -> e.id))
-        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
-        Assert.Contains(string MaterialIds.glass152.value, rowIds (materialsState refused))
-
-    [<Fact>]
-    let ``acceptance (pure): removing an UNREFERENCED material drops the row from the projection in the same pass`` () =
-        let materials, samples = freshStores ()
-        let m = mainWith materials samples
-        let removed =
-            m
-            |> update (MatSelectRow MaterialIds.glass200)
-            |> update MatRequestRemove
-            |> update MatConfirmRemove
-        match removed.materialsError with
-        | None -> ()
-        | Some e -> Assert.Fail($"expected no error, got %A{e}")
-        Assert.DoesNotContain(string MaterialIds.glass200.value, rowIds (materialsState removed))
-        Assert.Equal<MaterialId option>(None, removed.selectedMaterial)
-        match materials.listMaterials () with
-        | Ok entries -> Assert.Equal(11, List.length entries)
-        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
 
     [<Fact>]
     let ``acceptance (pure): removing a sample drops its row from the samples projection in the same pass`` () =
@@ -349,16 +204,12 @@ module MainWorkbenchTests =
         | Ok all -> Assert.Equal(10, List.length all)
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
-    // ============================ pure: Add / Edit / View verbs ============================
+    // ============================ pure: the launcher seam ============================
 
     [<Fact>]
-    let ``Add, Edit and Make-multilayer reach the editor launchers with the right target`` () =
+    let ``Add, Edit, Make-multilayer and the strip button reach the launchers with the right target`` () =
         let calls, launchers = recordingLaunchers ()
         let m = { freshMain () with launchers = launchers }
-        update MatAdd m |> ignore
-        Assert.Contains(calls, fun (c : string) -> c.StartsWith "material-add:")
-        m |> update (MatSelectRow MaterialIds.glass152) |> update MatEdit |> ignore
-        Assert.Contains("material-edit:Transparent glass (n = 1.52)", calls)
         update SmpAdd m |> ignore
         Assert.Contains(calls, fun (c : string) -> c.StartsWith "sample-add:")
         m |> update (SmpSelectRow SeedSamples.multilayerQw.id) |> update SmpEdit |> ignore
@@ -369,38 +220,32 @@ module MainWorkbenchTests =
         calls.Clear()
         update SmpMakeMultilayer m |> ignore
         Assert.Equal<string list>([ "sample-multilayer" ], List.ofSeq calls)
+        // The strip button's request (spec 0038 step 013): a pure launch over the model's stores.
+        calls.Clear()
+        let after = update OpenMaterialsWindow m
+        Assert.Equal<string list>([ "materials-window" ], List.ofSeq calls)
+        Assert.Equal<Model>(m, after)
         // Edit without a selection reaches no launcher.
         calls.Clear()
-        update MatEdit m |> ignore
         update SmpEdit m |> ignore
         Assert.Empty(calls)
 
     [<Fact>]
-    let ``two Adds mint two DISTINCT upfront ids at the window-open dispatch — for materials and samples`` () =
+    let ``two sample Adds mint two DISTINCT upfront ids at the window-open dispatch`` () =
         // Spec 0038 step 008: the id-mint left the save path — the Add verb mints the entity's
         // Guid AT WINDOW OPEN and hands it to the launcher inside the intent, so every Add
-        // opens its own registry-keyed editor (the recorded call carries the minted id).
+        // opens its own registry-keyed editor (the recorded call carries the minted id). The
+        // material-side twin of this pin lives in MaterialsWindowTests (step 013).
         let calls, launchers = recordingLaunchers ()
         let m = { freshMain () with launchers = launchers }
-        update MatAdd m |> ignore
-        update MatAdd m |> ignore
         update SmpAdd m |> ignore
         update SmpAdd m |> ignore
-        let mintsOf (prefix : string) : string list =
-            calls |> Seq.filter (fun c -> c.StartsWith prefix) |> List.ofSeq
-        match mintsOf "material-add:" with
-        | [ a; b ] -> Assert.NotEqual<string>(a, b)
-        | other -> Assert.Fail($"expected two material Adds, got %A{other}")
-        match mintsOf "sample-add:" with
+        match calls |> Seq.filter (fun c -> c.StartsWith "sample-add:") |> List.ofSeq with
         | [ a; b ] -> Assert.NotEqual<string>(a, b)
         | other -> Assert.Fail($"expected two sample Adds, got %A{other}")
 
     [<Fact>]
-    let ``View toggles the read-only panel target for the selected entry`` () =
-        let m = freshMain () |> update (MatSelectRow MaterialIds.glass152)
-        let shown = update MatView m
-        Assert.Equal(Some MaterialIds.glass152, shown.viewedMaterial)
-        Assert.Equal<MaterialId option>(None, (update MatView shown).viewedMaterial)
+    let ``View toggles the read-only panel target for the selected sample`` () =
         let s = freshMain () |> update (SmpSelectRow SeedSamples.multilayerQw.id)
         let shownSample = update SmpView s
         Assert.Equal(Some SeedSamples.multilayerQw.id, shownSample.viewedSample)
@@ -420,66 +265,29 @@ module MainWorkbenchTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``headless: the Materials bay search filters the listed rows by UiIds`` () =
+    let ``headless acceptance: Edit on the Library bay opens the Sample editor seeded with the picked sample`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshStores ()
-            let window = mountMain (mainWith materials samples)
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            // Every stored material is listed before the search narrows it.
-            Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)))
-            Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.silicon.value)))
-            setText window MaterialsControls.UiIds.searchBox "glass"
-            Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)),
-                        "the matching row must stay listed")
-            Assert.False(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.silicon.value)),
-                         "the non-matching row must leave the tree in the same render pass")
-            window.Close())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: Add opens the Material editor and Edit opens the Sample editor`` () =
-        HeadlessSession.run (fun () ->
-            let materials, samples = freshStores ()
-            // Recording launchers that still open the REAL step-022/023 editor windows, so the
+            // A recording launcher that still opens the REAL step-022 editor window, so the
             // proof is end-to-end: verb click by UiIds → the real editor window is shown.
             let opened = ResizeArray<Window>()
             let launchers : EditorLaunchers =
-                {
-                    openMaterialEditor =
-                        fun m categories intent ->
-                            let w = MaterialEditorWindow(m, intent, categories = categories)
-                            opened.Add w
-                            w.Show()
+                { EditorLaunchers.defaults with
                     openSampleEditor =
                         fun m s intent ->
                             let w = SampleEditorWindow(m, s, intent)
                             opened.Add w
-                            w.Show()
-                    openCategoryEditor =
-                        fun categories ->
-                            let w = CategoryEditorWindow(categories)
-                            opened.Add w
-                            w.Show()
-                }
+                            w.Show() }
             let window = mountMain { mainWith materials samples with launchers = launchers }
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            clickOn window MaterialsControls.UiIds.addButton
-            Dispatcher.UIThread.RunJobs()
-            Assert.Equal(1, opened.Count)
-            Assert.True(opened.[0].IsVisible, "the Material editor window must be shown")
-            Assert.Equal(MaterialEditorView.UiIds.window, Avalonia.Automation.AutomationProperties.GetAutomationId(opened.[0]))
-            opened.[0].Close()
-            // The Library bay: narrow the search, select the sample, Edit — the step-022 editor
-            // opens seeded with that sample.
             clickOn window (Ribbon.UiIds.tab BayNames.library)
             setText window SampleLibraryControls.UiIds.searchBox "n=1.75"
             clickOn window (SampleLibraryControls.UiIds.row (string SeedSamples.glassFilm600.id.value))
             clickOn window SampleLibraryControls.UiIds.editButton
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal(2, opened.Count)
-            Assert.True(opened.[1].IsVisible, "the Sample editor window must be shown")
-            Assert.Contains("Glass thin film", opened.[1].Title)
-            opened.[1].Close()
+            Assert.Equal(1, opened.Count)
+            Assert.True(opened.[0].IsVisible, "the Sample editor window must be shown")
+            Assert.Contains("Glass thin film", opened.[0].Title)
+            opened.[0].Close()
             window.Close())
 
     [<Fact>]
@@ -526,45 +334,10 @@ module MainWorkbenchTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: removing a REFERENCED material surfaces the inline message and leaves the store unchanged`` () =
+    let ``headless acceptance: removing a sample updates the Library list in the same render pass`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshStores ()
             let window = mountMain (mainWith materials samples)
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            // Narrow the list so the target row sits inside the scroll viewport, then drive the
-            // confirm-gated remove by UiIds.
-            setText window MaterialsControls.UiIds.searchBox "1.52"
-            clickOn window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value))
-            clickOn window MaterialsControls.UiIds.removeButton
-            clickOn window WorkbenchIds.removeMaterialConfirm
-            let message = textOf window WorkbenchIds.materialsMessage
-            Assert.Contains("still referenced", message)
-            Assert.Contains("Glass plate", message)
-            // The store is unchanged and the row is still listed.
-            match materials.listMaterials () with
-            | Ok entries -> Assert.Equal(12, List.length entries)
-            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
-            Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)))
-            window.Close())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: removing unreferenced entries updates both lists in the same render pass`` () =
-        HeadlessSession.run (fun () ->
-            let materials, samples = freshStores ()
-            let window = mountMain (mainWith materials samples)
-            // Materials bay: glass200 is referenced by no seeded sample.
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            setText window MaterialsControls.UiIds.searchBox "2.00"
-            clickOn window (MaterialsControls.UiIds.row (string MaterialIds.glass200.value))
-            clickOn window MaterialsControls.UiIds.removeButton
-            clickOn window WorkbenchIds.removeMaterialConfirm
-            Assert.False(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass200.value)),
-                         "the removed material's row must leave the tree in the same render pass")
-            match materials.listMaterials () with
-            | Ok entries -> Assert.Equal(11, List.length entries)
-            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
-            // Library bay: a sample remove always succeeds and drops the row.
             clickOn window (Ribbon.UiIds.tab BayNames.library)
             setText window SampleLibraryControls.UiIds.searchBox "n=1.75"
             clickOn window (SampleLibraryControls.UiIds.row (string SeedSamples.glassFilm600.id.value))
@@ -579,17 +352,10 @@ module MainWorkbenchTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``headless: the View panels render the n-k chart for a material and the band view for a sample`` () =
+    let ``headless: the sample View panel renders the band view inside the panel`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshStores ()
             let window = mountMain (mainWith materials samples)
-            // Materials View: read-only metadata plus the step-19 dual-axis n/k chart canvas.
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            setText window MaterialsControls.UiIds.searchBox "1.52"
-            clickOn window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value))
-            clickOn window MaterialsControls.UiIds.viewButton
-            Assert.True(isPresent window WorkbenchIds.materialViewPanel, "the material View panel must render")
-            Assert.True(isPresent window WorkbenchIds.materialNkChart, "the n/k chart canvas must render")
             // Library View: the LayerBandsControls band view over the sample's stack (the
             // Details-bay rendering), scoped to the panel so the Details bay's own instance
             // cannot satisfy the assertion.
@@ -613,87 +379,27 @@ module MainWorkbenchTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: Materials and Library are the LAST two full-surface bays with no table canvas, while a table bay keeps its canvas`` () =
+    let ``headless acceptance: the Materials tab is gone, the strip button is on the ribbon row, and the Library bay stays full-surface`` () =
         HeadlessSession.run (fun () ->
             let materials, samples = freshStores ()
             let window = mountMain (mainWith materials samples)
-            // The two workbenches are the LAST two bays the ribbon offers (spec 0035 step 008 reorder).
-            Assert.Equal<string list>(
-                [ BayNames.materials; BayNames.library ],
-                BayNames.all |> List.rev |> List.truncate 2 |> List.rev)
+            // Spec 0038 step 013: NO Materials ribbon tab any more — the tab-strip row carries
+            // the right-aligned Materials… button instead (the constructor-side entry point).
+            Assert.False(isPresent window (Ribbon.UiIds.tab "Materials"),
+                         "the Materials bay tab must be gone from the ribbon")
+            Assert.True(isPresent window WorkbenchIds.openMaterialsButton,
+                        "the ribbon strip row must carry the right-aligned Materials… button")
             // The default bay (Rotation) is a table bay: the shared table canvas is realized below the strip.
             Assert.True(isPresent window UiIds.canvas, "a table bay keeps its table canvas below the ribbon strip")
-            // The Materials workbench is FULL-SURFACE: its list fills the area below the strip and the table
-            // canvas is GONE (the full-surface bay replaces the canvas and wires no table gestures).
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            Assert.True(isPresent window MaterialsControls.UiIds.searchBox, "the Materials workbench fills the surface below the strip")
-            Assert.True(isPresent window (MaterialsControls.UiIds.row (string MaterialIds.glass152.value)),
-                        "the Materials list is realized in the full-surface area")
-            Assert.False(isPresent window UiIds.canvas, "a full-surface Materials bay shows no table canvas")
-            // The Library (samples) workbench is likewise full-surface — no table canvas.
+            // The Library (samples) workbench is FULL-SURFACE: its list fills the area below the
+            // strip and the table canvas is GONE (the full-surface bay replaces the canvas and
+            // wires no table gestures).
             clickOn window (Ribbon.UiIds.tab BayNames.library)
             Assert.True(isPresent window SampleLibraryControls.UiIds.searchBox, "the Library workbench fills the surface below the strip")
+            Assert.True(isPresent window (SampleLibraryControls.UiIds.row (string SeedSamples.glassFilm600.id.value)),
+                        "the Library list is realized in the full-surface area")
             Assert.False(isPresent window UiIds.canvas, "a full-surface Library bay shows no table canvas")
             // Returning to a table bay restores the canvas (and its gestures) below the strip.
             clickOn window (Ribbon.UiIds.tab BayNames.rotation)
             Assert.True(isPresent window UiIds.canvas, "returning to a table bay restores the table canvas")
-            window.Close())
-
-    // ============================ headless (ui-smoke): the category catalogue ============================
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: the Materials bay Categories verb opens the Category editor window`` () =
-        HeadlessSession.run (fun () ->
-            let materials, samples = freshStores ()
-            // Recording launchers that still open the REAL step-6 Category editor, so the proof is
-            // end-to-end: the Categories verb click by UiId → the real editor window is shown.
-            let opened = ResizeArray<Window>()
-            let launchers : EditorLaunchers =
-                {
-                    openMaterialEditor = fun _ _ _ -> ()
-                    openSampleEditor = fun _ _ _ -> ()
-                    openCategoryEditor =
-                        fun categories ->
-                            let w = CategoryEditorWindow(categories)
-                            opened.Add w
-                            w.Show()
-                }
-            let window = mountMain { mainWith materials samples with launchers = launchers }
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            clickOn window WorkbenchIds.categoriesButton
-            Dispatcher.UIThread.RunJobs()
-            Assert.Equal(1, opened.Count)
-            Assert.True(opened.[0].IsVisible, "the Category editor window must be shown")
-            Assert.True(matchesId CategoryEditorView.UiIds.window opened.[0], "the opened window must be the Category editor")
-            opened.[0].Close()
-            window.Close())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``headless acceptance: a category renamed through the proxy re-labels the Materials facet and the create picker in the same render pass`` () =
-        HeadlessSession.run (fun () ->
-            let materials, samples = freshStores ()
-            let model0 = mainWith materials samples
-            let categories = model0.categories       // the SAME proxy the bay re-queries on render
-            let glassCode = string CategoryIds.glass.value
-            let window = mountMain model0
-            clickOn window (Ribbon.UiIds.tab BayNames.materials)
-            // Before: the facet option for Glass (found by its stable Guid id) reads "Glass".
-            Assert.Equal("Glass", labelInside window (MaterialsControls.UiIds.categoryOption glassCode))
-            // Rename Glass through the shared proxy, then dispatch a bay re-render.
-            renameGlass categories "Glazing"
-            setText window MaterialsControls.UiIds.searchBox "glass"
-            // The facet re-queries listCategories on that render: the stable Guid id is unchanged and
-            // the option re-labels to "Glazing" in the same render pass.
-            Assert.Equal("Glazing", labelInside window (MaterialsControls.UiIds.categoryOption glassCode))
-            // The create picker re-labels too: opening the editor over the SAME proxy shows "Glazing"
-            // for the same stable Guid id (Vacuum stays excluded from the picker).
-            let editor = MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ()), categories = categories)
-            editor.Show()
-            Dispatcher.UIThread.RunJobs()
-            Assert.Equal("Glazing", labelInside editor (MaterialEditorView.UiIds.categoryOption glassCode))
-            Assert.False(isPresent editor (MaterialEditorView.UiIds.categoryOption (string CategoryIds.vacuum.value)),
-                         "the create picker excludes the HiddenOnCreate Vacuum category")
-            editor.Close()
             window.Close())

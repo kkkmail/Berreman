@@ -1,0 +1,706 @@
+namespace OpticalConstructor.Ui.Tests
+
+open Avalonia
+open Avalonia.Controls
+open Avalonia.Headless
+open Avalonia.Input
+open Avalonia.Threading
+open Avalonia.VisualTree
+open Avalonia.FuncUI.Hosts
+open Avalonia.FuncUI.Elmish
+open Elmish
+open Xunit
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Facets
+open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Controls
+open OpticalConstructor.Ui
+
+/// Spec 0038 Part E (step 013) — the Materials window (UICOMP_XDUO_0009): the single-instance
+/// window instantiating the step-012 `FacetedTreeControls` over the step-011 material facets,
+/// beside the view panel and the Add / Edit / Remove / Categories… verbs rewired from the
+/// retired Materials bay. Two layers, the repo precedent: pure tests for the MVU model, the
+/// engine projection and the disarm discipline; headless proofs driving the REAL window (and
+/// the REAL workbench strip button) by automation ids — the slice acceptance: the strip button
+/// opens ONE window (a second click ACTIVATES it), applying facet constraints narrows the
+/// corpus, the verbs operate over the shared app-scoped stores, and a category rename re-labels
+/// the category facet.
+module MaterialsWindowTests =
+
+    module MW = OpticalConstructor.Ui.MaterialsWindowView
+    module Scene = OpticalConstructor.Ui.TableAndElementRotationView
+
+    // ============================ shared helpers ============================
+
+    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
+    /// window's rows / offers / verbs live in variable-membership lists, so they carry an
+    /// AutomationId — the FacetedTreeControls discipline).
+    let private matchesId (id : string) (c : Control) : bool =
+        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
+
+    let private tryFindControl (window : Window) (id : string) : Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
+
+    let private isPresent (window : Window) (id : string) : bool =
+        match tryFindControl window id with
+        | Some _ -> true
+        | None -> false
+
+    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
+    let private clickOn (window : Window) (id : string) : unit =
+        let found =
+            window.GetVisualDescendants()
+            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
+        match found with
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
+        | Some b ->
+            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+            if c.HasValue then
+                window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                if window.IsVisible then
+                    window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+            else Assert.Fail($"%s{id} has no on-screen position")
+
+    /// The display text under the control carrying `id` (the control itself when it is a
+    /// TextBlock, its first TextBlock descendant otherwise).
+    let private textOf (window : Window) (id : string) : string =
+        match tryFindControl window id with
+        | None -> ""
+        | Some (:? TextBlock as t) -> (if isNull t.Text then "" else t.Text)
+        | Some c ->
+            c.GetVisualDescendants()
+            |> Seq.tryPick (function :? TextBlock as t when not (isNull t.Text) -> Some t.Text | _ -> None)
+            |> Option.defaultValue ""
+
+    /// Set the text of the TextBox carrying `id` (the editor windows subscribe text changes;
+    /// the faceted filter box does NOT — it is driven through `commitFilter` below).
+    let private setText (window : Window) (id : string) (text : string) : unit =
+        match tryFindControl window id with
+        | Some (:? TextBox as tb) ->
+            tb.Text <- text
+            Dispatcher.UIThread.RunJobs()
+        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail($"%s{id} was not found")
+
+    /// Commit `text` through the REAL faceted filter box: set the box text (no dispatch — the
+    /// control has no text-change subscription) and press Enter, the control's commit gesture.
+    let private commitFilter (window : Window) (text : string) : unit =
+        match tryFindControl window FacetedTreeControls.UiIds.filterBox with
+        | Some (:? TextBox as tb) ->
+            tb.Focus() |> ignore
+            Dispatcher.UIThread.RunJobs()
+            tb.Text <- text
+            Dispatcher.UIThread.RunJobs()
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.KeyReleaseQwerty(PhysicalKey.Enter, RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+        | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail("the filter box was not found")
+
+    /// The label text INSIDE the clickable Border carrying `id` (a picker option box is a
+    /// Border with a single TextBlock child).
+    let private labelInside (window : Window) (id : string) : string =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        | Some b ->
+            match b.GetVisualDescendants() |> Seq.tryPick (function :? TextBlock as t -> Some t.Text | _ -> None) with
+            | Some text -> text
+            | None -> failwith $"%s{id} carries no text label"
+        | None -> failwith $"%s{id} was not found in the visual tree"
+
+    /// The number of generated tree node rows (any control whose AutomationId carries the
+    /// FacetTreeNode_ prefix) — gated mode must render ZERO.
+    let private treeRowCount (window : Window) : int =
+        window.GetVisualDescendants()
+        |> Seq.filter (fun v ->
+            match v with
+            | :? Control as c ->
+                let autoId = Avalonia.Automation.AutomationProperties.GetAutomationId(c)
+                not (isNull autoId) && autoId.StartsWith("FacetTreeNode_")
+            | _ -> false)
+        |> Seq.length
+
+    /// Fresh, isolated in-memory stores per test — the SAME composition the App performs
+    /// (samples first, then materials whose remove-block consults the LIVE samples, then
+    /// categories whose remove-block consults the LIVE materials).
+    let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
+        let samples = SampleProxy.createInMemory ()
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        materials, samples, categories
+
+    /// A recording stub context (the functional-proxy seam): the launchers append tags, so a
+    /// verb's request is observable without opening a window.
+    let private stubContext (materials : MaterialProxy) (categories : CategoryProxy) : ResizeArray<string> * MW.MaterialsWindowContext =
+        let calls = ResizeArray<string>()
+        let context : MW.MaterialsWindowContext =
+            {
+                materials = materials
+                categories = categories
+                treeAutoBuildThreshold = TreeAutoBuildThreshold.defaultValue
+                openMaterialEditor =
+                    fun intent ->
+                        calls.Add(
+                            match intent with
+                            | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}"
+                            | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name)
+                openCategoryEditor = fun () -> calls.Add "categories-open"
+            }
+        calls, context
+
+    let private freshModel () : ResizeArray<string> * MW.Model =
+        let materials, _, categories = freshStores ()
+        let calls, context = stubContext materials categories
+        calls, MW.init context
+
+    /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard
+    /// on update), failing the test on a typed rejection.
+    let private renameGlass (categories : CategoryProxy) (newName : string) : unit =
+        match categories.updateCategory { id = CategoryIds.glass; name = newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
+        | Ok () -> ()
+        | Error e -> Assert.Fail($"rename failed: %A{e}")
+
+    let private filteredIds (m : MW.Model) : MaterialId list =
+        MW.filteredEntries m |> List.map (fun e -> e.id)
+
+    // ============================ pure: ids contract ============================
+
+    [<Fact>]
+    let ``the MaterialsWindow UiIds are the stable intent-named ids`` () =
+        Assert.Equal("MaterialsWindow", MW.UiIds.window)
+        Assert.Equal("MaterialsFacetTreeHost", MW.UiIds.treeHost)
+        Assert.Equal("MaterialsViewPanel", MW.UiIds.viewPanel)
+        Assert.Equal("MaterialsViewPanelNkChart", MW.UiIds.viewPanelChart)
+        Assert.Equal("MaterialsAddButton", MW.UiIds.addButton)
+        Assert.Equal("MaterialsEditButton", MW.UiIds.editButton)
+        Assert.Equal("MaterialsRemoveButton", MW.UiIds.removeButton)
+        Assert.Equal("MaterialsCategoriesButton", MW.UiIds.categoriesButton)
+        Assert.Equal("MaterialsRemoveConfirmButton", MW.UiIds.removeConfirmButton)
+        Assert.Equal("MaterialsRemoveCancelButton", MW.UiIds.removeCancelButton)
+        Assert.Equal("MaterialsWindowMessage", MW.UiIds.message)
+        // The entry-leaf id derives from the tree-node code family, prefixed so it cannot collide.
+        Assert.Equal(
+            "FacetTreeNode_entry:" + string MaterialIds.glass152.value,
+            MW.UiIds.entryNode MaterialIds.glass152)
+        // The constructor-side entry point: the ribbon strip's right-aligned button.
+        Assert.Equal("OpenMaterialsWindowButton", Scene.WorkbenchIds.openMaterialsButton)
+
+    // ============================ pure: projection ============================
+
+    [<Fact>]
+    let ``the initial projection lists every stored material as a selectable entry leaf with the live count`` () =
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        Assert.Equal(12, state.resultCount)
+        Assert.Equal(FacetedTreeControls.TreeMaterialized, state.materialization)
+        Assert.Empty(state.breadcrumbs)
+        Assert.Equal("", state.filterDraft)
+        // The entries group leads the tree; its leaves are the whole corpus, entry-coded.
+        let entries = List.head state.tree
+        Assert.Equal("entries", entries.code)
+        Assert.Equal(Some 12, entries.countOpt)
+        Assert.Equal(12, List.length entries.children)
+        for leaf in entries.children do
+            Assert.StartsWith("entry:", leaf.code)
+        // The two named representations are offered, category-first active by default.
+        Assert.Equal<string list>(
+            [ "by-category"; "by-physics" ],
+            state.representations |> List.map (fun r -> r.code))
+        Assert.Equal("by-category", state.activeRepresentation)
+        // Every material facet is discrete — no manual min–max box is ever offered.
+        Assert.NotEmpty(state.offers)
+        for group in state.offers do
+            Assert.Equal(FacetedTreeControls.NoManualRange, group.manualRange)
+        Assert.Contains(state.offers, fun (g : FacetedTreeControls.OfferGroup) -> g.code = materialCategoryKey.value)
+
+    [<Fact>]
+    let ``the committed text filter narrows the corpus and echoes as the box draft`` () =
+        let _, m = freshModel ()
+        let narrowed = MW.update (MW.CommitTextFilter "glass") m
+        Assert.Equal(4, List.length (MW.filteredEntries narrowed))
+        Assert.Contains(MaterialIds.glass152, filteredIds narrowed)
+        Assert.DoesNotContain(MaterialIds.silicon, filteredIds narrowed)
+        Assert.Equal("glass", (MW.facetedState narrowed).filterDraft)
+        let restored = MW.update (MW.CommitTextFilter "") narrowed
+        Assert.Equal(12, List.length (MW.filteredEntries restored))
+
+    [<Fact>]
+    let ``applying a facet constraint narrows the corpus and takes a removable breadcrumb chip with its after-count`` () =
+        let _, m = freshModel ()
+        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
+        Assert.Equal(4, List.length (MW.filteredEntries constrained))
+        Assert.Contains(MaterialIds.langasite, filteredIds constrained)
+        let chips = (MW.facetedState constrained).breadcrumbs
+        Assert.Equal(1, List.length chips)
+        Assert.Equal(materialCategoryKey.value, (List.head chips).code)
+        Assert.Equal("Category: Crystal", (List.head chips).label)
+        Assert.Equal(4, (List.head chips).afterCount)
+        // Facet constraints AND the text filter compose: no glass is a crystal.
+        let composed = MW.update (MW.CommitTextFilter "glass") constrained
+        Assert.Empty(MW.filteredEntries composed)
+        Assert.Equal(0, (MW.facetedState composed).resultCount)
+        // Removing the chip restores (the text filter stays applied).
+        let removed = MW.update (MW.RemoveFacet materialCategoryKey) composed
+        Assert.Equal(4, List.length (MW.filteredEntries removed))
+        Assert.Empty((MW.facetedState removed).breadcrumbs)
+
+    [<Fact>]
+    let ``re-applying a constrained facet replaces its selection — one chip per facet`` () =
+        let _, m = freshModel ()
+        let replaced =
+            m
+            |> MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"))
+            |> MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Glass"))
+        let chips = (MW.facetedState replaced).breadcrumbs
+        Assert.Equal(1, List.length chips)
+        Assert.Equal("Category: Glass", (List.head chips).label)
+        for entry in MW.filteredEntries replaced do
+            Assert.Equal(CategoryIds.glass, entry.category)
+
+    [<Fact>]
+    let ``a category renamed through the proxy re-labels the category facet in the next projection`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        let m = MW.init context
+        let valueKeysOf (state : FacetedTreeControls.State) : string list =
+            state.offers
+            |> List.find (fun g -> g.code = materialCategoryKey.value)
+            |> fun g -> g.values |> List.map (fun v -> v.code)
+        Assert.Contains("Glass", valueKeysOf (MW.facetedState m))
+        // Rename through the SAME proxy the window re-queries: the very next projection
+        // re-labels (the discrete value key doubles as the branch label — step 009).
+        renameGlass categories "Glazing"
+        let after = valueKeysOf (MW.facetedState m)
+        Assert.Contains("Glazing", after)
+        Assert.DoesNotContain("Glass", after)
+        Assert.Equal(12, (MW.facetedState m).resultCount)
+
+    [<Fact>]
+    let ``facets vanish from the offers when constrained or inapplicable to the whole filtered population`` () =
+        let _, m = freshModel ()
+        let offerCodes (model : MW.Model) : string list =
+            (MW.facetedState model).offers |> List.map (fun g -> g.code)
+        // A constrained facet leaves the offers (its chip is the removal surface).
+        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
+        Assert.DoesNotContain(materialCategoryKey.value, offerCodes constrained)
+        // A facet inapplicable to every filtered item vanishes entirely: constant materials
+        // carry no dispersive-eps segments, so the dispersion-model facet is gone — while
+        // transparency (constant materials with value trees) stays offered.
+        let constant = MW.update (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Constant")) m
+        Assert.DoesNotContain(materialDispersionModelKey.value, offerCodes constant)
+        Assert.Contains(materialTransparencyKey.value, offerCodes constant)
+
+    // ============================ pure: verbs + confirm gate ============================
+
+    [<Fact>]
+    let ``Remove is confirm-gated: request arms with the id, cancel disarms, nothing is removed; no selection is inert`` () =
+        let _, m = freshModel ()
+        // No selection → the request is inert.
+        Assert.Equal(MW.NoPendingRemove, (MW.update MW.RequestRemoveSelected m).removeGate)
+        let armed =
+            m
+            |> MW.update (MW.SelectEntry MaterialIds.glass200)
+            |> MW.update MW.RequestRemoveSelected
+        Assert.Equal(MW.PendingRemove MaterialIds.glass200, armed.removeGate)
+        let cancelled = MW.update MW.CancelRemove armed
+        Assert.Equal(MW.NoPendingRemove, cancelled.removeGate)
+        Assert.Equal(12, List.length (MW.filteredEntries cancelled))
+
+    [<Fact>]
+    let ``removing a REFERENCED material surfaces MaterialStillReferenced and leaves the store unchanged`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        let refused =
+            MW.init context
+            |> MW.update (MW.SelectEntry MaterialIds.glass152)
+            |> MW.update MW.RequestRemoveSelected
+            |> MW.update MW.ConfirmRemove
+        match refused.lastError with
+        | Some (MaterialStillReferenced reason) ->
+            Assert.Contains("still referenced", reason)
+            // The block NAMES the referencing samples (never a cascade).
+            Assert.Contains("Glass plate (n=1.52, 1 mm)", reason)
+        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
+        match materials.listMaterials () with
+        | Ok entries -> Assert.Equal(12, List.length entries)
+        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
+        Assert.Contains(MaterialIds.glass152, filteredIds refused)
+        Assert.Equal(Some MaterialIds.glass152, refused.selectedId)
+
+    [<Fact>]
+    let ``removing an UNREFERENCED material drops the entry from the projection in the same pass`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        let removed =
+            MW.init context
+            |> MW.update (MW.SelectEntry MaterialIds.glass200)
+            |> MW.update MW.RequestRemoveSelected
+            |> MW.update MW.ConfirmRemove
+        match removed.lastError with
+        | None -> ()
+        | Some e -> Assert.Fail($"expected no error, got %A{e}")
+        Assert.DoesNotContain(MaterialIds.glass200, filteredIds removed)
+        Assert.Equal<MaterialId option>(None, removed.selectedId)
+        match materials.listMaterials () with
+        | Ok entries -> Assert.Equal(11, List.length entries)
+        | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
+
+    [<Fact>]
+    let ``a query or selection change disarms a pending remove`` () =
+        let armed () =
+            let _, m = freshModel ()
+            m |> MW.update (MW.SelectEntry MaterialIds.glass152) |> MW.update MW.RequestRemoveSelected
+        Assert.Equal(MW.NoPendingRemove, (MW.update (MW.CommitTextFilter "si") (armed ())).removeGate)
+        Assert.Equal(MW.NoPendingRemove, (MW.update (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Dispersive")) (armed ())).removeGate)
+        Assert.Equal(MW.NoPendingRemove, (MW.update (MW.RemoveFacet materialDispersionKey) (armed ())).removeGate)
+        // A re-selection re-targets the verbs AND disarms.
+        let retargeted = MW.update (MW.SelectEntry MaterialIds.silicon) (armed ())
+        Assert.Equal(Some MaterialIds.silicon, retargeted.selectedId)
+        Assert.Equal(MW.NoPendingRemove, retargeted.removeGate)
+
+    [<Fact>]
+    let ``cancel leaves the inline refusal visible and the next query edit clears it`` () =
+        let _, m = freshModel ()
+        let refused =
+            m
+            |> MW.update (MW.SelectEntry MaterialIds.glass152)
+            |> MW.update MW.RequestRemoveSelected
+            |> MW.update MW.ConfirmRemove
+        match refused.lastError with
+        | Some (MaterialStillReferenced _) -> ()
+        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
+        let cancelled = MW.update MW.CancelRemove refused
+        Assert.Equal(MW.NoPendingRemove, cancelled.removeGate)
+        match cancelled.lastError with
+        | Some _ -> ()
+        | None -> Assert.Fail "the refusal must stay visible after a mere cancel"
+        Assert.Equal(None, (MW.update (MW.CommitTextFilter "si") cancelled).lastError)
+
+    [<Fact>]
+    let ``Add mints a fresh upfront id per dispatch and reaches the launcher`` () =
+        // Spec 0038 step 008: the id-mint stays off the save path — the Add verb mints the
+        // entity's Guid AT the window-open dispatch, so every Add opens its own
+        // registry-keyed editor (the recorded call carries the minted id).
+        let calls, m = freshModel ()
+        MW.update MW.AddMaterial m |> ignore
+        MW.update MW.AddMaterial m |> ignore
+        match calls |> Seq.filter (fun c -> c.StartsWith "material-add:") |> List.ofSeq with
+        | [ a; b ] -> Assert.NotEqual<string>(a, b)
+        | other -> Assert.Fail($"expected two material Adds, got %A{other}")
+
+    [<Fact>]
+    let ``Edit reaches the launcher only for an EDITABLE selection and Categories is a pure launch`` () =
+        let calls, m = freshModel ()
+        // Edit on an editable selection carries the resolved entry.
+        m |> MW.update (MW.SelectEntry MaterialIds.glass152) |> MW.update MW.EditSelected |> ignore
+        Assert.Equal<string list>([ "material-edit:Transparent glass (n = 1.52)" ], List.ofSeq calls)
+        calls.Clear()
+        // A view-only engine preset (complexity = None) offers no Edit — the dispatch is inert.
+        m |> MW.update (MW.SelectEntry MaterialIds.silicon) |> MW.update MW.EditSelected |> ignore
+        // No selection is inert too.
+        MW.update MW.EditSelected m |> ignore
+        Assert.Empty(calls)
+        // Categories… is a pure launch: the model is unchanged and the launcher records it.
+        let after = MW.update MW.OpenCategories m
+        Assert.Equal<MW.Model>(m, after)
+        Assert.Equal<string list>([ "categories-open" ], List.ofSeq calls)
+
+    [<Fact>]
+    let ``the view panel target follows the selection and the Edit affordance follows the step-013 complexity`` () =
+        let _, m = freshModel ()
+        Assert.Equal<MaterialEntry option>(None, MW.selectedEntry m)
+        let glass = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        match MW.selectedEntry glass with
+        | Some entry -> Assert.Equal("Transparent glass (n = 1.52)", entry.name)
+        | None -> Assert.Fail "the selected glass entry must resolve"
+        match MW.editableSelection glass with
+        | Some _ -> ()
+        | None -> Assert.Fail "glass152 carries the edit model and must offer Edit"
+        // Silicon is a coded engine preset: selectable (the panel shows it) but NOT editable.
+        let silicon = MW.update (MW.SelectEntry MaterialIds.silicon) m
+        match MW.selectedEntry silicon, MW.editableSelection silicon with
+        | Some _, None -> ()
+        | other -> Assert.Fail($"expected a selectable but non-editable preset, got %A{other}")
+
+    [<Fact>]
+    let ``choosing a representation reshapes the tree facet order but never the constraints or the corpus`` () =
+        let _, m = freshModel ()
+        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
+        let firstFacetCode (model : MW.Model) : string =
+            ((MW.facetedState model).tree |> List.item 1).code
+        Assert.Equal("facet:" + materialCategoryKey.value, firstFacetCode constrained)
+        let reshaped = MW.update (MW.ChooseRepresentation "by-physics") constrained
+        Assert.Equal("by-physics", (MW.facetedState reshaped).activeRepresentation)
+        Assert.Equal("facet:" + materialAnisotropyKey.value, firstFacetCode reshaped)
+        // Search order ≠ representation order: the applied chip and the result set are untouched.
+        Assert.Equal(1, List.length (MW.facetedState reshaped).breadcrumbs)
+        Assert.Equal(4, (MW.facetedState reshaped).resultCount)
+        // An unknown code is inert.
+        Assert.Equal<MW.Model>(reshaped, MW.update (MW.ChooseRepresentation "no-such") reshaped)
+
+    [<Fact>]
+    let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
+        let materials, _, categories = freshStores ()
+        let _, context = stubContext materials categories
+        let m = MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 }
+        let gated = MW.facetedState m
+        Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
+        // A gated pass projects NO tree at all — the whole point is skipping the heavy render —
+        // while the live count and the offers stay up.
+        Assert.Empty(gated.tree)
+        Assert.Equal(12, gated.resultCount)
+        Assert.NotEmpty(gated.offers)
+        let shown = MW.facetedState (MW.update MW.RequestTreeBuild m)
+        Assert.Equal(FacetedTreeControls.TreeMaterialized, shown.materialization)
+        Assert.NotEmpty(shown.tree)
+
+    [<Fact>]
+    let ``only an entry node code selects — branches and headings are grouping display`` () =
+        Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode (MW.entryNodeCode MaterialIds.glass152))
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "branch:material-category:Crystal")
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entries")
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entry:not-a-guid")
+        let dispatched = ResizeArray<MW.Msg>()
+        let handlers = MW.facetedHandlers dispatched.Add
+        handlers.selectNode (MW.entryNodeCode MaterialIds.glass152)
+        handlers.selectNode "branch:material-category:Crystal"
+        handlers.selectNode "entries"
+        Assert.Equal<MW.Msg list>([ MW.SelectEntry MaterialIds.glass152 ], List.ofSeq dispatched)
+        // The offer click lifts its tokens back to elevated engine values at the boundary.
+        handlers.applyConstraint materialCategoryKey.value "Crystal"
+        Assert.Equal(MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"), dispatched.[1])
+
+    // ============================ headless acceptance (ui-smoke) ============================
+
+    /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
+    /// injectable stores), for the strip-button acceptance.
+    let private mountMain (materials : MaterialProxy) (samples : SampleProxy) (categories : CategoryProxy) : HostWindow =
+        let model0 = Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        let window = HostWindow(Width = 980.0, Height = 1050.0)
+        Program.mkSimple (fun () -> model0) Scene.update Scene.mainView
+        |> Program.withHost window
+        |> Program.run
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window
+
+    let private mountMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) : MaterialsWindow =
+        let window = MaterialsWindow(materials, categories)
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the strip button opens ONE Materials window and a second click ACTIVATES it`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshStores ()
+            let window = mountMain materials samples categories
+            Assert.True(isPresent window Scene.WorkbenchIds.openMaterialsButton,
+                        "the ribbon strip row must carry the right-aligned Materials… button")
+            // Observe the windows the REAL defaults open (the WindowOpenedEvent seam the desktop
+            // lifetime itself uses) — subscribed only after the Main window is shown.
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            clickOn window Scene.WorkbenchIds.openMaterialsButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let materialsWindow = opened.[0]
+            Assert.True(matchesId MW.UiIds.window materialsWindow, "the opened window must be the Materials window")
+            Assert.True(materialsWindow.IsVisible)
+            // The single-instance acceptance: a second click ACTIVATES the live window — the
+            // shared registry under MaterialsWindowKey creates nothing new.
+            clickOn window Scene.WorkbenchIds.openMaterialsButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            Assert.True(materialsWindow.IsVisible, "the activated window must still be the live one")
+            // Close → the registry forgets the key, so the NEXT open creates afresh.
+            materialsWindow.Close()
+            Dispatcher.UIThread.RunJobs()
+            clickOn window Scene.WorkbenchIds.openMaterialsButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(2, opened.Count)
+            opened.[1].Close()
+            Dispatcher.UIThread.RunJobs()
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: applying a facet constraint narrows the corpus in the same render pass and the chip restores it`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass152))
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.silicon))
+            Assert.Equal("12 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            // Click the Dispersion facet's "Dispersive" offer: the corpus narrows to the two
+            // wavelength-dependent presets IN THE SAME RENDER PASS.
+            clickOn window (FacetedTreeControls.UiIds.offeredValue materialDispersionKey.value "Dispersive")
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.silicon),
+                        "the matching entry must stay listed")
+            Assert.False(isPresent window (MW.UiIds.entryNode MaterialIds.glass152),
+                         "the non-matching entry must leave the tree in the same render pass")
+            Assert.Equal("2 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            // The removable chip carries the after-count; clicking it restores the corpus.
+            Assert.True(isPresent window (FacetedTreeControls.UiIds.breadcrumbChip materialDispersionKey.value))
+            clickOn window (FacetedTreeControls.UiIds.breadcrumbChip materialDispersionKey.value)
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass152))
+            Assert.Equal("12 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: the verbs operate over the shared app-scoped stores — Add persists through the real editor, a referenced remove is refused inline`` () =
+        HeadlessSession.run (fun () ->
+            // The SAME store composition the app scope performs; the window and the editors it
+            // opens share these stores.
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            // Add → the REAL Material editor over the SHARED stores (through the real launcher
+            // under the Add-minted MaterialEditorKey).
+            clickOn window MW.UiIds.addButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let editor = opened.[0]
+            Assert.True(matchesId MaterialEditorView.UiIds.window editor, "the opened window must be the Material editor")
+            setText editor MaterialEditorView.UiIds.nameBox "Faceted window material"
+            clickOn editor MaterialEditorView.UiIds.saveButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(editor.IsVisible, "Save must close the editor")
+            // The save landed in the SHARED store…
+            match materials.listMaterials () with
+            | Ok entries -> Assert.Contains(entries, fun (e : MaterialEntry) -> e.name = "Faceted window material")
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
+            // …and the window's next dispatch-driven render re-queries it: committing the
+            // matching filter narrows the tree to the just-saved entry.
+            commitFilter window "Faceted window"
+            Assert.Equal("1 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            // The referenced remove: narrow to the seeded glass, select its leaf, Remove →
+            // Confirm → the typed refusal NAMES the referencing sample and the store keeps it.
+            commitFilter window "1.52"
+            clickOn window (MW.UiIds.entryNode MaterialIds.glass152)
+            clickOn window MW.UiIds.removeButton
+            clickOn window MW.UiIds.removeConfirmButton
+            let message = textOf window MW.UiIds.message
+            Assert.Contains("still referenced", message)
+            Assert.Contains("Glass plate", message)
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass152),
+                        "the refused remove must leave the entry listed")
+            match materials.listMaterials () with
+            | Ok entries -> Assert.Equal(13, List.length entries)
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a category renamed through the shared proxy re-labels the category facet and the create picker`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            // Before: the category facet offers "Glass" (the value key IS the label).
+            Assert.True(isPresent window (FacetedTreeControls.UiIds.offeredValue materialCategoryKey.value "Glass"))
+            // Rename through the shared proxy, then dispatch a MODEL-CHANGING re-render (a text
+            // commit — an unchanged model is structurally equal and the Elmish host skips it).
+            renameGlass categories "Glazing"
+            commitFilter window "glass"
+            Assert.True(isPresent window (FacetedTreeControls.UiIds.offeredValue materialCategoryKey.value "Glazing"),
+                        "the category facet must re-label to the renamed catalogue name")
+            Assert.False(isPresent window (FacetedTreeControls.UiIds.offeredValue materialCategoryKey.value "Glass"),
+                         "the stale label must be gone")
+            Assert.StartsWith("Glazing (", textOf window (FacetedTreeControls.UiIds.offeredValue materialCategoryKey.value "Glazing"))
+            // The create picker re-labels too: the editor over the SAME proxy shows "Glazing"
+            // for the same stable Guid id.
+            let editor = MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ()), categories = categories)
+            editor.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal("Glazing", labelInside editor (MaterialEditorView.UiIds.categoryOption (string CategoryIds.glass.value)))
+            editor.Close()
+            Dispatcher.UIThread.RunJobs()
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless: Edit opens the Material editor on the selected entry and Categories opens the Category editor`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            commitFilter window "1.52"
+            clickOn window (MW.UiIds.entryNode MaterialIds.glass152)
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            clickOn window MW.UiIds.editButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            Assert.True(matchesId MaterialEditorView.UiIds.window opened.[0], "the opened window must be the Material editor")
+            Assert.Contains("Transparent glass", opened.[0].Title)
+            opened.[0].Close()
+            Dispatcher.UIThread.RunJobs()
+            clickOn window MW.UiIds.categoriesButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(2, opened.Count)
+            Assert.True(matchesId CategoryEditorView.UiIds.window opened.[1], "the opened window must be the Category editor")
+            opened.[1].Close()
+            Dispatcher.UIThread.RunJobs()
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless: selecting an entry leaf shows the view panel with metadata and the embedded n-k chart`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            Assert.False(isPresent window MW.UiIds.viewPanel, "no selection → no view panel")
+            commitFilter window "1.52"
+            clickOn window (MW.UiIds.entryNode MaterialIds.glass152)
+            Assert.True(isPresent window MW.UiIds.viewPanel, "the view panel must render for the selected entry")
+            Assert.True(isPresent window MW.UiIds.viewPanelChart, "the view panel must embed the shared n/k chart host")
+            Assert.Contains("Transparent glass", textOf window MW.UiIds.viewPanel)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``headless: a gated tree shows Show-Search with ZERO rows and the click materializes the entry leaves`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let _, context = stubContext materials categories
+            // Mount the REAL MVU loop over a tiny threshold (the window minus its launcher
+            // composition — the FacetedTreeControlsTests mounting precedent).
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple
+                (fun () -> MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 })
+                MW.update
+                MW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.True(isPresent window FacetedTreeControls.UiIds.showTreeButton, "the Show/Search button must gate the tree")
+            Assert.Equal(0, treeRowCount window)
+            Assert.Equal("12 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            clickOn window FacetedTreeControls.UiIds.showTreeButton
+            Assert.True(treeRowCount window > 0, "the explicit build must materialize the tree")
+            Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass152))
+            window.Close())

@@ -5,9 +5,6 @@ open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Threading
 open Avalonia.VisualTree
-open Avalonia.FuncUI.Hosts
-open Avalonia.FuncUI.Elmish
-open Elmish
 open Xunit
 open Berreman.Dispersion
 open OpticalConstructor.Domain
@@ -18,16 +15,19 @@ open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
-open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0035 (016) — the shared dual-axis ScottPlot chart (`OpticalConstructor.Controls.EmbeddedChart`)
-/// embedded as the Material editor's live n/k preview AND the Materials-bay View panel (replacing the
-/// deleted primitive `NkDispersionChart.inlineCanvas`). Headless render proofs: the embedded control
-/// carries the n series on the LEFT axis and the k series on the RIGHT, draws n and k for EVERY model
-/// kind — including the four transcendental (step 15) — and rasterizes one frame without throwing under
-/// the `ui-smoke` gate; and both host sites (the real editor preview and the real Materials View panel)
-/// embed the AvaPlot and render, for a dispersive (incl. transcendental) and a non-dispersive entry.
+/// embedded as the Material editor's live n/k preview AND the Materials view panel (replacing the
+/// deleted primitive `NkDispersionChart.inlineCanvas`; since spec 0038 step 013 the panel lives in
+/// the single-instance Materials WINDOW, not a ribbon bay). Headless render proofs: the embedded
+/// control carries the n series on the LEFT axis and the k series on the RIGHT, draws n and k for
+/// EVERY model kind — including the four transcendental (step 15) — and rasterizes one frame without
+/// throwing under the `ui-smoke` gate; and both host sites (the real editor preview and the real
+/// Materials window's view panel) embed the AvaPlot and render, for a dispersive (incl.
+/// transcendental) and a non-dispersive entry.
 module EmbeddedChartTests =
+
+    module MW = OpticalConstructor.Ui.MaterialsWindowView
 
     // -- semantic-tree probes (the MaterialEditorWindow / MainWorkbench precedent) ----------------
 
@@ -58,14 +58,6 @@ module EmbeddedChartTests =
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
-
-    let private setText (window : Window) (id : string) (text : string) : unit =
-        match tryFindControl window id with
-        | Some (:? TextBox as tb) ->
-            tb.Text <- text
-            Dispatcher.UIThread.RunJobs()
-        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
-        | None -> Assert.Fail($"%s{id} was not found")
 
     // -- AvaPlot probes ---------------------------------------------------------------------------
 
@@ -135,25 +127,29 @@ module EmbeddedChartTests =
         let samples = SampleProxy.createInMemory ()
         MaterialProxy.createInMemory (samplesReferencing samples)
 
-    // -- the Main workbench (the MainWorkbenchTests composition) -----------------------------------
+    // -- the Materials window (the step-013 view-panel host site) ----------------------------------
 
-    let private freshStores () : MaterialProxy * SampleProxy =
+    let private freshStores () : MaterialProxy * CategoryProxy =
         let samples = SampleProxy.createInMemory ()
         let materials = MaterialProxy.createInMemory (samplesReferencing samples)
-        materials, samples
-
-    let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : Model =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        materials, categories
 
-    let private mountMain (model0 : Model) : HostWindow =
-        let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) update mainView
-        |> Program.withHost window
-        |> Program.run
-        window.Show()
-        Dispatcher.UIThread.RunJobs()
-        window
+    /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
+    /// has no text-change subscription).
+    let private commitFilter (window : Window) (text : string) : unit =
+        match tryFindControl window FacetedTreeControls.UiIds.filterBox with
+        | Some (:? TextBox as tb) ->
+            tb.Focus() |> ignore
+            Dispatcher.UIThread.RunJobs()
+            tb.Text <- text
+            Dispatcher.UIThread.RunJobs()
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+        | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail("the filter box was not found")
 
     let private hostId = "EmbeddedNkChartTestHost"
 
@@ -216,31 +212,31 @@ module EmbeddedChartTests =
             | None -> Assert.Fail("no embedded AvaPlot under the transcendental editor preview")
             window.Close())
 
-    // -- host site: the Materials-bay View panel --------------------------------------------------
+    // -- host site: the Materials window's view panel (spec 0038 step 013) -------------------------
 
-    /// Drive the real workbench to the Materials View panel for `search` / `rowId` and assert the
+    /// Drive the REAL Materials window to the view panel for `search` / `entryId` and assert the
     /// embedded n/k chart host renders its AvaPlot.
-    let private assertViewPanelChart (search : string) (rowId : string) (label : string) : unit =
-        let materials, samples = freshStores ()
-        let window = mountMain (mainWith materials samples)
-        clickOn window (Ribbon.UiIds.tab BayNames.materials)
-        setText window MaterialsControls.UiIds.searchBox search
-        clickOn window (MaterialsControls.UiIds.row rowId)
-        clickOn window MaterialsControls.UiIds.viewButton
-        Assert.True(isPresent window WorkbenchIds.materialNkChart, $"%s{label}: the View panel must embed the n/k chart host")
-        match avaUnder window WorkbenchIds.materialNkChart with
-        | Some ava -> Assert.True(rasterizes ava, $"%s{label}: the View-panel embedded chart rendered no image bytes")
-        | None -> Assert.Fail($"%s{label}: no embedded AvaPlot under the Materials View panel n/k chart host")
+    let private assertViewPanelChart (search : string) (entryId : MaterialId) (label : string) : unit =
+        let materials, categories = freshStores ()
+        let window = MaterialsWindow(materials, categories)
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        commitFilter window search
+        clickOn window (MW.UiIds.entryNode entryId)
+        Assert.True(isPresent window MW.UiIds.viewPanelChart, $"%s{label}: the view panel must embed the n/k chart host")
+        match avaUnder window MW.UiIds.viewPanelChart with
+        | Some ava -> Assert.True(rasterizes ava, $"%s{label}: the view-panel embedded chart rendered no image bytes")
+        | None -> Assert.Fail($"%s{label}: no embedded AvaPlot under the Materials view panel n/k chart host")
         window.Close()
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Materials View panel embeds the shared AvaPlot for a non-dispersive entry (glass)`` () =
+    let ``the Materials view panel embeds the shared AvaPlot for a non-dispersive entry (glass)`` () =
         HeadlessSession.run (fun () ->
-            assertViewPanelChart "1.52" (string MaterialIds.glass152.value) "glass (non-dispersive)")
+            assertViewPanelChart "1.52" MaterialIds.glass152 "glass (non-dispersive)")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Materials View panel embeds the shared AvaPlot for a dispersive entry (silicon)`` () =
+    let ``the Materials view panel embeds the shared AvaPlot for a dispersive entry (silicon)`` () =
         HeadlessSession.run (fun () ->
-            assertViewPanelChart "Silicon" (string MaterialIds.silicon.value) "silicon (dispersive)")
+            assertViewPanelChart "Silicon" MaterialIds.silicon "silicon (dispersive)")

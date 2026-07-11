@@ -20,7 +20,9 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// (settings carried verbatim, the materials→samples remove-block coupling, one scope = one
 /// store / two scopes = two stores — gate `ui-tests`), and the slice's headless acceptance
 /// (gate `ui-smoke`): TWO real Main windows composed from ONE app scope observe the same store
-/// — a material added through one window's real editor is listed by the other window's bay.
+/// — a sample added through one window's real editor is listed by the other window's bay.
+/// (The proof rode the Materials bay until spec 0038 step 013 moved that bay into the
+/// single-instance Materials window; the Library bay carries the same two-surface argument.)
 module AppContextTests =
 
     /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId` (the
@@ -119,7 +121,7 @@ module AppContextTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance: two Main windows over ONE app scope share the stores — a material added through one is listed by the other`` () =
+    let ``acceptance: two Main windows over ONE app scope share the stores — a sample added through one is listed by the other`` () =
         HeadlessSession.run (fun () ->
             let context = freshContext ()
             // Two REAL Main windows over the SAME injected scope — the launcher's Main button
@@ -139,33 +141,34 @@ module AppContextTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            // Surface 1: Materials bay → Add → the REAL Material editor over the SHARED store.
-            clickOn first (Ribbon.UiIds.tab BayNames.materials)
-            clickOn first MaterialsControls.UiIds.addButton
+            // Surface 1: Library bay → Make-multilayer → the REAL Sample editor over the SHARED
+            // store (the seeded-period creation path, so a plain name + Save persists).
+            clickOn first (Ribbon.UiIds.tab BayNames.library)
+            clickOn first SampleLibraryControls.UiIds.makeMultilayerButton
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
-            Assert.True(matchesId MaterialEditorView.UiIds.window editor, "the opened window must be the Material editor")
-            setText editor MaterialEditorView.UiIds.nameBox "Shared-scope material"
-            clickOn editor MaterialEditorView.UiIds.saveButton
+            Assert.True(matchesId SampleEditorView.UiIds.window editor, "the opened window must be the Sample editor")
+            setText editor SampleEditorView.UiIds.nameBox "Shared-scope sample"
+            clickOn editor SampleEditorView.UiIds.saveButton
             Assert.False(editor.IsVisible, "Save must persist the entry and close the editor")
-            // The id was minted by the editor — recover it through the SHARED app-scope store.
+            // The id was minted at the verb dispatch — recover it through the SHARED app-scope store.
             let savedId =
-                match context.materials.listMaterials () with
+                match context.samples.listSamples () with
                 | Ok all ->
-                    match all |> List.tryFind (fun e -> e.name = "Shared-scope material") with
-                    | Some entry -> entry.id
-                    | None -> failwith "the saved material must be in the app-scope store"
-                | Error e -> failwith $"listMaterials failed: %A{e}"
-            // Surface 2: opening ITS Materials bay re-queries the SAME store in that render pass —
-            // the added material is listed by the other window.
-            clickOn second (Ribbon.UiIds.tab BayNames.materials)
-            Assert.True(isPresent second (MaterialsControls.UiIds.row (string savedId.value)),
-                        "the second Main window must list the material added through the first")
+                    match all |> List.tryFind (fun s -> s.name = "Shared-scope sample") with
+                    | Some sample -> sample.id
+                    | None -> failwith "the saved sample must be in the app-scope store"
+                | Error e -> failwith $"listSamples failed: %A{e}"
+            // Surface 2: opening ITS Library bay re-queries the SAME store in that render pass —
+            // the added sample is listed by the other window.
+            clickOn second (Ribbon.UiIds.tab BayNames.library)
+            Assert.True(isPresent second (SampleLibraryControls.UiIds.row (string savedId.value)),
+                        "the second Main window must list the sample added through the first")
             // And surface 1 lists it on its own next render (leave the bay and come back).
             clickOn first (Ribbon.UiIds.tab BayNames.rotation)
-            clickOn first (Ribbon.UiIds.tab BayNames.materials)
-            Assert.True(isPresent first (MaterialsControls.UiIds.row (string savedId.value)),
-                        "the first Main window must list the material it added")
+            clickOn first (Ribbon.UiIds.tab BayNames.library)
+            Assert.True(isPresent first (SampleLibraryControls.UiIds.row (string savedId.value)),
+                        "the first Main window must list the sample it added")
             second.Close()
             first.Close())

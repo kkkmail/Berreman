@@ -8,11 +8,14 @@
 /// re-creates, and a Select-state open follows the step-005 modality switch —
 /// `ShowDialog` owned by the requesting window under `ModalSelectWindows`,
 /// unowned `Show` under `ModelessSelectWindows`. The slice acceptance runs
-/// end-to-end through the rewired `EditorLaunchers.defaults`: Edit of the same
-/// material twice meets ONE window; two Adds create two `NewUnsaved` editors
-/// whose distinct upfront-minted Guids persist through `addMaterial` (and a
-/// sample Add through `addSample`). Every real-registry test CLOSES the windows
-/// it opens — the registry is app-global, so a leaked key would couple tests.
+/// end-to-end through the rewired launcher paths: Edit of the same material
+/// twice meets ONE window and two Adds create two `NewUnsaved` editors whose
+/// distinct upfront-minted Guids persist through `addMaterial` — since spec
+/// 0038 step 013 those verbs live on the REAL Materials window (its context
+/// launchers bake the editor keys), so the proofs drive that window; a sample
+/// Add still goes through `EditorLaunchers.defaults.openSampleEditor`. Every
+/// real-registry test CLOSES the windows it opens — the registry is
+/// app-global, so a leaked key would couple tests.
 namespace OpticalConstructor.Ui.Tests
 
 open Avalonia
@@ -376,18 +379,37 @@ module WindowLauncherTests =
             requester.Close()
             Dispatcher.UIThread.RunJobs())
 
-    // ------ the slice acceptance, end-to-end through the rewired EditorLaunchers.defaults ------
+    // ------ the slice acceptance, end-to-end through the step-013 Materials window ------
+
+    /// Commit `text` through the REAL faceted filter box (Enter is the commit gesture — the box
+    /// has no text-change subscription, spec 0038 §0.4).
+    let private commitFilter (window : Window) (text : string) : unit =
+        match tryFindControl window OpticalConstructor.Controls.FacetedTreeControls.UiIds.filterBox with
+        | Some (:? TextBox as tb) ->
+            tb.Focus() |> ignore
+            Dispatcher.UIThread.RunJobs()
+            tb.Text <- text
+            Dispatcher.UIThread.RunJobs()
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+            window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None)
+            Dispatcher.UIThread.RunJobs()
+        | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail("the filter box was not found")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``acceptance: Edit of the same material twice ACTIVATES one editor window — never a second copy`` () =
         HeadlessSession.run (fun () ->
             let materials, _, categories = Stores.create ()
-            let entry =
-                match materials.tryGetMaterial MaterialLibrary.MaterialIds.glass152 with
-                | Ok (Some e) -> e
-                | other -> failwith $"glass152 must be seeded, got %A{other}"
-            // Observe the windows the REAL rewired defaults open (the WireUiComposition seam).
+            // The REAL step-013 Materials window: its context launchers bake the step-008
+            // editor keys over the shared registry — the rewired Edit path under test.
+            let materialsWindow = MaterialsWindow(materials, categories)
+            materialsWindow.Show()
+            Dispatcher.UIThread.RunJobs()
+            commitFilter materialsWindow "1.52"
+            clickOn materialsWindow (MaterialsWindowView.UiIds.entryNode MaterialLibrary.MaterialIds.glass152)
+            // Observe the editors the real launcher opens (the WireUiComposition seam).
             let opened = ResizeArray<Window>()
             use _sub =
                 Window.WindowOpenedEvent.Raised
@@ -395,14 +417,15 @@ module WindowLauncherTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
-            launchers.openMaterialEditor materials categories (MaterialEditorView.EditMaterial entry)
+            clickOn materialsWindow MaterialsWindowView.UiIds.editButton
             Dispatcher.UIThread.RunJobs()
-            launchers.openMaterialEditor materials categories (MaterialEditorView.EditMaterial entry)
+            clickOn materialsWindow MaterialsWindowView.UiIds.editButton
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             Assert.True(opened.[0].IsVisible, "the one editor window must be live")
             opened.[0].Close()
+            Dispatcher.UIThread.RunJobs()
+            materialsWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
     [<Fact>]
@@ -410,9 +433,13 @@ module WindowLauncherTests =
     let ``acceptance: Add twice creates two NewUnsaved editors whose distinct upfront Guids persist through addMaterial`` () =
         HeadlessSession.run (fun () ->
             let materials, _, categories = Stores.create ()
-            // The two upfront mints — the verb's window-open dispatch shape (spec 0038 step 008).
-            let mintedA = MaterialLibrary.newMaterialId ()
-            let mintedB = MaterialLibrary.newMaterialId ()
+            let seededIds =
+                match materials.listMaterials () with
+                | Ok entries -> entries |> List.map (fun e -> e.id) |> Set.ofList
+                | Error e -> failwith $"listMaterials failed: %A{e}"
+            let materialsWindow = MaterialsWindow(materials, categories)
+            materialsWindow.Show()
+            Dispatcher.UIThread.RunJobs()
             let opened = ResizeArray<Window>()
             use _sub =
                 Window.WindowOpenedEvent.Raised
@@ -420,12 +447,12 @@ module WindowLauncherTests =
                     match sender with
                     | :? Window as w -> opened.Add w
                     | _ -> ())
-            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
-            launchers.openMaterialEditor materials categories (MaterialEditorView.NewMaterial mintedA)
+            // Each Add mints its own upfront id AT the verb dispatch (spec 0038 step 008), so
+            // two Adds meet two DISTINCT registry keys: two NewUnsaved editor windows.
+            clickOn materialsWindow MaterialsWindowView.UiIds.addButton
             Dispatcher.UIThread.RunJobs()
-            launchers.openMaterialEditor materials categories (MaterialEditorView.NewMaterial mintedB)
+            clickOn materialsWindow MaterialsWindowView.UiIds.addButton
             Dispatcher.UIThread.RunJobs()
-            // Two distinct minted ids → two distinct NewUnsaved editor windows.
             Assert.Equal(2, opened.Count)
             Assert.False(obj.ReferenceEquals(opened.[0], opened.[1]), "two Adds must open two windows")
             // Save each: the NewUnsaved freshness routes addMaterial under the id minted AT OPEN.
@@ -435,12 +462,19 @@ module WindowLauncherTests =
             clickOn opened.[1] MaterialEditorView.UiIds.saveButton
             Assert.False(opened.[0].IsVisible)
             Assert.False(opened.[1].IsVisible)
-            match materials.tryGetMaterial mintedA with
-            | Ok (Some e) -> Assert.Equal("Launcher add A", e.name)
-            | other -> Assert.Fail($"the first Add must persist under its upfront-minted id, got %A{other}")
-            match materials.tryGetMaterial mintedB with
-            | Ok (Some e) -> Assert.Equal("Launcher add B", e.name)
-            | other -> Assert.Fail($"the second Add must persist under its upfront-minted id, got %A{other}"))
+            // Both persisted, under two DISTINCT non-seeded ids.
+            match materials.listMaterials () with
+            | Ok entries ->
+                let added = entries |> List.filter (fun e -> not (Set.contains e.id seededIds))
+                Assert.Equal(2, List.length added)
+                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name = "Launcher add A")
+                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name = "Launcher add B")
+                match added |> List.map (fun e -> e.id) with
+                | [ a; b ] -> Assert.NotEqual(a, b)
+                | other -> Assert.Fail($"expected two added ids, got %A{other}")
+            | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
+            materialsWindow.Close()
+            Dispatcher.UIThread.RunJobs())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

@@ -45,13 +45,13 @@ module LayerBandsControlsTests =
     // ============================ the Details bay in the ribbon ============================
 
     [<Fact>]
-    let ``the ribbon offers the Details bay after Experiments, ahead of the full-surface workbenches`` () =
-        // Spec 0035 (008): the Materials & Library workbenches are the LAST two bays (full-surface bays
-        // that replace the table canvas); now that step-007 pane hosting is order-independent, the
-        // Details-LAST pin is retired. Details still sits immediately after Experiments.
-        Assert.Equal<string list>(
-            [ BayNames.materials; BayNames.library ],
-            BayNames.all |> List.rev |> List.truncate 2 |> List.rev)
+    let ``the ribbon offers the Details bay after Experiments, ahead of the full-surface workbench`` () =
+        // Spec 0035 (008): the Library workbench is the LAST bay (a full-surface bay that
+        // replaces the table canvas); spec 0038 (013) removed the Materials bay beside it (the
+        // Materials WINDOW carries that workbench now). Details still sits immediately after
+        // Experiments.
+        Assert.Equal(Some BayNames.library, List.tryLast BayNames.all)
+        Assert.DoesNotContain("Materials", BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore
         let names = bays |> List.map (fun b -> b.name)

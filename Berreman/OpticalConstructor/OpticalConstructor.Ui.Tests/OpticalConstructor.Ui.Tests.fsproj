@@ -169,6 +169,13 @@
              mode shows Show/Search and ZERO tree rows, the filter and manual-range boxes commit
              on Enter/LostFocus only — never per keystroke; gate `ui-smoke`). -->
         <Compile Include="FacetedTreeControlsTests.fs" />
+        <!-- Spec 0038 Part E (step 013, UICOMP_XDUO_0009): the Materials window — pure MVU/
+             projection/disarm-discipline tests (gate `ui-tests`) plus the headless acceptance
+             (gate `ui-smoke`): the ribbon strip button opens ONE window (second click activates),
+             applying facet constraints narrows the corpus in the same render pass, the verbs
+             operate over the shared app-scoped stores through the real editors, a category
+             rename re-labels the category facet, and gating renders zero rows until Show/Search. -->
+        <Compile Include="MaterialsWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

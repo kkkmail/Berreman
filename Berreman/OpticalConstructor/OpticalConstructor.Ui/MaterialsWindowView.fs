@@ -1,0 +1,726 @@
+/// Spec 0038 Part E (step 013) — the Materials window view (UICOMP_XDUO_0009): the pure MVU
+/// model and FuncUI projection behind `MaterialsWindow`, the single-instance Materials window.
+/// The model projects the LIVE `MaterialProxy` corpus through the step-011 material facet
+/// catalogue (`LibraryFacets.materialFacets`) and the step-009 engine (`Facets.filter` /
+/// `countFor` / `breadcrumbCounts` / `buildTree`) into the step-012 domain-free
+/// `FacetedTreeControls.State`, beside a view panel (the selected entry's read-only metadata
+/// plus the shared embeddable dual-axis n/k chart, `OpticalConstructor.Controls.EmbeddedChart`)
+/// and the workbench's former Materials verbs — Add / Edit / Remove / Categories… — rewired to
+/// THIS window: Add / Edit / Categories… open through the injected context launchers (the
+/// composition root routes them through the step-008 `WindowLauncher` editor keys), Remove
+/// keeps its inline confirm gate and the typed `MaterialStillReferenced` block. Every
+/// projection re-queries the proxies, so any verb's write shows in the same render pass. Pure:
+/// `update` only reaches IO through the context's proxy / launcher fields — behaviour is
+/// testable without a window (tests substitute recording stubs).
+module OpticalConstructor.Ui.MaterialsWindowView
+
+open Avalonia
+open Avalonia.Automation
+open Avalonia.Controls
+open Avalonia.Layout
+open Avalonia.Media
+open Avalonia.FuncUI.Builder
+open Avalonia.FuncUI.DSL
+open Avalonia.FuncUI.Types
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.Facets
+open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Controls
+
+// ---------------------------------------------------------------------------
+// Elevated window-local states (named DUs, never bools).
+// ---------------------------------------------------------------------------
+
+/// Which remove (if any) awaits its inline confirmation. The pending case CARRIES the id the
+/// Remove click targeted, so a selection change between Remove and Confirm can never delete a
+/// different entry (the workbench `RemoveConfirm` confirm-gating shape, window-local).
+type MaterialRemoveGate =
+    | NoPendingRemove
+    | PendingRemove of MaterialId
+
+/// Whether the user has explicitly materialized a tree the result count gated behind the
+/// Show/Search button (spec 0038 §0.7). Sticky for the window's lifetime: once shown, later
+/// constraint changes keep the tree materialized — the gate protects the FIRST heavy render.
+type TreeBuildRequest =
+    | RequestedTreeBuild
+    | NoTreeBuildRequest
+
+/// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
+/// representation order): a stable `code` the control dispatches back, the picker label, and
+/// the facet order handed to the engine's `buildTree`.
+type MaterialsRepresentation =
+    {
+        code : string
+        label : string
+        order : AttributeKey list
+    }
+
+/// The two representations offered (the step-011 catalogue order first — the default — and a
+/// physics-first reshuffle). Applied constraints never reshuffle either.
+let byCategoryRepresentation : MaterialsRepresentation =
+    {
+        code = "by-category"
+        label = "By category"
+        order =
+            [
+                materialCategoryKey
+                materialDispersionKey
+                materialTransparencyKey
+                materialAnisotropyKey
+                materialDispersionModelKey
+                materialGyrationClassKey
+                materialHandednessKey
+                materialMagneticKey
+            ]
+    }
+
+let byPhysicsRepresentation : MaterialsRepresentation =
+    {
+        code = "by-physics"
+        label = "By physics"
+        order =
+            [
+                materialAnisotropyKey
+                materialDispersionKey
+                materialDispersionModelKey
+                materialTransparencyKey
+                materialGyrationClassKey
+                materialHandednessKey
+                materialMagneticKey
+                materialCategoryKey
+            ]
+    }
+
+let offeredRepresentations : MaterialsRepresentation list =
+    [ byCategoryRepresentation; byPhysicsRepresentation ]
+
+// ---------------------------------------------------------------------------
+// The window's IO seam (the functional-proxy Context convention).
+// ---------------------------------------------------------------------------
+
+/// The window's context: the app-scope material + category stores, the Domain tree-gating
+/// threshold, and the editor launchers (the composition root — `MaterialsWindow` — bakes the
+/// step-008 `WindowLauncher` editor keys into these; tests substitute recording stubs).
+/// Function-valued fields have no structural equality, so the record compares by reference.
+[<ReferenceEquality>]
+type MaterialsWindowContext =
+    {
+        materials : MaterialProxy
+        categories : CategoryProxy
+        treeAutoBuildThreshold : TreeAutoBuildThreshold
+        /// Open the Material editor by intent: `NewMaterial mintedId` (the Add verb mints the
+        /// id AT dispatch — spec 0038 step 008) or `EditMaterial entry`.
+        openMaterialEditor : MaterialEditorView.MaterialEditorIntent -> unit
+        /// Open the single-instance Category editor.
+        openCategoryEditor : unit -> unit
+    }
+
+/// The window's pure model. The engine inputs (corpus, live facet defs) are NOT cached here —
+/// every projection re-queries the context's proxies, so a verb's write (or another window's)
+/// shows in the same render pass.
+type Model =
+    {
+        context : MaterialsWindowContext
+        /// The applied facet constraints, in application (breadcrumb) order — at most one per
+        /// facet key (this window applies single-key selections; the engine's key-set OR stays
+        /// available to a later slice).
+        appliedFacets : AppliedConstraint list
+        /// The committed text filter (the box's draft echoes it; Enter/LostFocus commit only).
+        textFilter : TextQuery
+        /// The active tree-shaping representation.
+        representation : MaterialsRepresentation
+        /// Whether the user has explicitly materialized a gated tree.
+        buildRequest : TreeBuildRequest
+        /// The selected entry (the Edit / Remove verbs' target and the view panel's subject).
+        selectedId : MaterialId option
+        /// Which remove (if any) awaits its inline confirmation.
+        removeGate : MaterialRemoveGate
+        /// The last store refusal, surfaced as the inline message — `MaterialStillReferenced`
+        /// NAMES the referencing samples; never a cascade, never a dialog.
+        lastError : MaterialError option
+    }
+
+let init (context : MaterialsWindowContext) : Model =
+    {
+        context = context
+        appliedFacets = []
+        textFilter = TextQuery ""
+        representation = byCategoryRepresentation
+        buildRequest = NoTreeBuildRequest
+        selectedId = None
+        removeGate = NoPendingRemove
+        lastError = None
+    }
+
+type Msg =
+    /// Apply the offered value as this facet's (single-key) constraint — an offered-value
+    /// click; re-applying a constrained facet REPLACES its selection.
+    | ApplyFacetValue of AttributeKey * DiscreteKey
+    /// Remove the applied constraint of this facet — a breadcrumb-chip click.
+    | RemoveFacet of AttributeKey
+    /// Commit the filter box's text (Enter/LostFocus only — never per keystroke).
+    | CommitTextFilter of string
+    /// Choose the named representation with this code (tree reshaping only — the applied
+    /// constraints and the result set are untouched: search order ≠ representation order).
+    | ChooseRepresentation of string
+    /// Materialize the gated tree (the Show/Search button).
+    | RequestTreeBuild
+    /// Select the entry leaf with this id (the view panel's subject).
+    | SelectEntry of MaterialId
+    /// The verbs, rewired from the retired Materials bay (spec 0038 step 013).
+    | AddMaterial
+    | EditSelected
+    | RequestRemoveSelected
+    | ConfirmRemove
+    | CancelRemove
+    | OpenCategories
+
+// ---------------------------------------------------------------------------
+// Live projections (each pass re-queries the proxies).
+// ---------------------------------------------------------------------------
+
+/// Resolve a category's display NAME through the LIVE catalogue: the store's `listCategories`
+/// is the source of truth, so a renamed category reads its new name here (the retired bay's
+/// `liveCategoryName` discipline). An id the store no longer holds falls back to the seeded
+/// `categoryName` (a diagnostic, never a throw).
+let liveCategoryName (categories : CategoryProxy) (id : CategoryId) : string =
+    match categories.listCategories () with
+    | Ok cats ->
+        match cats |> List.tryFind (fun c -> c.id = id) with
+        | Some c -> c.name
+        | None -> categoryName id
+    | Error _ -> categoryName id
+
+/// The step-011 material facet catalogue with the category def's extractor re-pointed at the
+/// LIVE category store: `materialFacets`' own category def resolves names through the STATIC
+/// seeded catalogue (`categoryName`), so a category renamed through `CategoryProxy` would keep
+/// its stale branch label there. The facet KEY is unchanged — only name resolution goes live —
+/// and the catalogue is read ONCE per projection (the discrete value key doubles as the branch
+/// label, step 009, so a rename re-labels branch, offer, and chip alike).
+let liveMaterialFacets (categories : CategoryProxy) : AttributeDef<MaterialEntry> list =
+    let liveNames : Map<CategoryId, string> =
+        match categories.listCategories () with
+        | Ok cats -> cats |> List.map (fun c -> c.id, c.name) |> Map.ofList
+        | Error _ -> Map.empty
+    let liveName (id : CategoryId) : string =
+        match Map.tryFind id liveNames with
+        | Some name -> name
+        | None -> categoryName id
+    materialFacets
+    |> List.map (fun def ->
+        if def.key = materialCategoryKey
+        then { def with extract = fun entry -> [ DiscreteValue (DiscreteKey (liveName entry.category)) ] }
+        else def)
+
+/// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
+/// over the entry's display name; its UI surface stays the filter box, not a chip).
+let materialTextFilterKey : AttributeKey = AttributeKey "material-text"
+
+/// One projection pass's engine inputs, read from the live proxies exactly once.
+type private ProjectionInputs =
+    {
+        defs : AttributeDef<MaterialEntry> list
+        /// The committed text filter as an applied constraint — empty query applies nothing.
+        textApplied : AppliedConstraint list
+        /// The FULL applied list: the text filter (first) then the facet chips in order.
+        appliedAll : AppliedConstraint list
+        corpus : MaterialEntry list
+    }
+
+let private projectionInputs (m : Model) : ProjectionInputs =
+    let textDef = textFilterDef materialTextFilterKey "Text" (fun (e : MaterialEntry) -> e.name) m.textFilter
+    let defs = textDef :: liveMaterialFacets m.context.categories
+    let textApplied =
+        match m.textFilter.value with
+        | "" -> []
+        | _ -> [ textFilterConstraint materialTextFilterKey ]
+    let corpus =
+        match m.context.materials.listMaterials () with
+        | Ok entries -> entries
+        | Error _ -> []
+    {
+        defs = defs
+        textApplied = textApplied
+        appliedAll = textApplied @ m.appliedFacets
+        corpus = corpus
+    }
+
+/// The result set under everything applied (text filter AND facet constraints) — public so
+/// narrowing is unit-testable without a window.
+let filteredEntries (m : Model) : MaterialEntry list =
+    let inputs = projectionInputs m
+    Facets.filter inputs.defs inputs.appliedAll inputs.corpus
+
+/// The selected entry resolved through the LIVE store (a removed entry's selection resolves to
+/// nothing, so its panel vanishes with its row).
+let selectedEntry (m : Model) : MaterialEntry option =
+    match m.selectedId with
+    | Some id ->
+        match m.context.materials.tryGetMaterial id with
+        | Ok (Some entry) -> Some entry
+        | Ok None | Error _ -> None
+    | None -> None
+
+/// The selected entry when it carries the step-013 edit model (`complexity = Some`) — the Edit
+/// verb's target. A view-only engine preset offers NO Edit affordance (removed, not greyed —
+/// the `MaterialsControls` discipline).
+let editableSelection (m : Model) : MaterialEntry option =
+    match selectedEntry m with
+    | Some entry ->
+        match entry.complexity with
+        | Some _ -> Some entry
+        | None -> None
+    | None -> None
+
+// ---------------------------------------------------------------------------
+// Tree node codes (host-supplied stable tokens, unique across the whole tree).
+// ---------------------------------------------------------------------------
+
+/// `entries` / `entry:<guid>` name the corpus group and its selectable leaves;
+/// `facet:<facet-key>` / `branch:<facet-key>:<value-key>` name the representation's facet
+/// grouping. Only an `entry:` code means anything to `selectNode` — branches are grouping
+/// display (the OFFERS are the apply surface).
+let entryNodeCode (id : MaterialId) : string = "entry:" + string id.value
+
+let entryIdOfNodeCode (code : string) : MaterialId option =
+    let prefix = "entry:"
+    if code.StartsWith prefix then
+        match System.Guid.TryParse (code.Substring prefix.Length) with
+        | true, g -> Some (MaterialId g)
+        | _ -> None
+    else None
+
+/// Stable intent-named automation ids (CLAUDE.md UI guidance). The faceted tree's own ids live
+/// in `FacetedTreeControls.UiIds`; `entryNode` derives an entry leaf's id from its node code.
+[<RequireQualifiedAccess>]
+module UiIds =
+    [<Literal>]
+    let window = "MaterialsWindow"
+    [<Literal>]
+    let treeHost = "MaterialsFacetTreeHost"
+    [<Literal>]
+    let viewPanel = "MaterialsViewPanel"
+    [<Literal>]
+    let viewPanelChart = "MaterialsViewPanelNkChart"
+    [<Literal>]
+    let addButton = "MaterialsAddButton"
+    [<Literal>]
+    let editButton = "MaterialsEditButton"
+    [<Literal>]
+    let removeButton = "MaterialsRemoveButton"
+    [<Literal>]
+    let categoriesButton = "MaterialsCategoriesButton"
+    [<Literal>]
+    let removeConfirmButton = "MaterialsRemoveConfirmButton"
+    [<Literal>]
+    let removeCancelButton = "MaterialsRemoveCancelButton"
+    [<Literal>]
+    let message = "MaterialsWindowMessage"
+    /// The clickable tree leaf of one material entry.
+    let entryNode (id : MaterialId) : string = FacetedTreeControls.UiIds.treeNode (entryNodeCode id)
+
+// ---------------------------------------------------------------------------
+// Pure update.
+// ---------------------------------------------------------------------------
+
+/// A query / selection change also disarms a pending remove confirmation and clears the inline
+/// message — a stale confirm or refusal never outlives the state it referred to (the retired
+/// bay's disarm discipline).
+let private disarmed (m : Model) : Model =
+    { m with removeGate = NoPendingRemove; lastError = None }
+
+let update (msg : Msg) (m : Model) : Model =
+    match msg with
+    | ApplyFacetValue (key, value) ->
+        // Single-key selection per facet: re-applying a constrained facet REPLACES its chip
+        // (removed from its old breadcrumb position, re-applied at the end).
+        let withoutKey = m.appliedFacets |> List.filter (fun c -> c.key <> key)
+        { disarmed m with appliedFacets = withoutKey @ [ { key = key; selection = DiscreteSelection (Set.singleton value) } ] }
+    | RemoveFacet key ->
+        { disarmed m with appliedFacets = m.appliedFacets |> List.filter (fun c -> c.key <> key) }
+    | CommitTextFilter text ->
+        { disarmed m with textFilter = TextQuery text }
+    | ChooseRepresentation code ->
+        // Reshapes the tree only — never the applied constraints or the result set.
+        match offeredRepresentations |> List.tryFind (fun r -> r.code = code) with
+        | Some r -> { m with representation = r }
+        | None -> m
+    | RequestTreeBuild ->
+        { m with buildRequest = RequestedTreeBuild }
+    | SelectEntry id ->
+        { disarmed m with selectedId = Some id }
+    | AddMaterial ->
+        // Add mints the entry's MaterialId HERE — at the window-open dispatch, off the save
+        // path (spec 0038 step 008) — so the launcher's registry keys the new editor by the
+        // SAME id its Save will persist under (a second Add mints a second id: two windows).
+        m.context.openMaterialEditor (MaterialEditorView.NewMaterial (newMaterialId ()))
+        disarmed m
+    | EditSelected ->
+        // Edit opens the editor on the selected entry, resolved through the proxy at dispatch
+        // time; a vanished or view-only selection reaches no launcher (the editor's own
+        // view-only rule would apply anyway — the verb is simply absent for it).
+        (match editableSelection m with
+         | Some entry -> m.context.openMaterialEditor (MaterialEditorView.EditMaterial entry)
+         | None -> ())
+        disarmed m
+    | RequestRemoveSelected ->
+        match m.selectedId with
+        | Some id -> { m with removeGate = PendingRemove id; lastError = None }
+        | None -> m
+    | ConfirmRemove ->
+        match m.removeGate with
+        | PendingRemove id ->
+            match m.context.materials.removeMaterial id with
+            | Ok () ->
+                { m with
+                    removeGate = NoPendingRemove
+                    lastError = None
+                    selectedId = (if m.selectedId = Some id then None else m.selectedId) }
+            | Error err ->
+                // The store refused (`MaterialStillReferenced` names the referencing samples) —
+                // surface the reason inline and leave the store, selection and list untouched.
+                { m with removeGate = NoPendingRemove; lastError = Some err }
+        | NoPendingRemove -> m
+    | CancelRemove ->
+        // Cancel only ever disarms — it never dismisses the inline message (the next query /
+        // selection change clears it).
+        { m with removeGate = NoPendingRemove }
+    | OpenCategories ->
+        // A pure launch of the Category editor over the live category store; the window
+        // re-queries `listCategories` on its next render, so a rename there re-labels the
+        // category facet in the same render pass.
+        m.context.openCategoryEditor ()
+        m
+
+// ---------------------------------------------------------------------------
+// The FacetedTreeControls projection.
+// ---------------------------------------------------------------------------
+
+let private isApplicableTo (def : AttributeDef<MaterialEntry>) (entry : MaterialEntry) : bool =
+    match def.appliesTo entry with
+    | ApplicableAttribute -> true
+    | InapplicableAttribute -> false
+
+/// The distinct discrete values a facet offers over the filtered population, in the engine's
+/// key order (every material facet is discrete — the catalogue carries no numeric facet, so no
+/// manual min–max box is ever offered).
+let private offeredValuesFor (def : AttributeDef<MaterialEntry>) (filtered : MaterialEntry list) : DiscreteKey list =
+    filtered
+    |> List.filter (isApplicableTo def)
+    |> List.collect (fun entry -> def.extract entry |> List.distinct)
+    |> List.choose (fun value ->
+        match value with
+        | DiscreteValue k -> Some k
+        | NumericValue _ -> None)
+    |> List.distinct
+    |> List.sortBy (fun k -> k.value)
+
+/// A chip's display label: the facet's name plus its selected value key(s).
+let private chipLabel (defs : AttributeDef<MaterialEntry> list) (applied : AppliedConstraint) : string =
+    let facetName =
+        match defs |> List.tryFind (fun d -> d.key = applied.key) with
+        | Some def -> def.name
+        | None -> applied.key.value
+    let valueText =
+        match applied.selection with
+        | DiscreteSelection keys -> keys |> Set.toList |> List.map (fun k -> k.value) |> String.concat ", "
+        | NumericRangeSelection range -> $"%g{range.lower}–%g{range.upper}"
+    $"%s{facetName}: %s{valueText}"
+
+/// Project the live corpus through the engine into the domain-free control state. Everything
+/// here is recomputed per render over the CURRENT proxies (offers, counts, tree, previews), so
+/// a verb's write — or a category rename through the shared proxy — shows in the same pass.
+let facetedState (m : Model) : FacetedTreeControls.State =
+    let inputs = projectionInputs m
+    let filtered = Facets.filter inputs.defs inputs.appliedAll inputs.corpus
+    let resultCount = List.length filtered
+    // The host decides gating (result count above the Domain threshold, no explicit build yet);
+    // the control only obeys (step 012). A gated pass projects NO tree at all — the whole point
+    // is skipping the one potentially heavy render (§0.7).
+    let materialization =
+        if resultCount > m.context.treeAutoBuildThreshold.value then
+            match m.buildRequest with
+            | RequestedTreeBuild -> FacetedTreeControls.TreeMaterialized
+            | NoTreeBuildRequest -> FacetedTreeControls.TreeGated
+        else FacetedTreeControls.TreeMaterialized
+    // Breadcrumbs: the facet chips in application order, after-counts cumulative over the
+    // text-searched population (the filter box narrows first; it takes no chip of its own —
+    // its committed text stays visible in the box).
+    let searched = Facets.filter inputs.defs inputs.textApplied inputs.corpus
+    let breadcrumbs =
+        Facets.breadcrumbCounts inputs.defs m.appliedFacets searched
+        |> List.map (fun bc ->
+            ({
+                code = bc.applied.key.value
+                label = chipLabel inputs.defs bc.applied
+                afterCount = bc.afterCount.value
+             } : FacetedTreeControls.BreadcrumbChip))
+    // Offers: every UNCONSTRAINED facet, in representation order, its values count-previewed
+    // over everything already applied; a facet inapplicable to (or valueless over) the whole
+    // filtered population vanishes entirely (the engine discipline).
+    let appliedKeys = m.appliedFacets |> List.map (fun c -> c.key) |> Set.ofList
+    let offers =
+        m.representation.order
+        |> List.filter (fun key -> not (Set.contains key appliedKeys))
+        |> List.choose (fun key -> inputs.defs |> List.tryFind (fun d -> d.key = key))
+        |> List.choose (fun def ->
+            match offeredValuesFor def filtered with
+            | [] -> None
+            | values ->
+                Some
+                    ({
+                        code = def.key.value
+                        title = def.name
+                        values =
+                            values
+                            |> List.map (fun k ->
+                                let candidate : AppliedConstraint =
+                                    { key = def.key; selection = DiscreteSelection (Set.singleton k) }
+                                ({
+                                    code = k.value
+                                    label = k.value
+                                    previewCount = (Facets.countFor inputs.defs inputs.appliedAll candidate inputs.corpus).value
+                                 } : FacetedTreeControls.OfferedValue))
+                        manualRange = FacetedTreeControls.NoManualRange
+                     } : FacetedTreeControls.OfferGroup))
+    // The tree: the filtered corpus as selectable entry leaves FIRST (the browsed objects —
+    // and the rows a headless click must reach without scrolling), then the representation's
+    // facet/branch grouping from the engine's buildTree.
+    let tree =
+        match materialization with
+        | FacetedTreeControls.TreeGated -> []
+        | FacetedTreeControls.TreeMaterialized ->
+            let entriesNode : FacetedTreeControls.TreeNode =
+                {
+                    code = "entries"
+                    label = "Materials"
+                    countOpt = Some resultCount
+                    expansion = FacetedTreeControls.ExpandedNode
+                    children =
+                        filtered
+                        |> List.map (fun entry ->
+                            ({
+                                code = entryNodeCode entry.id
+                                label = entry.name
+                                countOpt = None
+                                expansion = FacetedTreeControls.ExpandedNode
+                                children = []
+                             } : FacetedTreeControls.TreeNode))
+                }
+            let engineTree = Facets.buildTree (Representation m.representation.order) inputs.defs inputs.appliedAll inputs.corpus
+            let facetNodes =
+                engineTree.facets
+                |> List.map (fun facet ->
+                    ({
+                        code = "facet:" + facet.key.value
+                        label = facet.name
+                        countOpt = None
+                        expansion = FacetedTreeControls.ExpandedNode
+                        children =
+                            facet.branches
+                            |> List.map (fun branch ->
+                                ({
+                                    code = "branch:" + facet.key.value + ":" + branch.value.label
+                                    label = branch.label
+                                    countOpt = Some branch.count.value
+                                    expansion = FacetedTreeControls.ExpandedNode
+                                    children = []
+                                 } : FacetedTreeControls.TreeNode))
+                     } : FacetedTreeControls.TreeNode))
+            entriesNode :: facetNodes
+    {
+        tree = tree
+        breadcrumbs = breadcrumbs
+        offers = offers
+        representations =
+            offeredRepresentations
+            |> List.map (fun r -> ({ code = r.code; label = r.label } : FacetedTreeControls.NamedRepresentation))
+        activeRepresentation = m.representation.code
+        filterDraft = m.textFilter.value
+        resultCount = resultCount
+        materialization = materialization
+    }
+
+/// The control's behaviour seam: every token is lifted back to its domain value HERE, at the
+/// control boundary. Only an `entry:` node code selects (branches/headings are grouping
+/// display; the offers are the apply surface); `applyManualRange` is unreachable — the material
+/// catalogue offers no numeric facet, so no manual range box is ever generated.
+let facetedHandlers (dispatch : Msg -> unit) : FacetedTreeControls.Handlers =
+    {
+        applyConstraint = fun groupCode valueCode -> dispatch (ApplyFacetValue (AttributeKey groupCode, DiscreteKey valueCode))
+        removeConstraint = fun chipCode -> dispatch (RemoveFacet (AttributeKey chipCode))
+        commitTextFilter = fun text -> dispatch (CommitTextFilter text)
+        chooseRepresentation = fun code -> dispatch (ChooseRepresentation code)
+        requestBuild = fun () -> dispatch RequestTreeBuild
+        selectNode =
+            fun code ->
+                match entryIdOfNodeCode code with
+                | Some id -> dispatch (SelectEntry id)
+                | None -> ()
+        applyManualRange = fun _ _ -> ()
+    }
+
+// ---------------------------------------------------------------------------
+// The view: the faceted tree beside the verbs + view panel.
+// ---------------------------------------------------------------------------
+
+let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
+let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
+let private idleBackground = color 232 232 232
+let private idleBorder = color 120 120 120
+let private messageColor = color 178 34 34
+
+/// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
+/// `Control.Name`) through FuncUI's attr builder: the verbs, confirm row, message and panel
+/// all have variable membership, so nothing here sets `StyledElement.Name` (the
+/// `FacetedTreeControls` discipline).
+let private automationId<'View when 'View :> Control> (autoId : string) : IAttr<'View> =
+    AttrBuilder<'View>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+/// A clickable verb box (the shared workbench button look), KEYED by its id so membership
+/// changes recreate a shifted box; `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
+/// pass.
+let private verbButton (autoId : string) (label : string) (onClick : unit -> unit) : IView =
+    let keyedBox =
+        Border.create [
+            automationId<Border> autoId
+            Border.background (brush idleBackground)
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(12.0, 5.0))
+            Border.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
+        ]
+        |> Avalonia.FuncUI.DSL.View.withKey autoId
+    keyedBox :> IView
+
+/// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
+/// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected.
+let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
+    WrapPanel.create [
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children (
+            [ verbButton UiIds.addButton "Add" (fun () -> dispatch AddMaterial) ]
+            @ (match editableSelection m with
+               | Some _ -> [ verbButton UiIds.editButton "Edit" (fun () -> dispatch EditSelected) ]
+               | None -> [])
+            @ (match m.selectedId with
+               | Some _ -> [ verbButton UiIds.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
+               | None -> [])
+            @ [ verbButton UiIds.categoriesButton "Categories…" (fun () -> dispatch OpenCategories) ])
+    ] :> IView
+
+/// The inline remove confirmation — present only while a remove is armed.
+let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+    match m.removeGate with
+    | NoPendingRemove -> []
+    | PendingRemove id ->
+        let name =
+            match m.context.materials.tryGetMaterial id with
+            | Ok (Some entry) -> entry.name
+            | Ok None | Error _ -> string id.value
+        [ WrapPanel.create [
+              WrapPanel.orientation Orientation.Horizontal
+              WrapPanel.children [
+                  TextBlock.create [
+                      TextBlock.text $"Remove material '%s{name}'?"
+                      TextBlock.verticalAlignment VerticalAlignment.Center
+                      TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
+                  ]
+                  verbButton UiIds.removeConfirmButton "Remove" (fun () -> dispatch ConfirmRemove)
+                  verbButton UiIds.removeCancelButton "Cancel" (fun () -> dispatch CancelRemove)
+              ]
+          ] :> IView ]
+
+/// The inline store-refusal message. Every `MaterialError` case carries its diagnostic reason;
+/// `MaterialStillReferenced`'s NAMES the referencing samples — never a cascade, never a dialog.
+let private messageRow (m : Model) : IView list =
+    match m.lastError with
+    | None -> []
+    | Some err ->
+        let text =
+            match err with
+            | UnknownMaterialId reason
+            | DuplicateMaterialId reason
+            | MaterialStillReferenced reason
+            | InvalidMaterial reason -> reason
+        [ TextBlock.create [
+              automationId<TextBlock> UiIds.message
+              TextBlock.foreground (brush messageColor)
+              TextBlock.textWrapping TextWrapping.Wrap
+              TextBlock.maxWidth 380.0
+              TextBlock.text text
+          ] :> IView ]
+
+/// The view panel: the selected entry's read-only metadata plus the dual-axis n/k chart over
+/// the editor's preview range, embedded through the ONE shared ScottPlot chart control.
+/// Resolved through the proxy at render time, so a removed entry's panel vanishes with its row.
+let private viewPanel (m : Model) : IView list =
+    match selectedEntry m with
+    | None -> []
+    | Some entry ->
+        let chart = NkDispersionChart.nkDispersionChart entry.properties Nanometer MaterialEditorView.previewRange
+        let editability =
+            match entry.complexity with
+            | Some _ -> ""
+            | None -> " (view-only engine preset)"
+        [ Border.create [
+              automationId<Border> UiIds.viewPanel
+              Border.child (
+                  StackPanel.create [
+                      StackPanel.orientation Orientation.Vertical
+                      StackPanel.spacing 2.0
+                      StackPanel.children [
+                          TextBlock.create [
+                              TextBlock.fontWeight FontWeight.SemiBold
+                              TextBlock.textWrapping TextWrapping.Wrap
+                              TextBlock.maxWidth 380.0
+                              TextBlock.text $"%s{entry.name} — %s{liveCategoryName m.context.categories entry.category}%s{editability}"
+                          ]
+                          TextBlock.create [
+                              TextBlock.textWrapping TextWrapping.Wrap
+                              TextBlock.maxWidth 380.0
+                              TextBlock.text (entry.description |> Option.defaultValue "")
+                          ]
+                          EmbeddedChart.create UiIds.viewPanelChart chart (NkDispersionChart.nkDispersionStyle chart)
+                      ]
+                  ])
+          ] :> IView ]
+
+/// The window surface: the faceted tree (filter, representation picker, breadcrumbs, live
+/// count, offers, tree) fills the window beside the right-hand panel carrying the verbs, the
+/// inline confirm gate, the typed refusal message, and the selected entry's view panel.
+let view (m : Model) (dispatch : Msg -> unit) : IView =
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [
+                Border.dock Dock.Right
+                Border.width 420.0
+                Border.padding (Thickness 8.0)
+                Border.child (
+                    ScrollViewer.create [
+                        ScrollViewer.content (
+                            StackPanel.create [
+                                StackPanel.orientation Orientation.Vertical
+                                StackPanel.spacing 6.0
+                                StackPanel.children (
+                                    [ verbsRow m dispatch ]
+                                    @ confirmRow m dispatch
+                                    @ messageRow m
+                                    @ viewPanel m)
+                            ])
+                    ])
+            ]
+            Border.create [
+                automationId<Border> UiIds.treeHost
+                Border.padding (Thickness 8.0)
+                Border.child (FacetedTreeControls.view (facetedState m) (facetedHandlers dispatch))
+            ]
+        ]
+    ] :> IView
