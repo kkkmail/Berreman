@@ -381,13 +381,58 @@ module SampleEditorWindowTests =
         |> update SaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Edited"; "close" ], List.ofSeq calls2)
-        // Cancel → close only; the proxy is never reached.
+        // Cancel on a DIRTY editor no longer closes silently (spec 0038 step 033): it shows the
+        // discard confirm and reaches neither saveSample nor requestClose; Discard then closes.
         let calls3, context3 = recordingContext ()
-        init context3 builtInEntries (EditSample (threeFilmSample ()))
-        |> update (SetName "Discarded")
-        |> update CancelClicked
-        |> ignore
+        let confirming =
+            init context3 builtInEntries (EditSample (threeFilmSample ()))
+            |> update (SetName "Discarded")
+            |> update CancelClicked
+        Assert.Empty(calls3)
+        match confirming.exit with
+        | ConfirmingDiscard -> ()
+        | Editing -> Assert.Fail("a dirty Cancel must show the discard confirm, not close")
+        update DiscardConfirmed confirming |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls3)
+
+    [<Fact>]
+    let ``spec 0038 (033): a pristine editor closes silently, a dirty one gates Cancel behind the discard confirm`` () =
+        // Pristine: a freshly opened blank sample is not dirty and Cancel closes silently.
+        let calls, context = recordingContext ()
+        let fresh = init context builtInEntries (NewBlankSample (newSampleId ()))
+        Assert.False(isDirty fresh, "a freshly opened editor is pristine")
+        let afterCancel = update CancelClicked fresh
+        Assert.Equal<string list>([ "close" ], List.ofSeq calls)
+        Assert.Equal(Editing, afterCancel.exit)
+        // Dirty: a name edit makes it dirty; Cancel shows the confirm and reaches nothing.
+        let calls2, context2 = recordingContext ()
+        let edited = init context2 builtInEntries (NewBlankSample (newSampleId ())) |> update (SetName "X")
+        Assert.True(isDirty edited, "a name edit makes the editor dirty")
+        let confirming = update CancelClicked edited
+        Assert.Equal(ConfirmingDiscard, confirming.exit)
+        Assert.Empty(calls2)
+        // Keep editing dismisses the confirm without closing.
+        let kept = update KeepEditing confirming
+        Assert.Equal(Editing, kept.exit)
+        Assert.Empty(calls2)
+        // Discard closes without ever reaching saveSample.
+        update DiscardConfirmed confirming |> ignore
+        Assert.Equal<string list>([ "close" ], List.ofSeq calls2)
+
+    [<Fact>]
+    let ``spec 0038 (033): a structural stack edit dirties the editor and a seeded starter opens pristine`` () =
+        // A NewSeededMultilayer opens onto the Domain starter period but is NOT a user edit — it
+        // opens pristine and closes silently.
+        let calls, context = recordingContext ()
+        let seeded = init context builtInEntries (NewSeededMultilayer (newSampleId ()))
+        Assert.False(isDirty seeded, "a seeded starter is not a user edit")
+        // A stack structural edit (add a layer) dirties it; the selection alone would not.
+        let dirtied = update AddLayerClicked seeded
+        Assert.True(isDirty dirtied, "adding a layer changes the stack structure — dirty")
+        // Cancel then gates behind the confirm rather than closing.
+        let confirming = update CancelClicked dirtied
+        Assert.Equal(ConfirmingDiscard, confirming.exit)
+        Assert.Empty(calls)
 
     [<Fact>]
     let ``a failing save keeps the window open and surfaces the proxy's reason`` () =
@@ -661,7 +706,7 @@ module SampleEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``Cancel discards the edit and closes without touching the store`` () =
+    let ``Cancel on a dirty editor shows the discard confirm, and Discard closes without touching the store`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
             let existing = SeedSamples.glassFilm200
@@ -669,12 +714,79 @@ module SampleEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window UiIds.nameBox "Should not persist"
+            // Cancel on the now-dirty editor shows the confirm instead of closing (spec 0038 step 033).
             clickOn window UiIds.cancelButton
+            Assert.True(window.IsVisible, "a dirty Cancel must not close silently")
+            Assert.True(isPresent window UiIds.exitConfirm, "the discard confirm must appear")
+            Assert.False(isPresent window UiIds.saveButton, "Save/Cancel are replaced by the confirm")
+            // Discard closes WITHOUT persisting the edit.
+            clickOn window UiIds.discardButton
             Assert.False(window.IsVisible)
             match samples.tryGetSample existing.id with
             | Ok (Some kept) -> Assert.Equal(existing.name, kept.name)
             | Ok None -> Assert.Fail("the existing sample vanished")
             | Error e -> Assert.Fail($"tryGetSample failed: %A{e}"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``spec 0038 (033): a pristine editor's Cancel closes immediately`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(isPresent window UiIds.exitConfirm, "no confirm surface before any edit")
+            clickOn window UiIds.cancelButton
+            Assert.False(window.IsVisible, "a pristine Cancel closes immediately"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``spec 0038 (033): a dirty Cancel confirm — Keep editing returns, then Discard closes`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            setText window UiIds.nameBox "Unsaved sample"
+            clickOn window UiIds.cancelButton
+            Assert.True(window.IsVisible, "a dirty Cancel must not close the window")
+            Assert.True(isPresent window UiIds.exitConfirm, "the discard confirm must appear")
+            Assert.True(isPresent window UiIds.discardButton)
+            Assert.True(isPresent window UiIds.keepEditingButton)
+            // Keep editing returns to the editor.
+            clickOn window UiIds.keepEditingButton
+            Assert.True(window.IsVisible)
+            Assert.False(isPresent window UiIds.exitConfirm, "Keep editing dismisses the confirm")
+            Assert.True(isPresent window UiIds.saveButton, "the Save action returns")
+            // Cancel again → Discard closes for real.
+            clickOn window UiIds.cancelButton
+            Assert.True(isPresent window UiIds.exitConfirm)
+            clickOn window UiIds.discardButton
+            Assert.False(window.IsVisible, "Discard closes the window"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``spec 0038 (033): the window chrome (OnClosing) is equally gated`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // The OS title-bar X routes through ChromeCloseIntercepted — the OnClosing override
+            // delegates to it (the OS chrome is not reachable through the headless input surface).
+            // A pristine editor's chrome close proceeds: nothing intercepted, no confirm.
+            Assert.False(window.ChromeCloseIntercepted(), "a pristine chrome close proceeds")
+            Assert.False(isPresent window UiIds.exitConfirm, "no confirm on a pristine chrome close")
+            // A dirty editor's chrome close is intercepted and shows the SAME discard confirm the
+            // Cancel button raises — the window stays open.
+            setText window UiIds.nameBox "Chrome edit"
+            Assert.True(window.ChromeCloseIntercepted(), "a dirty chrome close must be intercepted")
+            Dispatcher.UIThread.RunJobs()
+            Assert.True(window.IsVisible, "an intercepted chrome close leaves the window open")
+            Assert.True(isPresent window UiIds.exitConfirm, "the chrome close shows the discard confirm")
+            // Discard from the confirm then closes for real.
+            clickOn window UiIds.discardButton
+            Assert.False(window.IsVisible, "Discard closes the chrome-gated window"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

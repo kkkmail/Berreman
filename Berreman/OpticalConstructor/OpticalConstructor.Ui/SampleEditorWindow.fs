@@ -33,6 +33,9 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
     // synchronous in this constructor) — the host's Activated hook dispatches the step-019
     // material re-query through it into the pure update.
     let mutable dispatch : SampleEditorView.Msg -> unit = ignore
+    // The latest model, mirrored on every step — the `OnClosing` chrome gate reads dirtiness off
+    // it (spec 0038 step 033).
+    let mutable latestModel : SampleEditorView.Model option = None
 
     do
         this.Title <-
@@ -73,9 +76,11 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
                 openMaterialsSelect = openMaterialsSelect
                 requestClose = fun () -> this.Close()
             }
+        let initModel = SampleEditorView.init context entries intent
+        latestModel <- Some initModel
         Program.mkProgram
-            (fun () -> SampleEditorView.init context entries intent, Cmd.ofEffect (fun d -> dispatch <- d))
-            (fun msg m -> SampleEditorView.update msg m, Cmd.none)
+            (fun () -> initModel, Cmd.ofEffect (fun d -> dispatch <- d))
+            (fun msg m -> let next = SampleEditorView.update msg m in latestModel <- Some next; next, Cmd.none)
             SampleEditorView.view
         |> Program.withHost this
         |> Program.run
@@ -84,3 +89,23 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
         // re-query triggers (the first is a Select-session return, wired in the view's
         // session callbacks).
         this.Activated.Add (fun _ -> dispatch SampleEditorView.RefreshMaterials)
+
+    /// Spec 0038 (033): the window-chrome close gate, shared by `OnClosing` and its headless proof
+    /// (the OS title-bar X is not reachable through the headless input surface). Returns true — and
+    /// dispatches the pure `CancelClicked`, surfacing the discard confirm — when a dirty editor must
+    /// NOT close through the chrome; false when the close may proceed. It routes through the SAME
+    /// `CancelClicked` the Cancel button hits, so both exits are equally gated.
+    member _.ChromeCloseIntercepted() : bool =
+        match latestModel with
+        | Some m when SampleEditorView.isDirty m ->
+            dispatch SampleEditorView.CancelClicked
+            true
+        | _ -> false
+
+    /// Gate only the genuine window chrome (title-bar X — a NON-programmatic close). An app or
+    /// launcher `Close()` is programmatic and proceeds untouched (`base.OnClosing` raises the
+    /// `Closing` event so the FuncUI host tears down on the real close); Save / Discard / a pristine
+    /// Cancel all close through the programmatic `requestClose`.
+    override this.OnClosing(e : WindowClosingEventArgs) =
+        if not e.IsProgrammatic && this.ChromeCloseIntercepted() then e.Cancel <- true
+        else base.OnClosing(e)

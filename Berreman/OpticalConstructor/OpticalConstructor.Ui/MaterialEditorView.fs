@@ -88,6 +88,15 @@ module UiIds =
     let saveButton = "MaterialEditorSaveButton"
     [<Literal>]
     let cancelButton = "MaterialEditorCancelButton"
+    /// Spec 0038 (033): the unsaved-edit exit confirm surface — the prompt row and its two
+    /// actions (Discard changes / Keep editing), shown in place of Save/Cancel while a dirty
+    /// editor is being closed through Cancel or the window chrome.
+    [<Literal>]
+    let exitConfirm = "MaterialEditorExitConfirm"
+    [<Literal>]
+    let discardButton = "MaterialEditorDiscardButton"
+    [<Literal>]
+    let keepEditingButton = "MaterialEditorKeepEditingButton"
     // Supporting fixed ids (not slice-mandated, same naming discipline).
     [<Literal>]
     let descriptionBox = "MaterialDescriptionBox"
@@ -225,6 +234,19 @@ type MaterialEditorContext =
         requestClose : unit -> unit
     }
 
+/// Whether the editor is editing normally or showing the unsaved-edit exit confirm surface
+/// (spec 0038 step 033). A named two-case DU, never a naked `bool`: a dirty editor being closed
+/// through Cancel or the window chrome flips to `ConfirmingDiscard`, which offers Discard / Keep.
+type ExitPrompt =
+    | Editing
+    | ConfirmingDiscard
+
+/// The structurally-comparable slice of the model Save persists — the identity facets and the
+/// ladder edit state (spec 0038 step 033's dirtiness snapshot). Every component is a plain
+/// record/DU with structural equality; the reference-compared context / preset preview and the
+/// pure-UI state (hidden series, status) are excluded.
+type MaterialEditSnapshot = string * string * CategoryId * MaterialComplexityEditState
+
 /// The editor's model: the entry identity facets (name / category / description), the pure
 /// Domain ladder state, and — for a view-only entry — the preset engine properties the preview
 /// still charts. Reference-compared: `OpticalPropertiesWithDisp` carries dispersion FUNCTION
@@ -245,6 +267,11 @@ type Model =
         /// Spec 0038 (032): the preview curves the user hid, keyed by `UiIds.seriesToggle`'s tab code
         /// + series name (so a toggle in one tab never hides a same-named curve in another).
         hiddenSeries : Set<string>
+        /// Spec 0038 (033): the edit snapshot captured at load — dirtiness is `initialEdit`
+        /// structurally unequal to the current edit slice (no dirty flag maintained).
+        initialEdit : MaterialEditSnapshot
+        /// Spec 0038 (033): normal editing vs the unsaved-edit exit confirm surface.
+        exit : ExitPrompt
         /// The last typed-error reason (or proxy rejection) surfaced to the user.
         status : string option
     }
@@ -258,7 +285,13 @@ type Msg =
     /// Spec 0038 (032): flip one preview curve's visibility, by its `UiIds.seriesToggle` key.
     | ToggleSeriesVisibility of key : string
     | SaveClicked
+    /// Requested exit (the Cancel button, or the window chrome routed through `OnClosing`):
+    /// closes a pristine editor silently, shows the discard confirm on a dirty one (spec 0038 step 033).
     | CancelClicked
+    /// Spec 0038 (033): the confirm surface's Discard changes — close without saving.
+    | DiscardConfirmed
+    /// Spec 0038 (033): the confirm surface's Keep editing — dismiss the confirm, stay in the editor.
+    | KeepEditing
 
 // ---------------------------------------------------------------------------
 // Pure helpers.
@@ -381,54 +414,73 @@ let complexitySummary (m : Model) : string =
                 | None -> $"%s{label} off"
             $"""eps %s{epsCaseLabel c.eps}; %s{aspect "active" c.active}; %s{aspect "magnetic" c.magnetic} [%08x{hash c}]"""
 
+/// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets and
+/// the ladder edit state, all plain records/DUs. A view-only entry never mutates these, so it is
+/// never dirty and always closes silently.
+let private currentEdit (m : Model) : MaterialEditSnapshot =
+    (m.name, m.description, m.category, m.editor)
+
+/// Whether the editor carries unsaved changes: the current edit slice differs structurally from
+/// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
+let isDirty (m : Model) : bool =
+    m.initialEdit <> currentEdit m
+
 // ---------------------------------------------------------------------------
 // init / update (pure — IO only through the context's proxy fields).
 // ---------------------------------------------------------------------------
 
 let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Model =
-    match intent with
-    | NewMaterial mintedId ->
-        // The Add path: the id was minted AT WINDOW OPEN (spec 0038 step 008) and rides the
-        // model as a NewUnsaved target, so Save persists under the SAME id the launcher's
-        // registry already keys this window by.
-        {
-            context = context
-            target = { materialId = mintedId; freshness = WindowLauncher.NewUnsaved }
-            mode = EditableMaterial
-            name = ""
-            description = ""
-            category = CategoryIds.glass
-            editor = defaultState
-            presetProperties = None
-            hiddenSeries = Set.empty
-            status = None
-        }
-    | EditMaterial entry ->
-        let seeded =
+    let built =
+        match intent with
+        | NewMaterial mintedId ->
+            // The Add path: the id was minted AT WINDOW OPEN (spec 0038 step 008) and rides the
+            // model as a NewUnsaved target, so Save persists under the SAME id the launcher's
+            // registry already keys this window by.
             {
                 context = context
-                target = { materialId = entry.id; freshness = WindowLauncher.Persisted }
+                target = { materialId = mintedId; freshness = WindowLauncher.NewUnsaved }
                 mode = EditableMaterial
-                name = entry.name
-                description = (match entry.description with Some d -> d | None -> "")
-                category = entry.category
+                name = ""
+                description = ""
+                category = CategoryIds.glass
                 editor = defaultState
                 presetProperties = None
                 hiddenSeries = Set.empty
+                initialEdit = ("", "", CategoryIds.glass, defaultState)
+                exit = Editing
                 status = None
             }
-        match entry.complexity with
-        | None ->
-            { seeded with
-                mode = ViewOnlyMaterial "this entry's physics is coded in the engine (complexity = None) — view-only"
-                presetProperties = Some entry.properties }
-        | Some complexity ->
-            match ofComplexity complexity with
-            | Ok editor -> { seeded with editor = editor }
-            | Error e ->
+        | EditMaterial entry ->
+            let seeded =
+                {
+                    context = context
+                    target = { materialId = entry.id; freshness = WindowLauncher.Persisted }
+                    mode = EditableMaterial
+                    name = entry.name
+                    description = (match entry.description with Some d -> d | None -> "")
+                    category = entry.category
+                    editor = defaultState
+                    presetProperties = None
+                    hiddenSeries = Set.empty
+                    initialEdit = ("", "", CategoryIds.glass, defaultState)
+                    exit = Editing
+                    status = None
+                }
+            match entry.complexity with
+            | None ->
                 { seeded with
-                    mode = ViewOnlyMaterial (editErrorReason e)
+                    mode = ViewOnlyMaterial "this entry's physics is coded in the engine (complexity = None) — view-only"
                     presetProperties = Some entry.properties }
+            | Some complexity ->
+                match ofComplexity complexity with
+                | Ok editor -> { seeded with editor = editor }
+                | Error e ->
+                    { seeded with
+                        mode = ViewOnlyMaterial (editErrorReason e)
+                        presetProperties = Some entry.properties }
+    // Capture the edit snapshot from the fully-seeded model, so a freshly opened editor is
+    // pristine and closes silently (spec 0038 step 033).
+    { built with initialEdit = currentEdit built }
 
 let update (msg : Msg) (m : Model) : Model =
     match msg with
@@ -477,8 +529,20 @@ let update (msg : Msg) (m : Model) : Model =
                     { m with status = None }
                 | Error e -> { m with status = Some (materialErrorReason e) }
     | CancelClicked ->
+        // Spec 0038 (033): a dirty editor MUST NOT close silently — show the discard confirm;
+        // a pristine one closes as today. The window chrome (`OnClosing`) routes here too, so
+        // both exits are equally gated.
+        if isDirty m then { m with exit = ConfirmingDiscard }
+        else
+            m.context.requestClose ()
+            m
+    | DiscardConfirmed ->
+        // Close WITHOUT saving — the discard confirm's negative action (spec 0038 step 033).
         m.context.requestClose ()
         m
+    | KeepEditing ->
+        // Dismiss the confirm and stay in the editor (spec 0038 step 033).
+        { m with exit = Editing }
 
 // ---------------------------------------------------------------------------
 // The FuncUI view. Styling matches the sibling editors' idle/chosen boxes; every control in
@@ -1197,6 +1261,33 @@ let private saveCancelRow (dispatch : Msg -> unit) (withSave : bool) : IView =
             @ [ actionButton UiIds.cancelButton (if withSave then "Cancel" else "Close") cancelBackground (fun () -> dispatch CancelClicked) ])
     ] :> IView
 
+/// The unsaved-edit exit confirm surface (spec 0038 step 033): shown in place of the Save/Cancel
+/// row while a dirty editor is being closed. Discard changes (negative styling) closes without
+/// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
+let private exitConfirmRow (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        automationId UiIds.exitConfirm
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 0.0
+        StackPanel.children [
+            TextBlock.create [
+                TextBlock.text "Discard unsaved changes?"
+                TextBlock.foreground (brush warningColor)
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
+            ] :> IView
+            actionButton UiIds.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
+            actionButton UiIds.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+        ]
+    ] :> IView
+
+/// The bottom action area: the normal Save/Cancel (or Close) row, or — while `exit =
+/// ConfirmingDiscard` — the discard confirm surface (spec 0038 step 033).
+let private actionsRow (m : Model) (dispatch : Msg -> unit) (withSave : bool) : IView =
+    match m.exit with
+    | Editing -> saveCancelRow dispatch withSave
+    | ConfirmingDiscard -> exitConfirmRow dispatch
+
 /// The whole editor — a two-pane vertical split (spec 0038 step 032). Edit mode: LEFT pane = the
 /// identity rows + the progressive ladder inside a `ScrollViewer`, with the derived-model / gain /
 /// status readouts and the Save/Cancel actions pinned below it; RIGHT pane = the full-height tabbed
@@ -1215,7 +1306,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
         let leftPane =
             DockPanel.create [
                 DockPanel.children [
-                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch false) ]
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (actionsRow m dispatch false) ]
                     scrolling (
                         StackPanel.create [
                             StackPanel.orientation Orientation.Vertical
@@ -1247,7 +1338,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
         let leftPane =
             DockPanel.create [
                 DockPanel.children [
-                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch true) ]
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (actionsRow m dispatch true) ]
                     Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
                     Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (gainWarningRow warning) ]
                     Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (summaryRow m) ]

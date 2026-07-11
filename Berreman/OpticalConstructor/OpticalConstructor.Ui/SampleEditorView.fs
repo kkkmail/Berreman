@@ -76,6 +76,15 @@ module UiIds =
     let saveButton = "SampleEditorSaveButton"
     [<Literal>]
     let cancelButton = "SampleEditorCancelButton"
+    /// Spec 0038 (033): the unsaved-edit exit confirm surface — the prompt row and its two
+    /// actions (Discard changes / Keep editing), shown in place of Save/Cancel while a dirty
+    /// editor is being closed through Cancel or the window chrome.
+    [<Literal>]
+    let exitConfirm = "SampleEditorExitConfirm"
+    [<Literal>]
+    let discardButton = "SampleEditorDiscardButton"
+    [<Literal>]
+    let keepEditingButton = "SampleEditorKeepEditingButton"
     // Supporting fixed ids (not slice-mandated, same naming discipline).
     [<Literal>]
     let descriptionBox = "SampleDescriptionBox"
@@ -193,6 +202,19 @@ type AngleSlot =
     | ThetaSlot
     | PsiSlot
 
+/// Whether the editor is editing normally or showing the unsaved-edit exit confirm surface
+/// (spec 0038 step 033). A named two-case DU, never a naked `bool`: a dirty editor being closed
+/// through Cancel or the window chrome flips to `ConfirmingDiscard`, which offers Discard / Keep.
+type ExitPrompt =
+    | Editing
+    | ConfirmingDiscard
+
+/// The structurally-comparable slice of the model Save persists — the identity facets and the
+/// stack structure (spec 0038 step 033's dirtiness snapshot). Every component is a plain
+/// record/DU with structural equality; the reference-compared context / material list and the
+/// pure-UI state (selection, collapsed groups, transient entry texts) are excluded.
+type SampleEditSnapshot = string * string * SubstrateKind * SampleStructure
+
 /// The editor's model: the sample identity facets (name / description / `SubstrateKind`), the
 /// step-21 stack edit state, the material list resolved from `MaterialProxy.listMaterials`
 /// (re-queried on every Select-session return and window activation — spec 0038 step 019),
@@ -220,6 +242,11 @@ type Model =
         psiText : string
         /// The toolbar stepper's fold count `MakeRepeatBlock` uses (always >= 1).
         foldCount : int
+        /// Spec 0038 (033): the edit snapshot captured at load — dirtiness is `initialEdit`
+        /// structurally unequal to the current edit slice (no dirty flag maintained).
+        initialEdit : SampleEditSnapshot
+        /// Spec 0038 (033): normal editing vs the unsaved-edit exit confirm surface.
+        exit : ExitPrompt
         /// The last typed-error reason (or entry-validation hint) surfaced to the user.
         status : string option
     }
@@ -272,7 +299,13 @@ type Msg =
     /// Clear the lower half-space back to vacuum (spec 0033 gap G12).
     | ClearLowerClicked
     | SaveClicked
+    /// Requested exit (the Cancel button, or the window chrome routed through `OnClosing`):
+    /// closes a pristine editor silently, shows the discard confirm on a dirty one (spec 0038 step 033).
     | CancelClicked
+    /// Spec 0038 (033): the confirm surface's Discard changes — close without saving.
+    | DiscardConfirmed
+    /// Spec 0038 (033): the confirm surface's Keep editing — dismiss the confirm, stay in the editor.
+    | KeepEditing
 
 // ---------------------------------------------------------------------------
 // Pure helpers.
@@ -383,6 +416,17 @@ let private orientationLabel (o : CrystalOrientation) : string =
     | PrimaryAxes -> "primary axes"
     | EulerRotation (_, phi, theta, psi) -> $"φ=%g{phi.degrees}° θ=%g{theta.degrees}° ψ=%g{psi.degrees}°"
 
+/// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets and
+/// the stack structure, all plain records/DUs. The transient entry texts, the selection, the
+/// collapsed-group set and the re-queried material list are pure UI / read state and excluded.
+let private currentEdit (m : Model) : SampleEditSnapshot =
+    (m.name, m.description, m.substrate, m.editor.structure)
+
+/// Whether the editor carries unsaved changes: the current edit slice differs structurally from
+/// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
+let isDirty (m : Model) : bool =
+    m.initialEdit <> currentEdit m
+
 // ---------------------------------------------------------------------------
 // init / toSample / update (pure — IO only through the context's proxy fields).
 // ---------------------------------------------------------------------------
@@ -422,6 +466,10 @@ let init (context : SampleEditorContext) (materials : MaterialEntry list) (inten
         thetaText = ""
         psiText = ""
         foldCount = 2
+        // The edit snapshot at load — a freshly opened editor (including a seeded starter) is
+        // pristine and closes silently (spec 0038 step 033).
+        initialEdit = (name, description, substrate, structure)
+        exit = Editing
         status = None
     }
 
@@ -585,8 +633,20 @@ let update (msg : Msg) (m : Model) : Model =
             { m with status = None }
         | Error e -> { m with status = Some (sampleErrorReason e) }
     | CancelClicked ->
+        // Spec 0038 (033): a dirty editor MUST NOT close silently — show the discard confirm;
+        // a pristine one closes as today. The window chrome (`OnClosing`) routes here too, so
+        // both exits are equally gated.
+        if isDirty m then { m with exit = ConfirmingDiscard }
+        else
+            m.context.requestClose ()
+            m
+    | DiscardConfirmed ->
+        // Close WITHOUT saving — the discard confirm's negative action (spec 0038 step 033).
         m.context.requestClose ()
         m
+    | KeepEditing ->
+        // Dismiss the confirm and stay in the editor (spec 0038 step 033).
+        { m with exit = Editing }
 
 // ---------------------------------------------------------------------------
 // The FuncUI view. Styling matches the sibling bars' idle/chosen boxes; every control in a
@@ -1128,6 +1188,33 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
+/// The unsaved-edit exit confirm surface (spec 0038 step 033): shown in place of the Save/Cancel
+/// row while a dirty editor is being closed. Discard changes (negative styling) closes without
+/// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
+let private exitConfirmRow (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        automationId UiIds.exitConfirm
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 0.0
+        StackPanel.children [
+            TextBlock.create [
+                TextBlock.text "Discard unsaved changes?"
+                TextBlock.foreground (brush errorColor)
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
+            ] :> IView
+            actionButton UiIds.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
+            actionButton UiIds.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+        ]
+    ] :> IView
+
+/// The bottom action area: the normal Save/Cancel row, or — while `exit = ConfirmingDiscard` —
+/// the discard confirm surface (spec 0038 step 033).
+let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
+    match m.exit with
+    | Editing -> saveCancelRow dispatch
+    | ConfirmingDiscard -> exitConfirmRow dispatch
+
 /// The whole editor: identity + facets on top (material picking moved to the per-layer Choose
 /// material… verbs — spec 0038 step 019); the bulk toolbars, QWOT row, status line and the
 /// Save/Cancel row pinned to the bottom; the stack table (with the expanded-films readout)
@@ -1149,7 +1236,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                         ]
                     ])
             ]
-            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (actionsRow m dispatch) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (qwotRow m dispatch) ]
             Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (halfSpacesRow m dispatch) ]
