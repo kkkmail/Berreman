@@ -54,8 +54,14 @@ type AppContext =
     /// unchanged.
     static member create (settings : WorkbenchSettings) : AppContext =
         // Both stores are versioned (spec 0038 steps 021/022) and take the step-20 `VersionsInUse`
-        // seam; nothing is persisted yet (§0.2), so `VersionsInUse.empty` is truthful for now —
-        // step 25 injects the real one computed over the live experiment descriptors.
+        // seam. Step 25 implements the real builder — `Experiments.versionsInUseSeam` over the
+        // `boundVersions` of a live experiment collection (fully unit-verified: injected into a store,
+        // a bound sample version blocks removal and mints on physics change). Wiring it HERE needs a
+        // mutable experiment source shared with the once-built stores, but the live experiment
+        // collection lives in the immutable Elmish model (`TableAndElementRotationView`), not a store
+        // this composition root can read; that shared source lands with the `ExperimentCollectionProxy`
+        // (spec 0038 Part I, a later step). Until then `VersionsInUse.empty` is truthful — no experiment
+        // is persisted, so no version is in use across app scope yet (§0.2).
         let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)

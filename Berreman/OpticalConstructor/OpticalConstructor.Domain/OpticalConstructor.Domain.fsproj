@@ -118,6 +118,14 @@
              Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
              Library (SampleId) above. -->
         <Compile Include="Lifecycle.fs" />
+        <!-- Spec 0038 Part I (step 025): the Experiments domain — grown so an `Experiment` carries an
+             ordered `ElementDescriptor` setup (kind + placement/orientation summary + versioned
+             `VersionRef` binding, sample/source optional, detector included), a `DataFilePath` +
+             optional per-experiment attachment, and the `boundVersions` / `versionsInUseSeam` builders
+             the stores' `VersionsInUse` is wired over. Moved out of `ElementId.fs` to here because the
+             descriptor binding reuses the step-020 `VersionRef` (`Lifecycle.fs`, above); nothing between
+             `ElementId.fs` and here references `Experiments`, so the module name is unchanged. -->
+        <Compile Include="Experiments.fs" />
         <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
              registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
              stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation

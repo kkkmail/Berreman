@@ -830,6 +830,40 @@ let private experimentElementLabel (model : Model) (id : Library.ElementId) : st
     |> Option.map (fun (i, e) -> $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
     |> Option.defaultValue "(element)"
 
+/// Spec 0038 Part I (step 025): resolve one present element's binding into an experiment descriptor's
+/// `ElementBinding`. A bound Sample resolves through the Library to its `SampleId` and pins version one
+/// (`SampleVersionId.firstOf` — every sample lives at v1 at this in-memory step), so the captured setup
+/// references the sample BY VERSION (the `VersionsInUse` seam collects it); a bound protected preset
+/// (source / detector / polarizer) binds by its entry id; an unbound element is `Unbound`.
+let private descriptorBinding (model : Model) (kind : CatalogueKind) (valueIdOpt : string option) : Experiments.ElementBinding =
+    match valueIdOpt with
+    | None -> Experiments.Unbound
+    | Some vid ->
+        match kind with
+        | Sample ->
+            match model.library.tryGetEntry vid with
+            | Ok (Some (Library.SampleItem s)) ->
+                Experiments.BoundByVersion (Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf s.id))
+            | Ok (Some _) | Ok None | Error _ -> Experiments.BoundByEntryId vid
+        | LightSource | LinearPolarizer | CircularPolarizer | Lens | FlatMirror | CurvedMirror | Detector ->
+            Experiments.BoundByEntryId vid
+
+/// Spec 0038 Part I (step 025): capture the live scene as an experiment's ordered `setup` — one
+/// `ElementDescriptor` per present element (in scene order), carrying its id, human label, catalogue kind,
+/// placement/orientation summary and versioned/preset binding. The detector element is part of the chain
+/// (its kind fixes the expected data-file shape). Built on commit; the descriptor snapshot survives the
+/// element's later removal.
+let private buildExperimentSetup (model : Model) : Experiments.ElementDescriptor list =
+    model.elements
+    |> List.map (fun e ->
+        {
+            Experiments.ElementDescriptor.elementId = e.id
+            label = experimentElementLabel model e.id
+            kind = e.placement.catalogueKind
+            placement = Experiments.PlacementSummary.ofPlacement e.placement
+            binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
+        })
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec update (msg : Msg) (model : Model) : Model =
@@ -939,7 +973,9 @@ let rec update (msg : Msg) (model : Model) : Model =
     | ExpSetRangeMin v -> { model with experimentCollection = Experiments.setRangeMin v model.experimentCollection }
     | ExpSetRangeMax v -> { model with experimentCollection = Experiments.setRangeMax v model.experimentCollection }
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n model.experimentCollection }
-    | ExpCommit -> { model with experimentCollection = Experiments.commit model.experimentCollection }
+    | ExpCommit ->
+        // Spec 0038 Part I (step 025): capture the live scene as the experiment's ordered setup and commit.
+        { model with experimentCollection = Experiments.commit (buildExperimentSetup model) model.experimentCollection }
     | ExpNew -> { model with experimentCollection = Experiments.newDraft model.experimentCollection }
     | ExpEdit idStr ->
         match System.Int32.TryParse idStr with
@@ -1809,9 +1845,13 @@ let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
     | Some chosen, Some variable -> chartForParams model chosen variable draft.measurement draft.range draft.elementLabel
     | _ -> ExperimentChart.empty
 
-/// The chart of a specific COLLECTED experiment — the per-row "View" action.
+/// The chart of a specific COLLECTED experiment — the per-row "View" action. Spec 0038 Part I (step 025):
+/// the varied element is one entry of the experiment's captured setup; a dark-line experiment (nothing
+/// varied) has no chart.
 let chartForExperiment (model : Model) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
-    chartForParams model exp.elementId exp.variable exp.measurement exp.range exp.elementLabel
+    match exp.varied with
+    | Some v -> chartForParams model v.elementId v.variable exp.measurement exp.range exp.variedLabel
+    | None -> ExperimentChart.empty
 
 // Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
