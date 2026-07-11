@@ -25,6 +25,11 @@
          Slice 001 ships these as empty placeholder modules; later slices fill them. -->
     <ItemGroup>
         <Compile Include="Units.fs" />
+        <!-- Spec 0038 Part C (step 005): the pure, elevated workbench-settings record —
+             the Domain shape of the app-level appsettings.json values. Depends on
+             nothing; the App composition root is the only place the raw wire values
+             are read (AppSettingsProvider) and elevated into this record. -->
+        <Compile Include="WorkbenchSettings.fs" />
         <!-- Spec 0033 (019): the pure spectral-axis helpers (label / canonical-meter range /
              display-unit ticks), REAL-MOVED here from Ui's MaterialPreview so non-Ui chart
              hosts (TestWindows' n/k dispersion chart) share them. Depends only on Units and

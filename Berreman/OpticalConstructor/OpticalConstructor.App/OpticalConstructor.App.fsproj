@@ -23,7 +23,22 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Spec 0038 Part C (step 005): the ConfigKey inventory + the single
+             AppSettingsProvider read seam, compiled before the composition root
+             that calls it once at startup. -->
+        <Compile Include="AppConfig.fs" />
         <Compile Include="Program.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Spec 0038 Part C (step 005): appsettings.json is a build-copied content
+             item; AppSettingsProvider opens it BESIDE the assembly and SetOnMissing
+             writes every missing key's default back on first run (the file
+             self-documents). User preferences REMAIN in environment.json — the two
+             stores never merge. -->
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <!-- The composition root (Program.fs) directly hosts the FuncUI shell, so it
@@ -41,6 +56,10 @@
              mounts the MVU program. Version-aligned with FuncUI 2.0.0-preview1 (Avalonia 12); MIT NuGet. -->
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
+        <!-- Spec 0038 Part C (step 005): appsettings.json is read/written ONLY through
+             Softellect.Sys.AppSettings.AppSettingsProvider — version-matched to the
+             existing OpticalConstructor.Storage reference. -->
+        <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />
     </ItemGroup>
 
     <ItemGroup>

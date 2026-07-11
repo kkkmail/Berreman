@@ -35,6 +35,19 @@ open OpticalConstructor.Domain.Library
 module private Startup =
     let settings = UserEnvironment.load (UserEnvironment.settingsPath ())
 
+    /// The typed appsettings.json values (spec 0038 Part C, step 005): the provider
+    /// is created ONCE here — `AppConfig.loadWorkbenchSettings` opens the
+    /// build-copied appsettings.json through `AppSettingsProvider`, `SetOnMissing`
+    /// writes every missing key's default back (the first run self-documents), and
+    /// the values flow inward only as this elevated Domain record (no view or Domain
+    /// module reads the provider ambiently). The binding initializes with the module
+    /// when `App.Initialize` reads `settings` above. Consumers arrive with the
+    /// Part C window-policy seam; `environment.json` (the user preferences above)
+    /// and appsettings.json never merge. Total — a missing/unreadable file falls
+    /// back to `WorkbenchSettings.defaults`, so startup (and the headless ui-smoke
+    /// session) never blocks on configuration.
+    let workbenchSettings = AppConfig.loadWorkbenchSettings ()
+
 /// The Main screen (Spec 0027): the dynamic "Lego constructor". It is the SAME table + element scene
 /// as "Test Table + Element Rotations" (`TableAndElementRotationView` — same table, same initial zoom,
 /// same select/unselect + rotation/zoom/pan logic), seeded with a light source and a detector and given

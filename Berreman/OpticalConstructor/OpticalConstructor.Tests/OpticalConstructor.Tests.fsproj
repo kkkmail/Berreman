@@ -109,6 +109,11 @@
              edits, remove, moves, MakeRepeatBlock, SetRepeatCount) without a window, plus both
              acceptance criteria and the typed repeat-count rejections. -->
         <Compile Include="SampleStackEditorTests.fs" />
+        <!-- Spec 0038 Part C (step 005): the pure WorkbenchSettings Domain record —
+             defaults (modeless / 5 / 100 / 8) and per-type tryCreate rejection of
+             non-positive thresholds, constructed directly with no file IO (the
+             AppSettingsProvider seam lives only in the App composition root). -->
+        <Compile Include="WorkbenchSettingsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
