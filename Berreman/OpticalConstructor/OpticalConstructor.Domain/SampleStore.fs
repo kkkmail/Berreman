@@ -47,14 +47,16 @@ module SampleStore =
         /// active. Unlike the material store there is NO `samplesReferencing`-analogue: nothing
         /// structural references a sample; a sample is "used" only when a live experiment binds one of
         /// its versions (the `VersionsInUse` seam), which the used-version removal block guards.
-        static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
+        /// The shared versioned in-memory sample-store body (spec 0038 step 042 —
+        /// IMPLEMENT_CONTRACT STORE_XDUO_0008), parameterised by the INITIAL samples so the
+        /// SELF-SEEDING `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the
+        /// seeding pipeline fills) never drift — everything below the seed line is identical. Each
+        /// initial sample seeds as version 1 active.
+        static member private createInMemoryStore (initialSamples : Sample list) (versionsInUse : VersionsInUse) : SampleProxy =
 
             let seeded =
-                seedEntries
-                |> List.choose (fun e ->
-                    match e with
-                    | SampleItem s -> Some (s.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; sample = s } ])
-                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> None)
+                initialSamples
+                |> List.map (fun s -> s.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; sample = s } ])
                 |> Map.ofList
             let store = ref seeded
 
@@ -177,3 +179,15 @@ module SampleStore =
                                 Error (SampleVersionInUse $"sample '%s{(latestOf versions).sample.name}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
                         | None -> Error (unknown id)
             }
+
+        /// The SELF-SEEDING versioned in-memory sample store (spec 0038 step 022; the app
+        /// composition root keeps calling this unchanged): seeds `SeedSamples.all` (the SampleItem
+        /// entries of `seedEntries`) as version 1 active.
+        static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
+            SampleProxy.createInMemoryStore SeedSamples.all versionsInUse
+
+        /// The EMPTY versioned in-memory sample store (spec 0038 step 042): a BLANK store the seeding
+        /// pipeline (`SeedingProxy`) fills through `saveSample`. Same versioning/remove behaviour as
+        /// the seeded store — only the initial samples differ.
+        static member createInMemoryEmpty (versionsInUse : VersionsInUse) : SampleProxy =
+            SampleProxy.createInMemoryStore [] versionsInUse

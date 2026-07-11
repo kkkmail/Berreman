@@ -1,7 +1,11 @@
 namespace OpticalConstructor.Seeding
 
-open OpticalConstructor.Domain.MaterialLibrary   // MaterialCategory / MaterialEntry + standardCategories / builtInEntries
-open OpticalConstructor.Domain.Library           // Sample / LibraryEntry + SeedSamples / seedEntries
+open OpticalConstructor.Domain                   // Library.createInMemoryEmpty (the writable library-entry store)
+open OpticalConstructor.Domain.MaterialLibrary   // MaterialCategory / MaterialEntry + standardCategories / builtInEntries / CategoryProxy / MaterialProxy / materialsReferencingCategory
+open OpticalConstructor.Domain.Library           // Sample / LibraryEntry + SeedSamples / seedEntries / SampleProxy / samplesReferencing / LibraryEntryStore
+open OpticalConstructor.Domain.Lifecycle         // VersionsInUse.empty (the injected in-use seam)
+open OpticalConstructor.Domain.MaterialStore     // MaterialProxy.createInMemoryEmpty (the versioned store augmentation)
+open OpticalConstructor.Domain.SampleStore       // SampleProxy.createInMemoryEmpty (the versioned store augmentation)
 
 /// Spec 0038 (041, ADD_CONTRACT STORE_XDUO_0008) — the seed-push seam. Declares, in a new
 /// `OpticalConstructor.Seeding` project, the DECLARED-lifecycle `SeedingProxy`: the write boundary
@@ -61,3 +65,66 @@ module Seeding =
         |> Result.bind (fun () -> pushEach proxy.saveMaterial builtInEntries)
         |> Result.bind (fun () -> pushEach proxy.saveSample SeedSamples.all)
         |> Result.bind (fun () -> pushEach proxy.saveLibraryEntry seedEntries)
+
+    /// The four EMPTY in-memory stores the seed pipeline fills, bundled with the `SeedingProxy` that
+    /// writes into them (spec 0038 step 042 — IMPLEMENT_CONTRACT STORE_XDUO_0008). A caller runs
+    /// `seedAll ctx.proxy` and then reads the reproduced catalogue back through `categories` /
+    /// `materials` / `samples` / `libraryEntries` — proving the pipeline fills a blank store with the
+    /// seeded catalogue using NO database and NO file IO. `[<ReferenceEquality>]` because it carries
+    /// the function-valued proxies.
+    [<ReferenceEquality>]
+    type InMemorySeedStores =
+        {
+            proxy : SeedingProxy
+            categories : CategoryProxy
+            materials : MaterialProxy
+            samples : SampleProxy
+            libraryEntries : LibraryProxy
+        }
+
+    type SeedingProxy with
+
+        /// Build a `SeedingProxy` over EMPTY in-memory stores (the IMPLEMENT_CONTRACT for
+        /// STORE_XDUO_0008): each save adapts the underlying store's add verb —
+        /// `CategoryProxy.addCategory`, `MaterialProxy.saveMaterial`, `SampleProxy.saveSample`, and the
+        /// library-entry store's `addEntry` — mapping the store's typed error to `SeedRejected reason`.
+        /// NO database, NO file IO: every store is an EMPTY `createInMemoryEmpty` the pipeline fills.
+        /// Store build order mirrors `AppContext.create` (samples → materials → categories) so the
+        /// referencing lookups stay wired to the live stores; a future DB cycle swaps only these four
+        /// field bindings, leaving `seedAll` and the seam unchanged. Returns the proxy bundled with the
+        /// four stores so a caller can seed then read the reproduced catalogue back.
+        static member createInMemory () : InMemorySeedStores =
+            let samples = SampleProxy.createInMemoryEmpty VersionsInUse.empty
+            let materials = MaterialProxy.createInMemoryEmpty (samplesReferencing samples) VersionsInUse.empty
+            let categories = CategoryProxy.createInMemoryEmpty (materialsReferencingCategory materials)
+            let libraryEntries = Library.createInMemoryEmpty ()
+
+            // Each store carries its own error DU; every case carries a diagnostic `reason` — extract
+            // it (pattern-match, never reach into a case) and re-wrap as the seam's `SeedRejected`.
+            let categoryReason (e : CategoryError) : string =
+                match e with
+                | UnknownCategoryId r | DuplicateCategoryId r | CategoryStillReferenced r | BuiltInNotRemovable r | InvalidCategory r -> r
+            let materialReason (e : MaterialError) : string =
+                match e with
+                | UnknownMaterialId r | DuplicateMaterialId r | MaterialStillReferenced r | InvalidMaterial r | MaterialVersionInUse r -> r
+            let sampleReason (e : SampleError) : string =
+                match e with
+                | UnknownSampleId r | DuplicateSampleId r | InvalidSample r | SampleVersionInUse r -> r
+            let libraryReason (e : LibraryError) : string =
+                match e with
+                | UnknownEntryId r | NoEntriesForKind r | LibraryUnavailable r -> r
+
+            let proxy =
+                {
+                    saveCategory = fun c -> categories.addCategory c |> Result.mapError (categoryReason >> SeedRejected)
+                    saveMaterial = fun m -> materials.saveMaterial m |> Result.mapError (materialReason >> SeedRejected)
+                    saveSample = fun s -> samples.saveSample s |> Result.mapError (sampleReason >> SeedRejected)
+                    saveLibraryEntry = fun e -> libraryEntries.addEntry e |> Result.mapError (libraryReason >> SeedRejected)
+                }
+            {
+                proxy = proxy
+                categories = categories
+                materials = materials
+                samples = samples
+                libraryEntries = libraryEntries.proxy
+            }

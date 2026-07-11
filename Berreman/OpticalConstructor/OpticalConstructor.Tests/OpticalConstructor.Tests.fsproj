@@ -214,6 +214,13 @@
              exactly once, in category-material-sample-entry order, through the exact
              signatures; plus the reference equality and the SeedRejected short-circuit. -->
         <Compile Include="SeedingProxyTests.fs" />
+        <!-- Spec 0038 step 042 (IMPLEMENT_CONTRACT STORE_XDUO_0008): the REAL in-memory
+             SeedingProxy — SeedingProxy.createInMemory over four EMPTY createInMemoryEmpty
+             stores. seedAll fills the blank catalogue and the tests prove category / material /
+             sample / entry counts match the Domain seed lists and the fixed seed ids resolve to
+             the same seed instances, all Result-checked, with NO database and NO file IO; a third
+             test proves the stores are genuinely stateful (a second seedAll is rejected). -->
+        <Compile Include="SeedingInMemoryTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

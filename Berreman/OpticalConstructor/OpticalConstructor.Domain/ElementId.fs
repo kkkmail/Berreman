@@ -749,6 +749,45 @@ module Library =
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
 
+    /// The EMPTY, WRITABLE in-memory library-entry store for the seeding pipeline (spec 0038 step
+    /// 042 — IMPLEMENT_CONTRACT STORE_XDUO_0008). The read-only seeded `createInMemory` above closes
+    /// over an immutable `seedEntries` and so has NO write verb; the seeding pipeline needs one.
+    /// `createInMemoryEmpty` bundles the read-only `LibraryProxy` (over a shared mutable list) with
+    /// the `addEntry` write verb the pipeline pushes each `LibraryEntry` through — the analogue of
+    /// the catalogue stores' add verbs (`addCategory` / `saveMaterial` / `saveSample`). A future DB
+    /// cycle swaps this whole builder, leaving the `SeedingProxy` that adapts `addEntry` unchanged.
+    [<ReferenceEquality>]
+    type LibraryEntryStore =
+        {
+            proxy : LibraryProxy
+            addEntry : LibraryEntry -> Result<unit, LibraryError>
+        }
+
+    /// Build the empty writable library-entry store: `addEntry` appends a new entry (preserving
+    /// insertion order, so `entriesForKind` / `tryGetEntry` read exactly as the seeded store does)
+    /// and rejects a duplicate entry id (`LibraryUnavailable` — the only fitting existing case;
+    /// never a throw). Mutation stays INSIDE the closure (the IO boundary), so logic holding the
+    /// proxy stays pure. `libraryTrees` is empty until a store cycle seeds grouping trees — the
+    /// seed-push pipeline fills entries, not trees.
+    let createInMemoryEmpty () : LibraryEntryStore =
+        let store = ref ([] : LibraryEntry list)
+        let proxy =
+            {
+                entriesForKind = fun kind -> Ok (store.Value |> List.filter (fun e -> e.forKinds |> List.contains kind))
+                libraryTrees = fun () -> Ok []
+                tryGetEntry = fun id -> Ok (store.Value |> List.tryFind (fun e -> e.entryId = id))
+            }
+        let addEntry (entry : LibraryEntry) : Result<unit, LibraryError> =
+            match store.Value |> List.tryFind (fun e -> e.entryId = entry.entryId) with
+            | Some _ -> Error (LibraryUnavailable $"library entry '%s{entry.entryId}' is already present")
+            | None ->
+                store.Value <- store.Value @ [ entry ]
+                Ok ()
+        {
+            proxy = proxy
+            addEntry = addEntry
+        }
+
     /// The write-seam validation the samples store's `saveSample` runs. Two rules, in order:
     /// (spec 0033 steps 004/005) a `Sample` whose display name is empty/whitespace is
     /// `InvalidSample`; and (spec 0035 step 012) a `Sample` whose structure carries NO films AND

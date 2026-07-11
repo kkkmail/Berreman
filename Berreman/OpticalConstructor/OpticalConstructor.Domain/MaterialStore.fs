@@ -46,13 +46,19 @@ module MaterialStore =
         /// `MaterialStillReferenced` hard-block); `versionsInUse` is the step-20 seam answering
         /// whether a specific version is currently bound by a live experiment — injected empty
         /// until step 25 wires the real one. The store seeds `builtInEntries` as version 1 active.
-        static member createInMemory
+        /// The shared versioned in-memory material-store body (spec 0038 step 042 —
+        /// IMPLEMENT_CONTRACT STORE_XDUO_0008), parameterised by the INITIAL entries so the
+        /// SELF-SEEDING `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the
+        /// seeding pipeline fills) never drift — everything below the seed line is identical. Each
+        /// initial entry seeds as version 1 active.
+        static member private createInMemoryStore
+            (initialEntries : MaterialEntry list)
             (samplesReferencing : MaterialId -> Sample list)
             (versionsInUse : VersionsInUse)
             : MaterialProxy =
 
             let seeded =
-                builtInEntries
+                initialEntries
                 |> List.map (fun e ->
                     e.id, [ { versionNo = VersionNumber.first; lifecycle = ActiveEntry; entry = e } ])
                 |> Map.ofList
@@ -179,3 +185,20 @@ module MaterialStore =
                                     Error (MaterialVersionInUse $"material '%s{(latestOf versions).entry.name}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
                         | None -> Error (unknown id)
             }
+
+        /// The SELF-SEEDING versioned in-memory material store (spec 0038 step 021; the app
+        /// composition root keeps calling this unchanged): seeds `builtInEntries` as version 1 active.
+        static member createInMemory
+            (samplesReferencing : MaterialId -> Sample list)
+            (versionsInUse : VersionsInUse)
+            : MaterialProxy =
+            MaterialProxy.createInMemoryStore builtInEntries samplesReferencing versionsInUse
+
+        /// The EMPTY versioned in-memory material store (spec 0038 step 042): a BLANK store the
+        /// seeding pipeline (`SeedingProxy`) fills through `saveMaterial`. Same versioning/remove
+        /// behaviour as the seeded store — only the initial entries differ.
+        static member createInMemoryEmpty
+            (samplesReferencing : MaterialId -> Sample list)
+            (versionsInUse : VersionsInUse)
+            : MaterialProxy =
+            MaterialProxy.createInMemoryStore [] samplesReferencing versionsInUse

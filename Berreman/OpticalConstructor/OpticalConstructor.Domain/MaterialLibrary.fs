@@ -655,8 +655,15 @@ module MaterialLibrary =
     /// `materialsReferencingCategory` below, backed by the step-006 `MaterialProxy` store.)
     type CategoryProxy with
 
-        static member createInMemory (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
-            let store = ref (standardCategories |> List.map (fun c -> c.id, c) |> Map.ofList)
+        /// The shared in-memory category-store body (spec 0038 step 042 — IMPLEMENT_CONTRACT
+        /// STORE_XDUO_0008), parameterised by the INITIAL catalogue so the SELF-SEEDING
+        /// `createInMemory` and the EMPTY-store `createInMemoryEmpty` (which the seeding pipeline
+        /// fills) never drift — everything below the seed line is identical.
+        static member private createInMemoryStore
+            (initialCategories : MaterialCategory list)
+            (materialsReferencingCategory : CategoryId -> MaterialEntry list)
+            : CategoryProxy =
+            let store = ref (initialCategories |> List.map (fun c -> c.id, c) |> Map.ofList)
             let currentCategories () : MaterialCategory list =
                 store.Value |> Map.toList |> List.map snd
             let unknown (id : CategoryId) : CategoryError =
@@ -703,6 +710,17 @@ module MaterialLibrary =
                                     Error (CategoryStillReferenced $"category '%s{category.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} material(s): %s{names}")
                         | None -> Error (unknown id)
             }
+
+        /// The SELF-SEEDING in-memory category store (spec 0035 step 003; the app composition root
+        /// keeps calling this unchanged): a `ref Map` seeded from `standardCategories`.
+        static member createInMemory (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
+            CategoryProxy.createInMemoryStore standardCategories materialsReferencingCategory
+
+        /// The EMPTY in-memory category store (spec 0038 step 042): a BLANK `ref Map` the seeding
+        /// pipeline (`SeedingProxy`) fills through `addCategory`. Same write/remove behaviour as the
+        /// seeded store — only the initial catalogue differs.
+        static member createInMemoryEmpty (materialsReferencingCategory : CategoryId -> MaterialEntry list) : CategoryProxy =
+            CategoryProxy.createInMemoryStore [] materialsReferencingCategory
 
     /// The composition-root referencing lookup for `CategoryProxy.createInMemory` (spec 0035 step
     /// 003): every material entry the materials store currently holds whose `category` is the given
