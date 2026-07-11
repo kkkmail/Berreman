@@ -36,6 +36,14 @@ type AppContext =
         /// The category WRITE store (STORE_XDUO_0003) — its remove-block consults
         /// the LIVE `materials` store above through `materialsReferencingCategory`.
         categories : MaterialLibrary.CategoryProxy
+        /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006) —
+        /// the real file-backed adapter (step 036, the one file-read seam §0.3c
+        /// permits) behind the inverse flow's per-experiment data-file attach.
+        experimentData : ExperimentData.ExperimentDataProxy
+        /// Spec 0038 Part I/L (037): the experiment-collection persistence seam
+        /// (STORE_XDUO_0005, step 029 in-memory `createInMemory`) — named collections
+        /// of experiments save / list / load through it.
+        experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
         /// The step-005 typed appsettings.json values (`AppConfig.loadWorkbenchSettings`
         /// elevates them once at the composition root); later Part C/E/F steps read the
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
@@ -71,5 +79,11 @@ type AppContext =
             materials = materials
             samples = samples
             categories = categories
+            // Spec 0038 Part L (037): the measured-data load seam is the real file-backed adapter
+            // (step 036 — read a picked file's text and hand it to the step-34 parsers, the one
+            // file-read seam §0.3c permits); the experiment-collection store is the step-029
+            // in-memory `createInMemory`. Both thread into `initMainWith` / `initInverse`.
+            experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
+            experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
             settings = settings
         }

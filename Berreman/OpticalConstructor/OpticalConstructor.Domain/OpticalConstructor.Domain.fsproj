@@ -182,6 +182,12 @@
              Names Experiments (DataFilePath, step 025) and MeasuredData (series + error types, step 034),
              so it compiles after MeasuredData.fs; nothing in the Domain depends on it. -->
         <Compile Include="ExperimentDataProxy.fs" />
+        <!-- Spec 0038 Part L (037): the pure orchestration that loads + validates an experiment's
+             attached data file through the ExperimentDataProxy (in the shape its detector kind fixes)
+             and MeasuredData.validateAgainstExperiment. Reused by the inverse bay's per-experiment
+             attach status and the future SolverHandoffWindow. Names Library / Experiments / MeasuredData
+             / ExperimentData, so it compiles LAST; nothing in the Domain depends on it. -->
+        <Compile Include="ExperimentDataLoad.fs" />
     </ItemGroup>
 
     <ItemGroup>

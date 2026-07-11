@@ -73,9 +73,12 @@ module AppContextTests =
     /// One fresh app scope — exactly what `Startup.context` is in the product app.
     let private freshContext () : AppContext = AppContext.create WorkbenchSettings.defaults
 
-    /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs.
+    /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
+    /// experiment proxies thread by record update, spec 0038 Part L step 037).
     let private surfaceOf (context : AppContext) : Model =
-        initMainWith context.library context.experiments context.materials context.samples context.categories
+        { initMainWith context.library context.experiments context.materials context.samples context.categories with
+            experimentData = context.experimentData
+            experimentCollections = context.experimentCollections }
 
     // ============================ pure contract (gate `ui-tests`) ============================
 

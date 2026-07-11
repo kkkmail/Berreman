@@ -90,7 +90,15 @@ type MainConstructorWindow(context : AppContext) as this =
         // inside that window over the same stores. The ui-smoke
         // composition acceptance (`WireUiCompositionTests`, and the step-006 two-surface proof
         // in `AppContextTests`) drives THIS window headless over a context composed the same way.
-        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories) TableAndElementRotationView.update TableAndElementRotationView.mainView
+        // Spec 0038 Part L (037): thread the app-scope experiment-data + experiment-collection
+        // proxies (STORE_XDUO_0006 / 0005) onto the Main surface by record update, so every Main
+        // window shares the ONE collection store built in `AppContext.create`.
+        Program.mkSimple
+            (fun () ->
+                { TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories with
+                    experimentData = context.experimentData
+                    experimentCollections = context.experimentCollections })
+            TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 

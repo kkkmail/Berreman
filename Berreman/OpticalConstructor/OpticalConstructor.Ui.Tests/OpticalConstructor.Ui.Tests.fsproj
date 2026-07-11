@@ -195,6 +195,11 @@
              real Sample editor, and removing a protected entry surfaces the typed refusal and
              changes nothing. -->
         <Compile Include="LibraryWindowTests.fs" />
+        <!-- Spec 0038 Part L (step 037): the inverse constructor state (initInverse — unbound sample,
+             chart gated on a hint) and the experiment-collection builder (name / save / list / load
+             through the ExperimentCollectionProxy; per-experiment data-file attach that loads +
+             validates through the ExperimentDataProxy into a typed status), over mock proxies. -->
+        <Compile Include="InverseConstructorTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -29,6 +29,10 @@ open OpticalConstructor.Domain.TableView
 // Spec 0038 (017): opened for `QuickPickThreshold.defaultValue` — the single-case DU's case
 // shadows the type under `WorkbenchSettings.`-qualified expression resolution.
 open OpticalConstructor.Domain.WorkbenchSettings
+// Spec 0038 Part L (037): opened so `CollectionName.tryCreate` resolves to the TYPE's static member —
+// the module-qualified `ExperimentCollectionStore.CollectionName.tryCreate` binds the same-named
+// union CASE in expression position instead (the `WorkbenchSettings` shadowing note above).
+open OpticalConstructor.Domain.ExperimentCollectionStore
 open OpticalConstructor.Controls
 
 [<RequireQualifiedAccess>]
@@ -210,6 +214,32 @@ type SelectSession =
         cancelAndClose : unit -> unit
     }
 
+/// Spec 0038 Part L (037): which constructor flow this workbench hosts. The FORWARD constructor is
+/// the ordinary Main scene (build a stack, preview its response). The INVERSE constructor opens the
+/// same scene seeded with an UNBOUND sample (the unknown, drawn dashed — step 30) and gathers
+/// measured data to solve for it later: with NO hint (the sample unbound) the forward experiment
+/// chart has nothing to compute against, so its surface is ABSENT; binding a HINT sample restores
+/// the chart. An elevated two-case DU (never a naked `bool`), so a match reads as prose.
+type ConstructorMode =
+    | ForwardConstructor
+    | InverseConstructor
+
+/// Spec 0038 Part L (037): the typed per-experiment measured-data status shown inline in the
+/// collection builder. A file that loaded and passed `validateAgainstExperiment` reports its parsed
+/// point count; a parse / empty-file failure and a range / units validation failure carry the
+/// domain error's `reason`. Elevated — never a bare status string in the model map — with a `.text`
+/// projection the bay renders. Derived from `ExperimentDataLoad.loadAndValidate`'s typed result.
+type ExperimentFileStatus =
+    | DataFileValidated of points : int
+    | DataFileParseError of reason : string
+    | DataFileValidationError of reason : string
+
+    member this.text : string =
+        match this with
+        | DataFileValidated n -> $"Loaded — %d{n} point(s), schema-valid"
+        | DataFileParseError reason -> $"Parse error — %s{reason}"
+        | DataFileValidationError reason -> $"Validation error — %s{reason}"
+
 type Model =
     {
         table : OpticalTable
@@ -284,6 +314,31 @@ type Model =
         /// step-005 `SelectWindowsModal` switch — ShowDialog owned by this workbench's window,
         /// or a modeless Show). Defaulted here; threaded like the threshold above.
         selectWindowModality : WorkbenchSettings.SelectWindowModality
+        /// Spec 0038 Part L (037): which constructor flow this workbench hosts — the ordinary
+        /// FORWARD Main scene, or the INVERSE flow `initInverse` seeds (unbound sample, chart
+        /// gated on a hint). Defaults to `ForwardConstructor`; `initInverse` sets the inverse mode.
+        constructorMode : ConstructorMode
+        /// Spec 0038 Part L (037): the measured-data LOAD seam (STORE_XDUO_0006, step 035/036) —
+        /// the collection builder's per-experiment file attach reads a picked `DataFilePath`
+        /// through this proxy (intensity or ellipsometric per the experiment's detector kind).
+        /// `[<ReferenceEquality>]` proxy ⇒ reference-compared, so the model keeps its equality.
+        experimentData : ExperimentData.ExperimentDataProxy
+        /// Spec 0038 Part I/L (037): the experiment-collection persistence seam (STORE_XDUO_0005,
+        /// step 028/029) — named collections of the live experiments save / list / load through it.
+        experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
+        /// Spec 0038 Part L (037): the in-progress collection NAME (the create / rename field). A
+        /// raw editable string until `CollectionName.tryCreate` validates it at save/load (the
+        /// `pendingEntry` / draft `elementLabel` precedent — UI text stays a string to the boundary).
+        collectionName : string
+        /// Spec 0038 Part L (037): the names of every collection stored through the proxy — the
+        /// loadable list the builder shows, refreshed on save.
+        savedCollections : ExperimentCollectionStore.CollectionName list
+        /// Spec 0038 Part L (037): the last collection save / load status line (a no-op-plus-status
+        /// on a blank name or a load miss, never a throw — the `selectStatus` precedent).
+        collectionStatus : string option
+        /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
+        /// experiment id's value — set when a file is attached (load + validate through the proxy).
+        experimentDataStatus : Map<int, ExperimentFileStatus>
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -341,6 +396,23 @@ module private DefaultStores =
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
         materials, samples, categories
 
+/// Spec 0038 Part L (037): the default experiment-data + experiment-collection proxies for the
+/// parameterless test scenes (`init` / `initMain` / the default `initInverse` caller). The
+/// measured-data load seam is the real file-backed adapter (step 036 — the one file-read seam
+/// spec-md §0.3c permits; the test scenes never attach a file, so it is never asked to read), and
+/// the collection store is the step-029 in-memory `createInMemory`. The composition root injects its
+/// own proxies via `initMainWith` / `initInverse`, threaded from `AppContext` (step 47 owns the
+/// composition acceptance).
+let private defaultExperimentProxies () : ExperimentData.ExperimentDataProxy * ExperimentCollectionStore.ExperimentCollectionProxy =
+    OpticalConstructor.Storage.ExperimentDataStore.createFileBacked (),
+    ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
+
+/// The Main-screen "Lego" palette — the catalogue kinds the user can add to the scene. Shared by the
+/// forward (`initMainWith`) and inverse (`initInverse`) Main scenes; the static test window seeds an
+/// empty palette instead (the only behavioural difference between the test and Main scenes).
+let private mainPalette : CatalogueKind list =
+    [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
+
 /// The shared scene seed: the standard table, the straight top-down view, the given elements, the
 /// table selected first, an add/remove `palette`, and the injected proxies (the read-only Library
 /// and Experiments seams, plus — spec 0033 step 024 — the material / sample WRITE seams behind the
@@ -352,6 +424,8 @@ let initWith
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy)
+    (experimentData : ExperimentData.ExperimentDataProxy)
+    (experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy)
     (elements : TestElement list)
     (palette : CatalogueKind list) : Model =
     {
@@ -378,6 +452,13 @@ let initWith
         launchers = EditorLaunchers.defaults
         quickPickThreshold = QuickPickThreshold.defaultValue
         selectWindowModality = SelectWindowModality.defaultValue
+        constructorMode = ForwardConstructor
+        experimentData = experimentData
+        experimentCollections = experimentCollections
+        collectionName = ""
+        savedCollections = []
+        collectionStatus = None
+        experimentDataStatus = Map.empty
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -385,33 +466,73 @@ let initWith
 /// The proxies default to the in-memory mocks/stores (the test scene never shows the ribbon bays).
 let init () : Model =
     let materials, samples, categories = DefaultStores.create ()
-    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
+    let experimentData, experimentCollections = defaultExperimentProxies ()
+    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories experimentData experimentCollections [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
 /// "Lego constructor"). The proxies — incl. the step-024 material / sample write seams — are injected
 /// at the composition root. This is the Main screen — identical scene logic, elements added/removed at
 /// runtime.
+/// The Main-screen seed elements: a light source and a detector at the central-ray endpoints (the plate
+/// edges), with DETERMINISTIC ids so wiring / experiment tests can name them. The forward Main scene uses
+/// exactly this; the inverse scene splices an unbound sample between them (`initInverse`).
+let private mainSeedElements : TestElement list =
+    [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
+      { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
+
 let initMainWith
     (library : Library.LibraryProxy)
     (experiments : Experiments.ExperimentProxy)
     (materials : MaterialLibrary.MaterialProxy)
     (samples : Library.SampleProxy)
     (categories : MaterialLibrary.CategoryProxy) : Model =
-    // The light source snaps to the table's LEFT edge and the detector to the RIGHT edge — i.e. the
-    // central-ray endpoints, which sit exactly on the plate edges (`defaultSourceDetectorDistance` = the
-    // table length). Added elements land between them on the beam. The source/detector get DETERMINISTIC
-    // ids so wiring/experiment tests can name them.
+    // Spec 0038 Part L (037): the measured-data + experiment-collection proxies default to the real
+    // file-backed load adapter (step 036) and the step-029 in-memory collection store; the composition
+    // root threads its shared app-scope instances by record update (`AppContext.experimentData` /
+    // `.experimentCollections`), so two Main windows share one saved-collection store.
+    let experimentData, experimentCollections = defaultExperimentProxies ()
     { initWith
         library
         experiments
         materials
         samples
         categories
-        [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
-          { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
-        [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
+        experimentData
+        experimentCollections
+        mainSeedElements
+        mainPalette
         with snapChain = true }
+
+/// Spec 0038 Part L (037): the INVERSE Main scene. The SAME dynamic Main workbench (table / view /
+/// selection / rotation logic, the add-remove palette, the snap chain, the injected proxies) opened
+/// in the inverse-problem flow: seeded with a light source, an UNBOUND SAMPLE (the unknown — step 30
+/// draws it dashed), and a detector on the beam. With the sample unbound (no hint) the forward
+/// experiment chart has nothing to compute against, so its surface is absent (`experimentChartVisible`);
+/// binding a HINT sample through the Library window's Select state (the same `BindValueIdTo` commit
+/// path) restores the chart. The user then builds an experiment collection and attaches one measured-
+/// data file per experiment. Proxies default like `initMainWith`; the composition root threads its
+/// shared app-scope experiment proxies by record update (step 45/47 own the Inverse launcher + acceptance).
+let initInverse
+    (library : Library.LibraryProxy)
+    (experiments : Experiments.ExperimentProxy)
+    (materials : MaterialLibrary.MaterialProxy)
+    (samples : Library.SampleProxy)
+    (categories : MaterialLibrary.CategoryProxy) : Model =
+    let experimentData, experimentCollections = defaultExperimentProxies ()
+    { initWith
+        library
+        experiments
+        materials
+        samples
+        categories
+        experimentData
+        experimentCollections
+        [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
+          { id = Library.elementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+          { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
+        mainPalette
+        with snapChain = true; constructorMode = InverseConstructor }
 
 /// The Main scene with the default in-memory mock proxies / stores (the test default; the composition
 /// root injects its own proxies via `initMainWith`).
@@ -540,6 +661,19 @@ type Msg =
     /// Spec 0027 (030 follow-up): open the chart window for a COLLECTED experiment by id (the per-row "View"
     /// button, and a double-click on the experiment row).
     | ViewExperiment of string
+    /// Spec 0038 Part L (037) — the experiment-collection BUILDER. `CollectionSetName` edits the
+    /// in-progress collection name (create / rename); `CollectionSave` persists the live experiments
+    /// under that name through the `ExperimentCollectionProxy` (and refreshes the saved list);
+    /// `CollectionLoad` loads a stored collection (by name) back into the live collection.
+    | CollectionSetName of string
+    | CollectionSave
+    | CollectionLoad of string
+    /// Spec 0038 Part L (037): attach a picked measured-data file to a collected experiment — record
+    /// the `DataFilePath` on the experiment AND load + validate it through the `ExperimentDataProxy`
+    /// (intensity or ellipsometric per the experiment's detector kind), storing the typed
+    /// parse/validation status. The file picker (IO) yields the `DataFilePath` at the edge; a headless
+    /// test dispatches this directly over a mock proxy.
+    | AttachDataFileTo of Experiments.ExperimentId * Experiments.DataFilePath
     /// Spec 0038 (013) — the ribbon tab-strip row's right-aligned "Materials…" button: open the
     /// SINGLE-INSTANCE Materials window (UICOMP_XDUO_0009) over the app-scope material + category
     /// stores through the launcher seam (a second click ACTIVATES the live window — the shared
@@ -906,6 +1040,23 @@ let private buildExperimentSetup (model : Model) : Experiments.ElementDescriptor
             binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
         })
 
+/// Spec 0038 Part L (037): the point count of a validated measured series — the collection builder's
+/// per-file "N point(s), schema-valid" status.
+let private measuredSeriesPointCount (series : MeasuredData.MeasuredSeries) : int =
+    match series with
+    | MeasuredData.IntensityData s -> List.length s.points
+    | MeasuredData.EllipsometricData s -> List.length s.points
+
+/// Spec 0038 Part L (037): classify a measured-data load error as a PARSE failure (a malformed /
+/// empty file) or a VALIDATION failure (a range / units mismatch against the experiment), carrying
+/// the domain error's diagnostic `reason` into the typed inline status.
+let private classifyDataError (error : MeasuredData.ExperimentDataError) : ExperimentFileStatus =
+    match error with
+    | MeasuredData.MalformedDataFile reason
+    | MeasuredData.EmptyDataFile reason -> DataFileParseError reason
+    | MeasuredData.DataRangeMismatch reason
+    | MeasuredData.DataUnitsMismatch reason -> DataFileValidationError reason
+
 // `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
 // targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
 let rec update (msg : Msg) (model : Model) : Model =
@@ -1039,6 +1190,73 @@ let rec update (msg : Msg) (model : Model) : Model =
         // button / a row double-click). Same side-effecting seam as OpenExperimentChartWindow.
         viewExperimentHook model idStr
         model
+    | CollectionSetName name ->
+        // Spec 0038 Part L (037): edit the in-progress collection name (create / rename). Raw text
+        // until `CollectionName.tryCreate` validates it at save/load.
+        { model with collectionName = name }
+    | CollectionSave ->
+        // Spec 0038 Part L (037): persist the live experiments under the named collection through the
+        // `ExperimentCollectionProxy`, then refresh the loadable saved list. A blank name is rejected
+        // at the store boundary (`CollectionName.tryCreate`) as a typed status, never a throw.
+        match CollectionName.tryCreate model.collectionName with
+        | Ok name ->
+            let snapshot : ExperimentCollectionStore.ExperimentCollectionSnapshot =
+                { name = name; experiments = model.experimentCollection.experiments }
+            match model.experimentCollections.saveCollection snapshot with
+            | Ok () ->
+                let saved =
+                    match model.experimentCollections.listCollections () with
+                    | Ok names -> names
+                    | Error _ -> model.savedCollections
+                { model with
+                    savedCollections = saved
+                    collectionStatus = Some $"Saved collection '%s{name.value}' (%d{List.length model.experimentCollection.experiments} experiment(s))." }
+            | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+                { model with collectionStatus = Some $"Save failed — %s{reason}" }
+        | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+            { model with collectionStatus = Some $"Save failed — %s{reason}" }
+    | CollectionLoad nameStr ->
+        // Spec 0038 Part L (037): load a stored collection back into the live collection through the
+        // proxy. The loaded experiments carry their captured setups AND their `dataFileOpt`
+        // attachments; `nextId` advances past the loaded ids so a subsequent add never collides. The
+        // per-experiment statuses are session-derived, so they clear on load (re-attach to re-validate).
+        match CollectionName.tryCreate nameStr with
+        | Ok name ->
+            match model.experimentCollections.tryLoadCollection name with
+            | Ok (Some snapshot) ->
+                let experiments = snapshot.experiments
+                let nextId = (experiments |> List.map (fun e -> e.id.value) |> List.fold max 0) + 1
+                { model with
+                    experimentCollection =
+                        { model.experimentCollection with
+                            experiments = experiments
+                            nextId = nextId
+                            draft = Experiments.ExperimentDraft.empty }
+                    collectionName = name.value
+                    experimentDataStatus = Map.empty
+                    collectionStatus = Some $"Loaded collection '%s{name.value}' (%d{List.length experiments} experiment(s))." }
+            | Ok None ->
+                { model with collectionStatus = Some $"No collection named '%s{nameStr}' is stored." }
+            | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+                { model with collectionStatus = Some $"Load failed — %s{reason}" }
+        | Error (ExperimentCollectionStore.InvalidCollection reason) ->
+            { model with collectionStatus = Some $"Load failed — %s{reason}" }
+    | AttachDataFileTo (experimentId, path) ->
+        // Spec 0038 Part L (037): attach the picked file to the experiment, then load + validate it
+        // through the `ExperimentDataProxy` (in the shape its detector kind fixes) and record the
+        // typed per-experiment status. The attachment is recorded regardless of the load outcome (the
+        // file is the user's choice); the status reflects the parse / validation result.
+        let collection = Experiments.attachDataFile experimentId path model.experimentCollection
+        match collection.experiments |> List.tryFind (fun e -> e.id = experimentId) with
+        | Some experiment ->
+            let status =
+                match ExperimentDataLoad.loadAndValidate model.library model.experimentData experiment path with
+                | Ok series -> DataFileValidated (measuredSeriesPointCount series)
+                | Error error -> classifyDataError error
+            { model with
+                experimentCollection = collection
+                experimentDataStatus = model.experimentDataStatus |> Map.add experimentId.value status }
+        | None -> model
     | OpenMaterialsWindow ->
         // Spec 0038 step 013: a pure launch of the single-instance Materials window
         // (UICOMP_XDUO_0009) over the app-scope material + category stores — the launcher seam's
@@ -1973,21 +2191,40 @@ let chartForParams
                     }
             | None -> ExperimentChart.empty
 
+/// Spec 0038 Part L (037): whether the forward experiment chart surface is present. The FORWARD
+/// constructor always shows it (an unbound sample there yields an empty chart, as before). The
+/// INVERSE constructor's forward preview needs a sample to compute against: with NO hint (the seeded
+/// sample unbound) the chart surface is ABSENT; binding a HINT sample (any Sample element bound)
+/// restores it and the chart behaves as today. Public so the host's gate is unit-testable.
+let experimentChartVisible (model : Model) : bool =
+    match model.constructorMode with
+    | ForwardConstructor -> true
+    | InverseConstructor ->
+        model.elements
+        |> List.exists (fun e ->
+            e.placement.catalogueKind = Sample &&
+            (match e.placement.valueId with Some _ -> true | None -> false))
+
 /// The live DRAFT's chart (the inline bay preview + the draft "Open chart" action). Public so the host's
-/// branches are unit-testable without a window.
+/// branches are unit-testable without a window. Spec 0038 Part L (037): EMPTY when the inverse chart
+/// surface is gated off (inverse mode, no hint sample) — the surface is absent until a hint is bound.
 let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
-    let draft = model.experimentCollection.draft
-    match draft.elementId, draft.variable with
-    | Some chosen, Some variable -> chartForParams model chosen variable draft.measurement draft.range draft.elementLabel
-    | _ -> ExperimentChart.empty
+    if not (experimentChartVisible model) then ExperimentChart.empty
+    else
+        let draft = model.experimentCollection.draft
+        match draft.elementId, draft.variable with
+        | Some chosen, Some variable -> chartForParams model chosen variable draft.measurement draft.range draft.elementLabel
+        | _ -> ExperimentChart.empty
 
 /// The chart of a specific COLLECTED experiment — the per-row "View" action. Spec 0038 Part I (step 025):
 /// the varied element is one entry of the experiment's captured setup; a dark-line experiment (nothing
-/// varied) has no chart.
+/// varied) has no chart. Spec 0038 Part L (037): also EMPTY when the inverse chart surface is gated off.
 let chartForExperiment (model : Model) (exp : Experiments.Experiment) : ExperimentChart.ExperimentChart =
-    match exp.varied with
-    | Some v -> chartForParams model v.elementId v.variable exp.measurement exp.range exp.variedLabel
-    | None -> ExperimentChart.empty
+    if not (experimentChartVisible model) then ExperimentChart.empty
+    else
+        match exp.varied with
+        | Some v -> chartForParams model v.elementId v.variable exp.measurement exp.range exp.variedLabel
+        | None -> ExperimentChart.empty
 
 // Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
@@ -2012,6 +2249,8 @@ viewExperimentHook <-
 /// separate from `experimentResult` (which carries no Ψ/Δ for that case — there is no curve) so the bay can
 /// still show the numeric reading. `None` for an intensity detector or any vary that produces series.
 let private experimentPsiDelta (model : Model) : (float * float) option =
+    if not (experimentChartVisible model) then None
+    else
     let draft = model.experimentCollection.draft
     match draft.elementId, draft.variable with
     | Some chosen, Some Experiments.VaryR1 when model.elements |> List.exists (fun e -> e.id = chosen) ->
@@ -2399,6 +2638,199 @@ let private selectorBayContent (model : Model) (dispatch : Msg -> unit) : IView 
     | _, (TableSelected | NothingSelected | ElementSelected _) ->
         LibraryControls.view LibraryControls.empty (libraryHandlers dispatch)
 
+// ---------------------------------------------------------------------------
+// Spec 0038 Part L (037) — the experiment-collection BUILDER, rendered in the Ui layer beneath the
+// (untouched) Controls-layer `ExperimentControls.view`: name / save / list / load a named collection
+// through the `ExperimentCollectionProxy`, and attach ONE measured-data file per experiment (through
+// the picker) whose parse / validation status shows inline as a typed message.
+// ---------------------------------------------------------------------------
+
+/// The collection builder's stable automation ids (CLAUDE.md UI guidance).
+[<RequireQualifiedAccess>]
+module CollectionIds =
+    [<Literal>]
+    let nameField = "CollectionNameField"
+    [<Literal>]
+    let saveButton = "SaveCollectionButton"
+    [<Literal>]
+    let status = "CollectionStatus"
+    [<Literal>]
+    let savedList = "SavedCollections"
+    /// A saved-collection's loadable row, by its name (prefixed so it cannot collide).
+    let savedCollection (name : string) : string = "SavedCollection_" + name
+    [<Literal>]
+    let dataFiles = "ExperimentDataFiles"
+    /// A collected experiment's "Attach data file…" verb, by its id.
+    let attachButton (id : string) : string = "AttachDataFile_" + id
+    /// A collected experiment's inline parse/validation status text, by its id.
+    let dataFileStatus (id : string) : string = "DataFileStatus_" + id
+
+/// Spec 0038 Part L (037): open a measured-data file picker over the requesting window's storage
+/// provider and, on a confirmed selection, dispatch the chosen `DataFilePath` back on the UI thread.
+/// IO edge — the `openChartWindowHook` seam precedent — wrapped so an unavailable provider (a
+/// headless host) degrades to a no-op rather than throwing. A headless test never clicks Attach; it
+/// dispatches `AttachDataFileTo` directly over a mock proxy, so the picker is off the tested path.
+let private pickDataFile (owner : Window) (onPicked : Experiments.DataFilePath -> unit) : unit =
+    try
+        let options =
+            Avalonia.Platform.Storage.FilePickerOpenOptions(
+                Title = "Attach measured-data file",
+                AllowMultiple = false)
+        let picked =
+            async {
+                let! files = owner.StorageProvider.OpenFilePickerAsync options |> Async.AwaitTask
+                match List.ofSeq files with
+                // The single-case `DataFilePath` case constructor (its `.create` factory is identical);
+                // the module-qualified `.create` would bind the same-named case in expression position.
+                | file :: _ -> onPicked (Experiments.DataFilePath file.Path.LocalPath)
+                | [] -> ()
+            }
+        Avalonia.Threading.Dispatcher.UIThread.Post(fun () -> Async.StartImmediate picked)
+    with _ -> ()
+
+/// The "Attach data file…" verb for one collected experiment — resolve the owner window from the
+/// click's visual tree (the `selectorChooseButton` precedent) and open the picker, dispatching
+/// `AttachDataFileTo` on a confirmed selection. Keyed + AutomationId'd by the experiment id.
+let private attachDataFileButton (dispatch : Msg -> unit) (experiment : Experiments.Experiment) : IView =
+    let idStr = string experiment.id.value
+    Border.create [
+        workbenchAutomationId (CollectionIds.attachButton idStr)
+        Border.background (brush (color 232 232 232))
+        Border.borderBrush (brush (color 120 120 120))
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (Thickness(10.0, 4.0))
+        Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text "Attach data file…" ])
+        Border.onPointerPressed ((fun e ->
+            e.Handled <- true
+            match e.Source with
+            | :? Visual as source ->
+                match TopLevel.GetTopLevel source with
+                | :? Window as owner -> pickDataFile owner (fun path -> dispatch (AttachDataFileTo (experiment.id, path)))
+                | _ -> ()
+            | _ -> ()), SubPatchOptions.OnChangeOf idStr)
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey (CollectionIds.attachButton idStr)
+    :> IView
+
+/// One experiment's data-file row: its description, the Attach verb + the currently-attached file
+/// name, and the typed parse / validation status (shown only once a file has been attached).
+let private dataFileRow (model : Model) (dispatch : Msg -> unit) (experiment : Experiments.Experiment) : IView =
+    let idStr = string experiment.id.value
+    let attachedText =
+        match experiment.dataFileOpt with
+        | Some path -> $"file: %s{System.IO.Path.GetFileName path.value}"
+        | None -> "no file attached"
+    let statusText =
+        match model.experimentDataStatus |> Map.tryFind experiment.id.value with
+        | Some status -> status.text
+        | None -> ""
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.margin (Thickness(0.0, 0.0, 0.0, 6.0))
+        StackPanel.children [
+            TextBlock.create [ TextBlock.text experiment.description; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.maxWidth 360.0 ]
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 6.0
+                StackPanel.children [
+                    attachDataFileButton dispatch experiment
+                    TextBlock.create [ TextBlock.text attachedText; TextBlock.foreground (brush (color 120 120 120)); TextBlock.verticalAlignment VerticalAlignment.Center ]
+                ]
+            ]
+            TextBlock.create [
+                workbenchTextAutomationId (CollectionIds.dataFileStatus idStr)
+                TextBlock.text statusText
+                TextBlock.textWrapping TextWrapping.Wrap
+                TextBlock.maxWidth 360.0
+                TextBlock.isVisible (statusText <> "")
+                TextBlock.foreground (brush (color 90 90 90))
+            ]
+        ]
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + idStr)
+    :> IView
+
+/// The experiment-collection builder (name / save / list / load + per-experiment data-file attach).
+/// A pure projection of the model plus the dispatch seam — no window needed, so a headless test
+/// drives the collection round-trip and the attach status through `update` alone.
+let private collectionBuilderView (model : Model) (dispatch : Msg -> unit) : IView =
+    let sectionHeading (text : string) : IView =
+        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 6.0, 0.0, 2.0)) ] :> IView
+    // Commit the collection name on Enter / blur (the `numberField` precedent) — an every-keystroke
+    // dispatch that rewrites the model text is the FuncUI render-loop hazard we avoid here.
+    let commitName (src : obj) : unit =
+        match src with
+        | :? TextBox as tb when not (isNull tb.Text) -> dispatch (CollectionSetName tb.Text)
+        | _ -> ()
+    let nameField : IView =
+        TextBox.create [
+            TextBox.name CollectionIds.nameField
+            TextBox.width 180.0
+            TextBox.text model.collectionName
+            TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commitName e.Source)
+            TextBox.onLostFocus (fun e -> commitName e.Source)
+        ] :> IView
+    let statusRow : IView list =
+        match model.collectionStatus with
+        | None -> []
+        | Some text ->
+            [ (TextBlock.create [
+                  workbenchTextAutomationId CollectionIds.status
+                  TextBlock.text text
+                  TextBlock.foreground (brush (color 90 90 90))
+                  TextBlock.textWrapping TextWrapping.Wrap
+                  TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0))
+               ] |> Avalonia.FuncUI.DSL.View.withKey CollectionIds.status) :> IView ]
+    let savedRow : IView list =
+        match model.savedCollections with
+        | [] -> []
+        | names ->
+            [ sectionHeading "Saved collections:"
+              WrapPanel.create [
+                  WrapPanel.name CollectionIds.savedList
+                  WrapPanel.orientation Orientation.Horizontal
+                  WrapPanel.children (names |> List.map (fun n -> workbenchButton (CollectionIds.savedCollection n.value) n.value (fun () -> dispatch (CollectionLoad n.value))))
+              ] :> IView ]
+    let dataFileRows : IView list =
+        match model.experimentCollection.experiments with
+        | [] -> [ TextBlock.create [ TextBlock.text "(add experiments above, then attach one data file to each)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView ]
+        | experiments ->
+            [ StackPanel.create [
+                  StackPanel.name CollectionIds.dataFiles
+                  StackPanel.orientation Orientation.Vertical
+                  StackPanel.children (experiments |> List.map (dataFileRow model dispatch))
+              ] :> IView ]
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 2.0
+        StackPanel.children (
+            [ sectionHeading "Collection:"
+              StackPanel.create [
+                  StackPanel.orientation Orientation.Horizontal
+                  StackPanel.spacing 6.0
+                  StackPanel.children [ nameField; workbenchButton CollectionIds.saveButton "Save collection" (fun () -> dispatch CollectionSave) ]
+              ] :> IView ]
+            @ statusRow
+            @ savedRow
+            @ [ sectionHeading "Data files:" ]
+            @ dataFileRows)
+    ] :> IView
+
+/// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment
+/// editor + chart, then the Ui-layer collection builder stacked below it.
+let private experimentsBayContent (model : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            ExperimentControls.view (experimentState model) (experimentHandlers dispatch)
+            collectionBuilderView model dispatch
+        ]
+    ] :> IView
+
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
 /// (Spec 0038 step 015: no FULL-SURFACE bay remains — the samples workbench that used the mode is the
@@ -2409,7 +2841,7 @@ let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.selector; content = selectorBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.experiments; content = experimentsBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.details; content = LayerBandsControls.view (detailsState model); mode = Ribbon.InRibbonPane } ]
 
 let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : Msg -> unit) : IView =
