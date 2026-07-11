@@ -200,6 +200,13 @@
              through the ExperimentCollectionProxy; per-experiment data-file attach that loads +
              validates through the ExperimentDataProxy into a typed status), over mock proxies. -->
         <Compile Include="InverseConstructorTests.fs" />
+        <!-- Spec 0038 Part L (step 038): the measured-data picker's persistent last-folder plumbing —
+             pure tests over the re-typed EnvironmentSettings.lastFolders (Map keyed by picker purpose):
+             the next open reads the persisted folder (lastFolder), a confirmed selection records it
+             (rememberFolder / applyPick), a cancel changes nothing, and buildDataFilePickerOptions
+             builds the base picker options (title / single-select / no start location) with no real
+             picker raised (gate `ui-tests`). -->
+        <Compile Include="DataFilePickerFolderTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

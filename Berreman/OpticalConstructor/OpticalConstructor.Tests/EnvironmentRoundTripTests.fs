@@ -55,7 +55,7 @@ module EnvironmentRoundTripTests =
                             ]
                     }
                 ]
-            lastFolders = [ @"C:\work\optics" ]
+            lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\optics" ]
             recentFiles = [ "a.ocproj"; "b.ocproj" ]
             theme = Dark
             // Edit the saved layout through the AppShell reducer (J.8): hide "results".
@@ -98,7 +98,7 @@ module EnvironmentRoundTripTests =
         | other -> Assert.Fail($"unexpected pins: %A{other}")
         // Recent files, last folders, theme, palette, layout, preferences all survive.
         Assert.Equal<string list>(sample.recentFiles, back.recentFiles)
-        Assert.Equal<string list>(sample.lastFolders, back.lastFolders)
+        Assert.Equal<Map<string, string>>(sample.lastFolders, back.lastFolders)
         Assert.Equal(Dark, back.theme)
         Assert.Equal<string list>(sample.chartPalette, back.chartPalette)
         Assert.False((back.layout.panels |> List.find (fun p -> p.panel = "results")).visible)
@@ -352,11 +352,11 @@ module EnvironmentRoundTripTests =
         Assert.Equal<string list>(edited.chartPalette, back.chartPalette)
 
     [<Fact>]
-    let ``recent files and last folders round-trip in order`` () =
+    let ``recent files round-trip in order and last folders round-trip by purpose key`` () =
         let edited =
             { defaults with
                 recentFiles = [ "c.ocproj"; "a.ocproj"; "b.ocproj" ]
-                lastFolders = [ @"C:\work\b"; @"C:\work\a" ] }
+                lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\b"; "other-picker", @"C:\work\a" ] }
         let back = serialize edited |> okOr |> deserialize |> okOr
         Assert.Equal<string list>(edited.recentFiles, back.recentFiles)
-        Assert.Equal<string list>(edited.lastFolders, back.lastFolders)
+        Assert.Equal<Map<string, string>>(edited.lastFolders, back.lastFolders)
