@@ -237,6 +237,12 @@ type Msg =
     | SetOrientationClicked
     /// The per-layer orientation editor (degrees; only anisotropic layers render one).
     | SetLayerOrientation of LayerPosition * float * float * float
+    /// Spec 0038 (016): the TARGETED return of a Materials-window Select session
+    /// (`SelectionTarget.SampleLayerTarget` — step 019 wires the per-layer Choose material…
+    /// verb): set THIS layer position's material, never "the current selection" (the modeless
+    /// window may outlive a selection change). A vanished row is a no-op plus the status
+    /// line, never a throw.
+    | BindMaterialToLayer of LayerPosition * MaterialId
     | RemoveSelectedClicked
     | MoveUpClicked
     | MoveDownClicked
@@ -526,6 +532,20 @@ let update (msg : Msg) (m : Model) : Model =
         match applySampleStackMsg (SetOrientationOfSelected (orientationOf phi theta psi)) single with
         | Ok next -> { m with editor = { next with selection = m.editor.selection }; status = None }
         | Error e -> { m with status = Some (stackErrorReason e) }
+    | BindMaterialToLayer (position, materialId) ->
+        // Spec 0038 (016): a Materials-window Select session returned for THIS layer position.
+        // The position is validated against the CURRENT structure first (the Domain seam
+        // `isValidPosition` — the row may have been deleted while the modeless window was
+        // open): a vanished row is a no-op plus the status line, never a throw. A live row
+        // takes the material through the same selection-shaped transform-and-restore dance
+        // as the per-layer orientation editor above.
+        if isValidPosition m.editor.structure position then
+            let single = { m.editor with selection = Set.ofList [ position ] }
+            match applySampleStackMsg (SetMaterialOfSelected materialId) single with
+            | Ok next -> { m with editor = { next with selection = m.editor.selection }; status = None }
+            | Error e -> { m with status = Some (stackErrorReason e) }
+        else
+            { m with status = Some "the chosen material was not applied — its target layer is no longer in the stack" }
     | RemoveSelectedClicked -> applyStack RemoveSelected m
     | MoveUpClicked -> applyStack MoveSelectedUp m
     | MoveDownClicked -> applyStack MoveSelectedDown m

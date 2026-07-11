@@ -13,9 +13,13 @@
 /// through the step-008 `WindowLauncher` under `SampleEditorKey`); Remove keeps its inline
 /// confirm gate and typed blocks and REFUSES a `ProtectedBuiltIn` entry with a typed reason
 /// (spec F.0 — protected entries cannot be deleted). Every projection re-queries the proxies,
-/// so any verb's write shows in the same render pass. Pure: `update` only reaches IO through
-/// the context's proxy / launcher fields — behaviour is testable without a window (tests
-/// substitute recording stubs).
+/// so any verb's write shows in the same render pass. Step 016 adds the Browse/Select mode
+/// (`WindowMode.LibraryWindowMode` — the SAME window in code, never a copy): Select pre-applies
+/// the session's kind constraint at the corpus seam (NON-REMOVABLE, no breadcrumb chip) and
+/// adds exactly the Select/Close pair; everything else IS the ordinary window, so
+/// add-on-the-fly works because it is the library. Pure: `update` only reaches IO through
+/// the context's proxy / launcher / close fields — behaviour is testable without a window
+/// (tests substitute recording stubs).
 module OpticalConstructor.Ui.LibraryWindowView
 
 open System
@@ -35,6 +39,7 @@ open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 
@@ -136,6 +141,10 @@ type LibraryWindowContext =
         /// Open the Sample editor by intent: `NewBlankSample` / `NewSeededMultilayer` (the Add /
         /// Make-multilayer verbs mint the id AT dispatch — spec 0038 step 008) or `EditSample`.
         openSampleEditor : SampleEditorView.SampleEditorIntent -> unit
+        /// Close THIS window (the host passes `this.Close`; tests substitute a recording stub —
+        /// the `SampleEditorContext` precedent). The Select-state verbs reach it: 'Select'
+        /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
+        requestClose : unit -> unit
     }
 
 /// The window's pure model. The engine inputs (corpus, facet defs) are NOT cached here — every
@@ -144,6 +153,13 @@ type LibraryWindowContext =
 type Model =
     {
         context : LibraryWindowContext
+        /// Browse (the ordinary window) or Select (spec 0038 step 016): the SAME window
+        /// pre-constrained to the session context's kind — the corpus seam applies the
+        /// constraint, so it is structurally NON-REMOVABLE (no breadcrumb chip) — plus the
+        /// Select/Close pair. A `RetargetSelect` re-points a live window's session; a resolved
+        /// or cancelled session flips back to Browse so the host's close hook can never fire
+        /// `onCancelled` after `onSelected`.
+        mode : LibraryWindowMode<LibraryEntry>
         /// The applied facet constraints, in application (breadcrumb) order — at most one per
         /// facet key (this window applies single-key selections; the engine's key-set OR stays
         /// available to a later slice). A numeric selection is an ordinary member.
@@ -166,9 +182,10 @@ type Model =
         lastError : LibraryWindowError option
     }
 
-let init (context : LibraryWindowContext) : Model =
+let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : Model =
     {
         context = context
+        mode = mode
         appliedFacets = []
         textFilter = TextQuery ""
         representation = byKindRepresentation
@@ -201,6 +218,19 @@ type Msg =
     | RequestRemoveSelected
     | ConfirmRemove
     | CancelRemove
+    /// The Select-state pair (spec 0038 step 016). 'Select' returns the HIGHLIGHTED entry
+    /// through the session's `onSelected` (a targeted dispatch), then closes; no highlight →
+    /// inert. 'Close' fires `onCancelled`, then closes.
+    | ConfirmSelect
+    | CancelSelect
+    /// A Select-state open met this LIVE window: re-point the session at the new context
+    /// (the superseded session is cancelled — a second Choose closes the first, logically)
+    /// and clear the highlight; the window itself stays (the launcher's re-target seam).
+    | RetargetSelect of SelectionContext<LibraryEntry>
+    /// The host window CLOSED (the title-bar X, or a staleness `Close()` from the requesting
+    /// surface): cancel a still-pending session exactly once — a session already resolved by
+    /// Select/Close flipped the mode to Browse first, so this can never double-fire.
+    | SelectDismissed
 
 // ---------------------------------------------------------------------------
 // Live projections (each pass re-queries the proxies).
@@ -234,6 +264,18 @@ let liveEntries (context : LibraryWindowContext) : LibraryEntry list =
         |> List.distinctBy (fun entry -> entry.entryId)
     samples @ presets
 
+/// The corpus one projection pass works over: the live entries — in Select state pre-narrowed
+/// to the session's kind constraint (spec 0038 step 016). The constraint is applied at THIS
+/// corpus seam, so it is structurally NON-REMOVABLE: no breadcrumb chip exists to remove, and
+/// every count, offer, tree row and selection already lives inside it.
+/// `LibraryEntry.forKinds` is the existing kind-eligibility rule (a compound/custom polarizer
+/// serves BOTH polarizer kinds — spec 0038 step 014), never re-derived.
+let constrainedEntries (m : Model) : LibraryEntry list =
+    let entries = liveEntries m.context
+    match m.mode with
+    | Browse -> entries
+    | Select context -> entries |> List.filter (fun e -> e.forKinds |> List.contains context.kindConstraint.value)
+
 /// The text filter's facet key (the filter is an ORDINARY engine constraint — spec 0038 §D.0 —
 /// over the entry's display name; its UI surface stays the filter box, not a chip).
 let libraryTextFilterKey : AttributeKey = AttributeKey "library-text"
@@ -264,7 +306,7 @@ let private projectionInputs (m : Model) : ProjectionInputs =
         defs = defs
         textApplied = textApplied
         appliedAll = textApplied @ m.appliedFacets
-        corpus = liveEntries m.context
+        corpus = constrainedEntries m
     }
 
 /// The result set under everything applied (text filter AND facet constraints) — public so
@@ -273,11 +315,12 @@ let filteredEntries (m : Model) : LibraryEntry list =
     let inputs = projectionInputs m
     Facets.filter inputs.defs inputs.appliedAll inputs.corpus
 
-/// The selected entry resolved through the LIVE corpus (a removed sample's selection resolves
-/// to nothing, so its panel vanishes with its row).
+/// The selected entry resolved through the LIVE (and, in Select state, kind-constrained)
+/// corpus — a removed sample's selection resolves to nothing, so its panel vanishes with its
+/// row, and a Select session can only ever return an entry inside its constraint.
 let selectedEntry (m : Model) : LibraryEntry option =
     match m.selectedEntryId with
-    | Some id -> liveEntries m.context |> List.tryFind (fun e -> e.entryId = id)
+    | Some id -> constrainedEntries m |> List.tryFind (fun e -> e.entryId = id)
     | None -> None
 
 /// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
@@ -375,6 +418,13 @@ module UiIds =
     let removeCancelButton = "LibraryRemoveCancelButton"
     [<Literal>]
     let message = "LibraryWindowMessage"
+    /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
+    [<Literal>]
+    let selectButton = "LibrarySelectButton"
+    [<Literal>]
+    let selectCloseButton = "LibrarySelectCloseButton"
+    [<Literal>]
+    let selectConstraint = "LibrarySelectConstraint"
     /// The clickable tree leaf of one library entry, by its `entryId`.
     let entryNode (entryId : string) : string = FacetedTreeControls.UiIds.treeNode (entryNodeCode entryId)
 
@@ -465,6 +515,48 @@ let update (msg : Msg) (m : Model) : Model =
         // Cancel only ever disarms — it never dismisses the inline message (the next query /
         // selection change clears it).
         { m with removeGate = NoPendingRemove }
+    | ConfirmSelect ->
+        // Spec 0038 step 016: 'Select' returns the HIGHLIGHTED entry through the session's
+        // onSelected — a TARGETED dispatch (the requesting surface routes it by the context's
+        // target and treats a vanished target as a no-op plus a status line) — then closes.
+        // The mode flips to Browse in the SAME update, so the host's Closed hook
+        // (SelectDismissed, queued behind this message) finds no pending session: onSelected
+        // and onCancelled can never both fire. No highlight → inert (the pair stays, §0.7).
+        match m.mode with
+        | Select context ->
+            match selectedEntry m with
+            | Some entry ->
+                context.onSelected entry
+                m.context.requestClose ()
+                { m with mode = Browse }
+            | None -> m
+        | Browse -> m
+    | CancelSelect ->
+        // The negative half of the pair: end the session without a choice, then close.
+        match m.mode with
+        | Select context ->
+            context.onCancelled ()
+            m.context.requestClose ()
+            { m with mode = Browse }
+        | Browse -> m
+    | RetargetSelect context ->
+        // A Select-state open met this LIVE window (the launcher's re-target seam): the
+        // superseded session is CANCELLED — a second Choose closes the first, logically —
+        // and the window re-points at the new constraint/target with a fresh highlight
+        // (the browsing state — filter, chips, representation — is the user's and stays).
+        (match m.mode with
+         | Select superseded -> superseded.onCancelled ()
+         | Browse -> ())
+        { disarmed m with mode = Select context; selectedEntryId = None }
+    | SelectDismissed ->
+        // The host window closed (title-bar X, or a staleness Close() from the requesting
+        // surface): a STILL-PENDING session cancels exactly once — Select/Close already
+        // flipped a resolved session to Browse, so this arm is a no-op after them.
+        match m.mode with
+        | Select context ->
+            context.onCancelled ()
+            { m with mode = Browse }
+        | Browse -> m
 
 // ---------------------------------------------------------------------------
 // The FacetedTreeControls projection.
@@ -698,6 +790,9 @@ let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
 let private idleBackground = color 232 232 232
 let private idleBorder = color 120 120 120
 let private messageColor = color 178 34 34
+// The positive/negative action pair backgrounds (the Save/Cancel precedent, SampleEditorView).
+let private positiveBackground = color 186 224 186
+let private negativeBackground = color 236 202 202
 
 /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
 /// `Control.Name`) through FuncUI's attr builder: the verbs, confirm row, message and panel
@@ -725,6 +820,57 @@ let private verbButton (autoId : string) (label : string) (onClick : unit -> uni
         ]
         |> Avalonia.FuncUI.DSL.View.withKey autoId
     keyedBox :> IView
+
+/// A positive/negative ACTION box (the Save/Cancel styling precedent) — same look as
+/// `verbButton` but colour-coded and wider-padded; keyed, AutomationId'd (variable
+/// membership: the pair exists only in Select state).
+let private actionButton (autoId : string) (label : string) (background : Color) (onClick : unit -> unit) : IView =
+    let keyedBox =
+        Border.create [
+            automationId<Border> autoId
+            Border.background (brush background)
+            Border.borderBrush (brush idleBorder)
+            Border.borderThickness 1.0
+            Border.cornerRadius (CornerRadius 3.0)
+            Border.padding (Thickness(22.0, 6.0))
+            Border.margin (Thickness(0.0, 0.0, 10.0, 4.0))
+            Border.verticalAlignment VerticalAlignment.Center
+            Border.child (TextBlock.create [ TextBlock.text label ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
+        ]
+        |> Avalonia.FuncUI.DSL.View.withKey autoId
+    keyedBox :> IView
+
+/// The requesting surface a Select session serves, as banner prose.
+let private targetText (target : SelectionTarget) : string =
+    match target with
+    | TableElementTarget _ -> "the requesting table element"
+    | SampleLayerTarget _ -> "the requesting sample layer"
+
+/// The Select-state surface (spec 0038 step 016): exactly TWO buttons in ONE row with distinct
+/// positive/negative styling and a visible gap (§0.7) — 'Select' returns the highlighted entry,
+/// 'Close' cancels — above the pre-applied kind constraint shown as a FIXED banner: it is not a
+/// breadcrumb chip and offers no remove affordance (the constraint lives at the corpus seam).
+/// Absent in Browse mode — everything else IS the ordinary window.
+let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
+    match m.mode with
+    | Browse -> []
+    | Select context ->
+        [ WrapPanel.create [
+              WrapPanel.orientation Orientation.Horizontal
+              WrapPanel.children [
+                  actionButton UiIds.selectButton "Select" positiveBackground (fun () -> dispatch ConfirmSelect)
+                  actionButton UiIds.selectCloseButton "Close" negativeBackground (fun () -> dispatch CancelSelect)
+              ]
+          ] :> IView
+          (TextBlock.create [
+              automationId<TextBlock> UiIds.selectConstraint
+              TextBlock.fontWeight FontWeight.SemiBold
+              TextBlock.textWrapping TextWrapping.Wrap
+              TextBlock.maxWidth 380.0
+              TextBlock.text $"Choose a %s{Catalogue.kindName context.kindConstraint.value} for %s{targetText context.target} — the kind constraint is fixed and cannot be removed."
+          ]
+          |> Avalonia.FuncUI.DSL.View.withKey UiIds.selectConstraint) :> IView ]
 
 /// The verbs row: Add sample and Make multilayer always; Edit only for a SAMPLE selection (a
 /// preset has no editor — the verb is removed, not greyed); Remove while an entry is selected
@@ -825,8 +971,10 @@ let private viewPanel (m : Model) : IView list =
           ] :> IView ]
 
 /// The window surface: the faceted tree (filter, representation picker, breadcrumbs, live
-/// count, offers, tree) fills the window beside the right-hand panel carrying the verbs, the
-/// inline confirm gate, the typed refusal message, and the selected entry's view panel.
+/// count, offers, tree) fills the window beside the right-hand panel carrying — in Select
+/// state — the Select/Close pair and the fixed-constraint banner FIRST (step 016), then the
+/// ordinary verbs, the inline confirm gate, the typed refusal message, and the selected
+/// entry's view panel.
 let view (m : Model) (dispatch : Msg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
@@ -841,7 +989,8 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.spacing 6.0
                                 StackPanel.children (
-                                    [ verbsRow m dispatch ]
+                                    selectModeRows m dispatch
+                                    @ [ verbsRow m dispatch ]
                                     @ confirmRow m dispatch
                                     @ messageRow m
                                     @ viewPanel m)

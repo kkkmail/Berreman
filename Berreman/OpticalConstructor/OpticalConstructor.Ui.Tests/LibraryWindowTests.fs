@@ -15,6 +15,8 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
@@ -30,6 +32,9 @@ open OpticalConstructor.Ui
 /// strip button opens ONE window (a second click ACTIVATES it), the by-kind tree lists every
 /// entry kind with counts, the sample verbs operate over the shared app-scoped stores, and
 /// removing a `ProtectedBuiltIn` entry is refused with a typed reason and changes nothing.
+/// Step 016 adds the Select-state suite: the Select/Close pair, the pre-applied NON-REMOVABLE
+/// kind constraint, the targeted `onSelected` dispatch into the workbench, the
+/// close-on-table-selection-change staleness, and the vanished-target no-op + status line.
 module LibraryWindowTests =
 
     module LW = OpticalConstructor.Ui.LibraryWindowView
@@ -113,8 +118,8 @@ module LibraryWindowTests =
         let materials = MaterialProxy.createInMemory (samplesReferencing samples)
         Library.createInMemory (), samples, materials
 
-    /// A recording stub context (the functional-proxy seam): the launcher appends tags, so a
-    /// verb's request is observable without opening a window.
+    /// A recording stub context (the functional-proxy seam): the launcher and the close
+    /// request append tags, so a verb's request is observable without opening a window.
     let private stubContext (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : ResizeArray<string> * LW.LibraryWindowContext =
         let calls = ResizeArray<string>()
         let context : LW.LibraryWindowContext =
@@ -131,19 +136,41 @@ module LibraryWindowTests =
                             | SampleEditorView.NewBlankSample mintedId -> $"sample-add:{mintedId.value}"
                             | SampleEditorView.NewSeededMultilayer mintedId -> $"sample-multilayer:{mintedId.value}"
                             | SampleEditorView.EditSample s -> "sample-edit:" + s.name)
+                requestClose = fun () -> calls.Add "close-requested"
             }
         calls, context
 
     let private freshModel () : ResizeArray<string> * LW.Model =
         let library, samples, materials = freshStores ()
         let calls, context = stubContext library samples materials
-        calls, LW.init context
+        calls, LW.init context Browse
 
     /// A fresh model PLUS its live stores (for tests that mutate behind the window's back).
     let private freshModelWithStores () : SampleProxy * LW.Model =
         let library, samples, materials = freshStores ()
         let _, context = stubContext library samples materials
-        samples, LW.init context
+        samples, LW.init context Browse
+
+    /// A recording Select-session context (spec 0038 step 016): `onSelected` tags the chosen
+    /// entry id, `onCancelled` tags the cancel — the window guarantees exactly one fires.
+    let private selectContext (kind : CatalogueKind) (target : SelectionTarget) : ResizeArray<string> * SelectionContext<LibraryEntry> =
+        let events = ResizeArray<string>()
+        let context : SelectionContext<LibraryEntry> =
+            {
+                kindConstraint = KindConstraint kind
+                target = target
+                onSelected = fun entry -> events.Add ("selected:" + entry.entryId)
+                onCancelled = fun () -> events.Add "cancelled"
+            }
+        events, context
+
+    /// A fresh SELECT-state model over recording stubs: the session events, the context calls
+    /// (incl. "close-requested"), and the model.
+    let private freshSelectModel (kind : CatalogueKind) (target : SelectionTarget) : ResizeArray<string> * ResizeArray<string> * LW.Model =
+        let library, samples, materials = freshStores ()
+        let calls, context = stubContext library samples materials
+        let events, selectCtx = selectContext kind target
+        events, calls, LW.init context (Select selectCtx)
 
     let private filteredEntryIds (m : LW.Model) : string list =
         LW.filteredEntries m |> List.map (fun e -> e.entryId)
@@ -526,7 +553,7 @@ module LibraryWindowTests =
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
         let library, samples, materials = freshStores ()
         let _, context = stubContext library samples materials
-        let m = LW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 }
+        let m = LW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse
         let gated = LW.facetedState m
         Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
         Assert.Empty(gated.tree)
@@ -754,7 +781,7 @@ module LibraryWindowTests =
             // composition — the FacetedTreeControlsTests mounting precedent).
             let window = HostWindow(Width = 900.0, Height = 760.0)
             Program.mkSimple
-                (fun () -> LW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 })
+                (fun () -> LW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse)
                 LW.update
                 LW.view
             |> Program.withHost window
@@ -777,3 +804,261 @@ module LibraryWindowTests =
             Assert.True(treeRowCount () > 0, "the explicit build must materialize the tree")
             Assert.True(isPresent window (LW.UiIds.entryNode "src-600"))
             window.Close())
+
+    // ============================ step 016 — Select mode (pure) ============================
+
+    [<Fact>]
+    let ``the step-016 UiIds are the stable intent-named ids`` () =
+        Assert.Equal("LibrarySelectButton", LW.UiIds.selectButton)
+        Assert.Equal("LibrarySelectCloseButton", LW.UiIds.selectCloseButton)
+        Assert.Equal("LibrarySelectConstraint", LW.UiIds.selectConstraint)
+        Assert.Equal("WorkbenchSelectStatus", Scene.WorkbenchIds.selectStatus)
+
+    [<Fact>]
+    let ``Select state pre-applies the kind constraint at the corpus seam — non-removable, no breadcrumb chip`` () =
+        // Constrained to CircularPolarizer: exactly the two CP presets remain; the constraint
+        // takes NO chip (nothing to remove — it lives below the facet engine) and the ordinary
+        // window state (filter, offers, representation) is otherwise untouched.
+        let _, _, m = freshSelectModel CircularPolarizer (TableElementTarget (elementId "el-1"))
+        Assert.Equal<string list>(
+            [ "pol-cp-left"; "pol-cp-right" ],
+            filteredEntryIds m |> List.sort)
+        let state = LW.facetedState m
+        Assert.Equal(2, state.resultCount)
+        Assert.Empty(state.breadcrumbs)
+        // A LinearPolarizer constraint narrows to the one LP preset (forKinds, never re-derived).
+        let _, _, lp = freshSelectModel LinearPolarizer (TableElementTarget (elementId "el-1"))
+        Assert.Equal<string list>([ "pol-lp" ], filteredEntryIds lp)
+        // The selection resolves through the CONSTRAINED corpus: an out-of-constraint id
+        // resolves to nothing (Select can never return an entry outside its constraint).
+        let stray = LW.update (LW.SelectEntry "src-600") lp
+        Assert.Equal<LibraryEntry option>(None, LW.selectedEntry stray)
+        // Browse mode is byte-for-byte the ordinary window corpus.
+        let _, browse = freshModel ()
+        Assert.Equal(17, List.length (LW.filteredEntries browse))
+
+    [<Fact>]
+    let ``ConfirmSelect returns the HIGHLIGHTED entry through onSelected and closes — no highlight is inert`` () =
+        let events, calls, m = freshSelectModel Detector (TableElementTarget (elementId "det"))
+        // No highlight → inert: no callback, no close, the model unchanged.
+        Assert.Equal<LW.Model>(m, LW.update LW.ConfirmSelect m)
+        Assert.Empty(events)
+        // Highlight an in-constraint entry, then Select: onSelected carries THAT entry, the
+        // close request follows, and the mode flips to Browse (the resolved session cannot be
+        // cancelled again by the host's dismissal hook).
+        let resolved =
+            m
+            |> LW.update (LW.SelectEntry "det-intensity")
+            |> LW.update LW.ConfirmSelect
+        Assert.Equal<string list>([ "selected:det-intensity" ], List.ofSeq events)
+        Assert.Contains("close-requested", calls)
+        Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, resolved.mode)
+        Assert.Equal<LW.Model>(resolved, LW.update LW.SelectDismissed resolved)
+        Assert.Equal<string list>([ "selected:det-intensity" ], List.ofSeq events)
+        // Browse-mode Confirm/Cancel are inert (the pair does not exist there).
+        let _, browse = freshModel ()
+        Assert.Equal<LW.Model>(browse, LW.update LW.ConfirmSelect browse)
+        Assert.Equal<LW.Model>(browse, LW.update LW.CancelSelect browse)
+
+    [<Fact>]
+    let ``CancelSelect and the host dismissal cancel a pending session exactly once`` () =
+        // The Close verb: onCancelled, then the close request.
+        let events, calls, m = freshSelectModel Detector (TableElementTarget (elementId "det"))
+        let cancelled = LW.update LW.CancelSelect m
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+        Assert.Contains("close-requested", calls)
+        Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, cancelled.mode)
+        // A dismissal AFTER the cancel is a no-op — never a second onCancelled.
+        LW.update LW.SelectDismissed cancelled |> ignore
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+        // The host dismissal alone (title-bar X / a staleness Close()): onCancelled once,
+        // WITHOUT a close request (the window is already closing).
+        let events2, calls2, m2 = freshSelectModel Detector (TableElementTarget (elementId "det"))
+        let dismissed = LW.update LW.SelectDismissed m2
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events2)
+        Assert.DoesNotContain("close-requested", calls2)
+        Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, dismissed.mode)
+
+    [<Fact>]
+    let ``RetargetSelect cancels the superseded session, re-points the constraint and target, and clears the highlight`` () =
+        let events, _, m = freshSelectModel LinearPolarizer (TableElementTarget (elementId "el-1"))
+        let highlighted = LW.update (LW.SelectEntry "pol-lp") m
+        // A second Select open re-targets the live single instance: the FIRST session is
+        // cancelled (a second Choose closes the first, logically) and the window now serves
+        // the new constraint/target with a fresh highlight.
+        let events2, retargetCtx = selectContext Detector (TableElementTarget (elementId "det"))
+        let retargeted = LW.update (LW.RetargetSelect retargetCtx) highlighted
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+        Assert.Empty(events2)
+        Assert.Equal<string option>(None, retargeted.selectedEntryId)
+        Assert.Equal<string list>(
+            [ "det-ellipsometer"; "det-intensity" ],
+            filteredEntryIds retargeted |> List.sort)
+        // The re-pointed session then resolves through the NEW context.
+        retargeted
+        |> LW.update (LW.SelectEntry "det-ellipsometer")
+        |> LW.update LW.ConfirmSelect
+        |> ignore
+        Assert.Equal<string list>([ "selected:det-ellipsometer" ], List.ofSeq events2)
+
+    // ============================ step 016 — Select mode (headless) ============================
+
+    let private mountSelectLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) (selectCtx : SelectionContext<LibraryEntry>) : LibraryWindow =
+        let window = LibraryWindow(library, samples, materials, mode = Select selectCtx)
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window
+
+    /// Mount the REAL Main workbench MVU loop headless WITH a captured dispatch (the
+    /// `Cmd.ofEffect` capture the window hosts themselves use), so a Select window's
+    /// onSelected can dispatch the TARGETED bind into the live scene loop.
+    let private mountMainWithDispatch (model0 : Scene.Model) : HostWindow * (Scene.Msg -> unit) =
+        let window = HostWindow(Width = 980.0, Height = 1050.0)
+        let mutable dispatchRef : Scene.Msg -> unit = ignore
+        Program.mkProgram
+            (fun () -> model0, Cmd.ofEffect (fun d -> dispatchRef <- d))
+            (fun msg m -> Scene.update msg m, Cmd.none)
+            Scene.mainView
+        |> Program.withHost window
+        |> Program.run
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window, (fun msg -> dispatchRef msg)
+
+    let private freshMainModel () : Scene.Model =
+        let library, samples, materials = freshStores ()
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        Scene.initMainWith library (Experiments.createInMemory ()) materials samples categories
+
+    /// Click the shared table canvas at canvas-local coordinates (the pointer gestures live on
+    /// the wrapping Border and read positions relative to the NAMED canvas).
+    let private clickCanvasAt (window : Window) (sx : float) (sy : float) : unit =
+        match tryFindControl window Scene.UiIds.canvas with
+        | Some canvas ->
+            let p = canvas.TranslatePoint(Point(sx, sy), window)
+            if p.HasValue then
+                window.MouseDown(p.Value, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                window.MouseUp(p.Value, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            else Assert.Fail "the canvas has no on-screen position"
+        | None -> Assert.Fail "the table canvas was not found"
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): the Select state shows the Select-Close pair and the NON-REMOVABLE kind constraint — everything else IS the ordinary window`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let _, selectCtx = selectContext CircularPolarizer (TableElementTarget (elementId "el-1"))
+            let window = mountSelectLibraryWindow library samples materials selectCtx
+            // Exactly the TWO buttons, one row, distinct positive/negative styling.
+            Assert.True(isPresent window LW.UiIds.selectButton, "the Select button must render")
+            Assert.True(isPresent window LW.UiIds.selectCloseButton, "the Close button must render")
+            Assert.Equal("Select", textOf window LW.UiIds.selectButton)
+            Assert.Equal("Close", textOf window LW.UiIds.selectCloseButton)
+            // The pre-applied constraint: the banner NAMES the fixed kind, the corpus is
+            // narrowed to it, and NO breadcrumb chip exists (nothing to remove).
+            let banner = textOf window LW.UiIds.selectConstraint
+            Assert.Contains("Circular polarizer", banner)
+            Assert.Contains("fixed", banner)
+            Assert.Equal("2 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            Assert.False(isPresent window (FacetedTreeControls.UiIds.breadcrumbChip entryKindFacetKey.value),
+                         "the pre-applied constraint must take NO removable breadcrumb chip")
+            Assert.True(isPresent window (LW.UiIds.entryNode "pol-cp-left"))
+            Assert.False(isPresent window (LW.UiIds.entryNode "src-600"), "an out-of-kind entry must not be listed")
+            // Everything else IS the ordinary window: the add-on-the-fly verbs are all there.
+            Assert.True(isPresent window LW.UiIds.addSampleButton, "Add sample must survive Select state")
+            Assert.True(isPresent window LW.UiIds.makeMultilayerButton, "Make multilayer must survive Select state")
+            Assert.True(isPresent window (FacetedTreeControls.UiIds.filterBox), "the filter box must survive Select state")
+            window.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): Select returns the highlighted entry through the TARGETED dispatch into the workbench and closes`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let model0 = freshMainModel ()
+            // The detector is the selected element, so the readout shows ITS bound name.
+            let mainWindow, dispatch = mountMainWithDispatch { model0 with selection = Scene.ElementSelected 1 }
+            // The Select session the step-017 Choose… flow will compose: onSelected dispatches
+            // the TARGETED bind (by the element's serializable id) into the live scene loop.
+            let cancels = ResizeArray<string>()
+            let selectCtx : SelectionContext<LibraryEntry> =
+                {
+                    kindConstraint = KindConstraint Detector
+                    target = TableElementTarget (elementId "det")
+                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (elementId "det", entry.entryId))
+                    onCancelled = fun () -> cancels.Add "cancelled"
+                }
+            let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
+            clickOn selectWindow (LW.UiIds.entryNode "det-intensity")
+            clickOn selectWindow LW.UiIds.selectButton
+            Dispatcher.UIThread.RunJobs()
+            // The window closed itself after onSelected — and never cancelled.
+            Assert.False(selectWindow.IsVisible, "Select must close the window after onSelected")
+            Assert.Empty(cancels)
+            // The TARGETED bind landed on the detector element: the workbench readout renders
+            // the bound entry's display name in the same pass.
+            Assert.Contains("bound: Intensity detector", textOf mainWindow Scene.UiIds.readout)
+            Assert.False(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "a successful bind reports no staleness status")
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): a changed table selection cancels and CLOSES the open Select-state Library window`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let events, selectCtx = selectContext Detector (TableElementTarget (elementId "det"))
+            let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
+            // The workbench holds the session handle (the step-017 Choose… flow populates it;
+            // seeded here): selection sits on the detector element.
+            let model0 = freshMainModel ()
+            let session : Scene.SelectSession =
+                {
+                    target = elementId "det"
+                    cancelAndClose = fun () -> selectWindow.Close()
+                }
+            let mainWindow, _ =
+                mountMainWithDispatch
+                    { model0 with selection = Scene.ElementSelected 1; activeSelect = Some session }
+            Assert.True(selectWindow.IsVisible)
+            // A REAL canvas click on the empty table changes the selection (element → table):
+            // the staleness rule cancels and closes the open Select window in the same pass —
+            // the pending-bind-clears precedent extended.
+            clickCanvasAt mainWindow Scene.center.sx Scene.center.sy
+            Assert.False(selectWindow.IsVisible, "the changed table selection must close the Select window")
+            Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): a vanished target element makes the Select return a NO-OP plus a status line — never a throw`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let model0 = freshMainModel ()
+            let mainWindow, dispatch = mountMainWithDispatch { model0 with selection = Scene.ElementSelected 1 }
+            let selectCtx : SelectionContext<LibraryEntry> =
+                {
+                    kindConstraint = KindConstraint Detector
+                    target = TableElementTarget (elementId "det")
+                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (elementId "det", entry.entryId))
+                    onCancelled = fun () -> ()
+                }
+            let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
+            // The target element vanishes while the modeless window is open (no session handle
+            // is registered here — the belt-and-braces race the targeted return must survive).
+            dispatch Scene.RemoveSelected
+            Dispatcher.UIThread.RunJobs()
+            // The return is a NO-OP plus the status line, never a throw.
+            clickOn selectWindow (LW.UiIds.entryNode "det-intensity")
+            clickOn selectWindow LW.UiIds.selectButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
+            Assert.True(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "the vanished target must surface the status line")
+            Assert.Contains("no longer on the table", textOf mainWindow Scene.WorkbenchIds.selectStatus)
+            Assert.DoesNotContain("bound: Intensity detector", textOf mainWindow Scene.UiIds.readout)
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())

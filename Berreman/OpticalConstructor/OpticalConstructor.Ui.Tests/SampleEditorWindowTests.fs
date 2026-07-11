@@ -634,3 +634,44 @@ module SampleEditorWindowTests =
             Assert.Equal("1", textOf window UiIds.filmsCount)
             Assert.True(isPresent window (UiIds.layerOrientation 0), "the added layer must be the chosen anisotropic crystal — proving ChooseMaterial fired with its MaterialId")
             window.Close())
+
+    // ========== step 016 — the TARGETED Select return (BindMaterialToLayer, pure) ==========
+
+    [<Fact>]
+    let ``BindMaterialToLayer re-materials exactly the targeted position and preserves the user selection`` () =
+        let _, context = recordingContext ()
+        let m =
+            init context builtInEntries (EditSample (threeFilmSample ()))
+            |> update (ToggleLayer (AtSingleLayer 2))
+        // The Materials window's Select session returns vacuum for row 1 — NOT the selection.
+        let bound = update (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
+        let materialAt (i : int) (model : Model) : MaterialId =
+            match List.item i model.editor.structure.films with
+            | SingleLayer layer -> layer.materialId
+            | Repeated _ -> failwith $"films item %d{i} is unexpectedly a repeat group"
+        Assert.Equal(MaterialIds.glass175, materialAt 1 bound)
+        Assert.Equal(MaterialIds.glass152, materialAt 0 bound)
+        Assert.Equal(MaterialIds.glass152, materialAt 2 bound)
+        // The user's own multi-selection survives the targeted transform (the
+        // SetLayerOrientation dance), and the status stays clean.
+        Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 2 ], bound.editor.selection)
+        Assert.Equal<string option>(None, bound.status)
+
+    [<Fact>]
+    let ``BindMaterialToLayer on a vanished row is a NO-OP plus the status line — never a throw`` () =
+        let _, context = recordingContext ()
+        // A blank NEW sample has no row 0 — the deleted-row race the targeted return must
+        // survive (spec 0038 step 016; step 019 wires the Choose material… verb).
+        let m = init context builtInEntries (NewBlankSample (newSampleId ()))
+        let vanished = update (BindMaterialToLayer (AtSingleLayer 0, MaterialIds.glass152)) m
+        Assert.Equal<SampleStructure>(m.editor.structure, vanished.editor.structure)
+        match vanished.status with
+        | Some text -> Assert.Contains("no longer in the stack", text)
+        | None -> Assert.Fail "the vanished row must surface the status line"
+        // A cell-slot position of a non-group item is equally vanished (total, typed, no throw).
+        let three = init context builtInEntries (EditSample (threeFilmSample ()))
+        let cellMiss = update (BindMaterialToLayer (AtCellLayer (0, 0), MaterialIds.glass152)) three
+        Assert.Equal<SampleStructure>(three.editor.structure, cellMiss.editor.structure)
+        match cellMiss.status with
+        | Some text -> Assert.Contains("no longer in the stack", text)
+        | None -> Assert.Fail "the mismatched cell position must surface the status line"

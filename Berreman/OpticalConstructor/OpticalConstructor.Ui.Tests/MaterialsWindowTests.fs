@@ -15,6 +15,9 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Placement
+open OpticalConstructor.Domain.SampleStackEditor
+open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
@@ -27,7 +30,9 @@ open OpticalConstructor.Ui
 /// the REAL workbench strip button) by automation ids — the slice acceptance: the strip button
 /// opens ONE window (a second click ACTIVATES it), applying facet constraints narrows the
 /// corpus, the verbs operate over the shared app-scoped stores, and a category rename re-labels
-/// the category facet.
+/// the category facet. Step 016 adds the Select-state suite: the Select/Close pair, the
+/// structural (non-removable) kind constraint banner, the targeted `onSelected` dispatch into
+/// the sample editor's layer, close-on-table-selection-change, and the vanished-row no-op.
 module MaterialsWindowTests =
 
     module MW = OpticalConstructor.Ui.MaterialsWindowView
@@ -151,13 +156,27 @@ module MaterialsWindowTests =
                             | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}"
                             | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name)
                 openCategoryEditor = fun () -> calls.Add "categories-open"
+                requestClose = fun () -> calls.Add "close-requested"
             }
         calls, context
 
     let private freshModel () : ResizeArray<string> * MW.Model =
         let materials, _, categories = freshStores ()
         let calls, context = stubContext materials categories
-        calls, MW.init context
+        calls, MW.init context Browse
+
+    /// A recording Select-session context (spec 0038 step 016): `onSelected` tags the chosen
+    /// material id, `onCancelled` tags the cancel — the window guarantees exactly one fires.
+    let private selectContext (kind : CatalogueKind) (target : SelectionTarget) : ResizeArray<string> * SelectionContext<MaterialEntry> =
+        let events = ResizeArray<string>()
+        let context : SelectionContext<MaterialEntry> =
+            {
+                kindConstraint = KindConstraint kind
+                target = target
+                onSelected = fun entry -> events.Add ("selected:" + string entry.id.value)
+                onCancelled = fun () -> events.Add "cancelled"
+            }
+        events, context
 
     /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard
     /// on update), failing the test on a typed rejection.
@@ -267,7 +286,7 @@ module MaterialsWindowTests =
     let ``a category renamed through the proxy re-labels the category facet in the next projection`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
-        let m = MW.init context
+        let m = MW.init context Browse
         let valueKeysOf (state : FacetedTreeControls.State) : string list =
             state.offers
             |> List.find (fun g -> g.code = materialCategoryKey.value)
@@ -317,7 +336,7 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
         let refused =
-            MW.init context
+            MW.init context Browse
             |> MW.update (MW.SelectEntry MaterialIds.glass152)
             |> MW.update MW.RequestRemoveSelected
             |> MW.update MW.ConfirmRemove
@@ -338,7 +357,7 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
         let removed =
-            MW.init context
+            MW.init context Browse
             |> MW.update (MW.SelectEntry MaterialIds.glass200)
             |> MW.update MW.RequestRemoveSelected
             |> MW.update MW.ConfirmRemove
@@ -448,7 +467,7 @@ module MaterialsWindowTests =
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
-        let m = MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 }
+        let m = MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse
         let gated = MW.facetedState m
         Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
         // A gated pass projects NO tree at all — the whole point is skipping the heavy render —
@@ -690,7 +709,7 @@ module MaterialsWindowTests =
             // composition — the FacetedTreeControlsTests mounting precedent).
             let window = HostWindow(Width = 900.0, Height = 760.0)
             Program.mkSimple
-                (fun () -> MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 })
+                (fun () -> MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse)
                 MW.update
                 MW.view
             |> Program.withHost window
@@ -704,3 +723,238 @@ module MaterialsWindowTests =
             Assert.True(treeRowCount window > 0, "the explicit build must materialize the tree")
             Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass152))
             window.Close())
+
+    // ============================ step 016 — Select mode (pure) ============================
+
+    [<Fact>]
+    let ``the step-016 UiIds are the stable intent-named ids`` () =
+        Assert.Equal("MaterialsSelectButton", MW.UiIds.selectButton)
+        Assert.Equal("MaterialsSelectCloseButton", MW.UiIds.selectCloseButton)
+        Assert.Equal("MaterialsSelectConstraint", MW.UiIds.selectConstraint)
+
+    /// A fresh SELECT-state model over recording stubs (targeting one sample-layer slot —
+    /// the step-019 picking shape).
+    let private freshSelectModel () : ResizeArray<string> * ResizeArray<string> * MW.Model =
+        let materials, _, categories = freshStores ()
+        let calls, context = stubContext materials categories
+        let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+        events, calls, MW.init context (Select selectCtx)
+
+    [<Fact>]
+    let ``Select state keeps the WHOLE material corpus — the kind constraint is structural, no breadcrumb chip`` () =
+        // Every material serves a sample-layer pick (materials carry no CatalogueKind), so the
+        // pre-applied constraint narrows nothing here — it shows as the fixed banner only —
+        // and it takes NO chip (nothing to remove).
+        let _, _, m = freshSelectModel ()
+        Assert.Equal(12, List.length (MW.filteredEntries m))
+        let state = MW.facetedState m
+        Assert.Equal(12, state.resultCount)
+        Assert.Empty(state.breadcrumbs)
+
+    [<Fact>]
+    let ``ConfirmSelect returns the HIGHLIGHTED material through onSelected and closes — no highlight is inert`` () =
+        let events, calls, m = freshSelectModel ()
+        Assert.Equal<MW.Model>(m, MW.update MW.ConfirmSelect m)
+        Assert.Empty(events)
+        let resolved =
+            m
+            |> MW.update (MW.SelectEntry MaterialIds.glass152)
+            |> MW.update MW.ConfirmSelect
+        Assert.Equal<string list>([ $"selected:{MaterialIds.glass152.value}" ], List.ofSeq events)
+        Assert.Contains("close-requested", calls)
+        Assert.Equal<LibraryWindowMode<MaterialEntry>>(Browse, resolved.mode)
+        // A dismissal after the resolve is a no-op — onSelected and onCancelled never both fire.
+        MW.update MW.SelectDismissed resolved |> ignore
+        Assert.Equal<string list>([ $"selected:{MaterialIds.glass152.value}" ], List.ofSeq events)
+        // Browse-mode Confirm/Cancel are inert (the pair does not exist there).
+        let _, browse = freshModel ()
+        Assert.Equal<MW.Model>(browse, MW.update MW.ConfirmSelect browse)
+        Assert.Equal<MW.Model>(browse, MW.update MW.CancelSelect browse)
+
+    [<Fact>]
+    let ``CancelSelect cancels once and a re-target supersedes the first session`` () =
+        let events, calls, m = freshSelectModel ()
+        let cancelled = MW.update MW.CancelSelect m
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+        Assert.Contains("close-requested", calls)
+        MW.update MW.SelectDismissed cancelled |> ignore
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+        // Re-target: the superseded session cancels, the highlight clears, the new session
+        // resolves through the NEW context (a second Choose closes the first, logically).
+        let events1, _, m1 = freshSelectModel ()
+        let highlighted = MW.update (MW.SelectEntry MaterialIds.glass152) m1
+        let events2, retargetCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 1))
+        let retargeted = MW.update (MW.RetargetSelect retargetCtx) highlighted
+        Assert.Equal<string list>([ "cancelled" ], List.ofSeq events1)
+        Assert.Empty(events2)
+        Assert.Equal<MaterialId option>(None, retargeted.selectedId)
+        retargeted
+        |> MW.update (MW.SelectEntry MaterialIds.glass200)
+        |> MW.update MW.ConfirmSelect
+        |> ignore
+        Assert.Equal<string list>([ $"selected:{MaterialIds.glass200.value}" ], List.ofSeq events2)
+
+    // ============================ step 016 — Select mode (headless) ============================
+
+    let private mountSelectMaterialsWindow (materials : MaterialProxy) (categories : CategoryProxy) (selectCtx : SelectionContext<MaterialEntry>) : MaterialsWindow =
+        let window = MaterialsWindow(materials, categories, mode = Select selectCtx)
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window
+
+    /// Mount the REAL Sample-editor MVU loop headless WITH a captured dispatch, so a Materials
+    /// Select window's onSelected can dispatch the TARGETED `BindMaterialToLayer` into the live
+    /// editor loop (the step-019 picking shape, driven end-to-end here).
+    let private mountEditorWithDispatch (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorView.SampleEditorIntent) : HostWindow * (SampleEditorView.Msg -> unit) =
+        let materialList =
+            match materials.listMaterials () with
+            | Ok entries -> entries
+            | Error e -> failwith $"listMaterials failed: %A{e}"
+        let context : SampleEditorView.SampleEditorContext =
+            {
+                samples = samples
+                requestClose = fun () -> ()
+            }
+        let window = HostWindow(Width = 1100.0, Height = 760.0)
+        let mutable dispatchRef : SampleEditorView.Msg -> unit = ignore
+        Program.mkProgram
+            (fun () -> SampleEditorView.init context materialList intent, Cmd.ofEffect (fun d -> dispatchRef <- d))
+            (fun msg m -> SampleEditorView.update msg m, Cmd.none)
+            SampleEditorView.view
+        |> Program.withHost window
+        |> Program.run
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window, (fun msg -> dispatchRef msg)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): the Materials Select state shows the Select-Close pair and the non-removable constraint — the ordinary window otherwise`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let _, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+            let window = mountSelectMaterialsWindow materials categories selectCtx
+            Assert.True(isPresent window MW.UiIds.selectButton, "the Select button must render")
+            Assert.True(isPresent window MW.UiIds.selectCloseButton, "the Close button must render")
+            Assert.Equal("Select", textOf window MW.UiIds.selectButton)
+            Assert.Equal("Close", textOf window MW.UiIds.selectCloseButton)
+            let banner = textOf window MW.UiIds.selectConstraint
+            Assert.Contains("Sample", banner)
+            Assert.Contains("fixed", banner)
+            // No chip — the constraint is structural, and the whole material corpus stays.
+            Assert.Equal("12 results", textOf window FacetedTreeControls.UiIds.resultCount)
+            let chipCount =
+                window.GetVisualDescendants()
+                |> Seq.filter (fun v ->
+                    match v with
+                    | :? Control as c ->
+                        let autoId = Avalonia.Automation.AutomationProperties.GetAutomationId(c)
+                        not (isNull autoId) && autoId.StartsWith("FacetBreadcrumbChip_")
+                    | _ -> false)
+                |> Seq.length
+            Assert.Equal(0, chipCount)
+            // Everything else IS the ordinary window: Add / Categories… (add-on-the-fly) stay.
+            Assert.True(isPresent window MW.UiIds.addButton, "Add must survive Select state")
+            Assert.True(isPresent window MW.UiIds.categoriesButton, "Categories… must survive Select state")
+            window.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): Select returns the material through the TARGETED dispatch into the sample editor's layer and closes`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshStores ()
+            // The editor over a seeded one-layer sample — the Select session targets ITS row 0.
+            let editor, dispatch = mountEditorWithDispatch materials samples (SampleEditorView.EditSample SeedSamples.glassFilm600)
+            let cancels = ResizeArray<string>()
+            let selectCtx : SelectionContext<MaterialEntry> =
+                {
+                    kindConstraint = KindConstraint Sample
+                    target = SampleLayerTarget (AtSingleLayer 0)
+                    onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
+                    onCancelled = fun () -> cancels.Add "cancelled"
+                }
+            let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
+            commitFilter selectWindow "1.52"
+            clickOn selectWindow (MW.UiIds.entryNode MaterialIds.glass152)
+            clickOn selectWindow MW.UiIds.selectButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(selectWindow.IsVisible, "Select must close the window after onSelected")
+            Assert.Empty(cancels)
+            // The TARGETED return re-materialed row 0 in the same pass.
+            Assert.Contains("Transparent glass (n = 1.52)", textOf editor (SampleEditorView.UiIds.layerRow 0))
+            Assert.Equal("", textOf editor SampleEditorView.UiIds.statusText)
+            editor.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): a changed table selection cancels and CLOSES the open Select-state Materials window too`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
+            let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
+            // The workbench staleness machinery is window-agnostic: the session handle closes
+            // whichever Select-state window it points at.
+            let sceneSamples = SampleProxy.createInMemory ()
+            let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples)
+            let sceneCategories = CategoryProxy.createInMemory (materialsReferencingCategory sceneMaterials)
+            let model0 =
+                Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) sceneMaterials sceneSamples sceneCategories
+            let session : Scene.SelectSession =
+                {
+                    target = elementId "det"
+                    cancelAndClose = fun () -> selectWindow.Close()
+                }
+            let mainWindow = HostWindow(Width = 980.0, Height = 1050.0)
+            Program.mkSimple
+                (fun () -> { model0 with selection = Scene.ElementSelected 1; activeSelect = Some session })
+                Scene.update
+                Scene.mainView
+            |> Program.withHost mainWindow
+            |> Program.run
+            mainWindow.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.True(selectWindow.IsVisible)
+            // A REAL canvas click on the empty table changes the selection: the staleness rule
+            // closes the Materials Select window and its session cancels — exactly once.
+            match tryFindControl mainWindow Scene.UiIds.canvas with
+            | Some canvas ->
+                let p = canvas.TranslatePoint(Point(Scene.center.sx, Scene.center.sy), mainWindow)
+                Assert.True(p.HasValue, "the canvas must have an on-screen position")
+                mainWindow.MouseDown(p.Value, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                mainWindow.MouseUp(p.Value, MouseButton.Left, RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            | None -> Assert.Fail "the table canvas was not found"
+            Assert.False(selectWindow.IsVisible, "the changed table selection must close the Materials Select window")
+            Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): a vanished target layer makes the Select return a NO-OP plus the editor status line — never a throw`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshStores ()
+            // A BLANK new sample: it has NO row 0, so the session's target does not exist —
+            // the deleted-row race the targeted return must survive (step 019 wires the verb).
+            let editor, dispatch = mountEditorWithDispatch materials samples (SampleEditorView.NewBlankSample (newSampleId ()))
+            let selectCtx : SelectionContext<MaterialEntry> =
+                {
+                    kindConstraint = KindConstraint Sample
+                    target = SampleLayerTarget (AtSingleLayer 0)
+                    onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
+                    onCancelled = fun () -> ()
+                }
+            let selectWindow = mountSelectMaterialsWindow materials categories selectCtx
+            commitFilter selectWindow "1.52"
+            clickOn selectWindow (MW.UiIds.entryNode MaterialIds.glass152)
+            clickOn selectWindow MW.UiIds.selectButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(selectWindow.IsVisible, "the Select window still closes after its return")
+            // The editor no-opped and reports the vanished row on its status line.
+            Assert.Contains("no longer in the stack", textOf editor SampleEditorView.UiIds.statusText)
+            Assert.False(isPresent editor (SampleEditorView.UiIds.layerRow 0), "no layer row may appear from a vanished-target return")
+            editor.Close()
+            Dispatcher.UIThread.RunJobs())

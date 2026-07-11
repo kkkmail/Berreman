@@ -12,8 +12,9 @@
 /// `Window.Activate` on the registered live window; create = the injected
 /// per-key factory → register → unregister on `Closed` → show (Browse always
 /// `Show`; a Select-state open follows the step-005 modality switch —
-/// `ShowDialog` owned by the requesting window / `Show`). Step 016 adds the
-/// Select-state re-target (`RetargetedWindow`, declared below).
+/// `ShowDialog` owned by the requesting window / `Show`). Step 016: a
+/// Select-state open of a LIVE key RE-TARGETS the single instance through the
+/// baked `retargetWindow` closure and returns `RetargetedWindow`.
 namespace OpticalConstructor.Ui
 
 open Avalonia.Controls
@@ -70,9 +71,10 @@ module WindowLauncher =
         /// The key already had a live window: it was activated (brought to
         /// front by the real launcher), not re-created.
         | ActivatedWindow of Window
-        /// The key's live window is in Select state and was re-pointed at a new
-        /// selection target instead of being re-created. Declared now so match
-        /// sites are compiler-complete; no launcher returns it before step 016.
+        /// The key had a live window and the open was Select-state: the window was
+        /// RE-POINTED at the new selection context through the launcher's baked
+        /// `retargetWindow` closure (and activated), instead of being re-created —
+        /// a second Select open re-targets the existing single instance (step 016).
         | RetargetedWindow of Window
 
     /// How a `create`d launcher SHOWS the windows it builds (step 008). The
@@ -81,11 +83,14 @@ module WindowLauncher =
     /// workbench editor verbs); a Select-state open follows the step-005
     /// modality switch — `ShowDialog` with the requesting window as owner under
     /// `ModalSelectWindows`, `Show` under `ModelessSelectWindows`. A Select-state
-    /// site (step 016) composes its own launcher view over the SAME host
-    /// registry with itself as the requesting window.
+    /// site (steps 016/017/019) composes its own launcher view over the SAME host
+    /// registry with itself as the requesting window, baking the SelectionContext
+    /// into BOTH closures: the factory (a fresh window opens in Select state) and
+    /// `retargetWindow` (a LIVE single instance is re-pointed at the new context —
+    /// the site downcasts to its concrete window type and calls its `Retarget`).
     type WindowOpenMode =
         | BrowseOpen
-        | SelectOpen of requestingWindow : Window
+        | SelectOpen of requestingWindow : Window * retargetWindow : (Window -> unit)
 
     /// The HOST-layer WindowRegistry (step 008): ONE module-level mutable map —
     /// window bookkeeping lives with the host (windows are host objects),
@@ -111,7 +116,8 @@ module WindowLauncher =
             /// Open-or-activate the window for `key`: no live window → build it
             /// through the injected per-key factory and register it
             /// (`CreatedWindow`); a live window → activate it
-            /// (`ActivatedWindow`); a live Select-state window → re-target it
+            /// (`ActivatedWindow`); a SELECT-STATE open of a live window →
+            /// re-target the single instance through the baked closure
             /// (`RetargetedWindow`, step 016).
             openOrActivate : WindowKey -> Result<WindowLaunchOutcome, WindowLauncherError>
             /// Forget `key` on window close, so the next open creates afresh
@@ -163,7 +169,10 @@ module WindowLauncher =
 
         /// The REAL launcher (step 008, SVC_XDUO_0001 — implemented): open-or-
         /// activate over the ONE host-layer `WindowRegistry`. A live key is
-        /// ACTIVATED (`Window.Activate` — brought to front, never re-created); a
+        /// ACTIVATED (`Window.Activate` — brought to front, never re-created) —
+        /// except under a Select-state open, where the live single instance is
+        /// RE-TARGETED first through the baked `retargetWindow` closure and the
+        /// outcome is `RetargetedWindow` (step 016); a
         /// missing key is CREATED — the injected per-key `factory` builds the
         /// window, the registry records it, its `Closed` event unregisters it
         /// (only while it is still the registered window, so a close racing a
@@ -186,10 +195,22 @@ module WindowLauncher =
                     fun (key : WindowKey) ->
                         match Map.tryFind key WindowRegistry.live with
                         | Some window ->
-                            try
-                                window.Activate ()
-                                ActivatedWindow window |> Ok
-                            with ex -> WindowFactoryFailed (key, $"activate failed: {ex.Message}") |> Error
+                            match openMode with
+                            | BrowseOpen ->
+                                try
+                                    window.Activate ()
+                                    ActivatedWindow window |> Ok
+                                with ex -> WindowFactoryFailed (key, $"activate failed: {ex.Message}") |> Error
+                            | SelectOpen (_, retargetWindow) ->
+                                // Step 016: a Select-state open of a LIVE key RE-TARGETS the
+                                // single instance — the baked closure re-points the window at
+                                // the new SelectionContext (the window itself cancels the
+                                // superseded session), then it is brought to front.
+                                try
+                                    retargetWindow window
+                                    window.Activate ()
+                                    RetargetedWindow window |> Ok
+                                with ex -> WindowFactoryFailed (key, $"retarget failed: {ex.Message}") |> Error
                         | None ->
                             let built =
                                 try factory key
@@ -206,7 +227,7 @@ module WindowLauncher =
                                 try
                                     match openMode with
                                     | BrowseOpen -> window.Show ()
-                                    | SelectOpen requestingWindow ->
+                                    | SelectOpen (requestingWindow, _) ->
                                         match modality with
                                         | ModalSelectWindows -> window.ShowDialog requestingWindow |> ignore
                                         | ModelessSelectWindows -> window.Show ()

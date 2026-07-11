@@ -359,7 +359,7 @@ module WindowLauncherTests =
             // Modal: the created window is shown as a DIALOG owned by the requesting window.
             let modalKey = SampleEditorKey (Library.newSampleId ())
             let modalLauncher =
-                WindowLauncher.create (recordingFactory (ResizeArray())) ModalSelectWindows (SelectOpen requester)
+                WindowLauncher.create (recordingFactory (ResizeArray())) ModalSelectWindows (SelectOpen (requester, ignore))
             (match modalLauncher.openOrActivate modalKey with
              | Ok (CreatedWindow w) ->
                  Assert.True(w.IsVisible, "the modal Select open must show the dialog")
@@ -370,7 +370,7 @@ module WindowLauncherTests =
             // Modeless: the created window is an ordinary unowned Show.
             let modelessKey = SampleEditorKey (Library.newSampleId ())
             let modelessLauncher =
-                WindowLauncher.create (recordingFactory (ResizeArray())) ModelessSelectWindows (SelectOpen requester)
+                WindowLauncher.create (recordingFactory (ResizeArray())) ModelessSelectWindows (SelectOpen (requester, ignore))
             (match modelessLauncher.openOrActivate modelessKey with
              | Ok (CreatedWindow w) ->
                  Assert.True(w.IsVisible, "the modeless Select open must show the window")
@@ -378,6 +378,42 @@ module WindowLauncherTests =
                  w.Close()
                  Dispatcher.UIThread.RunJobs()
              | other -> Assert.Fail($"the modeless Select open must create, got %A{other}"))
+            requester.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (016): a second Select-state open RE-TARGETS the existing single instance — no second factory call`` () =
+        HeadlessSession.run (fun () ->
+            let requester = Window()
+            requester.Show()
+            let key = LibraryWindowKey
+            let created = ResizeArray<WindowKey>()
+            // The first Select open CREATES (and shows) the single instance…
+            let retargeted1 = ResizeArray<Window>()
+            let launcher1 =
+                WindowLauncher.create (recordingFactory created) ModelessSelectWindows (SelectOpen (requester, retargeted1.Add))
+            let firstWindow =
+                match launcher1.openOrActivate key with
+                | Ok (CreatedWindow w) -> w
+                | other -> failwith $"the first Select open must create, got %A{other}"
+            Assert.Empty(retargeted1)
+            // …and a SECOND Select open (a fresh launcher view baking its own re-target
+            // closure — the per-open composition) RE-TARGETS the LIVE window instead of
+            // creating or merely activating: the baked closure receives exactly the live
+            // instance, once, and the factory is never consulted again.
+            let retargeted2 = ResizeArray<Window>()
+            let launcher2 =
+                WindowLauncher.create (recordingFactory created) ModelessSelectWindows (SelectOpen (requester, retargeted2.Add))
+            (match launcher2.openOrActivate key with
+             | Ok (RetargetedWindow w) ->
+                 Assert.True(obj.ReferenceEquals(w, firstWindow), "the re-target must meet the SAME live window")
+             | other -> Assert.Fail($"the second Select open must re-target, got %A{other}"))
+            Assert.Equal(1, retargeted2.Count)
+            Assert.True(obj.ReferenceEquals(retargeted2.[0], firstWindow), "the baked closure must receive the live window")
+            Assert.Equal<WindowKey list>([ key ], List.ofSeq created)
+            firstWindow.Close()
+            Dispatcher.UIThread.RunJobs()
             requester.Close()
             Dispatcher.UIThread.RunJobs())
 

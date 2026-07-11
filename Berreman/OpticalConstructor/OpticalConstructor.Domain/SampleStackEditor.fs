@@ -97,8 +97,11 @@ type SampleStackMsg =
 // Selection helpers.
 // ---------------------------------------------------------------------------
 
-/// Whether `position` names an existing film layer of `structure`.
-let private isValidPosition (structure : SampleStructure) (position : LayerPosition) : bool =
+/// Whether `position` names an existing film layer of `structure`. Public since spec 0038
+/// step 016: a Select-state window's TARGETED return (`SampleLayerTarget`) checks its layer
+/// still exists through THIS seam — a vanished row is a no-op plus a status line, never a
+/// throw (the same rule `SelectLayer` applies to a stale click).
+let isValidPosition (structure : SampleStructure) (position : LayerPosition) : bool =
     match position with
     | AtSingleLayer i ->
         match List.tryItem i structure.films with

@@ -70,6 +70,12 @@
              errors). Mirrors Ui's StackEditor message discipline at the material-id
              level; depends only on ElementId/MaterialLibrary above. -->
         <Compile Include="SampleStackEditor.fs" />
+        <!-- Spec 0038 Part G (step 016): the Browse/Select window-mode domain — the
+             kind constraint, the typed selection target (table element | sample-layer
+             position), the SelectionContext callbacks, and the LibraryWindowMode DU
+             both catalogue windows share. Depends on Placement (CatalogueKind),
+             ElementId (Library.ElementId) and SampleStackEditor (LayerPosition). -->
+        <Compile Include="WindowMode.fs" />
         <!-- Spec 0033 (023): the pure, Avalonia-free MATERIAL edit model over
              MaterialComplexity (the Part F progressive-unlock ladder): state +
              message DU + Result-returning apply, toComplexity/ofComplexity onto

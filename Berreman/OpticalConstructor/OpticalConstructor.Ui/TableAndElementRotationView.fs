@@ -150,6 +150,25 @@ type EditorLaunchers =
                     openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, materials) :> Window)
         }
 
+/// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
+/// requested (the step-017 Choose… flow populates it; nothing else in the workbench opens a
+/// Select window yet). The window itself is HOST state — the model only holds how to end the
+/// session: a changed table selection, an element add (which selects the new element), or the
+/// selected element's removal invokes `cancelAndClose` (the staleness rules — the
+/// pending-bind-clears precedent), and CLOSING the window is what fires the session's
+/// `onCancelled` (the window's own dismissal hook), so staleness, the window's Close verb and
+/// the title-bar X share one cancel path. Function-valued field ⇒ reference equality (the
+/// model keeps its Elmish-required equality).
+[<ReferenceEquality>]
+type SelectSession =
+    {
+        /// The table element the Select-state window serves (`SelectionTarget`'s element case —
+        /// step 017 compares it to decide re-target vs fresh open).
+        target : Library.ElementId
+        /// Cancel the session and CLOSE its window.
+        cancelAndClose : unit -> unit
+    }
+
 type Model =
     {
         table : OpticalTable
@@ -193,6 +212,14 @@ type Model =
         /// bind). Clicking a Library entry sets this and shows its full description; Confirm commits it to
         /// the selected element's `valueId`, Cancel clears it.
         pendingEntry : string option
+        /// Spec 0038 (016): the open Select-state window session (if any) this workbench
+        /// requested — cancelled and closed by the staleness rules (a changed table selection,
+        /// an element add, the selected element's removal) and cleared by the targeted bind.
+        activeSelect : SelectSession option
+        /// Spec 0038 (016): the staleness status line — a targeted Select return whose element
+        /// has vanished reports here (a no-op plus a status line, never a throw). Cleared by
+        /// the next successful bind or table-selection change (the disarm discipline).
+        selectStatus : string option
         /// Spec 0033 (024): the injected materials WRITE seam (STORE_XDUO_0001). Spec 0038
         /// steps 013/015: the strip buttons' Materials and Library windows operate over THIS
         /// store (the bays they replaced are gone).
@@ -288,6 +315,8 @@ let initWith
         experiments = experiments
         experimentCollection = Experiments.ExperimentCollection.empty
         pendingEntry = None
+        activeSelect = None
+        selectStatus = None
         materials = materials
         samples = samples
         categories = categories
@@ -377,6 +406,11 @@ type Msg =
     | RequestBindValueId of string
     | ConfirmBindValueId
     | CancelBindValueId
+    /// Spec 0038 (016): the TARGETED bind a Select-state window's `onSelected` dispatches —
+    /// commit the entry id to the `valueId` of the element with THIS serializable id (never
+    /// "the current selection": the selection may have moved while the modeless window was
+    /// open). A vanished element is a no-op plus the `selectStatus` line, never a throw.
+    | BindValueIdTo of Library.ElementId * string
     /// Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step experiment editor + collection.
     /// Choose the element to vary (by id), the varied quantity, the T/R/both capture, and the range;
     /// commit (Add / Update), start a New draft, or Edit / Remove a collected experiment (by id string).
@@ -587,8 +621,20 @@ let private resetAllRotations (m : Model) : Model =
 // identical to the static test scene — these just grow / shrink the `elements` list.
 // ---------------------------------------------------------------------------
 
+/// Spec 0038 (016) staleness: cancel and CLOSE the open Select-state window session, if any
+/// (closing the window fires the session's `onCancelled` through its own dismissal hook).
+/// Invoked wherever the table selection changes or the session's target can disappear — the
+/// pending-bind-clears precedent (`PointerUp` below).
+let private cancelActiveSelect (m : Model) : Model =
+    match m.activeSelect with
+    | Some session ->
+        session.cancelAndClose ()
+        { m with activeSelect = None }
+    | None -> m
+
 /// Append a catalogue element to the scene and select it. New elements are spread along the beam so
 /// they do not land exactly on top of one another; the user then rotates / configures the selection.
+/// Selecting the new element IS a table-selection change, so an open Select session cancels (016).
 let private addElement (kind : CatalogueKind) (m : Model) : Model =
     let middleCount =
         m.elements
@@ -597,15 +643,17 @@ let private addElement (kind : CatalogueKind) (m : Model) : Model =
     let x = -0.3 + 0.2 * float middleCount
     let e = { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
     let elements' = m.elements @ [ e ]
-    { m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
+    { cancelActiveSelect m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
 
 /// Remove the currently-selected element (inert when the table or nothing is selected). Selection
-/// drops to nothing so the bar disables until the user picks another object.
+/// drops to nothing so the bar disables until the user picks another object. The removed element
+/// may be an open Select session's target — the target's disappearance cancels and closes the
+/// session's window (spec 0038 step 016 staleness).
 let private removeSelected (m : Model) : Model =
     match m.selection with
     | ElementSelected i when i >= 0 && i < List.length m.elements ->
         let elements' = m.elements |> List.mapi (fun j e -> j, e) |> List.filter (fun (j, _) -> j <> i) |> List.map snd
-        { m with elements = elements'; selection = NothingSelected }
+        { cancelActiveSelect m with elements = elements'; selection = NothingSelected }
     | _ -> m
 
 // ---------------------------------------------------------------------------
@@ -731,6 +779,20 @@ let update (msg : Msg) (model : Model) : Model =
             mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) { model with pendingEntry = None }
         | _ -> { model with pendingEntry = None }
     | CancelBindValueId -> { model with pendingEntry = None }
+    | BindValueIdTo (elementId, entryId) ->
+        // Spec 0038 (016): the TARGETED bind of a Select-state window's onSelected — resolve
+        // the element BY ITS ID at return time (the modeless window may outlive a selection
+        // change) and commit its valueId; the session is over either way (the window closed
+        // itself after onSelected). A vanished element is a no-op plus the status line —
+        // never a throw (the staleness rules normally close the window first; this is the
+        // belt-and-braces path for the modeless race).
+        let m = { model with activeSelect = None }
+        match m.elements |> List.tryFindIndex (fun e -> e.id = elementId) with
+        | Some i ->
+            mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } })
+                { m with pendingEntry = None; selectStatus = None }
+        | None ->
+            { m with selectStatus = Some "The chosen entry was not bound — its target element is no longer on the table." }
     | ExpChooseElement idStr ->
         // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
         // variables (data via `variablesFor`, never hard-coded here) and the default capture (from its
@@ -798,9 +860,13 @@ let update (msg : Msg) (model : Model) : Model =
             | Pressed start -> selectionAt start model
             | _ -> model.selection
         // Spec 0027 (026): a changed selection clears any pending (unconfirmed) Library bind, so a stale
-        // pending choice never carries across elements.
-        let pending = if selection = model.selection then model.pendingEntry else None
-        { model with selection = selection; drag = NotPressed; pendingEntry = pending }
+        // pending choice never carries across elements. Spec 0038 (016): the same change also
+        // CANCELS AND CLOSES the open Select-state window (the staleness rule extends the
+        // pending-bind-clears precedent) and clears the staleness status line.
+        if selection = model.selection then
+            { model with selection = selection; drag = NotPressed }
+        else
+            { cancelActiveSelect model with selection = selection; drag = NotPressed; pendingEntry = None; selectStatus = None }
     | Wheel (mods, notches) ->
         match wheelAction mods with
         | RotateSel1 -> rotateSelected 1 (wheelStepDegrees * float notches) model
@@ -1800,12 +1866,37 @@ module WorkbenchIds =
     /// single-instance Library window through the launcher seam.
     [<Literal>]
     let openLibraryButton = "OpenLibraryWindowButton"
+    /// Spec 0038 (016): the staleness status line under the readout — a targeted Select
+    /// return whose element has vanished reports here (a no-op plus a status line).
+    [<Literal>]
+    let selectStatus = "WorkbenchSelectStatus"
 
 /// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through
 /// FuncUI's attr builder — the strip buttons live in a variable-membership row, so they carry
 /// AutomationIds (the MaterialsControls discipline).
 let private workbenchAutomationId (autoId : string) : IAttr<Border> =
     AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+/// The TextBlock flavour of the same attr (the step-016 status line has variable membership —
+/// it renders only while a staleness status is set — so it carries an AutomationId, never a
+/// write-once `Name`).
+let private workbenchTextAutomationId (autoId : string) : IAttr<TextBlock> =
+    AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+/// Spec 0038 (016): the staleness status line — present only while a status is set (keyed:
+/// variable membership), rendered right under the readout.
+let private selectStatusRow (model : Model) : IView list =
+    match model.selectStatus with
+    | None -> []
+    | Some text ->
+        [ (TextBlock.create [
+              workbenchTextAutomationId WorkbenchIds.selectStatus
+              TextBlock.foreground (brush (color 178 34 34))
+              TextBlock.textWrapping TextWrapping.Wrap
+              TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0))
+              TextBlock.text text
+          ]
+          |> Avalonia.FuncUI.DSL.View.withKey WorkbenchIds.selectStatus) :> IView ]
 
 /// A small clickable verb box for the host-added strip buttons (the MaterialsControls button look).
 let private workbenchButton (autoId : string) (label : string) (onClick : unit -> unit) : IView =
@@ -1839,32 +1930,35 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 4.0
-        StackPanel.children [
-            // The tab-strip row: the ribbon fills it; the right-aligned "Materials…" (spec 0038
-            // step 013) and "Library…" (step 015) buttons ride its right edge, TOP-aligned
-            // beside the tab strip, each opening its single-instance window through the launcher
-            // seam. Docked-right FIRST so the ribbon (the fill child) can never push them
-            // off-screen; Materials… docks first and therefore sits rightmost (its step-013
-            // position), Library… lands immediately left of it.
-            DockPanel.create [
-                DockPanel.children [
-                    Border.create [
-                        Border.dock Dock.Right
-                        Border.verticalAlignment VerticalAlignment.Top
-                        Border.margin (Thickness(0.0, 8.0, 8.0, 0.0))
-                        Border.child (workbenchButton WorkbenchIds.openMaterialsButton "Materials…" (fun () -> dispatch OpenMaterialsWindow))
+        StackPanel.children (
+            [
+                // The tab-strip row: the ribbon fills it; the right-aligned "Materials…" (spec 0038
+                // step 013) and "Library…" (step 015) buttons ride its right edge, TOP-aligned
+                // beside the tab strip, each opening its single-instance window through the launcher
+                // seam. Docked-right FIRST so the ribbon (the fill child) can never push them
+                // off-screen; Materials… docks first and therefore sits rightmost (its step-013
+                // position), Library… lands immediately left of it.
+                DockPanel.create [
+                    DockPanel.children [
+                        Border.create [
+                            Border.dock Dock.Right
+                            Border.verticalAlignment VerticalAlignment.Top
+                            Border.margin (Thickness(0.0, 8.0, 8.0, 0.0))
+                            Border.child (workbenchButton WorkbenchIds.openMaterialsButton "Materials…" (fun () -> dispatch OpenMaterialsWindow))
+                        ]
+                        Border.create [
+                            Border.dock Dock.Right
+                            Border.verticalAlignment VerticalAlignment.Top
+                            Border.margin (Thickness(0.0, 8.0, 0.0, 0.0))
+                            Border.child (workbenchButton WorkbenchIds.openLibraryButton "Library…" (fun () -> dispatch OpenLibraryWindow))
+                        ]
+                        Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
                     ]
-                    Border.create [
-                        Border.dock Dock.Right
-                        Border.verticalAlignment VerticalAlignment.Top
-                        Border.margin (Thickness(0.0, 8.0, 0.0, 0.0))
-                        Border.child (workbenchButton WorkbenchIds.openLibraryButton "Library…" (fun () -> dispatch OpenLibraryWindow))
-                    ]
-                    Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
-                ]
+                ] :> IView
+                TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
             ]
-            TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ]
-        ]
+            // Spec 0038 (016): the staleness status line — present only while a status is set.
+            @ selectStatusRow model)
     ] :> IView
 
 let private mainTableCanvas (model : Model) : IView =
