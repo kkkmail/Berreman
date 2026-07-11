@@ -207,6 +207,13 @@
              builds the base picker options (title / single-select / no start location) with no real
              picker raised (gate `ui-tests`). -->
         <Compile Include="DataFilePickerFolderTests.fs" />
+        <!-- Spec 0038 Part L (step 039, UICOMP_XDUO_0011): the SolverHandoffWindow component — the
+             inverse flow's terminal summary + basic-validation screen. Pure per-experiment validation
+             facts over mock proxies (every non-sample element specified; a data file attached; the
+             file reads schema-valid + range-consistent through the ExperimentDataProxy) plus headless
+             semantic-tree proofs driving the REAL window by its UiIds (green ready statuses; missing
+             file + range mismatch typed messages; no solver math), gate `ui-tests` + `ui-smoke`. -->
+        <Compile Include="SolverHandoffWindowTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
