@@ -4,7 +4,7 @@
 /// `RendererControls.RendererKind` DU and tuned by its `State` (rail count, cap circles / radials, the
 /// three transparency knobs); `rendererOf` recovers the actual draw function from the DU case. The yellow
 /// (N2) and blue (N1) normals are always drawn and never transparency-controlled.
-module OpticalConstructor.TestWindows.ElementRenderer
+module OpticalConstructor.Ui.ElementRenderer
 
 open Avalonia
 open Avalonia.Controls

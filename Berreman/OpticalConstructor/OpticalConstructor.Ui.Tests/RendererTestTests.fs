@@ -10,6 +10,7 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.RendererTestView
+open OpticalConstructor.Ui
 
 /// Tests for the renderer test SCENE (Spec 0027). After task 018 the renderer itself (config + draw) is
 /// the shared `RendererControls` / `ElementRenderer` (tested separately); this scene just drives it. Pure

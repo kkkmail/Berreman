@@ -9,11 +9,11 @@ open Avalonia.VisualTree
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.CategoryEditorView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.CategoryEditorView
 
 /// Spec 0035 (006) — the CategoryEditorWindow component (UICOMP_XDUO_0006): the Category editor
-/// window in OpticalConstructor.TestWindows over the step-4 Domain `CategoryEditor` edit model,
+/// window in OpticalConstructor.Ui over the step-4 Domain `CategoryEditor` edit model,
 /// rendered through the step-5 `CategoryControls` surface. Pure contract + model tests for the
 /// MVU wiring, and headless semantic-tree proofs that DRIVE THE REAL WINDOW BY ITS UiIds over a
 /// stub `CategoryProxy` — the slice acceptance: Add grows the list, Rename updates a name, and

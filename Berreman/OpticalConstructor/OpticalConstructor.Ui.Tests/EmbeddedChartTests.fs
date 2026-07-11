@@ -17,8 +17,8 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Controls
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0035 (016) — the shared dual-axis ScottPlot chart (`OpticalConstructor.Controls.EmbeddedChart`)
 /// embedded as the Material editor's live n/k preview AND the Materials-bay View panel (replacing the

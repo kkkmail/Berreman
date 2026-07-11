@@ -1,7 +1,7 @@
 /// The optical-element catalogue names / codes (Spec 0027). Pulled out of `TableAndElementRotationView`
 /// into its own early module (task 018) so BOTH the shared element renderer and the scenes can use them
 /// without a compile-order cycle. `TableAndElementRotationView` re-exports these for back-compat.
-module OpticalConstructor.TestWindows.Catalogue
+module OpticalConstructor.Ui.Catalogue
 
 open OpticalConstructor.Domain.Placement
 

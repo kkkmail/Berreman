@@ -6,7 +6,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Controls.ExperimentChart
 open OpticalConstructor.Controls.ChartStyle
-open OpticalConstructor.TestWindows
+open OpticalConstructor.Ui
 
 /// Spec 0033 (019) — the pure n/k dispersion chart builder on the 018 dual-axis spine.
 /// Headless MODEL tests (no window): the builder yields the shared `ExperimentChart` with the

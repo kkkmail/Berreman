@@ -10,7 +10,7 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (024) Phase 1 — the Selector bay (labelled "Library" until spec 0033 step 014): the pure
 /// control contract, the host's kind-constrained `libraryState` flattening, the `BindValueId` MVU

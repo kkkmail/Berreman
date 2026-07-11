@@ -11,8 +11,8 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (028) — the redesigned Experiments bay: the multi-step, editable experiment builder (choose
 /// element → element-constrained variable → T/R/both capture → range → Add) and the persistent collection

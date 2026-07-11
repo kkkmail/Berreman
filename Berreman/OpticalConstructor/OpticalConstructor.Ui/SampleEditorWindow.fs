@@ -1,4 +1,4 @@
-namespace OpticalConstructor.TestWindows
+namespace OpticalConstructor.Ui
 
 open Avalonia.Automation
 open Avalonia.FuncUI.Hosts

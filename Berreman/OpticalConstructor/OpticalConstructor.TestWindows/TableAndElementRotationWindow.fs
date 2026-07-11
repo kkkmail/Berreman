@@ -3,6 +3,7 @@ namespace OpticalConstructor.TestWindows
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
+open OpticalConstructor.Ui
 
 /// The "Test Table + Element Rotations" window — a FuncUI `HostWindow` mounting the pure
 /// `TableAndElementRotationView` MVU loop (Spec 0027, task 006 #3). Opened from the launcher.

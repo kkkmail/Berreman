@@ -10,7 +10,7 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (026) Part 4 — the Details bay: the reusable `LayerBandsControls` band component (pure
 /// contract + a headless render proof) and the host's `detailsState` band-builder (the selected element's

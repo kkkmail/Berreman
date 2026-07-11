@@ -34,6 +34,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui
 
 // ---------------------------------------------------------------------------
 // Stable automation ids (CLAUDE.md UI guidance): one place, never duplicated.

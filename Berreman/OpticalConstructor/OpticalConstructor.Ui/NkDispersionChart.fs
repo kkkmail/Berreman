@@ -17,7 +17,7 @@
 /// same defect (`SourceSpec.SpectralProfile.sample`, `MaterialImport.exportCsv`), the builder walks
 /// the canonical meter grid itself and reads n,k through the engine `getEps` seam — exactly
 /// `exportCsv`'s n,k extraction, reshaped into chart series.
-module OpticalConstructor.TestWindows.NkDispersionChart
+module OpticalConstructor.Ui.NkDispersionChart
 
 open System.Numerics
 open Berreman.Constants

@@ -1,4 +1,4 @@
-namespace OpticalConstructor.TestWindows
+namespace OpticalConstructor.Ui
 
 open Avalonia
 open Avalonia.Controls

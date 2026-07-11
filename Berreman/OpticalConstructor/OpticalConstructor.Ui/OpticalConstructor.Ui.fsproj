@@ -28,7 +28,8 @@
          SynthesisFitPage, the Part H chart data builders, RepeatBuilder, Validation,
          MaterialPreview, JobRunner, SystemView3D), the persisted-environment spine
          (Localization → UserEnvironment → the trimmed AppShell theme/layout seam),
-         and the Ui.fs placeholder. Later 0038 steps REAL-MOVE the workbench in here. -->
+         and the Ui.fs placeholder. Step 003 REAL-MOVEs the workbench in here (the
+         block after UserEnvironment.fs below). -->
     <ItemGroup>
         <Compile Include="Ui.fs" />
         <Compile Include="MaterialPreview.fs" />
@@ -58,6 +59,26 @@
              SystemView3D consumes the BeamTree. -->
         <Compile Include="JobRunner.fs" />
         <Compile Include="SystemView3D.fs" />
+        <!-- Spec 0038 Part B (step 003): the workbench, REAL-MOVED from
+             OpticalConstructor.TestWindows (which now references THIS project and
+             keeps only the diagnostic scenes). Ordered after UserEnvironment.fs;
+             the internal order mirrors the TestWindows original — scene spine
+             (TableScene/SceneInput), the shared catalogue + element renderer, the
+             n/k chart builder, the three editor view/window pairs (windows the
+             workbench Add/Edit verbs open — before the view that references them),
+             then the workbench scene itself. -->
+        <Compile Include="TableScene.fs" />
+        <Compile Include="SceneInput.fs" />
+        <Compile Include="Catalogue.fs" />
+        <Compile Include="ElementRenderer.fs" />
+        <Compile Include="NkDispersionChart.fs" />
+        <Compile Include="SampleEditorView.fs" />
+        <Compile Include="SampleEditorWindow.fs" />
+        <Compile Include="MaterialEditorView.fs" />
+        <Compile Include="MaterialEditorWindow.fs" />
+        <Compile Include="CategoryEditorView.fs" />
+        <Compile Include="CategoryEditorWindow.fs" />
+        <Compile Include="TableAndElementRotationView.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a

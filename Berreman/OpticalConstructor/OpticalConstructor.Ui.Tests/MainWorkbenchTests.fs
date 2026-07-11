@@ -13,8 +13,8 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Controls
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0033 (024) — the Main-screen MATERIALS and LIBRARY workbench bays: the step-015/016
 /// list surfaces (`MaterialsControls` / `SampleLibraryControls`) wired over the step-005/006

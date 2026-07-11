@@ -16,7 +16,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Tests for the combined table + element rotation window (Spec 0027, task 006 #3). The rotation
 /// gestures act on whatever is selected (the table view, or an element); rotating the table leaves

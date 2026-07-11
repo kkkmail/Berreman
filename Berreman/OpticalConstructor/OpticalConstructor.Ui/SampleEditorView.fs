@@ -12,7 +12,7 @@
 /// `SampleId.create`), `updateSample` for an existing one — via the injected
 /// `SampleEditorContext` (the functional-proxy/Context seam; tests substitute stubs); Cancel
 /// discards. Pure: `update` only reaches IO through the context's proxy fields.
-module OpticalConstructor.TestWindows.SampleEditorView
+module OpticalConstructor.Ui.SampleEditorView
 
 open System
 open System.Globalization

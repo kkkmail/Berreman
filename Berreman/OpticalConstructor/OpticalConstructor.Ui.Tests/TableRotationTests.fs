@@ -14,6 +14,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.TableRotationView
+open OpticalConstructor.Ui
 
 /// Tests for the table-rotation test window (Spec 0027, task 002-rotate-table). The rotation is
 /// CONSTRAINED to one axis at a time by the documented modifier+wheel gestures (§E.3/§E.5); a

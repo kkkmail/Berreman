@@ -92,7 +92,8 @@
              headless structure proof (every UiIds control exists; simulated clicks dispatch the
              matching stub handlers; the row-targeted verbs are inert without a selection). -->
         <Compile Include="SampleLibraryControlsTests.fs" />
-        <!-- Spec 0033 (019): the pure n/k dispersion chart builder (TestWindows) on the 018
+        <!-- Spec 0033 (019): the pure n/k dispersion chart builder (Ui since the 0038
+             step-003 workbench move) on the 018
              dual-axis spine — headless model tests: n→left / k→right via the paired style seed,
              the requested spectral range in the display unit, dispersive curve vs flat line. -->
         <Compile Include="NkDispersionChartTests.fs" />

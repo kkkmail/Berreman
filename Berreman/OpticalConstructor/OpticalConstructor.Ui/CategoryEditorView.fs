@@ -13,7 +13,7 @@
 /// window-level Save/Cancel row (distinct positive/negative styling) flushes any staged edit
 /// through the step-4 `commit` diff then closes, or closes discarding. Pure: `update` reaches IO
 /// only through the context's `CategoryProxy` fields.
-module OpticalConstructor.TestWindows.CategoryEditorView
+module OpticalConstructor.Ui.CategoryEditorView
 
 open System
 open Avalonia

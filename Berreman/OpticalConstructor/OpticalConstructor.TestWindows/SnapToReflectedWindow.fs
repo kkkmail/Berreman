@@ -3,6 +3,7 @@ namespace OpticalConstructor.TestWindows
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
+open OpticalConstructor.Ui
 
 /// The "Test — Snap to Reflected Light" window (Spec 0027, task 012): a FuncUI `HostWindow` mounting the
 /// pure `SnapToReflectedView` MVU loop. The scene is a source, a flat mirror (seeded at R2 = 45°) and a

@@ -17,11 +17,11 @@ open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.MaterialComplexityEditor
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.MaterialEditorView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.MaterialEditorView
 
 /// Spec 0033 (023) — the MaterialEditorWindow component (UICOMP_XDUO_0004): the Material editor
-/// window in OpticalConstructor.TestWindows over the pure Domain `MaterialComplexityEditor`
+/// window in OpticalConstructor.Ui over the pure Domain `MaterialComplexityEditor`
 /// (the progressive-unlock ladder). Two layers, the 022 precedent: pure contract tests for the
 /// windowless edit model / view update, and headless semantic-tree proofs that DRIVE THE REAL
 /// WINDOW BY ITS UiIds — the slice acceptance: choosing biaxial exposes three principal-index

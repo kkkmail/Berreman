@@ -11,11 +11,11 @@ open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.SampleStackEditor
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.SampleEditorView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.SampleEditorView
 
 /// Spec 0033 (022) — the SampleEditorWindow component (UICOMP_XDUO_0003): the Sample editor
-/// window in OpticalConstructor.TestWindows over the step-21 Domain `SampleStackEditor`.
+/// window in OpticalConstructor.Ui over the step-21 Domain `SampleStackEditor`.
 /// Two layers, the 016 precedent: pure contract tests for the model / update / helpers, and
 /// headless semantic-tree proofs that DRIVE THE REAL WINDOW BY ITS UiIds — the slice
 /// acceptance: repeating a 2-layer selection K times shows a structure expanding to `2*K`

@@ -7,7 +7,7 @@ namespace OpticalConstructor.Ui.Tests
 
 open Xunit
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows
+open OpticalConstructor.Ui
 
 module CatalogueTests =
 

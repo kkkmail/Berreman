@@ -6,7 +6,7 @@
 /// drawn by projecting their table-frame geometry through the (rotatable) table view, so when the
 /// table is rotated the elements are "snapped to it" — their own rotation angles do not change,
 /// only how they project to the screen does. The `Model`/`Msg`/`update` are pure and Avalonia-free.
-module OpticalConstructor.TestWindows.TableAndElementRotationView
+module OpticalConstructor.Ui.TableAndElementRotationView
 
 open Avalonia
 open Avalonia.Automation
@@ -1770,7 +1770,7 @@ let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Han
 // heading + full description) and, for a layered sample, a layer-stack BAND view (the reusable
 // `LayerBandsControls`). The host flattens the sample's engine `OpticalSystem` (`Propagation.sampleToSystem`)
 // into `Band`s — borrowing the V1 `Schematic.fs` colour / height idea (replicated here as a few inline
-// helpers, since TestWindows does not reference the Ui project) — collapsing runs of identical-thickness
+// helpers, kept separate from `Schematic.fs` whose band vocabulary differs) — collapsing runs of identical-thickness
 // films into a single "×N" band so the 41-layer / 100-pair multilayers stay readable.
 // ---------------------------------------------------------------------------
 

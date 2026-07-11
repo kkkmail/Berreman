@@ -16,7 +16,7 @@
 /// `properties = model.toProperties`; entries with `complexity = None` (silicon, langasite)
 /// open VIEW-ONLY and offer no Edit affordance (no ladder, no Save). Pure: `update` only
 /// reaches IO through the context's proxy fields.
-module OpticalConstructor.TestWindows.MaterialEditorView
+module OpticalConstructor.Ui.MaterialEditorView
 
 open System
 open System.Globalization

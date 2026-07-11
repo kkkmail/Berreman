@@ -20,6 +20,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui
 
 [<RequireQualifiedAccess>]
 module UiIds =

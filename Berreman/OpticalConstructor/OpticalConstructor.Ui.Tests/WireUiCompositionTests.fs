@@ -9,8 +9,8 @@ open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Controls
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0033 (026) / 0035 (019) — the WIRE_UI composition acceptance. Every proof here drives the
 /// REAL `OpticalConstructor.App.MainConstructorWindow` — the finalized composition root that builds
