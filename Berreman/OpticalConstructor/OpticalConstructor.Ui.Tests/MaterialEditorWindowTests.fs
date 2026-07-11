@@ -138,6 +138,43 @@ module MaterialEditorWindowTests =
         // The Add-open shape (spec 0038 step 008): the id is minted AT WINDOW OPEN.
         init context (NewMaterial (newMaterialId ()))
 
+    // -- spec 0038 (032): the tabbed preview's embedded-chart probes (the EmbeddedChartTests precedent) --
+
+    /// The live `AvaPlot` hosted under the control carrying `id`, or `None` if the host degraded.
+    let private avaUnder (window : Window) (id : string) : ScottPlot.Avalonia.AvaPlot option =
+        match tryFindControl window id with
+        | Some host -> host.GetVisualDescendants() |> Seq.tryPick (function :? ScottPlot.Avalonia.AvaPlot as a -> Some a | _ -> None)
+        | None -> None
+
+    /// Force ScottPlot's real Skia rasterization — a construction- or render-time throw surfaces here
+    /// (headless Avalonia never rasterizes on its own), so this proves the embedded chart renders one
+    /// frame without throwing.
+    let private rasterizes (ava : ScottPlot.Avalonia.AvaPlot) : bool =
+        ava.Plot.GetImage(400, 200).GetImageBytes().Length > 0
+
+    /// Mount a bare `IView` in a sized headless window and render one frame (the `EmbeddedChartTests`
+    /// precedent, so the embedded AvaPlot realizes into the visual tree).
+    let private mount (view : Avalonia.FuncUI.Types.IView) : Window =
+        let window = Window(Width = 700.0, Height = 400.0)
+        window.Content <- Avalonia.FuncUI.Component(fun _ctx -> view)
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window
+
+    /// The engine properties derived from a fold of ladder edits (for the per-tab render proofs).
+    let private propsFrom (msgs : MaterialComplexityMsg list) : Berreman.Dispersion.OpticalPropertiesWithDisp =
+        let st = applied msgs
+        match toComplexity st with
+        | Ok c -> c.toProperties
+        | Error e -> failwith $"expected a derivable complexity, got %A{e}"
+
+    /// Whether series `i` is visible in a lowered chart-style seed (the `applyHidden` proof). Reads back
+    /// the REAL `ChartStyle` visibility, fully qualified: the file must NOT `open` `ChartStyle`, whose
+    /// `defaultState` would shadow the `MaterialComplexityEditor.defaultState` used throughout (the
+    /// attempt-02 trap). `ChartStyle` is a top-level module in `OpticalConstructor.Controls`.
+    let private seriesVisibleAt (i : int) (style : OpticalConstructor.Controls.ChartStyle.ChartStyleState) : bool =
+        (OpticalConstructor.Controls.ChartStyle.seriesStyleOf i style).visible
+
     // ============================ pure control contract ============================
 
     [<Fact>]
@@ -530,6 +567,36 @@ module MaterialEditorWindowTests =
         | Some reason -> Assert.Equal("the name is blank", reason)
         | None -> Assert.Fail("expected the proxy's typed reason as the status")
 
+    [<Fact>]
+    let ``spec 0038 (032): the per-series show/hide toggle round-trips through update and lowers onto the exact curve`` () =
+        // Handler — ToggleSeriesVisibility flips the key into `hiddenSeries`; a second dispatch removes it.
+        let key = UiIds.seriesToggle "nk" "n₁"
+        let m0 = newModel ()
+        Assert.False(Set.contains key m0.hiddenSeries, "nothing is hidden on a fresh model")
+        let hiddenModel = update (ToggleSeriesVisibility key) m0
+        Assert.True(Set.contains key hiddenModel.hiddenSeries, "toggling on records the key in hiddenSeries")
+        let shownModel = update (ToggleSeriesVisibility key) hiddenModel
+        Assert.False(Set.contains key shownModel.hiddenSeries, "toggling the same key again removes it")
+        // Lowering — applyHidden flips EXACTLY the toggled curve invisible on the chart's style seed. The
+        // n/k chart's series are n₁ n₂ n₃ (indices 0..2) then k₁ k₂ k₃ (3..5), so n₁ is index 0.
+        let chart = NkDispersionChart.nkDispersionChart (propsFrom []) Nanometer previewRange
+        let style = NkDispersionChart.nkDispersionStyle chart
+        let loweredN1 = applyHidden (Set.singleton key) "nk" chart style
+        Assert.False(seriesVisibleAt 0 loweredN1, "hiding n₁ must flip exactly index 0 invisible")
+        for i in 1 .. 5 do
+            Assert.True(seriesVisibleAt i loweredN1, $"index %d{i} must stay visible when only n₁ is hidden")
+        // A DIFFERENT series name lowers onto a DIFFERENT index — the index is read from the series NAME,
+        // never hard-coded, so a wrong index cannot pass silently. k₂ is the 5th series (index 4).
+        let loweredK2 = applyHidden (Set.singleton (UiIds.seriesToggle "nk" "k₂")) "nk" chart style
+        Assert.False(seriesVisibleAt 4 loweredK2, "hiding k₂ must flip exactly index 4 invisible")
+        for i in [ 0; 1; 2; 3; 5 ] do
+            Assert.True(seriesVisibleAt i loweredK2, $"index %d{i} must stay visible when only k₂ is hidden")
+        // The tabCode namespaces the key: the SAME n₁ key applied under the WRONG tab hides nothing, so a
+        // wrong tabCode cannot pass silently either.
+        let wrongTab = applyHidden (Set.singleton key) "gyration" chart style
+        for i in 0 .. 5 do
+            Assert.True(seriesVisibleAt i wrongTab, $"a mismatched tabCode must leave index %d{i} visible")
+
     // ============================ headless semantic-tree proofs ============================
 
     [<Fact>]
@@ -830,3 +897,87 @@ module MaterialEditorWindowTests =
             for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
                 Assert.False(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
             window.Close())
+
+    // ============================ spec 0038 (032): the two-pane split + tabbed preview ============================
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the editor is a two-pane split whose full-height n/k chart renders one frame`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // The two panes are split by a vertical GridSplitter; the right pane is a tabbed preview.
+            Assert.True(isPresent window UiIds.splitter, "the two-pane split must carry a vertical GridSplitter")
+            Assert.True(isPresent window UiIds.previewTabs, "the preview pane must be a TabControl")
+            Assert.True(isPresent window UiIds.nkTab, "the n/k tab is always present")
+            // The n/k tab (the default selection) embeds the full-height chart; it rasterizes one frame.
+            Assert.True(isPresent window UiIds.previewChart, "the n/k tab embeds the shared chart host")
+            match avaUnder window UiIds.previewChart with
+            | Some ava -> Assert.True(rasterizes ava, "the full-height n/k chart rendered no image bytes")
+            | None -> Assert.Fail("no embedded AvaPlot under the n/k preview chart host")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Gyration tab appears exactly when optically active`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(isPresent window UiIds.gyrationTab, "no Gyration tab before activity is enabled")
+            clickOn window UiIds.activeToggle
+            Assert.True(isPresent window UiIds.gyrationTab, "the Gyration tab appears when optically active")
+            clickOn window UiIds.activeToggle
+            Assert.False(isPresent window UiIds.gyrationTab, "the Gyration tab disappears when activity is turned off")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the mu tab appears exactly when magnetic`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(isPresent window UiIds.muTab, "no μ tab before magnetic is enabled")
+            clickOn window UiIds.magneticToggle
+            Assert.True(isPresent window UiIds.muTab, "the μ tab appears when magnetic")
+            clickOn window UiIds.magneticToggle
+            Assert.False(isPresent window UiIds.muTab, "the μ tab disappears when magnetic is turned off")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``one frame renders per preview tab (isotropic, biaxial, active, magnetic)`` () =
+        HeadlessSession.run (fun () ->
+            let render (autoId : string) chart style : unit =
+                let window = mount (OpticalConstructor.Controls.EmbeddedChart.create autoId chart style)
+                match avaUnder window autoId with
+                | Some ava -> Assert.True(rasterizes ava, $"%s{autoId} rendered no image bytes")
+                | None -> Assert.Fail($"no embedded AvaPlot for %s{autoId}")
+                window.Close()
+            let range = previewRange
+            // The n/k tab for an isotropic (default) and a biaxial entry.
+            let isotropic = propsFrom []
+            let biaxial =
+                propsFrom
+                    [
+                        ChooseAnisotropy Biaxial
+                        SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.6 0.0))
+                        SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.7 0.0))
+                        SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (createComplex 1.8 0.0))
+                    ]
+            for props in [ isotropic; biaxial ] do
+                let c = NkDispersionChart.nkDispersionChart props Nanometer range
+                render "TabRenderNk" c (NkDispersionChart.nkDispersionStyle c)
+            // The Gyration tab for an active entry.
+            let active = propsFrom [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
+            let g = NkDispersionChart.gyrationChart active Nanometer range
+            render "TabRenderGyration" g (NkDispersionChart.gyrationStyle g)
+            // The μ tab for a magnetic entry.
+            let magnetic = propsFrom [ SetMagnetic MagneticOn; SetMuKind GyromagneticMuKind; ChooseGyrationAxis AlongZ ]
+            let mu = NkDispersionChart.muChart magnetic Nanometer range
+            render "TabRenderMu" mu (NkDispersionChart.muStyle mu))

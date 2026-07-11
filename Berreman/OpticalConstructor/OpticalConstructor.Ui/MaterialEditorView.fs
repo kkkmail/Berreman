@@ -41,6 +41,7 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Controls
 open OpticalConstructor.Controls.ExperimentChart
 
 /// Stable intent-named automation ids (CLAUDE.md UI guidance): the thirteen slice-mandated ids
@@ -110,6 +111,24 @@ module UiIds =
     let gainWarning = "MaterialGainWarning"
     [<Literal>]
     let viewOnlyNote = "MaterialViewOnlyNote"
+    /// Spec 0038 (032): the two-pane split's vertical GridSplitter, the tabbed preview's TabControl,
+    /// its three tabs, and the gyration / μ tab chart hosts (the n/k tab reuses `previewChart`).
+    [<Literal>]
+    let splitter = "MaterialEditorSplitter"
+    [<Literal>]
+    let previewTabs = "MaterialPreviewTabs"
+    [<Literal>]
+    let nkTab = "MaterialPreviewNkTab"
+    [<Literal>]
+    let gyrationTab = "MaterialPreviewGyrationTab"
+    [<Literal>]
+    let muTab = "MaterialPreviewMuTab"
+    [<Literal>]
+    let gyrationChart = "MaterialGyrationChart"
+    [<Literal>]
+    let muChart = "MaterialMuChart"
+    /// A per-series show/hide toggle in a preview tab, by the tab's stable code and the series name.
+    let seriesToggle (tabCode : string) (seriesName : string) : string = $"PreviewSeriesToggle_%s{tabCode}_%s{seriesName}"
     /// An anisotropy option, by the choice's stable code.
     let anisotropyOption (code : string) : string = "AnisotropyOption_" + code
     /// A material-category option, by the category's stable code.
@@ -223,6 +242,9 @@ type Model =
         editor : MaterialComplexityEditState
         /// A view-only entry's own engine properties (the preview's source there).
         presetProperties : OpticalPropertiesWithDisp option
+        /// Spec 0038 (032): the preview curves the user hid, keyed by `UiIds.seriesToggle`'s tab code
+        /// + series name (so a toggle in one tab never hides a same-named curve in another).
+        hiddenSeries : Set<string>
         /// The last typed-error reason (or proxy rejection) surfaced to the user.
         status : string option
     }
@@ -233,6 +255,8 @@ type Msg =
     | ChooseCategory of CategoryId
     /// One ladder edit, routed through the pure Domain apply.
     | EditorMsg of MaterialComplexityMsg
+    /// Spec 0038 (032): flip one preview curve's visibility, by its `UiIds.seriesToggle` key.
+    | ToggleSeriesVisibility of key : string
     | SaveClicked
     | CancelClicked
 
@@ -318,15 +342,15 @@ let private previewProperties (m : Model) : OpticalPropertiesWithDisp option =
         | Ok c -> Some c.toProperties
         | Error _ -> None
 
-/// The advisory gain warning over the preview's sampled k series (the restated
-/// `imaginaryIndexGainWarning` rule; empty when nothing warns).
+/// The advisory gain warning over the n/k chart's sampled k curves — every per-axis k series (the
+/// restated `imaginaryIndexGainWarning` rule; empty when nothing warns).
 let private gainWarningOf (chartOpt : ExperimentChart option) : string =
     match chartOpt with
     | None -> ""
     | Some chart ->
         chart.series
-        |> List.tryItem NkDispersionChart.kSeriesIndex
-        |> Option.bind (fun s -> s.points |> List.tryPick (fun (_, k) -> imaginaryIndexGainWarning k))
+        |> List.filter (fun s -> s.name.StartsWith "k")
+        |> List.tryPick (fun s -> s.points |> List.tryPick (fun (_, k) -> imaginaryIndexGainWarning k))
         |> Option.defaultValue ""
 
 let private epsCaseLabel (eps : EpsWithDispValue) : string =
@@ -376,6 +400,7 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
             category = CategoryIds.glass
             editor = defaultState
             presetProperties = None
+            hiddenSeries = Set.empty
             status = None
         }
     | EditMaterial entry ->
@@ -389,6 +414,7 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                 category = entry.category
                 editor = defaultState
                 presetProperties = None
+                hiddenSeries = Set.empty
                 status = None
             }
         match entry.complexity with
@@ -418,6 +444,11 @@ let update (msg : Msg) (m : Model) : Model =
         | Ok editor when editor = m.editor -> m
         | Ok editor -> { m with editor = editor; status = None }
         | Error e -> { m with status = Some (editErrorReason e) }
+    | ToggleSeriesVisibility key ->
+        // Preview-only UI state (which curves are hidden); never touches the derived complexity.
+        let hidden =
+            if Set.contains key m.hiddenSeries then Set.remove key m.hiddenSeries else Set.add key m.hiddenSeries
+        { m with hiddenSeries = hidden }
     | SaveClicked ->
         match m.mode with
         | ViewOnlyMaterial reason -> { m with status = Some reason }
@@ -1023,26 +1054,106 @@ let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
                | DispersiveComponents -> dispersiveBody))
     ] :> IView
 
-// -- the live preview (the step-19 dual-axis n/k chart, embedded) -----------------------------
+// -- the live preview (the step-32 tabbed multi-curve dual-axis charts, embedded) --------------
 
-/// The embedded dual-axis rendering of the step-19 chart — the ONE shared ScottPlot chart control
-/// (`OpticalConstructor.Controls.EmbeddedChart`, spec 0035 step 016: the Materials workbench's View
-/// panel embeds it too), over the chart's paired `nkDispersionStyle` seed and under this editor's
-/// stable preview id.
-let private previewCanvas (chart : ExperimentChart) : IView =
-    OpticalConstructor.Controls.EmbeddedChart.create UiIds.previewChart chart (NkDispersionChart.nkDispersionStyle chart)
+/// Lower the per-series hidden state (`hiddenSeries`, keyed by tab code + series name) onto a chart's
+/// paired style seed, hiding a curve the user toggled off — preview-only, never the derived model.
+/// Exposed (non-private) so the lowering is proved against the REAL mapping (spec 0038 032 retry) —
+/// a test asserts `applyHidden` flips the toggled curve's exact index, rather than re-deriving it.
+let applyHidden (hidden : Set<string>) (tabCode : string) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ChartStyle.ChartStyleState =
+    chart.series
+    |> List.mapi (fun i s -> i, UiIds.seriesToggle tabCode s.name)
+    |> List.fold (fun st (i, key) -> if Set.contains key hidden then ChartStyle.setSeriesVisible i false st else st) style
 
-let private previewSection (m : Model) : IView * string =
-    let chartOpt = previewProperties m |> Option.map (fun p -> NkDispersionChart.nkDispersionChart p Nanometer previewRange)
-    let view =
-        match chartOpt with
-        | Some chart -> previewCanvas chart
-        | None ->
+/// One preview tab: a row of per-series show/hide toggles pinned above the embedded dual-axis chart,
+/// which fills the rest of the tab. The chart embeds the ONE shared ScottPlot control under `hostId`
+/// (`EmbeddedChart`, degrading to a placeholder rather than throwing headlessly); the toggles flip
+/// `hiddenSeries`, which `applyHidden` lowers onto the chart's style. `tabCode` namespaces the
+/// per-series toggle ids so a curve name shared across tabs never collides.
+let private chartTab (tabId : string) (tabCode : string) (header : string) (hostId : string) (m : Model) (dispatch : Msg -> unit) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : IView =
+    let toggles : IView =
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children (
+                chart.series
+                |> List.map (fun s ->
+                    let key = UiIds.seriesToggle tabCode s.name
+                    clickBox key s.name (not (Set.contains key m.hiddenSeries)) (fun () ->
+                        dispatch (ToggleSeriesVisibility key))))
+        ] :> IView
+    let host = OpticalConstructor.Controls.EmbeddedChart.create hostId chart (applyHidden m.hiddenSeries tabCode chart style)
+    TabItem.create [
+        automationId<TabItem> tabId
+        TabItem.header header
+        TabItem.content (
+            DockPanel.create [
+                DockPanel.children [
+                    Border.create [ Border.dock Dock.Top; Border.padding (thickLR 4.0 4.0); Border.child toggles ]
+                    Border.create [ Border.padding (thick 4.0); Border.child host ]
+                ]
+            ])
+    ] :> IView
+
+/// The tabbed preview pane (the right pane): the n/k tab ALWAYS, then the Gyration tab exactly when
+/// the entry is optically active and the μ tab exactly when magnetic — so the visible tabs plus the
+/// per-tab legend always answer what is being drawn. In edit mode the optional tabs track the ladder
+/// toggles; a view-only preset (no ladder) is classified from its assembled tensors instead. Returns
+/// the pane view and the gain-warning text over the n/k tab's sampled k curves.
+let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
+    match previewProperties m with
+    | None ->
+        let placeholder =
             TextBlock.create [
-                TextBlock.text "no preview — the ladder is not derivable (see the readout below)"
+                TextBlock.text "no preview — the ladder is not derivable (see the readout on the left)"
                 TextBlock.foreground (brush hintColor)
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.horizontalAlignment HorizontalAlignment.Center
             ] :> IView
-    view, gainWarningOf chartOpt
+        placeholder, ""
+    | Some o ->
+        let nkChart = NkDispersionChart.nkDispersionChart o Nanometer previewRange
+        let showGyration =
+            match m.mode with
+            | EditableMaterial -> m.editor.activity = ActivityOn
+            | ViewOnlyMaterial _ -> NkDispersionChart.hasGyration o
+        let showMu =
+            match m.mode with
+            | EditableMaterial -> m.editor.magnetic = MagneticOn
+            | ViewOnlyMaterial _ -> NkDispersionChart.hasMagnetic o
+        let tabs =
+            [ chartTab UiIds.nkTab "nk" "n, k" UiIds.previewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle nkChart) ]
+            @ (if showGyration then
+                   let g = NkDispersionChart.gyrationChart o Nanometer previewRange
+                   [ chartTab UiIds.gyrationTab "gyration" "Gyration" UiIds.gyrationChart m dispatch g (NkDispersionChart.gyrationStyle g) ]
+               else [])
+            @ (if showMu then
+                   let mu = NkDispersionChart.muChart o Nanometer previewRange
+                   [ chartTab UiIds.muTab "mu" "μ (Polder)" UiIds.muChart m dispatch mu (NkDispersionChart.muStyle mu) ]
+               else [])
+        let pane =
+            TabControl.create [
+                automationId<TabControl> UiIds.previewTabs
+                TabControl.viewItems tabs
+            ] :> IView
+        pane, gainWarningOf (Some nkChart)
+
+/// The two-pane split: the identity / ladder pane (left) and the tabbed preview (right), a vertical
+/// GridSplitter between them, each pane with a sensible minimum width so neither collapses.
+let private twoPane (leftPane : IView) (rightPane : IView) : IView =
+    Grid.create [
+        Grid.columnDefinitions "3*,Auto,2*"
+        Grid.children [
+            Border.create [ Border.column 0; Border.minWidth 520.0; Border.child leftPane ]
+            GridSplitter.create [
+                automationId<GridSplitter> UiIds.splitter
+                GridSplitter.column 1
+                GridSplitter.width 6.0
+                GridSplitter.resizeDirection GridResizeDirection.Columns
+                GridSplitter.background (brush idleBorder)
+            ]
+            Border.create [ Border.column 2; Border.minWidth 380.0; Border.child rightPane ]
+        ]
+    ] :> IView
 
 // -- readouts / actions ------------------------------------------------------------------------
 
@@ -1086,19 +1197,26 @@ let private saveCancelRow (dispatch : Msg -> unit) (withSave : bool) : IView =
             @ [ actionButton UiIds.cancelButton (if withSave then "Cancel" else "Close") cancelBackground (fun () -> dispatch CancelClicked) ])
     ] :> IView
 
-/// The whole editor. Edit mode: identity rows + the ladder on top, the readouts / actions
-/// pinned to the bottom, the live preview filling the centre. View-only mode (an entry whose
-/// physics is not data): the identity header + the WHY note + the preview — NO ladder, NO Save.
+/// The whole editor — a two-pane vertical split (spec 0038 step 032). Edit mode: LEFT pane = the
+/// identity rows + the progressive ladder inside a `ScrollViewer`, with the derived-model / gain /
+/// status readouts and the Save/Cancel actions pinned below it; RIGHT pane = the full-height tabbed
+/// preview (per-axis n/k always, Gyration when active, μ when magnetic). View-only mode (an entry
+/// whose physics is not data): the identity header + the WHY note (scrolling) with a Close action,
+/// beside the same tabbed preview — NO ladder, NO Save.
 let view (m : Model) (dispatch : Msg -> unit) : IView =
-    let previewView, warning = previewSection m
+    let previewView, warning = previewPane m dispatch
+    let scrolling (content : IView) : IView =
+        Border.create [
+            Border.padding (thick 8.0)
+            Border.child (ScrollViewer.create [ ScrollViewer.content content ])
+        ] :> IView
     match m.mode with
     | ViewOnlyMaterial reason ->
-        DockPanel.create [
-            DockPanel.children [
-                Border.create [
-                    Border.dock Dock.Top
-                    Border.padding (thick 8.0)
-                    Border.child (
+        let leftPane =
+            DockPanel.create [
+                DockPanel.children [
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch false) ]
+                    scrolling (
                         StackPanel.create [
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.spacing 6.0
@@ -1111,12 +1229,10 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                                     TextBlock.foreground (brush errorColor)
                                 ] :> IView
                             ]
-                        ])
+                        ] :> IView)
                 ]
-                Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch false) ]
-                Border.create [ Border.padding (thick 8.0); Border.child previewView ]
-            ]
-        ] :> IView
+            ] :> IView
+        twoPane leftPane previewView
     | EditableMaterial ->
         let ladderPanels =
             (match m.editor.dispersion with
@@ -1128,12 +1244,14 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
             @ (match m.editor.magnetic with
                | MagneticOn -> [ muPanel m dispatch ]
                | MagneticOff -> [])
-        DockPanel.create [
-            DockPanel.children [
-                Border.create [
-                    Border.dock Dock.Top
-                    Border.padding (thick 8.0)
-                    Border.child (
+        let leftPane =
+            DockPanel.create [
+                DockPanel.children [
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch true) ]
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (gainWarningRow warning) ]
+                    Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (summaryRow m) ]
+                    scrolling (
                         StackPanel.create [
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.spacing 6.0
@@ -1146,12 +1264,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                                     togglesRow m dispatch
                                 ]
                                 @ ladderPanels)
-                        ])
+                        ] :> IView)
                 ]
-                Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (saveCancelRow dispatch true) ]
-                Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
-                Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (gainWarningRow warning) ]
-                Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (summaryRow m) ]
-                Border.create [ Border.padding (thick 8.0); Border.child previewView ]
-            ]
-        ] :> IView
+            ] :> IView
+        twoPane leftPane previewView

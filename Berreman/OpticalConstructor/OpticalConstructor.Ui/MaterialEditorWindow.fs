@@ -25,8 +25,11 @@ type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView
             | MaterialEditorView.NewMaterial _ -> "Material Editor — new material"
         this.Name <- MaterialEditorView.UiIds.window
         AutomationProperties.SetAutomationId(this, MaterialEditorView.UiIds.window)
-        this.Width <- 1150.0
-        this.Height <- 980.0
+        // Spec 0038 (032): the editor is now a two-pane split (identity + ladder | tabbed preview).
+        // Sized so the left ladder pane, narrower than the former full width, still fits its
+        // ScrollViewer viewport for a single-aspect ladder without scrolling.
+        this.Width <- 1400.0
+        this.Height <- 1000.0
         // Spec 0035 (009): the create picker's live catalogue seam. The Main-screen launcher passes
         // the SHARED store (so a rename in the Category editor re-labels this picker); a standalone
         // open (no `categories` argument) defaults to a fresh in-memory catalogue of the built-ins.

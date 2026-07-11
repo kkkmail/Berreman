@@ -85,13 +85,15 @@ module EmbeddedChartTests =
     let private rasterizes (ava : ScottPlot.Avalonia.AvaPlot) : bool =
         ava.Plot.GetImage(400, 200).GetImageBytes().Length > 0
 
-    /// Assert `ava` carries exactly the n (left) and k (right) series and rasterizes.
+    /// Assert `ava` carries the six per-axis series — n₁/n₂/n₃ on the LEFT axis and k₁/k₂/k₃ on the
+    /// RIGHT (spec 0038 step 032: the n/k tab is per PRINCIPAL AXIS) — and rasterizes.
     let private assertNkDualAxis (label : string) (ava : ScottPlot.Avalonia.AvaPlot) : unit =
-        match scattersOf ava with
-        | [ n; k ] ->
-            Assert.True(obj.ReferenceEquals(n.Axes.YAxis, ava.Plot.Axes.Left), $"%s{label}: n must plot against the LEFT axis")
-            Assert.True(obj.ReferenceEquals(k.Axes.YAxis, ava.Plot.Axes.Right), $"%s{label}: k must plot against the RIGHT axis")
-        | other -> Assert.Fail($"%s{label}: expected exactly two scatters (n and k), got %d{List.length other}")
+        let scatters = scattersOf ava
+        Assert.Equal(6, List.length scatters)
+        scatters
+        |> List.iteri (fun i sc ->
+            if i < 3 then Assert.True(obj.ReferenceEquals(sc.Axes.YAxis, ava.Plot.Axes.Left), $"%s{label}: n series %d{i} must plot against the LEFT axis")
+            else Assert.True(obj.ReferenceEquals(sc.Axes.YAxis, ava.Plot.Axes.Right), $"%s{label}: k series %d{i} must plot against the RIGHT axis"))
         Assert.True(rasterizes ava, $"%s{label}: the embedded chart rendered no image bytes")
 
     // -- chart / properties builders --------------------------------------------------------------
