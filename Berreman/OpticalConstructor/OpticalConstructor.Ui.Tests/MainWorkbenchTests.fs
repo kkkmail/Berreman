@@ -98,6 +98,12 @@ module MainWorkbenchTests =
             {
                 openMaterialsWindow = fun _ _ -> calls.Add "materials-window"
                 openLibraryWindow = fun _ _ _ -> calls.Add "library-window"
+                // Spec 0038 (017): the Choose… Select-state open — recorded, never a real
+                // window; the returned handle records the staleness close like the real one.
+                openLibrarySelectWindow =
+                    fun _ _ _ _ _ _ ->
+                        calls.Add "library-select-window"
+                        Some (fun () -> calls.Add "library-select-close")
             }
         calls, launchers
 

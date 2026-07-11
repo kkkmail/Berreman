@@ -51,6 +51,12 @@ module LibraryControlsTests =
     let private withSampleSelected () : Model =
         initMain () |> update (AddElement Sample)   // appends a Sample at index 2, selects it
 
+    /// Spec 0038 (017): the quick-pick strip is threshold-gated now, and the 11 seeded sample
+    /// entries sit AT/ABOVE the default threshold 5 (Choose… alone). These tests pin the STRIP
+    /// mechanics — unchanged below the threshold — so their fixtures open the gate wide.
+    let private withWideQuickPick (m : Model) : Model =
+        { m with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 100 }
+
     [<Fact>]
     let ``libraryState for a selected Sample lists ONLY sample leaf rows, kind-labelled Sample`` () =
         let m = withSampleSelected ()
@@ -163,6 +169,7 @@ module LibraryControlsTests =
             // shown — so the confirm panel (the entry's full description + Confirm / Cancel) renders up front.
             let mutable model =
                 withSampleSelected ()
+                |> withWideQuickPick
                 |> update (SelectBay BayNames.selector)
                 |> update (RequestBindValueId glass1mmId)
             let dispatch (msg : Msg) = model <- update msg model
@@ -278,7 +285,7 @@ module LibraryControlsTests =
         // then change the selected element's KIND twice — rows collapse for a polarizer and rebuild for
         // a fresh sample — with every step re-rendering through the FuncUI patch path.
         HeadlessSession.run (fun () ->
-            let seed = withSampleSelected () |> update (SelectBay BayNames.selector)
+            let seed = withSampleSelected () |> withWideQuickPick |> update (SelectBay BayNames.selector)
             let latest : Model ref = ref seed
             let dispatchRef : (Msg -> unit) ref = ref ignore
             let comp =

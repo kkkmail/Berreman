@@ -35,6 +35,10 @@ open OpticalConstructor.Ui
 /// Step 016 adds the Select-state suite: the Select/Close pair, the pre-applied NON-REMOVABLE
 /// kind constraint, the targeted `onSelected` dispatch into the workbench, the
 /// close-on-table-selection-change staleness, and the vanished-target no-op + status line.
+/// Step 017 adds the Selector-bay Choose…/quick-pick suite: the threshold-gated inline strip,
+/// Choose… opening the kind-constrained Select-state window through the REAL launcher seam,
+/// the identical-valueId convergence of the two bind paths, and the re-target on a second
+/// Choose… with the reference-keyed session handle.
 module LibraryWindowTests =
 
     module LW = OpticalConstructor.Ui.LibraryWindowView
@@ -1060,5 +1064,152 @@ module LibraryWindowTests =
             Assert.True(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "the vanished target must surface the status line")
             Assert.Contains("no longer on the table", textOf mainWindow Scene.WorkbenchIds.selectStatus)
             Assert.DoesNotContain("bound: Intensity detector", textOf mainWindow Scene.UiIds.readout)
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    // ============== step 017 — the Selector bay's Choose…/quick-pick flow (headless) ==============
+
+    /// Mount the Main workbench through a re-rendering FuncUI Component that EXPOSES the latest
+    /// model (the LibraryControlsTests drive pattern): the step-017 acceptance compares the
+    /// model-level valueId the two bind paths land, so the readout text is not enough here.
+    /// `latest` is the dispatch chain's source of truth; `state` only feeds the re-render.
+    let private mountMainExposed (model0 : Scene.Model) : Window * (Scene.Msg -> unit) * (unit -> Scene.Model) =
+        let latest : Scene.Model ref = ref model0
+        let dispatchRef : (Scene.Msg -> unit) ref = ref ignore
+        let comp =
+            Avalonia.FuncUI.Component(fun ctx ->
+                let state = ctx.useState model0
+                let dispatch (msg : Scene.Msg) =
+                    let m = Scene.update msg latest.Value
+                    latest.Value <- m
+                    state.Set m
+                dispatchRef.Value <- dispatch
+                Scene.mainView state.Current dispatch)
+        let window = Window(Width = 980.0, Height = 1050.0, Content = comp)
+        window.Show()
+        Dispatcher.UIThread.RunJobs()
+        window, (fun msg -> dispatchRef.Value msg), (fun () -> latest.Value)
+
+    /// The Main scene over fresh stores with the detector element selected (2 detector entries
+    /// < the default threshold 5 — the under-threshold fixture) and the Selector bay shown.
+    let private detectorSelectorModel () : Scene.Model =
+        { freshMainModel () with selection = Scene.ElementSelected 1; ribbon = Scene.BayNames.selector }
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (017): an over-threshold kind offers Choose… alone — no quick-pick strip`` () =
+        HeadlessSession.run (fun () ->
+            // A Sample element is selected: the 11 seeded sample entries sit at/above the
+            // default QuickPickThreshold 5, so the bay offers the Choose… verb ALONE.
+            let model0 = Scene.update (Scene.AddElement Sample) (freshMainModel ())
+            let window, _, getModel = mountMainExposed { model0 with ribbon = Scene.BayNames.selector }
+            Assert.Equal<Scene.SelectorOffer>(Scene.ChooseAlone, Scene.selectorOffer (getModel ()))
+            Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… must be offered for the over-threshold kind")
+            Assert.False(isPresent window Scene.WorkbenchIds.quickPickStrip, "the quick-pick strip must NOT render at/above the threshold")
+            Assert.False(isPresent window LibraryControls.UiIds.tree, "the strip's row tree must be gone with it")
+            Assert.False(isPresent window (LibraryControls.UiIds.entry glassFilm600EntryId), "no inline sample row may remain")
+            window.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (017): an under-threshold kind shows the quick-pick strip beside Choose…`` () =
+        HeadlessSession.run (fun () ->
+            let window, _, getModel = mountMainExposed (detectorSelectorModel ())
+            Assert.Equal<Scene.SelectorOffer>(Scene.QuickPickAndChoose, Scene.selectorOffer (getModel ()))
+            Assert.True(isPresent window Scene.WorkbenchIds.quickPickStrip, "the strip must render below the threshold")
+            Assert.True(isPresent window (LibraryControls.UiIds.entry "det-intensity"), "the kind-constrained rows render inline")
+            Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… is offered beside the strip")
+            window.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (017): binding through the strip and through the Choose… Select window land the IDENTICAL valueId`` () =
+        HeadlessSession.run (fun () ->
+            // ---- Path 1: the inline quick-pick strip (under threshold). ----
+            let stripWindow, _, stripModel = mountMainExposed (detectorSelectorModel ())
+            clickOn stripWindow (LibraryControls.UiIds.entry "det-intensity")   // pending
+            clickOn stripWindow LibraryControls.UiIds.confirm                   // ConfirmBindValueId → the targeted bind
+            let stripBound = ((stripModel ()).elements |> List.item 1).placement.valueId
+            Assert.Equal(Some "det-intensity", stripBound)
+            stripWindow.Close()
+            Dispatcher.UIThread.RunJobs()
+            // ---- Path 2: the Choose… verb → the kind-constrained Select-state Library window. ----
+            let mainWindow, _, getModel = mountMainExposed (detectorSelectorModel ())
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            clickOn mainWindow Scene.WorkbenchIds.chooseButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let selectWindow = opened.[0]
+            Assert.True(matchesId LW.UiIds.window selectWindow, "Choose… must open the Library window")
+            Assert.True(selectWindow.IsVisible)
+            // Select state, constrained to the element's kind: the fixed no-chip banner names
+            // Detector, only detector entries are offered, and the Select/Close pair is there.
+            let banner = textOf selectWindow LW.UiIds.selectConstraint
+            Assert.Contains("Detector", banner)
+            Assert.Contains("fixed", banner)
+            Assert.True(isPresent selectWindow (LW.UiIds.entryNode "det-intensity"))
+            Assert.False(isPresent selectWindow (LW.UiIds.entryNode "src-600"), "an out-of-kind entry must not be offered")
+            Assert.True(isPresent selectWindow LW.UiIds.selectButton)
+            // The workbench holds the session's staleness handle while the window is open.
+            (match (getModel ()).activeSelect with
+             | Some session -> Assert.Equal<ElementId>(elementId "det", session.target)
+             | None -> Assert.Fail "Choose… must register the Select session handle")
+            // Bind through the window: highlight the entry, then Select.
+            clickOn selectWindow (LW.UiIds.entryNode "det-intensity")
+            clickOn selectWindow LW.UiIds.selectButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
+            let windowBound = ((getModel ()).elements |> List.item 1).placement.valueId
+            // THE step acceptance: both paths committed the IDENTICAL valueId bind.
+            Assert.Equal(Some "det-intensity", windowBound)
+            Assert.Equal<string option>(stripBound, windowBound)
+            (match (getModel ()).activeSelect with
+             | None -> ()
+             | Some _ -> Assert.Fail "the committed bind must end the Select session")
+            Assert.False(isPresent mainWindow Scene.WorkbenchIds.selectStatus, "a successful bind reports no staleness status")
+            Assert.Contains("bound: Intensity detector", textOf mainWindow Scene.UiIds.readout)
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (017): a second Choose… RE-TARGETS the live Select window and the handle survives reference-keyed`` () =
+        HeadlessSession.run (fun () ->
+            let mainWindow, _, getModel = mountMainExposed (detectorSelectorModel ())
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            clickOn mainWindow Scene.WorkbenchIds.chooseButton
+            Dispatcher.UIThread.RunJobs()
+            // A second Choose… on the same element RE-TARGETS the live single instance through
+            // the launcher (no second window); the superseded session's cancel fires while the
+            // successor is stored, and the reference-keyed end leaves the NEW handle in place.
+            clickOn mainWindow Scene.WorkbenchIds.chooseButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let selectWindow = opened.[0]
+            Assert.True(selectWindow.IsVisible, "the re-target keeps the one live window")
+            (match (getModel ()).activeSelect with
+             | Some session -> Assert.Equal<ElementId>(elementId "det", session.target)
+             | None -> Assert.Fail "the re-target must leave the NEW session handle in place")
+            // Closing the window from ITS side (the title-bar X path) ends the session exactly
+            // once and clears the workbench handle through the reference-keyed message.
+            selectWindow.Close()
+            Dispatcher.UIThread.RunJobs()
+            (match (getModel ()).activeSelect with
+             | None -> ()
+             | Some _ -> Assert.Fail "the window-side close must clear the session handle")
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())

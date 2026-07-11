@@ -13,6 +13,7 @@ namespace OpticalConstructor.Ui.Tests
 open Xunit
 open Berreman.Constants
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
@@ -474,3 +475,63 @@ module MainSceneMsgTests =
         let inert = update RemoveSelected { initMain () with activeSelect = Some session3 }
         Assert.Empty(cancels3)
         Assert.Equal<SelectSession option>(Some session3, inert.activeSelect)
+
+    // ========== step 017 — the Choose…/quick-pick Selector flow (pure) ==========
+
+    [<Fact>]
+    let ``the strip confirm and the direct bind CONVERGE on the targeted bind — one commit message`` () =
+        // The quick-pick confirm (`ConfirmBindValueId`) and the legacy direct bind
+        // (`BindValueId`) DELEGATE to the exact `BindValueIdTo` message a Select window's
+        // onSelected dispatches — the resulting models are structurally identical, so binding
+        // through the strip and through the Select window provably land the same commit arm.
+        let pending = withSample () |> update (RequestBindValueId "lens-a")
+        let viaTargeted = update (BindValueIdTo ((elem 2 pending).id, "lens-a")) pending
+        Assert.Equal(Some "lens-a", (elem 2 viaTargeted).placement.valueId)
+        Assert.Equal<Model>(viaTargeted, update ConfirmBindValueId pending)
+        Assert.Equal<Model>(viaTargeted, update (BindValueId "lens-a") pending)
+
+    [<Fact>]
+    let ``the Selector bay offers the quick-pick strip only BELOW the step-005 threshold`` () =
+        // The seeded detector kind has 2 entries < the default threshold 5 → the inline strip.
+        let detSelected = { initMain () with selection = ElementSelected 1 }
+        Assert.Equal<SelectorOffer>(QuickPickAndChoose, selectorOffer detSelected)
+        // The seeded Sample kind has 11 entries ≥ 5 → Choose… alone.
+        Assert.Equal<SelectorOffer>(ChooseAlone, selectorOffer (withSample ()))
+        // AT the threshold is already Choose… alone (the gate is strictly-below).
+        let atThreshold = { detSelected with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 2 }
+        Assert.Equal<SelectorOffer>(ChooseAlone, selectorOffer atThreshold)
+        // No element selected → nothing bindable, no offer.
+        Assert.Equal<SelectorOffer>(NoSelectorOffer, selectorOffer (initMain ()))
+        Assert.Equal<SelectorOffer>(NoSelectorOffer, selectorOffer { initMain () with selection = NothingSelected })
+
+    [<Fact>]
+    let ``SelectSessionStarted stores the handle and SelectSessionEnded clears only that SAME session`` () =
+        let cancels, session = recordingSession (elementId "det")
+        let started = update (SelectSessionStarted session) (initMain ())
+        Assert.Equal<SelectSession option>(Some session, started.activeSelect)
+        // A STALE session's end (superseded by a re-target) never clears the successor.
+        let _, stale = recordingSession (elementId "det")
+        Assert.Equal<SelectSession option>(Some session, (update (SelectSessionEnded stale) started).activeSelect)
+        // The live session's own end clears the handle — WITHOUT re-closing the window (the
+        // window ended the session from its side; only the staleness rules close it).
+        let ended = update (SelectSessionEnded session) started
+        Assert.Equal<SelectSession option>(None, ended.activeSelect)
+        Assert.Empty(cancels)
+        // Ending an already-cleared session is a no-op.
+        Assert.Equal<Model>(ended, update (SelectSessionEnded session) ended)
+
+    [<Fact>]
+    let ``a committed targeted bind cancels and CLOSES a still-open Choose session`` () =
+        // The quick-pick race: the strip commits while the Choose… Select window is still
+        // open — the bind ends the session AND closes its window (on the window path the
+        // window already closed itself; the extra Close is the safe no-op).
+        let cancels, session = recordingSession (elementId "det")
+        let bound = update (BindValueIdTo (elementId "det", "det-intensity")) { initMain () with activeSelect = Some session }
+        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
+        Assert.Equal<SelectSession option>(None, bound.activeSelect)
+        Assert.Equal(Some "det-intensity", (elem 1 bound).placement.valueId)
+        // The vanished-target no-op still ends the session (the choice was made either way).
+        let cancels2, session2 = recordingSession (elementId "gone")
+        let vanished = update (BindValueIdTo (elementId "gone", "det-intensity")) { initMain () with activeSelect = Some session2 }
+        Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
+        Assert.Equal<SelectSession option>(None, vanished.activeSelect)

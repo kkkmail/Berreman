@@ -26,6 +26,9 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
+// Spec 0038 (017): opened for `QuickPickThreshold.defaultValue` — the single-case DU's case
+// shadows the type under `WorkbenchSettings.`-qualified expression resolution.
+open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 
 [<RequireQualifiedAccess>]
@@ -119,6 +122,15 @@ type EditorLaunchers =
         /// the retired Library bay carried here (`openSampleEditor`) moved INTO that window's
         /// own composition (`LibraryWindow`), the step-013 Materials precedent.
         openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> unit
+        /// Spec 0038 (017): open the SAME single-instance Library window in SELECT state over
+        /// the session context (the Selector bay's Choose… verb). A missing window opens fresh
+        /// in Select mode; a LIVE one is RE-TARGETED at the new context (a second Choose…
+        /// re-points the instance — the step-016 `RetargetedWindow` semantics). The step-005
+        /// modality switch decides ShowDialog-vs-Show against the REQUESTING window. Returns
+        /// the opened session's cancel-and-close handle — the `SelectSession` staleness lever —
+        /// or None when the open failed (the typed error is dropped at this unit seam: a failed
+        /// open leaves no window, exactly the user-visible outcome).
+        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
     }
 
     /// The real launchers — spec 0038 step 008: every verb-opened window goes THROUGH the
@@ -148,6 +160,28 @@ type EditorLaunchers =
             openLibraryWindow =
                 fun library samples materials ->
                     openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, materials) :> Window)
+            openLibrarySelectWindow =
+                fun library samples materials modality requestingWindow selectCtx ->
+                    // Spec 0038 (017): the Select-state open — the SAME registry key as the
+                    // Browse opens above, so Choose… and the Library… strip button meet in one
+                    // open-or-activate space. A LIVE window is re-pointed through the step-016
+                    // `Retarget` seam (the concrete-window downcast is the launcher contract's
+                    // baked-closure shape); a missing one opens fresh in Select mode and is
+                    // shown per the step-005 modality switch against the requesting window.
+                    let retargetWindow (live : Window) : unit =
+                        match live with
+                        | :? LibraryWindow as libraryWindow -> libraryWindow.Retarget selectCtx
+                        | _ -> ()
+                    let launcher =
+                        WindowLauncher.WindowLauncher.create
+                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, materials, mode = WindowMode.Select selectCtx) :> Window |> Ok)
+                            modality
+                            (WindowLauncher.SelectOpen (requestingWindow, retargetWindow))
+                    match launcher.openOrActivate WindowLauncher.LibraryWindowKey with
+                    | Ok (WindowLauncher.CreatedWindow window)
+                    | Ok (WindowLauncher.ActivatedWindow window)
+                    | Ok (WindowLauncher.RetargetedWindow window) -> Some (fun () -> window.Close ())
+                    | Error _ -> None
         }
 
 /// Spec 0038 (016): the handle of the ONE open Select-state window session this workbench
@@ -234,6 +268,15 @@ type Model =
         categories : MaterialLibrary.CategoryProxy
         /// Spec 0033 (024): the window launcher seam behind the workbench strip buttons.
         launchers : EditorLaunchers
+        /// Spec 0038 (017): the step-005 quick-pick cutoff — the Selector bay's inline strip
+        /// renders only while the kind-constrained entry count is BELOW this; at or above it
+        /// the bay offers Choose… alone. Defaulted here; the composition root threads the
+        /// appsettings value by record update (step 47 owns the composition acceptance).
+        quickPickThreshold : WorkbenchSettings.QuickPickThreshold
+        /// Spec 0038 (017): how the Choose… verb's Select-state Library window opens (the
+        /// step-005 `SelectWindowsModal` switch — ShowDialog owned by this workbench's window,
+        /// or a modeless Show). Defaulted here; threaded like the threshold above.
+        selectWindowModality : WorkbenchSettings.SelectWindowModality
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -321,6 +364,8 @@ let initWith
         samples = samples
         categories = categories
         launchers = EditorLaunchers.defaults
+        quickPickThreshold = QuickPickThreshold.defaultValue
+        selectWindowModality = SelectWindowModality.defaultValue
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -410,7 +455,17 @@ type Msg =
     /// commit the entry id to the `valueId` of the element with THIS serializable id (never
     /// "the current selection": the selection may have moved while the modeless window was
     /// open). A vanished element is a no-op plus the `selectStatus` line, never a throw.
+    /// Spec 0038 (017): this is THE one commit site of `placement.valueId` — the quick-pick
+    /// strip's confirm and the direct bind above DELEGATE here, so binding through the strip
+    /// and through the Choose… Select window land the identical message.
     | BindValueIdTo of Library.ElementId * string
+    /// Spec 0038 (017): the Choose… flow's session bookkeeping. `SelectSessionStarted` stores
+    /// the staleness handle of the Select-state window the verb just opened (or re-targeted);
+    /// `SelectSessionEnded` clears exactly THAT session — reference-keyed — when the window
+    /// ends it from its own side (the Close verb / title-bar X fire the session's
+    /// `onCancelled`), so a session superseded by a re-target can never clear its successor.
+    | SelectSessionStarted of SelectSession
+    | SelectSessionEnded of SelectSession
     /// Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step experiment editor + collection.
     /// Choose the element to vary (by id), the varied quantity, the T/R/both capture, and the range;
     /// commit (Add / Update), start a New draft, or Edit / Remove a collected experiment (by id string).
@@ -728,7 +783,9 @@ let private experimentElementLabel (model : Model) (id : Library.ElementId) : st
     |> Option.map (fun (i, e) -> $"%s{(Catalogue.kindName e.placement.catalogueKind)} #%d{(i + 1)}")
     |> Option.defaultValue "(element)"
 
-let update (msg : Msg) (model : Model) : Model =
+// `rec` (spec 0038 step 017): the BindValueId / ConfirmBindValueId arms DELEGATE to the one
+// targeted commit arm (`BindValueIdTo`) instead of committing `placement.valueId` themselves.
+let rec update (msg : Msg) (model : Model) : Model =
     match msg with
     | RotateR1By d -> rotateSelected 1 d model
     | RotateR2By d -> rotateSelected 2 d model
@@ -763,9 +820,12 @@ let update (msg : Msg) (model : Model) : Model =
     | RenderSetLineOpacity v -> { model with render = RendererControls.withLineOpacity v model.render }
     | SelectBay name -> { model with ribbon = name }
     | BindValueId entryId ->
+        // Spec 0038 (017): the direct bind CONVERGES on the one targeted commit arm below —
+        // resolve the selected element's serializable id and delegate to `BindValueIdTo`.
         match model.selection with
-        | ElementSelected i -> mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) { model with pendingEntry = None }
-        | TableSelected | NothingSelected -> model
+        | ElementSelected i when i >= 0 && i < List.length model.elements ->
+            update (BindValueIdTo ((List.item i model.elements).id, entryId)) model
+        | ElementSelected _ | TableSelected | NothingSelected -> model
     | RequestBindValueId entryId ->
         // Spec 0027 (026): select the entry as PENDING (its full description is shown) without binding yet —
         // inert unless an element is selected (the Selector bay is only enabled for an element).
@@ -773,26 +833,45 @@ let update (msg : Msg) (model : Model) : Model =
         | ElementSelected _ -> { model with pendingEntry = Some entryId }
         | TableSelected | NothingSelected -> model
     | ConfirmBindValueId ->
-        // Spec 0027 (026): commit the pending entry to the selected element's valueId, then clear pending.
+        // Spec 0038 (017): the quick-pick strip's confirm CONVERGES on the SAME targeted bind
+        // message the Select window's onSelected dispatches — `BindValueIdTo` is the one
+        // commit site of placement.valueId. The strip's Confirm button is a stateless
+        // `unit -> unit` control handler (it cannot carry the ids without a stale-closure
+        // hazard under FuncUI's keyed re-subscription), so THIS arm resolves the pending
+        // entry + selected element over the CURRENT model and delegates.
         match model.pendingEntry, model.selection with
-        | Some entryId, ElementSelected i ->
-            mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } }) { model with pendingEntry = None }
+        | Some entryId, ElementSelected i when i >= 0 && i < List.length model.elements ->
+            update (BindValueIdTo ((List.item i model.elements).id, entryId)) model
         | _ -> { model with pendingEntry = None }
     | CancelBindValueId -> { model with pendingEntry = None }
     | BindValueIdTo (elementId, entryId) ->
         // Spec 0038 (016): the TARGETED bind of a Select-state window's onSelected — resolve
         // the element BY ITS ID at return time (the modeless window may outlive a selection
-        // change) and commit its valueId; the session is over either way (the window closed
-        // itself after onSelected). A vanished element is a no-op plus the status line —
+        // change) and commit its valueId. A vanished element is a no-op plus the status line —
         // never a throw (the staleness rules normally close the window first; this is the
-        // belt-and-braces path for the modeless race).
-        let m = { model with activeSelect = None }
+        // belt-and-braces path for the modeless race). Spec 0038 (017): a committed bind ENDS
+        // any live Choose… session — on the quick-pick path the Select window may still be
+        // open, so cancel AND CLOSE it; on the window path the window already closed itself
+        // and the extra Close() is Avalonia's safe no-op.
+        let m = cancelActiveSelect model
         match m.elements |> List.tryFindIndex (fun e -> e.id = elementId) with
         | Some i ->
             mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } })
                 { m with pendingEntry = None; selectStatus = None }
         | None ->
             { m with selectStatus = Some "The chosen entry was not bound — its target element is no longer on the table." }
+    | SelectSessionStarted session ->
+        // Spec 0038 (017): the Choose… verb just opened (or re-targeted) the Select-state
+        // Library window — hold its staleness handle. Any prior session already ended through
+        // its own path (a selection change closed it; a re-target cancelled it in the window).
+        { model with activeSelect = Some session }
+    | SelectSessionEnded session ->
+        // Spec 0038 (017): the window ended the session from ITS side (the Close verb, the
+        // title-bar X, or a re-target superseding it). Reference-keyed: a session that was
+        // already replaced or cleared never clears its successor's handle.
+        match model.activeSelect with
+        | Some active when obj.ReferenceEquals (active, session) -> { model with activeSelect = None }
+        | Some _ | None -> model
     | ExpChooseElement idStr ->
         // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
         // variables (data via `variablesFor`, never hard-coded here) and the default capture (from its
@@ -1264,6 +1343,28 @@ let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers 
         confirmEntry = fun () -> dispatch ConfirmBindValueId
         cancelEntry = fun () -> dispatch CancelBindValueId
     }
+
+/// Spec 0038 (017): what the Selector bay offers for the CURRENT selection — the inline
+/// quick-pick strip beside the Choose… verb (the kind-constrained entry count sits BELOW the
+/// step-005 threshold), the Choose… verb alone (at or above it — the full Select-state Library
+/// window is the picking surface there), or nothing bindable (table / nothing selected — the
+/// bay keeps its disabled prompt). A named three-case DU, never a bool pair.
+type SelectorOffer =
+    | QuickPickAndChoose
+    | ChooseAlone
+    | NoSelectorOffer
+
+/// The bay's threshold decision (public so the gating is provable without a window). The count
+/// is the kind-constrained entry set the strip's rows are built from (`entriesForKind` through
+/// the read-only Library seam — the same set `libraryState` flattens), compared against the
+/// model's `quickPickThreshold`: strictly below → the strip renders; at or above → Choose… alone.
+let selectorOffer (model : Model) : SelectorOffer =
+    match model.selection with
+    | ElementSelected i when i >= 0 && i < List.length model.elements ->
+        let kind = (List.item i model.elements).placement.catalogueKind
+        if Set.count (allowedEntryIds model kind) < model.quickPickThreshold.value then QuickPickAndChoose
+        else ChooseAlone
+    | ElementSelected _ | TableSelected | NothingSelected -> NoSelectorOffer
 
 // ---------------------------------------------------------------------------
 // Main-screen EXPERIMENTS bay (spec 0027 / 028): the multi-step, editable experiment builder + collection.
@@ -1870,6 +1971,14 @@ module WorkbenchIds =
     /// return whose element has vanished reports here (a no-op plus a status line).
     [<Literal>]
     let selectStatus = "WorkbenchSelectStatus"
+    /// Spec 0038 (017): the Selector bay's Choose… verb — opens the single-instance Library
+    /// window in Select state constrained to the selected element's kind.
+    [<Literal>]
+    let chooseButton = "SelectorChooseButton"
+    /// Spec 0038 (017): the Selector bay's inline quick-pick strip (the kind-constrained rows
+    /// + confirm panel) — rendered only below the step-005 QuickPickThreshold.
+    [<Literal>]
+    let quickPickStrip = "SelectorQuickPickStrip"
 
 /// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through
 /// FuncUI's attr builder — the strip buttons live in a variable-membership row, so they carry
@@ -1913,6 +2022,93 @@ let private workbenchButton (autoId : string) (label : string) (onClick : unit -
         Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf autoId)
     ] :> IView
 
+// ---------------------------------------------------------------------------
+// Spec 0038 (017) — the Selector bay's Choose… / quick-pick flow. Choose… opens (or re-targets)
+// the single-instance Library window in SELECT state constrained to the selected element's
+// kind, through the launcher seam; the inline quick-pick strip (today's kind-constrained rows
+// + confirm panel via LibraryControls) renders only below the step-005 QuickPickThreshold.
+// Both paths converge on the SAME targeted bind message (`BindValueIdTo`).
+// ---------------------------------------------------------------------------
+
+/// The Choose… verb — compose one Select session and open (or re-target) the Library window
+/// through `openLibrarySelectWindow`. Composed in the VIEW: the workbench runs `mkSimple`, so
+/// the render's `dispatch` is the one return path into the loop (the window hosts capture
+/// theirs with `Cmd.ofEffect`; this host has no Cmd seam). `onSelected` bakes the TARGETED
+/// bind — the SAME `BindValueIdTo` the strip's confirm converges on; `onCancelled` dispatches
+/// the reference-keyed `SelectSessionEnded` through a ref cell filled once the session exists,
+/// so a session superseded by a re-target (its cancel fires while the successor is being
+/// stored) can never clear the successor's handle.
+let private chooseFromLibrary (model : Model) (dispatch : Msg -> unit) (element : TestElement) (owner : Window) : unit =
+    let sessionRef : SelectSession option ref = ref None
+    let selectCtx : WindowMode.SelectionContext<Library.LibraryEntry> =
+        {
+            kindConstraint = WindowMode.KindConstraint element.placement.catalogueKind
+            target = WindowMode.TableElementTarget element.id
+            onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
+            onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
+        }
+    match model.launchers.openLibrarySelectWindow model.library model.samples model.materials model.selectWindowModality owner selectCtx with
+    | Some cancelAndClose ->
+        let session : SelectSession = { target = element.id; cancelAndClose = cancelAndClose }
+        sessionRef.Value <- Some session
+        dispatch (SelectSessionStarted session)
+    | None -> ()
+
+/// The Choose… button (the workbench verb-box look). The pointer subscription re-patches on
+/// the SELECTED ELEMENT's id — the closure's only render-varying capture; the proxies, the
+/// launcher seam and the modality are app-scope constants — so a selection change re-arms the
+/// handler for the new element and a bind never leaves a stale one behind. The owner window
+/// for a modal Select open is resolved from the click's own visual tree at dispatch time.
+let private selectorChooseButton (model : Model) (dispatch : Msg -> unit) (element : TestElement) : IView =
+    Border.create [
+        workbenchAutomationId WorkbenchIds.chooseButton
+        Border.background (brush (color 232 232 232))
+        Border.borderBrush (brush (color 120 120 120))
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (Thickness(12.0, 5.0))
+        Border.margin (Thickness(0.0, 2.0, 8.0, 4.0))
+        Border.horizontalAlignment HorizontalAlignment.Left
+        Border.child (TextBlock.create [ TextBlock.text "Choose…" ])
+        Border.onPointerPressed ((fun e ->
+            e.Handled <- true
+            match e.Source with
+            | :? Visual as source ->
+                match TopLevel.GetTopLevel source with
+                | :? Window as owner -> chooseFromLibrary model dispatch element owner
+                | _ -> ()
+            | _ -> ()), SubPatchOptions.OnChangeOf element.id.value)
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey WorkbenchIds.chooseButton
+    :> IView
+
+/// The Selector bay content (spec 0038 step 017). No element selected → today's disabled
+/// prompt (the empty LibraryControls bay). An element selected → the Choose… verb, and BELOW
+/// the threshold also the inline quick-pick strip — the unchanged LibraryControls surface
+/// (kind label, bound readout, kind-constrained rows, confirm panel) wrapped in a keyed,
+/// AutomationId'd box so the headless gating proofs address it as one unit.
+let private selectorBayContent (model : Model) (dispatch : Msg -> unit) : IView =
+    match selectorOffer model, model.selection with
+    | (QuickPickAndChoose | ChooseAlone) as offer, ElementSelected i ->
+        let element = List.item i model.elements
+        let strip : IView list =
+            match offer with
+            | QuickPickAndChoose ->
+                [ Border.create [
+                      workbenchAutomationId WorkbenchIds.quickPickStrip
+                      Border.child (LibraryControls.view (libraryState model) (libraryHandlers dispatch))
+                  ]
+                  |> Avalonia.FuncUI.DSL.View.withKey WorkbenchIds.quickPickStrip
+                  :> IView ]
+            | ChooseAlone | NoSelectorOffer -> []
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.spacing 4.0
+            StackPanel.children (selectorChooseButton model dispatch element :: strip)
+        ] :> IView
+    | _, (TableSelected | NothingSelected | ElementSelected _) ->
+        LibraryControls.view LibraryControls.empty (libraryHandlers dispatch)
+
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
 /// (Spec 0038 step 015: no FULL-SURFACE bay remains — the samples workbench that used the mode is the
@@ -1922,7 +2118,7 @@ let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
       { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
-      { name = BayNames.selector; content = LibraryControls.view (libraryState model) (libraryHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.selector; content = selectorBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.experiments; content = ExperimentControls.view (experimentState model) (experimentHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.details; content = LayerBandsControls.view (detailsState model); mode = Ribbon.InRibbonPane } ]
 
