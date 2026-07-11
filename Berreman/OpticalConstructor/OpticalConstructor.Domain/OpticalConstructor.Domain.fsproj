@@ -138,6 +138,13 @@
              decideVersioning rule from Lifecycle.fs above and takes the VersionsInUse seam. Mirrors
              MaterialStore.fs. -->
         <Compile Include="SampleStore.fs" />
+        <!-- Spec 0038 (026, ADD_CONTRACT STORE_XDUO_0004): the scene persistence seam —
+             SceneName / SceneSnapshot (elements + table view state + snap mode, all pure data) /
+             SceneStoreError / the [<ReferenceEquality>] SceneProxy functional-proxy record. The
+             DECLARED seam only (no disk format, no .ocproj wiring); a future storage cycle swaps
+             in a real file-backed store. Depends on Library (ElementId), Placement
+             (ElementPlacement / CatalogueKind) and Table (TableViewState) above. -->
+        <Compile Include="Scene.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -143,6 +143,11 @@
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
              version-id / EntryLifecycle / VersionRef / VersionsInUse surface. Avalonia-free. -->
         <Compile Include="LifecycleTests.fs" />
+        <!-- Spec 0038 step 026 (ADD_CONTRACT STORE_XDUO_0004): the scene persistence seam —
+             SceneName's blank-rejecting tryCreate, the SnapMode two-case DU, and the mock/stub
+             SceneProxy exercised through saveScene / tryLoadScene / listScenes' exact signatures
+             (declared contract: types + inline map-backed mock + test, no real store yet). -->
+        <Compile Include="SceneProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
