@@ -103,6 +103,63 @@ module MainSceneMsgTests =
         Assert.Equal(ElementSelected 2, m.selection)
         Assert.Equal(CircularPolarizer, (elem 2 m).placement.catalogueKind)
 
+    // ============ step 018 — pre-binding (spec 0038 Part G, operator Q7/Q28) ============
+
+    [<Theory>]
+    [<InlineData("S", SeedEntryIds.source600)>]
+    [<InlineData("D", SeedEntryIds.detectorIntensity)>]
+    [<InlineData("LP", SeedEntryIds.polarizerLp)>]
+    [<InlineData("CP", SeedEntryIds.polarizerCpLeft)>]
+    let ``AddElement lands PRE-BOUND to the kind's seeded default entry`` (code : string) (seedId : string) =
+        let kind = kindOfCode code
+        Assert.Equal(Some seedId, defaultSeedEntry kind)
+        let m = update (AddElement kind) (initMain ())
+        Assert.Equal(Some seedId, (elem 2 m).placement.valueId)
+        // The pre-bound id RESOLVES through the live Library seam to an entry valid for the kind.
+        match m.library.tryGetEntry seedId with
+        | Ok (Some entry) -> Assert.Contains(kind, entry.forKinds)
+        | other -> Assert.Fail($"the seed id %s{seedId} did not resolve: %A{other}")
+
+    [<Theory>]
+    [<InlineData("Sa")>]
+    [<InlineData("L")>]
+    [<InlineData("FM")>]
+    [<InlineData("CM")>]
+    let ``a new sample stays UNBOUND (the inverse hook) and the not-bindable kinds bind nothing`` (code : string) =
+        let kind = kindOfCode code
+        Assert.Equal(None, defaultSeedEntry kind)
+        let m = update (AddElement kind) (initMain ())
+        Assert.Equal(None, (elem 2 m).placement.valueId)
+
+    [<Fact>]
+    let ``AddElementBoundTo carries an explicit pre-bind — the CPR palette button's path`` () =
+        let m = update (AddElementBoundTo (CircularPolarizer, Some SeedEntryIds.polarizerCpRight)) (initMain ())
+        Assert.Equal(3, List.length m.elements)
+        Assert.Equal(ElementSelected 2, m.selection)
+        Assert.Equal(CircularPolarizer, (elem 2 m).placement.catalogueKind)
+        Assert.Equal(Some SeedEntryIds.polarizerCpRight, (elem 2 m).placement.valueId)
+
+    [<Fact>]
+    let ``the palette offers THREE polarizer buttons over the UNCHANGED CatalogueKinds`` () =
+        let buttons = paletteButtons (initMain ())
+        // The polarizer trio: LP / CPL / CPR, in palette order — LP adds a LinearPolarizer, the
+        // CPL / CPR pair adds CircularPolarizers; only the label and the pre-bound entry differ.
+        let polarizers =
+            buttons
+            |> List.filter (fun b -> match b.kind with LinearPolarizer | CircularPolarizer -> true | _ -> false)
+        Assert.Equal<(string * CatalogueKind * string option) list>(
+            [ "LP", LinearPolarizer, Some SeedEntryIds.polarizerLp
+              "CPL", CircularPolarizer, Some SeedEntryIds.polarizerCpLeft
+              "CPR", CircularPolarizer, Some SeedEntryIds.polarizerCpRight ],
+            polarizers |> List.map (fun b -> b.code, b.kind, b.prebind))
+        // The codes are unique (they are the `PaletteAdd_<code>` automation-id suffixes)…
+        Assert.Equal(List.length buttons, buttons |> List.map (fun b -> b.code) |> List.distinct |> List.length)
+        // …the sample button is the UNBOUND one (the inverse hook)…
+        Assert.Equal<string option>(None, (buttons |> List.find (fun b -> b.kind = Sample)).prebind)
+        // …and every other button carries its kind's seeded default.
+        for b in buttons |> List.filter (fun b -> b.kind <> CircularPolarizer) do
+            Assert.Equal<string option>(defaultSeedEntry b.kind, b.prebind)
+
     // ============================== the Move bay ==============================
 
     [<Fact>]

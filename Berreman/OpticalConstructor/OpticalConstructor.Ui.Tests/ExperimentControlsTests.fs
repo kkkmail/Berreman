@@ -251,6 +251,60 @@ module ExperimentControlsTests =
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
         Assert.Empty((experimentResult m1).series)
 
+    // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
+
+    [<Fact>]
+    let ``runAnalyzerKind prefers the VARIED element's bound polarizer over the scene's`` () =
+        // Two pre-bound polarizers: the linear one (idx 2) and — LAST in the scene — the CPR
+        // button's right-circular one (idx 3). The varied element's own bound entry wins; the
+        // scene's last bound polarizer only serves a non-polarizer varied element.
+        let m =
+            initMain ()
+            |> update (AddElement LinearPolarizer)                                                  // pre-bound pol-lp
+            |> update (AddElementBoundTo (CircularPolarizer, Some SeedEntryIds.polarizerCpRight))   // pre-bound pol-cp-right
+        Assert.Equal(ResolvedAnalyzer Library.IdealLinear, runAnalyzerKind m (Some (elem 2 m).id))
+        Assert.Equal(ResolvedAnalyzer Library.IdealCircularRight, runAnalyzerKind m (Some (elem 3 m).id))
+
+    [<Fact>]
+    let ``runAnalyzerKind reads the scene's bound polarizer for a non-polarizer varied element — never an assumed linear`` () =
+        // A circular-only scene: the resolution is the BOUND entry's kind (circular). The retired
+        // fallback would have silently answered IdealLinear here.
+        let m =
+            initMain ()
+            |> update (AddElement CircularPolarizer)   // pre-bound pol-cp-left
+            |> update (AddElement Sample)              // unbound (the inverse hook)
+        Assert.Equal(ResolvedAnalyzer Library.IdealCircularLeft, runAnalyzerKind m (Some (elem 3 m).id))
+
+    [<Fact>]
+    let ``runAnalyzerKind reports the typed NoAnalyzerPresent status when the scene holds no bound polarizer`` () =
+        // initMain = source + detector only; adding an (unbound) sample binds no polarizer entry.
+        let m = initMain () |> update (AddElement Sample)
+        Assert.Equal(NoAnalyzerPresent, runAnalyzerKind m (Some (elem 2 m).id))
+        Assert.Equal(NoAnalyzerPresent, runAnalyzerKind m None)
+
+    [<Fact>]
+    let ``a rotate-R1 intensity run with NO analyzer reports the typed status chart — no silent Malus curve`` () =
+        // The retired fallback would have synthesized an IdealLinear Malus curve here; the
+        // experiment surface now reports the typed 'no analyzer present' status instead.
+        let m = initMain () |> update (AddElement Sample)
+        let m1 = m |> update (ExpChooseElement (idOf 2 m))     // a sample defaults to VaryR1
+        let chart = experimentResult m1
+        Assert.Empty(chart.series)
+        Assert.Equal(noAnalyzerTitle, chart.title)
+        Assert.Equal(noAnalyzerStatus, chart.description)
+        // The Experiments bay surfaces the same status through its state.
+        Assert.Equal(noAnalyzerStatus, (experimentState m1).description)
+
+    [<Fact>]
+    let ``a rotate-R1 intensity run with a pre-bound polarizer still yields the Malus curve`` () =
+        // The step-018 add path pre-binds the polarizer, so the analyzer resolves from the BOUND
+        // entry — the surface that used to lean on the silent fallback keeps its curve.
+        let m = initMain () |> update (AddElement LinearPolarizer)
+        Assert.Equal(Some SeedEntryIds.polarizerLp, (elem 2 m).placement.valueId)
+        let chart = experimentResult (m |> update (ExpChooseElement (idOf 2 m)))
+        Assert.Single(chart.series) |> ignore
+        Assert.Equal("Rotating analyzer (Malus)", chart.title)
+
     // ============================ ExperimentChart CSV (unchanged data model) ============================
 
     [<Fact>]

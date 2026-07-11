@@ -485,3 +485,46 @@ module TableAndElementRotationTests =
                 |> Seq.toList
             Assert.Equal(1, List.length removeButtons)
             window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the palette's polarizer trio and sample buttons add pre-bound / unbound elements (018)`` () =
+        // Spec 0038 (018): the palette exposes THREE polarizer buttons with stable ids — LP / CPL /
+        // CPR — over the UNCHANGED CatalogueKinds; each add lands PRE-BOUND to its seeded entry,
+        // while a sample add stays UNBOUND (the inverse hook).
+        HeadlessSession.run (fun () ->
+            let mutable model = initMain ()
+            let dispatch (m : Msg) = model <- update m model
+            let window = Window(Width = canvasWidth, Height = canvasHeight + 260.0)
+            window.Content <- Component(fun _ -> view model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let clickAdd (code : string) : unit =
+                let id = ElementPaletteControls.UiIds.addButton code
+                let button =
+                    window.GetVisualDescendants()
+                    |> Seq.tryPick (function
+                        | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id -> Some b
+                        | _ -> None)
+                match button with
+                | Some b ->
+                    let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+                    if c.HasValue then
+                        window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                        window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                    else Assert.Fail($"%s{id} has no on-screen position")
+                | None -> Assert.Fail($"%s{id} was not rendered")
+            clickAdd "LP"
+            clickAdd "CPL"
+            clickAdd "CPR"
+            clickAdd "Sa"
+            let added = model.elements |> List.skip 2   // past the seeded source / detector
+            Assert.Equal<CatalogueKind list>(
+                [ LinearPolarizer; CircularPolarizer; CircularPolarizer; Sample ],
+                added |> List.map (fun e -> e.placement.catalogueKind))
+            Assert.Equal<string option list>(
+                [ Some SeedEntryIds.polarizerLp; Some SeedEntryIds.polarizerCpLeft; Some SeedEntryIds.polarizerCpRight; None ],
+                added |> List.map (fun e -> e.placement.valueId))
+            window.Close())

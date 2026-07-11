@@ -426,7 +426,13 @@ type Msg =
     | Wheel of Set<WheelModifier> * int
     /// Lego constructor (Main screen): add a catalogue element to the scene (selected on add), or
     /// remove the currently-selected element. Never dispatched by the test windows (empty palette).
+    /// Spec 0038 (018): `AddElement` DELEGATES to `AddElementBoundTo` with the kind's seeded
+    /// default (`defaultSeedEntry`), so every new element except a sample lands PRE-BOUND.
     | AddElement of CatalogueKind
+    /// Spec 0038 (018): add a catalogue element PRE-BOUND to an explicit seeded Library entry
+    /// (`None` = unbound — the sample's inverse hook). The palette buttons dispatch this; the
+    /// CPL / CPR pair shares the UNCHANGED CircularPolarizer kind and differs only here.
+    | AddElementBoundTo of CatalogueKind * string option
     | RemoveSelected
     /// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate.
     | SlideSelectedBy of float
@@ -676,6 +682,37 @@ let private resetAllRotations (m : Model) : Model =
 // identical to the static test scene — these just grow / shrink the `elements` list.
 // ---------------------------------------------------------------------------
 
+/// Spec 0038 (018): the stable ids of the seeded Library entries the pre-binding maps to
+/// (`Library.seedEntries` — the Domain seeds; entry ids are strings by the spec-0033 string-id
+/// decision). Centralized here so the add path, the palette buttons, and the tests never repeat
+/// the literals.
+[<RequireQualifiedAccess>]
+module SeedEntryIds =
+    [<Literal>]
+    let source600 = "src-600"
+    [<Literal>]
+    let detectorIntensity = "det-intensity"
+    [<Literal>]
+    let polarizerLp = "pol-lp"
+    [<Literal>]
+    let polarizerCpLeft = "pol-cp-left"
+    [<Literal>]
+    let polarizerCpRight = "pol-cp-right"
+
+/// Spec 0038 (018) pre-binding (spec Part G, operator Q7/Q28): the seeded Library entry a NEW
+/// table element of this kind is created PRE-BOUND to. A sample stays UNBOUND — the inverse-flow
+/// hook — and the lens / mirror kinds have no Library entries to bind (not bindable). The
+/// circular-polarizer kind defaults to the LEFT seed (the seed order); the palette's CPR button
+/// carries its explicit `pol-cp-right` pre-bind through `AddElementBoundTo`.
+let defaultSeedEntry (kind : CatalogueKind) : string option =
+    match kind with
+    | LightSource -> Some SeedEntryIds.source600
+    | Detector -> Some SeedEntryIds.detectorIntensity
+    | LinearPolarizer -> Some SeedEntryIds.polarizerLp
+    | CircularPolarizer -> Some SeedEntryIds.polarizerCpLeft
+    | Sample -> None
+    | Lens | FlatMirror | CurvedMirror -> None
+
 /// Spec 0038 (016) staleness: cancel and CLOSE the open Select-state window session, if any
 /// (closing the window fires the session's `onCancelled` through its own dismissal hook).
 /// Invoked wherever the table selection changes or the session's target can disappear — the
@@ -690,13 +727,16 @@ let private cancelActiveSelect (m : Model) : Model =
 /// Append a catalogue element to the scene and select it. New elements are spread along the beam so
 /// they do not land exactly on top of one another; the user then rotates / configures the selection.
 /// Selecting the new element IS a table-selection change, so an open Select session cancels (016).
-let private addElement (kind : CatalogueKind) (m : Model) : Model =
+/// Spec 0038 (018): the new element lands PRE-BOUND to `prebind` (the kind's seeded default, or
+/// the palette button's explicit entry) — `None` keeps it unbound (the sample's inverse hook).
+let private addElement (kind : CatalogueKind) (prebind : string option) (m : Model) : Model =
     let middleCount =
         m.elements
         |> List.filter (fun e -> e.placement.catalogueKind <> LightSource && e.placement.catalogueKind <> Detector)
         |> List.length
     let x = -0.3 + 0.2 * float middleCount
-    let e = { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+    let placement = { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
+    let e = { id = freshId (); placement = placement; zoom = defaultElementZoom }
     let elements' = m.elements @ [ e ]
     { cancelActiveSelect m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
 
@@ -806,7 +846,11 @@ let rec update (msg : Msg) (model : Model) : Model =
             | RotationControls.NoConfirm -> model
         { m with rotationConfirm = RotationControls.NoConfirm }
     | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
-    | AddElement kind -> addElement kind model
+    | AddElement kind ->
+        // Spec 0038 (018): the plain add CONVERGES on the pre-binding arm below with the kind's
+        // seeded default — every new table element except a sample lands pre-bound.
+        update (AddElementBoundTo (kind, defaultSeedEntry kind)) model
+    | AddElementBoundTo (kind, prebind) -> addElement kind prebind model
     | RemoveSelected -> removeSelected model
     | SlideSelectedBy dx -> slideSelectedBy dx model
     | SlideSelectedTo x -> slideSelectedTo x model
@@ -1107,18 +1151,46 @@ let private readoutText (model : Model) : string =
         $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(if p.r3Locked then "R3 locked" else "R3 free")})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
     | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
+/// Spec 0038 (018): one add-palette BUTTON — its stable code (the `PaletteAdd_<code>` automation-id
+/// suffix), its label, the catalogue kind it adds, and the seeded Library entry the new element
+/// lands PRE-BOUND to (`None` = unbound: the sample's inverse hook, and the not-bindable lens /
+/// mirror kinds).
+type PaletteButton =
+    {
+        code : string
+        label : string
+        kind : CatalogueKind
+        prebind : string option
+    }
+
+/// Spec 0038 (018): the palette buttons the model's catalogue palette EXPANDS to. The
+/// circular-polarizer kind expands to the CPL / CPR pair, so the palette offers THREE polarizer
+/// buttons — LP / CPL / CPR — over the UNCHANGED `CatalogueKind`s (LP adds a LinearPolarizer,
+/// CPL and CPR both add a CircularPolarizer; only the label and the pre-bound seed entry differ).
+/// Every other kind keeps its one `kindCode`/`kindName` button with the kind's seeded default.
+/// Public so the mapping is provable without a window.
+let paletteButtons (model : Model) : PaletteButton list =
+    model.palette
+    |> List.collect (fun k ->
+        match k with
+        | CircularPolarizer ->
+            [ { code = "CPL"; label = $"%s{(kindName CircularPolarizer)} (L)"; kind = CircularPolarizer; prebind = Some SeedEntryIds.polarizerCpLeft }
+              { code = "CPR"; label = $"%s{(kindName CircularPolarizer)} (R)"; kind = CircularPolarizer; prebind = Some SeedEntryIds.polarizerCpRight } ]
+        | LightSource | LinearPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
+            [ { code = kindCode k; label = kindName k; kind = k; prebind = defaultSeedEntry k } ])
+
 /// The add / remove "Lego" palette row — shown ONLY when the scene has a non-empty palette (the Main
 /// screen). The static test windows pass an empty palette, so this row is absent and their UI is
 /// unchanged. It is the shared `ElementPaletteControls` bar, styled to match the rotation bar.
 let private paletteState (model : Model) : ElementPaletteControls.State =
     {
-        addItems = model.palette |> List.map (fun k -> { ElementPaletteControls.AddItem.id = kindCode k; label = kindName k })
+        addItems = paletteButtons model |> List.map (fun b -> { ElementPaletteControls.AddItem.id = b.code; label = b.label })
         canRemove = (match model.selection with ElementSelected _ -> true | _ -> false)
     }
 
 let private paletteHandlers (model : Model) (dispatch : Msg -> unit) : ElementPaletteControls.Handlers =
     {
-        add = fun id -> model.palette |> List.tryFind (fun k -> kindCode k = id) |> Option.iter (fun k -> dispatch (AddElement k))
+        add = fun id -> paletteButtons model |> List.tryFind (fun b -> b.code = id) |> Option.iter (fun b -> dispatch (AddElementBoundTo (b.kind, b.prebind)))
         removeSelected = fun () -> dispatch RemoveSelected
     }
 
@@ -1438,10 +1510,28 @@ let private idealKindOf (p : Library.PolarizerPreset) : Library.PolarizerKind op
     | Library.ComputedIdeal kind -> Some kind
     | Library.ConstantMueller _ -> None
 
+/// Spec 0038 (018): the rotate-R1 analyzer resolution, as a named two-case DU. The old silent
+/// `Option.defaultValue Library.IdealLinear` tail is RETIRED: a scene holding NO bound polarizer
+/// resolves to the typed `NoAnalyzerPresent` status the experiment surface reports — never a
+/// silently assumed ideal linear analyzer.
+type AnalyzerResolution =
+    | ResolvedAnalyzer of Library.PolarizerKind
+    | NoAnalyzerPresent
+
+/// Spec 0038 (018): what the experiment surface shows for a rotate-R1 intensity run that resolved
+/// `NoAnalyzerPresent` (the chart title + status text; no series are synthesized from a fallback).
+[<Literal>]
+let noAnalyzerTitle = "No analyzer present"
+
+[<Literal>]
+let noAnalyzerStatus =
+    "Cannot run the rotating-analyzer experiment: no element in the scene is bound to a polarizer entry. Add a polarizer (LP / CPL / CPR) or bind one through the Selector bay."
+
 /// The analyzer's polarizer kind for the rotate-R1 experiment: the VARIED element if it is bound to a
-/// polarizer preset, else the first polarizer bound in the scene, else an ideal linear analyzer (so the
-/// rotate is always well-defined).
-let private runAnalyzerKind (model : Model) (varied : Library.ElementId option) : Library.PolarizerKind =
+/// polarizer preset, else the last polarizer bound in the scene, else the typed `NoAnalyzerPresent`
+/// status (spec 0038 step 018 — the silent IdealLinear fallback is retired; the bound entry's kind
+/// is what runs). Public so the no-silent-fallback discipline is provable without a window.
+let runAnalyzerKind (model : Model) (varied : Library.ElementId option) : AnalyzerResolution =
     let variedKind =
         match varied with
         | Some chosen ->
@@ -1452,16 +1542,17 @@ let private runAnalyzerKind (model : Model) (varied : Library.ElementId option) 
                 | Some (Library.PolarizerItem p) -> idealKindOf p
                 | _ -> None)
         | None -> None
-    match variedKind with
-    | Some k -> k
-    | None ->
+    let sceneKind =
         model.elements
         |> List.choose (fun e ->
             match boundEntry model e with
             | Some (Library.PolarizerItem p) -> idealKindOf p
             | _ -> None)
         |> List.tryLast
-        |> Option.defaultValue Library.IdealLinear
+    match variedKind, sceneKind with
+    | Some k, _ -> ResolvedAnalyzer k
+    | None, Some k -> ResolvedAnalyzer k
+    | None, None -> NoAnalyzerPresent
 
 /// Whether the scene's detector (the first detector element bound to a detector preset) is an ellipsometer.
 let private runDetectorKind (model : Model) : Library.DetectorKind =
@@ -1602,22 +1693,28 @@ let chartForParams
                     angular = true
                 }
             | Library.Intensity ->
-                let analyzerKind = runAnalyzerKind model (Some chosen)
-                let seriesList =
-                    branchesFor measurement
-                    |> List.choose (fun (branch, tag) ->
-                        rotateSampleMueller model sampleOpt branch
-                        |> Option.map (fun mm ->
-                            let curve = Propagation.rotatingAnalyzerCurveRange svIn mm analyzerKind range.min range.max n
-                            series (seriesName measurement tag "Intensity") curve.points))
-                {
-                    series = seriesList
-                    xLabel = "Rotation R1 (°)"
-                    yLabel = "Intensity (S₀)"
-                    title = "Rotating analyzer (Malus)"
-                    description = describeRun model label captureText varyText
-                    angular = true
-                }
+                // Spec 0038 (018): the analyzer is READ from the bound polarizer entry; a scene
+                // with none reports the typed 'no analyzer present' status — the old silent
+                // IdealLinear fallback is retired, so no series are synthesized from a fallback.
+                match runAnalyzerKind model (Some chosen) with
+                | NoAnalyzerPresent ->
+                    { ExperimentChart.empty with title = noAnalyzerTitle; description = noAnalyzerStatus }
+                | ResolvedAnalyzer analyzerKind ->
+                    let seriesList =
+                        branchesFor measurement
+                        |> List.choose (fun (branch, tag) ->
+                            rotateSampleMueller model sampleOpt branch
+                            |> Option.map (fun mm ->
+                                let curve = Propagation.rotatingAnalyzerCurveRange svIn mm analyzerKind range.min range.max n
+                                series (seriesName measurement tag "Intensity") curve.points))
+                    {
+                        series = seriesList
+                        xLabel = "Rotation R1 (°)"
+                        yLabel = "Intensity (S₀)"
+                        title = "Rotating analyzer (Malus)"
+                        description = describeRun model label captureText varyText
+                        angular = true
+                    }
         | Experiments.VaryR2 ->
             match sampleOpt with
             | Some sample ->
