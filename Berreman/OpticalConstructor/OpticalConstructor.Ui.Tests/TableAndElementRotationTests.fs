@@ -215,7 +215,9 @@ module TableAndElementRotationTests =
         // content node between two different controls made FuncUI recycle a styled, named control. Driven
         // through the REAL Main window (its Elmish loop runs the incremental virtual-DOM patch, as in app).
         HeadlessSession.run (fun () ->
-            let window = OpticalConstructor.App.MainConstructorWindow()
+            // Spec 0038 step 006: the real window takes the injected app scope — a fresh one here
+            // (this file opens the view module, not `OpticalConstructor.Ui`, so qualify the type).
+            let window = OpticalConstructor.App.MainConstructorWindow(OpticalConstructor.Ui.AppContext.create WorkbenchSettings.WorkbenchSettings.defaults)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let click (name : string) : unit =

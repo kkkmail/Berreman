@@ -8,16 +8,18 @@ open Avalonia.VisualTree
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0033 (026) / 0035 (019) — the WIRE_UI composition acceptance. Every proof here drives the
-/// REAL `OpticalConstructor.App.MainConstructorWindow` — the finalized composition root that builds
-/// the five in-memory proxies itself (the samples store first, then the materials store whose
-/// remove-block consults the LIVE samples through `samplesReferencing`, then the category store whose
-/// remove-block consults the LIVE materials through `materialsReferencingCategory`, beside the library
-/// / experiments proxies) and injects all of them through `initMainWith` — NOT a test-side model with
+/// REAL `OpticalConstructor.App.MainConstructorWindow` over the app-scope `AppContext` (spec 0038
+/// step 006 hoisted the five-proxy composition out of the window's constructor: `AppContext.create`
+/// builds the samples store first, then the materials store whose remove-block consults the LIVE
+/// samples through `samplesReferencing`, then the category store whose remove-block consults the
+/// LIVE materials through `materialsReferencingCategory`, beside the library / experiments proxies)
+/// — all five injected through `initMainWith`, NOT a test-side model with
 /// injected stores (that layer is `MainWorkbenchTests`). The editor windows are opened by the REAL
 /// `EditorLaunchers.defaults` and observed through the public global `Window.WindowOpenedEvent` (the
 /// seam the desktop lifetime itself uses for window tracking), so the proof is end-to-end:
@@ -77,11 +79,12 @@ module WireUiCompositionTests =
         | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a TextBlock"
         | None -> failwith $"%s{id} was not found in the visual tree"
 
-    /// Mount the REAL composition root headless: the window's constructor builds the four
-    /// in-memory proxies and runs the Elmish loop over `initMainWith` — exactly what the
-    /// launcher's Main button does.
+    /// Mount the REAL composition root headless: a FRESH app-scope context (test isolation —
+    /// the stores are mutable) injected into the real window, whose constructor runs the
+    /// Elmish loop over `initMainWith` — exactly what the launcher's Main button does with
+    /// `Startup.context` (spec 0038 step 006).
     let private mountRoot () : Window =
-        let window = OpticalConstructor.App.MainConstructorWindow()
+        let window = OpticalConstructor.App.MainConstructorWindow(AppContext.create WorkbenchSettings.defaults)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window :> Window

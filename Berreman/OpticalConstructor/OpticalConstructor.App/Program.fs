@@ -24,10 +24,6 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Ui
-// Spec 0033 (024): the samples-store module — also brings the optional
-// `MaterialProxy.createInMemory` type extension (declared in `Library`, after `Sample`)
-// into scope for the Main-scene composition below.
-open OpticalConstructor.Domain.Library
 
 /// Load the persisted user environment once at startup (J.6). `load` is total and
 /// falls back to the built-in `defaults` on a missing/invalid settings file, so the
@@ -48,13 +44,24 @@ module private Startup =
     /// session) never blocks on configuration.
     let workbenchSettings = AppConfig.loadWorkbenchSettings ()
 
+    /// The ONE app-scope composition value (spec 0038 Part C, step 006): the five
+    /// domain proxies — library / experiments / materials / samples / categories —
+    /// built HERE, once, bundled with the step-005 settings record above. The module
+    /// initializes when `App.Initialize` reads `settings`, i.e. BEFORE any window
+    /// opens; the launcher, the Main workbench window, and every window opened later
+    /// receive THIS value, so they all observe the same in-memory stores. (The
+    /// in-window five-proxy composition this replaces lived in
+    /// `MainConstructorWindow`'s constructor; the test scenes keep their own
+    /// parameterless `DefaultStores` default in `TableAndElementRotationView`.)
+    let context = AppContext.create workbenchSettings
+
 /// The Main screen (Spec 0027): the dynamic "Lego constructor". It is the SAME table + element scene
 /// as "Test Table + Element Rotations" (`TableAndElementRotationView` — same table, same initial zoom,
 /// same select/unselect + rotation/zoom/pan logic), seeded with a light source and a detector and given
 /// an add/remove palette so elements can be added and removed at runtime. The ONLY difference from the
 /// test scene is that palette (`initMain`); the scene logic is shared. (The old Elmish constructor
 /// shell that used to sit beside this window was retired in spec 0038 Part B.1.)
-type MainConstructorWindow() as this =
+type MainConstructorWindow(context : AppContext) as this =
     inherit HostWindow()
     do
         this.Title <- "Optical Constructor — Main"
@@ -62,29 +69,17 @@ type MainConstructorWindow() as this =
         // Spec 0027 task 018: the Main screen is now the ribbon of "large controls" (`mainView`) — the
         // ribbon's tab strip + the tallest bay (Render, three rows) need more headroom than the flat bar.
         this.Height <- TableAndElementRotationView.canvasHeight + 210.0
-        // Spec 0027 (024): build the mock Library + Experiments proxies at the composition root and inject
-        // them into the Main scene. Real, disk-backed proxies would later be built here instead (in
-        // `OpticalConstructor.Storage`), leaving the scene/bay logic unchanged.
-        let library = OpticalConstructor.Domain.Library.createInMemory ()
-        let experiments = OpticalConstructor.Domain.Experiments.createInMemory ()
-        // Spec 0033 (024/026): the material / sample WRITE stores (STORE_XDUO_0001/0002) join the
-        // composition — the samples store first, then the materials store whose remove-block
-        // consults the LIVE samples through `samplesReferencing`. All FIVE proxies (library /
-        // experiments / materials / samples / categories) inject through `initMainWith` (which seeds
-        // the REAL editor launchers, `EditorLaunchers.defaults`); the ui-smoke composition acceptance
-        // (`WireUiCompositionTests`) drives THIS window headless — the reordered full-surface
-        // Materials / Library bays render over the wired stores and Add / Edit / Categories… open the
-        // three real editor windows.
-        let samples = SampleProxy.createInMemory ()
-        let materials = OpticalConstructor.Domain.MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
-        // Spec 0035 (009/019): the category WRITE store (STORE_XDUO_0003) joins the composition LAST —
-        // its remove-block consults the live materials store through `materialsReferencingCategory`.
-        // Step 009 threaded it through `initMainWith`; the step-019 WIRE_UI slice OWNS the composition
-        // acceptance — `WireUiCompositionTests` drives THIS window headless and the Materials bay's
-        // "Categories…" verb opens the real Category editor over this root-wired proxy, beside the
-        // Material / Sample editors.
-        let categories = OpticalConstructor.Domain.MaterialLibrary.CategoryProxy.createInMemory (OpticalConstructor.Domain.MaterialLibrary.materialsReferencingCategory materials)
-        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith library experiments materials samples categories) TableAndElementRotationView.update TableAndElementRotationView.mainView
+        // Spec 0038 Part C (step 006): the five proxies — library / experiments / materials /
+        // samples / categories (STORE_XDUO_0001/0002/0003, coupled in `AppContext.create`:
+        // materials consult the LIVE samples, categories the LIVE materials) — are NO LONGER
+        // built here; they arrive as the injected app-scope `context` built once at startup
+        // (`Startup.context`), so every Main window the launcher opens shares the same stores.
+        // All five inject through `initMainWith` (which seeds the REAL editor launchers,
+        // `EditorLaunchers.defaults`), so the editor windows the workbench verbs open write to
+        // the SAME app-scope stores. The ui-smoke composition acceptance
+        // (`WireUiCompositionTests`, and the step-006 two-surface proof in `AppContextTests`)
+        // drives THIS window headless over a context composed the same way.
+        Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories) TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run
 
@@ -94,7 +89,7 @@ type MainConstructorWindow() as this =
 /// executable's `TestLauncherWindow` (spec 0038 Part C, step 004), so test code no
 /// longer sits in the product dependency graph; the product launcher keeps Main only
 /// (Inverse / Materials / Library land in step 45).
-type LauncherWindow() as this =
+type LauncherWindow(context : AppContext) as this =
     inherit Window()
 
     do
@@ -113,7 +108,9 @@ type LauncherWindow() as this =
                 Name = "OpenMainButton",
                 Content = "Main",
                 HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
-        mainButton.Click.Add(fun _ -> MainConstructorWindow().Show())
+        // Spec 0038 Part C (step 006): every Main window opens over the SAME injected
+        // app scope — opening Main twice yields two views over one set of stores.
+        mainButton.Click.Add(fun _ -> MainConstructorWindow(context).Show())
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         panel.Children.Add mainButton
@@ -134,7 +131,7 @@ type App() =
             // The launcher is the startup window. Closing it after opening Main / a test
             // window must NOT quit the app, so shut down only when the last window closes.
             desktop.ShutdownMode <- ShutdownMode.OnLastWindowClose
-            desktop.MainWindow <- LauncherWindow()
+            desktop.MainWindow <- LauncherWindow(Startup.context)
         | _ -> ()
 
 module Program =

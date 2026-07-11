@@ -79,6 +79,13 @@
         <Compile Include="CategoryEditorView.fs" />
         <Compile Include="CategoryEditorWindow.fs" />
         <Compile Include="TableAndElementRotationView.fs" />
+        <!-- Spec 0038 Part C (step 006): the ONE app-scope composition record — the
+             five domain proxies plus the step-005 WorkbenchSettings, built once at
+             App startup and injected into every window (the in-window five-proxy
+             composition leaves Program.fs; DefaultStores above stays the test-scene
+             default). Last in the list so later Part C/E/F window files can consume
+             both the workbench and the context. -->
+        <Compile Include="AppContext.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a

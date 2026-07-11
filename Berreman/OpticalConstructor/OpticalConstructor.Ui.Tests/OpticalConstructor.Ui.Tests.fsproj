@@ -149,6 +149,12 @@
              n and k for every model kind incl. the four transcendental, and rasterizes one frame; and both
              host sites embed the AvaPlot and render for a dispersive (incl. transcendental) + non-dispersive. -->
         <Compile Include="EmbeddedChartTests.fs" />
+        <!-- Spec 0038 Part C (step 006): the app-scope composition context (AppContext) —
+             pure contract pins on `create` (settings carried, materials→samples coupling,
+             one scope shares / two scopes don't; gate `ui-tests`) plus the slice acceptance
+             (gate `ui-smoke`): two REAL Main windows over ONE app scope share the stores —
+             a material added through one window's real editor is listed by the other. -->
+        <Compile Include="AppContextTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -15,6 +15,8 @@ open Avalonia.Interactivity
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
+open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Ui
 open OpticalConstructor.App
 
 module LauncherTests =
@@ -27,10 +29,14 @@ module LauncherTests =
     let private tryFindButton (name : string) (w : Window) : Button option =
         buttons w |> List.tryFind (fun b -> b.Name = name)
 
+    /// A fresh app-scope context per launcher (spec 0038 step 006: the launcher receives the
+    /// ONE `Startup.context` in the app; each test isolates its own mutable stores the same way).
+    let private freshContext () : AppContext = AppContext.create WorkbenchSettings.defaults
+
     /// Open a fresh launcher on the shared headless session and run `check` over it.
     let private withLauncher (check : LauncherWindow -> unit) : unit =
         HeadlessSession.run (fun () ->
-            let launcher = LauncherWindow()
+            let launcher = LauncherWindow(freshContext ())
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try check launcher
@@ -68,7 +74,7 @@ module LauncherTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Main button opens the Main constructor scene`` () =
         HeadlessSession.run (fun () ->
-            let launcher = LauncherWindow()
+            let launcher = LauncherWindow(freshContext ())
             launcher.Show()
             Dispatcher.UIThread.RunJobs()
             try
