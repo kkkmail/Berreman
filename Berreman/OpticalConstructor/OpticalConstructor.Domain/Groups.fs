@@ -1,6 +1,6 @@
 namespace OpticalConstructor.Domain
 
-/// Element groups + experiment collections (Spec 0026 Part G / Part H, slice 007). This is
+/// Element groups + workbench toggle sets (Spec 0026 Part G / Part H, slice 007). This is
 /// a NET-NEW, pure, headless-testable domain layer sitting above the placement layer
 /// (`Placement.fs`): it introduces NO drawing code, NO storage code (the separate
 /// groups/collections JSON is `OpticalConstructor.Storage/GroupsLibrary.fs`), and NO
@@ -92,7 +92,7 @@ module Groups =
             else { g with members = g.members |> List.mapi (fun j m -> { m with inBeam = (j = i) }) }
 
     // -----------------------------------------------------------------------
-    // Experiment collections (Part H / R-5).
+    // Workbench toggle sets (Part H / R-5).
     // -----------------------------------------------------------------------
 
     /// A named on/off toggle (H.1): an experiment, an element, or a group within a collection.
@@ -108,24 +108,27 @@ module Groups =
         static member on (name : string) : Toggle = { name = name; enabled = true }
         static member off (name : string) : Toggle = { name = name; enabled = false }
 
-    /// An experiment collection (H.1.1): a named set of experiments sharing the same sample(s),
-    /// with elements and groups turned on and off across the whole collection. Collections are
-    /// stored in the SAME separate JSON file as groups (G.3) and round-trip through it (AC-H1).
-    type ExperimentCollection =
+    /// A workbench toggle set (H.1.1): a named set of experiments sharing the same sample(s),
+    /// with elements and groups turned on and off across the whole set. Toggle sets are stored
+    /// in the SAME separate JSON file as groups (G.3) and round-trip through it (AC-H1); they
+    /// populate the `collections` array of `GroupsLibrary` (the on-disk field name is unchanged).
+    /// This is the OLDER toggle-based type — *experiment collection* now names the live
+    /// `Experiments` concept (`ElementId.fs`) exclusively.
+    type WorkbenchToggleSet =
         {
             name : string
-            /// The shared sample value-ids the experiments in the collection revolve around (H.1.1).
+            /// The shared sample value-ids the experiments in the toggle set revolve around (H.1.1).
             sampleValueIds : string list
-            /// The experiments grouped by the collection, each on or off (H.1.1).
+            /// The experiments grouped by the toggle set, each on or off (H.1.1).
             experiments : Toggle list
-            /// Elements (by value-id) toggled on/off across the collection (H.1.1).
+            /// Elements (by value-id) toggled on/off across the toggle set (H.1.1).
             elements : Toggle list
-            /// Groups (by name) toggled on/off across the collection (H.1.1).
+            /// Groups (by name) toggled on/off across the toggle set (H.1.1).
             groups : Toggle list
         }
 
-        /// A new, empty collection around the given shared sample value-ids.
-        static member create (name : string) (sampleValueIds : string list) : ExperimentCollection =
+        /// A new, empty toggle set around the given shared sample value-ids.
+        static member create (name : string) (sampleValueIds : string list) : WorkbenchToggleSet =
             { name = name; sampleValueIds = sampleValueIds; experiments = []; elements = []; groups = [] }
 
     /// Set the on/off state of a named toggle within a `Toggle list` (H.1.1) — the shared
@@ -144,7 +147,7 @@ module Groups =
     type GroupsLibrary =
         {
             groups : ElementGroup list
-            collections : ExperimentCollection list
+            collections : WorkbenchToggleSet list
         }
 
         /// The empty library — no groups, no collections (the fall-back when no file exists).

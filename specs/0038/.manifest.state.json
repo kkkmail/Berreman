@@ -2,7 +2,7 @@
   "manifest": "C:\\GitHub\\Berreman\\specs\\0038\\.manifest",
   "branch": "0038",
   "started_utc": "2026-07-10T22:12:07Z",
-  "last_updated_utc": "2026-07-11T12:52:46Z",
+  "last_updated_utc": "2026-07-11T13:31:48Z",
   "completed_slices": [
     {
       "index": 0,
@@ -157,11 +157,18 @@
       "commit": "a89386fdf31dc2f47c4d84f6f7dcedd73cc30fe0",
       "manual": false,
       "utc": "2026-07-11T12:52:46Z"
+    },
+    {
+      "index": 22,
+      "path": "specs\\0038\\.slices\\023.slice-md",
+      "commit": "34be9ac1c0e469488df1dfa70ec305088b643c82",
+      "manual": false,
+      "utc": "2026-07-11T13:31:48Z"
     }
   ],
   "current_slice": {
-    "index": 22,
-    "path": "specs\\0038\\.slices\\023.slice-md",
+    "index": 23,
+    "path": "specs\\0038\\.slices\\024.slice-md",
     "status": "running",
     "reason": "",
     "worker_logs": "",
@@ -172,7 +179,6 @@
     "consumed_reply_shas": []
   },
   "remaining_slices": [
-    "specs\\0038\\.slices\\024.slice-md",
     "specs\\0038\\.slices\\025.slice-md",
     "specs\\0038\\.slices\\026.slice-md",
     "specs\\0038\\.slices\\027.slice-md",
