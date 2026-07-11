@@ -162,6 +162,13 @@
              open activates, two editor keys create two windows, forget re-creates;
              gate `ui-smoke`). -->
         <Compile Include="WindowLauncherTests.fs" />
+        <!-- Spec 0038 Part E (step 012, UICOMP_XDUO_0008): the FacetedTreeControls component —
+             pure contract (empty state + the stable UiIds and derived per-item ids; gate
+             `ui-tests`) plus headless structure proofs (every declared automation id over a known
+             State, chip click → removeConstraint, offered-value click → applyConstraint, gated
+             mode shows Show/Search and ZERO tree rows, the filter and manual-range boxes commit
+             on Enter/LostFocus only — never per keystroke; gate `ui-smoke`). -->
+        <Compile Include="FacetedTreeControlsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
