@@ -207,6 +207,13 @@
              file under the test output, and asserts the Test table exists + round-trips a
              row. No MSSQL server anywhere. -->
         <Compile Include="TestDbMigrationTests.fs" />
+        <!-- Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam — the
+             DECLARED [<ReferenceEquality>] SeedingProxy (saveCategory / saveMaterial /
+             saveSample / saveLibraryEntry) and the pure seedAll orchestrator. The recording
+             stub + mock-driven test prove seedAll pushes every EXISTING Domain seed value
+             exactly once, in category-material-sample-entry order, through the exact
+             signatures; plus the reference equality and the SeedRejected short-circuit. -->
+        <Compile Include="SeedingProxyTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -278,6 +285,8 @@
 
     <ItemGroup>
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <!-- Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam under test. -->
+        <ProjectReference Include="..\OpticalConstructor.Seeding\OpticalConstructor.Seeding.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
