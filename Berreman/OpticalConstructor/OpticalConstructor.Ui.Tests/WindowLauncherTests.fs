@@ -1,22 +1,29 @@
-/// Spec 0038 Part C (step 007, SVC_XDUO_0001 — declared): the WindowLauncher
-/// contract, pinned mock-driven. Every record field is exercised through its
-/// exact signature against `WindowLauncher.createMock` over recording stub
-/// factories — no real windowing behaviour is under test (that is step 008).
-/// Pure signature pins (gate `ui-tests`): the modality decision for both
-/// step-005 switch values, the typed forget-of-unknown-key error, factory
-/// failure propagating without registering, and the id-keyed editor-key /
-/// `EntryFreshness` shape. Registry behaviour over stub-built windows (gate
-/// `ui-smoke`, windows constructed but never shown, on the shared headless
-/// session): a second open of the same `WindowKey` activates instead of
-/// creating (every single-instance key and a same-id editor key), two
-/// different editor keys create two windows, and a forgotten key re-creates
-/// on its next open.
+/// Spec 0038 Part C (steps 007/008, SVC_XDUO_0001 — implemented): the
+/// WindowLauncher contract, pinned mock-driven (step 007) AND real (step 008).
+/// The mock section exercises every record field through its exact signature
+/// against `WindowLauncher.createMock` over recording stub factories. The real
+/// section drives `WindowLauncher.create` over the ONE host-layer
+/// `WindowRegistry`: a second open ACTIVATES the live window, `Closed`
+/// unregisters (a stale close never drops a successor), a forgotten key
+/// re-creates, and a Select-state open follows the step-005 modality switch —
+/// `ShowDialog` owned by the requesting window under `ModalSelectWindows`,
+/// unowned `Show` under `ModelessSelectWindows`. The slice acceptance runs
+/// end-to-end through the rewired `EditorLaunchers.defaults`: Edit of the same
+/// material twice meets ONE window; two Adds create two `NewUnsaved` editors
+/// whose distinct upfront-minted Guids persist through `addMaterial` (and a
+/// sample Add through `addSample`). Every real-registry test CLOSES the windows
+/// it opens — the registry is app-global, so a leaked key would couple tests.
 namespace OpticalConstructor.Ui.Tests
 
+open Avalonia
 open Avalonia.Controls
+open Avalonia.Headless
+open Avalonia.Threading
+open Avalonia.VisualTree
 open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.WorkbenchSettings
+open OpticalConstructor.Ui
 open OpticalConstructor.Ui.WindowLauncher
 
 module WindowLauncherTests =
@@ -170,3 +177,295 @@ module WindowLauncherTests =
                 Assert.False(obj.ReferenceEquals(w, firstWindow), "a forgotten key must not resurrect the old window")
             | other -> Assert.Fail($"the open after a forget must create, got %A{other}")
             Assert.Equal<WindowKey list>([ MaterialsWindowKey; MaterialsWindowKey ], List.ofSeq created))
+
+    // ==================== the REAL launcher over the host-layer registry (step 008) ====================
+
+    /// The step-008 real launcher, Browse-mode, over a recording stub factory. Windows it
+    /// creates ARE shown (that is the real behaviour) — every test closes what it opens,
+    /// because the registry is the ONE app-global host map.
+    let private realWith (created : ResizeArray<WindowKey>) (modality : SelectWindowModality) : WindowLauncher =
+        WindowLauncher.create (recordingFactory created) modality BrowseOpen
+
+    /// In-memory app-shaped stores for the end-to-end defaults proofs (the canonical coupling
+    /// order; the `Library` open is scoped here for the `createInMemory` type extensions).
+    module private Stores =
+        open OpticalConstructor.Domain.Library
+
+        let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
+            let samples = SampleProxy.createInMemory ()
+            let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
+            let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+            materials, samples, categories
+
+    /// A control matches `id` by its `Name` OR its `AutomationProperties.AutomationId`
+    /// (the sibling suites' probe — the editors' controls carry AutomationIds).
+    let private matchesId (id : string) (c : Control) : bool =
+        c.Name = id || Avalonia.Automation.AutomationProperties.GetAutomationId(c) = id
+
+    let private tryFindControl (window : Window) (id : string) : Control option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function :? Control as c when matchesId id c -> Some c | _ -> None)
+
+    /// Click the centre of the clickable Border carrying `id` (by Name or AutomationId).
+    let private clickOn (window : Window) (id : string) : unit =
+        let found =
+            window.GetVisualDescendants()
+            |> Seq.tryPick (function :? Border as b when matchesId id b && b.IsEffectivelyVisible -> Some b | _ -> None)
+        match found with
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
+        | Some b ->
+            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+            if c.HasValue then
+                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                // A Save click closes the window during the press — skip the release then.
+                if window.IsVisible then
+                    window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                    Dispatcher.UIThread.RunJobs()
+            else Assert.Fail($"%s{id} has no on-screen position")
+
+    /// Set the text of the TextBox carrying `id`.
+    let private setText (window : Window) (id : string) (text : string) : unit =
+        match tryFindControl window id with
+        | Some (:? TextBox as tb) ->
+            tb.Text <- text
+            Dispatcher.UIThread.RunJobs()
+        | Some c -> Assert.Fail($"%s{id} is a %s{c.GetType().Name}, not a TextBox")
+        | None -> Assert.Fail($"%s{id} was not found")
+
+    // ---------------- pure pins on the real launcher (gate `ui-tests`) ----------------
+
+    [<Fact>]
+    let ``the real launcher hands back the modality switch baked in at construction`` () =
+        match (WindowLauncher.create unreachableFactory ModalSelectWindows BrowseOpen).decideSelectModality () with
+        | Ok ModalSelectWindows -> ()
+        | other -> Assert.Fail($"expected Ok ModalSelectWindows, got %A{other}")
+        match (WindowLauncher.create unreachableFactory ModelessSelectWindows BrowseOpen).decideSelectModality () with
+        | Ok ModelessSelectWindows -> ()
+        | other -> Assert.Fail($"expected Ok ModelessSelectWindows, got %A{other}")
+
+    [<Fact>]
+    let ``the real launcher's forget of a never-registered key is the typed WindowNotRegistered error`` () =
+        // A freshly minted id cannot be in the app-global registry.
+        let key = MaterialEditorKey (MaterialLibrary.newMaterialId ())
+        match (WindowLauncher.create unreachableFactory ModelessSelectWindows BrowseOpen).forgetWindow key with
+        | Error (WindowNotRegistered k) -> Assert.Equal(key, k)
+        | other -> Assert.Fail($"expected Error (WindowNotRegistered …), got %A{other}")
+
+    [<Fact>]
+    let ``a real-launcher factory failure (or throw) is the typed error and the key stays unregistered`` () =
+        let key = SampleEditorKey (Library.newSampleId ())
+        let launcher = WindowLauncher.create failingFactory ModelessSelectWindows BrowseOpen
+        match launcher.openOrActivate key with
+        | Error (WindowFactoryFailed (k, reason)) ->
+            Assert.Equal(key, k)
+            Assert.Contains("refuses", reason)
+        | other -> Assert.Fail($"expected Error (WindowFactoryFailed …), got %A{other}")
+        // The retry consults the factory again — nothing was registered for the key.
+        match launcher.openOrActivate key with
+        | Error (WindowFactoryFailed _) -> ()
+        | other -> Assert.Fail($"the retry must reach the factory again, got %A{other}")
+        // A THROWING factory is caught at the launcher boundary and mapped, never rethrown.
+        let throwing : WindowKey -> Result<Window, WindowLauncherError> = fun _ -> failwith "boom"
+        match (WindowLauncher.create throwing ModelessSelectWindows BrowseOpen).openOrActivate key with
+        | Error (WindowFactoryFailed (_, reason)) -> Assert.Contains("boom", reason)
+        | other -> Assert.Fail($"a factory throw must map to the typed error, got %A{other}")
+
+    // ------------- real registry behaviour over shown windows (gate `ui-smoke`) -------------
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``real launcher: a second open of the same key ACTIVATES the live shown window — one factory call`` () =
+        HeadlessSession.run (fun () ->
+            let created = ResizeArray<WindowKey>()
+            let launcher = realWith created ModelessSelectWindows
+            let key = MaterialEditorKey (MaterialLibrary.newMaterialId ())
+            let firstWindow =
+                match launcher.openOrActivate key with
+                | Ok (CreatedWindow w) -> w
+                | other -> failwith $"the first open must create, got %A{other}"
+            Assert.True(firstWindow.IsVisible, "a Browse-mode create must SHOW the window")
+            match launcher.openOrActivate key with
+            | Ok (ActivatedWindow w) ->
+                Assert.True(obj.ReferenceEquals(w, firstWindow), "the second open must activate the SAME live window")
+            | other -> Assert.Fail($"the second open must activate, got %A{other}")
+            Assert.Equal(1, created.Count)
+            firstWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``real launcher: closing the window unregisters it — the next open creates afresh`` () =
+        HeadlessSession.run (fun () ->
+            let created = ResizeArray<WindowKey>()
+            let launcher = realWith created ModelessSelectWindows
+            let key = SampleEditorKey (Library.newSampleId ())
+            let firstWindow =
+                match launcher.openOrActivate key with
+                | Ok (CreatedWindow w) -> w
+                | other -> failwith $"the first open must create, got %A{other}"
+            // The REAL unregister path: the window's own Closed event, not an explicit forget.
+            firstWindow.Close()
+            Dispatcher.UIThread.RunJobs()
+            match launcher.openOrActivate key with
+            | Ok (CreatedWindow w) ->
+                Assert.False(obj.ReferenceEquals(w, firstWindow), "a closed key must not resurrect the old window")
+                w.Close()
+                Dispatcher.UIThread.RunJobs()
+            | other -> Assert.Fail($"the open after a close must create, got %A{other}")
+            Assert.Equal(2, created.Count))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``real launcher: a stale window's close never drops its successor's registration`` () =
+        HeadlessSession.run (fun () ->
+            let created = ResizeArray<WindowKey>()
+            let launcher = realWith created ModelessSelectWindows
+            let key = MaterialEditorKey (MaterialLibrary.newMaterialId ())
+            let stale =
+                match launcher.openOrActivate key with
+                | Ok (CreatedWindow w) -> w
+                | other -> failwith $"the first open must create, got %A{other}"
+            // Forget-then-recreate: the key now holds a SUCCESSOR window…
+            match launcher.forgetWindow key with
+            | Ok () -> ()
+            | Error e -> Assert.Fail($"forgetting a live key must succeed, got %A{e}")
+            let successor =
+                match launcher.openOrActivate key with
+                | Ok (CreatedWindow w) -> w
+                | other -> failwith $"the open after a forget must create, got %A{other}"
+            // …so the STALE window's late close must not unhook it (the Closed hook removes
+            // the registration only while it still points at the closing window).
+            stale.Close()
+            Dispatcher.UIThread.RunJobs()
+            match launcher.openOrActivate key with
+            | Ok (ActivatedWindow w) ->
+                Assert.True(obj.ReferenceEquals(w, successor), "the successor must still be registered after the stale close")
+            | other -> Assert.Fail($"the successor must activate, got %A{other}")
+            successor.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a Select-state open follows the step-005 switch — ShowDialog owned by the requester under modal, unowned Show under modeless`` () =
+        HeadlessSession.run (fun () ->
+            let requester = Window()
+            requester.Show()
+            // Modal: the created window is shown as a DIALOG owned by the requesting window.
+            let modalKey = SampleEditorKey (Library.newSampleId ())
+            let modalLauncher =
+                WindowLauncher.create (recordingFactory (ResizeArray())) ModalSelectWindows (SelectOpen requester)
+            (match modalLauncher.openOrActivate modalKey with
+             | Ok (CreatedWindow w) ->
+                 Assert.True(w.IsVisible, "the modal Select open must show the dialog")
+                 Assert.True(obj.ReferenceEquals(w.Owner, requester), "ShowDialog must own the dialog to the requesting window")
+                 w.Close()
+                 Dispatcher.UIThread.RunJobs()
+             | other -> Assert.Fail($"the modal Select open must create, got %A{other}"))
+            // Modeless: the created window is an ordinary unowned Show.
+            let modelessKey = SampleEditorKey (Library.newSampleId ())
+            let modelessLauncher =
+                WindowLauncher.create (recordingFactory (ResizeArray())) ModelessSelectWindows (SelectOpen requester)
+            (match modelessLauncher.openOrActivate modelessKey with
+             | Ok (CreatedWindow w) ->
+                 Assert.True(w.IsVisible, "the modeless Select open must show the window")
+                 Assert.Null(w.Owner)
+                 w.Close()
+                 Dispatcher.UIThread.RunJobs()
+             | other -> Assert.Fail($"the modeless Select open must create, got %A{other}"))
+            requester.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    // ------ the slice acceptance, end-to-end through the rewired EditorLaunchers.defaults ------
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Edit of the same material twice ACTIVATES one editor window — never a second copy`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = Stores.create ()
+            let entry =
+                match materials.tryGetMaterial MaterialLibrary.MaterialIds.glass152 with
+                | Ok (Some e) -> e
+                | other -> failwith $"glass152 must be seeded, got %A{other}"
+            // Observe the windows the REAL rewired defaults open (the WireUiComposition seam).
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
+            launchers.openMaterialEditor materials categories (MaterialEditorView.EditMaterial entry)
+            Dispatcher.UIThread.RunJobs()
+            launchers.openMaterialEditor materials categories (MaterialEditorView.EditMaterial entry)
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            Assert.True(opened.[0].IsVisible, "the one editor window must be live")
+            opened.[0].Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: Add twice creates two NewUnsaved editors whose distinct upfront Guids persist through addMaterial`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = Stores.create ()
+            // The two upfront mints — the verb's window-open dispatch shape (spec 0038 step 008).
+            let mintedA = MaterialLibrary.newMaterialId ()
+            let mintedB = MaterialLibrary.newMaterialId ()
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
+            launchers.openMaterialEditor materials categories (MaterialEditorView.NewMaterial mintedA)
+            Dispatcher.UIThread.RunJobs()
+            launchers.openMaterialEditor materials categories (MaterialEditorView.NewMaterial mintedB)
+            Dispatcher.UIThread.RunJobs()
+            // Two distinct minted ids → two distinct NewUnsaved editor windows.
+            Assert.Equal(2, opened.Count)
+            Assert.False(obj.ReferenceEquals(opened.[0], opened.[1]), "two Adds must open two windows")
+            // Save each: the NewUnsaved freshness routes addMaterial under the id minted AT OPEN.
+            setText opened.[0] MaterialEditorView.UiIds.nameBox "Launcher add A"
+            clickOn opened.[0] MaterialEditorView.UiIds.saveButton
+            setText opened.[1] MaterialEditorView.UiIds.nameBox "Launcher add B"
+            clickOn opened.[1] MaterialEditorView.UiIds.saveButton
+            Assert.False(opened.[0].IsVisible)
+            Assert.False(opened.[1].IsVisible)
+            match materials.tryGetMaterial mintedA with
+            | Ok (Some e) -> Assert.Equal("Launcher add A", e.name)
+            | other -> Assert.Fail($"the first Add must persist under its upfront-minted id, got %A{other}")
+            match materials.tryGetMaterial mintedB with
+            | Ok (Some e) -> Assert.Equal("Launcher add B", e.name)
+            | other -> Assert.Fail($"the second Add must persist under its upfront-minted id, got %A{other}"))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance: a sample Add opened through the launcher persists through addSample under its minted id`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, _ = Stores.create ()
+            let minted = Library.newSampleId ()
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            let launchers = TableAndElementRotationView.EditorLaunchers.defaults
+            launchers.openSampleEditor materials samples (SampleEditorView.NewBlankSample minted)
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let editor = opened.[0]
+            // Name it and give it one layer (a valid stack), then Save — NewUnsaved → addSample.
+            setText editor SampleEditorView.UiIds.nameBox "Launcher sample"
+            clickOn editor (SampleEditorView.UiIds.materialOption (string MaterialLibrary.MaterialIds.glass152.value))
+            clickOn editor SampleEditorView.UiIds.addLayerButton
+            clickOn editor SampleEditorView.UiIds.saveButton
+            Assert.False(editor.IsVisible)
+            match samples.tryGetSample minted with
+            | Ok (Some s) -> Assert.Equal("Launcher sample", s.name)
+            | other -> Assert.Fail($"the sample Add must persist under its upfront-minted id, got %A{other}"))

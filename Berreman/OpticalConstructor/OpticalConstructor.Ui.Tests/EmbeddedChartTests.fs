@@ -199,7 +199,7 @@ module EmbeddedChartTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Material editor preview embeds the shared AvaPlot for a non-dispersive default and a transcendental model`` () =
         HeadlessSession.run (fun () ->
-            let window = MaterialEditorWindow(freshMaterialProxy (), None)
+            let window = MaterialEditorWindow(freshMaterialProxy (), MaterialEditorView.NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The default (isotropic, non-dispersive) editor derives a preview: the embedded AvaPlot renders.

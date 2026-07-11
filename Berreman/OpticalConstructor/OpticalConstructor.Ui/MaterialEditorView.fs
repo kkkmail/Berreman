@@ -11,9 +11,11 @@
 /// `nkDispersionStyle`, per-side bounds from the 018 `ChartStyle.dataBounds`) as an inline
 /// canvas; a negative sampled k surfaces the advisory gain warning (the
 /// `imaginaryIndexGainWarning` rule, restated in Domain — Ui/Validation.fs:92). Save persists
-/// through `MaterialProxy` — `addMaterial` minting `MaterialId.create` for a new entry,
-/// `updateMaterial` for an existing one — storing `complexity = Some model` with
-/// `properties = model.toProperties`; entries with `complexity = None` (silicon, langasite)
+/// through `MaterialProxy`, routing on the target's `EntryFreshness` (spec 0038 step 008):
+/// `addMaterial` for a `NewUnsaved` entry — whose `MaterialId` was minted AT WINDOW OPEN
+/// (`MaterialEditorIntent.NewMaterial`), off the save path — and `updateMaterial` for a
+/// `Persisted` one; both store `complexity = Some model` with
+/// `properties = model.toProperties`. Entries with `complexity = None` (silicon, langasite)
 /// open VIEW-ONLY and offer no Edit affordance (no ladder, no Save). Pure: `update` only
 /// reaches IO through the context's proxy fields.
 module OpticalConstructor.Ui.MaterialEditorView
@@ -164,11 +166,23 @@ module UiIds =
     /// One coefficient entry inside a Polder component's dispersion-formula editor.
     let polderComponentFormulaBox (code : string) (key : string) : string = $"PolderFormulaBox_{code}_{key}"
 
-/// What Save targets: a brand-new entry (mint a fresh `MaterialId`) or an existing one (keep
-/// its id and update in place). A DU, not a naked bool.
+/// How the Material editor OPENS (spec 0038 step 008): Add mints the entry's `MaterialId`
+/// AT WINDOW OPEN — the id-mint left the save path, so the window-policy seam
+/// (`WindowLauncher`) can key the editor's registry entry by the SAME id the eventual Save
+/// persists under — while Edit carries the store entry. A DU, not an option-plus-mint: the
+/// open intents are NAMED (the `SampleEditorIntent` precedent).
+type MaterialEditorIntent =
+    | NewMaterial of mintedId : MaterialId
+    | EditMaterial of entry : MaterialEntry
+
+/// What Save targets (spec 0038 step 008): the entity id — ALWAYS present, minted at
+/// Add-window open — plus its `EntryFreshness`. Save routes on the freshness (`NewUnsaved`
+/// → `addMaterial`, `Persisted` → `updateMaterial`); no save path mints an id anymore.
 type EditorTarget =
-    | NewMaterial
-    | ExistingMaterial of MaterialId
+    {
+        materialId : MaterialId
+        freshness : WindowLauncher.EntryFreshness
+    }
 
 /// Whether the window edits or only shows. `ViewOnlyMaterial` carries the WHY (an entry whose
 /// physics is engine-coded — `complexity = None` — or a complexity this editor cannot seed):
@@ -346,11 +360,15 @@ let complexitySummary (m : Model) : string =
 // init / update (pure — IO only through the context's proxy fields).
 // ---------------------------------------------------------------------------
 
-let init (context : MaterialEditorContext) (existing : MaterialEntry option) : Model =
-    let blank =
+let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Model =
+    match intent with
+    | NewMaterial mintedId ->
+        // The Add path: the id was minted AT WINDOW OPEN (spec 0038 step 008) and rides the
+        // model as a NewUnsaved target, so Save persists under the SAME id the launcher's
+        // registry already keys this window by.
         {
             context = context
-            target = NewMaterial
+            target = { materialId = mintedId; freshness = WindowLauncher.NewUnsaved }
             mode = EditableMaterial
             name = ""
             description = ""
@@ -359,15 +377,19 @@ let init (context : MaterialEditorContext) (existing : MaterialEntry option) : M
             presetProperties = None
             status = None
         }
-    match existing with
-    | None -> blank
-    | Some entry ->
+    | EditMaterial entry ->
         let seeded =
-            { blank with
-                target = ExistingMaterial entry.id
+            {
+                context = context
+                target = { materialId = entry.id; freshness = WindowLauncher.Persisted }
+                mode = EditableMaterial
                 name = entry.name
                 description = (match entry.description with Some d -> d | None -> "")
-                category = entry.category }
+                category = entry.category
+                editor = defaultState
+                presetProperties = None
+                status = None
+            }
         match entry.complexity with
         | None ->
             { seeded with
@@ -411,10 +433,12 @@ let update (msg : Msg) (m : Model) : Model =
                         properties = complexity.toProperties
                         complexity = Some complexity
                     }
+                // Spec 0038 step 008: Save routes on the freshness of the upfront id — the
+                // id-mint left this path (it happens at window open, `MaterialEditorIntent`).
                 let saved =
-                    match m.target with
-                    | NewMaterial -> m.context.materials.addMaterial (entryUnder (newMaterialId ()))
-                    | ExistingMaterial id -> m.context.materials.updateMaterial (entryUnder id)
+                    match m.target.freshness with
+                    | WindowLauncher.NewUnsaved -> m.context.materials.addMaterial (entryUnder m.target.materialId)
+                    | WindowLauncher.Persisted -> m.context.materials.updateMaterial (entryUnder m.target.materialId)
                 match saved with
                 | Ok () ->
                     m.context.requestClose ()

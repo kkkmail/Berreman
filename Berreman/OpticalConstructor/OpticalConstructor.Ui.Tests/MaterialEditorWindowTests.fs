@@ -129,7 +129,8 @@ module MaterialEditorWindowTests =
 
     let private newModel () : Model =
         let _, _, context = recordingContext ()
-        init context None
+        // The Add-open shape (spec 0038 step 008): the id is minted AT WINDOW OPEN.
+        init context (NewMaterial (newMaterialId ()))
 
     // ============================ pure control contract ============================
 
@@ -437,36 +438,43 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``init seeds a new material, an existing editable entry, and a view-only entry`` () =
-        let m = newModel ()
-        Assert.Equal(NewMaterial, m.target)
+        // The Add path (spec 0038 step 008): the upfront-minted id rides the target as a
+        // NewUnsaved entry — the SAME id the launcher's registry keys the window by.
+        let minted = newMaterialId ()
+        let _, _, newContext = recordingContext ()
+        let m = init newContext (NewMaterial minted)
+        Assert.Equal({ materialId = minted; freshness = WindowLauncher.NewUnsaved }, m.target)
         Assert.Equal(EditableMaterial, m.mode)
         Assert.Equal("", m.name)
         Assert.Equal<MaterialComplexityEditState>(defaultState, m.editor)
         // An existing editable entry seeds the ladder from its complexity.
         let glass = builtIn MaterialIds.glass152
         let _, _, context = recordingContext ()
-        let existing = init context (Some glass)
-        Assert.Equal(ExistingMaterial glass.id, existing.target)
+        let existing = init context (EditMaterial glass)
+        Assert.Equal({ materialId = glass.id; freshness = WindowLauncher.Persisted }, existing.target)
         Assert.Equal(glass.name, existing.name)
         Assert.Equal(EditableMaterial, existing.mode)
         match glass.complexity with
         | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity existing.editor)
         | None -> Assert.Fail("glass must carry an edit model")
         // A complexity-less entry (engine-coded physics) opens view-only.
-        let silicon = init context (Some (builtIn MaterialIds.silicon))
+        let silicon = init context (EditMaterial (builtIn MaterialIds.silicon))
         match silicon.mode with
         | ViewOnlyMaterial _ -> ()
         | EditableMaterial -> Assert.Fail("silicon (complexity = None) must open view-only")
 
     [<Fact>]
     let ``Save adds a NEW material with complexity Some, updates an EXISTING one, and Cancel writes nothing`` () =
-        // New → addMaterial minting a fresh id, then close.
+        // NewUnsaved → addMaterial under the UPFRONT-minted id (spec 0038 step 008 — the mint
+        // happened at window open, not here), then close.
         let calls, saved, context = recordingContext ()
-        init context None
+        let minted = newMaterialId ()
+        init context (NewMaterial minted)
         |> update (SetName "Fresh")
         |> update SaveClicked
         |> ignore
         Assert.Equal<string list>([ "add:Fresh"; "close" ], List.ofSeq calls)
+        Assert.Equal(minted, saved.[0].id)
         match saved.[0].complexity with
         | Some c ->
             Assert.Equal<MaterialComplexity>(defaultComplexity, c)
@@ -474,10 +482,10 @@ module MaterialEditorWindowTests =
             let eps = saved.[0].properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
             Assert.True(close (eps.[0, 0].Real) (1.5 * 1.5), $"eps11 = %A{eps.[0, 0]}")
         | None -> Assert.Fail("Save must store complexity = Some model")
-        // Existing → updateMaterial under the SAME id, then close.
+        // Persisted → updateMaterial under the SAME id, then close.
         let calls2, saved2, context2 = recordingContext ()
         let glass = builtIn MaterialIds.glass152
-        init context2 (Some glass)
+        init context2 (EditMaterial glass)
         |> update (SetName "Edited")
         |> update SaveClicked
         |> ignore
@@ -485,7 +493,7 @@ module MaterialEditorWindowTests =
         Assert.Equal(glass.id, saved2.[0].id)
         // Cancel → close only; the proxy is never reached.
         let calls3, _, context3 = recordingContext ()
-        init context3 (Some glass)
+        init context3 (EditMaterial glass)
         |> update (SetName "Discarded")
         |> update CancelClicked
         |> ignore
@@ -504,7 +512,7 @@ module MaterialEditorWindowTests =
                 removeMaterial = fun _ -> Ok ()
             }
         let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
-        let m = init context None |> update SaveClicked
+        let m = init context (NewMaterial (newMaterialId ())) |> update SaveClicked
         Assert.Empty(closes)
         match m.status with
         | Some reason -> Assert.Equal("the name is blank", reason)
@@ -517,7 +525,7 @@ module MaterialEditorWindowTests =
     let ``the window mounts with every slice-mandated UiId present`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(matchesId UiIds.window window, "the window itself carries the MaterialEditorWindow id")
@@ -549,7 +557,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: choosing biaxial exposes three principal-index fields`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Isotropic (the default): one index field.
@@ -572,7 +580,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: enabling activity on a uniaxial medium offers only the uniaxial gyration classes`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window (UiIds.anisotropyOption (anisotropyCode Uniaxial))
@@ -589,7 +597,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: unchecking a toggle restores the default model losslessly`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let initial = textOf window UiIds.summaryText
@@ -612,7 +620,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the eps branch offers Constant and Dispersive as two mutually-exclusive options`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Both options are present from the start — not a sticky single toggle (spec 0035 step 017).
@@ -642,7 +650,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials () with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window UiIds.nameBox "Headless material"
@@ -685,7 +693,7 @@ module MaterialEditorWindowTests =
                 match materials.listMaterials () with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
-            let window = MaterialEditorWindow(materials, Some existing)
+            let window = MaterialEditorWindow(materials, EditMaterial existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             setText window UiIds.nameBox "Renamed glass"
@@ -708,7 +716,7 @@ module MaterialEditorWindowTests =
     let ``a negative k surfaces the advisory gain warning and a non-negative k clears it`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal("", textOf window UiIds.gainWarning)
@@ -724,7 +732,7 @@ module MaterialEditorWindowTests =
     let ``a complexity-less entry opens view-only with no Save affordance and no ladder`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, Some (builtIn MaterialIds.silicon))
+            let window = MaterialEditorWindow(materials, EditMaterial (builtIn MaterialIds.silicon))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window UiIds.viewOnlyNote, "a view-only entry must say why it cannot be edited")
@@ -739,7 +747,7 @@ module MaterialEditorWindowTests =
     let ``the segment editor adds segments and a transcendental pick derives a dispersive eps`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window UiIds.dispersiveToggle
@@ -761,7 +769,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the activity Dispersive sub-toggle swaps each gyration component for a formula editor and back`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A uniaxial active medium's class carries exactly g11 and g33.
@@ -790,7 +798,7 @@ module MaterialEditorWindowTests =
     let ``acceptance: the magnetic Dispersive sub-toggle swaps the Polder components for formula editors and back`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
-            let window = MaterialEditorWindow(materials, None)
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
             clickOn window UiIds.magneticToggle

@@ -120,20 +120,25 @@ module MainWorkbenchTests =
         window
 
     /// A recording launcher pair (the functional-proxy seam — tests observe which editor a
-    /// verb requested without opening a window).
+    /// verb requested without opening a window). The NEW intents record their upfront-minted
+    /// id (spec 0038 step 008 — the verb mints at the window-open dispatch), so a test can
+    /// also pin that two Adds mint two DISTINCT ids.
     let private recordingLaunchers () : ResizeArray<string> * EditorLaunchers =
         let calls = ResizeArray<string>()
         let launchers : EditorLaunchers =
             {
                 openMaterialEditor =
-                    fun _ _ existing ->
-                        calls.Add(match existing with Some e -> "material-edit:" + e.name | None -> "material-add")
+                    fun _ _ intent ->
+                        calls.Add(
+                            match intent with
+                            | MaterialEditorView.EditMaterial e -> "material-edit:" + e.name
+                            | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}")
                 openSampleEditor =
                     fun _ _ intent ->
                         calls.Add(
                             match intent with
-                            | SampleEditorView.NewBlankSample -> "sample-add"
-                            | SampleEditorView.NewSeededMultilayer -> "sample-multilayer"
+                            | SampleEditorView.NewBlankSample mintedId -> $"sample-add:{mintedId.value}"
+                            | SampleEditorView.NewSeededMultilayer _ -> "sample-multilayer"
                             | SampleEditorView.EditSample s -> "sample-edit:" + s.name)
                 openCategoryEditor = fun _ -> calls.Add "categories-open"
             }
@@ -212,7 +217,7 @@ module MainWorkbenchTests =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         let ctx : MaterialEditorView.MaterialEditorContext =
             { materials = materials; categories = categories; requestClose = ignore }
-        let em = MaterialEditorView.init ctx None
+        let em = MaterialEditorView.init ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
         let before = MaterialEditorView.selectableCategories em
         // The four SelectableOnCreate built-ins are offered; Vacuum (HiddenOnCreate) is excluded.
         Assert.Contains(before, fun (c : MaterialCategory) -> c.id = CategoryIds.glass)
@@ -351,11 +356,11 @@ module MainWorkbenchTests =
         let calls, launchers = recordingLaunchers ()
         let m = { freshMain () with launchers = launchers }
         update MatAdd m |> ignore
-        Assert.Contains("material-add", calls)
+        Assert.Contains(calls, fun (c : string) -> c.StartsWith "material-add:")
         m |> update (MatSelectRow MaterialIds.glass152) |> update MatEdit |> ignore
         Assert.Contains("material-edit:Transparent glass (n = 1.52)", calls)
         update SmpAdd m |> ignore
-        Assert.Contains("sample-add", calls)
+        Assert.Contains(calls, fun (c : string) -> c.StartsWith "sample-add:")
         m |> update (SmpSelectRow SeedSamples.multilayerQw.id) |> update SmpEdit |> ignore
         Assert.Contains("sample-edit:Quarter-wave glass/vacuum multilayer (41 layers)", calls)
         // Make-multilayer is the second creation entry point, and its DISTINCT launcher path
@@ -369,6 +374,26 @@ module MainWorkbenchTests =
         update MatEdit m |> ignore
         update SmpEdit m |> ignore
         Assert.Empty(calls)
+
+    [<Fact>]
+    let ``two Adds mint two DISTINCT upfront ids at the window-open dispatch — for materials and samples`` () =
+        // Spec 0038 step 008: the id-mint left the save path — the Add verb mints the entity's
+        // Guid AT WINDOW OPEN and hands it to the launcher inside the intent, so every Add
+        // opens its own registry-keyed editor (the recorded call carries the minted id).
+        let calls, launchers = recordingLaunchers ()
+        let m = { freshMain () with launchers = launchers }
+        update MatAdd m |> ignore
+        update MatAdd m |> ignore
+        update SmpAdd m |> ignore
+        update SmpAdd m |> ignore
+        let mintsOf (prefix : string) : string list =
+            calls |> Seq.filter (fun c -> c.StartsWith prefix) |> List.ofSeq
+        match mintsOf "material-add:" with
+        | [ a; b ] -> Assert.NotEqual<string>(a, b)
+        | other -> Assert.Fail($"expected two material Adds, got %A{other}")
+        match mintsOf "sample-add:" with
+        | [ a; b ] -> Assert.NotEqual<string>(a, b)
+        | other -> Assert.Fail($"expected two sample Adds, got %A{other}")
 
     [<Fact>]
     let ``View toggles the read-only panel target for the selected entry`` () =
@@ -421,8 +446,8 @@ module MainWorkbenchTests =
             let launchers : EditorLaunchers =
                 {
                     openMaterialEditor =
-                        fun m categories existing ->
-                            let w = MaterialEditorWindow(m, existing, categories = categories)
+                        fun m categories intent ->
+                            let w = MaterialEditorWindow(m, intent, categories = categories)
                             opened.Add w
                             w.Show()
                     openSampleEditor =
@@ -664,7 +689,7 @@ module MainWorkbenchTests =
             Assert.Equal("Glazing", labelInside window (MaterialsControls.UiIds.categoryOption glassCode))
             // The create picker re-labels too: opening the editor over the SAME proxy shows "Glazing"
             // for the same stable Guid id (Vacuum stays excluded from the picker).
-            let editor = MaterialEditorWindow(materials, None, categories = categories)
+            let editor = MaterialEditorWindow(materials, MaterialEditorView.NewMaterial (newMaterialId ()), categories = categories)
             editor.Show()
             Dispatcher.UIThread.RunJobs()
             Assert.Equal("Glazing", labelInside editor (MaterialEditorView.UiIds.categoryOption glassCode))

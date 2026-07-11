@@ -75,10 +75,12 @@ type MainConstructorWindow(context : AppContext) as this =
         // built here; they arrive as the injected app-scope `context` built once at startup
         // (`Startup.context`), so every Main window the launcher opens shares the same stores.
         // All five inject through `initMainWith` (which seeds the REAL editor launchers,
-        // `EditorLaunchers.defaults`), so the editor windows the workbench verbs open write to
-        // the SAME app-scope stores. The ui-smoke composition acceptance
-        // (`WireUiCompositionTests`, and the step-006 two-surface proof in `AppContextTests`)
-        // drives THIS window headless over a context composed the same way.
+        // `EditorLaunchers.defaults` — since spec 0038 step 008 those open every editor
+        // through the SVC_XDUO_0001 `WindowLauncher` over the host-layer WindowRegistry, so a
+        // second Edit of the same entity ACTIVATES its live editor window), and the editor
+        // windows the workbench verbs open write to the SAME app-scope stores. The ui-smoke
+        // composition acceptance (`WireUiCompositionTests`, and the step-006 two-surface proof
+        // in `AppContextTests`) drives THIS window headless over a context composed the same way.
         Program.mkSimple (fun () -> TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories) TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost this
         |> Program.run

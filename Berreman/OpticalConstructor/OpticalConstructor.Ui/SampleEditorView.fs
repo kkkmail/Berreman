@@ -8,10 +8,12 @@
 /// anisotropic materials (absent — not greyed — for isotropic ones); the optional QWOT entry
 /// derives the physical thickness t = λ/(4n) read-only into canonical metres (the DBR λ/4
 /// precedent, `Templates.dbrCell` / `Templates.dbrPeriods`, OpticalConstructor.Ui/Templates.fs).
-/// Save persists through `SampleProxy` — `addSample` for a new sample (minting
-/// `SampleId.create`), `updateSample` for an existing one — via the injected
-/// `SampleEditorContext` (the functional-proxy/Context seam; tests substitute stubs); Cancel
-/// discards. Pure: `update` only reaches IO through the context's proxy fields.
+/// Save persists through `SampleProxy`, routing on the target's `EntryFreshness` (spec 0038
+/// step 008) — `addSample` for a `NewUnsaved` sample whose `SampleId` was minted AT WINDOW
+/// OPEN (both NEW `SampleEditorIntent` cases carry it; the mint left the save path),
+/// `updateSample` for a `Persisted` one — via the injected `SampleEditorContext` (the
+/// functional-proxy/Context seam; tests substitute stubs); Cancel discards. Pure: `update`
+/// only reaches IO through the context's proxy fields.
 module OpticalConstructor.Ui.SampleEditorView
 
 open System
@@ -139,20 +141,25 @@ module UiIds =
     /// no-narrowing facet, else the CategoryId's Guid string form).
     let materialCategoryOption (code : string) : string = "SampleMaterialCategory_" + code
 
-/// What Save targets: a brand-new sample (mint a fresh `SampleId`) or an existing one (keep
-/// its id and update in place). A DU, not a naked bool.
+/// What Save targets (spec 0038 step 008): the sample id — ALWAYS present, minted at
+/// Add-window open — plus its `EntryFreshness`. Save routes on the freshness (`NewUnsaved`
+/// → `addSample`, `Persisted` → `updateSample`); no save path mints an id anymore.
 type EditorTarget =
-    | NewSample
-    | ExistingSample of SampleId
+    {
+        sampleId : SampleId
+        freshness : WindowLauncher.EntryFreshness
+    }
 
 /// How the Sample editor OPENS (spec 0035 step 014): a blank NEW sample (the Add verb), a NEW
 /// sample pre-seeded with a foldable starter multilayer period (the Make-multilayer verb — its
 /// distinct launcher path), or an EXISTING sample updated in place (the Edit verb). A DU — not a
-/// `Sample option` plus a bool — so the three open intents are NAMED. Both NEW intents map to the
-/// `NewSample` target (Save mints a fresh `SampleId`); they differ only in the seeded structure.
+/// `Sample option` plus a bool — so the three open intents are NAMED. Both NEW intents carry a
+/// `SampleId` minted AT WINDOW OPEN (spec 0038 step 008 — the id-mint left the save path, so
+/// the window-policy seam keys the editor by the SAME id Save persists under); they differ
+/// only in the seeded structure.
 type SampleEditorIntent =
-    | NewBlankSample
-    | NewSeededMultilayer
+    | NewBlankSample of mintedId : SampleId
+    | NewSeededMultilayer of mintedId : SampleId
     | EditSample of Sample
 
 /// The window's IO seam (the functional-proxy Context convention): the samples write-seam the
@@ -395,12 +402,16 @@ let private emptyStructure : SampleStructure =
 
 let init (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : Model =
     let target, name, description, substrate, structure =
+        // Both NEW intents carry the id minted AT WINDOW OPEN as a NewUnsaved target (spec 0038
+        // step 008); the seeded multilayer path opens onto the Domain starter period (spec 0035
+        // step 014), the blank Add onto nothing.
         match intent with
-        // Both NEW intents target `NewSample` (Save mints a fresh id); the seeded multilayer path
-        // opens onto the Domain starter period (spec 0035 step 014), the blank Add onto nothing.
-        | NewBlankSample -> (NewSample, "", "", ThinFilm, emptyStructure)
-        | NewSeededMultilayer -> (NewSample, "", "", ThinFilm, starterMultilayerStructure)
-        | EditSample s -> (ExistingSample s.id, s.name, s.description, s.substrate, s.structure)
+        | NewBlankSample mintedId ->
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure)
+        | NewSeededMultilayer mintedId ->
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure)
+        | EditSample s ->
+            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name, s.description, s.substrate, s.structure)
     {
         context = context
         target = target
@@ -537,10 +548,12 @@ let update (msg : Msg) (m : Model) : Model =
         | None -> { m with status = Some "choose a material to set as the lower half-space" }
     | ClearLowerClicked -> applyStack (SampleStackMsg.SetLower None) m
     | SaveClicked ->
+        // Spec 0038 step 008: Save routes on the freshness of the upfront id — the id-mint
+        // left this path (it happens at window open, `SampleEditorIntent`).
         let saved =
-            match m.target with
-            | NewSample -> m.context.samples.addSample (toSample (newSampleId ()) m)
-            | ExistingSample id -> m.context.samples.updateSample (toSample id m)
+            match m.target.freshness with
+            | WindowLauncher.NewUnsaved -> m.context.samples.addSample (toSample m.target.sampleId m)
+            | WindowLauncher.Persisted -> m.context.samples.updateSample (toSample m.target.sampleId m)
         match saved with
         | Ok () ->
             m.context.requestClose ()

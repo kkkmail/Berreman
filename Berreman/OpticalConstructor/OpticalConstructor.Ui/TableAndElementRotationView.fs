@@ -116,13 +116,15 @@ type RemoveConfirm<'id> =
 [<ReferenceEquality>]
 type EditorLaunchers =
     {
-        /// Open the step-023 Material editor: `None` = a new entry (Add), `Some entry` = Edit. The
-        /// step-3 `CategoryProxy` is threaded in (spec 0035 step 009) so the editor's create picker
-        /// reads the LIVE catalogue — a category renamed through the proxy re-labels it on open.
-        openMaterialEditor : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> MaterialLibrary.MaterialEntry option -> unit
+        /// Open the step-023 Material editor by intent (spec 0038 step 008): `NewMaterial mintedId`
+        /// = a new entry whose id the Add verb minted AT WINDOW OPEN, `EditMaterial entry` = Edit.
+        /// The step-3 `CategoryProxy` is threaded in (spec 0035 step 009) so the editor's create
+        /// picker reads the LIVE catalogue — a category renamed through the proxy re-labels it on open.
+        openMaterialEditor : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> MaterialEditorView.MaterialEditorIntent -> unit
         /// Open the step-022 Sample editor by intent (spec 0035 step 014): `NewBlankSample` = the
         /// blank Add, `NewSeededMultilayer` = Make-multilayer's distinct path (a NEW sample seeded
-        /// with a foldable starter period), `EditSample s` = Edit an existing one in place.
+        /// with a foldable starter period) — both carrying the id the verb minted at open (spec
+        /// 0038 step 008) — `EditSample s` = Edit an existing one in place.
         openSampleEditor : MaterialLibrary.MaterialProxy -> Library.SampleProxy -> SampleEditorView.SampleEditorIntent -> unit
         /// Open the step-6 Category editor over the LIVE category write-seam (spec 0035 step 009):
         /// the Materials bay's "Categories…" verb reaches it through this seam so a headless test
@@ -130,14 +132,45 @@ type EditorLaunchers =
         openCategoryEditor : MaterialLibrary.CategoryProxy -> unit
     }
 
-    /// The real launchers — the step-022/023/006 editor windows themselves (compiled before this
-    /// file since spec 0033 step 024 / spec 0035 step 006). Never invoked by a render, only by an
-    /// Add/Edit/Categories dispatch.
+    /// The real launchers — spec 0038 step 008: every editor verb now opens THROUGH the
+    /// SVC_XDUO_0001 window-policy seam over the host-layer `WindowRegistry`, so a second Edit
+    /// of the same entity ACTIVATES its live editor instead of stacking a copy, while every
+    /// Add-minted id gets its own window; the Category editor is single-instance under
+    /// `CategoryEditorKey`. Editor windows are Browse-mode opens (`BrowseOpen` — always
+    /// `Show`n), so the Select-state modality switch is never consulted on this path; the
+    /// step-016 Select windows compose their own `SelectOpen` launchers over the app scope's
+    /// `AppContext.settings`. A launcher record is built per dispatch (three closures over the
+    /// call's proxies — the shared registry is what carries the single-instance semantics); the
+    /// typed open error is deliberately dropped at this unit seam — a failed open leaves no
+    /// window, exactly the user-visible outcome the verb had before. Never invoked by a render,
+    /// only by an Add/Edit/Categories dispatch.
     static member defaults : EditorLaunchers =
+        let openBrowse (key : WindowLauncher.WindowKey) (build : unit -> Window) : unit =
+            let launcher =
+                WindowLauncher.WindowLauncher.create
+                    (fun (_ : WindowLauncher.WindowKey) -> build () |> Ok)
+                    WorkbenchSettings.SelectWindowModality.defaultValue
+                    WindowLauncher.BrowseOpen
+            launcher.openOrActivate key |> ignore
         {
-            openMaterialEditor = fun materials categories existing -> MaterialEditorWindow(materials, existing, categories = categories).Show()
-            openSampleEditor = fun materials samples intent -> SampleEditorWindow(materials, samples, intent).Show()
-            openCategoryEditor = fun categories -> CategoryEditorWindow(categories).Show()
+            openMaterialEditor =
+                fun materials categories intent ->
+                    let key =
+                        match intent with
+                        | MaterialEditorView.NewMaterial mintedId -> WindowLauncher.MaterialEditorKey mintedId
+                        | MaterialEditorView.EditMaterial entry -> WindowLauncher.MaterialEditorKey entry.id
+                    openBrowse key (fun () -> MaterialEditorWindow(materials, intent, categories = categories) :> Window)
+            openSampleEditor =
+                fun materials samples intent ->
+                    let key =
+                        match intent with
+                        | SampleEditorView.NewBlankSample mintedId
+                        | SampleEditorView.NewSeededMultilayer mintedId -> WindowLauncher.SampleEditorKey mintedId
+                        | SampleEditorView.EditSample s -> WindowLauncher.SampleEditorKey s.id
+                    openBrowse key (fun () -> SampleEditorWindow(materials, samples, intent) :> Window)
+            openCategoryEditor =
+                fun categories ->
+                    openBrowse WindowLauncher.CategoryEditorKey (fun () -> CategoryEditorWindow(categories) :> Window)
         }
 
 type Model =
@@ -831,7 +864,10 @@ let update (msg : Msg) (model : Model) : Model =
     | MatSelectRow id ->
         { model with selectedMaterial = Some id; materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
     | MatAdd ->
-        model.launchers.openMaterialEditor model.materials model.categories None
+        // Spec 0038 step 008: Add mints the entry's MaterialId HERE — at the window-open
+        // dispatch, off the save path — so the launcher's registry keys the new editor by the
+        // SAME id its Save will persist under (a second Add mints a second id: two windows).
+        model.launchers.openMaterialEditor model.materials model.categories (MaterialEditorView.NewMaterial (MaterialLibrary.newMaterialId ()))
         { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
     | MatOpenCategories ->
         // A pure launch of the step-6 Category editor over the live category store — no query
@@ -846,7 +882,7 @@ let update (msg : Msg) (model : Model) : Model =
         (match model.selectedMaterial with
          | Some id ->
              match model.materials.tryGetMaterial id with
-             | Ok (Some entry) -> model.launchers.openMaterialEditor model.materials model.categories (Some entry)
+             | Ok (Some entry) -> model.launchers.openMaterialEditor model.materials model.categories (MaterialEditorView.EditMaterial entry)
              | Ok None | Error _ -> ()
          | None -> ())
         { model with materialRemoveConfirm = NoRemoveConfirm; materialsError = None }
@@ -885,14 +921,16 @@ let update (msg : Msg) (model : Model) : Model =
     | SmpSelectRow id ->
         { model with selectedSample = Some id; sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpAdd ->
-        // The blank creation entry point: open the step-022 editor on a NEW, empty sample.
-        model.launchers.openSampleEditor model.materials model.samples SampleEditorView.NewBlankSample
+        // The blank creation entry point: open the step-022 editor on a NEW, empty sample whose
+        // SampleId is minted HERE — at the window-open dispatch (spec 0038 step 008).
+        model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.NewBlankSample (Library.newSampleId ()))
         { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpMakeMultilayer ->
         // The DISTINCT Make-multilayer launcher path (spec 0035 step 014): open a NEW sample
         // pre-seeded with a foldable starter period the SampleStackEditor K-stepper builds up.
-        // Still a NewSample target, so Save mints a fresh SampleId — just seeded, not blank.
-        model.launchers.openSampleEditor model.materials model.samples SampleEditorView.NewSeededMultilayer
+        // Still a NEW target — the fresh SampleId is minted here at open (spec 0038 step 008),
+        // just seeded, not blank.
+        model.launchers.openSampleEditor model.materials model.samples (SampleEditorView.NewSeededMultilayer (Library.newSampleId ()))
         { model with sampleRemoveConfirm = NoRemoveConfirm; samplesError = None }
     | SmpEdit ->
         (match model.selectedSample with

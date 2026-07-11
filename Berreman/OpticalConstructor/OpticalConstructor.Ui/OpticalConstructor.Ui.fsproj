@@ -72,6 +72,15 @@
         <Compile Include="Catalogue.fs" />
         <Compile Include="ElementRenderer.fs" />
         <Compile Include="NkDispersionChart.fs" />
+        <!-- Spec 0038 Part C (steps 007/008, SVC_XDUO_0001 — implemented): the window
+             open/activate seam (WindowKey / EntryFreshness / WindowOpenMode / the
+             host-layer WindowRegistry + the WindowLauncher function record with its
+             real `create` and the mock). Compiled BEFORE the editor views (they route
+             Save on EntryFreshness) and before the workbench scene (whose
+             EditorLaunchers.defaults opens every editor through the launcher); the
+             real `create` takes its factory/modality/mode directly, so nothing here
+             needs AppContext. -->
+        <Compile Include="WindowLauncher.fs" />
         <Compile Include="SampleEditorView.fs" />
         <Compile Include="SampleEditorWindow.fs" />
         <Compile Include="MaterialEditorView.fs" />
@@ -86,12 +95,6 @@
              default). Last in the list so later Part C/E/F window files can consume
              both the workbench and the context. -->
         <Compile Include="AppContext.fs" />
-        <!-- Spec 0038 Part C (step 007, SVC_XDUO_0001 — declared): the window
-             open/activate seam (WindowKey / EntryFreshness / the WindowLauncher
-             function record + its mock). Step 008 implements the real launcher
-             over the host-layer WindowRegistry; ordered after AppContext.fs so
-             the implementation can bake the app scope's settings in. -->
-        <Compile Include="WindowLauncher.fs" />
     </ItemGroup>
 
     <!-- The EnvironmentSettings JSON Schema (§A.7 family, slice 015) is a
