@@ -812,7 +812,9 @@ module MaterialsWindowTests =
             | Error e -> failwith $"listMaterials failed: %A{e}"
         let context : SampleEditorView.SampleEditorContext =
             {
+                materials = materials
                 samples = samples
+                openMaterialsSelect = fun _ _ -> ()
                 requestClose = fun () -> ()
             }
         let window = HostWindow(Width = 1100.0, Height = 760.0)

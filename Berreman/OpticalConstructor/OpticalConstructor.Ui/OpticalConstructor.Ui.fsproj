@@ -82,7 +82,6 @@
              needs AppContext. -->
         <Compile Include="WindowLauncher.fs" />
         <Compile Include="SampleEditorView.fs" />
-        <Compile Include="SampleEditorWindow.fs" />
         <Compile Include="MaterialEditorView.fs" />
         <Compile Include="MaterialEditorWindow.fs" />
         <Compile Include="CategoryEditorView.fs" />
@@ -94,6 +93,11 @@
              scene, whose EditorLaunchers.defaults opens the window under MaterialsWindowKey. -->
         <Compile Include="MaterialsWindowView.fs" />
         <Compile Include="MaterialsWindow.fs" />
+        <!-- Spec 0038 Part G (step 019): the Sample editor's composition root follows the
+             Materials window — its per-layer Choose material… verb builds (or re-targets)
+             MaterialsWindow in Select state, so the window host compiles AFTER it (the pure
+             SampleEditorView stays earlier, beside the other editor views). -->
+        <Compile Include="SampleEditorWindow.fs" />
         <!-- Spec 0038 Part F (step 015, UICOMP_XDUO_0010): the single-instance Library window —
              the step-012 FacetedTreeControls over the step-011 library facet catalogue (default
              representation "By kind"), a view panel, and the Add sample / Make multilayer /

@@ -3,8 +3,16 @@
 /// `SampleStackEditor` — every bulk-toolbar verb dispatches a `SampleStackMsg` through
 /// `applySampleStackMsg`, and each `Repeated` period group renders as ONE collapsible super-row
 /// (a rotating-triangle expander) with an inline repeat-count stepper and its unit-cell layers
-/// nested beneath. Material choice is by `MaterialId` over the entries the window resolves ONCE
-/// from `MaterialProxy.listMaterials`; the per-layer orientation editor is INCLUDED only for
+/// nested beneath. Material choice goes through the MATERIALS window in Select state (spec 0038
+/// step 019 — the inline WrapPanel picker is gone): each layer row carries a Choose material…
+/// verb opening (or re-targeting) the single-instance Materials window targeted at that
+/// `LayerPosition` (`SelectionTarget.SampleLayerTarget`); the return is the TARGETED
+/// `BindMaterialToLayer` — a vanished row is a no-op plus the status line — whose picked id
+/// also becomes the toolbar's chosen material (the by-`MaterialId` selection contract,
+/// `ChooseMaterial`, is unchanged). The material list RE-QUERIES `MaterialProxy.listMaterials`
+/// whenever a Select session returns and on window activation (`RefreshMaterials` — the
+/// load-once snapshot is gone; live cross-window notifications stay out of scope); the
+/// per-layer orientation editor is INCLUDED only for
 /// anisotropic materials (absent — not greyed — for isotropic ones); the optional QWOT entry
 /// derives the physical thickness t = λ/(4n) read-only into canonical metres (the DBR λ/4
 /// precedent, `Templates.dbrCell` / `Templates.dbrPeriods`, OpticalConstructor.Ui/Templates.fs).
@@ -31,9 +39,11 @@ open Berreman.Constants
 open Berreman.Fields
 open Berreman.Geometry
 open Berreman.Media
+open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.SampleStackEditor
+open OpticalConstructor.Domain.WindowMode
 
 /// Stable intent-named automation ids (CLAUDE.md UI guidance): the thirteen slice-mandated ids
 /// as `[<Literal>]`s plus the derived per-row / per-group id families (prefixed so they cannot
@@ -103,14 +113,6 @@ module UiIds =
     [<Literal>]
     let statusText = "SampleEditorStatus"
     [<Literal>]
-    let materialPicker = "SampleMaterialPicker"
-    // The searchable material picker's fixed surfaces (spec 0035 step 013): the search box and
-    // the catalogue-driven category facet container, mirroring the Materials bay.
-    [<Literal>]
-    let materialSearchBox = "SampleMaterialSearchBox"
-    [<Literal>]
-    let materialCategoryFilter = "SampleMaterialCategoryFilter"
-    [<Literal>]
     let stackTable = "SampleStackTable"
     [<Literal>]
     let repeatCountStepperPlus = "RepeatCountStepperPlus"
@@ -133,13 +135,13 @@ module UiIds =
     /// A row's per-layer orientation editor (present ONLY for anisotropic materials).
     let layerOrientation (itemIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}"
     let cellLayerOrientation (itemIndex : int) (cellIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}_%d{cellIndex}"
-    /// A material option's clickable id, by the MaterialId's Guid string form.
-    let materialOption (materialId : string) : string = "SampleMaterialOption_" + materialId
     /// A SubstrateKind facet option's clickable id, by its stable code.
     let substrateOption (code : string) : string = "SampleSubstrateKind_" + code
-    /// A material-category facet option's clickable id, by its stable code (`All` for the
-    /// no-narrowing facet, else the CategoryId's Guid string form).
-    let materialCategoryOption (code : string) : string = "SampleMaterialCategory_" + code
+    /// A layer row's Choose material… verb (spec 0038 step 019): a top-level single layer's
+    /// slot / a period group's nested cell-layer slot — opens the Materials window in Select
+    /// state targeted at that row's `LayerPosition`.
+    let chooseMaterialButton (itemIndex : int) : string = $"ChooseMaterialButton_%d{itemIndex}"
+    let cellChooseMaterialButton (itemIndex : int) (cellIndex : int) : string = $"ChooseMaterialButton_%d{itemIndex}_%d{cellIndex}"
 
 /// What Save targets (spec 0038 step 008): the sample id — ALWAYS present, minted at
 /// Add-window open — plus its `EntryFreshness`. Save routes on the freshness (`NewUnsaved`
@@ -162,14 +164,26 @@ type SampleEditorIntent =
     | NewSeededMultilayer of mintedId : SampleId
     | EditSample of Sample
 
-/// The window's IO seam (the functional-proxy Context convention): the samples write-seam the
-/// Save verb persists through, plus the host's close request (the window passes `this.Close`;
-/// tests substitute recording stubs). Function-valued fields have no structural equality, so
-/// the context compares by reference — the model holding it keeps its equality.
+/// The window's IO seam (the functional-proxy Context convention): the materials read-seam the
+/// step-019 re-query reaches, the samples write-seam the Save verb persists through, the
+/// Materials-window Select-state opener behind the per-layer Choose material… verb, plus the
+/// host's close request (the window passes `this.Close`; tests substitute recording stubs).
+/// Function-valued fields have no structural equality, so the context compares by reference —
+/// the model holding it keeps its equality.
 [<ReferenceEquality>]
 type SampleEditorContext =
     {
+        /// The LIVE materials read seam (spec 0038 step 019): `RefreshMaterials` re-queries
+        /// `listMaterials` through this on every Select-session return and window activation,
+        /// replacing the load-once snapshot.
+        materials : MaterialProxy
         samples : SampleProxy
+        /// Open (or re-target) the single-instance MATERIALS window in SELECT state over the
+        /// session context (the per-layer Choose material… verb, spec 0038 step 019). The
+        /// composition root bakes the step-008 `WindowLauncher` under `MaterialsWindowKey`,
+        /// the app category store and the step-005 modality switch; the `Window` argument is
+        /// the requesting owner a modal Select open dialogs against.
+        openMaterialsSelect : Window -> SelectionContext<MaterialEntry> -> unit
         requestClose : unit -> unit
     }
 
@@ -180,11 +194,12 @@ type AngleSlot =
     | PsiSlot
 
 /// The editor's model: the sample identity facets (name / description / `SubstrateKind`), the
-/// step-21 stack edit state, the material choices the window resolved from
-/// `MaterialProxy.listMaterials`, and the transient entry texts. Reference-compared: a
-/// `MaterialEntry`'s engine properties carry dispersion FUNCTION cases (no structural
-/// equality), and `update` returns a fresh record anyway — so the Elmish equality gate sees
-/// every dispatch as a change and re-renders, which is exactly this window's contract.
+/// step-21 stack edit state, the material list resolved from `MaterialProxy.listMaterials`
+/// (re-queried on every Select-session return and window activation — spec 0038 step 019),
+/// and the transient entry texts. Reference-compared: a `MaterialEntry`'s engine properties
+/// carry dispersion FUNCTION cases (no structural equality), and `update` returns a fresh
+/// record anyway — so the Elmish equality gate sees every dispatch as a change and re-renders,
+/// which is exactly this window's contract.
 [<ReferenceEquality>]
 type Model =
     {
@@ -196,10 +211,6 @@ type Model =
         editor : SampleStackEditState
         materials : MaterialEntry list
         chosenMaterial : MaterialId option
-        /// The live material-search fragment the picker filters its options by (empty matches all).
-        materialSearchText : string
-        /// The selected material-category facet — `None` is the "All" facet (no category narrowing).
-        materialCategory : CategoryId option
         /// Film indices of the period groups whose super-row is collapsed (expanded default).
         collapsedGroups : Set<int>
         thicknessText : string
@@ -218,10 +229,10 @@ type Msg =
     | SetDescription of string
     | SetSubstrate of SubstrateKind
     | ChooseMaterial of MaterialId
-    /// The material-picker search box: filter the picker's options by a case-insensitive name fragment.
-    | SetMaterialSearchText of string
-    /// The material-picker category facet: narrow the picker to one category (`None` is the "All" facet).
-    | SelectMaterialCategory of CategoryId option
+    /// Spec 0038 (019): re-query the material list from the LIVE `MaterialProxy` — dispatched
+    /// whenever a Select session returns (chosen or cancelled) and on window activation,
+    /// replacing the load-once snapshot. Live cross-window notifications stay out of scope.
+    | RefreshMaterials
     /// A row click: adds an unselected position to the multi-selection, removes a selected one.
     | ToggleLayer of LayerPosition
     | ClearSelectionClicked
@@ -237,11 +248,12 @@ type Msg =
     | SetOrientationClicked
     /// The per-layer orientation editor (degrees; only anisotropic layers render one).
     | SetLayerOrientation of LayerPosition * float * float * float
-    /// Spec 0038 (016): the TARGETED return of a Materials-window Select session
-    /// (`SelectionTarget.SampleLayerTarget` — step 019 wires the per-layer Choose material…
-    /// verb): set THIS layer position's material, never "the current selection" (the modeless
+    /// Spec 0038 (016/019): the TARGETED return of a Materials-window Select session
+    /// (`SelectionTarget.SampleLayerTarget` — the per-layer Choose material… verb composes
+    /// it): set THIS layer position's material, never "the current selection" (the modeless
     /// window may outlive a selection change). A vanished row is a no-op plus the status
-    /// line, never a throw.
+    /// line, never a throw. A live row's pick also becomes the toolbar's CHOSEN material —
+    /// the bulk verbs' one remaining source now that the inline picker is gone (step 019).
     | BindMaterialToLayer of LayerPosition * MaterialId
     | RemoveSelectedClicked
     | MoveUpClicked
@@ -355,30 +367,6 @@ let private substrateLabel (kind : SubstrateKind) : string =
     | Plate -> "Plate"
     | Wedge -> "Wedge"
 
-/// The picker's material options after the search fragment AND the category facet narrow the
-/// resolved list (the list the window loads ONCE from `MaterialProxy.listMaterials`). Reuses the
-/// Domain search seam (`MaterialLibrary.byQuery`) — no new filter is coded here; the dispersion
-/// facet stays `AnyDispersion` since this picker offers only the search box and the category facet.
-let filteredMaterials (m : Model) : MaterialEntry list =
-    byQuery { text = m.materialSearchText; category = m.materialCategory; dispersion = AnyDispersion } { entries = m.materials }
-
-/// A material-category facet option's stable code (the derived UiIds key): `All` for the
-/// no-narrowing facet, else the CategoryId's Guid string form.
-let materialCategoryCode (category : CategoryId option) : string =
-    match category with
-    | None -> "All"
-    | Some c -> string c.value
-
-/// The category facet options (spec 0035 step 013): the "All" facet, then the step-1 seeded
-/// `SelectableOnCreate` categories in catalogue order. Catalogue-driven — mirroring the Materials
-/// bay facet (`OpticalConstructor.Ui/MaterialsView.fs`) — so a new seeded category flows through
-/// without a code edit here.
-let private materialCategoryFacets : (CategoryId option * string) list =
-    (None, "All")
-    :: (standardCategories
-        |> List.filter (fun c -> c.visibility = SelectableOnCreate)
-        |> List.map (fun c -> (Some c.id, c.name)))
-
 let private orientationDegrees (o : CrystalOrientation) : float * float * float =
     match o with
     | PrimaryAxes -> (0.0, 0.0, 0.0)
@@ -427,8 +415,6 @@ let init (context : SampleEditorContext) (materials : MaterialEntry list) (inten
         editor = SampleStackEditState.ofStructure structure
         materials = materials
         chosenMaterial = None
-        materialSearchText = ""
-        materialCategory = None
         collapsedGroups = Set.empty
         thicknessText = ""
         qwotText = ""
@@ -461,6 +447,13 @@ let private sampleErrorReason (e : SampleError) : string =
     | DuplicateSampleId reason
     | InvalidSample reason -> reason
 
+let private materialErrorReason (e : MaterialError) : string =
+    match e with
+    | UnknownMaterialId reason
+    | DuplicateMaterialId reason
+    | MaterialStillReferenced reason
+    | InvalidMaterial reason -> reason
+
 /// Route one step-21 editor message; a typed rejection surfaces its reason as the status.
 let private applyStack (msg : SampleStackMsg) (m : Model) : Model =
     match applySampleStackMsg msg m.editor with
@@ -473,8 +466,14 @@ let update (msg : Msg) (m : Model) : Model =
     | SetDescription s -> { m with description = s }
     | SetSubstrate kind -> { m with substrate = kind }
     | ChooseMaterial id -> { m with chosenMaterial = Some id }
-    | SetMaterialSearchText s -> { m with materialSearchText = s }
-    | SelectMaterialCategory category -> { m with materialCategory = category }
+    | RefreshMaterials ->
+        // Spec 0038 (019): re-query the material list from the LIVE proxy — a material added
+        // through another window appears here. The status is left alone (a vanished-row
+        // message must survive the refresh the same return dispatches); a store refusal keeps
+        // the current list and surfaces its typed reason instead.
+        match m.context.materials.listMaterials () with
+        | Ok entries -> { m with materials = entries }
+        | Error e -> { m with status = Some (materialErrorReason e) }
     | ToggleLayer position ->
         if Set.contains position m.editor.selection
         then { m with editor = { m.editor with selection = Set.remove position m.editor.selection } }
@@ -538,11 +537,13 @@ let update (msg : Msg) (m : Model) : Model =
         // `isValidPosition` — the row may have been deleted while the modeless window was
         // open): a vanished row is a no-op plus the status line, never a throw. A live row
         // takes the material through the same selection-shaped transform-and-restore dance
-        // as the per-layer orientation editor above.
+        // as the per-layer orientation editor above — and the picked id also becomes the
+        // toolbar's CHOSEN material (step 019: the bulk verbs' one remaining source now that
+        // the inline picker is gone; the vanished-row no-op chooses nothing).
         if isValidPosition m.editor.structure position then
             let single = { m.editor with selection = Set.ofList [ position ] }
             match applySampleStackMsg (SetMaterialOfSelected materialId) single with
-            | Ok next -> { m with editor = { next with selection = m.editor.selection }; status = None }
+            | Ok next -> { m with editor = { next with selection = m.editor.selection }; chosenMaterial = Some materialId; status = None }
             | Error e -> { m with status = Some (stackErrorReason e) }
         else
             { m with status = Some "the chosen material was not applied — its target layer is no longer in the stack" }
@@ -732,65 +733,55 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
                     clickBox (UiIds.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
     ] :> IView
 
-/// The picker's search box (spec 0035 step 013): a live case-insensitive name fragment that
-/// narrows the options. A plain string field committed on `onTextChanged` (idempotent echo, the
-/// `nameBox` shape) — NOT a large-state rebuild, so no FuncUI render-loop risk.
-let private materialSearchRow (m : Model) (dispatch : Msg -> unit) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Horizontal
-        StackPanel.spacing 6.0
-        StackPanel.children [
-            labelBlock "Search:"
-            TextBox.create [
-                TextBox.name UiIds.materialSearchBox
-                TextBox.width 220.0
-                TextBox.text m.materialSearchText
-                TextBox.onTextChanged (SetMaterialSearchText >> dispatch)
-            ] :> IView
-        ]
-    ] :> IView
-
-/// The catalogue-driven category facet (spec 0035 step 013): one clickable option per step-1
-/// seeded `SelectableOnCreate` category plus "All", the selected facet highlighted. Mirrors the
-/// Materials bay facet and the sibling `substrateRow` — a NAMED WrapPanel of AutomationId'd boxes.
-let private materialCategoryRow (m : Model) (dispatch : Msg -> unit) : IView =
-    WrapPanel.create [
-        WrapPanel.name UiIds.materialCategoryFilter
-        WrapPanel.orientation Orientation.Horizontal
-        WrapPanel.children (
-            materialCategoryFacets
-            |> List.map (fun (category, label) ->
-                clickBox (UiIds.materialCategoryOption (materialCategoryCode category)) label (m.materialCategory = category) (fun () -> dispatch (SelectMaterialCategory category))))
-    ] :> IView
-
-/// The picker stacks the label ABOVE the search box, the category facet, and the wrap panel of
-/// material options so the panel is measured at the window's finite width and actually wraps —
-/// inside a horizontal StackPanel it would be offered infinite width and run every option
-/// off-screen (found by the headless click proofs). The search box and the category facet narrow
-/// the options (spec 0035 step 013), filtering the list the window loaded once from
-/// `MaterialProxy.listMaterials`; selection stays by `MaterialId` (`ChooseMaterial of MaterialId`
-/// is unchanged).
-let private materialRow (m : Model) (dispatch : Msg -> unit) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.spacing 2.0
-        StackPanel.children [
-            labelBlock "Material:"
-            materialSearchRow m dispatch
-            materialCategoryRow m dispatch
-            WrapPanel.create [
-                WrapPanel.name UiIds.materialPicker
-                WrapPanel.orientation Orientation.Horizontal
-                WrapPanel.children (
-                    filteredMaterials m
-                    |> List.map (fun entry ->
-                        let idString = string entry.id.value
-                        clickBox (UiIds.materialOption idString) entry.name (m.chosenMaterial = Some entry.id) (fun () -> dispatch (ChooseMaterial entry.id))))
-            ] :> IView
-        ]
-    ] :> IView
-
 // -- the stack table -------------------------------------------------------------------------
+
+/// Compose one Select session for a layer row and open (or re-target) the Materials window
+/// through the context seam (spec 0038 step 019 — the step-017 `chooseFromLibrary` precedent:
+/// composed in the VIEW, where the render's dispatch is the return path into the loop).
+/// `onSelected` bakes the TARGETED `BindMaterialToLayer` — the vanished-row no-op lives in its
+/// arm — and BOTH outcomes re-query the material list (`RefreshMaterials`): a Select window
+/// returning is one of the two re-query triggers, however the session ended.
+let private chooseMaterialForLayer (m : Model) (dispatch : Msg -> unit) (position : LayerPosition) (owner : Window) : unit =
+    let selectContext : SelectionContext<MaterialEntry> =
+        {
+            // The sample-layer pick's fixed kind (the step-016 banner names it); the material
+            // corpus satisfies it structurally, so it narrows nothing in the Materials window.
+            kindConstraint = KindConstraint Placement.CatalogueKind.Sample
+            target = SampleLayerTarget position
+            onSelected =
+                fun (entry : MaterialEntry) ->
+                    dispatch (BindMaterialToLayer (position, entry.id))
+                    dispatch RefreshMaterials
+            onCancelled = fun () -> dispatch RefreshMaterials
+        }
+    m.context.openMaterialsSelect owner selectContext
+
+/// The per-layer Choose material… verb (spec 0038 step 019): opens the Materials window in
+/// Select state targeted at THIS row's position. Rendered BESIDE its row, never inside the
+/// row's Border — the row's tunnel-phase ToggleLayer press handler would swallow a nested
+/// clickable. The owner window for a modal Select open is resolved from the click's own visual
+/// tree at dispatch time (the step-017 precedent); the subscription re-patches on the id — the
+/// closure's only other captures (the context seam, dispatch) are render-stable.
+let private chooseMaterialVerb (m : Model) (dispatch : Msg -> unit) (position : LayerPosition) (chooseId : string) : IView =
+    Border.create [
+        automationId chooseId
+        Border.background (brush idleBackground)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 10.0 3.0)
+        Border.margin (thickOf 6.0 0.0 0.0 3.0)
+        Border.verticalAlignment VerticalAlignment.Top
+        Border.child (TextBlock.create [ TextBlock.text "Choose material…" ])
+        Border.onPointerPressed ((fun e ->
+            e.Handled <- true
+            match e.Source with
+            | :? Visual as source ->
+                match TopLevel.GetTopLevel source with
+                | :? Window as owner -> chooseMaterialForLayer m dispatch position owner
+                | _ -> ()
+            | _ -> ()), SubPatchOptions.OnChangeOf chooseId)
+    ] :> IView
 
 /// One layer's inline orientation editor (φ/θ/ψ in degrees) — rendered ONLY when the layer's
 /// material is anisotropic; an unparsable entry dispatches nothing.
@@ -922,11 +913,21 @@ let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int)
     ] :> IView
 
 let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
+    // Each layer row is paired with its Choose material… verb in one horizontal slot (spec
+    // 0038 step 019) — the verb sits beside the row, outside its toggling Border.
+    let rowWithChooser (row : IView) (position : LayerPosition) (chooseId : string) : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.children [ row; chooseMaterialVerb m dispatch position chooseId ]
+        ] :> IView
     m.editor.structure.films
     |> List.mapi (fun i item ->
         match item with
         | SingleLayer layer ->
-            [ layerRowView m dispatch (AtSingleLayer i) (UiIds.layerRow i) (UiIds.layerThickness i) (UiIds.layerOrientation i) 0.0 layer ]
+            [ rowWithChooser
+                  (layerRowView m dispatch (AtSingleLayer i) (UiIds.layerRow i) (UiIds.layerThickness i) (UiIds.layerOrientation i) 0.0 layer)
+                  (AtSingleLayer i)
+                  (UiIds.chooseMaterialButton i) ]
         | Repeated group ->
             let superRow = groupRowView m dispatch i group
             let cellRows =
@@ -934,7 +935,10 @@ let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
                 else
                     group.cell
                     |> List.mapi (fun j layer ->
-                        layerRowView m dispatch (AtCellLayer (i, j)) (UiIds.cellLayerRow i j) (UiIds.cellLayerThickness i j) (UiIds.cellLayerOrientation i j) 28.0 layer)
+                        rowWithChooser
+                            (layerRowView m dispatch (AtCellLayer (i, j)) (UiIds.cellLayerRow i j) (UiIds.cellLayerThickness i j) (UiIds.cellLayerOrientation i j) 28.0 layer)
+                            (AtCellLayer (i, j))
+                            (UiIds.cellChooseMaterialButton i j))
             superRow :: cellRows)
     |> List.concat
 
@@ -1120,9 +1124,10 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-/// The whole editor: identity + facets + material picker on top; the bulk toolbars, QWOT row,
-/// status line and the Save/Cancel row pinned to the bottom; the stack table (with the
-/// expanded-films readout) filling the centre.
+/// The whole editor: identity + facets on top (material picking moved to the per-layer Choose
+/// material… verbs — spec 0038 step 019); the bulk toolbars, QWOT row, status line and the
+/// Save/Cancel row pinned to the bottom; the stack table (with the expanded-films readout)
+/// filling the centre.
 let view (m : Model) (dispatch : Msg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
@@ -1137,7 +1142,6 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                             nameRow m dispatch
                             descriptionRow m dispatch
                             substrateRow m dispatch
-                            materialRow m dispatch
                         ]
                     ])
             ]

@@ -518,7 +518,7 @@ module WindowLauncherTests =
     [<Trait("Category", "ui-smoke")>]
     let ``acceptance: a sample Add opened through the launcher persists through addSample under its minted id`` () =
         HeadlessSession.run (fun () ->
-            let materials, samples, _ = Stores.create ()
+            let materials, samples, categories = Stores.create ()
             let minted = Library.newSampleId ()
             let opened = ResizeArray<Window>()
             use _sub =
@@ -532,16 +532,17 @@ module WindowLauncherTests =
             // upfront-minted id (spec 0038 step 008).
             let launcher =
                 WindowLauncher.create
-                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
+                    (fun (_ : WindowKey) -> SampleEditorWindow(materials, samples, categories, SampleEditorView.NewBlankSample minted) :> Window |> Ok)
                     SelectWindowModality.defaultValue
                     BrowseOpen
             launcher.openOrActivate (SampleEditorKey minted) |> ignore
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
-            // Name it and give it one layer (a valid stack), then Save — NewUnsaved → addSample.
+            // Name it and give it one layer (a valid stack — Add layer takes the first listed
+            // material now that the inline picker is gone, step 019), then Save — NewUnsaved
+            // → addSample.
             setText editor SampleEditorView.UiIds.nameBox "Launcher sample"
-            clickOn editor (SampleEditorView.UiIds.materialOption (string MaterialLibrary.MaterialIds.glass152.value))
             clickOn editor SampleEditorView.UiIds.addLayerButton
             clickOn editor SampleEditorView.UiIds.saveButton
             Assert.False(editor.IsVisible)

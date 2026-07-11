@@ -583,7 +583,8 @@ module LibraryWindowTests =
         window
 
     let private mountLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : LibraryWindow =
-        let window = LibraryWindow(library, samples, materials)
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let window = LibraryWindow(library, samples, materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window
@@ -664,9 +665,10 @@ module LibraryWindowTests =
             Assert.Equal(1, opened.Count)
             let editor = opened.[0]
             Assert.True(matchesId SampleEditorView.UiIds.window editor, "the opened window must be the Sample editor")
-            // Name it and give it one layer (a valid stack), then Save — NewUnsaved → addSample.
+            // Name it and give it one layer (a valid stack — Add layer takes the first listed
+            // material now that the inline picker is gone, step 019), then Save — NewUnsaved
+            // → addSample.
             setText editor SampleEditorView.UiIds.nameBox "Library window sample"
-            clickOn editor (SampleEditorView.UiIds.materialOption (string MaterialIds.glass152.value))
             clickOn editor SampleEditorView.UiIds.addLayerButton
             clickOn editor SampleEditorView.UiIds.saveButton
             Dispatcher.UIThread.RunJobs()
@@ -908,7 +910,8 @@ module LibraryWindowTests =
     // ============================ step 016 — Select mode (headless) ============================
 
     let private mountSelectLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) (selectCtx : SelectionContext<LibraryEntry>) : LibraryWindow =
-        let window = LibraryWindow(library, samples, materials, mode = Select selectCtx)
+        let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
+        let window = LibraryWindow(library, samples, materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window

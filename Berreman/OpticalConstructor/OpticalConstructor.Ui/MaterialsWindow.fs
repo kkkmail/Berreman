@@ -41,8 +41,9 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mod
         this.Height <- 800.0
         // Browse-mode opens always `Show` — the Select-state modality switch is never consulted
         // on this path (the step-008 `EditorLaunchers.defaults` precedent), so the baked
-        // `defaultValue` is inert here; the step-019 sample-editor picking composes
-        // `SelectOpen` launchers over `AppContext.settings` to open THIS window in Select state.
+        // `defaultValue` is inert here; the step-019 sample-editor picking composes its own
+        // `SelectOpen` launcher (`SampleEditorWindow.openMaterialsSelect`) to open THIS window
+        // in Select state (step 47 threads the app-configured modality).
         let openBrowse (key : WindowLauncher.WindowKey) (build : unit -> Window) : unit =
             let launcher =
                 WindowLauncher.WindowLauncher.create

@@ -25,8 +25,11 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// window pre-constrained to the session's kind with the Select/Close pair; `Retarget` is the
 /// launcher's re-target seam (a Select-state open of the LIVE instance re-points its session),
 /// and the `Closed` hook cancels a still-pending session exactly once (the title-bar X and a
-/// staleness `Close()` from the requesting surface both land there).
-type LibraryWindow(library : LibraryProxy, samples : SampleProxy, materials : MaterialProxy, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
+/// staleness `Close()` from the requesting surface both land there). Step 019: the app-scope
+/// `categories` store threads through to the Sample editor, whose per-layer Choose material…
+/// verb composes the Materials window (its category facet reads the LIVE store) in Select
+/// state.
+type LibraryWindow(library : LibraryProxy, samples : SampleProxy, materials : MaterialProxy, categories : CategoryProxy, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
     inherit HostWindow()
 
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
@@ -67,7 +70,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, materials : Ma
                             | SampleEditorView.NewBlankSample mintedId
                             | SampleEditorView.NewSeededMultilayer mintedId -> WindowLauncher.SampleEditorKey mintedId
                             | SampleEditorView.EditSample sample -> WindowLauncher.SampleEditorKey sample.id
-                        openBrowse key (fun () -> SampleEditorWindow(materials, samples, intent) :> Window)
+                        openBrowse key (fun () -> SampleEditorWindow(materials, samples, categories, intent) :> Window)
                 requestClose = this.Close
             }
         Program.mkProgram

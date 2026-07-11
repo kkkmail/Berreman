@@ -117,11 +117,13 @@ type EditorLaunchers =
         /// bay carried here moved INTO that window's own composition (`MaterialsWindow`).
         openMaterialsWindow : MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
         /// Open the SINGLE-INSTANCE Library window (spec 0038 step 015, UICOMP_XDUO_0010) over
-        /// the read-only Library seam plus the app-scope samples + materials stores — the ribbon
-        /// strip's `Library…` button reaches it through this seam. The Sample-editor launcher
-        /// the retired Library bay carried here (`openSampleEditor`) moved INTO that window's
-        /// own composition (`LibraryWindow`), the step-013 Materials precedent.
-        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> unit
+        /// the read-only Library seam plus the app-scope samples + materials + categories
+        /// stores (the categories thread through to the Sample editor's step-019 Choose
+        /// material… composition) — the ribbon strip's `Library…` button reaches it through
+        /// this seam. The Sample-editor launcher the retired Library bay carried here
+        /// (`openSampleEditor`) moved INTO that window's own composition (`LibraryWindow`),
+        /// the step-013 Materials precedent.
+        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
         /// Spec 0038 (017): open the SAME single-instance Library window in SELECT state over
         /// the session context (the Selector bay's Choose… verb). A missing window opens fresh
         /// in Select mode; a LIVE one is RE-TARGETED at the new context (a second Choose…
@@ -130,7 +132,7 @@ type EditorLaunchers =
         /// the opened session's cancel-and-close handle — the `SelectSession` staleness lever —
         /// or None when the open failed (the typed error is dropped at this unit seam: a failed
         /// open leaves no window, exactly the user-visible outcome).
-        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
+        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
     }
 
     /// The real launchers — spec 0038 step 008: every verb-opened window goes THROUGH the
@@ -158,10 +160,10 @@ type EditorLaunchers =
                 fun materials categories ->
                     openBrowse WindowLauncher.MaterialsWindowKey (fun () -> MaterialsWindow(materials, categories) :> Window)
             openLibraryWindow =
-                fun library samples materials ->
-                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, materials) :> Window)
+                fun library samples materials categories ->
+                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, materials, categories) :> Window)
             openLibrarySelectWindow =
-                fun library samples materials modality requestingWindow selectCtx ->
+                fun library samples materials categories modality requestingWindow selectCtx ->
                     // Spec 0038 (017): the Select-state open — the SAME registry key as the
                     // Browse opens above, so Choose… and the Library… strip button meet in one
                     // open-or-activate space. A LIVE window is re-pointed through the step-016
@@ -174,7 +176,7 @@ type EditorLaunchers =
                         | _ -> ()
                     let launcher =
                         WindowLauncher.WindowLauncher.create
-                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, materials, mode = WindowMode.Select selectCtx) :> Window |> Ok)
+                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, materials, categories, mode = WindowMode.Select selectCtx) :> Window |> Ok)
                             modality
                             (WindowLauncher.SelectOpen (requestingWindow, retargetWindow))
                     match launcher.openOrActivate WindowLauncher.LibraryWindowKey with
@@ -968,7 +970,7 @@ let rec update (msg : Msg) (model : Model) : Model =
         // `LibraryWindowKey`, so a second click ACTIVATES the live window. No model change: the
         // window runs its own MVU loop over the same stores (the retired samples-workbench bay's
         // query/selection/confirm state lives in the window's own model now).
-        model.launchers.openLibraryWindow model.library model.samples model.materials
+        model.launchers.openLibraryWindow model.library model.samples model.materials model.categories
         model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
@@ -2144,7 +2146,7 @@ let private chooseFromLibrary (model : Model) (dispatch : Msg -> unit) (element 
             onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
         }
-    match model.launchers.openLibrarySelectWindow model.library model.samples model.materials model.selectWindowModality owner selectCtx with
+    match model.launchers.openLibrarySelectWindow model.library model.samples model.materials model.categories model.selectWindowModality owner selectCtx with
     | Some cancelAndClose ->
         let session : SelectSession = { target = element.id; cancelAndClose = cancelAndClose }
         sessionRef.Value <- Some session
