@@ -111,6 +111,13 @@
              Facets/FacetBuckets, MaterialLibrary, ElementId (Library), DispersionModels
              and MaterialComplexityEditor above. -->
         <Compile Include="LibraryFacets.fs" />
+        <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — VersionNumber,
+             the Material/Sample version ids, EntryLifecycle, the cross-store VersionRef,
+             the VersionsInUse seam, and the ONE pure version-creation decision rule
+             (decideVersioning) the material/sample stores (steps 21/22) share. Pure and
+             Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
+             Library (SampleId) above. -->
+        <Compile Include="Lifecycle.fs" />
     </ItemGroup>
 
     <ItemGroup>

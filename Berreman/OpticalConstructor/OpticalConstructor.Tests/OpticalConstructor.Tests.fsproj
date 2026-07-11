@@ -138,6 +138,11 @@
              ORDERED ConstantMueller compound product, EntryProtection over the seeds, and the
              polarizer-category facet. -->
         <Compile Include="PolarizerBehaviorTests.fs" />
+        <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
+             version-creation rule (decideVersioning) enumerated over the used/unused ×
+             physics-changed/identical × metadata-only decision table, plus the VersionNumber /
+             version-id / EntryLifecycle / VersionRef / VersionsInUse surface. Avalonia-free. -->
+        <Compile Include="LifecycleTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
