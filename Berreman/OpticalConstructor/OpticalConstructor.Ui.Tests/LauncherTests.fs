@@ -1,10 +1,12 @@
-/// Spec 0038 Part B.1 (step 002): the launcher contract. After the Elmish shell's
-/// retirement the launcher IS the app's startup window; its Main button is the ONLY
-/// path into the Main constructor scene, and every diagnostic scene hangs off one of
-/// its stable-named buttons. Structure (each scene button present by `Name` with its
-/// label — gate `ui-tests`) and behaviour (clicking EVERY button opens its scene
-/// window headlessly, observed through the public `Window.WindowOpenedEvent` seam —
-/// gate `ui-smoke`) are pinned here; `SmokeTests` separately proves the REAL `App`
+/// Spec 0038 Part B.1 (step 002) / Part C (step 004): the PRODUCT launcher contract.
+/// After the Elmish shell's retirement the launcher IS the app's startup window and
+/// its Main button is the ONLY path into the Main constructor scene. Step 004 moved
+/// the seven diagnostic scene buttons to the standalone
+/// `OpticalConstructor.TestWindows.App` executable (`TestLauncherTests` pins that
+/// window), so the product launcher hosts Main ALONE — structure (gate `ui-tests`)
+/// pins that the diagnostic buttons are gone, and behaviour (gate `ui-smoke`) pins
+/// the Main click opening its scene headlessly through the public
+/// `Window.WindowOpenedEvent` seam; `SmokeTests` separately proves the REAL `App`
 /// lifetime makes this window the startup `MainWindow` with the persisted theme.
 namespace OpticalConstructor.Ui.Tests
 
@@ -14,7 +16,6 @@ open Avalonia.Threading
 open Avalonia.VisualTree
 open Xunit
 open OpticalConstructor.App
-open OpticalConstructor.TestWindows
 
 module LauncherTests =
 
@@ -42,36 +43,30 @@ module LauncherTests =
         withLauncher (fun launcher ->
             Assert.Equal("Optical Constructor — Launcher", launcher.Title)
             Assert.Equal(380.0, launcher.Width)
-            Assert.Equal(520.0, launcher.Height)
+            Assert.Equal(180.0, launcher.Height)
             Assert.False(launcher.CanResize, "the launcher is a fixed-size form"))
 
-    [<Theory>]
-    [<InlineData("OpenMainButton", "Main")>]
-    [<InlineData("OpenTableRotationTestButton", "Test Optical Table Rotations")>]
-    [<InlineData("OpenElementRotationTestButton", "Test Optical Element Rotations")>]
-    [<InlineData("OpenTableAndElementRotationTestButton", "Test Table + Element Rotations")>]
-    [<InlineData("OpenElementMovementTestButton", "Test Element Movement")>]
-    [<InlineData("OpenRendererTestButton", "Test Renderers")>]
-    [<InlineData("OpenSnapToBeamTestButton", "Test Snap to Beam")>]
-    [<InlineData("OpenSnapToReflectedTestButton", "Test Snap to Reflected Light")>]
-    let ``the launcher hosts every scene button by stable name with its label`` (name : string) (label : string) =
+    [<Fact>]
+    let ``the launcher hosts the Main button by stable name with its label`` () =
         withLauncher (fun launcher ->
-            match tryFindButton name launcher with
-            | Some button -> Assert.Equal(label, string button.Content)
-            | None -> Assert.Fail($"launcher button '{name}' was not found"))
+            match tryFindButton "OpenMainButton" launcher with
+            | Some button -> Assert.Equal("Main", string button.Content)
+            | None -> Assert.Fail "launcher button 'OpenMainButton' was not found")
 
     [<Fact>]
-    let ``Main is the first scene button, one click from startup`` () =
+    let ``the diagnostic scene buttons are gone — Main is the launcher's only button`` () =
         withLauncher (fun launcher ->
             match buttons launcher with
-            | first :: _ -> Assert.Equal("OpenMainButton", first.Name)
-            | [] -> Assert.Fail "the launcher hosts no buttons")
+            | [ only ] -> Assert.Equal("OpenMainButton", only.Name)
+            | others -> Assert.Fail($"expected exactly one launcher button, found {others.Length}"))
 
     // ---------------------- behaviour (gate `ui-smoke`) ----------------------
-    // Click each launcher button headlessly and observe the scene window it opens
+    // Click the Main button headlessly and observe the scene window it opens
     // via `Window.WindowOpenedEvent` (the WireUiCompositionTests seam).
 
-    let private clickOpens (buttonName : string) (isExpected : Window -> bool) : unit =
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Main button opens the Main constructor scene`` () =
         HeadlessSession.run (fun () ->
             let launcher = LauncherWindow()
             launcher.Show()
@@ -84,52 +79,12 @@ module LauncherTests =
                         match sender with
                         | :? Window as w when not (obj.ReferenceEquals(w, launcher)) -> opened.Add w
                         | _ -> ())
-                (match tryFindButton buttonName launcher with
+                (match tryFindButton "OpenMainButton" launcher with
                  | Some button -> button.RaiseEvent(RoutedEventArgs(Button.ClickEvent))
-                 | None -> Assert.Fail($"launcher button '{buttonName}' was not found"))
+                 | None -> Assert.Fail "launcher button 'OpenMainButton' was not found")
                 Dispatcher.UIThread.RunJobs()
                 Assert.Equal(1, opened.Count)
-                Assert.True(isExpected opened.[0], $"'{buttonName}' opened a {opened.[0].GetType().Name}")
+                Assert.True(opened.[0] :? MainConstructorWindow, $"'OpenMainButton' opened a {opened.[0].GetType().Name}")
                 Assert.True(opened.[0].IsVisible, "the opened scene window must be shown")
                 opened.[0].Close()
             finally launcher.Close())
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the Main button opens the Main constructor scene`` () =
-        clickOpens "OpenMainButton" (fun w -> w :? MainConstructorWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the table-rotation button opens its test window`` () =
-        clickOpens "OpenTableRotationTestButton" (fun w -> w :? TableRotationWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the element-rotation button opens its test window`` () =
-        clickOpens "OpenElementRotationTestButton" (fun w -> w :? ElementRotationWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the table-and-element-rotation button opens its test window`` () =
-        clickOpens "OpenTableAndElementRotationTestButton" (fun w -> w :? TableAndElementRotationWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the element-movement button opens its test window`` () =
-        clickOpens "OpenElementMovementTestButton" (fun w -> w :? ElementMovementWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the renderer button opens its test window`` () =
-        clickOpens "OpenRendererTestButton" (fun w -> w :? RendererTestWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the snap-to-beam button opens its test window`` () =
-        clickOpens "OpenSnapToBeamTestButton" (fun w -> w :? SnapToBeamWindow)
-
-    [<Fact>]
-    [<Trait("Category", "ui-smoke")>]
-    let ``the snap-to-reflected button opens its test window`` () =
-        clickOpens "OpenSnapToReflectedTestButton" (fun w -> w :? SnapToReflectedWindow)

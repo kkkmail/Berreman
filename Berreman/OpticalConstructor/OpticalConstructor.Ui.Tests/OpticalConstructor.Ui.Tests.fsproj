@@ -39,6 +39,12 @@
              click-opens-scene `ui-smoke`), the AppShell theme seam, and the catalogue
              name/code contract the Main scene and renderer share. -->
         <Compile Include="LauncherTests.fs" />
+        <!-- Spec 0038 Part C (step 004, UICOMP_XDUO_0007): the TestLauncherWindow
+             contract — the seven diagnostic scene buttons that left the product
+             launcher for the standalone OpticalConstructor.TestWindows.App
+             executable (structure by stable Name + AutomationId `ui-tests`;
+             headless render + click-opens-scene + app-host `ui-smoke`). -->
+        <Compile Include="TestLauncherTests.fs" />
         <Compile Include="AppShellSeamTests.fs" />
         <Compile Include="CatalogueTests.fs" />
         <!-- Spec 0038 Part B.1 (step 002): pure-MVU coverage of the Main scene update
@@ -174,6 +180,9 @@
         <!-- Spec 0027 (002-rotate-table-task): the project under test for the
              table-rotation test window. -->
         <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
+        <!-- Spec 0038 Part C (step 004): the standalone diagnostic-launcher
+             executable under test (TestLauncherWindow + its App lifetime). -->
+        <ProjectReference Include="..\OpticalConstructor.TestWindows.App\OpticalConstructor.TestWindows.App.fsproj" />
     </ItemGroup>
 
 </Project>

@@ -24,7 +24,6 @@ open Avalonia.FuncUI.Elmish
 open Elmish
 
 open OpticalConstructor.Ui
-open OpticalConstructor.TestWindows
 // Spec 0033 (024): the samples-store module — also brings the optional
 // `MaterialProxy.createInMemory` type extension (declared in `Library`, after `Sample`)
 // into scope for the Main-scene composition below.
@@ -77,16 +76,18 @@ type MainConstructorWindow() as this =
         |> Program.run
 
 /// The simple launcher form (Spec 0027): `Main` opens the constructor workbench scene
-/// (the `MainConstructorWindow` above); the test buttons open the diagnostic test windows
-/// (`OpticalConstructor.TestWindows`). This is the app's startup window so every path is one
-/// click away; further test windows are added as buttons here and live in the TestWindows project.
+/// (the `MainConstructorWindow` above). This is the app's startup window. The seven
+/// diagnostic test buttons moved to the standalone `OpticalConstructor.TestWindows.App`
+/// executable's `TestLauncherWindow` (spec 0038 Part C, step 004), so test code no
+/// longer sits in the product dependency graph; the product launcher keeps Main only
+/// (Inverse / Materials / Library land in step 45).
 type LauncherWindow() as this =
     inherit Window()
 
     do
         this.Title <- "Optical Constructor — Launcher"
         this.Width <- 380.0
-        this.Height <- 520.0
+        this.Height <- 180.0
         this.CanResize <- false
         let title =
             TextBlock(
@@ -98,67 +99,11 @@ type LauncherWindow() as this =
             Button(
                 Name = "OpenMainButton",
                 Content = "Main",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        mainButton.Click.Add(fun _ -> MainConstructorWindow().Show())
-        let tableTestButton =
-            Button(
-                Name = "OpenTableRotationTestButton",
-                Content = "Test Optical Table Rotations",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        tableTestButton.Click.Add(fun _ -> TableRotationWindow().Show())
-        let elementTestButton =
-            Button(
-                Name = "OpenElementRotationTestButton",
-                Content = "Test Optical Element Rotations",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        elementTestButton.Click.Add(fun _ -> ElementRotationWindow().Show())
-        let tableElementTestButton =
-            Button(
-                Name = "OpenTableAndElementRotationTestButton",
-                Content = "Test Table + Element Rotations",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        tableElementTestButton.Click.Add(fun _ -> TableAndElementRotationWindow().Show())
-        let elementMovementTestButton =
-            Button(
-                Name = "OpenElementMovementTestButton",
-                Content = "Test Element Movement",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        elementMovementTestButton.Click.Add(fun _ -> ElementMovementWindow().Show())
-        let rendererTestButton =
-            Button(
-                Name = "OpenRendererTestButton",
-                Content = "Test Renderers",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        rendererTestButton.Click.Add(fun _ -> RendererTestWindow().Show())
-        let snapTestButton =
-            Button(
-                Name = "OpenSnapToBeamTestButton",
-                Content = "Test Snap to Beam",
-                HorizontalAlignment = Layout.HorizontalAlignment.Stretch,
-                Margin = Thickness(0.0, 0.0, 0.0, 8.0))
-        snapTestButton.Click.Add(fun _ -> SnapToBeamWindow().Show())
-        let snapReflectedTestButton =
-            Button(
-                Name = "OpenSnapToReflectedTestButton",
-                Content = "Test Snap to Reflected Light",
                 HorizontalAlignment = Layout.HorizontalAlignment.Stretch)
-        snapReflectedTestButton.Click.Add(fun _ -> SnapToReflectedWindow().Show())
+        mainButton.Click.Add(fun _ -> MainConstructorWindow().Show())
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         panel.Children.Add mainButton
-        panel.Children.Add tableTestButton
-        panel.Children.Add elementTestButton
-        panel.Children.Add tableElementTestButton
-        panel.Children.Add elementMovementTestButton
-        panel.Children.Add rendererTestButton
-        panel.Children.Add snapTestButton
-        panel.Children.Add snapReflectedTestButton
         this.Content <- panel
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
