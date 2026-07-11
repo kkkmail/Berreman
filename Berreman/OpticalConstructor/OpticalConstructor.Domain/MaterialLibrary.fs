@@ -513,14 +513,24 @@ module MaterialLibrary =
             removeMaterial : MaterialId -> Result<unit, MaterialError>
         }
 
-    /// Whether an entry's optical properties actually depend on wavelength — any component
-    /// still carrying a function case (`EpsWithDisp` / `MuWithDisp` / `RhoWithDisp`; every
-    /// dispersive built-in carries the eps func case). The classification `DispersionFilter`
-    /// matches against; private to the pure search seam (`byQuery`).
-    let private hasDispersion (e : MaterialEntry) : bool =
+    /// Whether an entry's optical properties actually depend on wavelength (spec 0038
+    /// step 011): a named two-case DU, never a naked bool. A `DispersiveMaterial` has any
+    /// component still carrying a function case (`EpsWithDisp` / `MuWithDisp` /
+    /// `RhoWithDisp`; every dispersive built-in carries the eps func case). This is the
+    /// classification `DispersionFilter` matches against AND the constant-vs-dispersive
+    /// facet extractor (`LibraryFacets`) keys — it reads `properties`, so it classifies
+    /// the coded presets (`complexity = None`) too.
+    type MaterialDispersion =
+        | ConstantMaterial
+        | DispersiveMaterial
+
+    /// Classify an entry's wavelength dependence from its engine `properties` (see
+    /// `MaterialDispersion`). Formerly the private `hasDispersion` bool inside the pure
+    /// search seam; elevated and published for the step-011 facet catalogue.
+    let materialDispersion (e : MaterialEntry) : MaterialDispersion =
         match e.properties.epsWithDisp, e.properties.muWithDisp, e.properties.rhoWithDisp with
-        | EpsWithoutDisp _, MuWithoutDisp _, RhoWithoutDisp _ -> false
-        | _ -> true
+        | EpsWithoutDisp _, MuWithoutDisp _, RhoWithoutDisp _ -> ConstantMaterial
+        | _ -> DispersiveMaterial
 
     /// The pure materials search (spec 0033 steps 003/006): the case-insensitive
     /// name-fragment filter (`byNameContains` — empty matches all), then the optional
@@ -536,8 +546,8 @@ module MaterialLibrary =
             | None -> byText
         match q.dispersion with
         | AnyDispersion -> byCat
-        | OnlyDispersive -> byCat |> List.filter hasDispersion
-        | OnlyNonDispersive -> byCat |> List.filter (hasDispersion >> not)
+        | OnlyDispersive -> byCat |> List.filter (fun e -> materialDispersion e = DispersiveMaterial)
+        | OnlyNonDispersive -> byCat |> List.filter (fun e -> materialDispersion e = ConstantMaterial)
 
     /// The blank-name validation the store's write functions share (spec 0033 steps 003/006):
     /// a `MaterialEntry` whose display name is empty/whitespace is `InvalidMaterial`. Not

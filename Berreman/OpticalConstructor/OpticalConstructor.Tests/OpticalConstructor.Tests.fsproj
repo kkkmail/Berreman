@@ -126,6 +126,12 @@
              recomputation over the constrained population, bucket-as-ordinary-chip, and
              the FsCheck exactly-one-bucket property. -->
         <Compile Include="FacetBucketsTests.fs" />
+        <!-- Spec 0038 Part D (step 011): the two concrete facet catalogues over the
+             seeded corpora — every material/library extractor and appliesTo rule,
+             dependent facets vanishing when inapplicable, the multi-valued
+             dispersion-model facet, any-constituent sample matching, and per-film
+             thicknesses flowing into the step-010 buckets. -->
+        <Compile Include="LibraryFacetsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -96,6 +96,15 @@
              labels). Depends on Facets (NumericRange/ItemCount/engine), WorkbenchSettings
              (the cap), and Units (unit symbols); step 011's catalogues compile after it. -->
         <Compile Include="FacetBuckets.fs" />
+        <!-- Spec 0038 Part D (step 011): the two CONCRETE facet catalogues as data —
+             material facets over MaterialEntry (category / anisotropy / dispersion /
+             transparency / dispersion model / activity class + handedness / magnetic)
+             and library-entry facets over LibraryEntry (kind, the material facets
+             lifted to samples as the distinct union over constituents, substrate
+             material, has-thin-films, film materials, per-film thickness). Depends on
+             Facets/FacetBuckets, MaterialLibrary, ElementId (Library), DispersionModels
+             and MaterialComplexityEditor above. -->
+        <Compile Include="LibraryFacets.fs" />
     </ItemGroup>
 
     <ItemGroup>
