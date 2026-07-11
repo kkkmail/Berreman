@@ -120,6 +120,12 @@
              absent, inapplicable attributes omitted, cumulative breadcrumb after-counts, and
              the plain-text filter as an ordinary constraint. -->
         <Compile Include="FacetsTests.fs" />
+        <!-- Spec 0038 Part D (step 010): the 1–2–5 log-ladder numeric bucket builder —
+             ladder boundary generation, empty-bucket dropping, fewest-first merging under
+             ThicknessBucketCap, half-open membership, exact-value collapse, nm/µm labels,
+             recomputation over the constrained population, bucket-as-ordinary-chip, and
+             the FsCheck exactly-one-bucket property. -->
+        <Compile Include="FacetBucketsTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -162,6 +168,10 @@
 
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <!-- Spec 0038 Part D (step 010): FsCheck for the exactly-one-bucket property —
+             the version BerremanTests pins; run via Check.One inside a [<Fact>] (the
+             solution's established FsCheck-under-xunit pattern). -->
+        <PackageReference Include="FsCheck" Version="3.3.3" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">

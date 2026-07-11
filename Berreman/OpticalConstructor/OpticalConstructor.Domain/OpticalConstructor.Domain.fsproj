@@ -89,6 +89,13 @@
              filter as an ordinary constraint). Depends on nothing; step 010's numeric
              bucket builder and step 011's concrete facet catalogues compile after it. -->
         <Compile Include="Facets.fs" />
+        <!-- Spec 0038 Part D (step 010): the 1–2–5 log-ladder numeric bucket builder
+             every NumericAttribute branch uses (ladder boundaries over the constrained
+             population's min/max, empty buckets dropped, fewest-first merging under
+             ThicknessBucketCap, half-open intervals, exact-value collapse, nm/µm
+             labels). Depends on Facets (NumericRange/ItemCount/engine), WorkbenchSettings
+             (the cap), and Units (unit symbols); step 011's catalogues compile after it. -->
+        <Compile Include="FacetBuckets.fs" />
     </ItemGroup>
 
     <ItemGroup>
