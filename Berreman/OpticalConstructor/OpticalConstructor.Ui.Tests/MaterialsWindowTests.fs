@@ -15,6 +15,8 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
@@ -136,7 +138,7 @@ module MaterialsWindowTests =
     /// categories whose remove-block consults the LIVE materials).
     let private freshStores () : MaterialProxy * SampleProxy * CategoryProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         materials, samples, categories
 
@@ -346,7 +348,7 @@ module MaterialsWindowTests =
             // The block NAMES the referencing samples (never a cascade).
             Assert.Contains("Glass plate (n=1.52, 1 mm)", reason)
         | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
-        match materials.listMaterials () with
+        match materials.listMaterials ActiveOnly with
         | Ok entries -> Assert.Equal(12, List.length entries)
         | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
         Assert.Contains(MaterialIds.glass152, filteredIds refused)
@@ -366,7 +368,7 @@ module MaterialsWindowTests =
         | Some e -> Assert.Fail($"expected no error, got %A{e}")
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds removed)
         Assert.Equal<MaterialId option>(None, removed.selectedId)
-        match materials.listMaterials () with
+        match materials.listMaterials ActiveOnly with
         | Ok entries -> Assert.Equal(11, List.length entries)
         | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
 
@@ -605,7 +607,7 @@ module MaterialsWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.False(editor.IsVisible, "Save must close the editor")
             // The save landed in the SHARED store…
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok entries -> Assert.Contains(entries, fun (e : MaterialEntry) -> e.name = "Faceted window material")
             | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
             // …and the window's next dispatch-driven render re-queries it: committing the
@@ -623,7 +625,7 @@ module MaterialsWindowTests =
             Assert.Contains("Glass plate", message)
             Assert.True(isPresent window (MW.UiIds.entryNode MaterialIds.glass152),
                         "the refused remove must leave the entry listed")
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok entries -> Assert.Equal(13, List.length entries)
             | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
             window.Close())
@@ -807,7 +809,7 @@ module MaterialsWindowTests =
     /// editor loop (the step-019 picking shape, driven end-to-end here).
     let private mountEditorWithDispatch (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorView.SampleEditorIntent) : HostWindow * (SampleEditorView.Msg -> unit) =
         let materialList =
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok entries -> entries
             | Error e -> failwith $"listMaterials failed: %A{e}"
         let context : SampleEditorView.SampleEditorContext =
@@ -899,7 +901,7 @@ module MaterialsWindowTests =
             // The workbench staleness machinery is window-agnostic: the session handle closes
             // whichever Select-state window it points at.
             let sceneSamples = SampleProxy.createInMemory ()
-            let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples)
+            let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples) VersionsInUse.empty
             let sceneCategories = CategoryProxy.createInMemory (materialsReferencingCategory sceneMaterials)
             let model0 =
                 Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) sceneMaterials sceneSamples sceneCategories

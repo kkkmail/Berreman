@@ -12,6 +12,8 @@ open Xunit
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.TableAndElementRotationView
@@ -63,7 +65,7 @@ module MainWorkbenchTests =
     /// samples through `samplesReferencing`.
     let private freshStores () : MaterialProxy * SampleProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         materials, samples
 
     /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App).

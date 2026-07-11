@@ -14,33 +14,11 @@ open OpticalConstructor.Domain.Library           // SampleId (spec 0033 step 002
 /// primitives.
 module Lifecycle =
 
-    /// A monotonically increasing version number of a library entry (§H). A single-case
-    /// `int` DU — no naked int stands in for a version. `first` is the version every entry
-    /// starts at; `.next` mints the successor the store freezes onto when a USED version's
-    /// physics changes; `.value` is the wire/disk integer, reached only at the IO boundary.
-    type VersionNumber =
-        | VersionNumber of int
-
-        member this.value = let (VersionNumber v) = this in v
-
-        /// The successor version — one past this one. Pure; `VersionNumber.first.next` is
-        /// version 2.
-        member this.next : VersionNumber = VersionNumber (this.value + 1)
-
-        /// The version every entry starts at (1). New entries and the re-expressed seeds
-        /// begin here; the store never fabricates a version number by hand.
-        static member first : VersionNumber = VersionNumber 1
-
-    /// A specific version of a material entry (§H): the material identity plus the version
-    /// number. This is the exact key a versioned experiment binding pins (step 25) — a
-    /// binding references the precise version it was built against, not merely the material,
-    /// so a later mint of the material's `.next` version does not silently rewrite an
-    /// existing experiment's physics.
-    type MaterialVersionId =
-        {
-            materialId : MaterialId
-            version : VersionNumber
-        }
+    // `VersionNumber` and `MaterialVersionId` were moved to `MaterialLibrary.fs` at step 021 so
+    // the versioned `MaterialProxy` record (re-typed IN PLACE in that file, which compiles before
+    // this one) can name them; they are still in scope here through the `open …MaterialLibrary`
+    // above (`MaterialVersionId` needs only `MaterialId`, which likewise lives there). Every other
+    // lifecycle type below stays here — the shared foundation both stores call.
 
     /// A specific version of a sample entry (§H): the sample identity plus the version
     /// number. Mirrors `MaterialVersionId` — a versioned sample binding pins the exact
@@ -81,6 +59,13 @@ module Lifecycle =
         {
             versionsInUse : unit -> Set<VersionRef>
         }
+
+        /// The seam that binds NOTHING (spec 0038 step 021): the composition root and every test
+        /// that does not exercise the used-version rule inject this until step 25 wires the real
+        /// one over the live experiment descriptors. With it, every version is `VersionUnused` — so
+        /// edits always mutate in place and no removal is used-version-blocked — which is the
+        /// truthful state before any experiment is persisted (§0.2: nothing is persisted yet).
+        static member empty : VersionsInUse = { versionsInUse = fun () -> Set.empty }
 
     /// Whether the version being saved over is currently bound by a live experiment (§H). A
     /// named two-case DU, never a naked bool, so the decision match reads as prose and the

@@ -268,7 +268,9 @@ let private projectionInputs (m : Model) : ProjectionInputs =
         | "" -> []
         | _ -> [ textFilterConstraint materialTextFilterKey ]
     let corpus =
-        match m.context.materials.listMaterials () with
+        // Latest ACTIVE versions only — the show-inactive toggle (a later step) will pass
+        // `IncludeInactive`; the offers/facets default to active (spec 0038 step 021).
+        match m.context.materials.listMaterials ActiveOnly with
         | Ok entries -> entries
         | Error _ -> []
     {
@@ -782,6 +784,7 @@ let private messageRow (m : Model) : IView list =
             | UnknownMaterialId reason
             | DuplicateMaterialId reason
             | MaterialStillReferenced reason
+            | MaterialVersionInUse reason
             | InvalidMaterial reason -> reason
         [ TextBlock.create [
               automationId<TextBlock> UiIds.message

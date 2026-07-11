@@ -452,6 +452,7 @@ let private materialErrorReason (e : MaterialError) : string =
     | UnknownMaterialId reason
     | DuplicateMaterialId reason
     | MaterialStillReferenced reason
+    | MaterialVersionInUse reason
     | InvalidMaterial reason -> reason
 
 /// Route one step-21 editor message; a typed rejection surfaces its reason as the status.
@@ -471,7 +472,7 @@ let update (msg : Msg) (m : Model) : Model =
         // through another window appears here. The status is left alone (a vanished-row
         // message must survive the refresh the same return dispatches); a store refusal keeps
         // the current list and surfaces its typed reason instead.
-        match m.context.materials.listMaterials () with
+        match m.context.materials.listMaterials MaterialLibrary.ActiveOnly with
         | Ok entries -> { m with materials = entries }
         | Error e -> { m with status = Some (materialErrorReason e) }
     | ToggleLayer position ->

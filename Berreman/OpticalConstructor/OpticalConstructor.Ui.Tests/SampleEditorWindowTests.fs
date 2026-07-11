@@ -14,6 +14,8 @@ open Berreman.Constants
 open Berreman.Media
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Controls
@@ -112,7 +114,7 @@ module SampleEditorWindowTests =
     /// categories whose remove-block consults the LIVE materials).
     let private freshProxies () : MaterialProxy * SampleProxy * CategoryProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         materials, samples, categories
 
@@ -123,11 +125,14 @@ module SampleEditorWindowTests =
     /// source; the write surface is inert).
     let private stubMaterialsProxy : MaterialProxy =
         {
-            listMaterials = fun () -> Ok builtInEntries
+            listMaterials = fun _ -> Ok builtInEntries
             searchMaterials = fun _ -> Ok builtInEntries
             tryGetMaterial = fun id -> Ok (builtInEntries |> List.tryFind (fun e -> e.id = id))
-            addMaterial = fun _ -> Ok ()
-            updateMaterial = fun _ -> Ok ()
+            resolveVersion = fun mvid -> Ok (builtInEntries |> List.tryFind (fun e -> e.id = mvid.materialId))
+            saveMaterial = fun _ -> Ok ()
+            markMaterialInactive = fun _ -> Ok ()
+            markMaterialActive = fun _ -> Ok ()
+            supersedeMaterial = fun _ -> Ok ()
             removeMaterial = fun _ -> Ok ()
         }
 
@@ -414,16 +419,16 @@ module SampleEditorWindowTests =
                 requestClose = fun () -> ()
             }
         let opened =
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok entries -> entries
             | Error e -> failwith $"listMaterials failed: %A{e}"
         let m = init context opened (NewBlankSample (newSampleId ()))
         // Another window writes through the SHARED store while this editor is open (no live
         // notification reaches the editor — out of scope).
         let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = "Added elsewhere" }
-        match materials.addMaterial added with
+        match materials.saveMaterial added with
         | Ok () -> ()
-        | Error e -> failwith $"addMaterial failed: %A{e}"
+        | Error e -> failwith $"saveMaterial failed: %A{e}"
         Assert.False(m.materials |> List.exists (fun e -> e.id = added.id), "the open-time snapshot cannot hold the later write")
         // The re-query (a Select-session return or a window activation dispatches it)
         // surfaces the write; a pending status is left alone (RefreshMaterials rides the same
@@ -468,7 +473,7 @@ module SampleEditorWindowTests =
     /// unchanged by-MaterialId ChooseMaterial contract) beside the id-driven clicks.
     let private mountEditorLoop (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorIntent) : HostWindow * (Msg -> unit) =
         let entries =
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok list -> list
             | Error e -> failwith $"listMaterials failed: %A{e}"
         let context : SampleEditorContext =
@@ -870,9 +875,9 @@ module SampleEditorWindowTests =
             // A material lands in the SHARED store while the editor is open (any other
             // window's save path) — the editor's open-time snapshot cannot know it.
             let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = "Mid-session titania" }
-            match materials.addMaterial added with
+            match materials.saveMaterial added with
             | Ok () -> ()
-            | Error e -> failwith $"addMaterial failed: %A{e}"
+            | Error e -> failwith $"saveMaterial failed: %A{e}"
             let opened, subscription = observeOpenedWindows ()
             use _sub = subscription
             clickOn window (UiIds.chooseMaterialButton 0)

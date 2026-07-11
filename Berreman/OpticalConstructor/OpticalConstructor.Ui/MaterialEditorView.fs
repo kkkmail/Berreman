@@ -301,6 +301,7 @@ let private materialErrorReason (e : MaterialError) : string =
     | UnknownMaterialId reason
     | DuplicateMaterialId reason
     | MaterialStillReferenced reason
+    | MaterialVersionInUse reason
     | InvalidMaterial reason -> reason
 
 /// The live preview's fixed spectral window: the visible band in canonical meters (the
@@ -433,12 +434,12 @@ let update (msg : Msg) (m : Model) : Model =
                         properties = complexity.toProperties
                         complexity = Some complexity
                     }
-                // Spec 0038 step 008: Save routes on the freshness of the upfront id — the
-                // id-mint left this path (it happens at window open, `MaterialEditorIntent`).
-                let saved =
-                    match m.target.freshness with
-                    | WindowLauncher.NewUnsaved -> m.context.materials.addMaterial (entryUnder m.target.materialId)
-                    | WindowLauncher.Persisted -> m.context.materials.updateMaterial (entryUnder m.target.materialId)
+                // Spec 0038 step 021: Save routes through the versioned write-seam — the store
+                // itself decides insert-v1 / mutate-in-place / mint-next-version from the id's
+                // presence and the shared `decideVersioning` rule, so the freshness split at the
+                // editor collapses to ONE `saveMaterial` (a fresh id, minted at window open per
+                // step 008, is simply absent from the store and inserted as version 1).
+                let saved = m.context.materials.saveMaterial (entryUnder m.target.materialId)
                 match saved with
                 | Ok () ->
                     m.context.requestClose ()

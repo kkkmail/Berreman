@@ -770,71 +770,11 @@ module Library =
                         | None -> Error (unknown id)
             }
 
-    /// The real, stateful in-memory materials store behind the write-seam (spec 0033 step 006
-    /// — IMPLEMENT_CONTRACT STORE_XDUO_0001; replaces the step-003 validate-only mock).
-    /// `createInMemory` closes over a `ref` `Map<MaterialId, MaterialEntry>` seeded from
-    /// `MaterialLibrary.builtInEntries` — the elevated `MaterialId` is the Map key directly.
-    /// Mutation stays INSIDE the closure (the IO boundary), so logic holding the proxy stays
-    /// pure: reads answer from the current map; `searchMaterials` answers through the pure
-    /// query seam (`byQuery` — the §D.8 `byNameContains`/`byCategory` filters plus the
-    /// `DispersionFilter` facet); `addMaterial` persists a fresh entry and hard-blocks an id
-    /// the store already holds (`DuplicateMaterialId`); `updateMaterial` replaces a known
-    /// entry and rejects an unknown one; `removeMaterial` consults `samplesReferencing` and
-    /// returns `MaterialStillReferenced` NAMING the referencing samples whenever any remain —
-    /// it never cascades and never silently deletes; both writes keep the step-003 blank-name
-    /// validation (`InvalidMaterial`). Deterministic under test — every entry carries its own
-    /// id, no clock, no IO. (A type augmentation HERE, not beside the type in
-    /// `MaterialLibrary.fs`: the referencing lookup is `Sample`-typed, and `Sample` compiles
-    /// after that file. At composition the lookup is `samplesReferencing` below, backed by
-    /// the step-005 `SampleProxy` store.)
-    type MaterialProxy with
-
-        static member createInMemory (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
-            let store = ref (builtInEntries |> List.map (fun e -> e.id, e) |> Map.ofList)
-            let currentEntries () : MaterialEntry list =
-                store.Value |> Map.toList |> List.map snd
-            let unknown (id : MaterialId) : MaterialError =
-                UnknownMaterialId $"unknown material id '%s{string id.value}'"
-            {
-                listMaterials = fun () -> Ok (currentEntries ())
-                searchMaterials = fun q -> Ok (byQuery q { entries = currentEntries () })
-                tryGetMaterial = fun id -> Ok (store.Value |> Map.tryFind id)
-                addMaterial =
-                    fun entry ->
-                        validateEntry entry
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind entry.id with
-                            | Some existing ->
-                                Error (DuplicateMaterialId $"material id '%s{string entry.id.value}' already names '%s{existing.name}'")
-                            | None ->
-                                store.Value <- store.Value |> Map.add entry.id entry
-                                Ok ())
-                updateMaterial =
-                    fun entry ->
-                        validateEntry entry
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind entry.id with
-                            | Some _ ->
-                                store.Value <- store.Value |> Map.add entry.id entry
-                                Ok ()
-                            | None -> Error (unknown entry.id))
-                removeMaterial =
-                    fun id ->
-                        match store.Value |> Map.tryFind id with
-                        | Some entry ->
-                            match samplesReferencing id with
-                            | [] ->
-                                store.Value <- store.Value |> Map.remove id
-                                Ok ()
-                            | referencing ->
-                                let names =
-                                    referencing
-                                    |> List.map (fun s -> $"'%s{s.name}'")
-                                    |> List.sort
-                                    |> String.concat ", "
-                                Error (MaterialStillReferenced $"material '%s{entry.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
-                        | None -> Error (unknown id)
-            }
+    // The real, stateful in-memory materials store behind the write-seam (STORE_XDUO_0001) moved
+    // to `MaterialStore.fs` at spec 0038 Part H step 021: the versioned store needs the shared
+    // `decideVersioning` rule (`Lifecycle.fs`, which compiles AFTER this file because it needs
+    // `SampleId` from `Library` above), so its `createInMemory` augmentation can no longer live
+    // here. Its `samplesReferencing` composition lookup stays below (it is `SampleProxy`-typed).
 
     /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
     /// step 006): every sample the samples store currently holds whose structure references

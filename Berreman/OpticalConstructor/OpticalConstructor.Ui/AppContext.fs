@@ -11,6 +11,8 @@ namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle           // VersionsInUse.empty (the injected in-use seam)
+open OpticalConstructor.Domain.MaterialStore       // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
 open OpticalConstructor.Domain.WorkbenchSettings
 
 /// The app-scope composition context (the `*Context` convention: the IO-boundary
@@ -51,7 +53,10 @@ type AppContext =
     /// unchanged.
     static member create (settings : WorkbenchSettings) : AppContext =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
+        // The versioned materials store (spec 0038 step 021) takes the step-20 `VersionsInUse`
+        // seam; nothing is persisted yet (§0.2), so `VersionsInUse.empty` is truthful for now —
+        // step 25 injects the real one computed over the live experiment descriptors.
+        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
         {
             library = Library.createInMemory ()

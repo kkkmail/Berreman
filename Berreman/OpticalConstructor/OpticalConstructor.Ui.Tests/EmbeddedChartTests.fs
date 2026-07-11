@@ -10,6 +10,8 @@ open Berreman.Dispersion
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.Units
@@ -125,13 +127,13 @@ module EmbeddedChartTests =
     /// A fresh in-memory MaterialProxy for the Material editor window (the App composition).
     let private freshMaterialProxy () : MaterialProxy =
         let samples = SampleProxy.createInMemory ()
-        MaterialProxy.createInMemory (samplesReferencing samples)
+        MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
 
     // -- the Materials window (the step-013 view-panel host site) ----------------------------------
 
     let private freshStores () : MaterialProxy * CategoryProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         materials, categories
 

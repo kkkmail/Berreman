@@ -16,6 +16,8 @@ open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Ui
 open OpticalConstructor.Ui.MaterialEditorView
@@ -85,7 +87,7 @@ module MaterialEditorWindowTests =
     /// Fresh, isolated in-memory stores per test (the composition the App would perform).
     let private freshProxies () : MaterialProxy * SampleProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         materials, samples
 
     let private builtIn (id : MaterialId) : MaterialEntry =
@@ -99,11 +101,14 @@ module MaterialEditorWindowTests =
         let saved = ResizeArray<MaterialEntry>()
         let stub : MaterialProxy =
             {
-                listMaterials = fun () -> Ok []
+                listMaterials = fun _ -> Ok []
                 searchMaterials = fun _ -> Ok []
                 tryGetMaterial = fun _ -> Ok None
-                addMaterial = fun e -> calls.Add("add:" + e.name); saved.Add e; Ok ()
-                updateMaterial = fun e -> calls.Add("update:" + e.name); saved.Add e; Ok ()
+                resolveVersion = fun _ -> Ok None
+                saveMaterial = fun e -> calls.Add("save:" + e.name); saved.Add e; Ok ()
+                markMaterialInactive = fun _ -> Ok ()
+                markMaterialActive = fun _ -> Ok ()
+                supersedeMaterial = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
         calls, saved, { materials = stub; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> calls.Add "close" }
@@ -465,15 +470,17 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``Save adds a NEW material with complexity Some, updates an EXISTING one, and Cancel writes nothing`` () =
-        // NewUnsaved → addMaterial under the UPFRONT-minted id (spec 0038 step 008 — the mint
-        // happened at window open, not here), then close.
+        // NewUnsaved → saveMaterial under the UPFRONT-minted id (spec 0038 step 008 — the mint
+        // happened at window open, not here; step 021 collapsed the add/update split into the ONE
+        // versioned saveMaterial, which inserts version 1 for an id the store does not yet hold),
+        // then close.
         let calls, saved, context = recordingContext ()
         let minted = newMaterialId ()
         init context (NewMaterial minted)
         |> update (SetName "Fresh")
         |> update SaveClicked
         |> ignore
-        Assert.Equal<string list>([ "add:Fresh"; "close" ], List.ofSeq calls)
+        Assert.Equal<string list>([ "save:Fresh"; "close" ], List.ofSeq calls)
         Assert.Equal(minted, saved.[0].id)
         match saved.[0].complexity with
         | Some c ->
@@ -482,14 +489,15 @@ module MaterialEditorWindowTests =
             let eps = saved.[0].properties.epsWithDisp.getEps (WaveLength.nm 600.0<nm>)
             Assert.True(close (eps.[0, 0].Real) (1.5 * 1.5), $"eps11 = %A{eps.[0, 0]}")
         | None -> Assert.Fail("Save must store complexity = Some model")
-        // Persisted → updateMaterial under the SAME id, then close.
+        // Persisted → saveMaterial under the SAME id (metadata-only edit → mutate in place),
+        // then close.
         let calls2, saved2, context2 = recordingContext ()
         let glass = builtIn MaterialIds.glass152
         init context2 (EditMaterial glass)
         |> update (SetName "Edited")
         |> update SaveClicked
         |> ignore
-        Assert.Equal<string list>([ "update:Edited"; "close" ], List.ofSeq calls2)
+        Assert.Equal<string list>([ "save:Edited"; "close" ], List.ofSeq calls2)
         Assert.Equal(glass.id, saved2.[0].id)
         // Cancel → close only; the proxy is never reached.
         let calls3, _, context3 = recordingContext ()
@@ -504,11 +512,14 @@ module MaterialEditorWindowTests =
         let closes = ResizeArray<string>()
         let failing : MaterialProxy =
             {
-                listMaterials = fun () -> Ok []
+                listMaterials = fun _ -> Ok []
                 searchMaterials = fun _ -> Ok []
                 tryGetMaterial = fun _ -> Ok None
-                addMaterial = fun _ -> Error (InvalidMaterial "the name is blank")
-                updateMaterial = fun _ -> Error (InvalidMaterial "the name is blank")
+                resolveVersion = fun _ -> Ok None
+                saveMaterial = fun _ -> Error (InvalidMaterial "the name is blank")
+                markMaterialInactive = fun _ -> Ok ()
+                markMaterialActive = fun _ -> Ok ()
+                supersedeMaterial = fun _ -> Ok ()
                 removeMaterial = fun _ -> Ok ()
             }
         let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
@@ -647,7 +658,7 @@ module MaterialEditorWindowTests =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
             let seededCount =
-                match materials.listMaterials () with
+                match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
@@ -660,7 +671,7 @@ module MaterialEditorWindowTests =
             setText window (UiIds.indexBox 3) "1.8"
             clickOn window UiIds.saveButton
             Assert.False(window.IsVisible)
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok all ->
                 Assert.Equal(seededCount + 1, List.length all)
                 match all |> List.tryFind (fun e -> e.name = "Headless material") with
@@ -682,7 +693,7 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``Save UPDATES an existing editable entry in place through MaterialProxy.updateMaterial`` () =
+    let ``Save UPDATES an existing editable entry in place through MaterialProxy.saveMaterial (metadata-only mutate in place)`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()
             let existing =
@@ -690,7 +701,7 @@ module MaterialEditorWindowTests =
                 | Ok (Some e) -> e
                 | other -> failwith $"glass152 must be seeded, got %A{other}"
             let seededCount =
-                match materials.listMaterials () with
+                match materials.listMaterials ActiveOnly with
                 | Ok all -> List.length all
                 | Error e -> failwith $"seed listing failed: %A{e}"
             let window = MaterialEditorWindow(materials, EditMaterial existing)
@@ -707,7 +718,7 @@ module MaterialEditorWindowTests =
                 | None -> Assert.Fail("the updated entry must keep complexity = Some model")
             | Ok None -> Assert.Fail("the existing entry vanished")
             | Error e -> Assert.Fail($"tryGetMaterial failed: %A{e}")
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok all -> Assert.Equal(seededCount, List.length all)
             | Error e -> Assert.Fail($"listMaterials failed: %A{e}"))
 

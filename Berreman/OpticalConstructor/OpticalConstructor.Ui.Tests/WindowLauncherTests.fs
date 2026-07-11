@@ -195,10 +195,12 @@ module WindowLauncherTests =
     /// order; the `Library` open is scoped here for the `createInMemory` type extensions).
     module private Stores =
         open OpticalConstructor.Domain.Library
+        open OpticalConstructor.Domain.Lifecycle
+        open OpticalConstructor.Domain.MaterialStore
 
         let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
             let samples = SampleProxy.createInMemory ()
-            let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
+            let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
             let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
             materials, samples, categories
 
@@ -472,7 +474,7 @@ module WindowLauncherTests =
         HeadlessSession.run (fun () ->
             let materials, _, categories = Stores.create ()
             let seededIds =
-                match materials.listMaterials () with
+                match materials.listMaterials MaterialLibrary.ActiveOnly with
                 | Ok entries -> entries |> List.map (fun e -> e.id) |> Set.ofList
                 | Error e -> failwith $"listMaterials failed: %A{e}"
             let materialsWindow = MaterialsWindow(materials, categories)
@@ -501,7 +503,7 @@ module WindowLauncherTests =
             Assert.False(opened.[0].IsVisible)
             Assert.False(opened.[1].IsVisible)
             // Both persisted, under two DISTINCT non-seeded ids.
-            match materials.listMaterials () with
+            match materials.listMaterials MaterialLibrary.ActiveOnly with
             | Ok entries ->
                 let added = entries |> List.filter (fun e -> not (Set.contains e.id seededIds))
                 Assert.Equal(2, List.length added)

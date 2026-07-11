@@ -15,6 +15,8 @@ open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle
+open OpticalConstructor.Domain.MaterialStore
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.WindowMode
 open OpticalConstructor.Domain.WorkbenchSettings
@@ -119,7 +121,7 @@ module LibraryWindowTests =
     /// samples store first, then materials whose remove-block consults the LIVE samples).
     let private freshStores () : LibraryProxy * SampleProxy * MaterialProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         Library.createInMemory (), samples, materials
 
     /// A recording stub context (the functional-proxy seam): the launcher and the close

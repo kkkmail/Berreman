@@ -293,7 +293,7 @@ type private ProjectionInputs =
 
 let private projectionInputs (m : Model) : ProjectionInputs =
     let materialCorpus =
-        match m.context.materials.listMaterials () with
+        match m.context.materials.listMaterials ActiveOnly with
         | Ok entries -> entries
         | Error _ -> []
     let textDef = textFilterDef libraryTextFilterKey "Text" (fun (e : LibraryEntry) -> e.displayName) m.textFilter

@@ -77,6 +77,12 @@
     "ui_smoke_tests": 111,
     "ui_tests": 339
   },
+  "20": {
+    "berreman_unit_tests": 119,
+    "constructor_unit_tests": 588,
+    "ui_smoke_tests": 153,
+    "ui_tests": 414
+  },
   "3": {
     "berreman_unit_tests": 119,
     "constructor_unit_tests": 457,

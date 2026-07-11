@@ -249,6 +249,11 @@ module MaterialLibrary =
         | DuplicateMaterialId of reason : string
         | MaterialStillReferenced of reason : string
         | InvalidMaterial of reason : string
+        /// Spec 0038 Part H (step 021): removal is additionally hard-blocked when ANY version of
+        /// the material is currently bound by a live experiment (the injected `VersionsInUse`
+        /// seam). A used version can never be deleted; the case names the offending versions so
+        /// the refusal is actionable in a log / status line.
+        | MaterialVersionInUse of reason : string
 
     /// The in-memory, additive material library (§D.8). Persistence of an entry is the
     /// JSON `materialEntry` `$def` (§A.7); a shareable library FILE format is Part I §I.8.
@@ -493,23 +498,85 @@ module MaterialLibrary =
                 dispersion = AnyDispersion
             }
 
+    /// A monotonically increasing version number of a library entry (spec 0038 Part H, step 020).
+    /// A single-case `int` DU — no naked int stands in for a version. `first` is the version every
+    /// entry starts at; `.next` mints the successor the store freezes onto when a USED version's
+    /// physics changes; `.value` is the wire/disk integer, reached only at the IO boundary. Moved
+    /// here from `Lifecycle.fs` at step 021 because the versioned `MaterialProxy` surface below
+    /// references it (through `MaterialVersionId`), and the record is re-typed IN PLACE in this
+    /// file, which compiles before `Lifecycle.fs`; `Lifecycle.fs` reuses it through its existing
+    /// `open …MaterialLibrary`.
+    type VersionNumber =
+        | VersionNumber of int
+
+        member this.value = let (VersionNumber v) = this in v
+
+        /// The successor version — one past this one. Pure; `VersionNumber.first.next` is version 2.
+        member this.next : VersionNumber = VersionNumber (this.value + 1)
+
+        /// The version every entry starts at (1). New entries and the re-expressed seeds begin here;
+        /// the store never fabricates a version number by hand.
+        static member first : VersionNumber = VersionNumber 1
+
+    /// A specific version of a material entry (spec 0038 Part H): the material identity plus the
+    /// version number. This is the exact key a versioned experiment binding pins (step 25) — a
+    /// binding references the precise version it was built against, not merely the material, so a
+    /// later mint of the material's `.next` version does not silently rewrite an existing
+    /// experiment's physics. Moved here from `Lifecycle.fs` at step 021 alongside `VersionNumber`
+    /// (it needs only `MaterialId`, defined above) so the store's `resolveVersion` field can name it
+    /// while the record stays in place in this file.
+    type MaterialVersionId =
+        {
+            materialId : MaterialId
+            version : VersionNumber
+        }
+
+    /// Whether a store listing shows only the LIVE (latest-active) entries or also the retired
+    /// ones (spec 0038 Part H, step 021): a named two-case DU, never a naked bool. `ActiveOnly` —
+    /// the default the offers use (pickers, Select mode, facet counts) — yields the latest version
+    /// of each material only when that version is active; `IncludeInactive` additionally yields
+    /// materials whose latest version is inactive or superseded (the Materials/Library window's
+    /// show-inactive toggle). Shared by both catalogue stores.
+    type InactiveVisibility =
+        | ActiveOnly
+        | IncludeInactive
+
     /// The mutating materials write-seam (spec 0033 steps 003/006, contract STORE_XDUO_0001 —
-    /// IMPLEMENTED lifecycle): the functional-proxy convention `LibraryProxy` set
-    /// (`ElementId.fs`), a record of camelCase `Result`-returning functions. A test
-    /// substitutes a stub of the SAME shape. Function-valued fields have no structural
-    /// equality, so the proxy compares by reference — a host model holding one keeps its
-    /// (Elmish-required) equality. The real, stateful in-memory store behind this surface is
-    /// `MaterialProxy.createInMemory` (a type augmentation in `ElementId.fs`: its
-    /// `samplesReferencing` parameter is `Sample`-typed, and `Sample` compiles after this
-    /// file).
+    /// IMPLEMENTED lifecycle; re-typed IN PLACE at spec 0038 Part H step 021 into the VERSIONED
+    /// surface): the functional-proxy convention `LibraryProxy` set (`ElementId.fs`), a record of
+    /// camelCase `Result`-returning functions. A test substitutes a stub of the SAME shape.
+    /// Function-valued fields have no structural equality, so the proxy compares by reference — a
+    /// host model holding one keeps its (Elmish-required) equality. The store is now versions per
+    /// `MaterialId`:
+    ///
+    /// - `listMaterials scope` — the LATEST version of each material, filtered by `scope`
+    ///   (`ActiveOnly` for offers, `IncludeInactive` for the show-inactive toggle);
+    /// - `searchMaterials q` — the pure `byQuery` facets over the latest-ACTIVE versions (offers);
+    /// - `tryGetMaterial id` — the latest version's entry, if any;
+    /// - `resolveVersion mvid` — the EXACT version's entry, IGNORING lifecycle (reference
+    ///   resolution: an experiment binding a superseded/inactive version still resolves it);
+    /// - `saveMaterial entry` — applies the step-20 shared `decideVersioning` rule against the
+    ///   injected `VersionsInUse` (a new material inserts version 1; an existing one mutates in
+    ///   place, mints the next version, or is a no-op);
+    /// - `markMaterialInactive` / `markMaterialActive` — retire / revive the latest version;
+    /// - `supersedeMaterial` — retire the latest version (a superseded version behaves as inactive);
+    /// - `removeMaterial id` — keeps the `MaterialStillReferenced` hard-block AND additionally
+    ///   refuses any material carrying a used version (`MaterialVersionInUse`).
+    ///
+    /// The real, stateful in-memory store behind this surface is `MaterialProxy.createInMemory`
+    /// (a type augmentation in `MaterialStore.fs`, after `Lifecycle.fs`: it needs both the shared
+    /// `decideVersioning` rule and its `samplesReferencing` parameter's `Sample` type).
     [<ReferenceEquality>]
     type MaterialProxy =
         {
-            listMaterials : unit -> Result<MaterialEntry list, MaterialError>
+            listMaterials : InactiveVisibility -> Result<MaterialEntry list, MaterialError>
             searchMaterials : MaterialQuery -> Result<MaterialEntry list, MaterialError>
             tryGetMaterial : MaterialId -> Result<MaterialEntry option, MaterialError>
-            addMaterial : MaterialEntry -> Result<unit, MaterialError>
-            updateMaterial : MaterialEntry -> Result<unit, MaterialError>
+            resolveVersion : MaterialVersionId -> Result<MaterialEntry option, MaterialError>
+            saveMaterial : MaterialEntry -> Result<unit, MaterialError>
+            markMaterialInactive : MaterialId -> Result<unit, MaterialError>
+            markMaterialActive : MaterialId -> Result<unit, MaterialError>
+            supersedeMaterial : MaterialId -> Result<unit, MaterialError>
             removeMaterial : MaterialId -> Result<unit, MaterialError>
         }
 
@@ -636,6 +703,10 @@ module MaterialLibrary =
     /// (always `Ok`); the signature carries no error channel, so a future store whose listing can
     /// fail must supply its own conservative lookup instead of this one.
     let materialsReferencingCategory (materials : MaterialProxy) (id : CategoryId) : MaterialEntry list =
-        match materials.listMaterials () with
+        // `IncludeInactive` so a category is held even by a material whose latest version is
+        // retired — removing the category would otherwise orphan the inactive entry (spec 0038
+        // step 021; the block reads the LATEST version of each material, superseded older
+        // versions are view-only and never re-categorised).
+        match materials.listMaterials IncludeInactive with
         | Ok all -> all |> List.filter (fun e -> e.category = id)
         | Error _ -> []

@@ -45,7 +45,7 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
         this.Width <- 1080.0
         this.Height <- 900.0
         let entries =
-            match materials.listMaterials () with
+            match materials.listMaterials ActiveOnly with
             | Ok list -> list
             | Error _ -> []
         // The per-layer Choose material… verb's Select-state open (spec 0038 step 019): the

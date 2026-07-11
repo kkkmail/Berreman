@@ -321,13 +321,17 @@ let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
 /// Avalonia names.
 module private DefaultStores =
     open OpticalConstructor.Domain.Library
+    open OpticalConstructor.Domain.Lifecycle           // VersionsInUse.empty
+    open OpticalConstructor.Domain.MaterialStore       // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
 
     /// Spec 0035 (009): the category store joins the composition LAST — its remove-block consults
     /// the live materials store through `materialsReferencingCategory` (the `samplesReferencing`
-    /// precedent), so a category referenced by a seeded material is not silently removable.
+    /// precedent), so a category referenced by a seeded material is not silently removable. The
+    /// materials store is versioned (spec 0038 step 021) and takes the `VersionsInUse` seam —
+    /// empty for the test scenes, which hold no persisted experiments.
     let create () : MaterialLibrary.MaterialProxy * SampleProxy * MaterialLibrary.CategoryProxy =
         let samples = SampleProxy.createInMemory ()
-        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples)
+        let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
         materials, samples, categories
 
@@ -1593,6 +1597,7 @@ let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
         $"Cannot run: the sample references an unknown material (%s{reason})."
     | MaterialLibrary.DuplicateMaterialId reason
     | MaterialLibrary.MaterialStillReferenced reason
+    | MaterialLibrary.MaterialVersionInUse reason
     | MaterialLibrary.InvalidMaterial reason ->
         $"Cannot run: material library error (%s{reason})."
 

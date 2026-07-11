@@ -118,6 +118,12 @@
              Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
              Library (SampleId) above. -->
         <Compile Include="Lifecycle.fs" />
+        <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
+             registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
+             stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation
+             lives HERE because it applies the shared decideVersioning rule from Lifecycle.fs
+             above and its samplesReferencing parameter is Sample-typed (Library, ElementId.fs). -->
+        <Compile Include="MaterialStore.fs" />
     </ItemGroup>
 
     <ItemGroup>
