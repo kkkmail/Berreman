@@ -75,7 +75,7 @@ module ChartPlot =
         let setAxis (panel : obj) : unit =
             match panel with
             | :? ScottPlot.AxisPanels.AxisBase as a ->
-                a.Label.FontSize <- float32 style.font.axisLabels
+                a.LabelStyle.FontSize <- float32 style.font.axisLabels
                 a.TickLabelStyle.FontSize <- float32 style.font.tickLabels
             | _ -> ()
         setAxis plot.Axes.Bottom
