@@ -44,6 +44,14 @@ type AppContext =
         /// (STORE_XDUO_0005, step 029 in-memory `createInMemory`) — named collections
         /// of experiments save / list / load through it.
         experimentCollections : ExperimentCollectionStore.ExperimentCollectionProxy
+        /// Spec 0038 (027, STORE_XDUO_0004): the scene persistence seam — the in-memory
+        /// `Scene.SceneProxy.createInMemory` store (`Scene.fs`), built ONCE at the app scope
+        /// beside the five stores and the two experiment seams above, so "every proxy is built
+        /// exactly once at the root" holds (step 047 acceptance). The scene save/load surface
+        /// that consumes it is a later cycle — the seam is composed here now exactly as
+        /// `experimentCollections` was before its builder wired in; a future disk-backed `create`
+        /// swaps in with no change to any consumer.
+        scenes : Scene.SceneProxy
         /// The step-005 typed appsettings.json values (`AppConfig.loadWorkbenchSettings`
         /// elevates them once at the composition root); later Part C/E/F steps read the
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
@@ -85,5 +93,9 @@ type AppContext =
             // in-memory `createInMemory`. Both thread into `initMainWith` / `initInverse`.
             experimentData = OpticalConstructor.Storage.ExperimentDataStore.createFileBacked ()
             experimentCollections = ExperimentCollectionStore.ExperimentCollectionProxy.createInMemory ()
+            // Spec 0038 (027): the scene store — the in-memory `SceneProxy.createInMemory` (a fresh
+            // session starts with no saved scenes, §0.2), the last of the STORE_XDUO_000x proxies to
+            // be composed at the root (step 047 "every proxy built once at the root").
+            scenes = Scene.SceneProxy.createInMemory ()
             settings = settings
         }

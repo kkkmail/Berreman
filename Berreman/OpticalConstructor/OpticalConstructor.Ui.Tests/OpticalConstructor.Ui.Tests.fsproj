@@ -214,6 +214,15 @@
              semantic-tree proofs driving the REAL window by its UiIds (green ready statuses; missing
              file + range mismatch typed messages; no solver math), gate `ui-tests` + `ui-smoke`. -->
         <Compile Include="SolverHandoffWindowTests.fs" />
+        <!-- Spec 0038 Part N (step 047, WIRE_UI / AC-W1): the CLOSING composition acceptance — the
+             finalized composition root builds the app scope once (five stores + the file-backed
+             ExperimentDataProxy + the in-memory ExperimentCollectionProxy + the step-027 SceneProxy)
+             and drives the WHOLE root-wired surface headless: a ui-tests pin that every store proxy
+             (incl. the scene seam) is composed at the root, and the ui-smoke wiring assertion that
+             renders the launcher, both constructor states, both faceted windows in Browse and Select,
+             the three editors, and the SolverHandoff — all over ONE app scope — without throwing. Last
+             in the list (it consumes the App composition root + every Ui window). -->
+        <Compile Include="WireUiFinalCompositionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
