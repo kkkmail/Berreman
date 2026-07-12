@@ -2,8 +2,9 @@
 
 *This is the narrative companion to the stats tool, **not a substitute for it.**
 It records the human-readable story of the run — the decisions, surprises, and
-dead-ends — that the numbers do not capture. Read it alongside the stats output;
-neither is complete without the other.*
+dead-ends — that the numbers do not capture. Read it alongside `.stat-md` (the
+numbers) and `.gap-analysis-md` (what shipped vs. what was asked); none is complete
+without the others.*
 
 > Note on provenance: the launching session started this arc **detached** (its own
 > console, per the spec-0035 halt postmortem) and did not watch it live, so this
@@ -14,11 +15,24 @@ neither is complete without the other.*
 ## The short version
 
 A clean arc. All 47 slices landed green and committed; the run ended `COMPLETE`
-with no escalation, no hangup, no operator intervention, and no manual overrides.
-It ran ~27.7 hours wall-clock (2026-07-10 22:12 UTC → 2026-07-12 01:56 UTC)
-against a 48-hour cap, so there was never budget pressure. If you only read one
+with **zero real escalations** — the arc never terminated to ask the operator —
+no hangup, no operator intervention, and no manual overrides. If you only read one
 line: nothing derailed, and the two-tier safety net (retry budget, then resolver)
 did its job exactly once, deliberately.
+
+## Time spent
+
+End to end — from the spec-writer's first move to the last arc commit — the work
+spanned about **32.1 hours** of calendar time (2026-07-10 17:50 UTC → 2026-07-12
+01:56 UTC). Of that, roughly **1.8 hours** was spec authoring, a couple of hours
+was the idle gap between the spec finishing and the arc being launched, and the
+arc-runner phase itself was about **27.7 hours**. Within the arc, the honest split
+is about **24.1 hours of active model compute** (the summed worker, judge, and
+resolver run-times) and only about **3.6 hours of arc overhead** — gate runs,
+commits, and the waits between slices. (The stats tool's `idle_gap_seconds` looks
+much larger, ~25.8 h, but that metric counts a running worker's own execution as
+"idle" because the runner logs nothing while a worker is busy; the real wait is the
+~3.6 h overhead figure.)
 
 ## What happened on the way
 
@@ -63,10 +77,10 @@ call is the thing a future reader should note: it explicitly diagnosed this as
 judge's gap against the tree, issued a high-confidence `issue-hint` pointing at
 the exact missing test (add/remove round-trip on the handler + prove `applyHidden`
 lowers the named curve), bumped the route-back cap +1, and sent it back. Attempt 3
-added the focused test and closed the slice green. This is the safety net working
-as designed: the retry budget caught a real coverage gap, and the resolver
-distinguished "legitimately needs one more pass" from "stuck," instead of
-escalating a slice that was actually one hint away from done.
+added the focused test and closed the slice green. This resolver rescue is *not* an
+escalation — it kept the arc alive rather than stopping it for the operator — which
+is exactly why the escalation count stays at zero: the safety net caught a real
+coverage gap and distinguished "legitimately needs one more pass" from "stuck."
 
 ## Dead-ends and non-events
 

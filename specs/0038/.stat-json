@@ -6,6 +6,8 @@
     "spec_writer_seconds": 6617.0,
     "splitter_seconds": null,
     "arc_runner_seconds": 99846.0,
+    "active_compute_seconds": 86863.99564329977,
+    "arc_overhead_seconds": 12982.004356700229,
     "idle_gap_seconds": 92822.0,
     "largest_gaps": [
       {
@@ -70,13 +72,15 @@
         "max": 2,
         "median": 1.0
       },
-      "resolver_invocations": 0,
+      "resolver_invocations": 1,
       "route_backs_total": 1,
       "max_route_backs_per_slice": 1
     }
   },
   "outcomes": {
     "arc_status": "COMPLETE",
+    "escalation_count": 0,
+    "escalations_by_reason": {},
     "arc_escalation_trigger": null,
     "gate_pass_rate": 0.9877551020408163,
     "gates_failed_top": [
@@ -341,10 +345,10 @@
       }
     },
     "git": {
-      "files_touched": 463,
-      "lines_added": 47019,
+      "files_touched": 466,
+      "lines_added": 47720,
       "lines_removed": 16587,
-      "commit_count": 52
+      "commit_count": 53
     }
   },
   "agent_mix": {
@@ -352,77 +356,77 @@
       "splitter": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "arc_runner_worker": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "architecture_critic": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "reuse_critic": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "code_judge": {
         "agent_name": "claude-opus-4-7",
         "runs": 48,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "resolver": {
         "agent_name": "claude-opus-4-7",
         "runs": 1,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "spec_author": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "claim_checker": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "gate_keeper": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "handoff_verifier": {
         "agent_name": null,
         "runs": 0,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "implement_worker": {
         "agent_name": "claude-opus-4-7",
         "runs": 36,
-        "escalations": 2
+        "nonzero_exits": 2
       },
       "add_component_worker": {
         "agent_name": "claude-opus-4-7",
         "runs": 6,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "add_contract_worker": {
         "agent_name": "claude-opus-4-7",
         "runs": 5,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "implement_contract_worker": {
         "agent_name": "claude-opus-4-7",
         "runs": 5,
-        "escalations": 0
+        "nonzero_exits": 0
       },
       "wire_ui_worker": {
         "agent_name": "claude-opus-4-7",
         "runs": 1,
-        "escalations": 0
+        "nonzero_exits": 0
       }
     }
   },
@@ -507,7 +511,7 @@
   "meta": {
     "schema_version": 7,
     "spec_id": "0038",
-    "generated_at": "2026-07-12T10:10:10Z",
+    "generated_at": "2026-07-12T14:06:21Z",
     "tool_version": 7,
     "warnings": []
   }

@@ -1,0 +1,67 @@
+# Gap analysis — spec 0038 "UI standardization"
+
+*This is the gap-analysis companion to `.summary-md` (the narrative) and `.stat-md`
+(the numbers) — not a substitute for either. It tracks what was asked for versus what
+was authored, and what was authored versus what shipped.*
+
+**Preliminary spec — discovered by inference.** The `.history` first spec-input row
+(`actor: user`, `intent: spec`) reads: *"Read the preliminary spec:
+`…\.manual\006-ui-standardization-preliminary-spec.md` and write a full spec."* So the
+preliminary is `.manual/006-ui-standardization-preliminary-spec.md`, and both gap
+passes below run.
+
+**Basis of the spec→implementation pass.** This pass reads the arc records — the 47/47
+committed green slices (each through all five gates plus a code-judge review), the
+contract-commit log, and the authored `.spec-md`/`.spec-jsonl`. It is **not** a
+line-by-line code audit; items that would need one to confirm are marked
+`unverified`.
+
+## Pass 1 — preliminary (006) → full spec (`.spec-md`)
+
+The full spec is a faithful, near-complete carry of the preliminary. All 14 phases of
+the preliminary's §18 phasing map 1:1 onto spec Parts A–N, and every §17 operator
+decision is cited as binding.
+
+| origin | kind | ref | note |
+|---|---|---|---|
+| prelim→spec | added | `.spec-md` §0.7 | The spec adds an "Operator-facing UX checklist" (discoverability, destructive-verb confirmation, committable-files check) the preliminary did not carry — a spec-authoring convention that expands guidance, not scope. |
+| prelim→spec | narrowed | Part F (ConstantMueller editor) | Both docs agree: the `PolarizerBehavior`/`PolarizerCategory` describability DUs enter, the dedicated ConstantMueller editor stays out of scope (prelim §10.3 = spec Part F). No drift — a pre-agreed narrowing. |
+| prelim→spec | narrowed | Part H (export-embeds-versions) | Prelim §13.5 recorded export as a future decision; the spec carries it as future (no export this cycle). No drift. |
+
+No preliminary phase or operator decision was dropped between 006 and the authored
+spec.
+
+## Pass 2 — full spec (`.spec-md`) → implementation (47 green slices)
+
+The arc completed all 47 slices green and committed all 11 minted contracts
+(`WindowLauncher`, `TestLauncherWindow`, `FacetedTreeControls`, `MaterialsWindow`,
+`LibraryWindow`, `SolverHandoffWindow`, `SceneProxy`, `ExperimentCollectionProxy`,
+`ExperimentDataProxy`, `TestDbContext`, `SeedingProxy`). The entries below are the
+spec's **intentional** out-of-scope boundaries — confirmed not-shipped by design, i.e.
+not defects — plus the coverage caveat.
+
+| origin | kind | ref | note |
+|---|---|---|---|
+| spec→impl | unverified | Part F | The dedicated ConstantMueller editor is out of scope by design; the DU is describable, the editor did not ship — as intended. |
+| spec→impl | unverified | Part I | `.ocproj` disk format stays unwired; scene / experiment IO shipped as in-memory proxies (`SceneProxy`, `ExperimentCollectionProxy`) with round-trip tests only. Intended. |
+| spec→impl | unverified | Part L | Only the inverse **wiring** shipped (`SolverHandoffWindow` + validation); the solver and any data normalization are out of scope by design. |
+| spec→impl | unverified | Part M | `OpticalConstructor.Database` shipped as an EFC wiring proof not referenced by the app (SQLite-in-test only), exactly as specified — no product DB coupling. |
+| spec→impl | unverified | whole arc | Coverage of the per-Part acceptance criteria is inferred from 47/47 green slices + committed contracts, not independently re-derived from the code here. |
+
+One gap was **found and closed inside the arc**, so it is not residual: at slice 032
+the code-judge caught the Part K per-series show/hide chart toggle
+(`ToggleSeriesVisibility` / `applyHidden`) shipping with zero test coverage; the
+resolver's hint added the round-trip test and the slice closed green before commit.
+
+## Verdict
+
+High completeness with no residual gaps of consequence. Every one of the preliminary's
+14 phases entered the authored spec unchanged, and all 47 authored slices shipped green
+across all five gates and code-judge review. The only "gaps" are the spec's own,
+pre-agreed out-of-scope deferrals — the ConstantMueller editor, the `.ocproj` disk
+format, the real inverse solver, app-level DB coupling, and export — none of which was
+expected to ship this cycle. The single mid-arc coverage gap (the chart toggle) was
+caught by review and closed before commit. The one caveat worth stating plainly: this
+spec→implementation pass trusts the arc's green record rather than an independent code
+audit, so a reader wanting per-Part acceptance confirmation should still spot-check the
+landed code for the parts they care about.
