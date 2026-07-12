@@ -588,8 +588,8 @@ module MaterialEditorWindowTests =
         Assert.False(Set.contains key shownModel.hiddenSeries, "toggling the same key again removes it")
         // Lowering — applyHidden flips EXACTLY the toggled curve invisible on the chart's style seed. The
         // n/k chart's series are n₁ n₂ n₃ (indices 0..2) then k₁ k₂ k₃ (3..5), so n₁ is index 0.
-        let chart = NkDispersionChart.nkDispersionChart (propsFrom []) Nanometer previewRange
-        let style = NkDispersionChart.nkDispersionStyle chart
+        let chart = NkDispersionChart.nkDispersionChart Biaxial (propsFrom []) Nanometer previewRange
+        let style = NkDispersionChart.nkDispersionStyle Biaxial chart
         let loweredN1 = applyHidden (Set.singleton key) "nk" chart style
         Assert.False(seriesVisibleAt 0 loweredN1, "hiding n₁ must flip exactly index 0 invisible")
         for i in 1 .. 5 do
@@ -980,8 +980,8 @@ module MaterialEditorWindowTests =
                         SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (createComplex 1.8 0.0))
                     ]
             for props in [ isotropic; biaxial ] do
-                let c = NkDispersionChart.nkDispersionChart props Nanometer range
-                render "TabRenderNk" c (NkDispersionChart.nkDispersionStyle c)
+                let c = NkDispersionChart.nkDispersionChart Biaxial props Nanometer range
+                render "TabRenderNk" c (NkDispersionChart.nkDispersionStyle Biaxial c)
             // The Gyration tab for an active entry.
             let active = propsFrom [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
             let g = NkDispersionChart.gyrationChart active Nanometer range

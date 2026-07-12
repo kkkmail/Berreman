@@ -485,9 +485,10 @@ module LibraryFacets =
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> []
         }
 
-    /// Substrate material — offered only for Plate/Wedge geometries
-    /// (operator, 003/Q10): the `structure.substrate` layer's material,
-    /// keyed by its display name through the corpus.
+    /// Substrate material — offered only for the Plate geometry (operator,
+    /// 003/Q10; the Wedge geometry was removed, spec 0038 comment 007): the
+    /// `structure.substrate` layer's material, keyed by its display name
+    /// through the corpus.
     let private substrateMaterialDef (materials : MaterialEntry list) : AttributeDef<LibraryEntry> =
         {
             key = sampleSubstrateMaterialKey
@@ -498,7 +499,7 @@ module LibraryFacets =
                     match entry with
                     | SampleItem sample ->
                         match sample.substrate with
-                        | Plate | Wedge -> ApplicableAttribute
+                        | Plate -> ApplicableAttribute
                         | ThinFilm -> InapplicableAttribute
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute
             extract =

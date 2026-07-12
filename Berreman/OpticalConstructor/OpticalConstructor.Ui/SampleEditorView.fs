@@ -286,13 +286,11 @@ let substrateCode (kind : SubstrateKind) : string =
     match kind with
     | ThinFilm -> "ThinFilm"
     | Plate -> "Plate"
-    | Wedge -> "Wedge"
 
 let private substrateLabel (kind : SubstrateKind) : string =
     match kind with
     | ThinFilm -> "Thin film"
     | Plate -> "Plate"
-    | Wedge -> "Wedge"
 
 let private orientationDegrees (o : CrystalOrientation) : float * float * float =
     match o with
@@ -686,7 +684,7 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.spacing 6.0
         StackPanel.children (
             labelBlock "Geometry:"
-            :: ([ ThinFilm; Plate; Wedge ]
+            :: ([ ThinFilm; Plate ]
                 |> List.map (fun kind ->
                     clickBox (UiIds.SampleEditor.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
     ] :> IView

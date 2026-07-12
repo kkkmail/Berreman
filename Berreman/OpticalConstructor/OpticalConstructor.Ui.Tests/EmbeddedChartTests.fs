@@ -99,7 +99,7 @@ module EmbeddedChartTests =
     // -- chart / properties builders --------------------------------------------------------------
 
     let private chartOf (props : OpticalPropertiesWithDisp) =
-        NkDispersionChart.nkDispersionChart props Nanometer MaterialEditorView.previewRange
+        NkDispersionChart.nkDispersionChart MaterialComplexityEditor.Biaxial props Nanometer MaterialEditorView.previewRange
 
     let private builtInProps (id : MaterialId) : OpticalPropertiesWithDisp =
         (builtInEntries |> List.find (fun e -> e.id = id)).properties
@@ -165,7 +165,7 @@ module EmbeddedChartTests =
     let ``the embedded n/k chart renders one frame with n on the left and k on the right (non-dispersive)`` () =
         HeadlessSession.run (fun () ->
             let chart = chartOf (builtInProps MaterialIds.vacuum)
-            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle chart))
+            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
             match avaUnder window hostId with
             | Some ava -> assertNkDualAxis "vacuum" ava
             | None -> Assert.Fail("no embedded AvaPlot for the non-dispersive entry")
@@ -176,7 +176,7 @@ module EmbeddedChartTests =
     let ``the embedded n/k chart renders one frame for a dispersive built-in (silicon)`` () =
         HeadlessSession.run (fun () ->
             let chart = chartOf (builtInProps MaterialIds.silicon)
-            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle chart))
+            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
             match avaUnder window hostId with
             | Some ava -> assertNkDualAxis "silicon" ava
             | None -> Assert.Fail("no embedded AvaPlot for the dispersive built-in")
@@ -188,7 +188,7 @@ module EmbeddedChartTests =
         HeadlessSession.run (fun () ->
             for code in [ "TaucLorentz"; "GaussianOscillator"; "ForouhiBloomer"; "BrendelBormann" ] do
                 let chart = chartOf (modelProps code)
-                let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle chart))
+                let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
                 match avaUnder window hostId with
                 | Some ava -> assertNkDualAxis code ava
                 | None -> Assert.Fail($"no embedded AvaPlot for the transcendental model %s{code}")

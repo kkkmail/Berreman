@@ -31,6 +31,7 @@ open Berreman.Dispersion
 open Analytics.Variables
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
 open OpticalConstructor.Controls.ExperimentChart
 
@@ -53,39 +54,54 @@ let private rightAxisSeries (indices : int list) (chart : ExperimentChart) : Cha
     indices
     |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide i ChartStyle.RightAxis st) (ChartStyle.defaultState chart)
 
-/// The per-axis n/k dispersion chart: for each principal axis i, nᵢ = Re[√εᵢᵢ] and kᵢ = Im[√εᵢᵢ]
-/// through the engine `getEps` seam. Series order: n₁ n₂ n₃ (indices 0..2, left) then k₁ k₂ k₃
-/// (indices 3..5, right). An isotropic medium draws three coincident n and three coincident k
-/// curves; a biaxial one draws three distinct pairs — through the SAME builder.
-let nkDispersionChart (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
+/// Spec 0038 comment 007: the principal-axis n/k slots a given anisotropy DISTINGUISHES, each a
+/// (tensor diagonal index, n-series name, k-series name) triple — so the chart draws ONLY the curves
+/// applicable to the choice, named the way the ladder names its axes. Isotropic distinguishes one axis
+/// (a single n/k); uniaxial the ordinary vs the extraordinary; biaxial the three principal axes. The
+/// extraordinary axis is the MIDDLE diagonal (index 1): the engine assembles a uniaxial ε as
+/// `Eps.fromRefractionIndex (nO, nE, nO)` = diag(nₒ², nₑ², nₒ²) (`Dispersion.fs:297`).
+let private nkAxisSpec (anisotropy : Anisotropy) : (int * string * string) list =
+    match anisotropy with
+    | Isotropic -> [ (0, "n", "k") ]
+    | Uniaxial -> [ (0, "n_o", "k_o"); (1, "n_e", "k_e") ]
+    | Biaxial -> [ (0, "n₁", "k₁"); (1, "n₂", "k₂"); (2, "n₃", "k₃") ]
+
+/// The anisotropy to draw a VIEW-ONLY material entry with (the Materials window's preview panel, which
+/// has no editor ladder to read): read from the entry's stored complexity value tree
+/// (`LibraryFacets.anisotropyOf` — data, no physics re-derived) when it has one, else — a coded engine
+/// preset whose physics is a closure, not data — fall back to all three principal axes (Biaxial), which
+/// is safe: coincident axes simply draw coincident curves, as before.
+let anisotropyOfEntry (entry : OpticalConstructor.Domain.MaterialLibrary.MaterialEntry) : Anisotropy =
+    match entry.complexity with
+    | Some complexity -> LibraryFacets.anisotropyOf complexity
+    | None -> Biaxial
+
+/// The per-axis n/k dispersion chart, restricted to the axes the anisotropy distinguishes
+/// (spec 0038 comment 007): for each slot, nᵢ = Re[√εᵢᵢ] and kᵢ = Im[√εᵢᵢ] through the engine `getEps`
+/// seam. The n series come first (LEFT axis), then the k series (RIGHT). An isotropic medium draws one
+/// n and one k curve; a uniaxial one an ordinary and an extraordinary pair; a biaxial one three pairs.
+let nkDispersionChart (anisotropy : Anisotropy) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
-    // √εᵢᵢ sampled once per principal axis over the grid (exportCsv's n,k extraction, per axis).
+    // √εᵢᵢ sampled once per distinguished axis over the grid (exportCsv's n,k extraction, per axis).
     let sqrtDiag (i : int) : Complex list =
         ws |> List.map (fun w -> Complex.Sqrt ((o.epsWithDisp.getEps w).[i, i]))
-    let diag = [ sqrtDiag 0; sqrtDiag 1; sqrtDiag 2 ]
-    let axisSeries (name : string) (i : int) (part : Complex -> float) : ChartSeries =
-        { name = name; points = List.zip xs (List.item i diag |> List.map part) }
+    let sampled = nkAxisSpec anisotropy |> List.map (fun (i, nName, kName) -> nName, kName, sqrtDiag i)
+    let nSeries = sampled |> List.map (fun (nName, _, d) -> { name = nName; points = List.zip xs (d |> List.map (fun c -> c.Real)) })
+    let kSeries = sampled |> List.map (fun (_, kName, d) -> { name = kName; points = List.zip xs (d |> List.map (fun c -> c.Imaginary)) })
     {
-        series =
-            [
-                axisSeries "n₁" 0 (fun c -> c.Real)
-                axisSeries "n₂" 1 (fun c -> c.Real)
-                axisSeries "n₃" 2 (fun c -> c.Real)
-                axisSeries "k₁" 0 (fun c -> c.Imaginary)
-                axisSeries "k₂" 1 (fun c -> c.Imaginary)
-                axisSeries "k₃" 2 (fun c -> c.Imaginary)
-            ]
+        series = nSeries @ kSeries
         xLabel = SpectralAxis.axisLabel u
         yLabel = "n"
         title = "n / k dispersion"
-        description = "n on the left axis, k on the right, per principal axis (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
+        description = "n on the left axis, k on the right, per principal axis the anisotropy distinguishes (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
         angular = false
     }
 
-/// The n/k chart's paired style seed: n₁/n₂/n₃ (indices 0..2) keep the LEFT axis, k₁/k₂/k₃
-/// (indices 3..5) are flipped to the RIGHT.
-let nkDispersionStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
-    rightAxisSeries [ 3; 4; 5 ] chart
+/// The n/k chart's paired style seed for a given anisotropy: the n series (the first half — one per
+/// distinguished axis) keep the LEFT axis; the k series (the second half) are flipped to the RIGHT.
+let nkDispersionStyle (anisotropy : Anisotropy) (chart : ExperimentChart) : ChartStyle.ChartStyleState =
+    let n = List.length (nkAxisSpec anisotropy)
+    rightAxisSeries [ n .. 2 * n - 1 ] chart
 
 /// The gyration chart (shown only when the entry is optically active): the six independent
 /// gyration-tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] (the upper triangle of the assembled ρ) vs wavelength.

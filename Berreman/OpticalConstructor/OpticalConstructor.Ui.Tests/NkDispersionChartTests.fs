@@ -53,7 +53,7 @@ module NkDispersionChartTests =
     [<Fact>]
     let ``AC: per-axis n lands on the left axis, k on the right, spanning the requested range`` () =
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 40
-        let chart = NkDispersionChart.nkDispersionChart siliconEntry.properties Nanometer range
+        let chart = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties Nanometer range
         // Six series in a fixed order: n₁ n₂ n₃ then k₁ k₂ k₃, sharing one x grid.
         Assert.Equal<string list>([ "n₁"; "n₂"; "n₃"; "k₁"; "k₂"; "k₃" ], chart.series |> List.map (fun s -> s.name))
         let xs = (List.head chart.series).points |> List.map fst
@@ -67,7 +67,7 @@ module NkDispersionChartTests =
         Assert.False(chart.angular)
         // The paired style seed carries the axis assignment (the side is STYLE, not data — 018):
         // n₁/n₂/n₃ stay on the LEFT axis, k₁/k₂/k₃ are flipped to the RIGHT.
-        let style = NkDispersionChart.nkDispersionStyle chart
+        let style = NkDispersionChart.nkDispersionStyle Biaxial chart
         for i in 0 .. 2 do
             Assert.Equal(LeftAxis, (seriesStyleOf i style).axisSide)
         for i in 3 .. 5 do
@@ -76,7 +76,7 @@ module NkDispersionChartTests =
     [<Fact>]
     let ``a dispersive entry yields a curve — silicon's n₁ varies across 400…800 nm`` () =
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 40
-        let chart = NkDispersionChart.nkDispersionChart siliconEntry.properties Nanometer range
+        let chart = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties Nanometer range
         let ys = (seriesNamed chart "n₁").points |> List.map snd
         let span = List.max ys - List.min ys
         Assert.True(span > 0.01, $"silicon n₁ span across the range = %g{span} (expected a curve)")
@@ -84,7 +84,7 @@ module NkDispersionChartTests =
     [<Fact>]
     let ``a non-dispersive entry yields flat lines through the SAME builder — vacuum n = 1, k = 0 on every axis`` () =
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 40
-        let chart = NkDispersionChart.nkDispersionChart vacuumEntry.properties Nanometer range
+        let chart = NkDispersionChart.nkDispersionChart Biaxial vacuumEntry.properties Nanometer range
         for s in chart.series do
             let ys = s.points |> List.map snd
             Assert.True(List.max ys - List.min ys < 1e-12, $"series %s{s.name} is not flat")
@@ -104,17 +104,58 @@ module NkDispersionChartTests =
                     SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (createComplex 1.8 0.0))
                 ]
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
-        let chart = NkDispersionChart.nkDispersionChart biaxial Nanometer range
+        let chart = NkDispersionChart.nkDispersionChart Biaxial biaxial Nanometer range
         let n1, n2, n3 = firstY chart "n₁", firstY chart "n₂", firstY chart "n₃"
         Assert.True(abs (n1 - 1.6) < 1e-9, $"n₁ = %g{n1}")
         Assert.True(abs (n2 - 1.7) < 1e-9, $"n₂ = %g{n2}")
         Assert.True(abs (n3 - 1.8) < 1e-9, $"n₃ = %g{n3}")
 
     [<Fact>]
+    let ``spec 0038 comment 007: an isotropic choice draws one n/k pair named n and k`` () =
+        let iso =
+            propsOf
+                [
+                    ChooseAnisotropy Isotropic
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.5 0.0))
+                ]
+        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let chart = NkDispersionChart.nkDispersionChart Isotropic iso Nanometer range
+        Assert.Equal<string list>([ "n"; "k" ], chart.series |> List.map (fun s -> s.name))
+        let n = firstY chart "n"
+        Assert.True(abs (n - 1.5) < 1e-9, $"n = %g{n}")
+        // n on the left axis, k flipped to the right.
+        let style = NkDispersionChart.nkDispersionStyle Isotropic chart
+        Assert.Equal(LeftAxis, (seriesStyleOf 0 style).axisSide)
+        Assert.Equal(RightAxis, (seriesStyleOf 1 style).axisSide)
+
+    [<Fact>]
+    let ``spec 0038 comment 007: a uniaxial choice draws ordinary + extraordinary pairs named n_o / n_e`` () =
+        let uni =
+            propsOf
+                [
+                    ChooseAnisotropy Uniaxial
+                    SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (createComplex 1.5 0.0))
+                    SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (createComplex 1.7 0.0))
+                ]
+        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let chart = NkDispersionChart.nkDispersionChart Uniaxial uni Nanometer range
+        Assert.Equal<string list>([ "n_o"; "n_e"; "k_o"; "k_e" ], chart.series |> List.map (fun s -> s.name))
+        let no = firstY chart "n_o"
+        let ne = firstY chart "n_e"
+        Assert.True(abs (no - 1.5) < 1e-9, $"n_o = %g{no}")
+        Assert.True(abs (ne - 1.7) < 1e-9, $"n_e = %g{ne}")
+        // The two n stay on the left, the two k are flipped to the right.
+        let style = NkDispersionChart.nkDispersionStyle Uniaxial chart
+        for i in 0 .. 1 do
+            Assert.Equal(LeftAxis, (seriesStyleOf i style).axisSide)
+        for i in 2 .. 3 do
+            Assert.Equal(RightAxis, (seriesStyleOf i style).axisSide)
+
+    [<Fact>]
     let ``the display unit rescales only the x-axis (AC-D7) — the y data is identical in eV and nm`` () =
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
-        let inNm = NkDispersionChart.nkDispersionChart siliconEntry.properties Nanometer range
-        let inEv = NkDispersionChart.nkDispersionChart siliconEntry.properties ElectronVolt range
+        let inNm = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties Nanometer range
+        let inEv = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties ElectronVolt range
         for name in [ "n₁"; "n₂"; "n₃"; "k₁"; "k₂"; "k₃" ] do
             Assert.Equal<float list>((seriesNamed inNm name).points |> List.map snd, (seriesNamed inEv name).points |> List.map snd)
         Assert.Equal<string>(SpectralAxis.axisLabel ElectronVolt, inEv.xLabel)

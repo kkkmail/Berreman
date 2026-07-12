@@ -1025,7 +1025,7 @@ let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
             ] :> IView
         placeholder, ""
     | Some o ->
-        let nkChart = NkDispersionChart.nkDispersionChart o Nanometer previewRange
+        let nkChart = NkDispersionChart.nkDispersionChart m.editor.anisotropy o Nanometer previewRange
         let showGyration =
             match m.mode with
             | EditableMaterial -> m.editor.activity = ActivityOn
@@ -1035,7 +1035,7 @@ let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
             | EditableMaterial -> m.editor.magnetic = MagneticOn
             | ViewOnlyMaterial _ -> NkDispersionChart.hasMagnetic o
         let tabs =
-            [ chartTab UiIds.MaterialEditor.nkTab "nk" "n, k" UiIds.MaterialEditor.previewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle nkChart) ]
+            [ chartTab UiIds.MaterialEditor.nkTab "nk" "n, k" UiIds.MaterialEditor.previewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
             @ (if showGyration then
                    let g = NkDispersionChart.gyrationChart o Nanometer previewRange
                    [ chartTab UiIds.MaterialEditor.gyrationTab "gyration" "Gyration" UiIds.MaterialEditor.gyrationChart m dispatch g (NkDispersionChart.gyrationStyle g) ]

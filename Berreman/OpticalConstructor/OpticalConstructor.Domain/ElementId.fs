@@ -71,12 +71,15 @@ module Library =
         static member firstOf (sampleId : SampleId) : SampleVersionId =
             { sampleId = sampleId; version = VersionNumber.first }
 
-    /// Whether a sample's geometry is a thin film, a thick plate, or a wedge (spec §2a). A DU, not a
-    /// bool/enum, so the sample editor can add geometries case-by-case (compiler-guided).
+    /// Whether a sample's geometry is a thin film (0+ layers on a semi-infinite substrate — reflectance
+    /// only) or a thick plate (0+ layers on a specified substrate plate — reflectance and/or
+    /// transmittance). A DU, not a bool/enum, so the sample editor can add geometries case-by-case
+    /// (compiler-guided). The former `Wedge` case was removed (spec 0038 comment 007): a thin film
+    /// already covers the semi-infinite case it duplicated. (This is the display/search geometry facet,
+    /// distinct from the engine `Berreman.Media.Substrate` whose `Wedge` case is unaffected.)
     type SubstrateKind =
         | ThinFilm
         | Plate
-        | Wedge
 
     /// How a layer's crystal tensors are oriented relative to the lab frame (spec 0033 step 020):
     /// `PrimaryAxes` keeps the material's own principal axes (the identity — tensors exactly as

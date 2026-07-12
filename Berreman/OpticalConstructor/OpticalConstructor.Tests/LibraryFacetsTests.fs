@@ -515,10 +515,9 @@ module LibraryFacetsTests =
     // =======================================================================
 
     [<Fact>]
-    let ``the substrate-material facet is offered for plate and wedge geometries only`` () =
+    let ``the substrate-material facet is offered for the plate geometry only`` () =
         let def = libraryDef sampleSubstrateMaterialKey
         Assert.True(applies def (SampleItem SeedSamples.glassPlate1mm))
-        Assert.True(applies def (SampleItem { SeedSamples.glassPlate1mm with substrate = Wedge }))
         Assert.False(applies def (SampleItem SeedSamples.glassFilm600))
         Assert.False(applies def polarizerEntry)
 

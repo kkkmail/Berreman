@@ -1042,7 +1042,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
             |> List.tryPick (fun (vn, e) -> if vn = shownVersion then Some e else None)
             |> Option.defaultValue latestEntry
         let viewingOlder = shownVersion <> latestVersion
-        let chart = NkDispersionChart.nkDispersionChart shownEntry.properties Nanometer MaterialEditorView.previewRange
+        let chart = NkDispersionChart.nkDispersionChart (NkDispersionChart.anisotropyOfEntry shownEntry) shownEntry.properties Nanometer MaterialEditorView.previewRange
         let editability =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
             else
@@ -1079,7 +1079,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
                             ] :> IView ]
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
-                          @ [ EmbeddedChart.create UiIds.MaterialsWindow.viewPanelChart chart (NkDispersionChart.nkDispersionStyle chart) ])
+                          @ [ EmbeddedChart.create UiIds.MaterialsWindow.viewPanelChart chart (NkDispersionChart.nkDispersionStyle (NkDispersionChart.anisotropyOfEntry shownEntry) chart) ])
                   ])
           ] :> IView ]
 
