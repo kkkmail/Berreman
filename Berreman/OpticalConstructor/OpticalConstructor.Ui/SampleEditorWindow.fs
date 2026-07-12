@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Avalonia.Automation
+open OpticalConstructor.Controls
 open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
@@ -43,8 +44,8 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
             | SampleEditorView.EditSample s -> $"Sample Editor — %s{s.name}"
             | SampleEditorView.NewSeededMultilayer _ -> "Sample Editor — new multilayer"
             | SampleEditorView.NewBlankSample _ -> "Sample Editor — new sample"
-        this.Name <- SampleEditorView.UiIds.window
-        AutomationProperties.SetAutomationId(this, SampleEditorView.UiIds.window)
+        this.Name <- UiIds.SampleEditor.window
+        AutomationProperties.SetAutomationId(this, UiIds.SampleEditor.window)
         this.Width <- 1080.0
         this.Height <- 900.0
         let entries =

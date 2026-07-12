@@ -25,6 +25,7 @@
 module OpticalConstructor.Ui.SampleEditorView
 
 open System
+open OpticalConstructor.Controls
 open System.Globalization
 open System.Numerics
 open Avalonia
@@ -44,113 +45,6 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.SampleStackEditor
 open OpticalConstructor.Domain.WindowMode
-
-/// Stable intent-named automation ids (CLAUDE.md UI guidance): the thirteen slice-mandated ids
-/// as `[<Literal>]`s plus the derived per-row / per-group id families (prefixed so they cannot
-/// collide — the SampleLibraryControls convention).
-[<RequireQualifiedAccess>]
-module UiIds =
-    [<Literal>]
-    let window = "SampleEditorWindow"
-    [<Literal>]
-    let nameBox = "SampleNameBox"
-    [<Literal>]
-    let addLayerButton = "AddLayerButton"
-    [<Literal>]
-    let makeRepeatBlockButton = "MakeRepeatBlockButton"
-    [<Literal>]
-    let selectByMaterialButton = "SelectByMaterialButton"
-    [<Literal>]
-    let setLayerHeightButton = "SetLayerHeightButton"
-    [<Literal>]
-    let setLayerMaterialButton = "SetLayerMaterialButton"
-    [<Literal>]
-    let setOrientationOfSelectedButton = "SetOrientationOfSelectedButton"
-    [<Literal>]
-    let removeSelectedLayersButton = "RemoveSelectedLayersButton"
-    [<Literal>]
-    let repeatCountStepper = "RepeatCountStepper"
-    [<Literal>]
-    let qwotEntryBox = "QwotEntryBox"
-    [<Literal>]
-    let saveButton = "SampleEditorSaveButton"
-    [<Literal>]
-    let cancelButton = "SampleEditorCancelButton"
-    /// Spec 0038 (033): the unsaved-edit exit confirm surface — the prompt row and its two
-    /// actions (Discard changes / Keep editing), shown in place of Save/Cancel while a dirty
-    /// editor is being closed through Cancel or the window chrome.
-    [<Literal>]
-    let exitConfirm = "SampleEditorExitConfirm"
-    [<Literal>]
-    let discardButton = "SampleEditorDiscardButton"
-    [<Literal>]
-    let keepEditingButton = "SampleEditorKeepEditingButton"
-    // Supporting fixed ids (not slice-mandated, same naming discipline).
-    [<Literal>]
-    let descriptionBox = "SampleDescriptionBox"
-    [<Literal>]
-    let layerHeightBox = "SampleLayerHeightBox"
-    [<Literal>]
-    let phiBox = "SampleOrientationPhiBox"
-    [<Literal>]
-    let thetaBox = "SampleOrientationThetaBox"
-    [<Literal>]
-    let psiBox = "SampleOrientationPsiBox"
-    [<Literal>]
-    let clearSelectionButton = "ClearSelectionButton"
-    [<Literal>]
-    let moveUpButton = "MoveSelectedUpButton"
-    [<Literal>]
-    let moveDownButton = "MoveSelectedDownButton"
-    [<Literal>]
-    let qwotDerivedText = "QwotDerivedText"
-    [<Literal>]
-    let filmsCount = "SampleFilmsCount"
-    // Substrate / lower half-space surfaces (spec 0033 gap G12).
-    [<Literal>]
-    let substrateSummary = "SampleSubstrateSummary"
-    [<Literal>]
-    let lowerSummary = "SampleLowerSummary"
-    [<Literal>]
-    let setSubstrateButton = "SetSubstrateButton"
-    [<Literal>]
-    let clearSubstrateButton = "ClearSubstrateButton"
-    [<Literal>]
-    let setLowerButton = "SetLowerButton"
-    [<Literal>]
-    let clearLowerButton = "ClearLowerButton"
-    [<Literal>]
-    let statusText = "SampleEditorStatus"
-    [<Literal>]
-    let stackTable = "SampleStackTable"
-    [<Literal>]
-    let repeatCountStepperPlus = "RepeatCountStepperPlus"
-    [<Literal>]
-    let repeatCountStepperMinus = "RepeatCountStepperMinus"
-    /// The toolbar fold stepper carries the mandated literal; each period group's INLINE
-    /// stepper carries the group-indexed member of the same family.
-    let groupStepper (groupIndex : int) : string = $"RepeatCountStepper_%d{groupIndex}"
-    let groupStepperPlus (groupIndex : int) : string = $"RepeatCountStepperPlus_%d{groupIndex}"
-    let groupStepperMinus (groupIndex : int) : string = $"RepeatCountStepperMinus_%d{groupIndex}"
-    /// A top-level single layer's row / a period group's nested cell-layer row.
-    let layerRow (itemIndex : int) : string = $"SampleLayerRow_%d{itemIndex}"
-    let cellLayerRow (itemIndex : int) (cellIndex : int) : string = $"SampleLayerRow_%d{itemIndex}_%d{cellIndex}"
-    /// A period group's collapsible super-row and its rotating-triangle expander.
-    let groupRow (itemIndex : int) : string = $"SampleGroupRow_%d{itemIndex}"
-    let groupExpander (itemIndex : int) : string = $"SampleGroupExpander_%d{itemIndex}"
-    /// A row's thickness readout cell (what the bulk set-thickness acceptance observes).
-    let layerThickness (itemIndex : int) : string = $"SampleLayerThickness_%d{itemIndex}"
-    let cellLayerThickness (itemIndex : int) (cellIndex : int) : string = $"SampleLayerThickness_%d{itemIndex}_%d{cellIndex}"
-    /// A row's per-layer orientation editor (present ONLY for anisotropic materials).
-    let layerOrientation (itemIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}"
-    let cellLayerOrientation (itemIndex : int) (cellIndex : int) : string = $"SampleLayerOrientation_%d{itemIndex}_%d{cellIndex}"
-    /// A SubstrateKind facet option's clickable id, by its stable code.
-    let substrateOption (code : string) : string = "SampleSubstrateKind_" + code
-    /// A layer row's Choose material… verb (spec 0038 step 019): a top-level single layer's
-    /// slot / a period group's nested cell-layer slot — opens the Materials window in Select
-    /// state targeted at that row's `LayerPosition`.
-    let chooseMaterialButton (itemIndex : int) : string = $"ChooseMaterialButton_%d{itemIndex}"
-    let cellChooseMaterialButton (itemIndex : int) (cellIndex : int) : string = $"ChooseMaterialButton_%d{itemIndex}_%d{cellIndex}"
 
 /// What Save targets (spec 0038 step 008): the sample id — ALWAYS present, minted at
 /// Add-window open — plus its `EntryFreshness`. Save routes on the freshness (`NewUnsaved`
@@ -763,7 +657,7 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Name:"
             TextBox.create [
-                TextBox.name UiIds.nameBox
+                TextBox.name UiIds.SampleEditor.nameBox
                 TextBox.width 340.0
                 TextBox.text m.name
                 TextBox.onTextChanged (SetName >> dispatch)
@@ -778,7 +672,7 @@ let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "Description:"
             TextBox.create [
-                TextBox.name UiIds.descriptionBox
+                TextBox.name UiIds.SampleEditor.descriptionBox
                 TextBox.width 620.0
                 TextBox.text m.description
                 TextBox.onTextChanged (SetDescription >> dispatch)
@@ -794,7 +688,7 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
             labelBlock "Geometry:"
             :: ([ ThinFilm; Plate; Wedge ]
                 |> List.map (fun kind ->
-                    clickBox (UiIds.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
+                    clickBox (UiIds.SampleEditor.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
     ] :> IView
 
 // -- the stack table -------------------------------------------------------------------------
@@ -944,7 +838,7 @@ let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int)
             TextBlock.verticalAlignment VerticalAlignment.Center
         ] :> IView
     Border.create [
-        automationId (UiIds.groupRow groupIndex)
+        automationId (UiIds.SampleEditor.groupRow groupIndex)
         Border.margin (thickOf 0.0 0.0 0.0 3.0)
         Border.background (brush groupBackground)
         Border.borderBrush (brush idleBorder)
@@ -956,15 +850,15 @@ let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int)
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 8.0
                 StackPanel.children [
-                    clickBoxView (UiIds.groupExpander groupIndex) false triangle (fun () -> dispatch (ToggleGroup groupIndex))
+                    clickBoxView (UiIds.SampleEditor.groupExpander groupIndex) false triangle (fun () -> dispatch (ToggleGroup groupIndex))
                     TextBlock.create [
                         TextBlock.text $"%d{List.length group.cell}-layer cell"
                         TextBlock.verticalAlignment VerticalAlignment.Center
                     ] :> IView
                     stepper
-                        (UiIds.groupStepper groupIndex)
-                        (UiIds.groupStepperMinus groupIndex)
-                        (UiIds.groupStepperPlus groupIndex)
+                        (UiIds.SampleEditor.groupStepper groupIndex)
+                        (UiIds.SampleEditor.groupStepperMinus groupIndex)
+                        (UiIds.SampleEditor.groupStepperPlus groupIndex)
                         group.count
                         (fun delta -> dispatch (GroupCountBy (groupIndex, delta)))
                     TextBlock.create [
@@ -989,9 +883,9 @@ let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
         match item with
         | SingleLayer layer ->
             [ rowWithChooser
-                  (layerRowView m dispatch (AtSingleLayer i) (UiIds.layerRow i) (UiIds.layerThickness i) (UiIds.layerOrientation i) 0.0 layer)
+                  (layerRowView m dispatch (AtSingleLayer i) (UiIds.SampleEditor.layerRow i) (UiIds.SampleEditor.layerThickness i) (UiIds.SampleEditor.layerOrientation i) 0.0 layer)
                   (AtSingleLayer i)
-                  (UiIds.chooseMaterialButton i) ]
+                  (UiIds.SampleEditor.chooseMaterialButton i) ]
         | Repeated group ->
             let superRow = groupRowView m dispatch i group
             let cellRows =
@@ -1000,9 +894,9 @@ let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
                     group.cell
                     |> List.mapi (fun j layer ->
                         rowWithChooser
-                            (layerRowView m dispatch (AtCellLayer (i, j)) (UiIds.cellLayerRow i j) (UiIds.cellLayerThickness i j) (UiIds.cellLayerOrientation i j) 28.0 layer)
+                            (layerRowView m dispatch (AtCellLayer (i, j)) (UiIds.SampleEditor.cellLayerRow i j) (UiIds.SampleEditor.cellLayerThickness i j) (UiIds.SampleEditor.cellLayerOrientation i j) 28.0 layer)
                             (AtCellLayer (i, j))
-                            (UiIds.cellChooseMaterialButton i j))
+                            (UiIds.SampleEditor.cellChooseMaterialButton i j))
             superRow :: cellRows)
     |> List.concat
 
@@ -1014,7 +908,7 @@ let private filmsCountRow (m : Model) : IView =
         StackPanel.children [
             labelBlock "Films (expanded):"
             TextBlock.create [
-                TextBlock.name UiIds.filmsCount
+                TextBlock.name UiIds.SampleEditor.filmsCount
                 TextBlock.text (string (filmsCount m))
                 TextBlock.verticalAlignment VerticalAlignment.Center
             ] :> IView
@@ -1065,18 +959,18 @@ let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children [
                     labelBlock "Substrate plate:"
-                    summary UiIds.substrateSummary substrateText
-                    verbButton UiIds.setSubstrateButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetSubstrateClicked)
-                    verbButton UiIds.clearSubstrateButton "Clear" false true (fun () -> dispatch ClearSubstrateClicked)
+                    summary UiIds.SampleEditor.substrateSummary substrateText
+                    verbButton UiIds.SampleEditor.setSubstrateButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetSubstrateClicked)
+                    verbButton UiIds.SampleEditor.clearSubstrateButton "Clear" false true (fun () -> dispatch ClearSubstrateClicked)
                 ]
             ] :> IView
             WrapPanel.create [
                 WrapPanel.orientation Orientation.Horizontal
                 WrapPanel.children [
                     labelBlock "Lower half-space:"
-                    summary UiIds.lowerSummary lowerText
-                    verbButton UiIds.setLowerButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetLowerClicked)
-                    verbButton UiIds.clearLowerButton "Clear (vacuum)" false true (fun () -> dispatch ClearLowerClicked)
+                    summary UiIds.SampleEditor.lowerSummary lowerText
+                    verbButton UiIds.SampleEditor.setLowerButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetLowerClicked)
+                    verbButton UiIds.SampleEditor.clearLowerButton "Clear (vacuum)" false true (fun () -> dispatch ClearLowerClicked)
                 ]
             ] :> IView
         ]
@@ -1090,14 +984,14 @@ let private selectionToolbar (m : Model) (dispatch : Msg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children [
-            verbButton UiIds.addLayerButton "Add layer" true (not (List.isEmpty m.materials)) (fun () -> dispatch AddLayerClicked)
-            verbButton UiIds.selectByMaterialButton "Select by material" false (hasChosenMaterial m) (fun () -> dispatch SelectByMaterialClicked)
-            verbButton UiIds.clearSelectionButton "Clear selection" false (hasSelection m) (fun () -> dispatch ClearSelectionClicked)
-            verbButton UiIds.removeSelectedLayersButton "Remove" false (hasSelection m) (fun () -> dispatch RemoveSelectedClicked)
-            verbButton UiIds.moveUpButton "Move up" false (hasSelection m) (fun () -> dispatch MoveUpClicked)
-            verbButton UiIds.moveDownButton "Move down" false (hasSelection m) (fun () -> dispatch MoveDownClicked)
-            stepper UiIds.repeatCountStepper UiIds.repeatCountStepperMinus UiIds.repeatCountStepperPlus m.foldCount (fun delta -> dispatch (FoldCountBy delta))
-            verbButton UiIds.makeRepeatBlockButton "Make repeat block" false (hasSelection m) (fun () -> dispatch MakeRepeatBlockClicked)
+            verbButton UiIds.SampleEditor.addLayerButton "Add layer" true (not (List.isEmpty m.materials)) (fun () -> dispatch AddLayerClicked)
+            verbButton UiIds.SampleEditor.selectByMaterialButton "Select by material" false (hasChosenMaterial m) (fun () -> dispatch SelectByMaterialClicked)
+            verbButton UiIds.SampleEditor.clearSelectionButton "Clear selection" false (hasSelection m) (fun () -> dispatch ClearSelectionClicked)
+            verbButton UiIds.SampleEditor.removeSelectedLayersButton "Remove" false (hasSelection m) (fun () -> dispatch RemoveSelectedClicked)
+            verbButton UiIds.SampleEditor.moveUpButton "Move up" false (hasSelection m) (fun () -> dispatch MoveUpClicked)
+            verbButton UiIds.SampleEditor.moveDownButton "Move down" false (hasSelection m) (fun () -> dispatch MoveDownClicked)
+            stepper UiIds.SampleEditor.repeatCountStepper UiIds.SampleEditor.repeatCountStepperMinus UiIds.SampleEditor.repeatCountStepperPlus m.foldCount (fun delta -> dispatch (FoldCountBy delta))
+            verbButton UiIds.SampleEditor.makeRepeatBlockButton "Make repeat block" false (hasSelection m) (fun () -> dispatch MakeRepeatBlockClicked)
         ]
     ] :> IView
 
@@ -1125,17 +1019,17 @@ let private editToolbar (m : Model) (dispatch : Msg -> unit) : IView =
         WrapPanel.children [
             labelled "Thickness (nm):" (
                 TextBox.create [
-                    TextBox.name UiIds.layerHeightBox
+                    TextBox.name UiIds.SampleEditor.layerHeightBox
                     TextBox.width 70.0
                     TextBox.text m.thicknessText
                     TextBox.onTextChanged (SetThicknessText >> dispatch)
                 ] :> IView)
-            verbButton UiIds.setLayerHeightButton "Set thickness" false (hasSelection m) (fun () -> dispatch SetLayerHeightClicked)
-            verbButton UiIds.setLayerMaterialButton "Set material" false (hasSelection m && hasChosenMaterial m) (fun () -> dispatch SetLayerMaterialClicked)
-            angleBox UiIds.phiBox "φ°" m.phiText PhiSlot
-            angleBox UiIds.thetaBox "θ°" m.thetaText ThetaSlot
-            angleBox UiIds.psiBox "ψ°" m.psiText PsiSlot
-            verbButton UiIds.setOrientationOfSelectedButton "Set orientation" false (hasSelection m) (fun () -> dispatch SetOrientationClicked)
+            verbButton UiIds.SampleEditor.setLayerHeightButton "Set thickness" false (hasSelection m) (fun () -> dispatch SetLayerHeightClicked)
+            verbButton UiIds.SampleEditor.setLayerMaterialButton "Set material" false (hasSelection m && hasChosenMaterial m) (fun () -> dispatch SetLayerMaterialClicked)
+            angleBox UiIds.SampleEditor.phiBox "φ°" m.phiText PhiSlot
+            angleBox UiIds.SampleEditor.thetaBox "θ°" m.thetaText ThetaSlot
+            angleBox UiIds.SampleEditor.psiBox "ψ°" m.psiText PsiSlot
+            verbButton UiIds.SampleEditor.setOrientationOfSelectedButton "Set orientation" false (hasSelection m) (fun () -> dispatch SetOrientationClicked)
         ]
     ] :> IView
 
@@ -1154,14 +1048,14 @@ let private qwotRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             labelBlock "QWOT λ (nm):"
             TextBox.create [
-                TextBox.name UiIds.qwotEntryBox
+                TextBox.name UiIds.SampleEditor.qwotEntryBox
                 TextBox.width 70.0
                 TextBox.text m.qwotText
                 TextBox.onTextChanged (SetQwotText >> dispatch)
             ] :> IView
             labelBlock "→ t = λ/(4n) ="
             TextBlock.create [
-                TextBlock.name UiIds.qwotDerivedText
+                TextBlock.name UiIds.SampleEditor.qwotDerivedText
                 TextBlock.text derivedLabel
                 TextBlock.verticalAlignment VerticalAlignment.Center
             ] :> IView
@@ -1170,7 +1064,7 @@ let private qwotRow (m : Model) (dispatch : Msg -> unit) : IView =
 
 let private statusRow (m : Model) : IView =
     TextBlock.create [
-        TextBlock.name UiIds.statusText
+        TextBlock.name UiIds.SampleEditor.statusText
         TextBlock.foreground (brush errorColor)
         TextBlock.text (
             match m.status with
@@ -1183,8 +1077,8 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
-            actionButton UiIds.saveButton "Save" saveBackground (fun () -> dispatch SaveClicked)
-            actionButton UiIds.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
+            actionButton UiIds.SampleEditor.saveButton "Save" saveBackground (fun () -> dispatch SaveClicked)
+            actionButton UiIds.SampleEditor.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
         ]
     ] :> IView
 
@@ -1193,7 +1087,7 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
 let private exitConfirmRow (dispatch : Msg -> unit) : IView =
     StackPanel.create [
-        automationId UiIds.exitConfirm
+        automationId UiIds.SampleEditor.exitConfirm
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
@@ -1203,8 +1097,8 @@ let private exitConfirmRow (dispatch : Msg -> unit) : IView =
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
             ] :> IView
-            actionButton UiIds.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
-            actionButton UiIds.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+            actionButton UiIds.SampleEditor.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
+            actionButton UiIds.SampleEditor.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
         ]
     ] :> IView
 
@@ -1251,7 +1145,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                             ScrollViewer.create [
                                 ScrollViewer.content (
                                     StackPanel.create [
-                                        StackPanel.name UiIds.stackTable
+                                        StackPanel.name UiIds.SampleEditor.stackTable
                                         StackPanel.orientation Orientation.Vertical
                                         StackPanel.children (stackRows m dispatch)
                                     ])

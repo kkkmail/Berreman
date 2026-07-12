@@ -95,7 +95,7 @@ module SampleEditorWindowTests =
     /// Commit `text` through the REAL faceted filter box of a Materials window (the control
     /// commits on Enter — the MaterialsWindowTests driving shape).
     let private commitFilter (window : Window) (text : string) : unit =
-        match tryFindControl window FacetedTreeControls.UiIds.filterBox with
+        match tryFindControl window UiIds.FacetedTree.filterBox with
         | Some (:? TextBox as tb) ->
             tb.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
@@ -200,27 +200,27 @@ module SampleEditorWindowTests =
 
     [<Fact>]
     let ``the Sample editor UiIds are the slice-mandated stable ids`` () =
-        Assert.Equal("SampleEditorWindow", UiIds.window)
-        Assert.Equal("SampleNameBox", UiIds.nameBox)
-        Assert.Equal("AddLayerButton", UiIds.addLayerButton)
-        Assert.Equal("MakeRepeatBlockButton", UiIds.makeRepeatBlockButton)
-        Assert.Equal("SelectByMaterialButton", UiIds.selectByMaterialButton)
-        Assert.Equal("SetLayerHeightButton", UiIds.setLayerHeightButton)
-        Assert.Equal("SetLayerMaterialButton", UiIds.setLayerMaterialButton)
-        Assert.Equal("SetOrientationOfSelectedButton", UiIds.setOrientationOfSelectedButton)
-        Assert.Equal("RemoveSelectedLayersButton", UiIds.removeSelectedLayersButton)
-        Assert.Equal("RepeatCountStepper", UiIds.repeatCountStepper)
-        Assert.Equal("QwotEntryBox", UiIds.qwotEntryBox)
-        Assert.Equal("SampleEditorSaveButton", UiIds.saveButton)
-        Assert.Equal("SampleEditorCancelButton", UiIds.cancelButton)
+        Assert.Equal("SampleEditorWindow", UiIds.SampleEditor.window)
+        Assert.Equal("SampleNameBox", UiIds.SampleEditor.nameBox)
+        Assert.Equal("AddLayerButton", UiIds.SampleEditor.addLayerButton)
+        Assert.Equal("MakeRepeatBlockButton", UiIds.SampleEditor.makeRepeatBlockButton)
+        Assert.Equal("SelectByMaterialButton", UiIds.SampleEditor.selectByMaterialButton)
+        Assert.Equal("SetLayerHeightButton", UiIds.SampleEditor.setLayerHeightButton)
+        Assert.Equal("SetLayerMaterialButton", UiIds.SampleEditor.setLayerMaterialButton)
+        Assert.Equal("SetOrientationOfSelectedButton", UiIds.SampleEditor.setOrientationOfSelectedButton)
+        Assert.Equal("RemoveSelectedLayersButton", UiIds.SampleEditor.removeSelectedLayersButton)
+        Assert.Equal("RepeatCountStepper", UiIds.SampleEditor.repeatCountStepper)
+        Assert.Equal("QwotEntryBox", UiIds.SampleEditor.qwotEntryBox)
+        Assert.Equal("SampleEditorSaveButton", UiIds.SampleEditor.saveButton)
+        Assert.Equal("SampleEditorCancelButton", UiIds.SampleEditor.cancelButton)
         // The derived per-row / per-group id families are prefixed so they cannot collide.
-        Assert.Equal("SampleLayerRow_1", UiIds.layerRow 1)
-        Assert.Equal("SampleLayerRow_0_1", UiIds.cellLayerRow 0 1)
-        Assert.Equal("SampleGroupRow_0", UiIds.groupRow 0)
-        Assert.Equal("RepeatCountStepperPlus_0", UiIds.groupStepperPlus 0)
+        Assert.Equal("SampleLayerRow_1", UiIds.SampleEditor.layerRow 1)
+        Assert.Equal("SampleLayerRow_0_1", UiIds.SampleEditor.cellLayerRow 0 1)
+        Assert.Equal("SampleGroupRow_0", UiIds.SampleEditor.groupRow 0)
+        Assert.Equal("RepeatCountStepperPlus_0", UiIds.SampleEditor.groupStepperPlus 0)
         // The per-layer Choose material… verb family (spec 0038 step 019).
-        Assert.Equal("ChooseMaterialButton_1", UiIds.chooseMaterialButton 1)
-        Assert.Equal("ChooseMaterialButton_0_1", UiIds.cellChooseMaterialButton 0 1)
+        Assert.Equal("ChooseMaterialButton_1", UiIds.SampleEditor.chooseMaterialButton 1)
+        Assert.Equal("ChooseMaterialButton_0_1", UiIds.SampleEditor.cellChooseMaterialButton 0 1)
 
     [<Fact>]
     let ``a new sample opens empty: thin film, no films, nothing selected, fold count 2`` () =
@@ -510,18 +510,18 @@ module SampleEditorWindowTests =
     /// Every fixed slice-mandated UiId (the window's own id is asserted on the window itself).
     let private mandatedIds : string list =
         [
-            UiIds.nameBox
-            UiIds.addLayerButton
-            UiIds.makeRepeatBlockButton
-            UiIds.selectByMaterialButton
-            UiIds.setLayerHeightButton
-            UiIds.setLayerMaterialButton
-            UiIds.setOrientationOfSelectedButton
-            UiIds.removeSelectedLayersButton
-            UiIds.repeatCountStepper
-            UiIds.qwotEntryBox
-            UiIds.saveButton
-            UiIds.cancelButton
+            UiIds.SampleEditor.nameBox
+            UiIds.SampleEditor.addLayerButton
+            UiIds.SampleEditor.makeRepeatBlockButton
+            UiIds.SampleEditor.selectByMaterialButton
+            UiIds.SampleEditor.setLayerHeightButton
+            UiIds.SampleEditor.setLayerMaterialButton
+            UiIds.SampleEditor.setOrientationOfSelectedButton
+            UiIds.SampleEditor.removeSelectedLayersButton
+            UiIds.SampleEditor.repeatCountStepper
+            UiIds.SampleEditor.qwotEntryBox
+            UiIds.SampleEditor.saveButton
+            UiIds.SampleEditor.cancelButton
         ]
 
     /// Mount the REAL Sample-editor MVU loop headless WITH a captured dispatch (the window
@@ -559,7 +559,7 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId UiIds.window window, "the window itself carries the SampleEditorWindow id")
+            Assert.True(matchesId UiIds.SampleEditor.window window, "the window itself carries the SampleEditorWindow id")
             for id in mandatedIds do
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted window")
             window.Close())
@@ -574,29 +574,29 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             // Build a 2-layer stack by UiIds (Add layer takes the first listed material now
             // that the inline picker is gone — the fold cares about the count, not the kind).
-            clickOn window UiIds.addLayerButton
-            clickOn window UiIds.addLayerButton
-            Assert.Equal("2", textOf window UiIds.filmsCount)
+            clickOn window UiIds.SampleEditor.addLayerButton
+            clickOn window UiIds.SampleEditor.addLayerButton
+            Assert.Equal("2", textOf window UiIds.SampleEditor.filmsCount)
             // Select BOTH layers, step the fold count to K = 3, and fold.
-            clickOn window (UiIds.layerRow 0)
-            clickOn window (UiIds.layerRow 1)
-            clickOn window UiIds.repeatCountStepperPlus
-            clickOn window UiIds.makeRepeatBlockButton
+            clickOn window (UiIds.SampleEditor.layerRow 0)
+            clickOn window (UiIds.SampleEditor.layerRow 1)
+            clickOn window UiIds.SampleEditor.repeatCountStepperPlus
+            clickOn window UiIds.SampleEditor.makeRepeatBlockButton
             // 2 layers × K=3 periods = 6 films, shown by the structure readout.
-            Assert.Equal("6", textOf window UiIds.filmsCount)
+            Assert.Equal("6", textOf window UiIds.SampleEditor.filmsCount)
             // The group renders as ONE collapsible super-row with its cell layers nested beneath.
-            Assert.True(isPresent window (UiIds.groupRow 0), "the period super-row is missing")
-            Assert.True(isPresent window (UiIds.groupExpander 0), "the rotating-triangle expander is missing")
-            Assert.True(isPresent window (UiIds.cellLayerRow 0 0), "cell layer 0 is missing")
-            Assert.True(isPresent window (UiIds.cellLayerRow 0 1), "cell layer 1 is missing")
-            Assert.False(isPresent window (UiIds.layerRow 0), "the folded singles must no longer render as top-level rows")
+            Assert.True(isPresent window (UiIds.SampleEditor.groupRow 0), "the period super-row is missing")
+            Assert.True(isPresent window (UiIds.SampleEditor.groupExpander 0), "the rotating-triangle expander is missing")
+            Assert.True(isPresent window (UiIds.SampleEditor.cellLayerRow 0 0), "cell layer 0 is missing")
+            Assert.True(isPresent window (UiIds.SampleEditor.cellLayerRow 0 1), "cell layer 1 is missing")
+            Assert.False(isPresent window (UiIds.SampleEditor.layerRow 0), "the folded singles must no longer render as top-level rows")
             // The group's INLINE stepper resizes by whole periods: 3 → 4 ⇒ 8 films.
-            clickOn window (UiIds.groupStepperPlus 0)
-            Assert.Equal("8", textOf window UiIds.filmsCount)
+            clickOn window (UiIds.SampleEditor.groupStepperPlus 0)
+            Assert.Equal("8", textOf window UiIds.SampleEditor.filmsCount)
             // Collapsing the super-row removes the nested cell rows (the expander toggles).
-            clickOn window (UiIds.groupExpander 0)
-            Assert.False(isPresent window (UiIds.cellLayerRow 0 0), "a collapsed group must hide its cell rows")
-            Assert.Equal("8", textOf window UiIds.filmsCount)
+            clickOn window (UiIds.SampleEditor.groupExpander 0)
+            Assert.False(isPresent window (UiIds.SampleEditor.cellLayerRow 0 0), "a collapsed group must hide its cell rows")
+            Assert.Equal("8", textOf window UiIds.SampleEditor.filmsCount)
             window.Close())
 
     [<Fact>]
@@ -610,13 +610,13 @@ module SampleEditorWindowTests =
             let window, dispatch = mountEditorLoop materials samples (EditSample (threeFilmSample ()))
             // Choose glass, select every glass layer, and bulk-set the thickness to 5 nm.
             dispatch (ChooseMaterial MaterialIds.glass152)
-            clickOn window UiIds.selectByMaterialButton
-            setText window UiIds.layerHeightBox "5"
-            clickOn window UiIds.setLayerHeightButton
+            clickOn window UiIds.SampleEditor.selectByMaterialButton
+            setText window UiIds.SampleEditor.layerHeightBox "5"
+            clickOn window UiIds.SampleEditor.setLayerHeightButton
             // The two glass rows changed; the vacuum row between them did not.
-            Assert.Equal("5 nm", textOf window (UiIds.layerThickness 0))
-            Assert.Equal("50 nm", textOf window (UiIds.layerThickness 1))
-            Assert.Equal("5 nm", textOf window (UiIds.layerThickness 2))
+            Assert.Equal("5 nm", textOf window (UiIds.SampleEditor.layerThickness 0))
+            Assert.Equal("50 nm", textOf window (UiIds.SampleEditor.layerThickness 1))
+            Assert.Equal("5 nm", textOf window (UiIds.SampleEditor.layerThickness 2))
             window.Close())
 
     [<Fact>]
@@ -631,10 +631,10 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            setText window UiIds.nameBox "Headless stack"
-            setText window UiIds.descriptionBox "made by the headless test"
-            clickOn window UiIds.addLayerButton
-            clickOn window UiIds.saveButton
+            setText window UiIds.SampleEditor.nameBox "Headless stack"
+            setText window UiIds.SampleEditor.descriptionBox "made by the headless test"
+            clickOn window UiIds.SampleEditor.addLayerButton
+            clickOn window UiIds.SampleEditor.saveButton
             Assert.False(window.IsVisible)
             match samples.listSamples ActiveOnly with
             | Ok all ->
@@ -661,13 +661,13 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             // The seeded 2-layer period renders as ONE collapsible super-row with two cell layers
             // (distinct from a blank Add, which shows no rows).
-            Assert.True(isPresent window (UiIds.groupRow 0), "the seeded period super-row must render")
-            Assert.True(isPresent window (UiIds.cellLayerRow 0 0), "seeded cell layer 0 must render")
-            Assert.True(isPresent window (UiIds.cellLayerRow 0 1), "seeded cell layer 1 must render")
+            Assert.True(isPresent window (UiIds.SampleEditor.groupRow 0), "the seeded period super-row must render")
+            Assert.True(isPresent window (UiIds.SampleEditor.cellLayerRow 0 0), "seeded cell layer 0 must render")
+            Assert.True(isPresent window (UiIds.SampleEditor.cellLayerRow 0 1), "seeded cell layer 1 must render")
             // Name it (the structure is already non-empty) and Save — the NEW sample persists
             // through SampleProxy.addSample under a freshly minted SampleId.
-            setText window UiIds.nameBox "Headless multilayer"
-            clickOn window UiIds.saveButton
+            setText window UiIds.SampleEditor.nameBox "Headless multilayer"
+            clickOn window UiIds.SampleEditor.saveButton
             Assert.False(window.IsVisible)
             match samples.listSamples ActiveOnly with
             | Ok all ->
@@ -693,8 +693,8 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, EditSample existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            setText window UiIds.nameBox "Renamed film"
-            clickOn window UiIds.saveButton
+            setText window UiIds.SampleEditor.nameBox "Renamed film"
+            clickOn window UiIds.SampleEditor.saveButton
             Assert.False(window.IsVisible)
             match samples.tryGetSample existing.id with
             | Ok (Some updated) -> Assert.Equal("Renamed film", updated.name)
@@ -713,14 +713,14 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, EditSample existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            setText window UiIds.nameBox "Should not persist"
+            setText window UiIds.SampleEditor.nameBox "Should not persist"
             // Cancel on the now-dirty editor shows the confirm instead of closing (spec 0038 step 033).
-            clickOn window UiIds.cancelButton
+            clickOn window UiIds.SampleEditor.cancelButton
             Assert.True(window.IsVisible, "a dirty Cancel must not close silently")
-            Assert.True(isPresent window UiIds.exitConfirm, "the discard confirm must appear")
-            Assert.False(isPresent window UiIds.saveButton, "Save/Cancel are replaced by the confirm")
+            Assert.True(isPresent window UiIds.SampleEditor.exitConfirm, "the discard confirm must appear")
+            Assert.False(isPresent window UiIds.SampleEditor.saveButton, "Save/Cancel are replaced by the confirm")
             // Discard closes WITHOUT persisting the edit.
-            clickOn window UiIds.discardButton
+            clickOn window UiIds.SampleEditor.discardButton
             Assert.False(window.IsVisible)
             match samples.tryGetSample existing.id with
             | Ok (Some kept) -> Assert.Equal(existing.name, kept.name)
@@ -735,8 +735,8 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.False(isPresent window UiIds.exitConfirm, "no confirm surface before any edit")
-            clickOn window UiIds.cancelButton
+            Assert.False(isPresent window UiIds.SampleEditor.exitConfirm, "no confirm surface before any edit")
+            clickOn window UiIds.SampleEditor.cancelButton
             Assert.False(window.IsVisible, "a pristine Cancel closes immediately"))
 
     [<Fact>]
@@ -747,21 +747,21 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, NewBlankSample (newSampleId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            setText window UiIds.nameBox "Unsaved sample"
-            clickOn window UiIds.cancelButton
+            setText window UiIds.SampleEditor.nameBox "Unsaved sample"
+            clickOn window UiIds.SampleEditor.cancelButton
             Assert.True(window.IsVisible, "a dirty Cancel must not close the window")
-            Assert.True(isPresent window UiIds.exitConfirm, "the discard confirm must appear")
-            Assert.True(isPresent window UiIds.discardButton)
-            Assert.True(isPresent window UiIds.keepEditingButton)
+            Assert.True(isPresent window UiIds.SampleEditor.exitConfirm, "the discard confirm must appear")
+            Assert.True(isPresent window UiIds.SampleEditor.discardButton)
+            Assert.True(isPresent window UiIds.SampleEditor.keepEditingButton)
             // Keep editing returns to the editor.
-            clickOn window UiIds.keepEditingButton
+            clickOn window UiIds.SampleEditor.keepEditingButton
             Assert.True(window.IsVisible)
-            Assert.False(isPresent window UiIds.exitConfirm, "Keep editing dismisses the confirm")
-            Assert.True(isPresent window UiIds.saveButton, "the Save action returns")
+            Assert.False(isPresent window UiIds.SampleEditor.exitConfirm, "Keep editing dismisses the confirm")
+            Assert.True(isPresent window UiIds.SampleEditor.saveButton, "the Save action returns")
             // Cancel again → Discard closes for real.
-            clickOn window UiIds.cancelButton
-            Assert.True(isPresent window UiIds.exitConfirm)
-            clickOn window UiIds.discardButton
+            clickOn window UiIds.SampleEditor.cancelButton
+            Assert.True(isPresent window UiIds.SampleEditor.exitConfirm)
+            clickOn window UiIds.SampleEditor.discardButton
             Assert.False(window.IsVisible, "Discard closes the window"))
 
     [<Fact>]
@@ -776,16 +776,16 @@ module SampleEditorWindowTests =
             // delegates to it (the OS chrome is not reachable through the headless input surface).
             // A pristine editor's chrome close proceeds: nothing intercepted, no confirm.
             Assert.False(window.ChromeCloseIntercepted(), "a pristine chrome close proceeds")
-            Assert.False(isPresent window UiIds.exitConfirm, "no confirm on a pristine chrome close")
+            Assert.False(isPresent window UiIds.SampleEditor.exitConfirm, "no confirm on a pristine chrome close")
             // A dirty editor's chrome close is intercepted and shows the SAME discard confirm the
             // Cancel button raises — the window stays open.
-            setText window UiIds.nameBox "Chrome edit"
+            setText window UiIds.SampleEditor.nameBox "Chrome edit"
             Assert.True(window.ChromeCloseIntercepted(), "a dirty chrome close must be intercepted")
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible, "an intercepted chrome close leaves the window open")
-            Assert.True(isPresent window UiIds.exitConfirm, "the chrome close shows the discard confirm")
+            Assert.True(isPresent window UiIds.SampleEditor.exitConfirm, "the chrome close shows the discard confirm")
             // Discard from the confirm then closes for real.
-            clickOn window UiIds.discardButton
+            clickOn window UiIds.SampleEditor.discardButton
             Assert.False(window.IsVisible, "Discard closes the chrome-gated window"))
 
     [<Fact>]
@@ -813,8 +813,8 @@ module SampleEditorWindowTests =
             let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window (UiIds.layerOrientation 0), "the anisotropic layer must carry its orientation editor")
-            Assert.False(isPresent window (UiIds.layerOrientation 1), "the isotropic layer's orientation editor must be REMOVED, not greyed")
+            Assert.True(isPresent window (UiIds.SampleEditor.layerOrientation 0), "the anisotropic layer must carry its orientation editor")
+            Assert.False(isPresent window (UiIds.SampleEditor.layerOrientation 1), "the isotropic layer's orientation editor must be REMOVED, not greyed")
             window.Close())
 
     [<Fact>]
@@ -826,14 +826,14 @@ module SampleEditorWindowTests =
             // by-MaterialId ChooseMaterial contract): QWOT takes n from the CHOSEN glass.
             let window, dispatch = mountEditorLoop materials samples (NewBlankSample (newSampleId ()))
             dispatch (ChooseMaterial MaterialIds.glass152)
-            clickOn window UiIds.addLayerButton
-            clickOn window (UiIds.layerRow 0)
-            setText window UiIds.qwotEntryBox "600"
+            clickOn window UiIds.SampleEditor.addLayerButton
+            clickOn window (UiIds.SampleEditor.layerRow 0)
+            setText window UiIds.SampleEditor.qwotEntryBox "600"
             // t = λ/(4n) = 600/(4·1.52) nm, shown read-only in DISPLAY nanometres (spec 0033
             // gap G14.1 — no longer raw metres) though stored canonical-SI.
-            Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window UiIds.qwotDerivedText)
-            clickOn window UiIds.setLayerHeightButton
-            Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window (UiIds.layerThickness 0))
+            Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window UiIds.SampleEditor.qwotDerivedText)
+            clickOn window UiIds.SampleEditor.setLayerHeightButton
+            Assert.Equal($"%g{600.0 / (4.0 * 1.52)} nm", textOf window (UiIds.SampleEditor.layerThickness 0))
             window.Close())
 
     // ========== step 019 — the per-layer Choose material… Select flow (headless) ==========
@@ -862,27 +862,27 @@ module SampleEditorWindowTests =
             use _sub = subscription
             // Row 1 (the vacuum film) asks for a material: the MATERIALS window opens in
             // SELECT state — the Select/Close pair and the fixed sample-layer banner.
-            clickOn window (UiIds.chooseMaterialButton 1)
+            clickOn window (UiIds.SampleEditor.chooseMaterialButton 1)
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let materialsWindow = opened.[0]
-            Assert.True(matchesId MaterialsWindowView.UiIds.window materialsWindow, "the opened window must be the Materials window")
-            Assert.True(isPresent materialsWindow MaterialsWindowView.UiIds.selectButton, "the Select verb must render — the window is in Select state")
-            Assert.Contains("sample layer", textOf materialsWindow MaterialsWindowView.UiIds.selectConstraint)
+            Assert.True(matchesId UiIds.MaterialsWindow.window materialsWindow, "the opened window must be the Materials window")
+            Assert.True(isPresent materialsWindow UiIds.MaterialsWindow.selectButton, "the Select verb must render — the window is in Select state")
+            Assert.Contains("sample layer", textOf materialsWindow UiIds.MaterialsWindow.selectConstraint)
             // Pick the 1.75 glass: filter → highlight the leaf → Select. The TARGETED return
             // re-materials ROW 1 (never "the current selection") and closes the window.
             commitFilter materialsWindow "1.75"
-            clickOn materialsWindow (MaterialsWindowView.UiIds.entryNode MaterialIds.glass175)
-            clickOn materialsWindow MaterialsWindowView.UiIds.selectButton
+            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "Select must close the Materials window")
-            Assert.Contains("Transparent glass (n = 1.75)", textOf window (UiIds.layerRow 1))
-            Assert.Equal("", textOf window UiIds.statusText)
+            Assert.Contains("Transparent glass (n = 1.75)", textOf window (UiIds.SampleEditor.layerRow 1))
+            Assert.Equal("", textOf window UiIds.SampleEditor.statusText)
             // The picked id also became the CHOSEN material — the toolbar bulk verbs' source:
             // Set material re-materials the row-0 selection with it.
-            clickOn window (UiIds.layerRow 0)
-            clickOn window UiIds.setLayerMaterialButton
-            Assert.Contains("Transparent glass (n = 1.75)", textOf window (UiIds.layerRow 0))
+            clickOn window (UiIds.SampleEditor.layerRow 0)
+            clickOn window UiIds.SampleEditor.setLayerMaterialButton
+            Assert.Contains("Transparent glass (n = 1.75)", textOf window (UiIds.SampleEditor.layerRow 0))
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -896,9 +896,9 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             let opened, subscription = observeOpenedWindows ()
             use _sub = subscription
-            clickOn window (UiIds.chooseMaterialButton 0)
+            clickOn window (UiIds.SampleEditor.chooseMaterialButton 0)
             Dispatcher.UIThread.RunJobs()
-            clickOn window (UiIds.chooseMaterialButton 2)
+            clickOn window (UiIds.SampleEditor.chooseMaterialButton 2)
             Dispatcher.UIThread.RunJobs()
             // ONE window: the second Choose re-pointed the live single instance (the step-016
             // RetargetedWindow semantics), it did not stack a copy.
@@ -907,12 +907,12 @@ module SampleEditorWindowTests =
             // The re-pointed session serves ROW 2: the return re-materials it; the superseded
             // row-0 session binds nothing.
             commitFilter materialsWindow "1.75"
-            clickOn materialsWindow (MaterialsWindowView.UiIds.entryNode MaterialIds.glass175)
-            clickOn materialsWindow MaterialsWindowView.UiIds.selectButton
+            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
-            Assert.Contains("Transparent glass (n = 1.75)", textOf window (UiIds.layerRow 2))
-            Assert.Contains("Transparent glass (n = 1.52)", textOf window (UiIds.layerRow 0))
-            Assert.Contains("Vacuum", textOf window (UiIds.layerRow 1))
+            Assert.Contains("Transparent glass (n = 1.75)", textOf window (UiIds.SampleEditor.layerRow 2))
+            Assert.Contains("Transparent glass (n = 1.52)", textOf window (UiIds.SampleEditor.layerRow 0))
+            Assert.Contains("Vacuum", textOf window (UiIds.SampleEditor.layerRow 1))
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -926,24 +926,24 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             let opened, subscription = observeOpenedWindows ()
             use _sub = subscription
-            clickOn window (UiIds.chooseMaterialButton 2)
+            clickOn window (UiIds.SampleEditor.chooseMaterialButton 2)
             Dispatcher.UIThread.RunJobs()
             let materialsWindow = opened.[0]
             // The user deletes the target row while the modeless Select window is open.
-            clickOn window (UiIds.layerRow 2)
-            clickOn window UiIds.removeSelectedLayersButton
-            Assert.Equal("2", textOf window UiIds.filmsCount)
+            clickOn window (UiIds.SampleEditor.layerRow 2)
+            clickOn window UiIds.SampleEditor.removeSelectedLayersButton
+            Assert.Equal("2", textOf window UiIds.SampleEditor.filmsCount)
             // The Select return now targets a vanished row: a NO-OP plus the status line —
             // never a throw, and no surviving row takes the returned material.
             commitFilter materialsWindow "1.75"
-            clickOn materialsWindow (MaterialsWindowView.UiIds.entryNode MaterialIds.glass175)
-            clickOn materialsWindow MaterialsWindowView.UiIds.selectButton
+            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialsWindow.IsVisible, "the Select window still closes after its return")
-            Assert.Equal("2", textOf window UiIds.filmsCount)
-            Assert.Contains("no longer in the stack", textOf window UiIds.statusText)
-            Assert.Contains("Transparent glass (n = 1.52)", textOf window (UiIds.layerRow 0))
-            Assert.Contains("Vacuum", textOf window (UiIds.layerRow 1))
+            Assert.Equal("2", textOf window UiIds.SampleEditor.filmsCount)
+            Assert.Contains("no longer in the stack", textOf window UiIds.SampleEditor.statusText)
+            Assert.Contains("Transparent glass (n = 1.52)", textOf window (UiIds.SampleEditor.layerRow 0))
+            Assert.Contains("Vacuum", textOf window (UiIds.SampleEditor.layerRow 1))
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -970,20 +970,20 @@ module SampleEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The material does not exist yet: the row shows the unresolved-id readout.
-            Assert.Contains("unknown material", textOf window (UiIds.layerRow 0))
+            Assert.Contains("unknown material", textOf window (UiIds.SampleEditor.layerRow 0))
             // ANOTHER window adds it — the REAL Material editor over the SHARED store; no
             // live notification reaches the sample editor (out of scope).
             let materialEditor = MaterialEditorWindow(materials, MaterialEditorView.NewMaterial mintedId, categories = categories)
             materialEditor.Show()
             Dispatcher.UIThread.RunJobs()
-            setText materialEditor MaterialEditorView.UiIds.nameBox "Fresh oxide"
-            clickOn materialEditor MaterialEditorView.UiIds.saveButton
+            setText materialEditor UiIds.MaterialEditor.nameBox "Fresh oxide"
+            clickOn materialEditor UiIds.MaterialEditor.saveButton
             Dispatcher.UIThread.RunJobs()
             Assert.False(materialEditor.IsVisible, "Save must close the Material editor")
             // Re-ACTIVATING the sample editor re-queries the list: the row resolves its name.
             window.Activate()
             Dispatcher.UIThread.RunJobs()
-            Assert.Contains("Fresh oxide", textOf window (UiIds.layerRow 0))
+            Assert.Contains("Fresh oxide", textOf window (UiIds.SampleEditor.layerRow 0))
             window.Close()
             Dispatcher.UIThread.RunJobs())
 
@@ -1003,18 +1003,18 @@ module SampleEditorWindowTests =
             | Error e -> failwith $"saveMaterial failed: %A{e}"
             let opened, subscription = observeOpenedWindows ()
             use _sub = subscription
-            clickOn window (UiIds.chooseMaterialButton 0)
+            clickOn window (UiIds.SampleEditor.chooseMaterialButton 0)
             Dispatcher.UIThread.RunJobs()
             let materialsWindow = opened.[0]
             // The Materials window projects the LIVE store, so the new entry is offered;
             // picking it can only NAME the row if the editor re-queried its own list on the
             // Select return.
             commitFilter materialsWindow "Mid-session titania"
-            clickOn materialsWindow (MaterialsWindowView.UiIds.entryNode added.id)
-            clickOn materialsWindow MaterialsWindowView.UiIds.selectButton
+            clickOn materialsWindow (MaterialsWindowView.entryNode added.id)
+            clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
-            Assert.Contains("Mid-session titania", textOf window (UiIds.layerRow 0))
-            Assert.Equal("", textOf window UiIds.statusText)
+            Assert.Contains("Mid-session titania", textOf window (UiIds.SampleEditor.layerRow 0))
+            Assert.Equal("", textOf window UiIds.SampleEditor.statusText)
             window.Close()
             Dispatcher.UIThread.RunJobs())
 

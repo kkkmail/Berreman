@@ -188,39 +188,6 @@ module ExperimentControls =
             openChartWindow : unit -> unit
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let readout = "ExperimentReadout"
-        let candidates = "ExperimentCandidates"
-        /// A candidate element's clickable id — the element id, prefixed so it cannot collide.
-        let candidate (elementId : string) : string = "ExperimentCandidate_" + elementId
-        /// A variable-choice selector, by its code ("wavelength" / "r1" / "r2").
-        let variable (code : string) : string = "ExperimentVariable_" + code
-        /// A measurement-choice selector, by its code ("t" / "r" / "both").
-        let measurement (code : string) : string = "ExperimentMeasurement_" + code
-        /// The range inputs.
-        let rangeMin = "ExperimentRangeMin"
-        let rangeMax = "ExperimentRangeMax"
-        let rangePoints = "ExperimentRangePoints"
-        /// The Add / Update and New actions.
-        let addButton = "ExperimentAddButton"
-        let newButton = "ExperimentNewButton"
-        /// The collection list and a row's Edit / Remove actions.
-        let collection = "ExperimentCollection"
-        let editButton (id : string) : string = "ExperimentEdit_" + id
-        let removeButton (id : string) : string = "ExperimentRemove_" + id
-        /// A row's "View" action — open the pop-out chart window for that experiment.
-        let viewButton (id : string) : string = "ExperimentView_" + id
-        /// The explicit "open the pop-out chart window" action (also opened by double-clicking the chart).
-        let openChart = "ExperimentOpenChart"
-        /// The inline result polyline (the first series — the intensity / Ψ curve).
-        let chart = "ExperimentChart"
-        /// The ellipsometer Ψ/Δ single-point readout text.
-        let psiDelta = "EllipsometerReadout"
-        /// The chart description text shown under the inline chart.
-        let description = "ExperimentChartDescription"
-
     // -- The button look, identical to the other bars' idle button (so they MATCH). --
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
@@ -369,7 +336,7 @@ module ExperimentControls =
     let private seriesPolyline (xr : float * float) (yr : float * float) (index : int) (s : ChartSeries) : IView =
         let pts = s.points |> List.map (fun (x, y) -> toPlot xr yr x y)
         Polyline.create [
-            Polyline.name UiIds.chart
+            Polyline.name UiIds.Experiment.chart
             Polyline.points pts
             Polyline.stroke (brush seriesColors.[index % seriesColors.Length])
             Polyline.strokeThickness 1.5
@@ -426,10 +393,10 @@ module ExperimentControls =
             | Some (psiDeg, deltaDeg) ->
                 let psiText =
                     TextBlock.create [
-                        TextBlock.name UiIds.psiDelta
+                        TextBlock.name UiIds.Experiment.psiDelta
                         TextBlock.text $"Ψ = %.2f{psiDeg}°   Δ = %.2f{deltaDeg}°"
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.psiDelta
+                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.psiDelta
                 [ psiText :> IView ]
             | None -> []
         let chartBlock =
@@ -440,7 +407,7 @@ module ExperimentControls =
                 // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
                 let openButton =
                     Border.create [
-                        automationId UiIds.openChart
+                        automationId UiIds.Experiment.openChart
                         Border.isEnabled state.enabled
                         Border.background (brush chosenBackground)
                         Border.borderBrush (brush idleBorder)
@@ -452,7 +419,7 @@ module ExperimentControls =
                         Border.child (TextBlock.create [ TextBlock.text "Open chart window ↗" ])
                         Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.openChart
+                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.openChart
                 let chartBox =
                     Border.create [
                         Border.borderBrush (brush idleBorder)
@@ -469,26 +436,26 @@ module ExperimentControls =
                     |> Avalonia.FuncUI.DSL.View.withKey "ExperimentChartBox"
                 let descriptionText =
                     TextBlock.create [
-                        TextBlock.name UiIds.description
+                        TextBlock.name UiIds.Experiment.description
                         TextBlock.text state.description
                         TextBlock.fontSize 11.0
                         TextBlock.textWrapping TextWrapping.Wrap
                         TextBlock.maxWidth 360.0
                     ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.description
+                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.description
                 [ openButton :> IView; chartBox :> IView; descriptionText :> IView ]
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).
     let private elementRow (state : State) (handlers : Handlers) : IView =
         WrapPanel.create [
-            WrapPanel.name UiIds.candidates
+            WrapPanel.name UiIds.Experiment.candidates
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
                 state.candidates
                 |> List.map (fun c ->
                     idOptionBox
-                        (UiIds.candidate c.elementId)
+                        (UiIds.Experiment.candidate c.elementId)
                         c.label
                         (state.chosenId = Some c.elementId)
                         state.enabled
@@ -519,7 +486,7 @@ module ExperimentControls =
                         |> List.map (fun v ->
                             let allowed = List.contains v state.variableChoices
                             optionBoxV
-                                (UiIds.variable (variableCode v))
+                                (UiIds.Experiment.variable (variableCode v))
                                 (variableLabel v)
                                 (state.chosenVariable = Some v)
                                 (state.enabled && allowed)
@@ -533,7 +500,7 @@ module ExperimentControls =
     let private measurementRow (state : State) (handlers : Handlers) : IView =
         let one (m : MeasurementChoice) : IView =
             optionBox
-                (UiIds.measurement (measurementCode m))
+                (UiIds.Experiment.measurement (measurementCode m))
                 (measurementLabel m)
                 (state.measurement = m)
                 state.enabled
@@ -584,11 +551,11 @@ module ExperimentControls =
             StackPanel.isVisible hasVariable
             StackPanel.children [
                 TextBlock.create [ TextBlock.text $"min (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.rangeMin $"%g{state.rangeMin}" state.enabled (commitFloat handlers.setRangeMin)
+                numberField UiIds.Experiment.rangeMin $"%g{state.rangeMin}" state.enabled (commitFloat handlers.setRangeMin)
                 TextBlock.create [ TextBlock.text $"max (%s{state.rangeUnitLabel}):"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.rangeMax $"%g{state.rangeMax}" state.enabled (commitFloat handlers.setRangeMax)
+                numberField UiIds.Experiment.rangeMax $"%g{state.rangeMax}" state.enabled (commitFloat handlers.setRangeMax)
                 TextBlock.create [ TextBlock.text "points:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
-                numberField UiIds.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
+                numberField UiIds.Experiment.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
             ]
         ] :> IView
 
@@ -615,8 +582,8 @@ module ExperimentControls =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton UiIds.addButton (if state.isEditing then "Update experiment" else "Add experiment") true state.canAdd handlers.addOrUpdate
-                actionButton UiIds.newButton "New" false state.enabled handlers.newExperiment
+                actionButton UiIds.Experiment.addButton (if state.isEditing then "Update experiment" else "Add experiment") true state.canAdd handlers.addOrUpdate
+                actionButton UiIds.Experiment.newButton "New" false state.enabled handlers.newExperiment
             ]
         ] :> IView
 
@@ -647,7 +614,7 @@ module ExperimentControls =
                 StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
                 StackPanel.children [
                     Border.create [
-                        automationId (UiIds.editButton r.id)
+                        automationId (UiIds.Experiment.editButton r.id)
                         Border.background (brush (if r.isEditing then editingBackground else idleBackground))
                         Border.borderBrush (brush idleBorder)
                         Border.borderThickness 1.0
@@ -661,8 +628,8 @@ module ExperimentControls =
                         Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.editExperiment r.id), SubPatchOptions.OnChangeOf (box (r.id, r.isEditing)))
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.viewExperiment r.id), SubPatchOptions.OnChangeOf (box r.id))
                     ] :> IView
-                    rowActionButton (UiIds.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
-                    rowActionButton (UiIds.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
+                    rowActionButton (UiIds.Experiment.viewButton r.id) "View ↗" true (fun () -> handlers.viewExperiment r.id)
+                    rowActionButton (UiIds.Experiment.removeButton r.id) "Remove" false (fun () -> handlers.removeExperiment r.id)
                 ]
             ]
             |> Avalonia.FuncUI.DSL.View.withKey r.id
@@ -676,7 +643,7 @@ module ExperimentControls =
              | [] -> TextBlock.create [ TextBlock.text "(none added yet — build one above and click Add)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView
              | rows ->
                  StackPanel.create [
-                     StackPanel.name UiIds.collection
+                     StackPanel.name UiIds.Experiment.collection
                      StackPanel.orientation Orientation.Vertical
                      StackPanel.children (rows |> List.map (collectionRow handlers))
                  ] :> IView)
@@ -693,7 +660,7 @@ module ExperimentControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text readoutText ] :> IView
+                    TextBlock.create [ TextBlock.name UiIds.Experiment.readout; TextBlock.text readoutText ] :> IView
                     heading "1. Element to vary:"
                     elementRow state handlers
                     heading "2. Vary:"

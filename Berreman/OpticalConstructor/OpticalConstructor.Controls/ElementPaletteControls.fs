@@ -39,13 +39,6 @@ module ElementPaletteControls =
             removeSelected : unit -> unit
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let removeSelected = "PaletteRemoveSelectedButton"
-        /// The add button id for an entry — the entry id, prefixed so it cannot collide with other ids.
-        let addButton (entryId : string) : string = "PaletteAdd_" + entryId
-
     // -- The button look, identical to the rotation-controls bar's idle button (so they MATCH). --
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
@@ -89,9 +82,9 @@ module ElementPaletteControls =
     let view (state : State) (handlers : Handlers) : IView =
         let addButtons =
             state.addItems
-            |> List.map (fun item -> clickBox (UiIds.addButton item.id) ("+ " + item.label) true (fun () -> handlers.add item.id))
+            |> List.map (fun item -> clickBox (UiIds.ElementPalette.addButton item.id) ("+ " + item.label) true (fun () -> handlers.add item.id))
         let removeButton =
-            clickBox UiIds.removeSelected "Remove selected" state.canRemove (fun () -> handlers.removeSelected ())
+            clickBox UiIds.ElementPalette.removeSelected "Remove selected" state.canRemove (fun () -> handlers.removeSelected ())
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (addButtons @ [ removeButton ])

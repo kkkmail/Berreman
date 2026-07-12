@@ -11,6 +11,7 @@
 namespace OpticalConstructor.Ui.Tests
 
 open Avalonia.Automation
+open OpticalConstructor.Controls
 open Avalonia.Controls
 open Avalonia.Controls.ApplicationLifetimes
 open Avalonia.Interactivity
@@ -41,13 +42,13 @@ module TestLauncherTests =
 
     /// The component's declared button order — one id per diagnostic scene.
     let private sceneButtonIds : string list =
-        [ UiIds.openTableRotationTestButton
-          UiIds.openElementRotationTestButton
-          UiIds.openTableAndElementRotationTestButton
-          UiIds.openElementMovementTestButton
-          UiIds.openRendererTestButton
-          UiIds.openSnapToBeamTestButton
-          UiIds.openSnapToReflectedTestButton ]
+        [ UiIds.TestLauncher.openTableRotationTestButton
+          UiIds.TestLauncher.openElementRotationTestButton
+          UiIds.TestLauncher.openTableAndElementRotationTestButton
+          UiIds.TestLauncher.openElementMovementTestButton
+          UiIds.TestLauncher.openRendererTestButton
+          UiIds.TestLauncher.openSnapToBeamTestButton
+          UiIds.TestLauncher.openSnapToReflectedTestButton ]
 
     // ------------------------- structure (gate `ui-tests`) -------------------------
 
@@ -60,13 +61,13 @@ module TestLauncherTests =
             Assert.False(launcher.CanResize, "the test launcher is a fixed-size form"))
 
     [<Theory>]
-    [<InlineData(UiIds.openTableRotationTestButton, "Test Optical Table Rotations")>]
-    [<InlineData(UiIds.openElementRotationTestButton, "Test Optical Element Rotations")>]
-    [<InlineData(UiIds.openTableAndElementRotationTestButton, "Test Table + Element Rotations")>]
-    [<InlineData(UiIds.openElementMovementTestButton, "Test Element Movement")>]
-    [<InlineData(UiIds.openRendererTestButton, "Test Renderers")>]
-    [<InlineData(UiIds.openSnapToBeamTestButton, "Test Snap to Beam")>]
-    [<InlineData(UiIds.openSnapToReflectedTestButton, "Test Snap to Reflected Light")>]
+    [<InlineData(UiIds.TestLauncher.openTableRotationTestButton, "Test Optical Table Rotations")>]
+    [<InlineData(UiIds.TestLauncher.openElementRotationTestButton, "Test Optical Element Rotations")>]
+    [<InlineData(UiIds.TestLauncher.openTableAndElementRotationTestButton, "Test Table + Element Rotations")>]
+    [<InlineData(UiIds.TestLauncher.openElementMovementTestButton, "Test Element Movement")>]
+    [<InlineData(UiIds.TestLauncher.openRendererTestButton, "Test Renderers")>]
+    [<InlineData(UiIds.TestLauncher.openSnapToBeamTestButton, "Test Snap to Beam")>]
+    [<InlineData(UiIds.TestLauncher.openSnapToReflectedTestButton, "Test Snap to Reflected Light")>]
     let ``the test launcher hosts every scene button by stable name with its label`` (name : string) (label : string) =
         withTestLauncher (fun launcher ->
             match tryFindButton name launcher with
@@ -74,13 +75,13 @@ module TestLauncherTests =
             | None -> Assert.Fail($"test-launcher button '{name}' was not found"))
 
     [<Theory>]
-    [<InlineData(UiIds.openTableRotationTestButton, "Test Optical Table Rotations")>]
-    [<InlineData(UiIds.openElementRotationTestButton, "Test Optical Element Rotations")>]
-    [<InlineData(UiIds.openTableAndElementRotationTestButton, "Test Table + Element Rotations")>]
-    [<InlineData(UiIds.openElementMovementTestButton, "Test Element Movement")>]
-    [<InlineData(UiIds.openRendererTestButton, "Test Renderers")>]
-    [<InlineData(UiIds.openSnapToBeamTestButton, "Test Snap to Beam")>]
-    [<InlineData(UiIds.openSnapToReflectedTestButton, "Test Snap to Reflected Light")>]
+    [<InlineData(UiIds.TestLauncher.openTableRotationTestButton, "Test Optical Table Rotations")>]
+    [<InlineData(UiIds.TestLauncher.openElementRotationTestButton, "Test Optical Element Rotations")>]
+    [<InlineData(UiIds.TestLauncher.openTableAndElementRotationTestButton, "Test Table + Element Rotations")>]
+    [<InlineData(UiIds.TestLauncher.openElementMovementTestButton, "Test Element Movement")>]
+    [<InlineData(UiIds.TestLauncher.openRendererTestButton, "Test Renderers")>]
+    [<InlineData(UiIds.TestLauncher.openSnapToBeamTestButton, "Test Snap to Beam")>]
+    [<InlineData(UiIds.TestLauncher.openSnapToReflectedTestButton, "Test Snap to Reflected Light")>]
     let ``every scene button carries its automation id and accessible name`` (name : string) (label : string) =
         withTestLauncher (fun launcher ->
             match tryFindButton name launcher with
@@ -136,37 +137,37 @@ module TestLauncherTests =
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the table-rotation button opens its test window`` () =
-        clickOpens UiIds.openTableRotationTestButton (fun w -> w :? TableRotationWindow)
+        clickOpens UiIds.TestLauncher.openTableRotationTestButton (fun w -> w :? TableRotationWindow)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the element-rotation button opens its test window`` () =
-        clickOpens UiIds.openElementRotationTestButton (fun w -> w :? ElementRotationWindow)
+        clickOpens UiIds.TestLauncher.openElementRotationTestButton (fun w -> w :? ElementRotationWindow)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the table-and-element-rotation button opens its test window`` () =
-        clickOpens UiIds.openTableAndElementRotationTestButton (fun w -> w :? TableAndElementRotationWindow)
+        clickOpens UiIds.TestLauncher.openTableAndElementRotationTestButton (fun w -> w :? TableAndElementRotationWindow)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the element-movement button opens its test window`` () =
-        clickOpens UiIds.openElementMovementTestButton (fun w -> w :? ElementMovementWindow)
+        clickOpens UiIds.TestLauncher.openElementMovementTestButton (fun w -> w :? ElementMovementWindow)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the renderer button opens its test window`` () =
-        clickOpens UiIds.openRendererTestButton (fun w -> w :? RendererTestWindow)
+        clickOpens UiIds.TestLauncher.openRendererTestButton (fun w -> w :? RendererTestWindow)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the snap-to-beam button opens its test window`` () =
-        clickOpens UiIds.openSnapToBeamTestButton (fun w -> w :? SnapToBeamWindow)
+        clickOpens UiIds.TestLauncher.openSnapToBeamTestButton (fun w -> w :? SnapToBeamWindow)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the snap-to-reflected button opens its test window`` () =
-        clickOpens UiIds.openSnapToReflectedTestButton (fun w -> w :? SnapToReflectedWindow)
+        clickOpens UiIds.TestLauncher.openSnapToReflectedTestButton (fun w -> w :? SnapToReflectedWindow)
 
     // The new executable's own composition root (the SmokeTests pattern): a fresh
     // `OpticalConstructor.TestWindows.App.App` with an attached desktop lifetime must

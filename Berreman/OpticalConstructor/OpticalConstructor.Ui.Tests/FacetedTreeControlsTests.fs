@@ -158,22 +158,22 @@ module FacetedTreeControlsTests =
 
     [<Fact>]
     let ``the FacetedTree UiIds are the stable intent-named ids`` () =
-        Assert.Equal("FacetFilterBox", FacetedTreeControls.UiIds.filterBox)
-        Assert.Equal("FacetRepresentationPicker", FacetedTreeControls.UiIds.representationPicker)
-        Assert.Equal("FacetBreadcrumbStrip", FacetedTreeControls.UiIds.breadcrumbStrip)
-        Assert.Equal("FacetResultCount", FacetedTreeControls.UiIds.resultCount)
-        Assert.Equal("FacetOffersPanel", FacetedTreeControls.UiIds.offersPanel)
-        Assert.Equal("FacetShowTreeButton", FacetedTreeControls.UiIds.showTreeButton)
-        Assert.Equal("FacetTree", FacetedTreeControls.UiIds.tree)
-        Assert.Equal("FacetScroll", FacetedTreeControls.UiIds.scrollViewer)
+        Assert.Equal("FacetFilterBox", UiIds.FacetedTree.filterBox)
+        Assert.Equal("FacetRepresentationPicker", UiIds.FacetedTree.representationPicker)
+        Assert.Equal("FacetBreadcrumbStrip", UiIds.FacetedTree.breadcrumbStrip)
+        Assert.Equal("FacetResultCount", UiIds.FacetedTree.resultCount)
+        Assert.Equal("FacetOffersPanel", UiIds.FacetedTree.offersPanel)
+        Assert.Equal("FacetShowTreeButton", UiIds.FacetedTree.showTreeButton)
+        Assert.Equal("FacetTree", UiIds.FacetedTree.tree)
+        Assert.Equal("FacetScroll", UiIds.FacetedTree.scrollViewer)
         // The derived per-item ids are prefixed so they cannot collide; the offered-value id
         // carries the GROUP code too (the same discrete key can appear under two facets).
-        Assert.Equal("FacetRepresentationOption_by-kind", FacetedTreeControls.UiIds.representationOption "by-kind")
-        Assert.Equal("FacetBreadcrumbChip_anisotropy", FacetedTreeControls.UiIds.breadcrumbChip "anisotropy")
-        Assert.Equal("FacetOfferGroup_category", FacetedTreeControls.UiIds.offerGroup "category")
-        Assert.Equal("FacetOfferedValue_category_glass", FacetedTreeControls.UiIds.offeredValue "category" "glass")
-        Assert.Equal("FacetManualRangeBox_thickness", FacetedTreeControls.UiIds.manualRangeBox "thickness")
-        Assert.Equal("FacetTreeNode_kind/sample", FacetedTreeControls.UiIds.treeNode "kind/sample")
+        Assert.Equal("FacetRepresentationOption_by-kind", UiIds.FacetedTree.representationOption "by-kind")
+        Assert.Equal("FacetBreadcrumbChip_anisotropy", UiIds.FacetedTree.breadcrumbChip "anisotropy")
+        Assert.Equal("FacetOfferGroup_category", UiIds.FacetedTree.offerGroup "category")
+        Assert.Equal("FacetOfferedValue_category_glass", UiIds.FacetedTree.offeredValue "category" "glass")
+        Assert.Equal("FacetManualRangeBox_thickness", UiIds.FacetedTree.manualRangeBox "thickness")
+        Assert.Equal("FacetTreeNode_kind/sample", UiIds.FacetedTree.treeNode "kind/sample")
 
     // ============================ headless structure proofs ============================
 
@@ -249,59 +249,59 @@ module FacetedTreeControlsTests =
             // tree is materialized, so the button is its gated-mode replacement).
             let fixedIds =
                 [
-                    FacetedTreeControls.UiIds.scrollViewer
-                    FacetedTreeControls.UiIds.filterBox
-                    FacetedTreeControls.UiIds.representationPicker
-                    FacetedTreeControls.UiIds.breadcrumbStrip
-                    FacetedTreeControls.UiIds.resultCount
-                    FacetedTreeControls.UiIds.offersPanel
-                    FacetedTreeControls.UiIds.tree
+                    UiIds.FacetedTree.scrollViewer
+                    UiIds.FacetedTree.filterBox
+                    UiIds.FacetedTree.representationPicker
+                    UiIds.FacetedTree.breadcrumbStrip
+                    UiIds.FacetedTree.resultCount
+                    UiIds.FacetedTree.offersPanel
+                    UiIds.FacetedTree.tree
                 ]
             for id in fixedIds do
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted view")
             Assert.False(
-                isPresent window FacetedTreeControls.UiIds.showTreeButton,
+                isPresent window UiIds.FacetedTree.showTreeButton,
                 "the Show/Search button must be ABSENT while the tree is materialized")
             // Every derived id over the known State: representation options, chips, offer groups,
             // offered values, the numeric group's manual range box (and ONLY the numeric group's),
             // and the rendered tree rows.
             for r in knownState.representations do
-                Assert.True(isPresent window (FacetedTreeControls.UiIds.representationOption r.code), $"representation %s{r.code} is missing")
+                Assert.True(isPresent window (UiIds.FacetedTree.representationOption r.code), $"representation %s{r.code} is missing")
             for chip in knownState.breadcrumbs do
-                Assert.True(isPresent window (FacetedTreeControls.UiIds.breadcrumbChip chip.code), $"chip %s{chip.code} is missing")
+                Assert.True(isPresent window (UiIds.FacetedTree.breadcrumbChip chip.code), $"chip %s{chip.code} is missing")
             for group in knownState.offers do
-                Assert.True(isPresent window (FacetedTreeControls.UiIds.offerGroup group.code), $"offer group %s{group.code} is missing")
+                Assert.True(isPresent window (UiIds.FacetedTree.offerGroup group.code), $"offer group %s{group.code} is missing")
                 for v in group.values do
-                    Assert.True(isPresent window (FacetedTreeControls.UiIds.offeredValue group.code v.code), $"offered value %s{group.code}/%s{v.code} is missing")
-            Assert.True(isPresent window (FacetedTreeControls.UiIds.manualRangeBox "thickness"), "the numeric group's manual range box is missing")
-            Assert.False(isPresent window (FacetedTreeControls.UiIds.manualRangeBox "category"), "a discrete group must offer NO manual range box")
+                    Assert.True(isPresent window (UiIds.FacetedTree.offeredValue group.code v.code), $"offered value %s{group.code}/%s{v.code} is missing")
+            Assert.True(isPresent window (UiIds.FacetedTree.manualRangeBox "thickness"), "the numeric group's manual range box is missing")
+            Assert.False(isPresent window (UiIds.FacetedTree.manualRangeBox "category"), "a discrete group must offer NO manual range box")
             for code in [ "kind"; "kind/sample"; "kind/sample/quartz"; "kind/sample/mica"; "kind/polarizer" ] do
-                Assert.True(isPresent window (FacetedTreeControls.UiIds.treeNode code), $"tree row %s{code} is missing")
+                Assert.True(isPresent window (UiIds.FacetedTree.treeNode code), $"tree row %s{code} is missing")
             // A collapsed branch renders NO children — but still carries its count in its row text;
             // an expanded branch reads `label (count)`; a heading without a count reads its bare label.
             Assert.False(
-                isPresent window (FacetedTreeControls.UiIds.treeNode "kind/polarizer/lp"),
+                isPresent window (UiIds.FacetedTree.treeNode "kind/polarizer/lp"),
                 "a collapsed branch's child must not render")
-            Assert.Equal("Samples (2)", textOf window (FacetedTreeControls.UiIds.treeNode "kind/sample"))
-            Assert.Equal("Polarizers (1)", textOf window (FacetedTreeControls.UiIds.treeNode "kind/polarizer"))
-            Assert.Equal("Kind", textOf window (FacetedTreeControls.UiIds.treeNode "kind"))
+            Assert.Equal("Samples (2)", textOf window (UiIds.FacetedTree.treeNode "kind/sample"))
+            Assert.Equal("Polarizers (1)", textOf window (UiIds.FacetedTree.treeNode "kind/polarizer"))
+            Assert.Equal("Kind", textOf window (UiIds.FacetedTree.treeNode "kind"))
             // The chips read `label (afterCount) ×`; the live result count and the count-previews show.
-            Assert.Equal("Anisotropy: Uniaxial (12) ×", textOf window (FacetedTreeControls.UiIds.breadcrumbChip "anisotropy"))
-            Assert.Equal("3 results", textOf window FacetedTreeControls.UiIds.resultCount)
-            Assert.Equal("Glass (2)", textOf window (FacetedTreeControls.UiIds.offeredValue "category" "glass"))
+            Assert.Equal("Anisotropy: Uniaxial (12) ×", textOf window (UiIds.FacetedTree.breadcrumbChip "anisotropy"))
+            Assert.Equal("3 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal("Glass (2)", textOf window (UiIds.FacetedTree.offeredValue "category" "glass"))
             // The filter box echoes the host's committed draft.
-            Assert.Equal("quartz", (textBoxOf window FacetedTreeControls.UiIds.filterBox).Text)
+            Assert.Equal("quartz", (textBoxOf window UiIds.FacetedTree.filterBox).Text)
             // The acceptance clicks: a chip click dispatches removeConstraint with ITS code; an
             // offered-value click dispatches applyConstraint with its group AND value codes — and
             // nothing else fires.
-            clickOn window (FacetedTreeControls.UiIds.breadcrumbChip "anisotropy")
+            clickOn window (UiIds.FacetedTree.breadcrumbChip "anisotropy")
             Assert.Equal<string>([ "remove:anisotropy" ], calls)
-            clickOn window (FacetedTreeControls.UiIds.offeredValue "category" "glass")
+            clickOn window (UiIds.FacetedTree.offeredValue "category" "glass")
             Assert.Equal<string>([ "remove:anisotropy"; "apply:category=glass" ], calls)
             // A representation click chooses THAT representation; a tree row click selects THAT node.
-            clickOn window (FacetedTreeControls.UiIds.representationOption "by-material")
+            clickOn window (UiIds.FacetedTree.representationOption "by-material")
             Assert.Contains("repr:by-material", calls)
-            clickOn window (FacetedTreeControls.UiIds.treeNode "kind/sample")
+            clickOn window (UiIds.FacetedTree.treeNode "kind/sample")
             Assert.Contains("node:kind/sample", calls)
             window.Close())
 
@@ -312,14 +312,14 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             // The state still CARRIES the tree — gating alone must keep every row unrendered.
             let window = mount { knownState with materialization = FacetedTreeControls.TreeGated } handlers
-            Assert.True(isPresent window FacetedTreeControls.UiIds.showTreeButton, "the Show/Search button is missing in gated mode")
-            Assert.False(isPresent window FacetedTreeControls.UiIds.tree, "the tree container must be ABSENT in gated mode")
+            Assert.True(isPresent window UiIds.FacetedTree.showTreeButton, "the Show/Search button is missing in gated mode")
+            Assert.False(isPresent window UiIds.FacetedTree.tree, "the tree container must be ABSENT in gated mode")
             Assert.Equal(0, treeRowCount window)
             // The rest of the surface stays live while gated (the count keeps updating).
-            Assert.Equal("3 results", textOf window FacetedTreeControls.UiIds.resultCount)
-            Assert.True(isPresent window FacetedTreeControls.UiIds.breadcrumbStrip)
-            Assert.True(isPresent window FacetedTreeControls.UiIds.offersPanel)
-            clickOn window FacetedTreeControls.UiIds.showTreeButton
+            Assert.Equal("3 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.True(isPresent window UiIds.FacetedTree.breadcrumbStrip)
+            Assert.True(isPresent window UiIds.FacetedTree.offersPanel)
+            clickOn window UiIds.FacetedTree.showTreeButton
             Assert.Equal<string>([ "build" ], calls)
             window.Close())
 
@@ -330,7 +330,7 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             let window = mount { knownState with filterDraft = "" } handlers
             let commits () = calls |> Seq.filter (fun c -> c.StartsWith("filter:")) |> List.ofSeq
-            let filterBox = textBoxOf window FacetedTreeControls.UiIds.filterBox
+            let filterBox = textBoxOf window UiIds.FacetedTree.filterBox
             filterBox.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
             // Typing changes the box text but dispatches NOTHING (no per-keystroke commit).
@@ -349,7 +349,7 @@ module FacetedTreeControlsTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal<string>([ "filter:quartz" ], commits ())
             // ...until focus leaves the box — blur commits the box's CURRENT text.
-            (textBoxOf window (FacetedTreeControls.UiIds.manualRangeBox "thickness")).Focus() |> ignore
+            (textBoxOf window (UiIds.FacetedTree.manualRangeBox "thickness")).Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
             Assert.Equal<string>([ "filter:quartz"; "filter:quartz!" ], commits ())
             window.Close())
@@ -361,7 +361,7 @@ module FacetedTreeControlsTests =
             let calls, handlers = recorder ()
             let window = mount knownState handlers
             let ranges () = calls |> Seq.filter (fun c -> c.StartsWith("range:")) |> List.ofSeq
-            let rangeBox = textBoxOf window (FacetedTreeControls.UiIds.manualRangeBox "thickness")
+            let rangeBox = textBoxOf window (UiIds.FacetedTree.manualRangeBox "thickness")
             rangeBox.Focus() |> ignore
             Dispatcher.UIThread.RunJobs()
             window.KeyTextInput("10-20")

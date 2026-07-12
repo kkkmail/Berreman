@@ -29,16 +29,6 @@ open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.CategoryEditor
 open OpticalConstructor.Controls
 
-/// Stable intent-named automation ids (CLAUDE.md UI guidance): the ONE new literal for the
-/// window itself; every list / row / verb / block id is REUSED from the step-5
-/// `CategoryControls.UiIds` (the slice's "reuse the step-5 constants plus CategoryEditorWindow"),
-/// and the window-level Save/Cancel row reuses the base `CategorySaveButton` / `CategoryCancelButton`
-/// literals (the per-row verbs carry the guid-suffixed derivations, so they cannot collide).
-[<RequireQualifiedAccess>]
-module UiIds =
-    [<Literal>]
-    let window = "CategoryEditorWindow"
-
 /// The window's IO seam (the functional-proxy Context convention, the `SampleEditorContext`
 /// precedent): the category write-seam the inline verbs and the window Save persist through, plus
 /// the host's close request (the window passes `this.Close`; tests substitute recording stubs).
@@ -264,8 +254,8 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children [
-            actionButton CategoryControls.UiIds.saveButton "Save" saveBackground (fun () -> dispatch CommitAll)
-            actionButton CategoryControls.UiIds.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelWindow)
+            actionButton UiIds.Category.saveButton "Save" saveBackground (fun () -> dispatch CommitAll)
+            actionButton UiIds.Category.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelWindow)
         ]
     ] :> IView
 

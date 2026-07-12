@@ -49,7 +49,7 @@ module RayPositionControlsTests =
                     | _ -> Seq.empty)
                 |> Set.ofSeq
             window.Close()
-            Assert.Contains(RayPositionControls.UiIds.minus, ids)
-            Assert.Contains(RayPositionControls.UiIds.plus, ids)
-            Assert.Contains(RayPositionControls.UiIds.field, ids)
-            Assert.Contains(RayPositionControls.UiIds.reset, ids))
+            Assert.Contains(UiIds.RayPosition.minus, ids)
+            Assert.Contains(UiIds.RayPosition.plus, ids)
+            Assert.Contains(UiIds.RayPosition.field, ids)
+            Assert.Contains(UiIds.RayPosition.reset, ids))

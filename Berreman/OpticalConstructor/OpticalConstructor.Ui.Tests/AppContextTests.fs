@@ -152,14 +152,14 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(1, opened.Count)
             let libraryOfFirst = opened.[0]
-            Assert.True(matchesId LibraryWindowView.UiIds.window libraryOfFirst, "the strip button must open the Library window")
-            clickOn libraryOfFirst LibraryWindowView.UiIds.makeMultilayerButton
+            Assert.True(matchesId UiIds.LibraryWindow.window libraryOfFirst, "the strip button must open the Library window")
+            clickOn libraryOfFirst UiIds.LibraryWindow.makeMultilayerButton
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(2, opened.Count)
             let editor = opened.[1]
-            Assert.True(matchesId SampleEditorView.UiIds.window editor, "the opened window must be the Sample editor")
-            setText editor SampleEditorView.UiIds.nameBox "Shared-scope sample"
-            clickOn editor SampleEditorView.UiIds.saveButton
+            Assert.True(matchesId UiIds.SampleEditor.window editor, "the opened window must be the Sample editor")
+            setText editor UiIds.SampleEditor.nameBox "Shared-scope sample"
+            clickOn editor UiIds.SampleEditor.saveButton
             Assert.False(editor.IsVisible, "Save must persist the entry and close the editor")
             // The id was minted at the verb dispatch — recover it through the SHARED app-scope store.
             let savedId =
@@ -180,8 +180,8 @@ module AppContextTests =
             Dispatcher.UIThread.RunJobs()
             Assert.Equal(3, opened.Count)
             let libraryOfSecond = opened.[2]
-            Assert.True(matchesId LibraryWindowView.UiIds.window libraryOfSecond, "the strip button must open the Library window")
-            Assert.True(isPresent libraryOfSecond (LibraryWindowView.UiIds.entryNode (string savedId.value)),
+            Assert.True(matchesId UiIds.LibraryWindow.window libraryOfSecond, "the strip button must open the Library window")
+            Assert.True(isPresent libraryOfSecond (LibraryWindowView.entryNode (string savedId.value)),
                         "the second Main window's Library window must list the sample added through the first")
             libraryOfSecond.Close()
             Dispatcher.UIThread.RunJobs()

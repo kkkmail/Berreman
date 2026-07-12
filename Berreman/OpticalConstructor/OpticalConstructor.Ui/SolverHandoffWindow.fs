@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Avalonia.Automation
+open OpticalConstructor.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
@@ -20,8 +21,8 @@ type SolverHandoffWindow(library : Library.LibraryProxy, experimentData : Experi
 
     do
         this.Title <- "Solver handoff"
-        this.Name <- SolverHandoffView.UiIds.window
-        AutomationProperties.SetAutomationId(this, SolverHandoffView.UiIds.window)
+        this.Name <- UiIds.Handoff.window
+        AutomationProperties.SetAutomationId(this, UiIds.Handoff.window)
         this.Width <- 920.0
         this.Height <- 760.0
         let context : SolverHandoffView.SolverHandoffContext =

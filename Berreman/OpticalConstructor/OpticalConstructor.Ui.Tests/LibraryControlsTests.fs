@@ -40,10 +40,10 @@ module LibraryControlsTests =
     let ``the Library UiIds prefix leaf ids and are stable`` () =
         // `entry` is a pure prefix over ANY entry id string (a seeded sample's id is its Guid
         // string form since spec 0033 step 002).
-        Assert.Equal("LibraryEntry_abc", LibraryControls.UiIds.entry "abc")
-        Assert.Equal("LibraryEntry_" + glass1mmId, LibraryControls.UiIds.entry glass1mmId)
-        Assert.Equal("LibraryTree", LibraryControls.UiIds.tree)
-        Assert.Equal("LibraryBoundReadout", LibraryControls.UiIds.readout)
+        Assert.Equal("LibraryEntry_abc", UiIds.Library.entry "abc")
+        Assert.Equal("LibraryEntry_" + glass1mmId, UiIds.Library.entry glass1mmId)
+        Assert.Equal("LibraryTree", UiIds.Library.tree)
+        Assert.Equal("LibraryBoundReadout", UiIds.Library.readout)
 
     // ============================ host libraryState (pure) ============================
 
@@ -185,20 +185,20 @@ module LibraryControlsTests =
                     | :? Border as b when not (System.String.IsNullOrEmpty b.Name) && b.Name.StartsWith("RibbonTab_") -> Some b.Name
                     | _ -> None)
                 |> List.ofSeq
-            Assert.Contains(Ribbon.UiIds.tab BayNames.selector, tabNames)
-            Assert.DoesNotContain(Ribbon.UiIds.tab "Library", tabNames)
+            Assert.Contains(UiIds.Ribbon.tab BayNames.selector, tabNames)
+            Assert.DoesNotContain(UiIds.Ribbon.tab "Library", tabNames)
             // The pending entry's full description is shown (and the element is NOT bound yet).
             Assert.Equal(None, (elem 2 model).placement.valueId)
             let descriptionShown () : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function
-                    | :? TextBlock as t -> t.Name = LibraryControls.UiIds.description && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
+                    | :? TextBlock as t -> t.Name = UiIds.Library.description && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
                     | _ -> false)
             Assert.True(descriptionShown (), "the pending entry's full description was not shown")
             // Click Confirm — now it binds the selected element's valueId.
             let findConfirm () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = LibraryControls.UiIds.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Library.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findConfirm () with
             | None -> Assert.Fail("the Confirm button was not visible in the Selector bay")
             | Some b ->
@@ -271,7 +271,7 @@ module LibraryControlsTests =
             setRows.Value fullRows
             Dispatcher.UIThread.RunJobs()
             let hasEntry (id : string) : bool =
-                match borderWithId window (LibraryControls.UiIds.entry id) with
+                match borderWithId window (UiIds.Library.entry id) with
                 | Some _ -> true
                 | None -> false
             Assert.True(hasEntry "alpha" && hasEntry "beta" && hasEntry "gamma",
@@ -302,13 +302,13 @@ module LibraryControlsTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // SELECT: click a leaf entry — the pending confirm panel renders on the patched tree.
-            clickIn window (LibraryControls.UiIds.entry glass1mmId)
+            clickIn window (UiIds.Library.entry glass1mmId)
             Assert.Equal(Some glass1mmId, latest.Value.pendingEntry)
             // BIND: click Confirm — the pending entry commits to the selected element's valueId.
-            clickIn window LibraryControls.UiIds.confirm
+            clickIn window UiIds.Library.confirm
             Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
             let sampleLeafShown () : bool =
-                match borderWithId window (LibraryControls.UiIds.entry glass1mmId) with
+                match borderWithId window (UiIds.Library.entry glass1mmId) with
                 | Some _ -> true
                 | None -> false
             // KIND-CHANGE 1: add (and select) a polarizer — no library entries for its kind, so the

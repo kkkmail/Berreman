@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Avalonia.Automation
+open OpticalConstructor.Controls
 open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
@@ -39,8 +40,8 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, materials : Ma
 
     do
         this.Title <- "Library"
-        this.Name <- LibraryWindowView.UiIds.window
-        AutomationProperties.SetAutomationId(this, LibraryWindowView.UiIds.window)
+        this.Name <- UiIds.LibraryWindow.window
+        AutomationProperties.SetAutomationId(this, UiIds.LibraryWindow.window)
         this.Width <- 1150.0
         this.Height <- 800.0
         // Browse-mode opens always `Show` — the Select-state modality switch is never consulted

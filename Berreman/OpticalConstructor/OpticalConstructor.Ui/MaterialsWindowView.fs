@@ -459,61 +459,12 @@ let entryIdOfNodeCode (code : string) : MaterialId option =
         | _ -> None
     else None
 
-/// Stable intent-named automation ids (CLAUDE.md UI guidance). The faceted tree's own ids live
-/// in `FacetedTreeControls.UiIds`; `entryNode` derives an entry leaf's id from its node code.
-[<RequireQualifiedAccess>]
-module UiIds =
-    [<Literal>]
-    let window = "MaterialsWindow"
-    [<Literal>]
-    let treeHost = "MaterialsFacetTreeHost"
-    [<Literal>]
-    let viewPanel = "MaterialsViewPanel"
-    [<Literal>]
-    let viewPanelChart = "MaterialsViewPanelNkChart"
-    [<Literal>]
-    let addButton = "MaterialsAddButton"
-    [<Literal>]
-    let editButton = "MaterialsEditButton"
-    [<Literal>]
-    let removeButton = "MaterialsRemoveButton"
-    [<Literal>]
-    let categoriesButton = "MaterialsCategoriesButton"
-    [<Literal>]
-    let removeConfirmButton = "MaterialsRemoveConfirmButton"
-    [<Literal>]
-    let removeCancelButton = "MaterialsRemoveCancelButton"
-    [<Literal>]
-    let message = "MaterialsWindowMessage"
-    /// The lifecycle surface (spec 0038 step 023): the show-inactive toggle, the three verbs, the
-    /// lifecycle confirm pair, the versions panel and its per-version rows, and the view-only note.
-    [<Literal>]
-    let showInactiveToggle = "MaterialsShowInactiveToggle"
-    [<Literal>]
-    let markInactiveButton = "MaterialsMarkInactiveButton"
-    [<Literal>]
-    let markActiveButton = "MaterialsMarkActiveButton"
-    [<Literal>]
-    let supersedeButton = "MaterialsSupersedeButton"
-    [<Literal>]
-    let lifecycleConfirmButton = "MaterialsLifecycleConfirmButton"
-    [<Literal>]
-    let lifecycleCancelButton = "MaterialsLifecycleCancelButton"
-    [<Literal>]
-    let versionsPanel = "MaterialsVersionsPanel"
-    [<Literal>]
-    let viewOnlyNote = "MaterialsViewOnlyNote"
-    /// A clickable version row in the view panel's version list, by its version number.
-    let versionRow (version : VersionNumber) : string = "MaterialsVersionRow_" + string version.value
-    /// The Select-state pair and the fixed-constraint banner (spec 0038 step 016).
-    [<Literal>]
-    let selectButton = "MaterialsSelectButton"
-    [<Literal>]
-    let selectCloseButton = "MaterialsSelectCloseButton"
-    [<Literal>]
-    let selectConstraint = "MaterialsSelectConstraint"
-    /// The clickable tree leaf of one material entry.
-    let entryNode (id : MaterialId) : string = FacetedTreeControls.UiIds.treeNode (entryNodeCode id)
+/// Spec 0038 (044): the Domain-typed id helpers that outlived the per-view `UiIds` module —
+/// `OpticalConstructor.Controls` is domain-free, so `versionRow` (VersionNumber) and `entryNode`
+/// (over the view-local `entryNodeCode`) stay beside the view; every fixed Materials-window id literal
+/// moved to `UiIds.MaterialsWindow`.
+let versionRow (version : VersionNumber) : string = "MaterialsVersionRow_" + string version.value
+let entryNode (id : MaterialId) : string = UiIds.FacetedTree.treeNode (entryNodeCode id)
 
 // ---------------------------------------------------------------------------
 // Pure update.
@@ -917,25 +868,25 @@ let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
-                  actionButton UiIds.selectButton "Select" positiveBackground (fun () -> dispatch ConfirmSelect)
-                  actionButton UiIds.selectCloseButton "Close" negativeBackground (fun () -> dispatch CancelSelect)
+                  actionButton UiIds.MaterialsWindow.selectButton "Select" positiveBackground (fun () -> dispatch ConfirmSelect)
+                  actionButton UiIds.MaterialsWindow.selectCloseButton "Close" negativeBackground (fun () -> dispatch CancelSelect)
               ]
           ] :> IView
           (TextBlock.create [
-              automationId<TextBlock> UiIds.selectConstraint
+              automationId<TextBlock> UiIds.MaterialsWindow.selectConstraint
               TextBlock.fontWeight FontWeight.SemiBold
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
               TextBlock.text $"Choose a material for %s{targetText context.target} — the %s{Catalogue.kindName context.kindConstraint.value} kind constraint is fixed and cannot be removed."
           ]
-          |> Avalonia.FuncUI.DSL.View.withKey UiIds.selectConstraint) :> IView ]
+          |> Avalonia.FuncUI.DSL.View.withKey UiIds.MaterialsWindow.selectConstraint) :> IView ]
 
 /// One lifecycle verb box (spec 0038 step 023), by its action.
 let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) : IView =
     match action with
-    | MarkInactiveAction -> verbButton UiIds.markInactiveButton "Mark inactive" (fun () -> dispatch RequestMarkInactive)
-    | MarkActiveAction -> verbButton UiIds.markActiveButton "Mark active" (fun () -> dispatch RequestMarkActive)
-    | SupersedeAction -> verbButton UiIds.supersedeButton "Supersede…" (fun () -> dispatch RequestSupersede)
+    | MarkInactiveAction -> verbButton UiIds.MaterialsWindow.markInactiveButton "Mark inactive" (fun () -> dispatch RequestMarkInactive)
+    | MarkActiveAction -> verbButton UiIds.MaterialsWindow.markActiveButton "Mark active" (fun () -> dispatch RequestMarkActive)
+    | SupersedeAction -> verbButton UiIds.MaterialsWindow.supersedeButton "Supersede…" (fun () -> dispatch RequestSupersede)
 
 /// The verbs row: Add and Categories… always; Edit only for an EDITABLE selection (a view-only
 /// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected; the
@@ -945,15 +896,15 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
-            [ verbButton UiIds.addButton "Add" (fun () -> dispatch AddMaterial) ]
+            [ verbButton UiIds.MaterialsWindow.addButton "Add" (fun () -> dispatch AddMaterial) ]
             @ (match editableSelection m with
-               | Some _ -> [ verbButton UiIds.editButton "Edit" (fun () -> dispatch EditSelected) ]
+               | Some _ -> [ verbButton UiIds.MaterialsWindow.editButton "Edit" (fun () -> dispatch EditSelected) ]
                | None -> [])
             @ (match m.selectedId with
-               | Some _ -> [ verbButton UiIds.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
+               | Some _ -> [ verbButton UiIds.MaterialsWindow.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
             @ (offeredLifecycleActions m |> List.map (lifecycleButton dispatch))
-            @ [ verbButton UiIds.categoriesButton "Categories…" (fun () -> dispatch OpenCategories) ])
+            @ [ verbButton UiIds.MaterialsWindow.categoriesButton "Categories…" (fun () -> dispatch OpenCategories) ])
     ] :> IView
 
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
@@ -968,7 +919,7 @@ let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
             match m.showInactive with
             | ActiveOnly -> $"Show inactive (%d{n})"
             | IncludeInactive -> $"Hide inactive (%d{n})"
-        [ verbButton UiIds.showInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
+        [ verbButton UiIds.MaterialsWindow.showInactiveToggle label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a remove is armed.
 let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
@@ -987,8 +938,8 @@ let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton UiIds.removeConfirmButton "Remove" (fun () -> dispatch ConfirmRemove)
-                  verbButton UiIds.removeCancelButton "Cancel" (fun () -> dispatch CancelRemove)
+                  verbButton UiIds.MaterialsWindow.removeConfirmButton "Remove" (fun () -> dispatch ConfirmRemove)
+                  verbButton UiIds.MaterialsWindow.removeCancelButton "Cancel" (fun () -> dispatch CancelRemove)
               ]
           ] :> IView ]
 
@@ -1016,8 +967,8 @@ let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView lis
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
-                  verbButton UiIds.lifecycleConfirmButton "Confirm" (fun () -> dispatch ConfirmLifecycle)
-                  verbButton UiIds.lifecycleCancelButton "Cancel" (fun () -> dispatch CancelLifecycle)
+                  verbButton UiIds.MaterialsWindow.lifecycleConfirmButton "Confirm" (fun () -> dispatch ConfirmLifecycle)
+                  verbButton UiIds.MaterialsWindow.lifecycleCancelButton "Cancel" (fun () -> dispatch CancelLifecycle)
               ]
           ] :> IView ]
 
@@ -1035,7 +986,7 @@ let private messageRow (m : Model) : IView list =
             | MaterialVersionInUse reason
             | InvalidMaterial reason -> reason
         [ TextBlock.create [
-              automationId<TextBlock> UiIds.message
+              automationId<TextBlock> UiIds.MaterialsWindow.message
               TextBlock.foreground (brush messageColor)
               TextBlock.textWrapping TextWrapping.Wrap
               TextBlock.maxWidth 380.0
@@ -1051,7 +1002,7 @@ let private versionsRow (m : Model) (versions : (VersionNumber * MaterialEntry) 
     | [] | [ _ ] -> []
     | _ ->
         [ StackPanel.create [
-              automationId<StackPanel> UiIds.versionsPanel
+              automationId<StackPanel> UiIds.MaterialsWindow.versionsPanel
               StackPanel.orientation Orientation.Horizontal
               StackPanel.spacing 0.0
               StackPanel.children (
@@ -1064,7 +1015,7 @@ let private versionsRow (m : Model) (versions : (VersionNumber * MaterialEntry) 
                       |> List.map (fun (version, _) ->
                           let marker = if version = shown then "▸ " else ""
                           let latestTag = if version = latest then " (latest)" else ""
-                          verbButton (UiIds.versionRow version) $"%s{marker}v%d{version.value}%s{latestTag}" (fun () -> dispatch (ViewVersion version)))))
+                          verbButton (versionRow version) $"%s{marker}v%d{version.value}%s{latestTag}" (fun () -> dispatch (ViewVersion version)))))
           ] :> IView ]
 
 /// The view panel: the selected entry's read-only metadata plus the dual-axis n/k chart over the
@@ -1101,7 +1052,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [
-                      automationId<TextBlock> UiIds.viewOnlyNote
+                      automationId<TextBlock> UiIds.MaterialsWindow.viewOnlyNote
                       TextBlock.foreground (brush idleBorder)
                       TextBlock.textWrapping TextWrapping.Wrap
                       TextBlock.maxWidth 380.0
@@ -1109,7 +1060,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
                   ] :> IView ]
             else []
         [ Border.create [
-              automationId<Border> UiIds.viewPanel
+              automationId<Border> UiIds.MaterialsWindow.viewPanel
               Border.child (
                   StackPanel.create [
                       StackPanel.orientation Orientation.Vertical
@@ -1128,7 +1079,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
                             ] :> IView ]
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
-                          @ [ EmbeddedChart.create UiIds.viewPanelChart chart (NkDispersionChart.nkDispersionStyle chart) ])
+                          @ [ EmbeddedChart.create UiIds.MaterialsWindow.viewPanelChart chart (NkDispersionChart.nkDispersionStyle chart) ])
                   ])
           ] :> IView ]
 
@@ -1160,7 +1111,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                     ])
             ]
             Border.create [
-                automationId<Border> UiIds.treeHost
+                automationId<Border> UiIds.MaterialsWindow.treeHost
                 Border.padding (Thickness 8.0)
                 Border.child (FacetedTreeControls.view (facetedState m) (facetedHandlers dispatch))
             ]

@@ -74,20 +74,6 @@ module LibraryControls =
             cancelEntry : unit -> unit
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let readout = "LibraryBoundReadout"
-        let kindLabel = "LibraryKindLabel"
-        let tree = "LibraryTree"
-        /// A leaf row's clickable id — the entry id, prefixed so it cannot collide with other ids.
-        let entry (entryId : string) : string = "LibraryEntry_" + entryId
-        /// The pending-entry full-description text (shown before confirm).
-        let description = "LibraryEntryDescription"
-        /// The Confirm / Cancel actions of the pending bind.
-        let confirm = "LibraryConfirmButton"
-        let cancel = "LibraryCancelButton"
-
     // -- The button look, identical to the other bars' idle button (so they MATCH). --
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
@@ -162,7 +148,7 @@ module LibraryControls =
                 if state.pendingEntryId = Some r.entryId then RowPending
                 elif r.isBound then RowBound
                 else RowPlain
-            leafRow (UiIds.entry r.entryId) r.label r.depth highlight state.enabled (fun () -> handlers.selectEntry r.entryId)
+            leafRow (UiIds.Library.entry r.entryId) r.label r.depth highlight state.enabled (fun () -> handlers.selectEntry r.entryId)
 
     // -- The Confirm / Cancel action buttons of the pending bind. The panel they live in comes and
     // goes with the pending choice, so they are regenerable: a reuse-safe AutomationId (never a
@@ -204,7 +190,7 @@ module LibraryControls =
                             StackPanel.children [
                                 TextBlock.create [ TextBlock.text $"Selected: %s{name}"; TextBlock.fontWeight FontWeight.SemiBold ]
                                 TextBlock.create [
-                                    TextBlock.name UiIds.description
+                                    TextBlock.name UiIds.Library.description
                                     TextBlock.text state.pendingDescription
                                     TextBlock.textWrapping TextWrapping.Wrap
                                     TextBlock.maxWidth 360.0
@@ -213,8 +199,8 @@ module LibraryControls =
                                     StackPanel.orientation Orientation.Horizontal
                                     StackPanel.spacing 0.0
                                     StackPanel.children [
-                                        actionButton UiIds.confirm "Confirm" true handlers.confirmEntry
-                                        actionButton UiIds.cancel "Cancel" false handlers.cancelEntry
+                                        actionButton UiIds.Library.confirm "Confirm" true handlers.confirmEntry
+                                        actionButton UiIds.Library.cancel "Cancel" false handlers.cancelEntry
                                     ]
                                 ]
                             ]
@@ -236,13 +222,13 @@ module LibraryControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    TextBlock.create [ TextBlock.name UiIds.kindLabel; TextBlock.text kindText ] :> IView
-                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text boundText ] :> IView
+                    TextBlock.create [ TextBlock.name UiIds.Library.kindLabel; TextBlock.text kindText ] :> IView
+                    TextBlock.create [ TextBlock.name UiIds.Library.readout; TextBlock.text boundText ] :> IView
                     ScrollViewer.create [
                         ScrollViewer.maxHeight 220.0
                         ScrollViewer.content (
                             StackPanel.create [
-                                StackPanel.name UiIds.tree
+                                StackPanel.name UiIds.Library.tree
                                 StackPanel.orientation Orientation.Vertical
                                 StackPanel.children (state.rows |> List.map (rowView state handlers))
                             ])

@@ -35,24 +35,6 @@ open OpticalConstructor.Domain.WorkbenchSettings
 open OpticalConstructor.Domain.ExperimentCollectionStore
 open OpticalConstructor.Controls
 
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "TableElementCanvas"
-    let rotateR1Minus = "TeRotateR1MinusButton"
-    let rotateR1Plus = "TeRotateR1PlusButton"
-    let rotateR2Minus = "TeRotateR2MinusButton"
-    let rotateR2Plus = "TeRotateR2PlusButton"
-    let rotateR3Minus = "TeRotateR3MinusButton"
-    let rotateR3Plus = "TeRotateR3PlusButton"
-    let unlockR3 = "TeUnlockR3Button"
-    let reset = "TeResetButton"
-    let readout = "TeReadout"
-    /// Spec 0038 (031): the out-of-band dispersion warning badge on scene element index `i` — an
-    /// indexed id (the `LayerBandsControls.UiIds.band` pattern) so a headless test addresses the
-    /// per-element badge. Its hover tooltip names the offending material(s) and both wavelength ranges.
-    let badgePrefix = "OutOfBandBadge_"
-    let outOfBandBadge (i : int) : string = $"%s{badgePrefix}%d{i}"
-
 // ---------------------------------------------------------------------------
 // Wheel gesture map: the rotations act on whatever is selected; Ctrl+Alt(+Shift) zoom the
 // element(s); a plain / Ctrl wheel zooms the table. Same as tests #1/#2, combined.
@@ -1509,7 +1491,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children
             (addRemoveBar model dispatch
              @ [ RotationControls.view (rotationState model) (rotationHandlers dispatch)
-                 TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model) ]
+                 TextBlock.create [ TextBlock.name UiIds.TableAndElementRotation.readout; TextBlock.text (readoutText model) ]
                  TextBlock.create [
                      TextBlock.foreground (brush (color 100 100 100))
                      TextBlock.text "click TABLE or an element to select it (rotation acts on the selection) · drag = pan · wheel = zoom table · Shift/Ctrl+Shift/Alt+wheel = R1/R2/R3 of the selection · Ctrl+Alt+wheel = zoom element · Ctrl+Alt+Shift+wheel = zoom all · Shift+button = 5°"
@@ -1524,7 +1506,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.TableAndElementRotation.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -1533,7 +1515,7 @@ let private tableCanvas (model : Model) : IView =
     ] :> IView
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableAndElementRotation.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
@@ -1879,7 +1861,7 @@ let outOfBandBadge (i : int) (c : ScreenPoint) (text : string) : IView =
         TextBlock.text "⚠"
         TextBlock.fontWeight FontWeight.Bold
         TextBlock.foreground (brush (color 200 60 40))
-        badgeAutomationId (UiIds.outOfBandBadge i)
+        badgeAutomationId (UiIds.TableAndElementRotation.outOfBandBadge i)
         badgeToolTip text
     ] :> IView
 
@@ -2918,7 +2900,7 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
                         Ribbon.view { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
                     ]
                 ] :> IView
-                TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
+                TextBlock.create [ TextBlock.name UiIds.TableAndElementRotation.readout; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
             ]
             // Spec 0038 (016): the staleness status line — present only while a status is set.
             @ selectStatusRow model)
@@ -2926,7 +2908,7 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
 
 let private mainTableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.TableAndElementRotation.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -2944,7 +2926,7 @@ let private mainTableCanvas (model : Model) : IView =
 /// The bays are built once and shared: the ribbon hosts the in-pane bays' content and shows only a
 /// tab for a full-surface bay, whose content is placed here below.
 let mainView (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableAndElementRotation.canvas e
     // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
     // a full-surface bay never realizes the canvas and must not wire the table gestures.
     let tableSurface () : IView =

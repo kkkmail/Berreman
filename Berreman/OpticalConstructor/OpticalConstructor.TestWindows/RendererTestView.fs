@@ -22,10 +22,6 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "RendererTestCanvas"
-
 // ---------------------------------------------------------------------------
 // Wheel gesture map (the rotations act on the selection; a plain / Ctrl wheel zooms the table).
 // ---------------------------------------------------------------------------
@@ -215,7 +211,7 @@ let private elementsViews (model : Model) : IView list =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.RendererTest.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -249,7 +245,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     ] :> IView
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.RendererTest.canvas e
     let wheelMods (km : KeyModifiers) : Set<WheelModifier> =
         [ if km.HasFlag KeyModifiers.Control then ModCtrl
           if km.HasFlag KeyModifiers.Shift then ModShift

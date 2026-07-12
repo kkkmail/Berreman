@@ -108,17 +108,6 @@ module RendererControls =
             setLineOpacity : float -> unit
         }
 
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let swapRenderer = "RendererSwapButton"
-        let readout = "RendererReadout"
-        let railsSlider = "RendererRailsSlider"
-        let capCirclesSlider = "RendererCapCirclesSlider"
-        let capRadialsSlider = "RendererCapRadialsSlider"
-        let railOpacitySlider = "RendererRailOpacitySlider"
-        let faceOpacitySlider = "RendererFaceOpacitySlider"
-        let lineOpacitySlider = "RendererLineOpacitySlider"
-
     // ----- view helpers -----
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
@@ -201,29 +190,29 @@ module RendererControls =
             StackPanel.spacing 6.0
             StackPanel.children [
                 row [
-                    clickBox UiIds.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
-                    TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ]
+                    clickBox UiIds.Renderer.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
+                    TextBlock.create [ TextBlock.name UiIds.Renderer.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ]
                     fixedLabel "Cylinder rails:"
-                    presetSlider UiIds.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
+                    presetSlider UiIds.Renderer.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
                     valueLabel (string state.rails)
                 ]
                 row [
                     fixedLabel "Cap circles:"
-                    intSlider UiIds.capCirclesSlider capCirclesMin capCirclesMax state.circles handlers.setCircles
+                    intSlider UiIds.Renderer.capCirclesSlider capCirclesMin capCirclesMax state.circles handlers.setCircles
                     valueLabel (string state.circles)
                     fixedLabel "Cap radials:"
-                    presetSlider UiIds.capRadialsSlider 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
+                    presetSlider UiIds.Renderer.capRadialsSlider 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
                     valueLabel (string state.radials)
                 ]
                 row [
                     fixedLabel "Rail opacity:"
-                    opacitySlider UiIds.railOpacitySlider state.railOpacity handlers.setRailOpacity
+                    opacitySlider UiIds.Renderer.railOpacitySlider state.railOpacity handlers.setRailOpacity
                     valueLabel $"%.2f{state.railOpacity}"
                     fixedLabel "Face opacity:"
-                    opacitySlider UiIds.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
+                    opacitySlider UiIds.Renderer.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
                     valueLabel $"%.2f{state.faceOpacity}"
                     fixedLabel "Line opacity:"
-                    opacitySlider UiIds.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
+                    opacitySlider UiIds.Renderer.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
                     valueLabel $"%.2f{state.lineOpacity}"
                 ]
             ]

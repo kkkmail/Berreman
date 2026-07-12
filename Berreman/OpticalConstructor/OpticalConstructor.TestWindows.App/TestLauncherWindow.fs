@@ -9,37 +9,11 @@
 namespace OpticalConstructor.TestWindows.App
 
 open Avalonia
+open OpticalConstructor.Controls
 open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Media
 open OpticalConstructor.TestWindows
-
-/// The component's automation contract: one stable id per diagnostic-scene button.
-/// The ids reuse the strings the product launcher carried before the step-004 split,
-/// so automation keyed on them survives the move. `[<Literal>]` so tests can cite
-/// them in attributes (`InlineData`).
-module UiIds =
-
-    [<Literal>]
-    let openTableRotationTestButton = "OpenTableRotationTestButton"
-
-    [<Literal>]
-    let openElementRotationTestButton = "OpenElementRotationTestButton"
-
-    [<Literal>]
-    let openTableAndElementRotationTestButton = "OpenTableAndElementRotationTestButton"
-
-    [<Literal>]
-    let openElementMovementTestButton = "OpenElementMovementTestButton"
-
-    [<Literal>]
-    let openRendererTestButton = "OpenRendererTestButton"
-
-    [<Literal>]
-    let openSnapToBeamTestButton = "OpenSnapToBeamTestButton"
-
-    [<Literal>]
-    let openSnapToReflectedTestButton = "OpenSnapToReflectedTestButton"
 
 /// The test-launcher form: the diagnostic counterpart of the product launcher.
 /// Every diagnostic scene window (hosted in `OpticalConstructor.TestWindows`) hangs
@@ -72,13 +46,13 @@ type TestLauncherWindow() as this =
             button.Click.Add(fun _ -> (openScene ()).Show())
             button
         let scenes : (string * string * (unit -> Window)) list =
-            [ UiIds.openTableRotationTestButton, "Test Optical Table Rotations", fun () -> TableRotationWindow() :> Window
-              UiIds.openElementRotationTestButton, "Test Optical Element Rotations", fun () -> ElementRotationWindow() :> Window
-              UiIds.openTableAndElementRotationTestButton, "Test Table + Element Rotations", fun () -> TableAndElementRotationWindow() :> Window
-              UiIds.openElementMovementTestButton, "Test Element Movement", fun () -> ElementMovementWindow() :> Window
-              UiIds.openRendererTestButton, "Test Renderers", fun () -> RendererTestWindow() :> Window
-              UiIds.openSnapToBeamTestButton, "Test Snap to Beam", fun () -> SnapToBeamWindow() :> Window
-              UiIds.openSnapToReflectedTestButton, "Test Snap to Reflected Light", fun () -> SnapToReflectedWindow() :> Window ]
+            [ UiIds.TestLauncher.openTableRotationTestButton, "Test Optical Table Rotations", fun () -> TableRotationWindow() :> Window
+              UiIds.TestLauncher.openElementRotationTestButton, "Test Optical Element Rotations", fun () -> ElementRotationWindow() :> Window
+              UiIds.TestLauncher.openTableAndElementRotationTestButton, "Test Table + Element Rotations", fun () -> TableAndElementRotationWindow() :> Window
+              UiIds.TestLauncher.openElementMovementTestButton, "Test Element Movement", fun () -> ElementMovementWindow() :> Window
+              UiIds.TestLauncher.openRendererTestButton, "Test Renderers", fun () -> RendererTestWindow() :> Window
+              UiIds.TestLauncher.openSnapToBeamTestButton, "Test Snap to Beam", fun () -> SnapToBeamWindow() :> Window
+              UiIds.TestLauncher.openSnapToReflectedTestButton, "Test Snap to Reflected Light", fun () -> SnapToReflectedWindow() :> Window ]
         let panel = StackPanel(Margin = Thickness 20.0)
         panel.Children.Add title
         for (id, label, openScene) in scenes do

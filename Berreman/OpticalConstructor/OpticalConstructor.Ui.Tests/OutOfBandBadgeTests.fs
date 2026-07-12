@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
 open Avalonia
+open OpticalConstructor.Controls
 open Avalonia.Controls
 open Avalonia.Threading
 open Avalonia.VisualTree
@@ -167,9 +168,9 @@ module OutOfBandBadgeTests =
             window.Content <- Component(fun _ -> Canvas.create [ Canvas.children badges ] :> IView)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match tryFindByPrefix window UiIds.badgePrefix with
+            match tryFindByPrefix window UiIds.TableAndElementRotation.badgePrefix with
             | Some badge ->
-                Assert.Equal(UiIds.outOfBandBadge sampleIndex, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
+                Assert.Equal(UiIds.TableAndElementRotation.outOfBandBadge sampleIndex, Avalonia.Automation.AutomationProperties.GetAutomationId(badge))
                 // Its hover tooltip carries the SAME warning text the Details bay shows.
                 match ToolTip.GetTip badge with
                 | :? string as tip -> Assert.Equal(expected, tip)

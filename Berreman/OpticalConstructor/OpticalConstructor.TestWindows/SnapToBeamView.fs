@@ -25,11 +25,6 @@ open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "SnapToBeamCanvas"
-    let readout = "SnapToBeamReadout"
-
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
 let canvasWidth : float = TableScene.canvasWidth
 let canvasHeight : float = TableScene.canvasHeight
@@ -199,7 +194,7 @@ let private beamViews (m : Model) : IView list =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.SnapToBeam.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -237,7 +232,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
-            TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
+            TextBlock.create [ TextBlock.name UiIds.SnapToBeam.readout; TextBlock.text (readoutText model); TextBlock.verticalAlignment VerticalAlignment.Center ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
                 TextBlock.text "rotate the source with the bar (or the wheel = R2, Shift = larger step) — the downstream elements snap to the re-aimed beam, keeping their along-ray spacing"

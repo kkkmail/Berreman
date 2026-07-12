@@ -166,41 +166,6 @@ module FacetedTreeControls =
             applyManualRange : string -> string -> unit
         }
 
-    /// Stable intent-named automation ids (CLAUDE.md UI guidance). Derived per-item ids are the
-    /// base id plus the host-supplied code(s), prefixed so they cannot collide.
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        [<Literal>]
-        let filterBox = "FacetFilterBox"
-        [<Literal>]
-        let representationPicker = "FacetRepresentationPicker"
-        [<Literal>]
-        let breadcrumbStrip = "FacetBreadcrumbStrip"
-        [<Literal>]
-        let resultCount = "FacetResultCount"
-        [<Literal>]
-        let offersPanel = "FacetOffersPanel"
-        [<Literal>]
-        let showTreeButton = "FacetShowTreeButton"
-        [<Literal>]
-        let tree = "FacetTree"
-        [<Literal>]
-        let scrollViewer = "FacetScroll"
-        /// A representation option's clickable id, by its code.
-        let representationOption (code : string) : string = "FacetRepresentationOption_" + code
-        /// A breadcrumb chip's clickable id, by its code.
-        let breadcrumbChip (code : string) : string = "FacetBreadcrumbChip_" + code
-        /// An offer group's container id, by its code.
-        let offerGroup (code : string) : string = "FacetOfferGroup_" + code
-        /// An offered value's clickable id: group code THEN value code (the same discrete key can
-        /// appear under two facets, so the group is part of the identity).
-        let offeredValue (groupCode : string) (valueCode : string) : string =
-            "FacetOfferedValue_" + groupCode + "_" + valueCode
-        /// A numeric offer group's manual min–max box id, by the group's code.
-        let manualRangeBox (groupCode : string) : string = "FacetManualRangeBox_" + groupCode
-        /// A tree node row's clickable id, by the node's (tree-unique) code.
-        let treeNode (code : string) : string = "FacetTreeNode_" + code
-
     // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
@@ -268,7 +233,7 @@ module FacetedTreeControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Filter:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    automationId<TextBox> UiIds.filterBox
+                    automationId<TextBox> UiIds.FacetedTree.filterBox
                     TextBox.width 220.0
                     TextBox.text state.filterDraft
                     TextBox.onKeyDown (commitOnEnter handlers.commitTextFilter)
@@ -286,13 +251,13 @@ module FacetedTreeControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "View by:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
-                    automationId<WrapPanel> UiIds.representationPicker
+                    automationId<WrapPanel> UiIds.FacetedTree.representationPicker
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         state.representations
                         |> List.map (fun r ->
                             clickBox
-                                (UiIds.representationOption r.code)
+                                (UiIds.FacetedTree.representationOption r.code)
                                 r.label
                                 (state.activeRepresentation = r.code)
                                 (fun () -> handlers.chooseRepresentation r.code)))
@@ -305,13 +270,13 @@ module FacetedTreeControls =
     /// highlighted (they are applied state, not offers).
     let private breadcrumbStripView (state : State) (handlers : Handlers) : IView =
         WrapPanel.create [
-            automationId<WrapPanel> UiIds.breadcrumbStrip
+            automationId<WrapPanel> UiIds.FacetedTree.breadcrumbStrip
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
                 state.breadcrumbs
                 |> List.map (fun chip ->
                     clickBox
-                        (UiIds.breadcrumbChip chip.code)
+                        (UiIds.FacetedTree.breadcrumbChip chip.code)
                         $"%s{chip.label} (%d{chip.afterCount}) ×"
                         true
                         (fun () -> handlers.removeConstraint chip.code)))
@@ -320,7 +285,7 @@ module FacetedTreeControls =
     /// The live result count under everything applied.
     let private resultCountRow (state : State) : IView =
         TextBlock.create [
-            automationId<TextBlock> UiIds.resultCount
+            automationId<TextBlock> UiIds.FacetedTree.resultCount
             TextBlock.text $"%d{state.resultCount} results"
         ] :> IView
 
@@ -334,16 +299,16 @@ module FacetedTreeControls =
             | ManualRangeOffered ->
                 [
                     (TextBox.create [
-                        automationId<TextBox> (UiIds.manualRangeBox group.code)
+                        automationId<TextBox> (UiIds.FacetedTree.manualRangeBox group.code)
                         TextBox.width 110.0
                         TextBox.onKeyDown (commitOnEnter (handlers.applyManualRange group.code))
                         TextBox.onLostFocus (fun e -> commitFrom (handlers.applyManualRange group.code) e.Source)
                      ]
-                     |> Avalonia.FuncUI.DSL.View.withKey (UiIds.manualRangeBox group.code)) :> IView
+                     |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.manualRangeBox group.code)) :> IView
                 ]
         let keyedGroup =
             StackPanel.create [
-                automationId<StackPanel> (UiIds.offerGroup group.code)
+                automationId<StackPanel> (UiIds.FacetedTree.offerGroup group.code)
                 StackPanel.orientation Orientation.Horizontal
                 StackPanel.spacing 6.0
                 StackPanel.children [
@@ -354,7 +319,7 @@ module FacetedTreeControls =
                             (group.values
                              |> List.map (fun v ->
                                  clickBox
-                                     (UiIds.offeredValue group.code v.code)
+                                     (UiIds.FacetedTree.offeredValue group.code v.code)
                                      $"%s{v.label} (%d{v.previewCount})"
                                      false
                                      (fun () -> handlers.applyConstraint group.code v.code)))
@@ -362,13 +327,13 @@ module FacetedTreeControls =
                     ]
                 ]
             ]
-            |> Avalonia.FuncUI.DSL.View.withKey (UiIds.offerGroup group.code)
+            |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.offerGroup group.code)
         keyedGroup :> IView
 
     /// The offers panel: one row per offer group, facets in display order.
     let private offersPanelView (state : State) (handlers : Handlers) : IView =
         StackPanel.create [
-            automationId<StackPanel> UiIds.offersPanel
+            automationId<StackPanel> UiIds.FacetedTree.offersPanel
             StackPanel.orientation Orientation.Vertical
             StackPanel.children (state.offers |> List.map (offerGroupView handlers))
         ] :> IView
@@ -386,7 +351,7 @@ module FacetedTreeControls =
     let rec private nodeRows (handlers : Handlers) (depth : int) (node : TreeNode) : IView list =
         let row =
             Border.create [
-                automationId<Border> (UiIds.treeNode node.code)
+                automationId<Border> (UiIds.FacetedTree.treeNode node.code)
                 Border.background (brush idleBackground)
                 Border.borderBrush (brush idleBorder)
                 Border.borderThickness 1.0
@@ -396,7 +361,7 @@ module FacetedTreeControls =
                 Border.child (TextBlock.create [ TextBlock.text (nodeText node) ])
                 Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.selectNode node.code), SubPatchOptions.OnChangeOf (box node.code))
             ]
-            |> Avalonia.FuncUI.DSL.View.withKey (UiIds.treeNode node.code)
+            |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.treeNode node.code)
             :> IView
         match node.expansion with
         | ExpandedNode -> row :: (node.children |> List.collect (nodeRows handlers (depth + 1)))
@@ -409,15 +374,15 @@ module FacetedTreeControls =
     let private treeArea (state : State) (handlers : Handlers) : IView =
         match state.materialization with
         | TreeGated ->
-            clickBox UiIds.showTreeButton "Show / Search" false (fun () -> handlers.requestBuild ())
+            clickBox UiIds.FacetedTree.showTreeButton "Show / Search" false (fun () -> handlers.requestBuild ())
         | TreeMaterialized ->
             let keyedTree =
                 StackPanel.create [
-                    automationId<StackPanel> UiIds.tree
+                    automationId<StackPanel> UiIds.FacetedTree.tree
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.tree |> List.collect (nodeRows handlers 0))
                 ]
-                |> Avalonia.FuncUI.DSL.View.withKey UiIds.tree
+                |> Avalonia.FuncUI.DSL.View.withKey UiIds.FacetedTree.tree
             keyedTree :> IView
 
     /// The faceted-tree surface — filter box, representation picker, breadcrumb strip, live
@@ -425,7 +390,7 @@ module FacetedTreeControls =
     /// ONE ScrollViewer (the tree may span pages).
     let view (state : State) (handlers : Handlers) : IView =
         ScrollViewer.create [
-            automationId<ScrollViewer> UiIds.scrollViewer
+            automationId<ScrollViewer> UiIds.FacetedTree.scrollViewer
             ScrollViewer.content (
                 StackPanel.create [
                     StackPanel.orientation Orientation.Vertical

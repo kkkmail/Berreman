@@ -38,15 +38,6 @@ module RayPositionControls =
             reset : unit -> unit            // Reset → host returns the element to its origin
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance) — addressed by the headless tests.
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let minus = "RayPositionMinusButton"
-        let plus = "RayPositionPlusButton"
-        let field = "RayPositionField"
-        let reset = "RayPositionResetButton"
-        let readout = "RayPositionReadout"
-
     /// The step a − / + button applies: 0.05 m, or a larger 0.20 m with Shift held (matching the
     /// element-movement screen's arrow-key steps).
     let stepMeters (shiftHeld : bool) : float = if shiftHeld then 0.20 else 0.05
@@ -100,7 +91,7 @@ module RayPositionControls =
             | :? TextBox as tb when not (isNull tb.Text) -> parseMeters tb.Text |> Option.iter handlers.setPosition
             | _ -> ()
         TextBox.create [
-            TextBox.name UiIds.field
+            TextBox.name UiIds.RayPosition.field
             TextBox.width 80.0
             TextBox.isEnabled enabled
             TextBox.text (formatMeters value)
@@ -119,13 +110,13 @@ module RayPositionControls =
             StackPanel.opacity (if state.enabled then 1.0 else 0.5)
             StackPanel.children [
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "Along beam:" ]
-                stepButton handlers UiIds.minus "−" -1.0 state.enabled
-                stepButton handlers UiIds.plus "+" 1.0 state.enabled
+                stepButton handlers UiIds.RayPosition.minus "−" -1.0 state.enabled
+                stepButton handlers UiIds.RayPosition.plus "+" 1.0 state.enabled
                 field handlers state.position state.enabled
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
-                clickBox UiIds.reset "Reset position" state.enabled (fun _ -> handlers.reset ())
+                clickBox UiIds.RayPosition.reset "Reset position" state.enabled (fun _ -> handlers.reset ())
                 TextBlock.create [
-                    TextBlock.name UiIds.readout
+                    TextBlock.name UiIds.RayPosition.readout
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
                     TextBlock.text (System.String.Format(CultureInfo.InvariantCulture, "x = {0:+0.000;-0.000;0.000} m along the beam", state.position))

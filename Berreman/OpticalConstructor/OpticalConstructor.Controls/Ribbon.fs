@@ -47,15 +47,6 @@ module Ribbon =
             selected : string
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        /// The selectable tab for a bay — its name, prefixed so it cannot collide with other ids.
-        let tab (name : string) : string = "RibbonTab_" + name
-        /// The single active content slot — named by the bay currently shown (only that one bay's
-        /// content is realized; switching bays recreates this slot rather than toggling visibility).
-        let pane (name : string) : string = "RibbonPane_" + name
-
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
     // The same "selected / idle" treatment the rotation bar uses, so the ribbon tabs match the controls.
@@ -68,7 +59,7 @@ module Ribbon =
     /// One ribbon tab — a clickable, button-styled Border that lights up when it is the selected bay.
     let private tab (name : string) (active : bool) (onSelect : string -> unit) : IView =
         Border.create [
-            Border.name (UiIds.tab name)
+            Border.name (UiIds.Ribbon.tab name)
             Border.background (brush (if active then activeBackground else idleBackground))
             Border.borderBrush (brush (if active then activeBorder else idleBorder))
             Border.borderThickness 1.0
@@ -112,7 +103,7 @@ module Ribbon =
             |> List.map (fun b -> tab b.name (b.name = activeName) onSelect)
         // The active-bay content region. An IN-PANE bay renders its content in ONE keyed slot, KEYED by the
         // active bay name so a bay change recreates the pane instead of recycling a styled, named control
-        // across two DIFFERENT bays (`UiIds.pane` names this slot). A FULL-SURFACE bay renders no pane here —
+        // across two DIFFERENT bays (`UiIds.Ribbon.pane` names this slot). A FULL-SURFACE bay renders no pane here —
         // the host places its content below the whole strip — so the content region stays empty for it (and
         // for the no-bays case, keeping exactly one realized pane, never two).
         let paneChildren : IView list =
@@ -122,7 +113,7 @@ module Ribbon =
                 | InRibbonPane ->
                     let pane =
                         Border.create [
-                            Border.name (UiIds.pane b.name)
+                            Border.name (UiIds.Ribbon.pane b.name)
                             Border.padding (Thickness(0.0, 4.0, 0.0, 0.0))
                             Border.child b.content
                         ]

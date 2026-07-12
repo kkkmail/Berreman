@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Avalonia.Automation
+open OpticalConstructor.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Elmish
@@ -17,8 +18,8 @@ type CategoryEditorWindow(categories : CategoryProxy) as this =
 
     do
         this.Title <- "Category Editor"
-        this.Name <- CategoryEditorView.UiIds.window
-        AutomationProperties.SetAutomationId(this, CategoryEditorView.UiIds.window)
+        this.Name <- UiIds.CategoryEditor.window
+        AutomationProperties.SetAutomationId(this, UiIds.CategoryEditor.window)
         this.Width <- 720.0
         this.Height <- 640.0
         let context : CategoryEditorView.CategoryEditorContext =

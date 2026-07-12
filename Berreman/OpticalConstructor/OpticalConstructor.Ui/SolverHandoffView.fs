@@ -14,6 +14,7 @@
 module OpticalConstructor.Ui.SolverHandoffView
 
 open Avalonia
+open OpticalConstructor.Controls
 open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Layout
@@ -29,25 +30,6 @@ open OpticalConstructor.Domain
 [<Literal>]
 let solverComesLaterMessage =
     "The measured data is gathered as-is — no solving or normalization happens here. The actual inverse solver runs separately."
-
-/// Stable intent-named automation ids (CLAUDE.md UI guidance). Step 044 consolidates every id into one
-/// module with a `Handoff` sub-module; these values are chosen to survive that mechanical move.
-[<RequireQualifiedAccess>]
-module UiIds =
-    [<Literal>]
-    let window = "SolverHandoffWindow"
-    [<Literal>]
-    let collectionName = "SolverHandoffCollectionName"
-    [<Literal>]
-    let solverMessage = "SolverHandoffSolverMessage"
-    [<Literal>]
-    let summaryList = "SolverHandoffSummaryList"
-    [<Literal>]
-    let closeButton = "SolverHandoffCloseButton"
-    /// A collected experiment's summary block, by its id (prefixed so it cannot collide).
-    let summaryRow (experimentId : int) : string = "SolverHandoffRow_" + string experimentId
-    /// A collected experiment's TYPED validation-status line, by its id.
-    let statusRow (experimentId : int) : string = "SolverHandoffStatus_" + string experimentId
 
 /// The typed per-experiment handoff validation status (spec 0038 Part L, step 039). GREEN
 /// (`HandoffReady`) means every non-sample element is specified, a data file is attached, it reads
@@ -246,7 +228,7 @@ let private summaryEntry (row : HandoffRow) : IView =
     let e = row.experiment
     let idStr = string e.id.value
     StackPanel.create [
-        automationId (UiIds.summaryRow e.id.value)
+        automationId (UiIds.Handoff.summaryRow e.id.value)
         StackPanel.orientation Orientation.Vertical
         StackPanel.margin (Thickness(0.0, 0.0, 0.0, 12.0))
         StackPanel.children [
@@ -259,7 +241,7 @@ let private summaryEntry (row : HandoffRow) : IView =
             infoLine $"Detector: %s{detectorLabel row.detector}"
             infoLine $"Data file: %s{fileText e}"
             TextBlock.create [
-                automationId (UiIds.statusRow e.id.value)
+                automationId (UiIds.Handoff.statusRow e.id.value)
                 TextBlock.text row.status.text
                 TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.fontWeight FontWeight.SemiBold
@@ -277,14 +259,14 @@ let private summaryList (m : Model) : IView =
         | [] -> [ TextBlock.create [ TextBlock.text "(the received collection holds no experiments)"; TextBlock.foreground (brush mutedColor) ] :> IView ]
         | rows -> rows |> List.map summaryEntry
     StackPanel.create [
-        StackPanel.name UiIds.summaryList
+        StackPanel.name UiIds.Handoff.summaryList
         StackPanel.orientation Orientation.Vertical
         StackPanel.children children
     ] :> IView
 
 let private closeButton (dispatch : Msg -> unit) : IView =
     Border.create [
-        automationId UiIds.closeButton
+        automationId UiIds.Handoff.closeButton
         Border.background (brush (color 226 226 226))
         Border.borderBrush (brush (color 120 120 120))
         Border.borderThickness 1.0
@@ -292,7 +274,7 @@ let private closeButton (dispatch : Msg -> unit) : IView =
         Border.padding (Thickness(22.0, 6.0))
         Border.horizontalAlignment HorizontalAlignment.Right
         Border.child (TextBlock.create [ TextBlock.text "Close" ])
-        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch RequestClose), SubPatchOptions.OnChangeOf (box UiIds.closeButton))
+        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch RequestClose), SubPatchOptions.OnChangeOf (box UiIds.Handoff.closeButton))
     ] :> IView
 
 /// The whole terminal screen: a header naming the received collection, the fixed solver-comes-later
@@ -309,13 +291,13 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                         StackPanel.spacing 2.0
                         StackPanel.children [
                             TextBlock.create [
-                                automationId UiIds.collectionName
+                                automationId UiIds.Handoff.collectionName
                                 TextBlock.text $"Solver handoff — collection '%s{m.collectionName.value}'"
                                 TextBlock.fontWeight FontWeight.Bold
                                 TextBlock.fontSize 16.0
                             ]
                             TextBlock.create [
-                                automationId UiIds.solverMessage
+                                automationId UiIds.Handoff.solverMessage
                                 TextBlock.text solverComesLaterMessage
                                 TextBlock.textWrapping TextWrapping.Wrap
                                 TextBlock.foreground (brush mutedColor)

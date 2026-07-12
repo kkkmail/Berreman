@@ -83,30 +83,6 @@ module SampleLibraryControls =
             makeMultilayer : unit -> unit
         }
 
-    /// Stable intent-named automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        [<Literal>]
-        let searchBox = "SampleSearchBox"
-        [<Literal>]
-        let substrateFilter = "SampleSubstrateFilter"
-        [<Literal>]
-        let list = "SamplesList"
-        [<Literal>]
-        let addButton = "AddSampleButton"
-        [<Literal>]
-        let editButton = "EditSampleButton"
-        [<Literal>]
-        let removeButton = "RemoveSampleButton"
-        [<Literal>]
-        let viewButton = "ViewSampleButton"
-        [<Literal>]
-        let makeMultilayerButton = "MakeMultilayerButton"
-        /// A listed row's clickable id — the sample id, prefixed so it cannot collide.
-        let row (sampleId : string) : string = "SampleRow_" + sampleId
-        /// A substrate facet option's clickable id, by its host-supplied code.
-        let substrateOption (code : string) : string = "SampleSubstrateOption_" + code
-
     /// The row the current selection points at; `None` when nothing is selected or the host's
     /// filter no longer lists the selected id (the row-targeted verbs then disable).
     let selectedRow (state : State) : Row option =
@@ -183,7 +159,7 @@ module SampleLibraryControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Search:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    TextBox.name UiIds.searchBox
+                    TextBox.name UiIds.SampleLibrary.searchBox
                     TextBox.width 220.0
                     TextBox.text state.searchText
                     TextBox.onTextChanged handlers.setSearchText
@@ -200,19 +176,19 @@ module SampleLibraryControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Substrate:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
-                    WrapPanel.name UiIds.substrateFilter
+                    WrapPanel.name UiIds.SampleLibrary.substrateFilter
                     WrapPanel.orientation Orientation.Horizontal
                     WrapPanel.children (
                         state.substrateOptions
                         |> List.map (fun o ->
-                            clickBox (UiIds.substrateOption o.code) o.label (state.selectedSubstrate = o.code) (fun () -> handlers.selectSubstrate o.code)))
+                            clickBox (UiIds.SampleLibrary.substrateOption o.code) o.label (state.selectedSubstrate = o.code) (fun () -> handlers.selectSubstrate o.code)))
                 ]
             ]
         ] :> IView
 
     /// One listed sample row — clickable (selects it), highlighted when it is the selection.
     let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
-        clickBox (UiIds.row r.sampleId) r.label (state.selectedId = Some r.sampleId) (fun () -> handlers.selectSample r.sampleId)
+        clickBox (UiIds.SampleLibrary.row r.sampleId) r.label (state.selectedId = Some r.sampleId) (fun () -> handlers.selectSample r.sampleId)
 
     /// The samples list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : State) (handlers : Handlers) : IView =
@@ -220,7 +196,7 @@ module SampleLibraryControls =
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.list
+                    StackPanel.name UiIds.SampleLibrary.list
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView state handlers))
                 ])
@@ -237,11 +213,11 @@ module SampleLibraryControls =
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
             StackPanel.children [
-                verbButton UiIds.addButton "Add" true true (fun () -> handlers.addSample ())
-                verbButton UiIds.editButton "Edit" false hasSelection (fun () -> handlers.editSample ())
-                verbButton UiIds.removeButton "Remove" false hasSelection (fun () -> handlers.removeSample ())
-                verbButton UiIds.viewButton "View" false hasSelection (fun () -> handlers.viewSample ())
-                verbButton UiIds.makeMultilayerButton "Make multilayer" false true (fun () -> handlers.makeMultilayer ())
+                verbButton UiIds.SampleLibrary.addButton "Add" true true (fun () -> handlers.addSample ())
+                verbButton UiIds.SampleLibrary.editButton "Edit" false hasSelection (fun () -> handlers.editSample ())
+                verbButton UiIds.SampleLibrary.removeButton "Remove" false hasSelection (fun () -> handlers.removeSample ())
+                verbButton UiIds.SampleLibrary.viewButton "View" false hasSelection (fun () -> handlers.viewSample ())
+                verbButton UiIds.SampleLibrary.makeMultilayerButton "Make multilayer" false true (fun () -> handlers.makeMultilayer ())
             ]
         ] :> IView
 

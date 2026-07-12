@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui.Tests
 
 open System
+open OpticalConstructor.Controls
 open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
@@ -179,37 +180,37 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``the Material editor UiIds are the slice-mandated stable ids`` () =
-        Assert.Equal("MaterialEditorWindow", UiIds.window)
-        Assert.Equal("MaterialNameBox", UiIds.nameBox)
-        Assert.Equal("AnisotropyToggle", UiIds.anisotropyToggle)
-        Assert.Equal("AbsorbingToggle", UiIds.absorbingToggle)
+        Assert.Equal("MaterialEditorWindow", UiIds.MaterialEditor.window)
+        Assert.Equal("MaterialNameBox", UiIds.MaterialEditor.nameBox)
+        Assert.Equal("AnisotropyToggle", UiIds.MaterialEditor.anisotropyToggle)
+        Assert.Equal("AbsorbingToggle", UiIds.MaterialEditor.absorbingToggle)
         // Spec 0035 (017): the eps branch is two mutually-exclusive options (Constant / Dispersive).
-        Assert.Equal("ConstantToggle", UiIds.constantToggle)
-        Assert.Equal("DispersiveToggle", UiIds.dispersiveToggle)
-        Assert.Equal("ActiveToggle", UiIds.activeToggle)
-        Assert.Equal("MagneticToggle", UiIds.magneticToggle)
-        Assert.Equal("GyrationClassPicker", UiIds.gyrationClassPicker)
-        Assert.Equal("HandednessSwitch", UiIds.handednessSwitch)
-        Assert.Equal("DispersionModelPicker", UiIds.dispersionModelPicker)
-        Assert.Equal("AddSegmentButton", UiIds.addSegmentButton)
-        Assert.Equal("MaterialEditorSaveButton", UiIds.saveButton)
-        Assert.Equal("MaterialEditorCancelButton", UiIds.cancelButton)
+        Assert.Equal("ConstantToggle", UiIds.MaterialEditor.constantToggle)
+        Assert.Equal("DispersiveToggle", UiIds.MaterialEditor.dispersiveToggle)
+        Assert.Equal("ActiveToggle", UiIds.MaterialEditor.activeToggle)
+        Assert.Equal("MagneticToggle", UiIds.MaterialEditor.magneticToggle)
+        Assert.Equal("GyrationClassPicker", UiIds.MaterialEditor.gyrationClassPicker)
+        Assert.Equal("HandednessSwitch", UiIds.MaterialEditor.handednessSwitch)
+        Assert.Equal("DispersionModelPicker", UiIds.MaterialEditor.dispersionModelPicker)
+        Assert.Equal("AddSegmentButton", UiIds.MaterialEditor.addSegmentButton)
+        Assert.Equal("MaterialEditorSaveButton", UiIds.MaterialEditor.saveButton)
+        Assert.Equal("MaterialEditorCancelButton", UiIds.MaterialEditor.cancelButton)
         // The derived id families are prefixed so they cannot collide; segment 0's model
         // picker carries the mandated literal (the 022 RepeatCountStepper precedent).
-        Assert.Equal("PrincipalIndexBox_2", UiIds.indexBox 2)
-        Assert.Equal("AbsorptionIndexBox_1", UiIds.absorptionBox 1)
-        Assert.Equal("DispersionModelPicker", UiIds.segmentModelPicker 0)
-        Assert.Equal("DispersionModelPicker_1", UiIds.segmentModelPicker 1)
-        Assert.Equal("GyrationClassOption_Uniaxial", UiIds.gyrationClassOption "Uniaxial")
-        Assert.Equal("AnisotropyOption_Biaxial", UiIds.anisotropyOption (anisotropyCode Biaxial))
+        Assert.Equal("PrincipalIndexBox_2", UiIds.MaterialEditor.indexBox 2)
+        Assert.Equal("AbsorptionIndexBox_1", UiIds.MaterialEditor.absorptionBox 1)
+        Assert.Equal("DispersionModelPicker", UiIds.MaterialEditor.segmentModelPicker 0)
+        Assert.Equal("DispersionModelPicker_1", UiIds.MaterialEditor.segmentModelPicker 1)
+        Assert.Equal("GyrationClassOption_Uniaxial", UiIds.MaterialEditor.gyrationClassOption "Uniaxial")
+        Assert.Equal("AnisotropyOption_Biaxial", UiIds.MaterialEditor.anisotropyOption (anisotropyCode Biaxial))
         // Spec 0035 (011): the two Constant/Dispersive component sub-toggles and the
         // per-component dispersion-formula editor / box id families.
-        Assert.Equal("ActivityDispersiveToggle", UiIds.activityDispersiveToggle)
-        Assert.Equal("MagneticDispersiveToggle", UiIds.magneticDispersiveToggle)
-        Assert.Equal("GyrationFormulaEditor_g11", UiIds.gyrationComponentFormulaEditor "g11")
-        Assert.Equal("GyrationFormulaBox_g33_nt0c0", UiIds.gyrationComponentFormulaBox "g33" "nt0c0")
-        Assert.Equal("PolderFormulaEditor_muGyration", UiIds.polderComponentFormulaEditor "muGyration")
-        Assert.Equal("PolderFormulaBox_muDiagonal_nt0c0", UiIds.polderComponentFormulaBox "muDiagonal" "nt0c0")
+        Assert.Equal("ActivityDispersiveToggle", UiIds.MaterialEditor.activityDispersiveToggle)
+        Assert.Equal("MagneticDispersiveToggle", UiIds.MaterialEditor.magneticDispersiveToggle)
+        Assert.Equal("GyrationFormulaEditor_g11", UiIds.MaterialEditor.gyrationComponentFormulaEditor "g11")
+        Assert.Equal("GyrationFormulaBox_g33_nt0c0", UiIds.MaterialEditor.gyrationComponentFormulaBox "g33" "nt0c0")
+        Assert.Equal("PolderFormulaEditor_muGyration", UiIds.MaterialEditor.polderComponentFormulaEditor "muGyration")
+        Assert.Equal("PolderFormulaBox_muDiagonal_nt0c0", UiIds.MaterialEditor.polderComponentFormulaBox "muDiagonal" "nt0c0")
 
     [<Fact>]
     let ``the default edit state derives the simplest material: transparent, isotropic, non-dispersive`` () =
@@ -578,7 +579,7 @@ module MaterialEditorWindowTests =
     [<Fact>]
     let ``spec 0038 (032): the per-series show/hide toggle round-trips through update and lowers onto the exact curve`` () =
         // Handler — ToggleSeriesVisibility flips the key into `hiddenSeries`; a second dispatch removes it.
-        let key = UiIds.seriesToggle "nk" "n₁"
+        let key = UiIds.MaterialEditor.seriesToggle "nk" "n₁"
         let m0 = newModel ()
         Assert.False(Set.contains key m0.hiddenSeries, "nothing is hidden on a fresh model")
         let hiddenModel = update (ToggleSeriesVisibility key) m0
@@ -595,7 +596,7 @@ module MaterialEditorWindowTests =
             Assert.True(seriesVisibleAt i loweredN1, $"index %d{i} must stay visible when only n₁ is hidden")
         // A DIFFERENT series name lowers onto a DIFFERENT index — the index is read from the series NAME,
         // never hard-coded, so a wrong index cannot pass silently. k₂ is the 5th series (index 4).
-        let loweredK2 = applyHidden (Set.singleton (UiIds.seriesToggle "nk" "k₂")) "nk" chart style
+        let loweredK2 = applyHidden (Set.singleton (UiIds.MaterialEditor.seriesToggle "nk" "k₂")) "nk" chart style
         Assert.False(seriesVisibleAt 4 loweredK2, "hiding k₂ must flip exactly index 4 invisible")
         for i in [ 0; 1; 2; 3; 5 ] do
             Assert.True(seriesVisibleAt i loweredK2, $"index %d{i} must stay visible when only k₂ is hidden")
@@ -615,28 +616,28 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(matchesId UiIds.window window, "the window itself carries the MaterialEditorWindow id")
+            Assert.True(matchesId UiIds.MaterialEditor.window window, "the window itself carries the MaterialEditorWindow id")
             for id in
                 [
-                    UiIds.nameBox
-                    UiIds.anisotropyToggle
-                    UiIds.absorbingToggle
-                    UiIds.constantToggle
-                    UiIds.dispersiveToggle
-                    UiIds.activeToggle
-                    UiIds.magneticToggle
-                    UiIds.saveButton
-                    UiIds.cancelButton
+                    UiIds.MaterialEditor.nameBox
+                    UiIds.MaterialEditor.anisotropyToggle
+                    UiIds.MaterialEditor.absorbingToggle
+                    UiIds.MaterialEditor.constantToggle
+                    UiIds.MaterialEditor.dispersiveToggle
+                    UiIds.MaterialEditor.activeToggle
+                    UiIds.MaterialEditor.magneticToggle
+                    UiIds.MaterialEditor.saveButton
+                    UiIds.MaterialEditor.cancelButton
                 ] do
                 Assert.True(isPresent window id, $"%s{id} is missing from the mounted window")
             // The segment editor's mandated ids appear once the dispersive rung unlocks…
-            clickOn window UiIds.dispersiveToggle
-            Assert.True(isPresent window UiIds.dispersionModelPicker, "the dispersive rung must expose the model picker")
-            Assert.True(isPresent window UiIds.addSegmentButton, "the dispersive rung must expose the add-segment verb")
+            clickOn window UiIds.MaterialEditor.dispersiveToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.dispersionModelPicker, "the dispersive rung must expose the model picker")
+            Assert.True(isPresent window UiIds.MaterialEditor.addSegmentButton, "the dispersive rung must expose the add-segment verb")
             // …and the gyration panel's once the activity rung unlocks.
-            clickOn window UiIds.activeToggle
-            Assert.True(isPresent window UiIds.gyrationClassPicker, "the activity rung must expose the class picker")
-            Assert.True(isPresent window UiIds.handednessSwitch, "the activity rung must expose the handedness switch")
+            clickOn window UiIds.MaterialEditor.activeToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.gyrationClassPicker, "the activity rung must expose the class picker")
+            Assert.True(isPresent window UiIds.MaterialEditor.handednessSwitch, "the activity rung must expose the handedness switch")
             window.Close())
 
     [<Fact>]
@@ -648,18 +649,18 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Isotropic (the default): one index field.
-            Assert.True(isPresent window (UiIds.indexBox 1))
-            Assert.False(isPresent window (UiIds.indexBox 2))
-            Assert.False(isPresent window (UiIds.indexBox 3))
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 1))
+            Assert.False(isPresent window (UiIds.MaterialEditor.indexBox 2))
+            Assert.False(isPresent window (UiIds.MaterialEditor.indexBox 3))
             // Uniaxial: ordinary + extraordinary.
-            clickOn window (UiIds.anisotropyOption (anisotropyCode Uniaxial))
-            Assert.True(isPresent window (UiIds.indexBox 2))
-            Assert.False(isPresent window (UiIds.indexBox 3))
+            clickOn window (UiIds.MaterialEditor.anisotropyOption (anisotropyCode Uniaxial))
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 2))
+            Assert.False(isPresent window (UiIds.MaterialEditor.indexBox 3))
             // Biaxial: three principal-index fields.
-            clickOn window (UiIds.anisotropyOption (anisotropyCode Biaxial))
-            Assert.True(isPresent window (UiIds.indexBox 1))
-            Assert.True(isPresent window (UiIds.indexBox 2))
-            Assert.True(isPresent window (UiIds.indexBox 3))
+            clickOn window (UiIds.MaterialEditor.anisotropyOption (anisotropyCode Biaxial))
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 1))
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 2))
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 3))
             window.Close())
 
     [<Fact>]
@@ -670,13 +671,13 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickOn window (UiIds.anisotropyOption (anisotropyCode Uniaxial))
-            clickOn window UiIds.activeToggle
-            Assert.True(isPresent window UiIds.gyrationClassPicker)
-            Assert.True(isPresent window UiIds.handednessSwitch)
-            Assert.True(isPresent window (UiIds.gyrationClassOption "Uniaxial"), "the uniaxial diagonal class must be offered")
+            clickOn window (UiIds.MaterialEditor.anisotropyOption (anisotropyCode Uniaxial))
+            clickOn window UiIds.MaterialEditor.activeToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.gyrationClassPicker)
+            Assert.True(isPresent window UiIds.MaterialEditor.handednessSwitch)
+            Assert.True(isPresent window (UiIds.MaterialEditor.gyrationClassOption "Uniaxial"), "the uniaxial diagonal class must be offered")
             for offLimits in [ "Cubic"; "Planar"; "Orthorhombic222"; "Monoclinic2"; "MonoclinicM"; "Triclinic1" ] do
-                Assert.False(isPresent window (UiIds.gyrationClassOption offLimits), $"%s{offLimits} must NOT be offered for a uniaxial medium")
+                Assert.False(isPresent window (UiIds.MaterialEditor.gyrationClassOption offLimits), $"%s{offLimits} must NOT be offered for a uniaxial medium")
             window.Close())
 
     [<Fact>]
@@ -687,19 +688,19 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            let initial = textOf window UiIds.summaryText
+            let initial = textOf window UiIds.MaterialEditor.summaryText
             // Absorbing on, k edited — the derived model changes; unchecking restores it.
-            clickOn window UiIds.absorbingToggle
-            setText window (UiIds.absorptionBox 1) "0.25"
-            Assert.NotEqual<string>(initial, textOf window UiIds.summaryText)
-            clickOn window UiIds.absorbingToggle
-            Assert.Equal(initial, textOf window UiIds.summaryText)
+            clickOn window UiIds.MaterialEditor.absorbingToggle
+            setText window (UiIds.MaterialEditor.absorptionBox 1) "0.25"
+            Assert.NotEqual<string>(initial, textOf window UiIds.MaterialEditor.summaryText)
+            clickOn window UiIds.MaterialEditor.absorbingToggle
+            Assert.Equal(initial, textOf window UiIds.MaterialEditor.summaryText)
             // The eps branch is two mutually-exclusive options (spec 0035 step 017): choosing
             // Dispersive changes the derived model; choosing Constant restores it losslessly.
-            clickOn window UiIds.dispersiveToggle
-            Assert.NotEqual<string>(initial, textOf window UiIds.summaryText)
-            clickOn window UiIds.constantToggle
-            Assert.Equal(initial, textOf window UiIds.summaryText)
+            clickOn window UiIds.MaterialEditor.dispersiveToggle
+            Assert.NotEqual<string>(initial, textOf window UiIds.MaterialEditor.summaryText)
+            clickOn window UiIds.MaterialEditor.constantToggle
+            Assert.Equal(initial, textOf window UiIds.MaterialEditor.summaryText)
             window.Close())
 
     [<Fact>]
@@ -711,21 +712,21 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Both options are present from the start — not a sticky single toggle (spec 0035 step 017).
-            Assert.True(isPresent window UiIds.constantToggle, "the Constant option must be offered")
-            Assert.True(isPresent window UiIds.dispersiveToggle, "the Dispersive option must be offered")
+            Assert.True(isPresent window UiIds.MaterialEditor.constantToggle, "the Constant option must be offered")
+            Assert.True(isPresent window UiIds.MaterialEditor.dispersiveToggle, "the Dispersive option must be offered")
             // The default is Constant: the constant index field shows, the segment editor does not.
-            Assert.True(isPresent window (UiIds.indexBox 1))
-            Assert.False(isPresent window (UiIds.segmentLowerBox 0))
-            Assert.DoesNotContain("dispersive", textOf window UiIds.summaryText)
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 1))
+            Assert.False(isPresent window (UiIds.MaterialEditor.segmentLowerBox 0))
+            Assert.DoesNotContain("dispersive", textOf window UiIds.MaterialEditor.summaryText)
             // Choosing Dispersive selects DispersiveSegments (the segment editor appears)…
-            clickOn window UiIds.dispersiveToggle
-            Assert.Contains("dispersive", textOf window UiIds.summaryText)
-            Assert.True(isPresent window (UiIds.segmentLowerBox 0), "Dispersive selects the DispersiveSegments branch")
+            clickOn window UiIds.MaterialEditor.dispersiveToggle
+            Assert.Contains("dispersive", textOf window UiIds.MaterialEditor.summaryText)
+            Assert.True(isPresent window (UiIds.MaterialEditor.segmentLowerBox 0), "Dispersive selects the DispersiveSegments branch")
             // …and choosing Constant selects NonDispersive again (mutually exclusive, not toggled off).
-            clickOn window UiIds.constantToggle
-            Assert.DoesNotContain("dispersive", textOf window UiIds.summaryText)
-            Assert.True(isPresent window (UiIds.indexBox 1), "Constant selects the NonDispersive branch")
-            Assert.False(isPresent window (UiIds.segmentLowerBox 0))
+            clickOn window UiIds.MaterialEditor.constantToggle
+            Assert.DoesNotContain("dispersive", textOf window UiIds.MaterialEditor.summaryText)
+            Assert.True(isPresent window (UiIds.MaterialEditor.indexBox 1), "Constant selects the NonDispersive branch")
+            Assert.False(isPresent window (UiIds.MaterialEditor.segmentLowerBox 0))
             window.Close())
 
     [<Fact>]
@@ -740,12 +741,12 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            setText window UiIds.nameBox "Headless material"
-            clickOn window (UiIds.anisotropyOption (anisotropyCode Biaxial))
-            setText window (UiIds.indexBox 1) "1.6"
-            setText window (UiIds.indexBox 2) "1.7"
-            setText window (UiIds.indexBox 3) "1.8"
-            clickOn window UiIds.saveButton
+            setText window UiIds.MaterialEditor.nameBox "Headless material"
+            clickOn window (UiIds.MaterialEditor.anisotropyOption (anisotropyCode Biaxial))
+            setText window (UiIds.MaterialEditor.indexBox 1) "1.6"
+            setText window (UiIds.MaterialEditor.indexBox 2) "1.7"
+            setText window (UiIds.MaterialEditor.indexBox 3) "1.8"
+            clickOn window UiIds.MaterialEditor.saveButton
             Assert.False(window.IsVisible)
             match materials.listMaterials ActiveOnly with
             | Ok all ->
@@ -783,8 +784,8 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, EditMaterial existing)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            setText window UiIds.nameBox "Renamed glass"
-            clickOn window UiIds.saveButton
+            setText window UiIds.MaterialEditor.nameBox "Renamed glass"
+            clickOn window UiIds.MaterialEditor.saveButton
             Assert.False(window.IsVisible)
             match materials.tryGetMaterial MaterialIds.glass152 with
             | Ok (Some updated) ->
@@ -806,12 +807,12 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.Equal("", textOf window UiIds.gainWarning)
-            clickOn window UiIds.absorbingToggle
-            setText window (UiIds.absorptionBox 1) "-0.1"
-            Assert.Contains("gain", textOf window UiIds.gainWarning)
-            setText window (UiIds.absorptionBox 1) "0.1"
-            Assert.Equal("", textOf window UiIds.gainWarning)
+            Assert.Equal("", textOf window UiIds.MaterialEditor.gainWarning)
+            clickOn window UiIds.MaterialEditor.absorbingToggle
+            setText window (UiIds.MaterialEditor.absorptionBox 1) "-0.1"
+            Assert.Contains("gain", textOf window UiIds.MaterialEditor.gainWarning)
+            setText window (UiIds.MaterialEditor.absorptionBox 1) "0.1"
+            Assert.Equal("", textOf window UiIds.MaterialEditor.gainWarning)
             window.Close())
 
     [<Fact>]
@@ -822,11 +823,11 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, EditMaterial (builtIn MaterialIds.silicon))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.viewOnlyNote, "a view-only entry must say why it cannot be edited")
-            Assert.False(isPresent window UiIds.saveButton, "a view-only entry offers NO Save affordance")
-            Assert.False(isPresent window UiIds.absorbingToggle, "the ladder is removed, not greyed")
-            Assert.False(isPresent window UiIds.activeToggle, "the ladder is removed, not greyed")
-            clickOn window UiIds.cancelButton
+            Assert.True(isPresent window UiIds.MaterialEditor.viewOnlyNote, "a view-only entry must say why it cannot be edited")
+            Assert.False(isPresent window UiIds.MaterialEditor.saveButton, "a view-only entry offers NO Save affordance")
+            Assert.False(isPresent window UiIds.MaterialEditor.absorbingToggle, "the ladder is removed, not greyed")
+            Assert.False(isPresent window UiIds.MaterialEditor.activeToggle, "the ladder is removed, not greyed")
+            clickOn window UiIds.MaterialEditor.cancelButton
             Assert.False(window.IsVisible))
 
     [<Fact>]
@@ -837,18 +838,18 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickOn window UiIds.dispersiveToggle
-            Assert.True(isPresent window (UiIds.segmentLowerBox 0))
-            Assert.False(isPresent window (UiIds.segmentLowerBox 1))
-            clickOn window UiIds.addSegmentButton
-            Assert.True(isPresent window (UiIds.segmentLowerBox 1), "AddSegment must append a second segment row")
+            clickOn window UiIds.MaterialEditor.dispersiveToggle
+            Assert.True(isPresent window (UiIds.MaterialEditor.segmentLowerBox 0))
+            Assert.False(isPresent window (UiIds.MaterialEditor.segmentLowerBox 1))
+            clickOn window UiIds.MaterialEditor.addSegmentButton
+            Assert.True(isPresent window (UiIds.MaterialEditor.segmentLowerBox 1), "AddSegment must append a second segment row")
             // A transcendental pick now LOWERS to the evaluated segment, so the entry
             // DERIVES a dispersive eps instead of surfacing a rejection.
-            clickOn window (UiIds.modelOption 0 "ForouhiBloomer")
-            Assert.Contains("dispersive", textOf window UiIds.summaryText)
-            Assert.DoesNotContain("not derivable", textOf window UiIds.summaryText)
-            clickOn window (UiIds.modelOption 0 "SumOfTerms")
-            Assert.Contains("dispersive", textOf window UiIds.summaryText)
+            clickOn window (UiIds.MaterialEditor.modelOption 0 "ForouhiBloomer")
+            Assert.Contains("dispersive", textOf window UiIds.MaterialEditor.summaryText)
+            Assert.DoesNotContain("not derivable", textOf window UiIds.MaterialEditor.summaryText)
+            clickOn window (UiIds.MaterialEditor.modelOption 0 "SumOfTerms")
+            Assert.Contains("dispersive", textOf window UiIds.MaterialEditor.summaryText)
             window.Close())
 
     [<Fact>]
@@ -860,24 +861,24 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A uniaxial active medium's class carries exactly g11 and g33.
-            clickOn window (UiIds.anisotropyOption (anisotropyCode Uniaxial))
-            clickOn window UiIds.activeToggle
-            Assert.True(isPresent window UiIds.activityDispersiveToggle, "the activity rung must expose the Dispersive sub-toggle")
+            clickOn window (UiIds.MaterialEditor.anisotropyOption (anisotropyCode Uniaxial))
+            clickOn window UiIds.MaterialEditor.activeToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.activityDispersiveToggle, "the activity rung must expose the Dispersive sub-toggle")
             // Constant (the default sub-branch): the per-component constant boxes, no formula editor.
             for code in [ "g11"; "g33" ] do
-                Assert.True(isPresent window (UiIds.gyrationComponentBox code), $"the constant %s{code} box must be present")
-                Assert.False(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} must have no formula editor while constant")
+                Assert.True(isPresent window (UiIds.MaterialEditor.gyrationComponentBox code), $"the constant %s{code} box must be present")
+                Assert.False(isPresent window (UiIds.MaterialEditor.gyrationComponentFormulaEditor code), $"%s{code} must have no formula editor while constant")
             // Enabling Dispersive exposes a dispersion-formula editor per symmetry-allowed
             // component; the constant boxes are gone.
-            clickOn window UiIds.activityDispersiveToggle
+            clickOn window UiIds.MaterialEditor.activityDispersiveToggle
             for code in [ "g11"; "g33" ] do
-                Assert.True(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
-                Assert.False(isPresent window (UiIds.gyrationComponentBox code), $"the constant %s{code} box must be removed under Dispersive")
+                Assert.True(isPresent window (UiIds.MaterialEditor.gyrationComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
+                Assert.False(isPresent window (UiIds.MaterialEditor.gyrationComponentBox code), $"the constant %s{code} box must be removed under Dispersive")
             // Unchecking restores the constant component boxes.
-            clickOn window UiIds.activityDispersiveToggle
+            clickOn window UiIds.MaterialEditor.activityDispersiveToggle
             for code in [ "g11"; "g33" ] do
-                Assert.True(isPresent window (UiIds.gyrationComponentBox code), $"unchecking must restore the constant %s{code} box")
-                Assert.False(isPresent window (UiIds.gyrationComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
+                Assert.True(isPresent window (UiIds.MaterialEditor.gyrationComponentBox code), $"unchecking must restore the constant %s{code} box")
+                Assert.False(isPresent window (UiIds.MaterialEditor.gyrationComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
             window.Close())
 
     [<Fact>]
@@ -888,22 +889,22 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickOn window UiIds.magneticToggle
-            Assert.True(isPresent window UiIds.magneticDispersiveToggle, "the magnetic rung must expose the Dispersive sub-toggle")
+            clickOn window UiIds.MaterialEditor.magneticToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.magneticDispersiveToggle, "the magnetic rung must expose the Dispersive sub-toggle")
             // Constant (default, scalar kind): the diagonal μ box, no formula editor.
-            Assert.True(isPresent window UiIds.muDiagonalBox, "the constant diagonal μ box must be present")
-            Assert.False(isPresent window (UiIds.polderComponentFormulaEditor "muDiagonal"), "no Polder formula editor while constant")
+            Assert.True(isPresent window UiIds.MaterialEditor.muDiagonalBox, "the constant diagonal μ box must be present")
+            Assert.False(isPresent window (UiIds.MaterialEditor.polderComponentFormulaEditor "muDiagonal"), "no Polder formula editor while constant")
             // Enabling Dispersive exposes the full-tensor Polder component formula editors;
             // the constant box is gone.
-            clickOn window UiIds.magneticDispersiveToggle
+            clickOn window UiIds.MaterialEditor.magneticDispersiveToggle
             for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
-                Assert.True(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
-            Assert.False(isPresent window UiIds.muDiagonalBox, "the constant diagonal μ box must be removed under Dispersive")
+                Assert.True(isPresent window (UiIds.MaterialEditor.polderComponentFormulaEditor code), $"%s{code} must expose a dispersion-formula editor under Dispersive")
+            Assert.False(isPresent window UiIds.MaterialEditor.muDiagonalBox, "the constant diagonal μ box must be removed under Dispersive")
             // Unchecking restores the constant component box.
-            clickOn window UiIds.magneticDispersiveToggle
-            Assert.True(isPresent window UiIds.muDiagonalBox, "unchecking must restore the constant diagonal μ box")
+            clickOn window UiIds.MaterialEditor.magneticDispersiveToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.muDiagonalBox, "unchecking must restore the constant diagonal μ box")
             for code in [ "muDiagonal"; "muParallel"; "muGyration" ] do
-                Assert.False(isPresent window (UiIds.polderComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
+                Assert.False(isPresent window (UiIds.MaterialEditor.polderComponentFormulaEditor code), $"%s{code} formula editor must be gone again")
             window.Close())
 
     // ============================ spec 0038 (032): the two-pane split + tabbed preview ============================
@@ -917,12 +918,12 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The two panes are split by a vertical GridSplitter; the right pane is a tabbed preview.
-            Assert.True(isPresent window UiIds.splitter, "the two-pane split must carry a vertical GridSplitter")
-            Assert.True(isPresent window UiIds.previewTabs, "the preview pane must be a TabControl")
-            Assert.True(isPresent window UiIds.nkTab, "the n/k tab is always present")
+            Assert.True(isPresent window UiIds.MaterialEditor.splitter, "the two-pane split must carry a vertical GridSplitter")
+            Assert.True(isPresent window UiIds.MaterialEditor.previewTabs, "the preview pane must be a TabControl")
+            Assert.True(isPresent window UiIds.MaterialEditor.nkTab, "the n/k tab is always present")
             // The n/k tab (the default selection) embeds the full-height chart; it rasterizes one frame.
-            Assert.True(isPresent window UiIds.previewChart, "the n/k tab embeds the shared chart host")
-            match avaUnder window UiIds.previewChart with
+            Assert.True(isPresent window UiIds.MaterialEditor.previewChart, "the n/k tab embeds the shared chart host")
+            match avaUnder window UiIds.MaterialEditor.previewChart with
             | Some ava -> Assert.True(rasterizes ava, "the full-height n/k chart rendered no image bytes")
             | None -> Assert.Fail("no embedded AvaPlot under the n/k preview chart host")
             window.Close())
@@ -935,11 +936,11 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.False(isPresent window UiIds.gyrationTab, "no Gyration tab before activity is enabled")
-            clickOn window UiIds.activeToggle
-            Assert.True(isPresent window UiIds.gyrationTab, "the Gyration tab appears when optically active")
-            clickOn window UiIds.activeToggle
-            Assert.False(isPresent window UiIds.gyrationTab, "the Gyration tab disappears when activity is turned off")
+            Assert.False(isPresent window UiIds.MaterialEditor.gyrationTab, "no Gyration tab before activity is enabled")
+            clickOn window UiIds.MaterialEditor.activeToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.gyrationTab, "the Gyration tab appears when optically active")
+            clickOn window UiIds.MaterialEditor.activeToggle
+            Assert.False(isPresent window UiIds.MaterialEditor.gyrationTab, "the Gyration tab disappears when activity is turned off")
             window.Close())
 
     [<Fact>]
@@ -950,11 +951,11 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.False(isPresent window UiIds.muTab, "no μ tab before magnetic is enabled")
-            clickOn window UiIds.magneticToggle
-            Assert.True(isPresent window UiIds.muTab, "the μ tab appears when magnetic")
-            clickOn window UiIds.magneticToggle
-            Assert.False(isPresent window UiIds.muTab, "the μ tab disappears when magnetic is turned off")
+            Assert.False(isPresent window UiIds.MaterialEditor.muTab, "no μ tab before magnetic is enabled")
+            clickOn window UiIds.MaterialEditor.magneticToggle
+            Assert.True(isPresent window UiIds.MaterialEditor.muTab, "the μ tab appears when magnetic")
+            clickOn window UiIds.MaterialEditor.magneticToggle
+            Assert.False(isPresent window UiIds.MaterialEditor.muTab, "the μ tab disappears when magnetic is turned off")
             window.Close())
 
     [<Fact>]
@@ -1040,8 +1041,8 @@ module MaterialEditorWindowTests =
             let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.False(isPresent window UiIds.exitConfirm, "no confirm surface before any edit")
-            clickOn window UiIds.cancelButton
+            Assert.False(isPresent window UiIds.MaterialEditor.exitConfirm, "no confirm surface before any edit")
+            clickOn window UiIds.MaterialEditor.cancelButton
             Assert.False(window.IsVisible, "a pristine Cancel closes immediately"))
 
     [<Fact>]
@@ -1057,22 +1058,22 @@ module MaterialEditorWindowTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // A name edit makes it dirty; Cancel shows the confirm instead of closing.
-            setText window UiIds.nameBox "Unsaved material"
-            clickOn window UiIds.cancelButton
+            setText window UiIds.MaterialEditor.nameBox "Unsaved material"
+            clickOn window UiIds.MaterialEditor.cancelButton
             Assert.True(window.IsVisible, "a dirty Cancel must not close the window")
-            Assert.True(isPresent window UiIds.exitConfirm, "the discard confirm must appear")
-            Assert.True(isPresent window UiIds.discardButton, "Discard changes must be offered")
-            Assert.True(isPresent window UiIds.keepEditingButton, "Keep editing must be offered")
-            Assert.False(isPresent window UiIds.saveButton, "Save/Cancel are replaced by the confirm")
+            Assert.True(isPresent window UiIds.MaterialEditor.exitConfirm, "the discard confirm must appear")
+            Assert.True(isPresent window UiIds.MaterialEditor.discardButton, "Discard changes must be offered")
+            Assert.True(isPresent window UiIds.MaterialEditor.keepEditingButton, "Keep editing must be offered")
+            Assert.False(isPresent window UiIds.MaterialEditor.saveButton, "Save/Cancel are replaced by the confirm")
             // Keep editing returns to the editor.
-            clickOn window UiIds.keepEditingButton
+            clickOn window UiIds.MaterialEditor.keepEditingButton
             Assert.True(window.IsVisible)
-            Assert.False(isPresent window UiIds.exitConfirm, "Keep editing dismisses the confirm")
-            Assert.True(isPresent window UiIds.saveButton, "the Save action returns")
+            Assert.False(isPresent window UiIds.MaterialEditor.exitConfirm, "Keep editing dismisses the confirm")
+            Assert.True(isPresent window UiIds.MaterialEditor.saveButton, "the Save action returns")
             // Cancel again → confirm → Discard closes WITHOUT persisting.
-            clickOn window UiIds.cancelButton
-            Assert.True(isPresent window UiIds.exitConfirm)
-            clickOn window UiIds.discardButton
+            clickOn window UiIds.MaterialEditor.cancelButton
+            Assert.True(isPresent window UiIds.MaterialEditor.exitConfirm)
+            clickOn window UiIds.MaterialEditor.discardButton
             Assert.False(window.IsVisible, "Discard closes the window")
             match materials.listMaterials ActiveOnly with
             | Ok all -> Assert.Equal(seededCount, List.length all)
@@ -1090,14 +1091,14 @@ module MaterialEditorWindowTests =
             // delegates to it (the OS chrome is not reachable through the headless input surface).
             // A pristine editor's chrome close proceeds: nothing intercepted, no confirm.
             Assert.False(window.ChromeCloseIntercepted(), "a pristine chrome close proceeds")
-            Assert.False(isPresent window UiIds.exitConfirm, "no confirm on a pristine chrome close")
+            Assert.False(isPresent window UiIds.MaterialEditor.exitConfirm, "no confirm on a pristine chrome close")
             // A dirty editor's chrome close is intercepted and shows the SAME discard confirm the
             // Cancel button raises — the window stays open.
-            setText window UiIds.nameBox "Chrome edit"
+            setText window UiIds.MaterialEditor.nameBox "Chrome edit"
             Assert.True(window.ChromeCloseIntercepted(), "a dirty chrome close must be intercepted")
             Dispatcher.UIThread.RunJobs()
             Assert.True(window.IsVisible, "an intercepted chrome close leaves the window open")
-            Assert.True(isPresent window UiIds.exitConfirm, "the chrome close shows the discard confirm")
+            Assert.True(isPresent window UiIds.MaterialEditor.exitConfirm, "the chrome close shows the discard confirm")
             // Discard from the confirm then closes for real.
-            clickOn window UiIds.discardButton
+            clickOn window UiIds.MaterialEditor.discardButton
             Assert.False(window.IsVisible, "Discard closes the chrome-gated window"))

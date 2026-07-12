@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Ui
 
 open Avalonia.Automation
+open OpticalConstructor.Controls
 open Avalonia.Controls
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
@@ -35,8 +36,8 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mod
 
     do
         this.Title <- "Materials"
-        this.Name <- MaterialsWindowView.UiIds.window
-        AutomationProperties.SetAutomationId(this, MaterialsWindowView.UiIds.window)
+        this.Name <- UiIds.MaterialsWindow.window
+        AutomationProperties.SetAutomationId(this, UiIds.MaterialsWindow.window)
         this.Width <- 1150.0
         this.Height <- 800.0
         // Browse-mode opens always `Show` — the Select-state modality switch is never consulted
