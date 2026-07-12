@@ -37,9 +37,10 @@ module EnvironmentRoundTripTests =
         }
 
     /// A representative non-default environment exercising every persisted field —
-    /// all four favorite-pin shapes (§A.7), recent files, last folders, a Dark
-    /// theme, an edited panel layout, a non-default chart palette, and edited
-    /// preferences.
+    /// all four favorite-pin shapes (§A.7), last folders, a Dark theme, an edited
+    /// panel layout, a non-default chart palette, and edited preferences. (Recent
+    /// files are no longer an EnvironmentSettings field — they live in
+    /// `Storage.RecentFiles`.)
     let private sample : EnvironmentSettings =
         { defaults with
             favorites =
@@ -56,7 +57,6 @@ module EnvironmentRoundTripTests =
                     }
                 ]
             lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\optics" ]
-            recentFiles = [ "a.ocproj"; "b.ocproj" ]
             theme = Dark
             // Edit the saved layout through the AppShell reducer (J.8): hide "results".
             layout = OpticalConstructor.Ui.AppShell.setPanelVisible "results" false defaults.layout
@@ -96,8 +96,7 @@ module EnvironmentRoundTripTests =
             Assert.Equal("Si", m)
             Assert.Equal("src-d65", src)
         | other -> Assert.Fail($"unexpected pins: %A{other}")
-        // Recent files, last folders, theme, palette, layout, preferences all survive.
-        Assert.Equal<string list>(sample.recentFiles, back.recentFiles)
+        // Last folders, theme, palette, layout, preferences all survive.
         Assert.Equal<Map<string, string>>(sample.lastFolders, back.lastFolders)
         Assert.Equal(Dark, back.theme)
         Assert.Equal<string list>(sample.chartPalette, back.chartPalette)
@@ -314,7 +313,6 @@ module EnvironmentRoundTripTests =
     let ``the built-in defaults start with an empty board, a Light theme and English`` () =
         Assert.Empty defaults.favorites
         Assert.Empty defaults.lastFolders
-        Assert.Empty defaults.recentFiles
         Assert.Equal(Light, defaults.theme)
         Assert.Equal(English, defaults.language)
         Assert.Equal(5, List.length defaults.chartPalette)
@@ -352,11 +350,42 @@ module EnvironmentRoundTripTests =
         Assert.Equal<string list>(edited.chartPalette, back.chartPalette)
 
     [<Fact>]
-    let ``recent files round-trip in order and last folders round-trip by purpose key`` () =
+    let ``last folders round-trip by purpose key`` () =
         let edited =
             { defaults with
-                recentFiles = [ "c.ocproj"; "a.ocproj"; "b.ocproj" ]
                 lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\b"; "other-picker", @"C:\work\a" ] }
         let back = serialize edited |> okOr |> deserialize |> okOr
-        Assert.Equal<string list>(edited.recentFiles, back.recentFiles)
         Assert.Equal<Map<string, string>>(edited.lastFolders, back.lastFolders)
+
+    // --- Spec 0038 step 043: the two recent-files stores are collapsed into one.
+    // --- `EnvironmentSettings` no longer carries a `recentFiles` field (that store
+    // --- is now solely `Storage.RecentFiles`), but the total-load contract must keep
+    // --- OLD environment.json files — which still carry a `recentFiles` array — loading
+    // --- with the dropped field simply ignored (no migration, §J.6 item 3).
+
+    [<Fact>]
+    let ``an old environment.json carrying a recentFiles array still loads, field ignored, no migration`` () =
+        // Take a valid serialized envelope and graft a legacy `recentFiles` array onto
+        // it, simulating a file written before the field was dropped.
+        let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+        envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj", "b.ocproj" ]"""
+        // The root schema is permissive (no additionalProperties:false), so the legacy
+        // field still VALIDATES; STJ ignores the unmapped property on bind.
+        let back = deserialize (envelope.ToJsonString()) |> okOr
+        // Every surviving field binds normally — the load is total, not a fall-back.
+        Assert.Equal(sample, back)
+
+    [<Fact>]
+    let ``load reads an old on-disk environment.json with a recentFiles array without falling back to defaults`` () =
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-legacy-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        try
+            let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+            envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj" ]"""
+            File.WriteAllText(path, envelope.ToJsonString())
+            // A genuine total load off disk: the legacy file loads to the real settings,
+            // NOT the built-in defaults (which would signal a validation/migration miss).
+            let loaded = load path
+            Assert.Equal(sample, loaded)
+            Assert.NotEqual(defaults, loaded)
+        finally
+            if File.Exists path then File.Delete path

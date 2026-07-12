@@ -3,8 +3,9 @@
 /// working environment between sessions and seeds defaults for new projects: a
 /// named/grouped favorites board (pinned reused engine `Layer`/`OpticalSystem`
 /// fragments and `materialEntry`/`sourceSpec` ids — §A.7 shapes, by value), the
-/// last working folder(s) and the ordered recent-files list, the window/panel
-/// layout and theme (J.8), the toolbar contents, and the `Preferences` (J.7).
+/// last working folder(s), the window/panel layout and theme (J.8), the toolbar
+/// contents, and the `Preferences` (J.7). The ordered recent-files list is NOT a
+/// field here — it lives solely in `Storage.RecentFiles` (its own `recent.json`).
 ///
 /// Persistence is JSON validated on load against `optical-constructor-environment.
 /// schema.json` (added to the §A.7 schema family, same `JsonSchema.Net` library) —
@@ -174,9 +175,10 @@ type FavoriteGroup =
 // ---------------------------------------------------------------------------
 
 /// The persistent user environment (§J.6 [Core] + J.7/J.8 fields). Persisted as
-/// schema-validated JSON (NOT `.binz`); the favorites board, recent files, last
-/// folders, panel layout, theme, toolbar, and preferences all round-trip through
-/// it (AC-J6/AC-J8). This is the net-new persistent customization from 010 Part
+/// schema-validated JSON (NOT `.binz`); the favorites board, last folders, panel
+/// layout, theme, toolbar, and preferences all round-trip through it (AC-J6/AC-J8).
+/// The recent-files list is NOT persisted here — `Storage.RecentFiles` is the single
+/// recent-files store. This is the net-new persistent customization from 010 Part
 /// II §1.
 type EnvironmentSettings =
     {
@@ -188,7 +190,6 @@ type EnvironmentSettings =
         /// `rememberFolder`. An old array-shaped file fails schema validation and the total `load`
         /// falls back to the empty map (no migration, §J.6 item 3).
         lastFolders : Map<string, string>
-        recentFiles : string list
         layout : PanelLayout
         theme : Theme
         /// Chart color palettes surfaced to Part H (J.8); hex color strings. The
@@ -244,7 +245,6 @@ let defaults : EnvironmentSettings =
     {
         favorites = []
         lastFolders = Map.empty
-        recentFiles = []
         layout = { panels = defaultPanels }
         theme = Light
         chartPalette = [ "#1f77b4"; "#ff7f0e"; "#2ca02c"; "#d62728"; "#9467bd" ]

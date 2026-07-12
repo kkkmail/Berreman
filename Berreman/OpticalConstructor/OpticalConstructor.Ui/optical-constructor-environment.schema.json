@@ -8,7 +8,6 @@
     "schemaVersion",
     "favorites",
     "lastFolders",
-    "recentFiles",
     "layout",
     "theme",
     "chartPalette",
@@ -32,11 +31,6 @@
       "type": "object",
       "additionalProperties": { "type": "string" },
       "description": "The last working folder PER picker purpose (J.6), a Map<purpose, folder> serialized as a JSON object (keyed by purpose id, e.g. \"measured-data\"). An old array-shaped file fails this object type and the total loader falls back to built-in defaults (no migration, J.6 item 3)."
-    },
-    "recentFiles": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Ordered recent files/projects list (J.6)."
     },
     "layout": {
       "$ref": "#/$defs/panelLayout",
