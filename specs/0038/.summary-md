@@ -1,0 +1,81 @@
+# Arc summary — spec 0038 "Additional UI Tweaks"
+
+*This is the narrative companion to the stats tool, **not a substitute for it.**
+It records the human-readable story of the run — the decisions, surprises, and
+dead-ends — that the numbers do not capture. Read it alongside the stats output;
+neither is complete without the other.*
+
+> Note on provenance: the launching session started this arc **detached** (its own
+> console, per the spec-0035 halt postmortem) and did not watch it live, so this
+> summary is reconstructed after the fact from `.manifest-arc-runner.log`, the
+> `.state.json`, and the resolver/judge artifacts rather than from live worker
+> memory. The account below is faithful to those records.
+
+## The short version
+
+A clean arc. All 47 slices landed green and committed; the run ended `COMPLETE`
+with no escalation, no hangup, no operator intervention, and no manual overrides.
+It ran ~27.7 hours wall-clock (2026-07-10 22:12 UTC → 2026-07-12 01:56 UTC)
+against a 48-hour cap, so there was never budget pressure. If you only read one
+line: nothing derailed, and the two-tier safety net (retry budget, then resolver)
+did its job exactly once, deliberately.
+
+## What happened on the way
+
+The work was the usual UI-tweak mix — mostly `implement_worker` slices, plus a
+handful of `add_component`, `add_contract`, and `implement_contract` slices, and a
+final `wire_ui_worker` composition slice (047) that stitched the pieces together.
+Every slice cleared all five gates (build · unit-tests · constructor-unit-tests ·
+ui-smoke · ui-tests) and passed a code-judge review before commit. Final gate
+counts at completion: 119 solver unit tests, 674 constructor unit tests, 180
+ui-smoke tests, 462 ui-tests.
+
+Three gate failures occurred across the whole arc, and all three self-recovered
+inside the per-slice budget:
+
+- **Slice 002** — the first attempt *regressed the constructor test count*
+  (425 < baseline 447): the `count_at_least` gate caught it before it could commit
+  a silent test deletion. The retry restored the count and passed.
+- **Slice 020** — a plain build-gate failure (compile error) on attempt 1; the
+  retry fixed it.
+- **Slice 032** — the one genuinely interesting moment of the run (below).
+
+## The one surprise worth knowing: slice 032 and the resolver
+
+Slice 032 is the only slice that exhausted its 2/2 failure budget and reached the
+resolver. It matters because the two failures were *not* the usual worker
+thrashing:
+
+1. **Attempt 1** short-circuited on the build gate with two round-one compile
+   errors — a missing `open Berreman.Constants` for the `<nm>` unit-of-measure, and
+   a `defaultState` open-collision.
+2. **Attempt 2** fixed both surgically and went *all five gates green* — but the
+   code-judge then routed it back. Its finding was precise and correct: the slice
+   narrative mandates per-series show/hide toggles for the preview chart, and that
+   feature (`ToggleSeriesVisibility` handler + `applyHidden`, keyed by
+   `UiIds.seriesToggle`) shipped with **zero test coverage**. A wrong series index
+   or tab code would have passed every gate silently.
+
+Hitting 2/2 tripped the failures cap and invoked the resolver. The resolver's
+call is the thing a future reader should note: it explicitly diagnosed this as
+**not an oscillation cap** — the two failures were distinct and *progressive*
+(a converging slice), not a worker oscillating between fixes. It verified the
+judge's gap against the tree, issued a high-confidence `issue-hint` pointing at
+the exact missing test (add/remove round-trip on the handler + prove `applyHidden`
+lowers the named curve), bumped the route-back cap +1, and sent it back. Attempt 3
+added the focused test and closed the slice green. This is the safety net working
+as designed: the retry budget caught a real coverage gap, and the resolver
+distinguished "legitimately needs one more pass" from "stuck," instead of
+escalating a slice that was actually one hint away from done.
+
+## Dead-ends and non-events
+
+There were none of the dramatic kind — no approach was tried and abandoned, no
+gate failed in a way that revealed a wrong assumption in the spec. The only boot
+note was an expected `WARN`: the manifest omits several soft-required header keys
+(retry/resolver budgets), so the loader filled process defaults. That is normal
+for this manifest shape and did not affect the run.
+
+The detached-launch decision (from the earlier spec-0035 mid-arc kill) is
+vindicated here: unlike that run, this one was never touched by the harness and
+ran uninterrupted from slice 001 to 047.

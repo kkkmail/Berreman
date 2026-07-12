@@ -1,0 +1,514 @@
+{
+  "timing": {
+    "arc_started_at": "2026-07-10T17:50:43Z",
+    "arc_ended_at": "2026-07-12T01:56:13Z",
+    "total_wall_clock_seconds": 115530.0,
+    "spec_writer_seconds": 6617.0,
+    "splitter_seconds": null,
+    "arc_runner_seconds": 99846.0,
+    "idle_gap_seconds": 92822.0,
+    "largest_gaps": [
+      {
+        "at": "2026-07-11T13:45:30Z",
+        "seconds": 4203.0
+      },
+      {
+        "at": "2026-07-11T17:40:52Z",
+        "seconds": 3245.0
+      },
+      {
+        "at": "2026-07-11T04:53:54Z",
+        "seconds": 3206.0
+      },
+      {
+        "at": "2026-07-11T07:02:42Z",
+        "seconds": 3075.0
+      }
+    ]
+  },
+  "cost": {
+    "total_usd": null,
+    "total_tokens": null,
+    "by_phase": {},
+    "by_role": {
+      "splitter": null,
+      "arc_runner_worker": null,
+      "architecture_critic": null,
+      "reuse_critic": null,
+      "code_judge": null,
+      "resolver": null,
+      "spec_author": null,
+      "claim_checker": null,
+      "gate_keeper": null,
+      "handoff_verifier": null
+    },
+    "by_slice": {},
+    "cost_per_accepted_slice": null,
+    "review_share": null,
+    "row_warnings": {}
+  },
+  "iterations": {
+    "spec_writer": {
+      "cycles_by_intent": {
+        "spec": 2,
+        "claim-check": 2,
+        "gates": 1,
+        "handoff": 1
+      }
+    },
+    "splitter": {
+      "rounds": 0,
+      "verifier_iterations_per_round": {
+        "max": 0,
+        "median": 0.0
+      }
+    },
+    "arc_runner": {
+      "slice_attempts_total": 51,
+      "slices_with_retries": 3,
+      "review_cycles_per_slice": {
+        "max": 2,
+        "median": 1.0
+      },
+      "resolver_invocations": 0,
+      "route_backs_total": 1,
+      "max_route_backs_per_slice": 1
+    }
+  },
+  "outcomes": {
+    "arc_status": "COMPLETE",
+    "arc_escalation_trigger": null,
+    "gate_pass_rate": 0.9877551020408163,
+    "gates_failed_top": [
+      {
+        "name": "build",
+        "failures": 2,
+        "last_capture": "2026-07-11T18:35:36+00:00",
+        "last_exit_code": 1
+      },
+      {
+        "name": "constructor-unit-tests",
+        "failures": 1,
+        "last_capture": "2026-07-10T23:16:10+00:00",
+        "last_exit_code": 0
+      }
+    ],
+    "hangup_count": 0,
+    "operator_overrides": 0
+  },
+  "sizes": {
+    "spec_md_bytes": 30227,
+    "spec_md_lines": 513,
+    "spec_md_section_count": 33,
+    "slice_count": 47,
+    "gate_count_chosen": 235,
+    "gate_count_proposed_open": 0,
+    "per_slice": {
+      "slice 001": {
+        "sow_bytes": 7066,
+        "impl_log_bytes": 7668,
+        "selected_test_classes_count": 0
+      },
+      "slice 002": {
+        "sow_bytes": 7888,
+        "impl_log_bytes": 6703,
+        "selected_test_classes_count": 0
+      },
+      "slice 003": {
+        "sow_bytes": 6771,
+        "impl_log_bytes": 6893,
+        "selected_test_classes_count": 0
+      },
+      "slice 004": {
+        "sow_bytes": 6476,
+        "impl_log_bytes": 8113,
+        "selected_test_classes_count": 0
+      },
+      "slice 005": {
+        "sow_bytes": 7157,
+        "impl_log_bytes": 8855,
+        "selected_test_classes_count": 0
+      },
+      "slice 006": {
+        "sow_bytes": 7283,
+        "impl_log_bytes": 8275,
+        "selected_test_classes_count": 0
+      },
+      "slice 007": {
+        "sow_bytes": 7638,
+        "impl_log_bytes": 7854,
+        "selected_test_classes_count": 0
+      },
+      "slice 008": {
+        "sow_bytes": 9112,
+        "impl_log_bytes": 11320,
+        "selected_test_classes_count": 0
+      },
+      "slice 009": {
+        "sow_bytes": 8457,
+        "impl_log_bytes": 8887,
+        "selected_test_classes_count": 0
+      },
+      "slice 010": {
+        "sow_bytes": 8427,
+        "impl_log_bytes": 10057,
+        "selected_test_classes_count": 0
+      },
+      "slice 011": {
+        "sow_bytes": 10170,
+        "impl_log_bytes": 7749,
+        "selected_test_classes_count": 0
+      },
+      "slice 012": {
+        "sow_bytes": 8903,
+        "impl_log_bytes": 6298,
+        "selected_test_classes_count": 0
+      },
+      "slice 013": {
+        "sow_bytes": 9983,
+        "impl_log_bytes": 8736,
+        "selected_test_classes_count": 0
+      },
+      "slice 014": {
+        "sow_bytes": 9479,
+        "impl_log_bytes": 7301,
+        "selected_test_classes_count": 0
+      },
+      "slice 015": {
+        "sow_bytes": 11144,
+        "impl_log_bytes": 10634,
+        "selected_test_classes_count": 0
+      },
+      "slice 016": {
+        "sow_bytes": 10762,
+        "impl_log_bytes": 9277,
+        "selected_test_classes_count": 0
+      },
+      "slice 017": {
+        "sow_bytes": 9773,
+        "impl_log_bytes": 9186,
+        "selected_test_classes_count": 0
+      },
+      "slice 018": {
+        "sow_bytes": 8737,
+        "impl_log_bytes": 10331,
+        "selected_test_classes_count": 0
+      },
+      "slice 019": {
+        "sow_bytes": 10548,
+        "impl_log_bytes": 8521,
+        "selected_test_classes_count": 0
+      },
+      "slice 020": {
+        "sow_bytes": 6384,
+        "impl_log_bytes": 7507,
+        "selected_test_classes_count": 0
+      },
+      "slice 021": {
+        "sow_bytes": 7938,
+        "impl_log_bytes": 4446,
+        "selected_test_classes_count": 0
+      },
+      "slice 022": {
+        "sow_bytes": 8231,
+        "impl_log_bytes": 9695,
+        "selected_test_classes_count": 0
+      },
+      "slice 023": {
+        "sow_bytes": 9243,
+        "impl_log_bytes": 4173,
+        "selected_test_classes_count": 0
+      },
+      "slice 024": {
+        "sow_bytes": 6285,
+        "impl_log_bytes": 3698,
+        "selected_test_classes_count": 0
+      },
+      "slice 025": {
+        "sow_bytes": 5951,
+        "impl_log_bytes": 6663,
+        "selected_test_classes_count": 0
+      },
+      "slice 026": {
+        "sow_bytes": 5950,
+        "impl_log_bytes": 4545,
+        "selected_test_classes_count": 0
+      },
+      "slice 027": {
+        "sow_bytes": 7316,
+        "impl_log_bytes": 6378,
+        "selected_test_classes_count": 0
+      },
+      "slice 028": {
+        "sow_bytes": 4752,
+        "impl_log_bytes": 5780,
+        "selected_test_classes_count": 0
+      },
+      "slice 029": {
+        "sow_bytes": 5902,
+        "impl_log_bytes": 4687,
+        "selected_test_classes_count": 0
+      },
+      "slice 030": {
+        "sow_bytes": 5111,
+        "impl_log_bytes": 5449,
+        "selected_test_classes_count": 0
+      },
+      "slice 031": {
+        "sow_bytes": 6514,
+        "impl_log_bytes": 8996,
+        "selected_test_classes_count": 0
+      },
+      "slice 032": {
+        "sow_bytes": 6823,
+        "impl_log_bytes": 8628,
+        "selected_test_classes_count": 0
+      },
+      "slice 033": {
+        "sow_bytes": 5341,
+        "impl_log_bytes": 3384,
+        "selected_test_classes_count": 0
+      },
+      "slice 034": {
+        "sow_bytes": 5356,
+        "impl_log_bytes": 5811,
+        "selected_test_classes_count": 0
+      },
+      "slice 035": {
+        "sow_bytes": 5796,
+        "impl_log_bytes": 6826,
+        "selected_test_classes_count": 0
+      },
+      "slice 036": {
+        "sow_bytes": 7242,
+        "impl_log_bytes": 3089,
+        "selected_test_classes_count": 0
+      },
+      "slice 037": {
+        "sow_bytes": 10361,
+        "impl_log_bytes": 3933,
+        "selected_test_classes_count": 0
+      },
+      "slice 038": {
+        "sow_bytes": 7957,
+        "impl_log_bytes": 7047,
+        "selected_test_classes_count": 0
+      },
+      "slice 039": {
+        "sow_bytes": 8736,
+        "impl_log_bytes": 7801,
+        "selected_test_classes_count": 0
+      },
+      "slice 040": {
+        "sow_bytes": 7096,
+        "impl_log_bytes": 6832,
+        "selected_test_classes_count": 0
+      },
+      "slice 041": {
+        "sow_bytes": 7050,
+        "impl_log_bytes": 8744,
+        "selected_test_classes_count": 0
+      },
+      "slice 042": {
+        "sow_bytes": 7652,
+        "impl_log_bytes": 10575,
+        "selected_test_classes_count": 0
+      },
+      "slice 043": {
+        "sow_bytes": 5920,
+        "impl_log_bytes": 1811,
+        "selected_test_classes_count": 0
+      },
+      "slice 044": {
+        "sow_bytes": 3780,
+        "impl_log_bytes": 5416,
+        "selected_test_classes_count": 0
+      },
+      "slice 045": {
+        "sow_bytes": 5062,
+        "impl_log_bytes": 6924,
+        "selected_test_classes_count": 0
+      },
+      "slice 046": {
+        "sow_bytes": 5681,
+        "impl_log_bytes": 2239,
+        "selected_test_classes_count": 0
+      },
+      "slice 047": {
+        "sow_bytes": 6751,
+        "impl_log_bytes": 6373,
+        "selected_test_classes_count": 0
+      }
+    },
+    "git": {
+      "files_touched": 463,
+      "lines_added": 47019,
+      "lines_removed": 16587,
+      "commit_count": 52
+    }
+  },
+  "agent_mix": {
+    "roles": {
+      "splitter": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "arc_runner_worker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "architecture_critic": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "reuse_critic": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "code_judge": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 48,
+        "escalations": 0
+      },
+      "resolver": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      },
+      "spec_author": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "claim_checker": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "gate_keeper": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "handoff_verifier": {
+        "agent_name": null,
+        "runs": 0,
+        "escalations": 0
+      },
+      "implement_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 36,
+        "escalations": 2
+      },
+      "add_component_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 6,
+        "escalations": 0
+      },
+      "add_contract_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 5,
+        "escalations": 0
+      },
+      "implement_contract_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 5,
+        "escalations": 0
+      },
+      "wire_ui_worker": {
+        "agent_name": "claude-opus-4-7",
+        "runs": 1,
+        "escalations": 0
+      }
+    }
+  },
+  "anomalies": {
+    "review_cost_exceeds_worker": [],
+    "resolver_invocations_gt_one": [],
+    "gates_over_estimate": [],
+    "idle_gaps_over_30min": [
+      {
+        "entity": "2026-07-10T22:12:12Z",
+        "value": 2166.0
+      },
+      {
+        "entity": "2026-07-11T01:39:04Z",
+        "value": 2175.0
+      },
+      {
+        "entity": "2026-07-11T03:51:05Z",
+        "value": 1920.0
+      },
+      {
+        "entity": "2026-07-11T04:53:54Z",
+        "value": 3206.0
+      },
+      {
+        "entity": "2026-07-11T06:17:50Z",
+        "value": 2460.0
+      },
+      {
+        "entity": "2026-07-11T07:02:42Z",
+        "value": 3075.0
+      },
+      {
+        "entity": "2026-07-11T08:51:05Z",
+        "value": 2095.0
+      },
+      {
+        "entity": "2026-07-11T09:58:51Z",
+        "value": 2545.0
+      },
+      {
+        "entity": "2026-07-11T11:19:05Z",
+        "value": 2566.0
+      },
+      {
+        "entity": "2026-07-11T12:06:50Z",
+        "value": 2476.0
+      },
+      {
+        "entity": "2026-07-11T12:52:51Z",
+        "value": 2035.0
+      },
+      {
+        "entity": "2026-07-11T13:45:30Z",
+        "value": 4203.0
+      },
+      {
+        "entity": "2026-07-11T16:46:54Z",
+        "value": 2861.0
+      },
+      {
+        "entity": "2026-07-11T17:40:52Z",
+        "value": 3245.0
+      },
+      {
+        "entity": "2026-07-11T19:10:17Z",
+        "value": 2511.0
+      },
+      {
+        "entity": "2026-07-11T20:44:58Z",
+        "value": 2661.0
+      },
+      {
+        "entity": "2026-07-12T00:03:43Z",
+        "value": 2385.0
+      }
+    ],
+    "escalations": [],
+    "hangups": [],
+    "operator_overrides": []
+  },
+  "meta": {
+    "schema_version": 7,
+    "spec_id": "0038",
+    "generated_at": "2026-07-12T10:10:10Z",
+    "tool_version": 7,
+    "warnings": []
+  }
+}
