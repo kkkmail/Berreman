@@ -1,0 +1,14 @@
+Here are the comments and answers:
+Q1. Since multiple top-level facet groups instead of one “appeared”, then they MUST be sorted alphabetically. 
+Q2. Any element either has some `<attribute>` or it does not. The only thing that felt through the cracks (even though it was 
+mentioned several times) is the absorption in relation to dispersive materials: all dispersive materials are considered as absorbing. 
+So, all together this makes the “math” complete and the numbers must always sum up to the same total.
+Q3. A plate emits both but default and the user may constrain to R or T only. If both are used then the user may choose which one (or both) 
+are needed in the experiment.
+
+Everything has been committed. The preliminary spec must be an authoritative, no questions asked document, without mentioning what was already 
+done. 
+
+Write an updated version into C:\GitHub\Berreman\specs\0038\.manual\011-<description>.md. 
+
+Make no other changes.
