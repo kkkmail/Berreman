@@ -982,14 +982,61 @@ module MaterialEditorWindowTests =
             for props in [ isotropic; biaxial ] do
                 let c = NkDispersionChart.nkDispersionChart Biaxial props Nanometer range
                 render "TabRenderNk" c (NkDispersionChart.nkDispersionStyle Biaxial c)
-            // The Gyration tab for an active entry.
+            // The Gyration tab for an active entry — the uniaxial class restricts it to g₁₁ / g₃₃.
             let active = propsFrom [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
-            let g = NkDispersionChart.gyrationChart active Nanometer range
+            let gComponents = gyrationComponents (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }) |> List.map fst
+            let g = NkDispersionChart.gyrationChart gComponents active Nanometer range
             render "TabRenderGyration" g (NkDispersionChart.gyrationStyle g)
-            // The μ tab for a magnetic entry.
+            // The μ tab for a gyromagnetic entry.
             let magnetic = propsFrom [ SetMagnetic MagneticOn; SetMuKind GyromagneticMuKind; ChooseGyrationAxis AlongZ ]
-            let mu = NkDispersionChart.muChart magnetic Nanometer range
+            let mu = NkDispersionChart.muChart GyromagneticMuKind magnetic Nanometer range
             render "TabRenderMu" mu (NkDispersionChart.muStyle mu))
+
+    // ============================ spec 0040 (006): the preview restricts the gyration / μ curves ============================
+
+    [<Fact>]
+    let ``spec 0040 006: an editable uniaxial-active entry threads only g₁₁ / g₃₃ to the gyration preview`` () =
+        // ChooseAnisotropy Uniaxial then SetActivity ActivityOn snaps the class to UniaxialActive.
+        let m =
+            newModel ()
+            |> update (EditorMsg (ChooseAnisotropy Uniaxial))
+            |> update (EditorMsg (SetActivity ActivityOn))
+        Assert.Equal<GyrationComponent list>([ G11; G33 ], previewGyrationComponents m)
+
+    [<Fact>]
+    let ``spec 0040 006: an editable scalar-magnetic entry threads ScalarMuKind, a gyromagnetic one GyromagneticMuKind`` () =
+        // The default μ kind is scalar; turning magnetic on alone keeps it scalar.
+        let scalar = newModel () |> update (EditorMsg (SetMagnetic MagneticOn))
+        Assert.Equal(ScalarMuKind, previewMuKind scalar)
+        let gyromagnetic =
+            newModel ()
+            |> update (EditorMsg (SetMagnetic MagneticOn))
+            |> update (EditorMsg (SetMuKind GyromagneticMuKind))
+        Assert.Equal(GyromagneticMuKind, previewMuKind gyromagnetic)
+
+    [<Fact>]
+    let ``spec 0040 006: a view-only entry reads the class off its stored complexity tree — Langasite carries g₁₁ / g₃₃`` () =
+        // Langasite opens VIEW-ONLY (its ε is an opaque evaluated closure) yet its stored complexity
+        // tree carries a UniaxialActive gyration class — so the preview restricts to g₁₁ / g₃₃.
+        let _, _, context = recordingContext ()
+        let m = init context (EditMaterial (builtIn MaterialIds.langasite))
+        match m.mode with
+        | ViewOnlyMaterial _ -> ()
+        | EditableMaterial -> Assert.Fail("Langasite must open view-only")
+        Assert.Equal<GyrationComponent list>([ G11; G33 ], previewGyrationComponents m)
+
+    [<Fact>]
+    let ``spec 0040 006: a coded preset with no stored tree still renders all components`` () =
+        // Simulate the pre-step-004 coded preset: a view-only entry whose complexity is absent. The
+        // preview keeps the full six-component gyration and the full gyromagnetic μ rendering.
+        let _, _, context = recordingContext ()
+        let codedPreset = { builtIn MaterialIds.silicon with complexity = None }
+        let m = init context (EditMaterial codedPreset)
+        match m.mode with
+        | ViewOnlyMaterial _ -> ()
+        | EditableMaterial -> Assert.Fail("a complexity-less entry must open view-only")
+        Assert.Equal<GyrationComponent list>(NkDispersionChart.allGyrationComponents, previewGyrationComponents m)
+        Assert.Equal(GyromagneticMuKind, previewMuKind m)
 
     // ============================ spec 0038 (033): the unsaved-edit exit confirm ============================
 

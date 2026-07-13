@@ -114,6 +114,10 @@ type Model =
         editor : MaterialComplexityEditState
         /// A view-only entry's own engine properties (the preview's source there).
         presetProperties : OpticalPropertiesWithDisp option
+        /// Spec 0040 (006): a view-only entry's stored `complexity` value tree, used to restrict the
+        /// gyration / μ preview to the components its symmetry class / μ kind admits. `None` for a
+        /// coded preset with no stored tree — which keeps the all-components rendering.
+        viewOnlyComplexity : MaterialComplexity option
         /// Spec 0038 (032): the preview curves the user hid, keyed by `UiIds.MaterialEditor.seriesToggle`'s tab code
         /// + series name (so a toggle in one tab never hides a same-named curve in another).
         hiddenSeries : Set<string>
@@ -225,6 +229,30 @@ let private previewProperties (m : Model) : OpticalPropertiesWithDisp option =
         | Ok c -> Some c.toProperties
         | Error _ -> None
 
+/// The gyration components the preview draws (spec 0040 step 006): in edit mode the editor's own
+/// gyration class decides them; a view-only entry reads the class off its stored `complexity`
+/// activity tree (mirroring `NkDispersionChart.anisotropyOfEntry`); a coded preset with no stored
+/// tree keeps every component (the pre-restriction rendering). Public so the window tests verify the
+/// threading without a rendered frame.
+let previewGyrationComponents (m : Model) : GyrationComponent list =
+    match m.mode with
+    | EditableMaterial -> gyrationComponents m.editor.gyration |> List.map fst
+    | ViewOnlyMaterial _ ->
+        match m.viewOnlyComplexity with
+        | Some complexity -> NkDispersionChart.gyrationComponentsOfComplexity complexity
+        | None -> NkDispersionChart.allGyrationComponents
+
+/// The Polder-μ kind the preview draws (spec 0040 step 006): in edit mode the editor's `MuKind`; a
+/// view-only entry reads it off its stored `complexity` magnetic tree; a coded preset with no stored
+/// tree keeps the full gyromagnetic rendering. Public so the window tests verify the threading.
+let previewMuKind (m : Model) : MuKind =
+    match m.mode with
+    | EditableMaterial -> m.editor.muKind
+    | ViewOnlyMaterial _ ->
+        match m.viewOnlyComplexity with
+        | Some complexity -> NkDispersionChart.muKindOfComplexity complexity
+        | None -> GyromagneticMuKind
+
 /// The advisory gain warning over the n/k chart's sampled k curves — every per-axis k series (the
 /// restated `imaginaryIndexGainWarning` rule; empty when nothing warns).
 let private gainWarningOf (chartOpt : ExperimentChart option) : string =
@@ -295,6 +323,7 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                 category = CategoryIds.glass
                 editor = defaultState
                 presetProperties = None
+                viewOnlyComplexity = None
                 hiddenSeries = Set.empty
                 initialEdit = ("", "", CategoryIds.glass, defaultState)
                 exit = Editing
@@ -311,6 +340,7 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                     category = entry.category
                     editor = defaultState
                     presetProperties = None
+                    viewOnlyComplexity = None
                     hiddenSeries = Set.empty
                     initialEdit = ("", "", CategoryIds.glass, defaultState)
                     exit = Editing
@@ -327,11 +357,21 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                 | Error e ->
                     { seeded with
                         mode = ViewOnlyMaterial (editErrorReason e)
-                        presetProperties = Some entry.properties }
-            | Some _ | None ->
+                        presetProperties = Some entry.properties
+                        viewOnlyComplexity = Some complexity }
+            // A view-only entry keeps its stored `complexity` value tree so the preview can restrict
+            // the gyration / μ curves to the components its class / kind admits (spec 0040 step 006);
+            // a coded preset carrying no tree (`None`) keeps `viewOnlyComplexity = None`.
+            | Some complexity ->
                 { seeded with
                     mode = ViewOnlyMaterial "this entry's physics is a coded engine closure — view-only"
-                    presetProperties = Some entry.properties }
+                    presetProperties = Some entry.properties
+                    viewOnlyComplexity = Some complexity }
+            | None ->
+                { seeded with
+                    mode = ViewOnlyMaterial "this entry's physics is a coded engine closure — view-only"
+                    presetProperties = Some entry.properties
+                    viewOnlyComplexity = None }
     // Capture the edit snapshot from the fully-seeded model, so a freshly opened editor is
     // pristine and closes silently (spec 0038 step 033).
     { built with initialEdit = currentEdit built }
@@ -1041,11 +1081,11 @@ let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
         let tabs =
             [ chartTab UiIds.MaterialEditor.nkTab "nk" "n, k" UiIds.MaterialEditor.previewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
             @ (if showGyration then
-                   let g = NkDispersionChart.gyrationChart o Nanometer previewRange
+                   let g = NkDispersionChart.gyrationChart (previewGyrationComponents m) o Nanometer previewRange
                    [ chartTab UiIds.MaterialEditor.gyrationTab "gyration" "Gyration" UiIds.MaterialEditor.gyrationChart m dispatch g (NkDispersionChart.gyrationStyle g) ]
                else [])
             @ (if showMu then
-                   let mu = NkDispersionChart.muChart o Nanometer previewRange
+                   let mu = NkDispersionChart.muChart (previewMuKind m) o Nanometer previewRange
                    [ chartTab UiIds.MaterialEditor.muTab "mu" "μ (Polder)" UiIds.MaterialEditor.muChart m dispatch mu (NkDispersionChart.muStyle mu) ]
                else [])
         let pane =

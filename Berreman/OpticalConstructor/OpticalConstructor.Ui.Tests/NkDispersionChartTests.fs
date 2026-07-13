@@ -42,6 +42,15 @@ module NkDispersionChartTests =
         | Ok c -> c.toProperties
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
+    /// The derived complexity VALUE tree (not `.toProperties`) from a fold of ladder edits — the
+    /// stored representation `muKindOfComplexity` / `gyrationComponentsOfComplexity` classify as DATA
+    /// for a view-only entry that has no ladder to read.
+    let private complexityOf (msgs : MaterialComplexityMsg list) : MaterialComplexity =
+        let st = msgs |> List.fold (fun s m -> applyOk m s) MaterialComplexityEditor.defaultState
+        match toComplexity st with
+        | Ok c -> c
+        | Error e -> failwith $"expected a derivable complexity, got %A{e}"
+
     let private seriesNamed (chart : ExperimentChart) (name : string) : ChartSeries =
         chart.series |> List.find (fun s -> s.name = name)
 
@@ -166,22 +175,32 @@ module NkDispersionChartTests =
     // ============================ the gyration builder ============================
 
     [<Fact>]
-    let ``the gyration builder emits the six tensor components for an active entry`` () =
+    let ``spec 0040 006: the gyration builder emits only the components the class admits — uniaxial-active carries g₁₁, g₃₃`` () =
         let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
-        let chart = NkDispersionChart.gyrationChart active Nanometer range
-        Assert.Equal<string list>([ "g₁₁"; "g₂₂"; "g₃₃"; "g₁₂"; "g₁₃"; "g₂₃" ], chart.series |> List.map (fun s -> s.name))
-        // A uniaxial active medium carries a non-zero g₁₁ and g₃₃ (the default 1.5e-6 components).
+        // The uniaxial gyration class admits exactly g₁₁ and g₃₃ (`gyrationComponents`).
+        let components = gyrationComponents (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }) |> List.map fst
+        let chart = NkDispersionChart.gyrationChart components active Nanometer range
+        Assert.Equal<string list>([ "g₁₁"; "g₃₃" ], chart.series |> List.map (fun s -> s.name))
+        // Both admitted components are non-zero for a uniaxial active medium (the default 1.5e-6).
         let peak (name : string) : float = (seriesNamed chart name).points |> List.map (snd >> abs) |> List.max
         Assert.True(peak "g₁₁" > 0.0, "g₁₁ must be non-zero for an active uniaxial medium")
         Assert.True(peak "g₃₃" > 0.0, "g₃₃ must be non-zero for an active uniaxial medium")
         // A view-only classifier agrees the entry is optically active.
         Assert.True(NkDispersionChart.hasGyration active, "an active entry must classify as gyrotropic")
 
+    [<Fact>]
+    let ``spec 0040 006: the gyration builder draws all six components for a coded preset with no stored class`` () =
+        let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
+        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        // The fallback set — every component, the pre-restriction rendering a coded preset keeps.
+        let chart = NkDispersionChart.gyrationChart NkDispersionChart.allGyrationComponents active Nanometer range
+        Assert.Equal<string list>([ "g₁₁"; "g₂₂"; "g₃₃"; "g₁₂"; "g₁₃"; "g₂₃" ], chart.series |> List.map (fun s -> s.name))
+
     // ============================ the Polder-μ builder ============================
 
     [<Fact>]
-    let ``the mu builder emits the Polder diagonal and gyration for a magnetic entry`` () =
+    let ``spec 0040 006: the mu builder emits the Polder diagonal and gyration for a gyromagnetic entry`` () =
         let magnetic =
             propsOf
                 [
@@ -193,14 +212,75 @@ module NkDispersionChartTests =
                     ChooseGyrationAxis AlongZ
                 ]
         let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
-        let chart = NkDispersionChart.muChart magnetic Nanometer range
+        let chart = NkDispersionChart.muChart GyromagneticMuKind magnetic Nanometer range
         Assert.Equal<string list>([ "μ₁₁"; "μ₂₂"; "μ₃₃"; "g" ], chart.series |> List.map (fun s -> s.name))
         // AlongZ (Faraday): μ[0,0] = μ[1,1] = diagonal 1.2, μ[2,2] = parallel 1.1, gyration magnitude 0.2.
         let mu11, mu33, g = firstY chart "μ₁₁", firstY chart "μ₃₃", firstY chart "g"
         Assert.True(abs (mu11 - 1.2) < 1e-9, $"μ₁₁ = %g{mu11}")
         Assert.True(abs (mu33 - 1.1) < 1e-9, $"μ₃₃ = %g{mu33}")
         Assert.True(abs (g - 0.2) < 1e-9, $"g = %g{g}")
-        // The gyration magnitude is flipped to the RIGHT axis; the diagonals stay on the LEFT.
+        // The gyration magnitude is flipped to the RIGHT axis; the three diagonals stay on the LEFT.
         let style = NkDispersionChart.muStyle chart
         Assert.Equal(RightAxis, (seriesStyleOf 3 style).axisSide)
+        for i in 0 .. 2 do
+            Assert.Equal(LeftAxis, (seriesStyleOf i style).axisSide)
         Assert.True(NkDispersionChart.hasMagnetic magnetic, "a Polder-μ entry must classify as magnetic")
+
+    [<Fact>]
+    let ``spec 0040 006: the mu builder emits a single scalar component for a scalar-mu entry`` () =
+        let scalar =
+            propsOf
+                [
+                    SetMagnetic MagneticOn
+                    SetMuKind ScalarMuKind
+                    SetMuDiagonal (MuValue 1.3)
+                ]
+        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let chart = NkDispersionChart.muChart ScalarMuKind scalar Nanometer range
+        // A scalar μ = μ·I: exactly ONE series carrying the scalar permeability, no gyration curve.
+        Assert.Equal<string list>([ "μ" ], chart.series |> List.map (fun s -> s.name))
+        let muVal = firstY chart "μ"
+        Assert.True(abs (muVal - 1.3) < 1e-9, $"μ = %g{muVal}")
+        // No gyration series to side to the right — the single component stays on the LEFT.
+        let style = NkDispersionChart.muStyle chart
+        Assert.Equal(LeftAxis, (seriesStyleOf 0 style).axisSide)
+        Assert.True(NkDispersionChart.hasMagnetic scalar, "a scalar-μ entry must still classify as magnetic")
+
+    [<Fact>]
+    let ``spec 0040 006: muKindOfComplexity reads the μ kind off a view-only entry's stored magnetic tree`` () =
+        // The μ analog of the view-only gyration classification (`gyrationComponentsOfComplexity`):
+        // the seam `previewMuKind` threads for a VIEW-ONLY entry, reading the μ kind off the stored
+        // value tree as DATA (no engine tensor evaluated). A scalar-μ tree → ScalarMuKind (one curve)…
+        let scalar = complexityOf [ SetMagnetic MagneticOn ]
+        match scalar.magnetic with
+        | Some (MuWithoutDispValue (ScalarMu _)) -> ()
+        | other -> Assert.Fail($"expected a stored scalar μ tree, got %A{other}")
+        Assert.Equal(ScalarMuKind, NkDispersionChart.muKindOfComplexity scalar)
+        // …a constant gyromagnetic (full-tensor) tree → GyromagneticMuKind (diagonal + gyration)…
+        let gyromagnetic =
+            complexityOf
+                [
+                    SetMagnetic MagneticOn
+                    SetMuKind GyromagneticMuKind
+                    SetMuDiagonal (MuValue 1.2)
+                    SetMuParallel (MuValue 1.1)
+                    SetMuGyration (MuValue 0.2)
+                    ChooseGyrationAxis AlongZ
+                ]
+        match gyromagnetic.magnetic with
+        | Some (MuWithoutDispValue (GyromagneticMu _)) -> ()
+        | other -> Assert.Fail($"expected a stored gyromagnetic μ tree, got %A{other}")
+        Assert.Equal(GyromagneticMuKind, NkDispersionChart.muKindOfComplexity gyromagnetic)
+        // …and a DISPERSIVE Polder tree (always the full tensor — the engine's `MuWithDispValue`
+        // carries no scalar dispersive case) → GyromagneticMuKind.
+        let dispersive =
+            complexityOf
+                [
+                    SetMagnetic MagneticOn
+                    SetMuKind GyromagneticMuKind
+                    SetMagneticDispersion DispersiveComponents
+                ]
+        match dispersive.magnetic with
+        | Some (MuWithDispValue _) -> ()
+        | other -> Assert.Fail($"expected a stored dispersive Polder μ tree, got %A{other}")
+        Assert.Equal(GyromagneticMuKind, NkDispersionChart.muKindOfComplexity dispersive)

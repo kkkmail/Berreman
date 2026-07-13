@@ -31,6 +31,7 @@ open Berreman.Dispersion
 open Analytics.Variables
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Controls
 open OpticalConstructor.Controls.ExperimentChart
@@ -103,29 +104,50 @@ let nkDispersionStyle (anisotropy : Anisotropy) (chart : ExperimentChart) : Char
     let n = List.length (nkAxisSpec anisotropy)
     rightAxisSeries [ n .. 2 * n - 1 ] chart
 
-/// The gyration chart (shown only when the entry is optically active): the six independent
-/// gyration-tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] (the upper triangle of the assembled ρ) vs wavelength.
-/// ρ is sampled through the engine `rhoWithDisp.getRho` seam that `RhoWithDispValue.toRhoWithDisp`
-/// built. All six share ONE (left) axis — they are the same physical scale (~10⁻⁵).
-let gyrationChart (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
+/// The (i, j) tensor slot a gyration component denotes — the diagonal g₁₁/g₂₂/g₃₃ at
+/// (0,0)/(1,1)/(2,2) and the upper-triangle g₁₂/g₁₃/g₂₃ at (0,1)/(0,2)/(1,2) — matching the
+/// `GyrationComponent` cases (`MaterialComplexityEditor.fs:88-94`) the editor and the value tree name.
+let private gyrationSlot (comp : GyrationComponent) : int * int =
+    match comp with
+    | G11 -> 0, 0
+    | G22 -> 1, 1
+    | G33 -> 2, 2
+    | G12 -> 0, 1
+    | G13 -> 0, 2
+    | G23 -> 1, 2
+
+/// Every gyration component in the six-slot display order — the fallback set drawn for a coded
+/// engine preset with NO stored gyration class to read (preserving the pre-restriction rendering).
+let allGyrationComponents : GyrationComponent list = [ G11; G22; G33; G12; G13; G23 ]
+
+/// The gyration components a VIEW-ONLY entry's stored optical-activity value tree admits: the ones
+/// its `active` gyration CLASS carries (`gyrationComponents`, generic over the constant `RhoValue`
+/// vs the dispersive `DispersionFormula` payload) — data, no physics re-derived, mirroring
+/// `anisotropyOfEntry`. A tree with no activity falls back to every component.
+let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationComponent list =
+    match complexity.active with
+    | Some (RhoWithoutDispValue g) -> gyrationComponents g.gyration |> List.map fst
+    | Some (RhoWithDispValue g) -> gyrationComponents g.gyration |> List.map fst
+    | None -> allGyrationComponents
+
+/// The gyration chart (shown only when the entry is optically active), restricted to the components
+/// the entry's symmetry class admits (spec 0040 step 006): ONE series per component in `components`,
+/// named by `gyrationComponentLabel` and read as g₍ᵢⱼ₎ = Im[ρᵢⱼ] at the `gyrationSlot` (i,j). ρ is
+/// sampled through the engine `rhoWithDisp.getRho` seam that `RhoWithDispValue.toRhoWithDisp` built.
+/// All components share ONE (left) axis — they are the same physical scale (~10⁻⁵). A uniaxial-active
+/// entry draws only g₁₁ and g₃₃; a coded preset with no stored class draws all six.
+let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let rhos = ws |> List.map (fun w -> o.rhoWithDisp.getRho w)
-    let comp (name : string) (i : int) (j : int) : ChartSeries =
-        { name = name; points = List.zip xs (rhos |> List.map (fun r -> r.[i, j].Imaginary)) }
+    let series (comp : GyrationComponent) : ChartSeries =
+        let i, j = gyrationSlot comp
+        { name = gyrationComponentLabel comp; points = List.zip xs (rhos |> List.map (fun r -> r.[i, j].Imaginary)) }
     {
-        series =
-            [
-                comp "g₁₁" 0 0
-                comp "g₂₂" 1 1
-                comp "g₃₃" 2 2
-                comp "g₁₂" 0 1
-                comp "g₁₃" 0 2
-                comp "g₂₃" 1 2
-            ]
+        series = components |> List.map series
         xLabel = SpectralAxis.axisLabel u
         yLabel = "g"
         title = "Gyration components"
-        description = "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength."
+        description = "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength, per the entry's symmetry class."
         angular = false
     }
 
@@ -133,12 +155,30 @@ let gyrationChart (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : R
 let gyrationStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
     ChartStyle.defaultState chart
 
-/// The Polder-μ chart (shown only when the entry is magnetic): the real diagonal permeability
-/// components μ₁₁/μ₂₂/μ₃₃ on the LEFT axis and the gyration magnitude on the RIGHT, sampled through
-/// the engine `muWithDisp.getMu` seam that `MuWithDispValue.toMuWithDisp` built. The gyration
-/// magnitude is √(Σ_{i<j} Im[μᵢⱼ]²) — axis-invariant, since only the off-diagonal pair the
-/// magnetization axis selects is non-zero in a Polder tensor.
-let muChart (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
+/// The series name of the Polder gyration magnitude (the one μ series flipped to the RIGHT axis) —
+/// ONE constant shared by `muChart` (which emits it for a gyromagnetic tensor) and `muStyle` (which
+/// sides it), so a scalar-μ chart that emits no such series simply keeps every series on the left.
+let private muGyrationSeriesName : string = "g"
+
+/// The Polder-μ kind a VIEW-ONLY entry's stored magnetic value tree denotes: a scalar μ vs the
+/// gyromagnetic tensor (mirroring `anisotropyOfEntry`; data, no physics re-derived). The dispersive
+/// Polder case is always the full tensor — the engine's `MuWithDispValue` carries no scalar
+/// dispersive case. A tree with no magnetic facet falls back to the full gyromagnetic rendering.
+let muKindOfComplexity (complexity : MaterialComplexity) : MuKind =
+    match complexity.magnetic with
+    | Some (MuWithoutDispValue (ScalarMu _)) -> ScalarMuKind
+    | Some (MuWithoutDispValue (GyromagneticMu _)) -> GyromagneticMuKind
+    | Some (MuWithDispValue _) -> GyromagneticMuKind
+    | None -> GyromagneticMuKind
+
+/// The Polder-μ chart (shown only when the entry is magnetic), restricted to the components the
+/// entry's `MuKind` distinguishes (spec 0040 step 006): a SINGLE scalar μ series for `ScalarMuKind`
+/// (a scalar permeability is μ·I — one curve says everything), versus the real diagonal μ₁₁/μ₂₂/μ₃₃
+/// (LEFT axis) plus the gyration magnitude (RIGHT) for `GyromagneticMuKind`. μ is sampled through the
+/// engine `muWithDisp.getMu` seam that `MuWithDispValue.toMuWithDisp` built; the gyration magnitude is
+/// √(Σ_{i<j} Im[μᵢⱼ]²) — axis-invariant, since only the off-diagonal pair the magnetization axis
+/// selects is non-zero in a Polder tensor.
+let muChart (muKind : MuKind) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let mus = ws |> List.map (fun w -> o.muWithDisp.getMu w)
     let diagSeries (name : string) (i : int) : ChartSeries =
@@ -146,25 +186,34 @@ let muChart (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<W
     let gyrationMag (m : Mu) : float =
         let im (i : int) (j : int) : float = m.[i, j].Imaginary
         sqrt (im 0 1 * im 0 1 + im 0 2 * im 0 2 + im 1 2 * im 1 2)
-    {
-        series =
+    let series =
+        match muKind with
+        | ScalarMuKind -> [ diagSeries "μ" 0 ]
+        | GyromagneticMuKind ->
             [
                 diagSeries "μ₁₁" 0
                 diagSeries "μ₂₂" 1
                 diagSeries "μ₃₃" 2
-                { name = "g"; points = List.zip xs (mus |> List.map gyrationMag) }
+                { name = muGyrationSeriesName; points = List.zip xs (mus |> List.map gyrationMag) }
             ]
+    {
+        series = series
         xLabel = SpectralAxis.axisLabel u
         yLabel = "μ"
         title = "Polder μ components"
-        description = "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength."
+        description = "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength; a scalar μ draws its single component."
         angular = false
     }
 
-/// The Polder-μ chart's style seed: the three diagonal μ components on the LEFT axis, the gyration
-/// magnitude (index 3) flipped to the RIGHT.
+/// The Polder-μ chart's style seed: every diagonal μ component on the LEFT axis, the gyration
+/// magnitude series (when present) flipped to the RIGHT. A scalar-μ chart carries no gyration series,
+/// so its single component stays on the left.
 let muStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
-    rightAxisSeries [ 3 ] chart
+    let gyrationIndices =
+        chart.series
+        |> List.mapi (fun i s -> i, s.name)
+        |> List.choose (fun (i, name) -> if name = muGyrationSeriesName then Some i else None)
+    rightAxisSeries gyrationIndices chart
 
 /// Whether the entry's ASSEMBLED engine ρ carries any gyration at the classify wavelength — used to
 /// decide the Gyration tab for a VIEW-ONLY preset, which has no activity toggle to read.
