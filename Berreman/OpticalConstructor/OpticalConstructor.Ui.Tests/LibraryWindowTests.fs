@@ -355,6 +355,24 @@ module LibraryWindowTests =
         Assert.Equal<string option>(None, LW.entryIdOfNodeCode ("branch:" + entryKindFacetKey.value + ":Source"))
 
     [<Fact>]
+    let ``selecting an entry THROUGH a facet branch highlights that branch row, not the corpus-group copy`` () =
+        // The operator gap (.manual/002-followup): clicking an entry under a facet branch used to
+        // highlight the matching row in the "Library" corpus group instead of the clicked branch
+        // row. The projected `selectedCode` must now be the EXACT clicked node code.
+        let _, m = freshModel ()
+        let leafCode = "branch:" + entryKindFacetKey.value + ":Source:" + LW.entryNodeCode "src-600"
+        let selected = LW.update (LW.SelectEntryNode ("src-600", leafCode)) m
+        let state = LW.facetedState selected
+        // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<id>` code.
+        Assert.Equal(leafCode, state.selectedCode)
+        Assert.NotEqual<string>(LW.entryNodeCode "src-600", state.selectedCode)
+        // The domain selection still resolves (the view panel / verbs target the entry).
+        Assert.Equal<string option>(Some "src-600", selected.selectedEntryId)
+        // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
+        let viaId = LW.update (LW.SelectEntry "src-600") m
+        Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState viaId).selectedCode)
+
+    [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
         // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
         // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
@@ -670,7 +688,9 @@ module LibraryWindowTests =
         handlers.selectNode (LW.entryNodeCode "src-600")
         handlers.selectNode "branch:entry-kind:Sample"
         handlers.selectNode "entries"
-        Assert.Equal<LW.Msg list>([ LW.SelectEntry "src-600" ], List.ofSeq dispatched)
+        // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
+        // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
+        Assert.Equal<LW.Msg list>([ LW.SelectEntryNode ("src-600", LW.entryNodeCode "src-600") ], List.ofSeq dispatched)
         // A discrete offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint entryKindFacetKey.value "Polarizer"
         Assert.Equal(kindConstraint "Polarizer", dispatched.[1])

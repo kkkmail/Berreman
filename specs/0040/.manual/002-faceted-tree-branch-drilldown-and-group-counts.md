@@ -105,13 +105,12 @@ window projections and their tests.
 - The flat **Materials** / **Library** node is unchanged (still lists the whole
   corpus) — the fix is additive.
 
-**Known cosmetic limitation (documented, not fixed — out of scope):** selecting a
-material *through* a branch leaf highlights that material's row in the flat corpus
-group (the selection is tracked by id, and the corpus leaf carries the canonical
-`entry:<id>` code), not the branch-nested copy that was clicked. Selection itself
-works from either place; only the highlight lands on the flat copy. Highlighting
-every copy would require the control to match selection by id-suffix (it matches by
-exact code today) — a `FacetedTreeControls` change beyond this task's scope.
+**Follow-up — selection highlight (was a documented limitation, now fixed; see §6).**
+The first cut of this fix left a cosmetic gap: selecting a material *through* a
+branch leaf highlighted the row in the flat corpus group, not the clicked
+branch-nested copy (the selection was tracked by id, which projects the canonical
+`entry:<id>` code). The operator flagged this as a bug; §6 records the fix (track
+the exact clicked node code) and its tests.
 
 ---
 
@@ -133,8 +132,9 @@ window, no headless render), added to both windows' pure-projection sections:
   sum to it`** — Category (Materials) / Kind (Library): group count = `resultCount`
   and the branch counts partition it ("the math adds up").
 - **`a branch-nested entry leaf code selects its …, while bare branch and heading
-  codes stay inert`** — the path-shaped leaf code resolves and dispatches
-  `SelectEntry`; bare `facet:` / `branch:` codes remain `None`.
+  codes stay inert`** — the path-shaped leaf code resolves and dispatches the
+  selection (see §6 — now a `SelectEntryNode` carrying the exact code); bare
+  `facet:` / `branch:` codes remain `None`.
 
 ---
 
@@ -149,6 +149,63 @@ window, no headless render), added to both windows' pure-projection sections:
   increased, no regression.
 - **Line endings:** all four edited files are LF with no CRLF churn (`git diff
   --numstat` identical with and without `--ignore-cr-at-eol`).
+
+*(This section covers the branch-drilldown + group-count fix, which was committed
+as `0040-manual`. The §6 selection-highlight follow-up has its own verification.)*
+
+---
+
+## 6. Follow-up fix — selecting through a branch highlights the clicked row
+
+**Operator report (`.manual` follow-up).** With §2 in place, `Anisotropy (12)` and
+`Biaxial (3)` are correct and a branch expands to its 3 entries — but **clicking a
+branch entry did not highlight it; the matching row in `Materials (12)` lit up
+instead**. That is the exact "Known cosmetic limitation" §3 had recorded.
+
+**Root cause.** The domain-free control highlights the row whose `code` equals the
+projected `State.selectedCode`. The host derived `selectedCode` from the selected
+*id* as the canonical flat code `entry:<id>`, so whichever row carried that code —
+the corpus-group copy — highlighted, regardless of which physical row was clicked.
+The clicked branch leaf carries a different, path-shaped code, so it never matched.
+
+**Fix (both window projections; still no control change).** Track the **exact
+clicked node code** in each window's Model and project *that* as `selectedCode`:
+
+- New Model field `selectedNodeCode : string` (`""` = nothing selected — the
+  control-seam token convention of spec 0040 §0.2, mirroring
+  `FacetedTreeControls.State.selectedCode`). `selectedId` stays the domain
+  selection (view panel + verbs); the new field is only its highlighted *row*.
+- New message `SelectEntryNode of <id> * string` (id + exact clicked code). The
+  `selectNode` handler now resolves the id and dispatches this, so the highlight
+  lands on the clicked node. The existing `SelectEntry of <id>` is kept for the
+  id-only programmatic / verb-driven path and sets `selectedNodeCode` to the
+  canonical `entry:<id>` (the corpus-group row) — preserving existing behaviour and
+  tests.
+- Both fields are cleared together (init, Select-mode reset, and when a remove
+  drops the selected entry). `facetedState` now projects `selectedCode =
+  m.selectedNodeCode`.
+
+Result: clicking a material under a facet branch highlights **that branch row**;
+the corpus-group copy stays idle. Selecting from the flat list (or a verb) still
+highlights the corpus row. Only one row — the clicked one — is ever highlighted.
+
+**Tests added (UI-less, pure `facetedState` / `update`):**
+
+- **`selecting a material / entry THROUGH a facet branch highlights that branch
+  row, not the corpus-group copy`** (Materials + Library) — after
+  `SelectEntryNode (id, branchCode)`, `selectedCode` equals the branch code and is
+  *not* the flat `entry:<id>`; `selectedId` still resolves; and the id-only
+  `SelectEntry` path still highlights the corpus row. This fails on the pre-fix
+  code (which always projected the flat code).
+- The two existing `only an entry node code selects …` tests and the
+  branch-nested-leaf selection test were updated to expect the code-carrying
+  `SelectEntryNode` dispatch.
+
+**Verification.** Build `Berreman.slnx -c Release` → **0 errors** (only the exempt
+`NU1701` / `SYSLIB0051`). Full `OpticalConstructor.Ui.Tests` → **685 passed, 0
+failed, 0 skipped** (the two window modules: 110); `ui-smoke` unchanged at 194; the
+default set rose 483 → 491 across both fixes — counts only increased. All four
+edited files are LF, no CRLF churn.
 
 Commits are the operator's / arc's to make; the working-tree changes are left
 staged-free for review.

@@ -191,6 +191,11 @@ type Model =
         /// The selected entry (the Edit / Remove / lifecycle verbs' target and the view panel's
         /// subject).
         selectedId : MaterialId option
+        /// The EXACT tree-node code of the selection — the control highlights the row whose code
+        /// matches, so a material picked THROUGH a facet branch highlights that branch row, not the
+        /// corpus-group copy (spec 0040 step 003; §0.2 keeps the code a control-seam `string` token,
+        /// "" = nothing selected). `selectedId` stays the domain selection; this is only its row.
+        selectedNodeCode : string
         /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
         /// (the default — pickers/facet counts exclude retired entries) or `IncludeInactive` (the
         /// toggle adds them to the tree, badged). The Domain DU, never a bool. Select mode ignores
@@ -219,6 +224,7 @@ let init (context : MaterialsWindowContext) (mode : LibraryWindowMode<MaterialEn
         buildRequest = NoTreeBuildRequest
         expandedNodes = ExpandedNodes.empty
         selectedId = None
+        selectedNodeCode = ""
         showInactive = ActiveOnly
         removeGate = NoPendingRemove
         lifecycleGate = NoPendingLifecycle
@@ -241,8 +247,14 @@ type Msg =
     | RequestTreeBuild
     /// Toggle one tree node's expansion (a disclosure-chevron press — spec 0040 step 002).
     | ToggleNode of string
-    /// Select the entry leaf with this id (the view panel's subject).
+    /// Select the entry leaf with this id (the view panel's subject). The selection highlights the
+    /// CORPUS-group row (the canonical `entry:<id>` code) — the id-only path for programmatic /
+    /// verb-driven selection.
     | SelectEntry of MaterialId
+    /// Select an entry leaf by its EXACT tree-node code (the id it resolves to, plus the code the
+    /// user actually clicked). Highlights that node — so picking a material through a facet branch
+    /// highlights the branch row, not the corpus-group copy (spec 0040 step 003).
+    | SelectEntryNode of MaterialId * string
     /// The verbs, rewired from the retired Materials bay (spec 0038 step 013).
     | AddMaterial
     | EditSelected
@@ -548,7 +560,12 @@ let update (msg : Msg) (m : Model) : Model =
         { m with expandedNodes = m.expandedNodes.toggle code }
     | SelectEntry id ->
         // A new selection shows its LATEST version (the editable default) and disarms both gates.
-        { disarmed m with selectedId = Some id; viewedVersion = None }
+        // The id-only path highlights the corpus-group row (the canonical `entry:<id>` code).
+        { disarmed m with selectedId = Some id; selectedNodeCode = entryNodeCode id; viewedVersion = None }
+    | SelectEntryNode (id, code) ->
+        // The same selection, but highlighting the EXACT clicked node — so a material picked through
+        // a facet branch highlights that branch row rather than the corpus-group copy.
+        { disarmed m with selectedId = Some id; selectedNodeCode = code; viewedVersion = None }
     | AddMaterial ->
         // Add mints the entry's MaterialId HERE — at the window-open dispatch, off the save
         // path (spec 0038 step 008) — so the launcher's registry keys the new editor by the
@@ -575,7 +592,8 @@ let update (msg : Msg) (m : Model) : Model =
                 { m with
                     removeGate = NoPendingRemove
                     lastError = None
-                    selectedId = (if m.selectedId = Some id then None else m.selectedId) }
+                    selectedId = (if m.selectedId = Some id then None else m.selectedId)
+                    selectedNodeCode = (if m.selectedId = Some id then "" else m.selectedNodeCode) }
             | Error err ->
                 // The store refused (`MaterialStillReferenced` names the referencing samples) —
                 // surface the reason inline and leave the store, selection and list untouched.
@@ -652,7 +670,7 @@ let update (msg : Msg) (m : Model) : Model =
         (match m.mode with
          | Select superseded -> superseded.onCancelled ()
          | Browse -> ())
-        { disarmed m with mode = Select context; selectedId = None }
+        { disarmed m with mode = Select context; selectedId = None; selectedNodeCode = "" }
     | SelectDismissed ->
         // The host window closed (title-bar X, or a staleness Close() from the requesting
         // surface): a STILL-PENDING session cancels exactly once — Select/Close already
@@ -863,12 +881,10 @@ let facetedState (m : Model) : FacetedTreeControls.State =
         filterDraft = m.textFilter.value
         resultCount = resultCount
         materialization = materialization
-        // The selected entry's node code (spec 0040 step 003) — the control highlights that row.
-        // Only an entry is ever selectable, so the code is the selected id's entry-node code.
-        selectedCode =
-            match m.selectedId with
-            | Some id -> entryNodeCode id
-            | None -> ""
+        // The EXACT selected node code (spec 0040 step 003) — the control highlights the row whose
+        // code matches, so a material picked through a facet branch highlights that branch row, not
+        // the corpus-group copy. The Model tracks the clicked code; "" = nothing selected.
+        selectedCode = m.selectedNodeCode
     }
 
 /// The control's behaviour seam: every token is lifted back to its domain value HERE, at the
@@ -885,7 +901,7 @@ let facetedHandlers (dispatch : Msg -> unit) : FacetedTreeControls.Handlers =
         selectNode =
             fun code ->
                 match entryIdOfNodeCode code with
-                | Some id -> dispatch (SelectEntry id)
+                | Some id -> dispatch (SelectEntryNode (id, code))
                 | None -> ()
         toggleNode = fun code -> dispatch (ToggleNode code)
         applyManualRange = fun _ _ -> ()

@@ -580,7 +580,8 @@ module MaterialsWindowTests =
     let ``a branch-nested entry leaf code selects its material, while bare branch and heading codes stay inert`` () =
         // The branch-nested leaf code `branch:<facet>:<value>:entry:<guid>` resolves to its id (so a
         // material selected THROUGH a facet branch works), yet the bare branch/heading codes remain
-        // grouping-only — the selection contract after the fix.
+        // grouping-only — the selection contract after the fix. The handler carries the EXACT clicked
+        // code (a `SelectEntryNode`), so the highlight can land on that node rather than the corpus copy.
         let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
         Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode leafCode)
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("facet:" + materialCategoryKey.value))
@@ -588,7 +589,25 @@ module MaterialsWindowTests =
         let dispatched = ResizeArray<MW.Msg>()
         let handlers = MW.facetedHandlers dispatched.Add
         handlers.selectNode leafCode
-        Assert.Equal<MW.Msg list>([ MW.SelectEntry MaterialIds.glass152 ], List.ofSeq dispatched)
+        Assert.Equal<MW.Msg list>([ MW.SelectEntryNode (MaterialIds.glass152, leafCode) ], List.ofSeq dispatched)
+
+    [<Fact>]
+    let ``selecting a material THROUGH a facet branch highlights that branch row, not the corpus-group copy`` () =
+        // The operator gap (.manual/002-followup): clicking an entry under a facet branch used to
+        // highlight the matching row in the "Materials" corpus group instead of the clicked branch
+        // row. The projected `selectedCode` must now be the EXACT clicked node code.
+        let _, m = freshModel ()
+        let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
+        let selected = MW.update (MW.SelectEntryNode (MaterialIds.glass152, leafCode)) m
+        let state = MW.facetedState selected
+        // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<guid>` code.
+        Assert.Equal(leafCode, state.selectedCode)
+        Assert.NotEqual<string>(MW.entryNodeCode MaterialIds.glass152, state.selectedCode)
+        // The domain selection still resolves (the view panel / verbs target the material).
+        Assert.Equal(Some MaterialIds.glass152, selected.selectedId)
+        // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
+        let viaId = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState viaId).selectedCode)
 
     [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
@@ -651,7 +670,11 @@ module MaterialsWindowTests =
         handlers.selectNode (MW.entryNodeCode MaterialIds.glass152)
         handlers.selectNode "branch:material-category:Crystal"
         handlers.selectNode "entries"
-        Assert.Equal<MW.Msg list>([ MW.SelectEntry MaterialIds.glass152 ], List.ofSeq dispatched)
+        // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
+        // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
+        Assert.Equal<MW.Msg list>(
+            [ MW.SelectEntryNode (MaterialIds.glass152, MW.entryNodeCode MaterialIds.glass152) ],
+            List.ofSeq dispatched)
         // The offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint materialCategoryKey.value "Crystal"
         Assert.Equal(MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"), dispatched.[1])
