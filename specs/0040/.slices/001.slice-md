@@ -1,0 +1,11 @@
+# Step 001 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.Tests, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Sort the faceted tree alphabetically (case-insensitive, by DISPLAY LABEL) at all three levels (operator 010/Q1). In `Facets.buildTree` (`Facets.fs:230-254`) change the branch sort from the structural `List.sortBy (fun b -> b.value)` (`:248`) to a case-insensitive sort by the branch display `label` (e.g. `List.sortWith` comparing with `System.String.Compare(a.label, b.label, System.StringComparison.OrdinalIgnoreCase)`). In BOTH host tree assemblies sort the top-level facet-group nodes and every entry-leaf child alphabetically by label, overriding the representation/corpus order: `MaterialsWindowView.fs:719-760` (the `entriesNode` children built from `filtered` and the `facetNodes` from `engineTree.facets`) and `LibraryWindowView.fs:844-898` (same shape plus the numeric-bucket branch projection). No other behaviour changes. Cover the branch-label sort in `OpticalConstructor.Tests` and the window-projection ordering in `OpticalConstructor.Ui.Tests`.
+
+**Acceptance.** After buildTree runs over a fixed corpus, its branches MUST be ordered case-insensitively by display label, and both windows' projected trees MUST list facet groups and entry leaves alphabetically by label - unit- and headless-verified.

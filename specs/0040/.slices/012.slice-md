@@ -1,0 +1,11 @@
+# Step 012 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.Tests, OpticalConstructor.Ui.Tests]
+depends_on: [9]
+```
+
+**How to implement.** Bound the placed element and the experiment by the sample's supported emission (Part D.3). When a sample is placed on the table, derive its default `Placement.emission` from the bound sample's `supportedEmission` rather than the generic `defaultEmission` (`Placement.fs:168-171`) - locate the sample-placement path (the palette/add-to-table flow that builds a `Placement` for a sample element) and seed its emission from the bound sample. Default the experiment's `MeasurementMode` for a varied sample from the same value through the existing `MeasurementMode.ofEmission` (`Experiments.fs:106-110`); when the sample supports both, the experiment MAY still capture R, T, or both. Add coverage: a placed `ThinFilm` sample defaults to `EmitReflectedOnly` and its experiment to `CaptureReflected`; a `Plate` supporting both defaults to `EmitBoth` / `CaptureBoth` - unit tests in `OpticalConstructor.Tests` plus a headless assertion in `OpticalConstructor.Ui.Tests`.
+
+**Acceptance.** After the change, a placed sample's default emission and its experiment's default `MeasurementMode` MUST both derive from the sample's `supportedEmission` (a ThinFilm sample defaulting to reflected-only) - unit- and headless-verified.

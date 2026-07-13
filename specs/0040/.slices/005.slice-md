@@ -1,0 +1,11 @@
+# Step 005 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [4]
+```
+
+**How to implement.** Make the Anisotropy and Transparency material facets total (operator 010/Q2). In `LibraryFacets.fs`: drop the `appliesTo` gate on `materialAnisotropyDef` (`:217-232`) so it is `fun _ -> ApplicableAttribute` and its `extract` reads `anisotropyOf complexity` for every entry (all carry `complexity` after step 4; a defensive `None` yields `[]`). Drop the `appliesTo` gate on `materialTransparencyDef` (`:252-267`) so it is `fun _ -> ApplicableAttribute`, and change its `extract` to yield `transparencyOf constant` for a constant material and `DiscreteValue (transparencyKey Absorbing)` for every dispersive material (classified via `materialDispersion` `MaterialLibrary.fs:606-609`), so every dispersive material lands under Absorbing. Leave the multi-valued Dispersion-model, Film-material, and Film-thickness facets unchanged. Update `OpticalConstructor.Tests` (`LibraryFacetsTests`) to prove, over `builtInEntries`, that the Category, Anisotropy, Dispersion, and Transparency branch counts each sum to the material count and that every dispersive material appears under Absorbing.
+
+**Acceptance.** After the gates are dropped, over the seed corpus the Category, Anisotropy, Dispersion, and Transparency facet branch counts MUST each sum to the material count and every dispersive material MUST appear under Absorbing - unit-verified.

@@ -1,0 +1,11 @@
+# Step 011 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [10]
+```
+
+**How to implement.** Let a film-less Plate set its substrate through the Materials Select window (operator, Part D.4). Add a `SampleSubstrateTarget` case to `SelectionTarget` (`WindowMode.fs:31-33`) beside `SampleLayerTarget`. In `SampleEditorView.fs` give the substrate Set... its own material-pick verb modelled on `chooseMaterialForLayer` (`:700-720`) that opens the Materials window in Select state with `target = SampleSubstrateTarget`, replacing the `hasChosenMaterial`-gated 'Set from chosen' substrate button (`:961`, `:921-922`) as the substrate path; route the targeted `onSelected` return to `SampleStackMsg.SetSubstrate (Some <layer>)` (`SampleStackEditor.fs:95`,`:367`), a vanished editor being a no-op plus status line. Handle the new target case where the Materials window resolves its Select target and its target description (`MaterialsWindowView.fs`, e.g. `:857`). Headless tests in `OpticalConstructor.Ui.Tests`: a Plate with no films opens the Materials Select window from the substrate Set... verb and the returned material becomes its substrate.
+
+**Acceptance.** After the change, a film-less Plate MUST be able to set its substrate by picking a material through the Materials window in Select state targeted at the substrate slot - headless-verified.

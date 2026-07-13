@@ -1,0 +1,11 @@
+# Step 006 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Restrict the gyration and mu preview charts to the applicable components (operator, Part C). In `OpticalConstructor.Ui/NkDispersionChart.fs`: change `gyrationChart` (`:110-130`) to take the entry's gyration class and emit ONE series per component that `gyrationComponents` (`MaterialComplexityEditor.fs:436-444`) admits for that class, naming each with `gyrationComponentLabel` (`:421-428`) and reading `Im[rho.[i,j]]` at the (i,j) slot each `GyrationComponent` denotes (`:88-94`); change `muChart` (`:141-162`) to take the entry's `MuKind` (`:72-74`) and emit a single scalar mu component for `ScalarMuKind` versus the diagonal-plus-gyration set for `GyromagneticMuKind`. Thread the class/kind at the call sites (`MaterialEditorView.fs:1028-1046`): from `m.editor.gyration` and the editor's magnetic `MuKind` for an `EditableMaterial`, and for a `ViewOnlyMaterial` from the stored `complexity` value tree - mirroring `anisotropyOfEntry` (`NkDispersionChart.fs:74-77`); a coded preset with no stored tree keeps the current all-components rendering. Update `NkDispersionChartTests` and `MaterialEditorWindowTests` in `OpticalConstructor.Ui.Tests`.
+
+**Acceptance.** After the change, a uniaxial-active entry's gyration chart MUST carry only g11 and g33 with matching names, a scalar-mu entry's mu chart MUST carry only its single mu component, and a coded preset with no stored tree MUST still render all components - headless-verified.

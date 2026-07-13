@@ -1,0 +1,11 @@
+# Step 008 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** Require a substrate on a Plate (operator, Part D.1). Extend `validateSample` (`ElementId.fs:802-811`) so that, in addition to the existing blank-name and structurally-empty checks, a sample whose `substrate` is `Plate` (`SubstrateKind`, `:80-82`) but whose `structure.substrate` (`:135-144`) is `None` returns `Error (InvalidSample <reason>)`. A `ThinFilm` sample is unaffected. Add `OpticalConstructor.Tests` cases: a `Plate` with `structure.substrate = None` is `InvalidSample`; the same `Plate` with `Some` substrate and a non-blank name is `Ok`; a `ThinFilm` with no substrate stays `Ok`.
+
+**Acceptance.** After the extension, `validateSample` MUST reject a `Plate` whose `structure.substrate` is `None` with a typed `InvalidSample`, while a `ThinFilm` with no substrate stays `Ok` - unit-verified.
