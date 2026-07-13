@@ -129,6 +129,11 @@ module FacetedTreeControls =
             resultCount : int
             /// Whether the tree body renders or the Show/Search button gates it.
             materialization : TreeMaterialization
+            /// The `code` of the currently SELECTED tree node — the row painted visibly distinct
+            /// (spec 0040 step 003). Empty string = nothing selected (the `activeRepresentation`
+            /// convention). The HOST tracks the selection in its Model and projects the code here;
+            /// the control only reads it to highlight the matching row.
+            selectedCode : string
         }
 
     let empty : State =
@@ -141,6 +146,7 @@ module FacetedTreeControls =
             filterDraft = ""
             resultCount = 0
             materialization = TreeMaterialized
+            selectedCode = ""
         }
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs). Every
@@ -177,6 +183,11 @@ module FacetedTreeControls =
     let private idleBackground = color 232 232 232
     let private chosenBackground = color 150 185 235
     let private idleBorder = color 120 120 120
+    // A SELECTED tree row (spec 0040 step 003) reads with the `chosenBackground` fill AND a
+    // thicker border — a non-hue, colourblind-safe cue that survives when the hue is imperceptible,
+    // so the selection never rests on colour alone.
+    let private idleBorderThickness = 1.0
+    let private selectedBorderThickness = 3.0
 
     /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
     /// `Control.Name`) through FuncUI's attr builder. NOTHING in this control sets
@@ -355,18 +366,25 @@ module FacetedTreeControls =
     /// node is expanded — its children's rows below it. The chevron press toggles the node; the
     /// label press selects it. The flattened rows are siblings in ONE vertical stack, so every row
     /// (and the chevron and label within it) is keyed by its (tree-unique) node code.
-    let rec private nodeRows (handlers : Handlers) (depth : int) (node : TreeNode) : IView list =
+    ///
+    /// The row whose code matches `selectedCode` (the host's tracked selection, spec 0040 step 003)
+    /// paints its label with `chosenBackground` AND a thicker border (a non-hue, colourblind-safe
+    /// cue) so exactly that row reads distinct while every other stays idle. Re-subscribe the
+    /// pointer handler when the code OR the selection flag changes so a reused, restyled box cannot
+    /// keep a stale handler (the `clickBox` discipline).
+    let rec private nodeRows (handlers : Handlers) (selectedCode : string) (depth : int) (node : TreeNode) : IView list =
+        let isSelected = node.code = selectedCode
         let label =
             Border.create [
                 automationId<Border> (UiIds.FacetedTree.treeNode node.code)
-                Border.background (brush idleBackground)
+                Border.background (brush (if isSelected then chosenBackground else idleBackground))
                 Border.borderBrush (brush idleBorder)
-                Border.borderThickness 1.0
+                Border.borderThickness (if isSelected then selectedBorderThickness else idleBorderThickness)
                 Border.cornerRadius (CornerRadius 3.0)
                 Border.padding (Thickness(10.0, 3.0))
                 Border.verticalAlignment VerticalAlignment.Center
                 Border.child (TextBlock.create [ TextBlock.text (nodeText node) ])
-                Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.selectNode node.code), SubPatchOptions.OnChangeOf (box node.code))
+                Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.selectNode node.code), SubPatchOptions.OnChangeOf (box (node.code, isSelected)))
             ]
             |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.treeNode node.code)
             :> IView
@@ -406,7 +424,7 @@ module FacetedTreeControls =
             |> Avalonia.FuncUI.DSL.View.withKey ("FacetTreeRow_" + node.code)
             :> IView
         match node.expansion with
-        | ExpandedNode -> row :: (node.children |> List.collect (nodeRows handlers (depth + 1)))
+        | ExpandedNode -> row :: (node.children |> List.collect (nodeRows handlers selectedCode (depth + 1)))
         | CollapsedNode -> [ row ]
 
     /// The tree area: the materialized node rows — or, when `State` says materialization is
@@ -422,7 +440,7 @@ module FacetedTreeControls =
                 StackPanel.create [
                     automationId<StackPanel> UiIds.FacetedTree.tree
                     StackPanel.orientation Orientation.Vertical
-                    StackPanel.children (state.tree |> List.collect (nodeRows handlers 0))
+                    StackPanel.children (state.tree |> List.collect (nodeRows handlers state.selectedCode 0))
                 ]
                 |> Avalonia.FuncUI.DSL.View.withKey UiIds.FacetedTree.tree
             keyedTree :> IView

@@ -949,6 +949,12 @@ let facetedState (m : Model) : FacetedTreeControls.State =
         filterDraft = m.textFilter.value
         resultCount = resultCount
         materialization = materialization
+        // The selected entry's node code (spec 0040 step 003) — the control highlights that row.
+        // Only an entry is ever selectable, so the code is the selected id's entry-node code.
+        selectedCode =
+            match m.selectedEntryId with
+            | Some id -> entryNodeCode id
+            | None -> ""
     }
 
 /// The control's behaviour seam: every token is lifted back to its domain value HERE, at the

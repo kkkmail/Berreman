@@ -4,6 +4,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Input
+open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI
@@ -124,6 +125,7 @@ module FacetedTreeControlsTests =
             filterDraft = "quartz"
             resultCount = 3
             materialization = FacetedTreeControls.TreeMaterialized
+            selectedCode = ""
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
@@ -156,6 +158,7 @@ module FacetedTreeControlsTests =
         Assert.Equal("", s.filterDraft)
         Assert.Equal(0, s.resultCount)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, s.materialization)
+        Assert.Equal("", s.selectedCode)
 
     [<Fact>]
     let ``the FacetedTree UiIds are the stable intent-named ids`` () =
@@ -240,6 +243,24 @@ module FacetedTreeControlsTests =
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window
+
+    /// The clickable label Border of the tree row carrying `code` (its stable `treeNode` id — the
+    /// chevron carries the DISTINCT `treeNodeChevron` id, so this is unambiguously the label box).
+    let private labelBorderOf (window : Window) (code : string) : Border =
+        let id = UiIds.FacetedTree.treeNode code
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        | Some b -> b
+        | None -> failwith $"%s{id} label border was not found"
+
+    /// A Border's solid fill colour (None when it carries a non-solid brush).
+    let private backgroundColorOf (b : Border) : Color option =
+        match b.Background with
+        | :? SolidColorBrush as s -> Some s.Color
+        | _ -> None
+
+    // The control's idle / chosen row fills (mirrored from FacetedTreeControls, which keeps them private).
+    let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
+    let private chosenFill = Color.FromRgb(150uy, 185uy, 235uy)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -344,6 +365,28 @@ module FacetedTreeControlsTests =
             // The label still selects (never toggles).
             clickOn window (UiIds.FacetedTree.treeNode "kind/sample")
             Assert.Equal<string>([ "toggle:kind/sample"; "node:kind/sample" ], calls)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the selected node's row renders the chosen fill plus a thicker border while every other row stays idle`` () =
+        HeadlessSession.run (fun () ->
+            let _, handlers = recorder ()
+            // Select a rendered leaf (quartz sits under two expanded parents, so its row renders).
+            let window = mount { knownState with selectedCode = "kind/sample/quartz" } handlers
+            let selected = labelBorderOf window "kind/sample/quartz"
+            let sibling = labelBorderOf window "kind/sample/mica"
+            let heading = labelBorderOf window "kind"
+            // Exactly the selected row paints the chosen fill; its siblings and the heading stay idle.
+            Assert.Equal(Some chosenFill, backgroundColorOf selected)
+            Assert.Equal(Some idleFill, backgroundColorOf sibling)
+            Assert.Equal(Some idleFill, backgroundColorOf heading)
+            // …and it carries the non-hue cue: a border strictly thicker than any idle row's, so the
+            // selection reads without relying on colour (colourblind-safe).
+            Assert.True(selected.BorderThickness.Top > sibling.BorderThickness.Top,
+                        "the selected row's border must be thicker than an idle row's")
+            Assert.True(selected.BorderThickness.Top > heading.BorderThickness.Top,
+                        "the selected row's border must be thicker than the heading's")
             window.Close())
 
     [<Fact>]

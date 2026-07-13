@@ -4,6 +4,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Input
+open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI.Hosts
@@ -131,6 +132,23 @@ module MaterialsWindowTests =
             | Some text -> text
             | None -> failwith $"%s{id} carries no text label"
         | None -> failwith $"%s{id} was not found in the visual tree"
+
+    /// The clickable label Border of the tree row carrying `id` (the row's `treeNode` id — the
+    /// chevron carries a DISTINCT id, so this is unambiguously the label box).
+    let private labelBorderOf (window : Window) (id : string) : Border =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        | Some b -> b
+        | None -> failwith $"%s{id} label border was not found"
+
+    /// A Border's solid fill colour (None when it carries a non-solid brush).
+    let private backgroundColorOf (b : Border) : Color option =
+        match b.Background with
+        | :? SolidColorBrush as s -> Some s.Color
+        | _ -> None
+
+    // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
+    let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
+    let private chosenFill = Color.FromRgb(150uy, 185uy, 235uy)
 
     /// The number of generated tree node rows (any control whose AutomationId carries the
     /// FacetTreeNode_ prefix) — gated mode must render ZERO.
@@ -535,6 +553,18 @@ module MaterialsWindowTests =
         Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
 
     [<Fact>]
+    let ``facetedState projects the selected entry's node code — empty when nothing is selected`` () =
+        // Spec 0040 step 003: the control highlights the row whose code is `selectedCode`; the host
+        // projects it from the Model's already-tracked selection (nothing selected → empty string).
+        let _, m = freshModel ()
+        Assert.Equal("", (MW.facetedState m).selectedCode)
+        let selected = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState selected).selectedCode)
+        // A re-selection re-targets the highlight in the same projection.
+        let retargeted = MW.update (MW.SelectEntry MaterialIds.glass200) selected
+        Assert.Equal(MW.entryNodeCode MaterialIds.glass200, (MW.facetedState retargeted).selectedCode)
+
+    [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
@@ -826,6 +856,28 @@ module MaterialsWindowTests =
             // A second click collapses it again.
             expandEntries window
             Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a second chevron click must collapse the group")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (003): selecting an entry leaf highlights exactly that row with the chosen fill and a thicker border`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            // Narrow to the glass presets so both leaves render near the top and stay clickable.
+            commitFilter window "glass"
+            // Before any selection every leaf is idle (no row carries the chosen fill).
+            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window (MW.entryNode MaterialIds.glass152)))
+            clickOn window (MW.entryNode MaterialIds.glass152)
+            let selected = labelBorderOf window (MW.entryNode MaterialIds.glass152)
+            let sibling = labelBorderOf window (MW.entryNode MaterialIds.glass200)
+            // Exactly the selected row reads the chosen fill; the sibling stays idle.
+            Assert.Equal(Some chosenFill, backgroundColorOf selected)
+            Assert.Equal(Some idleFill, backgroundColorOf sibling)
+            // …and the selected row carries the non-hue cue: a border strictly thicker than an idle
+            // row's (a colourblind-safe cue that does not rely on colour alone).
+            Assert.True(selected.BorderThickness.Top > sibling.BorderThickness.Top,
+                        "the selected row's border must be thicker than an idle row's")
             window.Close())
 
     // ============================ step 016 — Select mode (pure) ============================
