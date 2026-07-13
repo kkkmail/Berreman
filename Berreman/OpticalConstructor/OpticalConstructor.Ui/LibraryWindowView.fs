@@ -1055,6 +1055,7 @@ let private targetText (target : SelectionTarget) : string =
     match target with
     | TableElementTarget _ -> "the requesting table element"
     | SampleLayerTarget _ -> "the requesting sample layer"
+    | SampleSubstrateTarget -> "the requesting sample substrate plate"
 
 /// The Select-state surface (spec 0038 step 016): exactly TWO buttons in ONE row with distinct
 /// positive/negative styling and a visible gap (§0.7) — 'Select' returns the highlighted entry,

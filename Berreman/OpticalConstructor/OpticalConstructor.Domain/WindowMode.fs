@@ -25,12 +25,17 @@ module WindowMode =
 
     /// WHAT the selection is for — the typed target the requesting surface routes the returned
     /// entry to: a table element (the workbench Selector flow, step 017) by its serializable
-    /// `ElementId`, or one sample-layer slot (the sample-editor material pick, step 019) by its
-    /// `LayerPosition`. The receiving surface resolves the target at RETURN time — a vanished
-    /// target is a no-op plus a status line, never a throw.
+    /// `ElementId`, one sample-layer slot (the sample-editor material pick, step 019) by its
+    /// `LayerPosition`, or a sample's single substrate plate (the sample-editor substrate pick,
+    /// spec 0040 Part D.4 step 011). The receiving surface resolves the target at RETURN time — a
+    /// vanished target is a no-op plus a status line, never a throw. The substrate slot has no
+    /// positional identity (a sample holds ONE substrate plate), so its case carries no payload:
+    /// the return routes through the requesting editor's captured dispatch, and a closed editor
+    /// makes it a no-op.
     type SelectionTarget =
         | TableElementTarget of ElementId
         | SampleLayerTarget of LayerPosition
+        | SampleSubstrateTarget
 
     /// One Select session's context (spec G.0): the fixed kind constraint, the typed target,
     /// and the two outcome callbacks — `onSelected` dispatches a TARGETED message carrying the

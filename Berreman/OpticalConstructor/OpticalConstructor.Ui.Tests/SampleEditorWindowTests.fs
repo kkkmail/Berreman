@@ -249,6 +249,9 @@ module SampleEditorWindowTests =
         // The supported-emission R/T checkboxes (spec 0040 Part D.2 step 010).
         Assert.Equal("SampleEmitReflectedCheck", UiIds.SampleEditor.emitReflectedCheck)
         Assert.Equal("SampleEmitTransmittedCheck", UiIds.SampleEditor.emitTransmittedCheck)
+        // The substrate Set… verb reuses this id (spec 0040 Part D.4 step 011 — it replaced the
+        // old chosen-gated 'Set from chosen' substrate button as the substrate pick path).
+        Assert.Equal("SetSubstrateButton", UiIds.SampleEditor.setSubstrateButton)
         // The derived per-row / per-group id families are prefixed so they cannot collide.
         Assert.Equal("SampleLayerRow_1", UiIds.SampleEditor.layerRow 1)
         Assert.Equal("SampleLayerRow_0_1", UiIds.SampleEditor.cellLayerRow 0 1)
@@ -1209,3 +1212,72 @@ module SampleEditorWindowTests =
         match cellMiss.status with
         | Some text -> Assert.Contains("no longer in the stack", text)
         | None -> Assert.Fail "the mismatched cell position must surface the status line"
+
+    // ========== step 011 — the substrate Select return (D.4: a film-less Plate) ==========
+
+    /// A `Plate` with NO film layers and no substrate plate — the D.4 gap: it has no film row,
+    /// hence no Choose material… verb, so before this slice it had no route to pick a substrate
+    /// material at all. Its ONLY path to the Materials window is the substrate Set… verb.
+    let private filmlessPlate () : Sample =
+        {
+            id = newSampleId ()
+            name = "Bare plate"
+            structure = { films = []; substrate = None; lower = None }
+            substrate = Plate
+            description = "film-less Plate — substrate set via the Materials Select window"
+            supportedEmission = defaultSupportedEmission Plate
+        }
+
+    [<Fact>]
+    let ``BindMaterialToSubstrate sets the substrate plate to the picked material and records it as chosen`` () =
+        let _, context = recordingContext ()
+        let m = init context builtInEntries (EditSample (filmlessPlate ()))
+        // The bare plate opens with no substrate plate.
+        Assert.Equal<SampleLayer option>(None, m.editor.structure.substrate)
+        // The substrate Select session returns 1.75 glass for the substrate slot.
+        let bound = update (BindMaterialToSubstrate MaterialIds.glass175) m
+        match bound.editor.structure.substrate with
+        | Some layer -> Assert.Equal(MaterialIds.glass175, layer.materialId.materialId)
+        | None -> Assert.Fail "the substrate plate must be set to the picked material"
+        // The picked id also becomes the toolbar's chosen material (the BindMaterialToLayer
+        // precedent), the status stays clean, and no films were fabricated by the pick.
+        Assert.Equal<MaterialId option>(Some MaterialIds.glass175, bound.chosenMaterial)
+        Assert.Equal<string option>(None, bound.status)
+        Assert.Equal<int>(0, List.length bound.editor.structure.films)
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (011): a film-less Plate sets its substrate through the Materials Select window`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, categories, EditSample (filmlessPlate ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // A film-less Plate: no substrate plate yet, and no film rows to pick a material from.
+            Assert.Equal("none", textOf window UiIds.SampleEditor.substrateSummary)
+            Assert.False(isPresent window (UiIds.SampleEditor.layerRow 0), "a film-less Plate has no layer rows")
+            let opened, subscription = observeOpenedWindows ()
+            use _sub = subscription
+            // The substrate Set… verb opens the MATERIALS window in SELECT state — the Select
+            // pair renders and the banner names the substrate plate (the new SampleSubstrateTarget
+            // target description).
+            clickOn window UiIds.SampleEditor.setSubstrateButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(1, opened.Count)
+            let materialsWindow = opened.[0]
+            Assert.True(matchesId UiIds.MaterialsWindow.window materialsWindow, "the opened window must be the Materials window")
+            Assert.True(isPresent materialsWindow UiIds.MaterialsWindow.selectButton, "the Select verb must render — the window is in Select state")
+            Assert.Contains("substrate", textOf materialsWindow UiIds.MaterialsWindow.selectConstraint)
+            // Pick the 1.75 glass: filter → highlight the leaf → Select. The TARGETED return sets
+            // the substrate plate and closes the window.
+            commitFilter materialsWindow "1.75"
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
+            clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
+            clickOn materialsWindow UiIds.MaterialsWindow.selectButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(materialsWindow.IsVisible, "Select must close the Materials window")
+            // The returned material became the substrate — headless-verified.
+            Assert.Contains("Transparent glass (n = 1.75)", textOf window UiIds.SampleEditor.substrateSummary)
+            Assert.Equal("", textOf window UiIds.SampleEditor.statusText)
+            window.Close()
+            Dispatcher.UIThread.RunJobs())
