@@ -791,23 +791,33 @@ module Library =
             addEntry = addEntry
         }
 
-    /// The write-seam validation the samples store's `saveSample` runs. Two rules, in order:
+    /// The write-seam validation the samples store's `saveSample` runs. Three rules, in order:
     /// (spec 0033 steps 004/005) a `Sample` whose display name is empty/whitespace is
-    /// `InvalidSample`; and (spec 0035 step 012) a `Sample` whose structure carries NO films AND
+    /// `InvalidSample`; (spec 0035 step 012) a `Sample` whose structure carries NO films AND
     /// NO substrate (`films = []`, `substrate = None` on `SampleStructure`) is structurally empty —
     /// there is nothing for the engine mapping to expand — and is likewise `InvalidSample`, even
-    /// when its name is non-blank. Not private: the real store is a type augmentation in
-    /// `SampleStore.fs`, and an optional extension in another file cannot reach a module-private
-    /// binding (the `validateEntry` precedent, `MaterialLibrary.fs`).
+    /// when its name is non-blank; and (spec 0040 Part D.1) a `Plate`-geometry sample
+    /// (`SubstrateKind.Plate`) whose material `structure.substrate` is `None` has no substrate plate
+    /// to specify — a plate MUST carry one (spec Part D.0) — and is `InvalidSample`. A `ThinFilm`
+    /// sample is unaffected by the third rule (its lower half-space is semi-infinite, so `None` is
+    /// the expected value). Not private: the real store is a type augmentation in `SampleStore.fs`,
+    /// and an optional extension in another file cannot reach a module-private binding (the
+    /// `validateEntry` precedent, `MaterialLibrary.fs`).
     let validateSample (s : Sample) : Result<unit, SampleError> =
         let structurallyEmpty =
             match s.structure.films, s.structure.substrate with
             | [], None -> true
             | _ -> false
+        let plateMissingSubstrate =
+            match s.substrate, s.structure.substrate with
+            | Plate, None -> true
+            | _ -> false
         if String.IsNullOrWhiteSpace s.name
         then Error (InvalidSample $"sample '%s{string s.id.value}' has a blank name")
         elif structurallyEmpty
         then Error (InvalidSample $"sample '%s{string s.id.value}' has no films and no substrate")
+        elif plateMissingSubstrate
+        then Error (InvalidSample $"plate sample '%s{string s.id.value}' has no substrate plate specified")
         else Ok ()
 
     // The real, stateful in-memory samples store behind the write-seam (STORE_XDUO_0002) moved to

@@ -170,6 +170,35 @@ module SampleProxyTests =
         | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
 
+    // ==================== validateSample: a Plate requires a substrate (spec 0040 D.1) ====================
+
+    /// A `Plate`-geometry sample carrying a film but NO substrate plate: a thin-film seed (which has
+    /// a film and `structure.substrate = None`) re-labelled `Plate`. Because it has a film it is NOT
+    /// structurally empty, so the ONLY rule that can reject it is the new D.1 Plate-requires-a-
+    /// substrate rule — this isolates the new behaviour from the older structurally-empty reject.
+    let private plateMissingSubstrate : Sample =
+        { SeedSamples.glassFilm600 with substrate = Plate }
+
+    [<Fact>]
+    let ``validateSample rejects a Plate whose structure.substrate is None as InvalidSample`` () =
+        match validateSample plateMissingSubstrate with
+        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSample _) for a Plate with no substrate, got %A{other}")
+
+    [<Fact>]
+    let ``validateSample accepts a Plate that carries a substrate and a non-blank name`` () =
+        // glassPlate1mm is a Plate whose structure carries `Some` substrate — D.1 leaves it Ok.
+        match validateSample SeedSamples.glassPlate1mm with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () for a Plate with a substrate, got %A{other}")
+
+    [<Fact>]
+    let ``validateSample leaves a ThinFilm with no substrate Ok`` () =
+        // glassFilm600 is a ThinFilm with `structure.substrate = None` — unaffected by the D.1 rule.
+        match validateSample SeedSamples.glassFilm600 with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () for a ThinFilm with no substrate, got %A{other}")
+
     // ============================ the version-creation decision table ============================
 
     [<Fact>]
