@@ -3,7 +3,13 @@
   "ticket": null,
   "created": "2026-07-13T00:09:13Z",
   "status": "in-authoring",
-  "gates": [],
+  "gates": [
+    "build",
+    "unit-tests",
+    "constructor-unit-tests",
+    "ui-smoke",
+    "ui-tests"
+  ],
   "agent_files": {
     "spec_author": "default",
     "claim_checker": "default",
