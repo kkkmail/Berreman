@@ -76,41 +76,50 @@ entry-leaves-first-and-expanded (`MaterialsWindowView.fs:716-718` comment) are u
 ## Part B — Every facet's branch counts sum to the whole population
 
 **B.0 Problem.** Under a representation the facet branches do not sum to the population
-(e.g. Anisotropy shows Biaxial + Isotropic but omits the coded presets; Transparency shows
+(Anisotropy shows Biaxial + Isotropic but omits some materials; Transparency shows
 Absorbing + Transparent but omits every dispersive material), so the "math" does not add up.
 
-**B.1 Principle (operator, 010/Q2).** Any element either has an attribute or it does not.
-Every **single-valued** material facet partitions the whole population that possesses the
-attribute — each such element contributes to exactly one branch — so its branch counts sum
-to that population's size, and all such facets in a window share that same total. In the
-Materials window every material possesses Category, Anisotropy, Dispersion, and
-Transparency, so all four sum to the full material count.
+**B.1 Principle (operator, 010/Q2).** Nothing is persisted at this point — the material
+corpus is entirely the authored **seed** data (spec 0038 §0.2 / §3.2: no library STATE is
+persisted; every app start re-seeds). So totality is a **seeding** property, achieved by
+seeding the materials the way the facets need them — **NOT** by classifying materials at
+runtime, and in particular never by deriving a material's class from its assembled engine
+tensor. Any element either has an attribute or it does not; every **single-valued** material
+facet partitions the whole seed population that possesses the attribute — each such material
+contributes to exactly one branch — so its branch counts sum to that total, and all such
+facets in a window share it. In the Materials window every seeded material possesses
+Category, Anisotropy, Dispersion, and Transparency, so all four sum to the full material
+count.
 
-**B.2 Requirements (`LibraryFacets.fs`).**
-1. **Anisotropy is total.** Classify every material into exactly one of Isotropic /
-   Uniaxial / Biaxial, coded engine presets (`complexity = None`) included. For a material
-   with a stored eps value tree, read the class via `anisotropyOf` (`:132-143`); for a
-   coded preset, classify the assembled engine eps tensor at a fixed classify wavelength —
-   all three principal permittivities coincide → Isotropic; exactly two coincide →
-   Uniaxial; otherwise Biaxial — the same view-only classification pattern the chart's
-   `hasGyration` / `hasMagnetic` use. Remove the `complexity = Some` `appliesTo` gate.
-2. **Transparency is total.** Classify every material into exactly one of Transparent /
-   Absorbing: a **constant** material by its permittivity (no absorption → Transparent,
-   else Absorbing) via `transparencyOf` (`:147-150`); **every dispersive material →
-   Absorbing** (operator, 010/Q2), coded presets included (the constant-vs-dispersive
-   class comes from `materialDispersion`, which already applies to every entry). Remove
-   the "constant materials only" `appliesTo` gate (`:252-267`).
-3. **Multi-valued facets are the sole exception.** The per-axis/segment Dispersion-model
+**B.2 Requirements — fix in the SEEDS.**
+1. **Seed every material so its class is data.** Seed each material
+   (`MaterialLibrary.fs` `builtInEntries`, `ElementId.fs` seeds) so its single-valued facet
+   attributes are well-defined *in the seed itself* — the natural mechanism is a seeded
+   `MaterialComplexity` value tree, so the existing `anisotropyOf` (`:132-143`) and
+   `transparencyOf` (`:147-150`) read the class directly from data. The presets currently
+   authored as `complexity = None` coded closures (silicon, langasite, the vacuum spacer)
+   are re-seeded the way the facets need them — carrying their anisotropy and transparency
+   in the seed — rather than left unclassifiable. **Do NOT** add a runtime classifier that
+   evaluates the engine eps tensor.
+2. **Anisotropy is total.** Every seeded material carries exactly one anisotropy class
+   (Isotropic / Uniaxial / Biaxial), read from the seed. With every material carrying the
+   data, the `complexity = Some` `appliesTo` gate (`:217-232`) is unnecessary — every
+   material appears in the facet.
+3. **Transparency is total; all dispersive → Absorbing (operator, 010/Q2).** Every seeded
+   material carries a transparency: a constant material is Transparent (no absorption) or
+   Absorbing per its permittivity; **every dispersive material is seeded Absorbing.** The
+   facet reads it from the seed; drop the "constant materials only" `appliesTo` gate
+   (`:252-267`).
+4. **Multi-valued facets are the sole exception.** The per-axis/segment Dispersion-model
    facet, the Film-material facet, and the Film-thickness facet are genuinely multi-valued
-   (an item carries several values by design), so their branch counts need not sum — they
-   stay multi-valued and are explicitly outside B.1.
-4. When a single-valued material facet is lifted onto samples (the Library window), the
-   same single-value classification applies per constituent per the existing lifting
-   semantics.
+   by design, so their branch counts need not sum — they stay outside B.1.
+5. Where a single-valued material facet is lifted onto samples (the Library window), the
+   same per-constituent single-value classification applies (existing lifting semantics).
 
-**B.3 Acceptance.** A test asserts that over the seeded material corpus the Category,
-Anisotropy, Dispersion, and Transparency facets each sum to the material count; a
-dispersive material appears under Absorbing; a coded preset appears under its anisotropy.
+**B.3 Acceptance.** Over the seed corpus, the Category, Anisotropy, Dispersion, and
+Transparency facets each sum to the material count; every dispersive material appears under
+Absorbing; every seeded preset appears under its anisotropy. No facet evaluates the
+assembled engine tensor to classify a material.
 
 ---
 
