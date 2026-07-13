@@ -300,6 +300,61 @@ module LibraryWindowTests =
         Assert.True(isSorted facetLabels, $"facet groups must be alphabetical: %A{facetLabels}")
 
     [<Fact>]
+    let ``every facet group shows its total count and each branch expands to its member entry leaves`` () =
+        // The operator gap (.manual/001-task): facet groups MUST show a total and branches MUST
+        // expand to the entries they contain — including the numeric film-thickness buckets and the
+        // multi-valued film-material facet. Pure projection proof; a UI-less assertion on
+        // `facetedState` would have caught both before the window ever rendered.
+        let _, m = freshModel ()
+        let state = LW.facetedState m
+        let facetGroups = state.tree |> List.tail   // head is the "entries" corpus group
+        Assert.NotEmpty(facetGroups)
+        for group in facetGroups do
+            // 1) The group carries a positive total (never a bare, countless heading).
+            match group.countOpt with
+            | Some c -> Assert.True(c > 0, $"facet group %s{group.label} must show a positive total, got %d{c}")
+            | None -> Assert.Fail($"facet group %s{group.label} must show a total count")
+            // 2) Every branch expands to member entry leaves, the leaf tally matching its (count) badge.
+            Assert.NotEmpty(group.children)
+            let mutable distinct = Set.empty
+            for branch in group.children do
+                match branch.countOpt with
+                | Some bc ->
+                    Assert.True(bc > 0, $"branch %s{branch.label} must carry entries")
+                    Assert.Equal(bc, List.length branch.children)
+                | None -> Assert.Fail($"branch %s{branch.label} must show a count")
+                for leaf in branch.children do
+                    Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
+                    // Each branch-nested leaf is a SELECTABLE entry (its code resolves to an entryId).
+                    match LW.entryIdOfNodeCode leaf.code with
+                    | Some entryId -> distinct <- Set.add entryId distinct
+                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label} (%s{leaf.code}) must resolve to an entry id")
+            // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches.
+            Assert.Equal(Some (Set.count distinct), group.countOpt)
+
+    [<Fact>]
+    let ``the single-valued Kind facet totals the whole population and its branch counts sum to it`` () =
+        // Entry-kind is single-valued and total (every entry is exactly one of Sample / Source /
+        // Detector / Polarizer), so its group count is the whole corpus and the branch counts
+        // partition it — the operator's "the math must add up" for a facet.
+        let _, m = freshModel ()
+        let state = LW.facetedState m
+        let kindGroup = state.tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+        Assert.Equal(Some state.resultCount, kindGroup.countOpt)
+        let branchSum = kindGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c | None -> 0)
+        Assert.Equal(state.resultCount, branchSum)
+
+    [<Fact>]
+    let ``a branch-nested entry leaf code selects its entry, while bare branch and heading codes stay inert`` () =
+        // The branch-nested leaf code `branch:<facet>:<value>:entry:<entryId>` resolves to its id (so
+        // an entry selected THROUGH a facet branch works), yet the bare branch/heading codes remain
+        // grouping-only — the selection contract after the fix.
+        let leafCode = "branch:" + entryKindFacetKey.value + ":Source:" + LW.entryNodeCode "src-600"
+        Assert.Equal(Some "src-600", LW.entryIdOfNodeCode leafCode)
+        Assert.Equal<string option>(None, LW.entryIdOfNodeCode ("facet:" + entryKindFacetKey.value))
+        Assert.Equal<string option>(None, LW.entryIdOfNodeCode ("branch:" + entryKindFacetKey.value + ":Source"))
+
+    [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
         // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
         // ToggleNode records the code expanded (its children then render) and a second toggle collapses.

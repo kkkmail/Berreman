@@ -554,13 +554,25 @@ let numericRangeText (range : NumericRange) : string =
 
 /// `entries` / `entry:<entryId>` name the corpus group and its selectable leaves;
 /// `facet:<facet-key>` / `branch:<facet-key>:<value-key>` name the representation's facet
-/// grouping. Only an `entry:` code means anything to `selectNode` — branches are grouping
-/// display (the OFFERS are the apply surface).
+/// grouping, and a facet branch's own selectable member leaves are path-shaped
+/// `branch:<facet-key>:<value-key>:entry:<entryId>` (tree-unique, so the SAME entry can leaf both
+/// the corpus group and every branch it belongs to). Only an ENTRY-leaf code — the top-level
+/// `entry:<entryId>` OR a branch-nested `…:entry:<entryId>` — means anything to `selectNode`; a
+/// bare `facet:` / `branch:` code is grouping display (the OFFERS are the apply surface).
 let entryNodeCode (entryId : string) : string = "entry:" + entryId
 
+/// Resolve any entry-leaf node code back to its `entryId`: the top-level `entry:<entryId>`
+/// (prefix) or a branch-nested `…:entry:<entryId>` (the `:entry:` separator the branch code adds
+/// before the leaf). A bare `facet:` / `branch:` / `entries` code carries no `entry:` marker and
+/// resolves to `None`, so it stays inert at `selectNode`.
 let entryIdOfNodeCode (code : string) : string option =
-    let prefix = "entry:"
-    if code.StartsWith prefix then Some (code.Substring prefix.Length) else None
+    let flatPrefix = "entry:"
+    let nestedMarker = ":entry:"
+    if code.StartsWith flatPrefix then Some (code.Substring flatPrefix.Length)
+    else
+        match code.LastIndexOf(nestedMarker, System.StringComparison.Ordinal) with
+        | -1 -> None
+        | idx -> Some (code.Substring (idx + nestedMarker.Length))
 
 /// Spec 0038 (044): the Domain-typed id helpers that outlived the per-view `UiIds` module —
 /// `OpticalConstructor.Controls` is domain-free, so `versionRow` (VersionNumber) and `entryNode`
@@ -800,6 +812,17 @@ let facetedState (m : Model) : FacetedTreeControls.State =
     let expansionOf (code : string) : FacetedTreeControls.NodeExpansion =
         if m.expandedNodes.isExpanded code then FacetedTreeControls.ExpandedNode
         else FacetedTreeControls.CollapsedNode
+    // One selectable entry leaf under the given (tree-unique) code — the shared shape both the
+    // corpus "entries" group and every facet branch project (an entry leafs its branch AND the
+    // corpus group, under distinct codes so the tree stays uniquely keyed).
+    let entryLeafNode (leafCode : string) (entry : LibraryEntry) : FacetedTreeControls.TreeNode =
+        {
+            code = leafCode
+            label = (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
+            countOpt = None
+            expansion = expansionOf leafCode
+            children = []
+        }
     // The host decides gating (result count above the Domain threshold, no explicit build yet);
     // the control only obeys (step 012). A gated pass projects NO tree at all — the whole point
     // is skipping the one potentially heavy render (§0.7).
@@ -893,48 +916,66 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                     expansion = expansionOf "entries"
                     children =
                         filtered
-                        |> List.map (fun entry ->
-                            ({
-                                code = entryNodeCode entry.entryId
-                                label = (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
-                                countOpt = None
-                                expansion = expansionOf (entryNodeCode entry.entryId)
-                                children = []
-                             } : FacetedTreeControls.TreeNode))
+                        |> List.map (fun entry -> entryLeafNode (entryNodeCode entry.entryId) entry)
                         |> sortNodesByLabel
                 }
             let engineTree = Facets.buildTree (Representation m.representation.order) inputs.defs inputs.appliedAll inputs.corpus
             let facetNodes =
                 engineTree.facets
                 |> List.map (fun facet ->
-                    let branches : FacetedTreeControls.TreeNode list =
+                    // Each branch as (code, label, count, member entries): a numeric facet projects
+                    // step-010 buckets, a discrete facet the engine's value branches. Members come
+                    // from the SAME engine path as the count (a bucket / value applied as a chip),
+                    // so a branch's leaves and its `(count)` badge always agree.
+                    let branchesWithMembers : (string * string * int * LibraryEntry list) list =
                         match inputs.defs |> List.tryFind (fun d -> d.key = facet.key) with
                         | Some def when def.kind = NumericAttribute ->
                             bucketsOf def
                             |> List.map (fun bucket ->
-                                ({
-                                    code = "branch:" + facet.key.value + ":" + numericRangeCode bucket.range
-                                    label = numericRangeText bucket.range
-                                    countOpt = Some bucket.count.value
-                                    expansion = expansionOf ("branch:" + facet.key.value + ":" + numericRangeCode bucket.range)
-                                    children = []
-                                 } : FacetedTreeControls.TreeNode))
+                                let branchCode = "branch:" + facet.key.value + ":" + numericRangeCode bucket.range
+                                let members = Facets.filter inputs.defs (inputs.appliedAll @ [ { key = facet.key; selection = NumericRangeSelection bucket.range } ]) inputs.corpus
+                                // The badge is the DISTINCT member entries (what expanding reveals),
+                                // not `bucket.count` — a numeric bucket counts value-occurrences, so an
+                                // entry with two in-range layer thicknesses would over-count the leaves.
+                                branchCode, numericRangeText bucket.range, List.length members, members)
                         | Some _ | None ->
                             facet.branches
                             |> List.map (fun branch ->
-                                ({
-                                    code = "branch:" + facet.key.value + ":" + branch.value.label
-                                    label = branch.label
-                                    countOpt = Some branch.count.value
-                                    expansion = expansionOf ("branch:" + facet.key.value + ":" + branch.value.label)
-                                    children = []
-                                 } : FacetedTreeControls.TreeNode))
+                                let branchCode = "branch:" + facet.key.value + ":" + branch.value.label
+                                let members =
+                                    match branch.value with
+                                    | DiscreteValue dk -> Facets.filter inputs.defs (inputs.appliedAll @ [ { key = facet.key; selection = DiscreteSelection (Set.singleton dk) } ]) inputs.corpus
+                                    | NumericValue _ -> []
+                                branchCode, branch.label, branch.count.value, members)
+                    let branchNodes =
+                        branchesWithMembers
+                        |> List.map (fun (branchCode, label, count, members) ->
+                            ({
+                                code = branchCode
+                                label = label
+                                countOpt = Some count
+                                expansion = expansionOf branchCode
+                                // The branch expands to its member entries as selectable leaves
+                                // (path-shaped codes keep them tree-unique), alphabetical by label.
+                                children =
+                                    members
+                                    |> List.map (fun entry -> entryLeafNode (branchCode + ":" + entryNodeCode entry.entryId) entry)
+                                    |> sortNodesByLabel
+                             } : FacetedTreeControls.TreeNode))
+                    // The facet group shows its total: the DISTINCT filtered entries it classifies (an
+                    // entry a multi-valued facet — film material or thickness — lists under several
+                    // branches counts once).
+                    let groupCount =
+                        branchesWithMembers
+                        |> List.collect (fun (_, _, _, members) -> members |> List.map (fun entry -> entry.entryId))
+                        |> List.distinct
+                        |> List.length
                     ({
                         code = "facet:" + facet.key.value
                         label = facet.name
-                        countOpt = None
+                        countOpt = Some groupCount
                         expansion = expansionOf ("facet:" + facet.key.value)
-                        children = branches
+                        children = branchNodes
                      } : FacetedTreeControls.TreeNode))
                 |> sortNodesByLabel
             entriesNode :: facetNodes

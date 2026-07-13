@@ -531,6 +531,66 @@ module MaterialsWindowTests =
             Assert.True(isSorted branchLabels, $"branches of %s{group.label} must be alphabetical: %A{branchLabels}")
 
     [<Fact>]
+    let ``every facet group shows its total count and each branch expands to its member entry leaves`` () =
+        // The operator gap (.manual/001-task): a facet group (e.g. Anisotropy) MUST show a total
+        // count, and a branch (e.g. "Biaxial (3)") MUST expand to the 3 entries it contains — today
+        // groups carried no count and branches were childless. Pure projection proof; a UI-less
+        // assertion on `facetedState` would have caught both before the window ever rendered.
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        let facetGroups = state.tree |> List.tail   // head is the "entries" corpus group
+        Assert.NotEmpty(facetGroups)
+        for group in facetGroups do
+            // 1) The group carries a positive total (never a bare, countless heading).
+            match group.countOpt with
+            | Some c -> Assert.True(c > 0, $"facet group %s{group.label} must show a positive total, got %d{c}")
+            | None -> Assert.Fail($"facet group %s{group.label} must show a total count")
+            // 2) Every branch expands to member entry leaves, the leaf tally matching its (count) badge.
+            Assert.NotEmpty(group.children)
+            let mutable distinct = Set.empty
+            for branch in group.children do
+                match branch.countOpt with
+                | Some bc ->
+                    Assert.True(bc > 0, $"branch %s{branch.label} must carry entries")
+                    Assert.Equal(bc, List.length branch.children)
+                | None -> Assert.Fail($"branch %s{branch.label} must show a count")
+                for leaf in branch.children do
+                    Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
+                    // Each branch-nested leaf is a SELECTABLE entry (its code resolves to a MaterialId).
+                    match MW.entryIdOfNodeCode leaf.code with
+                    | Some id -> distinct <- Set.add id distinct
+                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label} (%s{leaf.code}) must resolve to a material id")
+            // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches
+            //    (a material a multi-valued facet lists under several branches counts once).
+            Assert.Equal(Some (Set.count distinct), group.countOpt)
+
+    [<Fact>]
+    let ``a single-valued facet group totals the whole population and its branch counts sum to it`` () =
+        // Category is single-valued and total (every material carries exactly one), so its group
+        // count is the whole corpus and its branch counts partition it — the operator's "the math
+        // must add up" for a facet.
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        let categoryGroup = state.tree |> List.find (fun n -> n.code = "facet:" + materialCategoryKey.value)
+        Assert.Equal(Some state.resultCount, categoryGroup.countOpt)
+        let branchSum = categoryGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c | None -> 0)
+        Assert.Equal(state.resultCount, branchSum)
+
+    [<Fact>]
+    let ``a branch-nested entry leaf code selects its material, while bare branch and heading codes stay inert`` () =
+        // The branch-nested leaf code `branch:<facet>:<value>:entry:<guid>` resolves to its id (so a
+        // material selected THROUGH a facet branch works), yet the bare branch/heading codes remain
+        // grouping-only — the selection contract after the fix.
+        let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
+        Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode leafCode)
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("facet:" + materialCategoryKey.value))
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("branch:" + materialCategoryKey.value + ":Glass"))
+        let dispatched = ResizeArray<MW.Msg>()
+        let handlers = MW.facetedHandlers dispatched.Add
+        handlers.selectNode leafCode
+        Assert.Equal<MW.Msg list>([ MW.SelectEntry MaterialIds.glass152 ], List.ofSeq dispatched)
+
+    [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
         // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
         // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
