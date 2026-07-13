@@ -1,0 +1,214 @@
+# Spec 0040 — Faceted tree UX, facet totality, chart applicability, and sample geometry / R–T
+
+Four independent Optical Constructor improvements, grounded in the current
+post-0038 tree and reusing existing types throughout. The authoritative source
+is the operator's preliminary spec
+`specs/0038/.manual/011-tree-chart-geometry-spec.md`; the binding operator
+answers it cites (010/Q1–Q3) are carried into the directives below. The
+ordered, testable work is the steps in `.spec-jsonl`; this document is the
+steering narrative only.
+
+## 0. Binding constraints (every part)
+
+0.1 **Reuse, don't invent.** Extend the existing types — never add a parallel
+concept. R/T is the existing `Emission` DU (`Placement.fs:108-138`); the tree
+is the existing `FacetedTreeControls.TreeNode` recursive model
+(`FacetedTreeControls.fs:102-109`) with its `NodeExpansion`
+(`:46-48`); the facet engine is the existing `Facets.buildTree`
+(`Facets.fs:230-254`) and the `LibraryFacets` catalogue
+(`LibraryFacets.fs`); the gyration/μ component vocabularies are the existing
+`MaterialComplexityEditor` seams (`gyrationComponents`
+`MaterialComplexityEditor.fs:436-444`, `MuKind` `:72-74`). This spec adds NO
+new file or module: every change edits an existing one.
+
+0.2 **CLAUDE.md discipline.** Elevate every primitive (single-case DUs with
+`.value`); no naked `bool` (named two-case DUs); no `enum`; explicit concrete
+signatures on public functions; interpolated strings never `sprintf`;
+four-space indent; a space before every annotation colon; camelCase record
+fields; LF endings; **zero warnings from our code** (only `NU1701` /
+`NU1901`–`NU1904` exempt); a green build is non-negotiable. `FacetedTreeControls`
+is DOMAIN-FREE: its node `code`s are opaque host-supplied `string` tokens
+(the elevation boundary is the host), so new control-local fields stay
+`string`-shaped to match the module's own convention (`activeRepresentation`,
+`FacetedTreeControls.fs:124`, `140`) — do NOT elevate inside the control.
+
+0.3 **UI testable without a window.** Behaviour lives in pure Domain functions
+and in the control-local `State` / `Handlers` records (`FacetedTreeControls.fs`),
+unit-tested in `OpticalConstructor.Tests` and structure/interaction-tested in
+`Avalonia.Headless` (`OpticalConstructor.Ui.Tests`, the `ui-smoke` gate).
+New/changed interactive controls carry stable intent-named
+`AutomationProperties.AutomationId` from the one `UiIds` module
+(`OpticalConstructor.Controls/UiIds.fs`); generated list rows never set
+`StyledElement.Name` and are keyed with `View.withKey` (the existing
+`FacetedTreeControls.fs:364` idiom).
+
+0.4 **Scope discipline.** This spec does NOT add caching, retries,
+configuration knobs, versioning, migration code, or backwards-compatibility
+shims. The material corpus is the authored **seed** data only — no library
+STATE is persisted — so every facet-totality property (Part B) is a **seeding**
+property, never a runtime reclassification: no facet MUST evaluate the assembled
+engine ε/μ/ρ tensor to classify a material.
+
+---
+
+## Part A — The faceted tree: sorted, collapsible, collapsed by default, selection-visible
+
+**A.0 Problem.** In both catalogue windows the tree renders every node
+expanded, in non-alphabetical order, with the selected node visually
+indistinct. `FacetedTreeControls.nodeRows` (`FacetedTreeControls.fs:351-368`)
+already switches on `node.expansion`, but every projected node hardcodes
+`ExpandedNode` (`MaterialsWindowView.fs:719-760`;
+`LibraryWindowView.fs:844-898`), `Handlers` (`FacetedTreeControls.fs:149-167`)
+carries `selectNode` but no toggle, every row paints the same `idleBackground`
+(`FacetedTreeControls.fs:355`), and ordering is structural, not alphabetical.
+
+**A.1 Alphabetical at every level (operator, 010/Q1).** Order case-insensitively
+by DISPLAY LABEL at all three levels: the top-level facet groups (overriding the
+representation order — the operator requires the groups themselves
+alphabetised), every branch, and every entry leaf. The branch sort lives in
+`Facets.buildTree`, which today sorts by the structural value
+(`Facets.fs:248`); the facet-group and entry-leaf ordering lives in each host's
+tree assembly (`MaterialsWindowView.fs:719-760`, `LibraryWindowView.fs:844-898`).
+
+**A.2 Collapsible, collapsed by default, persisted (operator).** Render the
+recursive `TreeNode` with a per-node disclosure affordance (a chevron) that
+toggles expand/collapse; a node with children is expandable, a leaf is not.
+Add `Handlers.toggleNode : string -> unit` beside `selectNode`; the chevron
+dispatches `toggleNode`, the row label keeps dispatching `selectNode`. Each
+window holds its expansion state in its Model as an elevated named type wrapping
+the set of expanded node codes (never a naked `Set<string>` on the record
+surface), with a `Msg` + `update` arm, threaded into the projected `TreeNode`
+tree so a re-projection with flipped `expansion` recreates cleanly (rows are
+already keyed by `code`, `FacetedTreeControls.fs:364`). Every top-level node
+projects `CollapsedNode` until the user expands it.
+
+**A.3 Visible selection (operator).** Carry the selected node's `code` into the
+control (a new `State` field, `string`-shaped per §0.2) and paint the selected
+row with the existing `chosenBackground` (`FacetedTreeControls.fs:173`, the
+`clickBox` highlight precedent, `:191-208`) as a distinct tint plus a
+non-hue cue (border weight or a marker), colourblind-safe. Both hosts supply the
+selected node's code.
+
+---
+
+## Part B — Every single-valued material facet sums to the whole population
+
+**B.0 Problem and mechanism.** Under a representation the Anisotropy and
+Transparency facets do not sum to the material population: they read the entry's
+`complexity` value tree (`LibraryFacets.anisotropyOf`
+`LibraryFacets.fs:132-143`, `transparencyOf` `:147-150`) and gate themselves off
+when it is absent (`materialAnisotropyDef` `:217-232`, `materialTransparencyDef`
+`:252-267`), so the three coded presets that carry `complexity = None` —
+Silicon (`MaterialLibrary.fs:376`), Langasite (`:384`), and the Vacuum spacer
+(`:440`) — fall out, and every dispersive material is excluded from Transparency
+outright. **The fix is in the SEEDS, not at runtime.** Every seeded material
+MUST carry its single-valued class as data readable without the engine tensor.
+The chosen mechanism is a seeded `MaterialComplexity` value tree (the existing
+`complexity = Some … ; properties = ….toProperties` seed convention,
+`MaterialLibrary.fs:391-464`), so the same `anisotropyOf` / `transparencyOf`
+read the class directly. The Dispersion facet already reads `properties` and is
+total (`materialDispersion`, `MaterialLibrary.fs:606-609`); it stays as is.
+
+**B.1 Re-seed the three coded presets.** Give Silicon, Langasite, and the
+Vacuum spacer a `complexity = Some` value tree encoding the correct anisotropy —
+Silicon **Isotropic**, Langasite **Uniaxial** (retaining its optical activity),
+Vacuum **Isotropic** + **Transparent** + constant — with `properties`
+re-pointed to `complexity.toProperties` per the seed convention, reproducing
+each preset's physics through the existing dispersion-model ladder exactly as
+the sibling dispersive/anisotropic seeds do (`euvSiliconComplexity`
+`MaterialLibrary.fs:456`, `uniaxialCrystalComplexity` `:424`,
+`activeCrystalComplexity` `:464` are the reuse precedents). Do NOT add a runtime
+classifier that evaluates the engine ε tensor.
+
+**B.2 Make Anisotropy and Transparency total.** Drop the `appliesTo` gates on
+`materialAnisotropyDef` (`LibraryFacets.fs:217-232`) and `materialTransparencyDef`
+(`:252-267`) so every material appears. Anisotropy reads `anisotropyOf` for every
+material (all now carry `complexity`). Transparency reads `transparencyOf` for a
+constant material and yields **Absorbing** for every dispersive material
+(operator, 010/Q2), so the branch counts sum to the population. The multi-valued
+Dispersion-model, Film-material, and Film-thickness facets are genuinely
+multi-valued by design and stay outside this totality rule.
+
+---
+
+## Part C — Material-editor chart applicability
+
+**C.1 Gyration & μ charts draw only the applicable components (operator).**
+`gyrationChart` (`NkDispersionChart.fs:110-130`) emits all six gyration
+components and `muChart` (`:141-162`) all three diagonals plus a gyration
+magnitude, regardless of class. Restrict each chart to the *independent*
+components of the current class, named to match, reusing the editor seams —
+`gyrationComponents` (`MaterialComplexityEditor.fs:436-444`) yields exactly the
+class's admitted components in display order, `gyrationComponentLabel` (`:421-428`)
+names them, and each `GyrationComponent` maps to its (i, j) tensor slot
+(`:88-94`); `MuKind` (`:72-74`) decides whether μ exposes a single scalar
+component or the gyromagnetic diagonal-plus-gyration set. The class is threaded
+from the editor ladder (`m.editor.gyration`, the magnetic `MuKind`) for an
+`EditableMaterial`, and for a VIEW-ONLY entry from its stored `complexity` value
+tree — mirroring `anisotropyOfEntry` (`NkDispersionChart.fs:74-77`); a coded
+preset with no stored tree keeps the current all-components fallback (coincident
+or zero components simply draw flat, exactly as the n/k chart already falls back
+to Biaxial). The call sites are `MaterialEditorView.fs:1028-1046`.
+
+**C.2 Description text box wrap (minor).** The material-editor description
+`TextBox` has a fixed width and clips when the splitter is dragged left. Make it
+wrap and grow multiline (`AcceptsReturn` / `TextWrapping = Wrap`, with a
+`MinWidth` inside the left pane) rather than clip. Lowest priority.
+
+---
+
+## Part D — Sample geometry & R/T support
+
+**D.0 Geometry semantics (operator).** A sample's `SubstrateKind`
+(`ElementId.fs:80-82`) is `ThinFilm | Plate`. A **thin film** is 0+ layers on a
+semi-infinite substrate and supports **reflectance only** (transmittance is
+meaningless; the lower half-space is semi-infinite, `Propagation.sampleToSystem`
+`Propagation.fs:249-256`). A **plate** is 0+ layers on a thick plate substrate,
+which MUST be specified, and supports **reflectance and/or transmittance** with
+the lower medium always vacuum.
+
+**D.1 A Plate requires a substrate.** Extend `validateSample`
+(`ElementId.fs:802-811`, today only blank-name and structurally-empty) to reject
+a `Plate` whose `structure.substrate` is `None` with a typed `InvalidSample`.
+
+**D.2 R/T support reuses `Emission`.** Give `Sample` (`ElementId.fs:178-188`) a
+`supportedEmission : Emission` field reusing the existing DU, geometry-constrained
+(operator, 010/Q3): a **thin film** carries `EmitReflectedOnly` (an invariant —
+whenever the geometry is `ThinFilm`, `supportedEmission` MUST be
+`EmitReflectedOnly`, and the R branch cannot be cleared); a **plate** defaults to
+`EmitBoth` and MAY be constrained to R-only or T-only through the existing smart
+setters `Emission.withReflected` / `withTransmitted` (`Placement.fs:126-138`),
+whose never-neither rule then falls out for free. The seeds set it (every seeded
+sample is `ThinFilm`, so `EmitReflectedOnly`). The sample editor exposes R / T
+checkboxes driven by those setters (Plate only; a thin film shows R fixed on),
+threaded through the editor `Model`, its dirty snapshot (`SampleEditSnapshot`,
+`SampleEditorView.fs:110`), `toSample` (`:369-376`), and `init`.
+
+**D.3 Supported emission bounds the placed element and the experiment.** A
+placed sample's default `Placement.emission` derives from the sample's
+`supportedEmission` rather than the generic `defaultEmission`
+(`Placement.fs:168-171`), and the experiment's `MeasurementMode` defaults from it
+through the existing `MeasurementMode.ofEmission` (`Experiments.fs:106-110`);
+when the sample supports both, the experiment MAY still choose R, T, or both.
+
+**D.4 Substrate "Set…" works for a film-less Plate (operator).** The substrate
+"Set from chosen" button is enabled only by `hasChosenMaterial`
+(`SampleEditorView.fs:961`, `:921-922`), and a chosen material only arises from
+picking one for an existing film-layer row — so a `Plate` with no films cannot
+set its substrate. Give the substrate "Set…" its own material pick that opens the
+Materials window in Select state targeted at the substrate slot, reusing the
+per-layer flow: add a `SampleSubstrateTarget` case to `SelectionTarget`
+(`WindowMode.fs:31-33`) beside `SampleLayerTarget`, model the substrate "Set…"
+on `chooseMaterialForLayer` (`SampleEditorView.fs:700-720`), and route the
+targeted return to `SampleStackMsg.SetSubstrate` (`SampleStackEditor.fs:95`,
+`:367`). The lower half-space stays vacuum.
+
+---
+
+## References
+
+- Operator preliminary spec:
+  `specs/0038/.manual/011-tree-chart-geometry-spec.md` (binding answers
+  010/Q1–Q3).
+- Spec 0027 (`specs/0027/.manual/024-materials-and-experiments-spec.md`) — the
+  `Emission` / `MeasurementMode` R/T model reused in Part D.
