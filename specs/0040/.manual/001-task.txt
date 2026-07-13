@@ -1,0 +1,8 @@
+Here are the comments:
+The tree is broken. Only one top level tree has selectable nodes (leaves) – Library and Materials. Others, e.g. Anisotropy: do not 
+show the total count (but they MUST), internal branches are NOT expandable, e.g. Biaxial (3) is not expandable to show what these 
+3 elements (leaves) are but they MUST be expandable. I’d call this gaps. Find the source of the gaps: preliminary 
+spec (tag: `gap-pre-spec`) / spec (tag: `gap-spec`) / implementation (tag: `gap-impl`) / other (tag: `gap-other`), then fix 
+the issues, write implementation and gap analysis log into C:\GitHub\Berreman\specs\0040\.manual\002-<description>.md. 
+Start from UI-less tests, which would’ve caught the issues.
+Make no other changes.
