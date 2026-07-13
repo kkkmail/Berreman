@@ -105,6 +105,7 @@ module LibraryProxyTests =
                         }
                     substrate = Plate
                     description = "a glass plate"
+                    supportedEmission = defaultSupportedEmission Plate
                 }
         Assert.Equal<CatalogueKind list>([ LinearPolarizer ], lp.forKinds)
         Assert.Equal<CatalogueKind list>([ CircularPolarizer ], cpL.forKinds)
@@ -183,6 +184,7 @@ module LibraryProxyTests =
                     }
                 substrate = Plate
                 description = "A minted-id glass plate."
+                supportedEmission = defaultSupportedEmission Plate
             }
         let entries = [ SampleItem sample ]
         let stub : LibraryProxy =

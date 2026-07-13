@@ -1,0 +1,34 @@
+{
+  "spec_id": "0040",
+  "ticket": null,
+  "created": "2026-07-13T00:09:13Z",
+  "status": "handed-off",
+  "gates": [
+    "build",
+    "unit-tests",
+    "constructor-unit-tests",
+    "ui-smoke",
+    "ui-tests"
+  ],
+  "agent_files": {
+    "spec_author": "default",
+    "claim_checker": "default",
+    "gate_keeper": "default",
+    "handoff_verifier": "default",
+    "merge_contract_worker": "default",
+    "rename_contract_worker": "default",
+    "retire_contract_worker": "default",
+    "add_contract_worker": "default",
+    "modify_contract_worker": "default",
+    "add_component_worker": "default",
+    "implement_contract_worker": "default",
+    "implement_worker": "default",
+    "wire_worker": "default",
+    "wire_ui_worker": "default",
+    "code_judge": "default",
+    "resolver": "default",
+    "postmortem": "default",
+    "arc-runner": ".user-md/Berreman/arc-runner.user-md"
+  },
+  "description": "Improve the tree and fix some UI issues"
+}

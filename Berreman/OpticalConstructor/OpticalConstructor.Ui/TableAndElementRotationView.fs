@@ -889,18 +889,37 @@ let private cancelActiveSelect (m : Model) : Model =
         { m with activeSelect = None }
     | None -> m
 
+/// Spec 0040 Part D.3: a placed sample's emission is bounded by the SAMPLE it is bound to, not the
+/// generic per-kind `defaultEmission` — a bound `ThinFilm` sample reflects only, a bound `Plate`
+/// emits both (or the R/T-only it was constrained to). Resolve the placement's `valueId` through the
+/// Library proxy and, when it binds a sample entry, seed the emission from that sample's
+/// geometry-constrained `supportedEmission` (`Library.placementEmissionForEntry`); a placement bound
+/// to a non-sample entry, an unknown id, or nothing keeps the emission its kind already gave it. This
+/// is the single seed point both `valueId` writes (the pre-bound add and the targeted bind) route
+/// through, so the experiment's default `MeasurementMode` (which reads `placement.emission`) follows.
+let private withBoundSampleEmission (m : Model) (p : ElementPlacement) : ElementPlacement =
+    match p.valueId with
+    | Some id ->
+        match m.library.tryGetEntry id with
+        | Ok (Some entry) -> { p with emission = Library.placementEmissionForEntry p.emission entry }
+        | Ok None | Error _ -> p
+    | None -> p
+
 /// Append a catalogue element to the scene and select it. New elements are spread along the beam so
 /// they do not land exactly on top of one another; the user then rotates / configures the selection.
 /// Selecting the new element IS a table-selection change, so an open Select session cancels (016).
 /// Spec 0038 (018): the new element lands PRE-BOUND to `prebind` (the kind's seeded default, or
-/// the palette button's explicit entry) — `None` keeps it unbound (the sample's inverse hook).
+/// the palette button's explicit entry) — `None` keeps it unbound (the sample's inverse hook). Spec
+/// 0040 (012): a pre-bound sample seeds its emission from that sample (`withBoundSampleEmission`).
 let private addElement (kind : CatalogueKind) (prebind : string option) (m : Model) : Model =
     let middleCount =
         m.elements
         |> List.filter (fun e -> e.placement.catalogueKind <> LightSource && e.placement.catalogueKind <> Detector)
         |> List.length
     let x = -0.3 + 0.2 * float middleCount
-    let placement = { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
+    let placement =
+        { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
+        |> withBoundSampleEmission m
     let e = { id = freshId (); placement = placement; zoom = defaultElementZoom }
     let elements' = m.elements @ [ e ]
     { cancelActiveSelect m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
@@ -1116,7 +1135,10 @@ let rec update (msg : Msg) (model : Model) : Model =
         let m = cancelActiveSelect model
         match m.elements |> List.tryFindIndex (fun e -> e.id = elementId) with
         | Some i ->
-            mapElement i (fun e -> { e with placement = { e.placement with valueId = Some entryId } })
+            // Spec 0040 Part D.3: a bound sample seeds the placed element's emission from its
+            // geometry-constrained `supportedEmission` (a ThinFilm ⇒ reflected-only); a non-sample
+            // bind keeps the kind default (`withBoundSampleEmission`).
+            mapElement i (fun e -> { e with placement = withBoundSampleEmission m { e.placement with valueId = Some entryId } })
                 { m with pendingEntry = None; selectStatus = None }
         | None ->
             { m with selectStatus = Some "The chosen entry was not bound — its target element is no longer on the table." }

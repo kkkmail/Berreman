@@ -123,6 +123,7 @@ module PropagationTests =
                 }
             substrate = Library.Plate
             description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
+            supportedEmission = Library.defaultSupportedEmission Library.Plate
         }
 
     /// The versioned material store over the standard built-ins (spec 0038 step 022): the sample
@@ -455,10 +456,18 @@ module PropagationTests =
             let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
             plate (OpticalProperties.planarCrystal e11 e33 (RhoValue 1.5e-6)) Thickness.oneCentiMeter
         elif s.id = SeedSamples.langasiteSilicon.id then
+            // Spec 0040 step 004 re-seeds silicon/langasite through the value-tree ladder.
+            // Silicon's ε is reproduced bit-for-bit, so the lower half-space is still pinned
+            // to the engine preset. Langasite's dispersive gyration ρ has NO value-tree closure
+            // escape, so its ρ is a representative constant; the langasite film is therefore
+            // pinned to the re-seeded material entry's own properties (a consistency check that
+            // `sampleToSystem` resolves the material tensors correctly), not the engine preset.
+            let langasiteProps =
+                (MaterialLibrary.builtInEntries |> List.find (fun e -> e.id = MaterialLibrary.MaterialIds.langasite)).properties.getProperties w
             {
                 description = None
                 upper = OpticalProperties.vacuum
-                films = [ { properties = langasiteOpticalProperties.getProperties w; thickness = Thickness.mm 0.01<mm> } ]
+                films = [ { properties = langasiteProps; thickness = Thickness.mm 0.01<mm> } ]
                 substrate = None
                 lower = siliconOpticalProperties.getProperties w
             }
@@ -489,6 +498,7 @@ module PropagationTests =
                 }
             substrate = Library.ThinFilm
             description = "Uniaxial crystal thin film at the given crystal orientation."
+            supportedEmission = Library.defaultSupportedEmission Library.ThinFilm
         }
 
     /// A uniaxial-crystal PLATE sample (the substrate is a `SampleLayer` too, so it carries an
@@ -505,6 +515,7 @@ module PropagationTests =
                 }
             substrate = Library.Plate
             description = "Uniaxial crystal plate at the given crystal orientation."
+            supportedEmission = Library.defaultSupportedEmission Library.Plate
         }
 
     [<Fact>]

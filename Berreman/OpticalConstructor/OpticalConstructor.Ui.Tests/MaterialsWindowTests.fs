@@ -4,6 +4,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Input
+open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI.Hosts
@@ -75,6 +76,16 @@ module MaterialsWindowTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    /// Expand the tree node with this code by clicking its disclosure chevron (spec 0040 step 002).
+    /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
+    /// only after this — and the expansion PERSISTS across the window's later re-renders.
+    let private expandNode (window : Window) (code : string) : unit =
+        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+
+    /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
+    /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
+    let private expandEntries (window : Window) : unit = expandNode window "entries"
+
     /// The display text under the control carrying `id` (the control itself when it is a
     /// TextBlock, its first TextBlock descendant otherwise).
     let private textOf (window : Window) (id : string) : string =
@@ -121,6 +132,23 @@ module MaterialsWindowTests =
             | Some text -> text
             | None -> failwith $"%s{id} carries no text label"
         | None -> failwith $"%s{id} was not found in the visual tree"
+
+    /// The clickable label Border of the tree row carrying `id` (the row's `treeNode` id — the
+    /// chevron carries a DISTINCT id, so this is unambiguously the label box).
+    let private labelBorderOf (window : Window) (id : string) : Border =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        | Some b -> b
+        | None -> failwith $"%s{id} label border was not found"
+
+    /// A Border's solid fill colour (None when it carries a non-solid brush).
+    let private backgroundColorOf (b : Border) : Color option =
+        match b.Background with
+        | :? SolidColorBrush as s -> Some s.Color
+        | _ -> None
+
+    // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
+    let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
+    let private chosenFill = Color.FromRgb(150uy, 185uy, 235uy)
 
     /// The number of generated tree node rows (any control whose AutomationId carries the
     /// FacetTreeNode_ prefix) — gated mode must render ZERO.
@@ -451,20 +479,169 @@ module MaterialsWindowTests =
         | other -> Assert.Fail($"expected a selectable but non-editable preset, got %A{other}")
 
     [<Fact>]
-    let ``choosing a representation reshapes the tree facet order but never the constraints or the corpus`` () =
+    let ``the tree reads alphabetically regardless of representation, while the picker still reshapes the offers`` () =
+        // The faceted TREE is now sorted case-insensitively by display label at every level
+        // (operator 010/Q1), OVERRIDING representation order — so choosing a representation no
+        // longer reshapes the tree. The picker's effect survives in the OFFERS, which still
+        // follow the chosen facet order.
         let _, m = freshModel ()
-        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
-        let firstFacetCode (model : MW.Model) : string =
-            ((MW.facetedState model).tree |> List.item 1).code
-        Assert.Equal("facet:" + materialCategoryKey.value, firstFacetCode constrained)
-        let reshaped = MW.update (MW.ChooseRepresentation "by-physics") constrained
+        let caseInsensitive (a : string) (b : string) : int =
+            System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
+        let treeFacetLabels (model : MW.Model) : string list =
+            (MW.facetedState model).tree |> List.tail |> List.map (fun n -> n.label)
+        let firstOfferCode (model : MW.Model) : string =
+            (MW.facetedState model).offers |> List.head |> fun g -> g.code
+        // The tree's facet groups read alphabetically — NOT in the category-first representation
+        // order (Category would otherwise lead, not Anisotropy).
+        let byCategoryTree = treeFacetLabels m
+        Assert.Equal<string list>(List.sortWith caseInsensitive byCategoryTree, byCategoryTree)
+        Assert.Equal(materialCategoryKey.value, firstOfferCode m)
+        // The physics reshuffle reorders the OFFERS (Anisotropy now leads) but leaves the tree
+        // alphabetical and identical.
+        let reshaped = MW.update (MW.ChooseRepresentation "by-physics") m
         Assert.Equal("by-physics", (MW.facetedState reshaped).activeRepresentation)
-        Assert.Equal("facet:" + materialAnisotropyKey.value, firstFacetCode reshaped)
-        // Search order ≠ representation order: the applied chip and the result set are untouched.
-        Assert.Equal(1, List.length (MW.facetedState reshaped).breadcrumbs)
-        Assert.Equal(4, (MW.facetedState reshaped).resultCount)
+        Assert.Equal(materialAnisotropyKey.value, firstOfferCode reshaped)
+        Assert.Equal<string list>(byCategoryTree, treeFacetLabels reshaped)
+        // Search order ≠ representation order: applying a constraint after the reshuffle keeps its
+        // chip and count regardless of the active representation.
+        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) reshaped
+        Assert.Equal(1, List.length (MW.facetedState constrained).breadcrumbs)
+        Assert.Equal(4, (MW.facetedState constrained).resultCount)
         // An unknown code is inert.
-        Assert.Equal<MW.Model>(reshaped, MW.update (MW.ChooseRepresentation "no-such") reshaped)
+        Assert.Equal<MW.Model>(constrained, MW.update (MW.ChooseRepresentation "no-such") constrained)
+
+    [<Fact>]
+    let ``the projected tree lists entry leaves and facet branches in case-insensitive alphabetical label order`` () =
+        // Both the entry leaves (corpus order overridden) and every facet's branches read
+        // alphabetically by label (operator 010/Q1) — the window-projection half of the acceptance.
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        let caseInsensitive (a : string) (b : string) : int =
+            System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
+        let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
+        // Level 1 — the entry leaves under the entries group (the seeded corpus is NOT alphabetical).
+        let entries = List.head state.tree
+        let leafLabels = entries.children |> List.map (fun n -> n.label)
+        Assert.Equal(12, List.length leafLabels)
+        Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
+        // Level 2/3 — every facet group's branches (each material facet is discrete, so its
+        // branches come straight from the engine's now-alphabetical buildTree).
+        for group in state.tree |> List.tail do
+            let branchLabels = group.children |> List.map (fun n -> n.label)
+            Assert.True(isSorted branchLabels, $"branches of %s{group.label} must be alphabetical: %A{branchLabels}")
+
+    [<Fact>]
+    let ``every facet group shows its total count and each branch expands to its member entry leaves`` () =
+        // The operator gap (.manual/001-task): a facet group (e.g. Anisotropy) MUST show a total
+        // count, and a branch (e.g. "Biaxial (3)") MUST expand to the 3 entries it contains — today
+        // groups carried no count and branches were childless. Pure projection proof; a UI-less
+        // assertion on `facetedState` would have caught both before the window ever rendered.
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        let facetGroups = state.tree |> List.tail   // head is the "entries" corpus group
+        Assert.NotEmpty(facetGroups)
+        for group in facetGroups do
+            // 1) The group carries a positive total (never a bare, countless heading).
+            match group.countOpt with
+            | Some c -> Assert.True(c > 0, $"facet group %s{group.label} must show a positive total, got %d{c}")
+            | None -> Assert.Fail($"facet group %s{group.label} must show a total count")
+            // 2) Every branch expands to member entry leaves, the leaf tally matching its (count) badge.
+            Assert.NotEmpty(group.children)
+            let mutable distinct = Set.empty
+            for branch in group.children do
+                match branch.countOpt with
+                | Some bc ->
+                    Assert.True(bc > 0, $"branch %s{branch.label} must carry entries")
+                    Assert.Equal(bc, List.length branch.children)
+                | None -> Assert.Fail($"branch %s{branch.label} must show a count")
+                for leaf in branch.children do
+                    Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
+                    // Each branch-nested leaf is a SELECTABLE entry (its code resolves to a MaterialId).
+                    match MW.entryIdOfNodeCode leaf.code with
+                    | Some id -> distinct <- Set.add id distinct
+                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label} (%s{leaf.code}) must resolve to a material id")
+            // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches
+            //    (a material a multi-valued facet lists under several branches counts once).
+            Assert.Equal(Some (Set.count distinct), group.countOpt)
+
+    [<Fact>]
+    let ``a single-valued facet group totals the whole population and its branch counts sum to it`` () =
+        // Category is single-valued and total (every material carries exactly one), so its group
+        // count is the whole corpus and its branch counts partition it — the operator's "the math
+        // must add up" for a facet.
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        let categoryGroup = state.tree |> List.find (fun n -> n.code = "facet:" + materialCategoryKey.value)
+        Assert.Equal(Some state.resultCount, categoryGroup.countOpt)
+        let branchSum = categoryGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c | None -> 0)
+        Assert.Equal(state.resultCount, branchSum)
+
+    [<Fact>]
+    let ``a branch-nested entry leaf code selects its material, while bare branch and heading codes stay inert`` () =
+        // The branch-nested leaf code `branch:<facet>:<value>:entry:<guid>` resolves to its id (so a
+        // material selected THROUGH a facet branch works), yet the bare branch/heading codes remain
+        // grouping-only — the selection contract after the fix. The handler carries the EXACT clicked
+        // code (a `SelectEntryNode`), so the highlight can land on that node rather than the corpus copy.
+        let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
+        Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode leafCode)
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("facet:" + materialCategoryKey.value))
+        Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("branch:" + materialCategoryKey.value + ":Glass"))
+        let dispatched = ResizeArray<MW.Msg>()
+        let handlers = MW.facetedHandlers dispatched.Add
+        handlers.selectNode leafCode
+        Assert.Equal<MW.Msg list>([ MW.SelectEntryNode (MaterialIds.glass152, leafCode) ], List.ofSeq dispatched)
+
+    [<Fact>]
+    let ``selecting a material THROUGH a facet branch highlights that branch row, not the corpus-group copy`` () =
+        // The operator gap (.manual/002-followup): clicking an entry under a facet branch used to
+        // highlight the matching row in the "Materials" corpus group instead of the clicked branch
+        // row. The projected `selectedCode` must now be the EXACT clicked node code.
+        let _, m = freshModel ()
+        let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
+        let selected = MW.update (MW.SelectEntryNode (MaterialIds.glass152, leafCode)) m
+        let state = MW.facetedState selected
+        // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<guid>` code.
+        Assert.Equal(leafCode, state.selectedCode)
+        Assert.NotEqual<string>(MW.entryNodeCode MaterialIds.glass152, state.selectedCode)
+        // The domain selection still resolves (the view panel / verbs target the material).
+        Assert.Equal(Some MaterialIds.glass152, selected.selectedId)
+        // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
+        let viaId = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState viaId).selectedCode)
+
+    [<Fact>]
+    let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
+        // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
+        // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
+        let _, m = freshModel ()
+        let entriesOf (model : MW.Model) : FacetedTreeControls.TreeNode = List.head (MW.facetedState model).tree
+        // First open: EVERY top-level node (the entries group and every facet group) is CollapsedNode.
+        let opened = MW.facetedState m
+        for node in opened.tree do
+            Assert.Equal(FacetedTreeControls.CollapsedNode, node.expansion)
+        // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
+        Assert.Equal(12, List.length (entriesOf m).children)
+        // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
+        let expanded = MW.update (MW.ToggleNode "entries") m
+        Assert.True(expanded.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
+        Assert.Equal(12, List.length (entriesOf expanded).children)
+        // A second toggle collapses it again (persisted, so it survives an unrelated re-projection).
+        let collapsed = MW.update (MW.ToggleNode "entries") expanded
+        Assert.False(collapsed.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
+
+    [<Fact>]
+    let ``facetedState projects the selected entry's node code — empty when nothing is selected`` () =
+        // Spec 0040 step 003: the control highlights the row whose code is `selectedCode`; the host
+        // projects it from the Model's already-tracked selection (nothing selected → empty string).
+        let _, m = freshModel ()
+        Assert.Equal("", (MW.facetedState m).selectedCode)
+        let selected = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState selected).selectedCode)
+        // A re-selection re-targets the highlight in the same projection.
+        let retargeted = MW.update (MW.SelectEntry MaterialIds.glass200) selected
+        Assert.Equal(MW.entryNodeCode MaterialIds.glass200, (MW.facetedState retargeted).selectedCode)
 
     [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
@@ -493,7 +670,11 @@ module MaterialsWindowTests =
         handlers.selectNode (MW.entryNodeCode MaterialIds.glass152)
         handlers.selectNode "branch:material-category:Crystal"
         handlers.selectNode "entries"
-        Assert.Equal<MW.Msg list>([ MW.SelectEntry MaterialIds.glass152 ], List.ofSeq dispatched)
+        // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
+        // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
+        Assert.Equal<MW.Msg list>(
+            [ MW.SelectEntryNode (MaterialIds.glass152, MW.entryNodeCode MaterialIds.glass152) ],
+            List.ofSeq dispatched)
         // The offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint materialCategoryKey.value "Crystal"
         Assert.Equal(MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"), dispatched.[1])
@@ -516,6 +697,9 @@ module MaterialsWindowTests =
         let window = MaterialsWindow(materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
+        // clicking proofs below find their rows (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     [<Fact>]
@@ -724,7 +908,59 @@ module MaterialsWindowTests =
             Assert.Equal("12 results", textOf window UiIds.FacetedTree.resultCount)
             clickOn window UiIds.FacetedTree.showTreeButton
             Assert.True(treeRowCount window > 0, "the explicit build must materialize the tree")
+            // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
+            // the leaves.
+            expandEntries window
             Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (002): the tree opens collapsed and the entries chevron toggles its leaves in the same render pass`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let _, context = stubContext materials categories
+            // Mount the REAL MVU loop directly (NOT the auto-expanding helper) so the first render
+            // is the collapsed default.
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple (fun () -> MW.init context Browse) MW.update MW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // First open: the entries group renders a collapsed row WITH a chevron, but its leaves
+            // do NOT render.
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNode "entries"), "the entries group row must render")
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "entries"), "the entries group must carry a disclosure chevron")
+            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a collapsed tree must hide its entry leaves on first open")
+            // Clicking the chevron expands the group — the leaves render in the same pass.
+            expandEntries window
+            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152), "the chevron click must reveal the entry leaves")
+            // A second click collapses it again.
+            expandEntries window
+            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a second chevron click must collapse the group")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (003): selecting an entry leaf highlights exactly that row with the chosen fill and a thicker border`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let window = mountMaterialsWindow materials categories
+            // Narrow to the glass presets so both leaves render near the top and stay clickable.
+            commitFilter window "glass"
+            // Before any selection every leaf is idle (no row carries the chosen fill).
+            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window (MW.entryNode MaterialIds.glass152)))
+            clickOn window (MW.entryNode MaterialIds.glass152)
+            let selected = labelBorderOf window (MW.entryNode MaterialIds.glass152)
+            let sibling = labelBorderOf window (MW.entryNode MaterialIds.glass200)
+            // Exactly the selected row reads the chosen fill; the sibling stays idle.
+            Assert.Equal(Some chosenFill, backgroundColorOf selected)
+            Assert.Equal(Some idleFill, backgroundColorOf sibling)
+            // …and the selected row carries the non-hue cue: a border strictly thicker than an idle
+            // row's (a colourblind-safe cue that does not rely on colour alone).
+            Assert.True(selected.BorderThickness.Top > sibling.BorderThickness.Top,
+                        "the selected row's border must be thicker than an idle row's")
             window.Close())
 
     // ============================ step 016 — Select mode (pure) ============================
@@ -803,6 +1039,9 @@ module MaterialsWindowTests =
         let window = MaterialsWindow(materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
+        // their leaves (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     /// Mount the REAL Sample-editor MVU loop headless WITH a captured dispatch, so a Materials
@@ -1170,6 +1409,8 @@ module MaterialsWindowTests =
             |> Program.run
             window.Show()
             Dispatcher.UIThread.RunJobs()
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
+            expandEntries window
             clickOn window (MW.entryNode id)
             // The version list renders both versions; the latest view carries NO view-only note.
             Assert.True(isPresent window UiIds.MaterialsWindow.versionsPanel, "the view panel must list the entry's versions")

@@ -223,6 +223,16 @@
              the three editors, and the SolverHandoff — all over ONE app scope — without throwing. Last
              in the list (it consumes the App composition root + every Ui window). -->
         <Compile Include="WireUiFinalCompositionTests.fs" />
+        <!-- Spec 0040 Part E (step 013, WIRE_UI): the CLOSING composition acceptance for arc 0040 —
+             the headless wiring assertion that drives the WHOLE changed surface over ONE app scope
+             composed like `Startup.context`: the Materials + Library windows open from the REAL
+             App-root ribbon strip and render the collapsed tree with a visible selection (steps
+             002/003); the Material editor composes with a wrapping description + restricted
+             gyration/μ tabs (steps 006/007); a Plate Sample editor renders the R/T emission
+             checkboxes and sets its substrate through the Materials Select window (steps 010/011),
+             and a ThinFilm editor pins R on with no T control — all without throwing. Last in the
+             list (it consumes the App composition root + every changed Ui window). -->
+        <Compile Include="WireUi0040CompositionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

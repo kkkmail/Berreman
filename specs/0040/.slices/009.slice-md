@@ -1,0 +1,11 @@
+# Step 009 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [8]
+```
+
+**How to implement.** Give `Sample` a geometry-constrained supported-emission (operator 010/Q3, Part D.2). Add `supportedEmission : Emission` to the `Sample` record (`ElementId.fs:178-188`) reusing the existing DU (`Placement.fs:108-138`). Enforce the invariant that a `ThinFilm` sample's `supportedEmission` is always `EmitReflectedOnly` and a `Plate` defaults to `EmitBoth` - express it as one pure helper (e.g. `defaultSupportedEmission : SubstrateKind -> Emission` plus a `constrainEmission : SubstrateKind -> Emission -> Emission` that forces `EmitReflectedOnly` under `ThinFilm`), so a thin film can never clear its R branch. Set the field on every seeded sample (all `ThinFilm`, so `EmitReflectedOnly`) at `ElementId.fs:539` and the sibling seeds (`:557`,`:583`,`:608`,`:617`,`:626`,`:649`). Update every `Sample` constructor and consumer mechanically to compile. Unit tests in `OpticalConstructor.Tests` cover the ThinFilm-forced invariant, the Plate default, and that clearing a Plate's R via `Emission.withReflected false` leaves T on.
+
+**Acceptance.** After the field is added, a `ThinFilm` sample's `supportedEmission` MUST be `EmitReflectedOnly` and unclearable, a `Plate` MUST default to `EmitBoth` and be constrainable to R-only or T-only through the existing setters, and every seed builds - unit-verified.

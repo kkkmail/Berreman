@@ -227,6 +227,8 @@ module EmbeddedChartTests =
         window.Show()
         Dispatcher.UIThread.RunJobs()
         commitFilter window search
+        // The tree opens collapsed (spec 0040 step 002) — expand the entries group to reach the leaf.
+        clickOn window (UiIds.FacetedTree.treeNodeChevron "entries")
         clickOn window (MW.entryNode entryId)
         Assert.True(isPresent window UiIds.MaterialsWindow.viewPanelChart, $"%s{label}: the view panel must embed the n/k chart host")
         match avaUnder window UiIds.MaterialsWindow.viewPanelChart with

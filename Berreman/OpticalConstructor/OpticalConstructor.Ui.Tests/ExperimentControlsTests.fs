@@ -35,6 +35,12 @@ module ExperimentControlsTests =
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
     let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
 
+    /// A seeded ThinFilm sample (`supportedEmission = EmitReflectedOnly`) and a seeded Plate sample
+    /// supporting BOTH branches (`supportedEmission = EmitBoth`) — the two geometries spec 0040 D.3
+    /// bounds a placed sample's emission by.
+    let private glassFilm600Id : string = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId
+    let private glassPlate1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : Model) : string = (elem i m).id.value
 
@@ -107,6 +113,21 @@ module ExperimentControlsTests =
         let mid = idOf 2 m
         let m1 = m |> update (ExpChooseElement mid)
         Assert.Equal(Experiments.CaptureReflected, m1.experimentCollection.draft.measurement)
+
+    [<Fact>]
+    let ``acceptance (012): a placed sample's emission and experiment default derive from its supportedEmission`` () =
+        // Spec 0040 Part D.3: a placed sample is bounded by the SAMPLE it is bound to, not the generic
+        // defaultEmission (EmitBoth for every non-mirror). A ThinFilm reflects only ⇒ CaptureReflected;
+        // a Plate supporting both ⇒ EmitBoth ⇒ CaptureBoth.
+        let film = initMain () |> update (AddElement Sample) |> bind 2 glassFilm600Id
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 film).placement.emission)
+        let filmChosen = film |> update (ExpChooseElement (idOf 2 film))
+        Assert.Equal(Experiments.CaptureReflected, filmChosen.experimentCollection.draft.measurement)
+
+        let plate = initMain () |> update (AddElement Sample) |> bind 2 glassPlate1mmId
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 plate).placement.emission)
+        let plateChosen = plate |> update (ExpChooseElement (idOf 2 plate))
+        Assert.Equal(Experiments.CaptureBoth, plateChosen.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``the measurement and range round-trip through the model`` () =

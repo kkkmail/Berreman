@@ -1,0 +1,11 @@
+# Step 010 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [9]
+```
+
+**How to implement.** Expose sample R/T in the editor (Part D.2). In `OpticalConstructor.Ui/SampleEditorView.fs` add `supportedEmission` to the editor `Model` (`:120-146`), initialise it in `init` (`:333-366`) from the edited sample (or `defaultSupportedEmission` of the geometry for a new sample), carry it into `toSample` (`:369-376`), and include it in the dirty snapshot `SampleEditSnapshot` (`:110`) and `currentEdit` (`:314-315`) so an emission change marks the editor dirty. Render R and T checkboxes driven by `Emission.withReflected` / `withTransmitted` (`Placement.fs:126-138`) with a `Msg` + `update` arm, shown only for a `Plate`; a `ThinFilm` shows R fixed-on and disabled (the invariant from step 9). Give the checkboxes stable `UiIds.SampleEditor` AutomationIds. Headless tests in `OpticalConstructor.Ui.Tests`: a Plate editor toggles T off leaving R on and marks dirty; clearing both is impossible; a ThinFilm editor shows R fixed and no T control.
+
+**Acceptance.** After the change, a Plate sample editor MUST let the user constrain emission to R-only or T-only via the checkboxes (never neither, marking the editor dirty) while a ThinFilm editor MUST show R fixed on - headless-verified.

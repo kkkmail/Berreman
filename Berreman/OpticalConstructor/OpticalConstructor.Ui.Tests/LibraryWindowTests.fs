@@ -4,6 +4,7 @@ open Avalonia
 open Avalonia.Controls
 open Avalonia.Headless
 open Avalonia.Input
+open Avalonia.Media
 open Avalonia.Threading
 open Avalonia.VisualTree
 open Avalonia.FuncUI.Hosts
@@ -81,6 +82,16 @@ module LibraryWindowTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    /// Expand the tree node with this code by clicking its disclosure chevron (spec 0040 step 002).
+    /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
+    /// only after this — and the expansion PERSISTS across the window's later re-renders.
+    let private expandNode (window : Window) (code : string) : unit =
+        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+
+    /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
+    /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
+    let private expandEntries (window : Window) : unit = expandNode window "entries"
+
     /// The display text under the control carrying `id` (the control itself when it is a
     /// TextBlock, its first TextBlock descendant otherwise).
     let private textOf (window : Window) (id : string) : string =
@@ -117,6 +128,23 @@ module LibraryWindowTests =
             Dispatcher.UIThread.RunJobs()
         | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail("the filter box was not found")
+
+    /// The clickable label Border of the tree row carrying `id` (the row's `treeNode` id — the
+    /// chevron carries a DISTINCT id, so this is unambiguously the label box).
+    let private labelBorderOf (window : Window) (id : string) : Border =
+        match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId id b -> Some b | _ -> None) with
+        | Some b -> b
+        | None -> failwith $"%s{id} label border was not found"
+
+    /// A Border's solid fill colour (None when it carries a non-solid brush).
+    let private backgroundColorOf (b : Border) : Color option =
+        match b.Background with
+        | :? SolidColorBrush as s -> Some s.Color
+        | _ -> None
+
+    // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
+    let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
+    let private chosenFill = Color.FromRgb(150uy, 185uy, 235uy)
 
     /// Fresh, isolated in-memory stores per test — the SAME composition the App performs (the
     /// samples store first, then materials whose remove-block consults the LIVE samples).
@@ -249,6 +277,138 @@ module LibraryWindowTests =
         Assert.Equal<(string * int) list>(
             [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", 1 ],
             kindOffer.values |> List.map (fun v -> v.code, v.previewCount))
+
+    [<Fact>]
+    let ``the projected tree lists entry leaves and facet groups in case-insensitive alphabetical label order`` () =
+        // The window-projection half of the acceptance (operator 010/Q1): both the entry leaves
+        // (corpus order overridden) and the top-level facet groups (representation order
+        // overridden — "By kind" leads with Kind, not the alphabetical head) read alphabetically
+        // by label. The numeric film-thickness BUCKETS keep their range order and are not asserted.
+        let _, m = freshModel ()
+        let state = LW.facetedState m
+        let caseInsensitive (a : string) (b : string) : int =
+            System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
+        let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
+        // Level 1a — the entry leaves (17 seeded entries, NOT in alphabetical corpus order).
+        let entries = List.head state.tree
+        let leafLabels = entries.children |> List.map (fun n -> n.label)
+        Assert.Equal(17, List.length leafLabels)
+        Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
+        // Level 1b — the top-level facet groups (Kind no longer leads by representation order).
+        let facetLabels = state.tree |> List.tail |> List.map (fun n -> n.label)
+        Assert.True(List.length facetLabels > 1, "the by-kind tree offers several facet groups")
+        Assert.True(isSorted facetLabels, $"facet groups must be alphabetical: %A{facetLabels}")
+
+    [<Fact>]
+    let ``every facet group shows its total count and each branch expands to its member entry leaves`` () =
+        // The operator gap (.manual/001-task): facet groups MUST show a total and branches MUST
+        // expand to the entries they contain — including the numeric film-thickness buckets and the
+        // multi-valued film-material facet. Pure projection proof; a UI-less assertion on
+        // `facetedState` would have caught both before the window ever rendered.
+        let _, m = freshModel ()
+        let state = LW.facetedState m
+        let facetGroups = state.tree |> List.tail   // head is the "entries" corpus group
+        Assert.NotEmpty(facetGroups)
+        for group in facetGroups do
+            // 1) The group carries a positive total (never a bare, countless heading).
+            match group.countOpt with
+            | Some c -> Assert.True(c > 0, $"facet group %s{group.label} must show a positive total, got %d{c}")
+            | None -> Assert.Fail($"facet group %s{group.label} must show a total count")
+            // 2) Every branch expands to member entry leaves, the leaf tally matching its (count) badge.
+            Assert.NotEmpty(group.children)
+            let mutable distinct = Set.empty
+            for branch in group.children do
+                match branch.countOpt with
+                | Some bc ->
+                    Assert.True(bc > 0, $"branch %s{branch.label} must carry entries")
+                    Assert.Equal(bc, List.length branch.children)
+                | None -> Assert.Fail($"branch %s{branch.label} must show a count")
+                for leaf in branch.children do
+                    Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
+                    // Each branch-nested leaf is a SELECTABLE entry (its code resolves to an entryId).
+                    match LW.entryIdOfNodeCode leaf.code with
+                    | Some entryId -> distinct <- Set.add entryId distinct
+                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label} (%s{leaf.code}) must resolve to an entry id")
+            // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches.
+            Assert.Equal(Some (Set.count distinct), group.countOpt)
+
+    [<Fact>]
+    let ``the single-valued Kind facet totals the whole population and its branch counts sum to it`` () =
+        // Entry-kind is single-valued and total (every entry is exactly one of Sample / Source /
+        // Detector / Polarizer), so its group count is the whole corpus and the branch counts
+        // partition it — the operator's "the math must add up" for a facet.
+        let _, m = freshModel ()
+        let state = LW.facetedState m
+        let kindGroup = state.tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+        Assert.Equal(Some state.resultCount, kindGroup.countOpt)
+        let branchSum = kindGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c | None -> 0)
+        Assert.Equal(state.resultCount, branchSum)
+
+    [<Fact>]
+    let ``a branch-nested entry leaf code selects its entry, while bare branch and heading codes stay inert`` () =
+        // The branch-nested leaf code `branch:<facet>:<value>:entry:<entryId>` resolves to its id (so
+        // an entry selected THROUGH a facet branch works), yet the bare branch/heading codes remain
+        // grouping-only — the selection contract after the fix.
+        let leafCode = "branch:" + entryKindFacetKey.value + ":Source:" + LW.entryNodeCode "src-600"
+        Assert.Equal(Some "src-600", LW.entryIdOfNodeCode leafCode)
+        Assert.Equal<string option>(None, LW.entryIdOfNodeCode ("facet:" + entryKindFacetKey.value))
+        Assert.Equal<string option>(None, LW.entryIdOfNodeCode ("branch:" + entryKindFacetKey.value + ":Source"))
+
+    [<Fact>]
+    let ``selecting an entry THROUGH a facet branch highlights that branch row, not the corpus-group copy`` () =
+        // The operator gap (.manual/002-followup): clicking an entry under a facet branch used to
+        // highlight the matching row in the "Library" corpus group instead of the clicked branch
+        // row. The projected `selectedCode` must now be the EXACT clicked node code.
+        let _, m = freshModel ()
+        let leafCode = "branch:" + entryKindFacetKey.value + ":Source:" + LW.entryNodeCode "src-600"
+        let selected = LW.update (LW.SelectEntryNode ("src-600", leafCode)) m
+        let state = LW.facetedState selected
+        // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<id>` code.
+        Assert.Equal(leafCode, state.selectedCode)
+        Assert.NotEqual<string>(LW.entryNodeCode "src-600", state.selectedCode)
+        // The domain selection still resolves (the view panel / verbs target the entry).
+        Assert.Equal<string option>(Some "src-600", selected.selectedEntryId)
+        // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
+        let viaId = LW.update (LW.SelectEntry "src-600") m
+        Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState viaId).selectedCode)
+
+    [<Fact>]
+    let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
+        // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
+        // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
+        let _, m = freshModel ()
+        let entriesOf (model : LW.Model) : FacetedTreeControls.TreeNode = List.head (LW.facetedState model).tree
+        // First open: EVERY top-level node (the entries group and every facet group) is CollapsedNode.
+        let opened = LW.facetedState m
+        for node in opened.tree do
+            Assert.Equal(FacetedTreeControls.CollapsedNode, node.expansion)
+        // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
+        Assert.Equal(17, List.length (entriesOf m).children)
+        // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
+        let expanded = LW.update (LW.ToggleNode "entries") m
+        Assert.True(expanded.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
+        // A facet group toggles INDEPENDENTLY while entries stays expanded (the set holds both).
+        let bothOpen = LW.update (LW.ToggleNode ("facet:" + entryKindFacetKey.value)) expanded
+        Assert.True(bothOpen.expandedNodes.isExpanded "entries")
+        let kindNode = (LW.facetedState bothOpen).tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+        Assert.Equal(FacetedTreeControls.ExpandedNode, kindNode.expansion)
+        // A second toggle collapses entries again (persisted).
+        let collapsed = LW.update (LW.ToggleNode "entries") bothOpen
+        Assert.False(collapsed.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
+
+    [<Fact>]
+    let ``facetedState projects the selected entry's node code — empty when nothing is selected`` () =
+        // Spec 0040 step 003: the control highlights the row whose code is `selectedCode`; the host
+        // projects it from the Model's already-tracked selection (nothing selected → empty string).
+        let _, m = freshModel ()
+        Assert.Equal("", (LW.facetedState m).selectedCode)
+        let selected = LW.update (LW.SelectEntry "src-600") m
+        Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState selected).selectedCode)
+        // A re-selection re-targets the highlight in the same projection.
+        let retargeted = LW.update (LW.SelectEntry "pol-lp") selected
+        Assert.Equal(LW.entryNodeCode "pol-lp", (LW.facetedState retargeted).selectedCode)
 
     [<Fact>]
     let ``the committed text filter narrows the corpus over display names and echoes as the box draft`` () =
@@ -528,7 +688,9 @@ module LibraryWindowTests =
         handlers.selectNode (LW.entryNodeCode "src-600")
         handlers.selectNode "branch:entry-kind:Sample"
         handlers.selectNode "entries"
-        Assert.Equal<LW.Msg list>([ LW.SelectEntry "src-600" ], List.ofSeq dispatched)
+        // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
+        // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
+        Assert.Equal<LW.Msg list>([ LW.SelectEntryNode ("src-600", LW.entryNodeCode "src-600") ], List.ofSeq dispatched)
         // A discrete offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint entryKindFacetKey.value "Polarizer"
         Assert.Equal(kindConstraint "Polarizer", dispatched.[1])
@@ -590,6 +752,9 @@ module LibraryWindowTests =
         let window = LibraryWindow(library, samples, materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
+        // clicking proofs below find their rows (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     [<Fact>]
@@ -638,10 +803,15 @@ module LibraryWindowTests =
             let library, samples, materials = freshStores ()
             let window = mountLibraryWindow library samples materials
             Assert.Equal("17 results", textOf window UiIds.FacetedTree.resultCount)
-            // Sample and preset leaves both render.
+            // Sample and preset leaves both render (entries is auto-expanded by the mount helper).
             Assert.True(isPresent window (LW.entryNode glassFilm600EntryId))
             Assert.True(isPresent window (LW.entryNode "src-600"))
-            // The kind facet's branches: every entry kind, each with its count.
+            // The kind facet's branches: every entry kind, each with its count. The facet group
+            // opens collapsed (spec 0040 step 002); collapse the entries group first (so the facet
+            // rows rise back to the top and the facet chevron is reachable), then expand the kind
+            // facet to reveal its branches.
+            expandEntries window
+            expandNode window ("facet:" + entryKindFacetKey.value)
             for kind, count in [ "Sample", 11; "Source", 1; "Detector", 2; "Polarizer", 3 ] do
                 let branchId = UiIds.FacetedTree.treeNode ("branch:" + entryKindFacetKey.value + ":" + kind)
                 Assert.True(isPresent window branchId, $"the by-kind tree must list the %s{kind} branch")
@@ -811,7 +981,59 @@ module LibraryWindowTests =
             Assert.Equal("17 results", textOf window UiIds.FacetedTree.resultCount)
             clickOn window UiIds.FacetedTree.showTreeButton
             Assert.True(treeRowCount () > 0, "the explicit build must materialize the tree")
+            // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
+            // the leaves.
+            expandEntries window
             Assert.True(isPresent window (LW.entryNode "src-600"))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (002): the tree opens collapsed and the entries chevron toggles its leaves in the same render pass`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let _, context = stubContext library samples materials
+            // Mount the REAL MVU loop directly (NOT the auto-expanding helper) so the first render
+            // is the collapsed default.
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple (fun () -> LW.init context Browse) LW.update LW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // First open: the entries group renders a collapsed row WITH a chevron, but its leaves
+            // do NOT render.
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNode "entries"), "the entries group row must render")
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "entries"), "the entries group must carry a disclosure chevron")
+            Assert.False(isPresent window (LW.entryNode "src-600"), "a collapsed tree must hide its entry leaves on first open")
+            // Clicking the chevron expands the group — the leaves render in the same pass.
+            expandEntries window
+            Assert.True(isPresent window (LW.entryNode "src-600"), "the chevron click must reveal the entry leaves")
+            // A second click collapses it again.
+            expandEntries window
+            Assert.False(isPresent window (LW.entryNode "src-600"), "a second chevron click must collapse the group")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (003): selecting an entry leaf highlights exactly that row with the chosen fill and a thicker border`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let window = mountLibraryWindow library samples materials
+            // Narrow to the three ideal polarizers so both leaves render near the top and stay clickable.
+            commitFilter window "polarizer"
+            // Before any selection every leaf is idle (no row carries the chosen fill).
+            Assert.Equal(Some idleFill, backgroundColorOf (labelBorderOf window (LW.entryNode "pol-lp")))
+            clickOn window (LW.entryNode "pol-lp")
+            let selected = labelBorderOf window (LW.entryNode "pol-lp")
+            let sibling = labelBorderOf window (LW.entryNode "pol-cp-left")
+            // Exactly the selected row reads the chosen fill; the sibling stays idle.
+            Assert.Equal(Some chosenFill, backgroundColorOf selected)
+            Assert.Equal(Some idleFill, backgroundColorOf sibling)
+            // …and the selected row carries the non-hue cue: a border strictly thicker than an idle
+            // row's (a colourblind-safe cue that does not rely on colour alone).
+            Assert.True(selected.BorderThickness.Top > sibling.BorderThickness.Top,
+                        "the selected row's border must be thicker than an idle row's")
             window.Close())
 
     // ============================ step 016 — Select mode (pure) ============================
@@ -917,6 +1139,9 @@ module LibraryWindowTests =
         let window = LibraryWindow(library, samples, materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
+        // their leaves (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     /// Mount the REAL Main workbench MVU loop headless WITH a captured dispatch (the
@@ -1161,6 +1386,9 @@ module LibraryWindowTests =
             let banner = textOf selectWindow UiIds.LibraryWindow.selectConstraint
             Assert.Contains("Detector", banner)
             Assert.Contains("fixed", banner)
+            // The launcher-opened window opens collapsed (spec 0040 step 002) — expand its entries
+            // group to reach the offered leaves.
+            expandEntries selectWindow
             Assert.True(isPresent selectWindow (LW.entryNode "det-intensity"))
             Assert.False(isPresent selectWindow (LW.entryNode "src-600"), "an out-of-kind entry must not be offered")
             Assert.True(isPresent selectWindow UiIds.LibraryWindow.selectButton)
@@ -1409,6 +1637,8 @@ module LibraryWindowTests =
             |> Program.run
             window.Show()
             Dispatcher.UIThread.RunJobs()
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
+            expandEntries window
             clickOn window (LW.entryNode entryId)
             // The version list renders both versions; the latest view carries NO view-only note.
             Assert.True(isPresent window UiIds.LibraryWindow.versionsPanel, "the view panel must list the sample's versions")

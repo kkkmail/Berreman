@@ -170,6 +170,74 @@ module SampleProxyTests =
         | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (InvalidSample _), got %A{other}")
 
+    // ==================== validateSample: a Plate requires a substrate (spec 0040 D.1) ====================
+
+    /// A `Plate`-geometry sample carrying a film but NO substrate plate: a thin-film seed (which has
+    /// a film and `structure.substrate = None`) re-labelled `Plate`. Because it has a film it is NOT
+    /// structurally empty, so the ONLY rule that can reject it is the new D.1 Plate-requires-a-
+    /// substrate rule — this isolates the new behaviour from the older structurally-empty reject.
+    let private plateMissingSubstrate : Sample =
+        { SeedSamples.glassFilm600 with substrate = Plate }
+
+    [<Fact>]
+    let ``validateSample rejects a Plate whose structure.substrate is None as InvalidSample`` () =
+        match validateSample plateMissingSubstrate with
+        | Error (InvalidSample reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (InvalidSample _) for a Plate with no substrate, got %A{other}")
+
+    [<Fact>]
+    let ``validateSample accepts a Plate that carries a substrate and a non-blank name`` () =
+        // glassPlate1mm is a Plate whose structure carries `Some` substrate — D.1 leaves it Ok.
+        match validateSample SeedSamples.glassPlate1mm with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () for a Plate with a substrate, got %A{other}")
+
+    [<Fact>]
+    let ``validateSample leaves a ThinFilm with no substrate Ok`` () =
+        // glassFilm600 is a ThinFilm with `structure.substrate = None` — unaffected by the D.1 rule.
+        match validateSample SeedSamples.glassFilm600 with
+        | Ok () -> ()
+        | other -> Assert.Fail($"expected Ok () for a ThinFilm with no substrate, got %A{other}")
+
+    // ============ supportedEmission: geometry-constrained ray groups (spec 0040 Part D.2) ============
+
+    [<Fact>]
+    let ``defaultSupportedEmission maps ThinFilm to EmitReflectedOnly and Plate to EmitBoth`` () =
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, defaultSupportedEmission ThinFilm)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, defaultSupportedEmission Plate)
+
+    [<Fact>]
+    let ``a seeded ThinFilm supports the reflected group alone; a seeded Plate supports both`` () =
+        // glassFilm600 is a ThinFilm, glassPlate1mm a Plate — the field carries the geometry default.
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, SeedSamples.glassFilm600.supportedEmission)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, SeedSamples.glassPlate1mm.supportedEmission)
+
+    [<Fact>]
+    let ``a ThinFilm's supportedEmission is unclearable: every candidate collapses to EmitReflectedOnly`` () =
+        // constrainEmission forces the reflected-only invariant regardless of the candidate offered…
+        for candidate in [ Placement.EmitReflectedOnly; Placement.EmitTransmittedOnly; Placement.EmitBoth ] do
+            Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, constrainEmission ThinFilm candidate)
+        // …and the Sample setter routes through it, so trying to clear R on a thin film is a no-op.
+        let film = SeedSamples.glassFilm600
+        let clearedR = film.supportedEmission |> Placement.Emission.withReflected false
+        let after = film |> withSupportedEmission clearedR
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, after.supportedEmission)
+
+    [<Fact>]
+    let ``a Plate is constrainable: clearing R via Emission.withReflected false leaves T on`` () =
+        let plate = SeedSamples.glassPlate1mm
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, plate.supportedEmission)
+        // The existing Emission setter clears the reflected branch; the both-off state is
+        // unrepresentable, so T stays on (EmitTransmittedOnly)…
+        let clearedR = plate.supportedEmission |> Placement.Emission.withReflected false
+        Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, clearedR)
+        // …and a Plate's constraint passes the candidate through unchanged, so the setter takes effect.
+        let tOnly = plate |> withSupportedEmission clearedR
+        Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, tOnly.supportedEmission)
+        // Symmetrically, clearing T through the existing setter constrains the plate to R-only.
+        let rOnly = plate |> withSupportedEmission (plate.supportedEmission |> Placement.Emission.withTransmitted false)
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, rOnly.supportedEmission)
+
     // ============================ the version-creation decision table ============================
 
     [<Fact>]

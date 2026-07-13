@@ -1,0 +1,17 @@
+# End-of-arc -- write the narrative summary for this spec.
+Write the arc summary for C:/GitHub/Berreman/specs/0040 to C:/GitHub/Berreman/specs/0040/.summary-md using
+C:/GitHub/AI-Strategy-Generator/summary.launcher-md
+
+# Post-implementation -- gap analysis for this spec (infers the
+# preliminary spec, if any, from the spec-writer prompts in .history).
+Run the gap analysis on C:/GitHub/Berreman/specs/0040 to C:/GitHub/Berreman/specs/0040/.gap-analysis-md using
+C:/GitHub/AI-Strategy-Generator/gap-analysis.launcher-md
+
+# Variant -- name the preliminary spec file(s) explicitly.
+Run the gap analysis on C:/GitHub/Berreman/specs/0040 to C:/GitHub/Berreman/specs/0040/.gap-analysis-md using
+C:/GitHub/AI-Strategy-Generator/gap-analysis.launcher-md
+with preliminary spec <abs-path-to-preliminary-file> [<more-files>...]
+
+# Default -- compute stats for this spec.
+Run the stats tool on C:/GitHub/Berreman/specs/0040 using
+C:/GitHub/AI-Strategy-Generator/stat.launcher-md

@@ -1,0 +1,87 @@
+# Gap analysis — spec 0040
+
+> This is the **gap-analysis companion** to `.summary-md` (the narrative) and
+> `.stat-md` (the numbers), not a substitute for either. It compares what was
+> asked for against what shipped; the story of *how* the run went is in the
+> summary and the quantitative view is in the stats.
+
+**Preliminary spec (inferred).** No preliminary file was named in the
+invocation, so it was inferred from `.history`: the operator's `spec` input row
+is *"Read the preliminary spec:
+`C:\GitHub\Berreman\specs\0038\.manual\011-tree-chart-geometry-spec.md` and write
+the full spec."* That file (which lives under **0038**'s `.manual/`, not 0040's —
+0040's `.manual/` holds only a README) is the Pass-1 source; the authored spec is
+`specs/0040/.spec-md` + `.spec-jsonl`. Both passes ran.
+
+## Pass 1 — preliminary → full spec
+
+The full spec is a faithful carry-through of the preliminary. All four parts —
+Part A (faceted tree: sort / collapse / selection), Part B (facet totality via
+seeds), Part C (chart applicability + description wrap), Part D (sample geometry
+& R/T via `Emission`) — and the binding operator answers (010/Q1–Q3) entered the
+full spec intact. Nothing the preliminary asked for was dropped or silently
+narrowed. Two differences are worth recording, neither a coverage loss:
+
+- `origin: prelim->spec` · `kind: added` · `ref: §C.2 (description-box wrap)` ·
+  The preliminary framed the wrap as genuinely optional (*"if it fights the
+  layout, leave it as is … lowest priority"*); the full spec §C.2 firmed it into
+  a committed (still lowest-priority) requirement (*"Make it wrap and grow
+  multiline … rather than clip"*).
+- *(fidelity correction, not a gap)* The full spec re-grounded stale preliminary
+  pointers against the current tree — `gyrationChart`/`muChart` line numbers
+  (`:94-114`/`:125-146` → `:110-130`/`:141-162`) and the `hasGyration`/
+  `hasMagnetic` file location — recorded in `.history`. This tightened fidelity;
+  it removed no scope.
+
+## Pass 2 — full spec → implementation
+
+Every spec Part maps to a committed, fully gate-green slice (13/13 committed,
+`COMPLETE`): A → slices 001–003, B → 004–005, C → 006–007, D → 008–012, plus the
+013 `WIRE_UI` composition step. **No spec commitment failed to ship and no
+product module was added beyond spec** (§0.1's "adds NO new file or module"
+held — the only new files are test files, which are the acceptance vehicle, not
+product surface). The residuals below are all self-documented in the slices'
+`state-of-the-world` Deferred sections and are verification/scope boundaries, not
+missing commitments:
+
+- `origin: spec->impl` · `kind: unverified` · `ref: §C.1 / slice 006`
+  (`006-state-of-the-world.md:79`) · The view-only μ-kind path that `previewMuKind`
+  threads is covered by a **direct unit test** over synthetic scalar /
+  gyromagnetic / dispersive-Polder value trees (all three branches), but **no
+  seeded magnetic built-in** exercises the view-only arm end-to-end — because no
+  built-in entry is magnetic. The μ analog of the shipping Langasite gyration
+  test is the deferred piece; the classifier itself is tested.
+- `origin: spec->impl` · `kind: narrowed` · `ref: §C.2 / slice 007`
+  (`007-state-of-the-world.md:62`) · The description box gained
+  `TextWrapping = Wrap` + `AcceptsReturn`, so it grows multiline on explicit
+  newlines — but **true auto-wrap as the left pane narrows** (the box filling the
+  pane width) was deferred: it needs a stretch-capable container
+  (`DockPanel`/`Grid`) that the slice scoped out under "no other layout change".
+  So §C.2's original motivation (clipping when the splitter is dragged left) is
+  only partially addressed.
+- `origin: spec->impl` · `kind: unverified` · `ref: §D.2–D.3 / slices 009, 010, 012`
+  (`009-state-of-the-world.md:89`, `010-state-of-the-world.md:93`) · The
+  `supportedEmission` field + invariant, the editor R/T checkboxes, and the
+  placed-element / experiment `MeasurementMode` bounding all shipped. The deeper
+  **end-to-end engine group-suppression** (a beam group actually suppressed for a
+  reflected-only / transmitted-only sample) rides the pre-existing
+  `RayModel.emittedGroups` consuming the now-bounded `Placement.emission`; it was
+  verified at Domain / headless level, not re-exercised as a full engine render
+  in these slices.
+
+## Verdict
+
+The implementation is **essentially complete against intent.** Pass 1 shows a
+faithful preliminary→spec translation (one minor optionality firming on the
+lowest-priority C.2 item, plus fidelity corrections that only tightened the
+pointers). Pass 2 shows every spec commitment (A–D) shipped across 13
+gate-green, code-judge-approved committed slices, with no dropped requirement and
+no product-scope creep. The three residuals are all documented, low-risk, and do
+not block the spec's stated acceptance criteria (which are unit- and
+headless-verified): two are end-to-end verification boundaries left thin because
+no shipping data exercises them (C.1's view-only μ path — no magnetic built-in
+exists; D.2/D.3's engine group-suppression — carried by pre-existing wiring), and
+one is a genuine feature narrowing (C.2 auto-wrap-on-drag, deferred to a future
+layout pass). The highest-priority follow-up, if any is taken, is the C.2 wrap —
+it is the only place a user-visible behaviour the spec named is only partially
+delivered.

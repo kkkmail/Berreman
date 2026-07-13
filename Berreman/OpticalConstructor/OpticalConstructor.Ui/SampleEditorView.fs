@@ -103,11 +103,12 @@ type ExitPrompt =
     | Editing
     | ConfirmingDiscard
 
-/// The structurally-comparable slice of the model Save persists — the identity facets and the
-/// stack structure (spec 0038 step 033's dirtiness snapshot). Every component is a plain
-/// record/DU with structural equality; the reference-compared context / material list and the
-/// pure-UI state (selection, collapsed groups, transient entry texts) are excluded.
-type SampleEditSnapshot = string * string * SubstrateKind * SampleStructure
+/// The structurally-comparable slice of the model Save persists — the identity facets, the
+/// geometry-constrained supported emission (spec 0040 Part D.2 step 010), and the stack
+/// structure (spec 0038 step 033's dirtiness snapshot). Every component is a plain record/DU
+/// with structural equality; the reference-compared context / material list and the pure-UI
+/// state (selection, collapsed groups, transient entry texts) are excluded.
+type SampleEditSnapshot = string * string * SubstrateKind * Placement.Emission * SampleStructure
 
 /// The editor's model: the sample identity facets (name / description / `SubstrateKind`), the
 /// step-21 stack edit state, the material list resolved from `MaterialProxy.listMaterials`
@@ -124,6 +125,12 @@ type Model =
         name : string
         description : string
         substrate : SubstrateKind
+        /// The ray groups this sample can emit, geometry-constrained (spec 0040 Part D.2 step 010):
+        /// a `ThinFilm` is pinned to `EmitReflectedOnly` (R fixed on, unclearable); a `Plate` is
+        /// constrainable to R-only or T-only through the R/T checkboxes. Every write routes through
+        /// `constrainEmission m.substrate`, so the "both off" state stays unrepresentable and a thin
+        /// film can never clear its reflected branch.
+        supportedEmission : Placement.Emission
         editor : SampleStackEditState
         materials : MaterialEntry list
         chosenMaterial : MaterialId option
@@ -149,6 +156,12 @@ type Msg =
     | SetName of string
     | SetDescription of string
     | SetSubstrate of SubstrateKind
+    /// Spec 0040 (D.2 step 010): the R / T emission checkboxes. Each carries the box's NEW
+    /// checked state; the update arm routes it through `Emission.withReflected` /
+    /// `withTransmitted` then re-imposes the geometry constraint, so "both off" is impossible
+    /// and a `ThinFilm` stays `EmitReflectedOnly` even if a message reaches it.
+    | SetReflectedEmission of bool
+    | SetTransmittedEmission of bool
     | ChooseMaterial of MaterialId
     /// Spec 0038 (019): re-query the material list from the LIVE `MaterialProxy` — dispatched
     /// whenever a Select session returns (chosen or cancelled) and on window activation,
@@ -184,8 +197,13 @@ type Msg =
     | MakeRepeatBlockClicked
     /// A group's inline stepper: resize the `Repeated` group at a films index by whole periods.
     | GroupCountBy of int * int
-    /// Set the thick substrate plate to the chosen material (spec 0033 gap G12).
-    | SetSubstrateClicked
+    /// Spec 0040 (D.4 step 011): the TARGETED return of a substrate Materials-window Select
+    /// session (`SelectionTarget.SampleSubstrateTarget` — the substrate Set… verb composes it):
+    /// set the thick substrate plate to the picked material. The substrate is a single slot with
+    /// no positional identity (unlike a film row), so the pick always lands; the picked id also
+    /// becomes the toolbar's chosen material (the `BindMaterialToLayer` precedent). A closed
+    /// editor makes the dispatch a no-op.
+    | BindMaterialToSubstrate of MaterialId
     /// Clear the substrate plate (spec 0033 gap G12).
     | ClearSubstrateClicked
     /// Set the lower half-space to the chosen material (spec 0033 gap G12).
@@ -308,11 +326,12 @@ let private orientationLabel (o : CrystalOrientation) : string =
     | PrimaryAxes -> "primary axes"
     | EulerRotation (_, phi, theta, psi) -> $"φ=%g{phi.degrees}° θ=%g{theta.degrees}° ψ=%g{psi.degrees}°"
 
-/// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets and
-/// the stack structure, all plain records/DUs. The transient entry texts, the selection, the
+/// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets, the
+/// supported emission (spec 0040 Part D.2 step 010 — an R/T change dirties the editor) and the
+/// stack structure, all plain records/DUs. The transient entry texts, the selection, the
 /// collapsed-group set and the re-queried material list are pure UI / read state and excluded.
 let private currentEdit (m : Model) : SampleEditSnapshot =
-    (m.name, m.description, m.substrate, m.editor.structure)
+    (m.name, m.description, m.substrate, m.supportedEmission, m.editor.structure)
 
 /// Whether the editor carries unsaved changes: the current edit slice differs structurally from
 /// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
@@ -331,23 +350,28 @@ let private emptyStructure : SampleStructure =
     }
 
 let init (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : Model =
-    let target, name, description, substrate, structure =
+    let target, name, description, substrate, structure, emission =
         // Both NEW intents carry the id minted AT WINDOW OPEN as a NewUnsaved target (spec 0038
         // step 008); the seeded multilayer path opens onto the Domain starter period (spec 0035
-        // step 014), the blank Add onto nothing.
+        // step 014), the blank Add onto nothing. A NEW sample takes the geometry default supported
+        // emission (spec 0040 Part D.2 step 010); an edited one carries the sample's own value.
         match intent with
         | NewBlankSample mintedId ->
-            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure)
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure, defaultSupportedEmission ThinFilm)
         | NewSeededMultilayer mintedId ->
-            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure)
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure, defaultSupportedEmission ThinFilm)
         | EditSample s ->
-            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name, s.description, s.substrate, s.structure)
+            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name, s.description, s.substrate, s.structure, s.supportedEmission)
+    // Normalise the seed emission to its geometry constraint so the model starts consistent even
+    // if an inconsistent sample is opened (spec 0040 Part D.2 — the single enforcement point).
+    let supportedEmission = constrainEmission substrate emission
     {
         context = context
         target = target
         name = name
         description = description
         substrate = substrate
+        supportedEmission = supportedEmission
         editor = SampleStackEditState.ofStructure structure
         materials = materials
         chosenMaterial = None
@@ -360,7 +384,7 @@ let init (context : SampleEditorContext) (materials : MaterialEntry list) (inten
         foldCount = 2
         // The edit snapshot at load — a freshly opened editor (including a seeded starter) is
         // pristine and closes silently (spec 0038 step 033).
-        initialEdit = (name, description, substrate, structure)
+        initialEdit = (name, description, substrate, supportedEmission, structure)
         exit = Editing
         status = None
     }
@@ -373,6 +397,10 @@ let toSample (id : SampleId) (m : Model) : Sample =
         structure = m.editor.structure
         substrate = m.substrate
         description = m.description
+        // The user's edited emission (spec 0040 Part D.2 step 010): the R/T checkboxes drive
+        // `m.supportedEmission`, already kept inside the geometry constraint by every update arm
+        // (a ThinFilm stays EmitReflectedOnly; a Plate keeps its R-only / T-only / both choice).
+        supportedEmission = m.supportedEmission
     }
 
 let private stackErrorReason (e : SampleStackEditError) : string =
@@ -406,7 +434,17 @@ let update (msg : Msg) (m : Model) : Model =
     match msg with
     | SetName s -> { m with name = s }
     | SetDescription s -> { m with description = s }
-    | SetSubstrate kind -> { m with substrate = kind }
+    | SetSubstrate kind ->
+        // Re-impose the new geometry's emission constraint (spec 0040 Part D.2 step 010): flipping
+        // to ThinFilm re-pins R-only, so the R-fixed-on invariant stays true and the model stays
+        // consistent with what `toSample` persists.
+        { m with substrate = kind; supportedEmission = constrainEmission kind m.supportedEmission }
+    | SetReflectedEmission on ->
+        // Turn the reflected group on/off (spec 0040 Part D.2 step 010): the smart setter forbids
+        // the both-off state, and `constrainEmission` re-pins a ThinFilm to EmitReflectedOnly.
+        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withReflected on m.supportedEmission) }
+    | SetTransmittedEmission on ->
+        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withTransmitted on m.supportedEmission) }
     | ChooseMaterial id -> { m with chosenMaterial = Some id }
     | RefreshMaterials ->
         // Spec 0038 (019): re-query the material list from the LIVE proxy — a material added
@@ -500,12 +538,20 @@ let update (msg : Msg) (m : Model) : Model =
         match List.tryItem groupIndex m.editor.structure.films with
         | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count + delta)) m
         | Some (SingleLayer _) | None -> { m with status = Some $"films item %d{groupIndex} is not a repeat group" }
-    | SetSubstrateClicked ->
-        // Qualify the Domain case — the view `Msg` also has a `SetSubstrate` (the geometry
-        // facet), so the bare name would resolve to the wrong DU.
-        match m.chosenMaterial with
-        | Some id -> applyStack (SampleStackMsg.SetSubstrate (Some { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes })) m
-        | None -> { m with status = Some "choose a material to set as the substrate plate" }
+    | BindMaterialToSubstrate materialId ->
+        // Spec 0040 (D.4 step 011): a Materials-window Select session returned for the substrate
+        // slot (the substrate Set… verb's return). A sample holds ONE substrate plate — no
+        // positional identity to validate, unlike a film row (`BindMaterialToLayer`) — so the
+        // pick always lands: build the plate from the chosen material's current version (pin v1,
+        // spec 0038 step 022) and set it. The picked id also becomes the toolbar's CHOSEN
+        // material, matching the layer pick. `SetSubstrate` never rejects; the Error arm is
+        // defensive totality (the status-line path), and a closed editor makes this a dead-
+        // dispatch no-op. The Domain case is qualified — the view `Msg` also has a `SetSubstrate`
+        // (the geometry facet), so the bare name would resolve to the wrong DU.
+        let layer = { materialId = MaterialVersionId.firstOf materialId; thickness = defaultLayerThickness; orientation = PrimaryAxes }
+        match applySampleStackMsg (SampleStackMsg.SetSubstrate (Some layer)) m.editor with
+        | Ok editor -> { m with editor = editor; chosenMaterial = Some materialId; status = None }
+        | Error e -> { m with status = Some (stackErrorReason e) }
     | ClearSubstrateClicked -> applyStack (SampleStackMsg.SetSubstrate None) m
     | SetLowerClicked ->
         match m.chosenMaterial with
@@ -689,6 +735,48 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
                     clickBox (UiIds.SampleEditor.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
     ] :> IView
 
+/// One emission group checkbox (spec 0040 Part D.2 step 010). `isChecked` is bound ONE-WAY from
+/// the model; the dispatch rides `Button.onClick`, which fires only on USER activation (pointer /
+/// keyboard), never on the render's programmatic `IsChecked` set — so there is no FuncUI feedback
+/// loop. A disabled box (the ThinFilm R box) dispatches nothing.
+let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enabled : bool) (toMsg : bool -> Msg) (dispatch : Msg -> unit) : IView =
+    CheckBox.create [
+        automationId autoId
+        // Reach `isEnabled` (InputElement) and `isChecked` (ToggleButton) through the in-scope
+        // `CheckBox` class — the FuncUI DSL augments each control class with its inherited
+        // attributes, and only `Avalonia.Controls` is opened here (not `.Primitives` / `.Input`),
+        // so the base-class module names do not resolve (the `Border.isEnabled` precedent).
+        CheckBox.isEnabled enabled
+        CheckBox.isChecked isOn
+        CheckBox.content label
+        CheckBox.onClick ((fun _ -> dispatch (toMsg (not isOn))), SubPatchOptions.OnChangeOf (box (autoId, isOn, enabled)))
+    ] :> IView
+
+/// The supported-emission facet (spec 0040 Part D.2 step 010): the ray groups this sample emits.
+/// A `Plate` exposes BOTH the R and T checkboxes so the user constrains emission to R-only or
+/// T-only (the `Emission` smart setters keep "both off" unrepresentable); a `ThinFilm` shows R
+/// fixed on + disabled and renders NO T box (the step-9 invariant — a thin film is observable in
+/// reflection off its stack alone).
+let private emissionRow (m : Model) (dispatch : Msg -> unit) : IView =
+    let reflectedOn = m.supportedEmission.emitsReflected
+    let transmittedOn = m.supportedEmission.emitsTransmitted
+    let reflectedEnabled =
+        match m.substrate with
+        | Plate -> true
+        | ThinFilm -> false
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 10.0
+        StackPanel.children (
+            [
+                labelBlock "Emission:"
+                emissionCheck UiIds.SampleEditor.emitReflectedCheck "Reflected (R)" reflectedOn reflectedEnabled SetReflectedEmission dispatch
+            ]
+            @ (match m.substrate with
+               | Plate -> [ emissionCheck UiIds.SampleEditor.emitTransmittedCheck "Transmitted (T)" transmittedOn true SetTransmittedEmission dispatch ]
+               | ThinFilm -> []))
+    ] :> IView
+
 // -- the stack table -------------------------------------------------------------------------
 
 /// Compose one Select session for a layer row and open (or re-target) the Materials window
@@ -737,6 +825,55 @@ let private chooseMaterialVerb (m : Model) (dispatch : Msg -> unit) (position : 
                 | :? Window as owner -> chooseMaterialForLayer m dispatch position owner
                 | _ -> ()
             | _ -> ()), SubPatchOptions.OnChangeOf chooseId)
+    ] :> IView
+
+/// Compose one Select session for the SUBSTRATE plate and open (or re-target) the Materials
+/// window through the context seam (spec 0040 Part D.4 step 011 — the `chooseMaterialForLayer`
+/// precedent). A film-less Plate has no layer row to reach the Materials window from, so the
+/// substrate slot carries its OWN pick verb. The substrate has no positional identity, so the
+/// return routes through the captured dispatch (`BindMaterialToSubstrate`) — a closed editor
+/// makes it a no-op. Both outcomes re-query the material list (`RefreshMaterials`).
+let private chooseMaterialForSubstrate (m : Model) (dispatch : Msg -> unit) (owner : Window) : unit =
+    let selectContext : SelectionContext<MaterialEntry> =
+        {
+            // The sample substrate pick's fixed kind (the step-016 banner names it); the material
+            // corpus satisfies it structurally, so it narrows nothing in the Materials window.
+            kindConstraint = KindConstraint Placement.CatalogueKind.Sample
+            target = SampleSubstrateTarget
+            onSelected =
+                fun (entry : MaterialEntry) ->
+                    dispatch (BindMaterialToSubstrate entry.id)
+                    dispatch RefreshMaterials
+            onCancelled = fun () -> dispatch RefreshMaterials
+        }
+    m.context.openMaterialsSelect owner selectContext
+
+/// The substrate plate's Set… verb (spec 0040 Part D.4 step 011): opens the Materials window in
+/// Select state targeted at the substrate slot, REPLACING the old `hasChosenMaterial`-gated
+/// 'Set from chosen' substrate button. Unlike that button it needs NO pre-chosen material — it
+/// IS the pick, so a film-less Plate (no layer rows, hence no Choose material… verb) can still
+/// choose a substrate material. The owner window for a modal Select open is resolved from the
+/// click's own visual tree at dispatch time (the `chooseMaterialVerb` precedent). Styled as a
+/// toolbar verb; it reuses the `setSubstrateButton` id.
+let private setSubstrateVerb (m : Model) (dispatch : Msg -> unit) : IView =
+    Border.create [
+        automationId UiIds.SampleEditor.setSubstrateButton
+        Border.background (brush idleBackground)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 12.0 5.0)
+        Border.margin (thickOf 0.0 0.0 8.0 0.0)
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text "Set…" ])
+        Border.onPointerPressed ((fun e ->
+            e.Handled <- true
+            match e.Source with
+            | :? Visual as source ->
+                match TopLevel.GetTopLevel source with
+                | :? Window as owner -> chooseMaterialForSubstrate m dispatch owner
+                | _ -> ()
+            | _ -> ()), SubPatchOptions.OnChangeOf UiIds.SampleEditor.setSubstrateButton)
     ] :> IView
 
 /// One layer's inline orientation editor (φ/θ/ψ in degrees) — rendered ONLY when the layer's
@@ -931,8 +1068,11 @@ let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
 
 /// The substrate-plate and lower-half-space editor (spec 0033 gap G12): both
 /// `SampleStructure` fields were previously invisible and uneditable. Each shows
-/// its current material and offers Set-from-chosen / Clear (lower clears to
-/// vacuum). Set requires a chosen material; Clear is always available.
+/// its current material and a Clear (lower clears to vacuum). The substrate's Set…
+/// verb opens the Materials window in Select state (spec 0040 Part D.4 step 011 —
+/// so a film-less Plate can pick a substrate material without a film row); the
+/// lower half-space keeps its `hasChosenMaterial`-gated Set-from-chosen button.
+/// Clear is always available.
 let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
     let substrateText =
         match m.editor.structure.substrate with
@@ -958,7 +1098,7 @@ let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
                 WrapPanel.children [
                     labelBlock "Substrate plate:"
                     summary UiIds.SampleEditor.substrateSummary substrateText
-                    verbButton UiIds.SampleEditor.setSubstrateButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetSubstrateClicked)
+                    setSubstrateVerb m dispatch
                     verbButton UiIds.SampleEditor.clearSubstrateButton "Clear" false true (fun () -> dispatch ClearSubstrateClicked)
                 ]
             ] :> IView
@@ -1125,6 +1265,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                             nameRow m dispatch
                             descriptionRow m dispatch
                             substrateRow m dispatch
+                            emissionRow m dispatch
                         ]
                     ])
             ]

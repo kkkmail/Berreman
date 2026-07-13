@@ -1,0 +1,11 @@
+# Step 013 — WIRE_UI
+
+```step
+anchor: WIRE_UI
+touches: [OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [3, 5, 6, 7, 10, 11, 12]
+```
+
+**How to implement.** Finalise the composition: confirm every window that consumes the changed surfaces still composes at the App root (`OpticalConstructor.App`) and drive the whole surface headless. The `ui-smoke` suite in `OpticalConstructor.Ui.Tests` MUST render one frame each - without throwing - for the Materials window (collapsed sorted tree, visible selection), the Library window (same), the Material editor (restricted gyration/mu tabs, wrapping description), and the Sample editor (R/T checkboxes for a Plate, R fixed for a ThinFilm, substrate Set... via Materials Select). No new wiring is introduced beyond the steps above.
+
+**Acceptance.** After composition, the `ui-smoke` suite MUST render the Materials and Library windows, the Material editor, and the Sample editor over the new tree/chart/emission behaviour without throwing, and every test gate MUST be at or above its baseline count.

@@ -1,0 +1,11 @@
+# Step 003 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [2]
+```
+
+**How to implement.** Make the selected tree node visibly distinct (operator). Add a `selectedCode : string` field to `FacetedTreeControls.State` (`:113-132`; empty string = none, matching the module's `activeRepresentation` convention `:124`,`:140`) and initialise it in `empty` (`:134-144`). In `nodeRows` (`:351-368`) paint the row whose `code` equals `state.selectedCode` with the existing `chosenBackground` (`:173`) instead of `idleBackground` (`:355`), plus a non-hue cue (thicker `borderThickness` or a leading marker glyph) so it reads colourblind-safe. Both hosts (`MaterialsWindowView.fs`, `LibraryWindowView.fs`) set `selectedCode` from the Model's already-tracked selected node code when projecting `State`. No handler signature changes - `selectNode` already exists (`:162`).
+
+**Acceptance.** After a node is selected, exactly that row MUST render with `chosenBackground` plus its non-hue cue while every other row stays idle - headless-verified in both windows.

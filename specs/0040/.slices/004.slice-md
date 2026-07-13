@@ -1,0 +1,11 @@
+# Step 004 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** Re-seed the three coded-preset materials so their single-valued class is data (Part B mechanism; operator 010/Q2). In `MaterialLibrary.fs builtInEntries` (`:368-466`) change Silicon (`:371-377`), Langasite (`:378-385`), and the Vacuum spacer (`:434-441`) from `complexity = None` to `complexity = Some <valueTree>` with `properties = <valueTree>.toProperties`, following the existing seed convention every other built-in already uses (`:391-464`). The value trees encode: Silicon = Isotropic, dispersive, absorbing (mirror `euvSiliconComplexity` `:456`); Langasite = Uniaxial retaining its optical-activity component (mirror `uniaxialCrystalComplexity` `:424` plus `activeCrystalComplexity` `:464`); Vacuum = Isotropic, Transparent, constant (n = 1). Reproduce each preset's published physics through the existing dispersion-model ladder - do NOT add any classifier that evaluates the engine eps tensor. Unit tests in `OpticalConstructor.Tests` assert every entry in `builtInEntries` now carries `complexity = Some`, and that `LibraryFacets.anisotropyOf` returns Isotropic for Silicon, Uniaxial for Langasite, and Isotropic for Vacuum.
+
+**Acceptance.** After the re-seed, every material in `builtInEntries` MUST carry `complexity = Some`, and `anisotropyOf` MUST classify Silicon Isotropic, Langasite Uniaxial, and the Vacuum spacer Isotropic - unit-verified with no engine-tensor evaluation.

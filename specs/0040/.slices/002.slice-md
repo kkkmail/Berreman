@@ -1,0 +1,11 @@
+# Step 002 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [1]
+```
+
+**How to implement.** Make the tree collapsible with persisted, collapsed-by-default expansion (operator). In `OpticalConstructor.Controls/FacetedTreeControls.fs`: add `toggleNode : string -> unit` to the `Handlers` record (`:149-167`) beside `selectNode`; in `nodeRows` (`:351-368`) render a per-parent disclosure chevron (a leaf with empty `children` shows none) whose pointer-press dispatches `handlers.toggleNode node.code` while the row label keeps dispatching `selectNode`, each keyed with `View.withKey` and carrying a stable `UiIds.FacetedTree` AutomationId added in `OpticalConstructor.Controls/UiIds.fs`. In BOTH windows (`MaterialsWindowView.fs`, `LibraryWindowView.fs`) hold expansion in the Model as an elevated named type wrapping the expanded-code set (e.g. `type ExpandedNodes = ExpandedNodes of Set<string>` with `.value` and toggle members - never a naked `Set<string>` on the record surface), add a `Msg` + `update` arm that flips a code, and project each `TreeNode.expansion` as `ExpandedNode` only when its code is in the set and `CollapsedNode` otherwise - replacing every hardcoded `ExpandedNode` (`MaterialsWindowView.fs:719-760`, `LibraryWindowView.fs:844-898`). Update the headless tests that assumed entry-leaves-first-and-expanded.
+
+**Acceptance.** After a top-level node's chevron is clicked, the window Model MUST record it expanded and re-project its children (and collapse on a second click), and every top-level node MUST render `CollapsedNode` on first open - headless-verified in both windows.

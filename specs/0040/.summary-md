@@ -1,0 +1,76 @@
+# Arc summary — spec 0040
+
+> **This is the narrative companion to the numbers, not a substitute for stats.**
+> It records the human-readable story of the run — decisions, surprises, and
+> self-heals — that the structured impl-logs and `.manifest-arc-runner.log` do
+> not spell out. The quantitative view (timings, token/cost tables, per-slice
+> counts) lives in the stats tool's `.stat-md`; read the two together.
+>
+> A note on provenance: this summary was written from the launcher session that
+> started the arc *detached* and watched it through its artifacts — the
+> arc-runner log, the state file, the per-slice impl-logs, and the code-judge
+> notes — rather than by driving the slices directly. The narrative below is
+> reconstructed from those records.
+
+## The short version
+
+The arc ran clean. All 13 slices — the 12 `IMPLEMENT` steps plus the final
+`WIRE_UI` composition step — landed green and were committed, ending on a
+`COMPLETE` with **zero real escalations**: the arc never terminated to ask the
+operator for anything. Every slice committed automatically (`manual: false`);
+there were no manual accept-current-slice overrides and no operator replies.
+All worker roles (implement, wire-ui, code-judge) ran on `claude-opus-4-7`.
+
+Substantively, 0040 was a coherent batch of Optical Constructor UI/domain
+polish: alphabetical + collapsible + selection-highlighted faceted trees
+(001–003), re-seeding coded-preset materials and making the Anisotropy /
+Transparency facets total (004–005), preview-chart and editor refinements
+(006–007), and the Part-D sample-geometry work — substrate-required Plates,
+geometry-constrained supported-emission on `Sample`, R/T exposure in the editor,
+film-less-Plate substrate selection, and bounding the placed element/experiment
+by the sample's supported emission (008–012).
+
+## Two hiccups, both self-healed inside budget
+
+Only two slices needed a second attempt, and neither escaped its per-slice
+failure budget (`max_failures=2`), so neither became an escalation:
+
+- **Slice 006 (gyration / μ preview-chart restriction) — one code-judge
+  route-back.** All gates passed on the first attempt, but the code-judge routed
+  it back on cycle 1 for a coverage gap: `muKindOfComplexity` was new public
+  surface (called from `previewMuKind` in `MaterialEditorView.fs`) whose
+  substantive branches no test in the diff exercised, and the state-of-the-world
+  doc overclaimed a "muKindOfComplexity unit path" that did not exist. The
+  worker's attempt-02 added a direct classifier test — the μ analog of the
+  existing Langasite gyration coverage — driving the scalar, gyromagnetic, and
+  dispersive-Polder branches over real value trees, and corrected the SoW to
+  scope the deferral honestly. Cycle 2 came back `done-green`.
+
+- **Slice 010 (expose sample R/T in the editor) — one build-gate failure.**
+  Attempt 01 failed `build` on two `FS0039` errors in `SampleEditorView.fs`
+  (`InputElement.isEnabled` / `ToggleButton.isChecked` not defined). Root cause
+  was a FuncUI-2.0-preview1 idiom mismatch — those control classes don't resolve
+  as the augmented static-member holders the code assumed. Attempt 02 fixed the
+  references, built clean (0 errors; only the exempt `NU1701` Wolfram advisory),
+  and the judge passed it on cycle 1.
+
+Nothing else surprised: no worker hang-ups, no non-zero worker exits, no resolver
+rescues, and the remaining eleven slices each passed all five gates and the
+code-judge on the first cycle.
+
+## Run timing
+
+Calendar time from arc boot to the final commit was about **6 hours 45 minutes**
+(started 01:24:42Z, last commit 08:10:27Z on 2026-07-13), comfortably inside the
+48-hour wall-clock cap. The large majority of that was active model compute —
+the implement/wire workers dominated (individual worker spawns ran from roughly
+19 to 38 minutes), with the code-judge passes adding a couple of minutes each.
+Gate execution (~4–5 minutes of build + four test gates per slice) and the
+commit/checkpoint overhead were the smaller remainder. Exact figures are in the
+stats `.stat-md`; this note deliberately does not reproduce them.
+
+## Real escalations
+
+None. The arc completed without ever escalating for operator input; the single
+route-back (slice 006) and single build failure (slice 010) were both resolved
+by the arc's own retry loop and are not escalations.

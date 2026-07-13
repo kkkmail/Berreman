@@ -73,6 +73,23 @@ type TreeBuildRequest =
     | RequestedTreeBuild
     | NoTreeBuildRequest
 
+/// The tree-node codes the user has explicitly expanded (spec 0040 step 002): an elevated named
+/// wrapper over the code set — never a naked `Set<string>` on the model surface. The tree is
+/// COLLAPSED by default (a code absent from the set projects `CollapsedNode`); a disclosure-chevron
+/// press toggles exactly one code's membership, and the choice PERSISTS across projections.
+type ExpandedNodes =
+    | ExpandedNodes of Set<string>
+
+    member this.value = let (ExpandedNodes codes) = this in codes
+    /// Whether the node with this code is expanded (its children render).
+    member this.isExpanded (code : string) : bool = this.value.Contains code
+    /// Flip one code's membership — expand a collapsed node, collapse an expanded one.
+    member this.toggle (code : string) : ExpandedNodes =
+        let codes = this.value
+        ExpandedNodes (if codes.Contains code then Set.remove code codes else Set.add code codes)
+
+    static member empty : ExpandedNodes = ExpandedNodes Set.empty
+
 /// One named tree-shaping representation the window offers (spec 0038 §D.0: search order ≠
 /// representation order): a stable `code` the control dispatches back, the picker label, and
 /// the facet order handed to the engine's `buildTree`.
@@ -168,9 +185,17 @@ type Model =
         representation : MaterialsRepresentation
         /// Whether the user has explicitly materialized a gated tree.
         buildRequest : TreeBuildRequest
+        /// The tree-node codes the user has explicitly expanded (spec 0040 step 002) — the tree is
+        /// collapsed by default, so this starts empty and every top-level node opens collapsed.
+        expandedNodes : ExpandedNodes
         /// The selected entry (the Edit / Remove / lifecycle verbs' target and the view panel's
         /// subject).
         selectedId : MaterialId option
+        /// The EXACT tree-node code of the selection — the control highlights the row whose code
+        /// matches, so a material picked THROUGH a facet branch highlights that branch row, not the
+        /// corpus-group copy (spec 0040 step 003; §0.2 keeps the code a control-seam `string` token,
+        /// "" = nothing selected). `selectedId` stays the domain selection; this is only its row.
+        selectedNodeCode : string
         /// Whether the show-inactive/superseded toggle is on (spec 0038 step 023): `ActiveOnly`
         /// (the default — pickers/facet counts exclude retired entries) or `IncludeInactive` (the
         /// toggle adds them to the tree, badged). The Domain DU, never a bool. Select mode ignores
@@ -197,7 +222,9 @@ let init (context : MaterialsWindowContext) (mode : LibraryWindowMode<MaterialEn
         textFilter = TextQuery ""
         representation = byCategoryRepresentation
         buildRequest = NoTreeBuildRequest
+        expandedNodes = ExpandedNodes.empty
         selectedId = None
+        selectedNodeCode = ""
         showInactive = ActiveOnly
         removeGate = NoPendingRemove
         lifecycleGate = NoPendingLifecycle
@@ -218,8 +245,16 @@ type Msg =
     | ChooseRepresentation of string
     /// Materialize the gated tree (the Show/Search button).
     | RequestTreeBuild
-    /// Select the entry leaf with this id (the view panel's subject).
+    /// Toggle one tree node's expansion (a disclosure-chevron press — spec 0040 step 002).
+    | ToggleNode of string
+    /// Select the entry leaf with this id (the view panel's subject). The selection highlights the
+    /// CORPUS-group row (the canonical `entry:<id>` code) — the id-only path for programmatic /
+    /// verb-driven selection.
     | SelectEntry of MaterialId
+    /// Select an entry leaf by its EXACT tree-node code (the id it resolves to, plus the code the
+    /// user actually clicked). Highlights that node — so picking a material through a facet branch
+    /// highlights the branch row, not the corpus-group copy (spec 0040 step 003).
+    | SelectEntryNode of MaterialId * string
     /// The verbs, rewired from the retired Materials bay (spec 0038 step 013).
     | AddMaterial
     | EditSelected
@@ -352,15 +387,17 @@ let selectedEntry (m : Model) : MaterialEntry option =
         | Ok None | Error _ -> None
     | None -> None
 
-/// The selected entry when it carries the step-013 edit model (`complexity = Some`) — the Edit
-/// verb's target. A view-only engine preset offers NO Edit affordance (removed, not greyed —
-/// the `MaterialsControls` discipline).
+/// The selected entry when it carries a LOSSLESSLY EDITABLE edit model — the Edit verb's
+/// target. A view-only engine preset offers NO Edit affordance (removed, not greyed — the
+/// `MaterialsControls` discipline). Since spec 0040 step 004 every entry carries
+/// `complexity = Some`, so the gate is `MaterialComplexityEditor.isEditableComplexity`: a
+/// coded preset whose eps is an opaque evaluated closure (Silicon / Langasite) stays view-only.
 let editableSelection (m : Model) : MaterialEntry option =
     match selectedEntry m with
     | Some entry ->
         match entry.complexity with
-        | Some _ -> Some entry
-        | None -> None
+        | Some complexity when MaterialComplexityEditor.isEditableComplexity complexity -> Some entry
+        | Some _ | None -> None
     | None -> None
 
 // ---------------------------------------------------------------------------
@@ -447,17 +484,33 @@ let selectedVersions (m : Model) : (VersionNumber * MaterialEntry) list =
 
 /// `entries` / `entry:<guid>` name the corpus group and its selectable leaves;
 /// `facet:<facet-key>` / `branch:<facet-key>:<value-key>` name the representation's facet
-/// grouping. Only an `entry:` code means anything to `selectNode` — branches are grouping
-/// display (the OFFERS are the apply surface).
+/// grouping, and a facet branch's own selectable member leaves are path-shaped
+/// `branch:<facet-key>:<value-key>:entry:<guid>` (tree-unique, so the SAME material can leaf
+/// both the corpus group and every branch it belongs to). Only an ENTRY-leaf code — the
+/// top-level `entry:<guid>` OR a branch-nested `…:entry:<guid>` — means anything to
+/// `selectNode`; a bare `facet:` / `branch:` code is grouping display (the OFFERS are the
+/// apply surface).
 let entryNodeCode (id : MaterialId) : string = "entry:" + string id.value
 
+/// Resolve any entry-leaf node code back to its `MaterialId`: the top-level `entry:<guid>`
+/// (prefix) or a branch-nested `…:entry:<guid>` (the `:entry:` separator the branch code adds
+/// before the leaf). A bare `facet:` / `branch:` / `entries` code carries no `entry:` marker and
+/// resolves to `None`, so it stays inert at `selectNode`.
 let entryIdOfNodeCode (code : string) : MaterialId option =
-    let prefix = "entry:"
-    if code.StartsWith prefix then
-        match System.Guid.TryParse (code.Substring prefix.Length) with
+    let flatPrefix = "entry:"
+    let nestedMarker = ":entry:"
+    let idText =
+        if code.StartsWith flatPrefix then Some (code.Substring flatPrefix.Length)
+        else
+            match code.LastIndexOf(nestedMarker, System.StringComparison.Ordinal) with
+            | -1 -> None
+            | idx -> Some (code.Substring (idx + nestedMarker.Length))
+    match idText with
+    | Some t ->
+        match System.Guid.TryParse t with
         | true, g -> Some (MaterialId g)
         | _ -> None
-    else None
+    | None -> None
 
 /// Spec 0038 (044): the Domain-typed id helpers that outlived the per-view `UiIds` module —
 /// `OpticalConstructor.Controls` is domain-free, so `versionRow` (VersionNumber) and `entryNode`
@@ -501,9 +554,18 @@ let update (msg : Msg) (m : Model) : Model =
         | None -> m
     | RequestTreeBuild ->
         { m with buildRequest = RequestedTreeBuild }
+    | ToggleNode code ->
+        // Flip one tree node's expansion (a disclosure-chevron press) — a display-only change, so
+        // no gate is disarmed and no selection moves.
+        { m with expandedNodes = m.expandedNodes.toggle code }
     | SelectEntry id ->
         // A new selection shows its LATEST version (the editable default) and disarms both gates.
-        { disarmed m with selectedId = Some id; viewedVersion = None }
+        // The id-only path highlights the corpus-group row (the canonical `entry:<id>` code).
+        { disarmed m with selectedId = Some id; selectedNodeCode = entryNodeCode id; viewedVersion = None }
+    | SelectEntryNode (id, code) ->
+        // The same selection, but highlighting the EXACT clicked node — so a material picked through
+        // a facet branch highlights that branch row rather than the corpus-group copy.
+        { disarmed m with selectedId = Some id; selectedNodeCode = code; viewedVersion = None }
     | AddMaterial ->
         // Add mints the entry's MaterialId HERE — at the window-open dispatch, off the save
         // path (spec 0038 step 008) — so the launcher's registry keys the new editor by the
@@ -530,7 +592,8 @@ let update (msg : Msg) (m : Model) : Model =
                 { m with
                     removeGate = NoPendingRemove
                     lastError = None
-                    selectedId = (if m.selectedId = Some id then None else m.selectedId) }
+                    selectedId = (if m.selectedId = Some id then None else m.selectedId)
+                    selectedNodeCode = (if m.selectedId = Some id then "" else m.selectedNodeCode) }
             | Error err ->
                 // The store refused (`MaterialStillReferenced` names the referencing samples) —
                 // surface the reason inline and leave the store, selection and list untouched.
@@ -607,7 +670,7 @@ let update (msg : Msg) (m : Model) : Model =
         (match m.mode with
          | Select superseded -> superseded.onCancelled ()
          | Browse -> ())
-        { disarmed m with mode = Select context; selectedId = None }
+        { disarmed m with mode = Select context; selectedId = None; selectedNodeCode = "" }
     | SelectDismissed ->
         // The host window closed (title-bar X, or a staleness Close() from the requesting
         // surface): a STILL-PENDING session cancels exactly once — Select/Close already
@@ -653,6 +716,14 @@ let private chipLabel (defs : AttributeDef<MaterialEntry> list) (applied : Appli
         | NumericRangeSelection range -> $"%g{range.lower}–%g{range.upper}"
     $"%s{facetName}: %s{valueText}"
 
+/// Sort projected tree nodes alphabetically (case-insensitive, ordinal) by their display
+/// label (operator 010/Q1): the top-level facet groups and the entry leaves read
+/// alphabetically, OVERRIDING the representation / corpus order the engine hands back.
+let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : FacetedTreeControls.TreeNode list =
+    nodes
+    |> List.sortWith (fun (a : FacetedTreeControls.TreeNode) (b : FacetedTreeControls.TreeNode) ->
+        System.String.Compare(a.label, b.label, System.StringComparison.OrdinalIgnoreCase))
+
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, tree, previews), so
 /// a verb's write — or a category rename through the shared proxy — shows in the same pass.
@@ -664,6 +735,31 @@ let facetedState (m : Model) : FacetedTreeControls.State =
     // off the corpus is `ActiveOnly`, so no leaf ever badges; with it on, a retired latest version
     // reads `label — inactive`.
     let activeIds = activeMaterialIds m
+    // The tree is collapsed by default (spec 0040 step 002): a node renders `ExpandedNode` only
+    // when its code is in the persisted expanded-node set, `CollapsedNode` otherwise.
+    let expansionOf (code : string) : FacetedTreeControls.NodeExpansion =
+        if m.expandedNodes.isExpanded code then FacetedTreeControls.ExpandedNode
+        else FacetedTreeControls.CollapsedNode
+    // One selectable entry leaf under the given (tree-unique) code — the shared shape both the
+    // corpus "entries" group and every facet branch project (a material leafs its branch AND the
+    // corpus group, under distinct codes so the tree stays uniquely keyed).
+    let entryLeafNode (leafCode : string) (entry : MaterialEntry) : FacetedTreeControls.TreeNode =
+        {
+            code = leafCode
+            label = (if isEntryInactive activeIds entry then entry.name + inactiveBadge else entry.name)
+            countOpt = None
+            expansion = expansionOf leafCode
+            children = []
+        }
+    // The filtered members of ONE facet branch: the browsed corpus narrowed by the branch's own
+    // value on top of everything already applied — the SAME engine path the branch count comes
+    // from, so a branch's member leaves and its `(count)` badge always agree. Material facets are
+    // all discrete, so a branch value is always a `DiscreteValue` here.
+    let branchMembers (facetKey : AttributeKey) (branchValue : AttributeValue) : MaterialEntry list =
+        match branchValue with
+        | DiscreteValue dk ->
+            Facets.filter inputs.defs (inputs.appliedAll @ [ { key = facetKey; selection = DiscreteSelection (Set.singleton dk) } ]) inputs.corpus
+        | NumericValue _ -> []
     // The host decides gating (result count above the Domain threshold, no explicit build yet);
     // the control only obeys (step 012). A gated pass projects NO tree at all — the whole point
     // is skipping the one potentially heavy render (§0.7).
@@ -725,38 +821,54 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                     code = "entries"
                     label = "Materials"
                     countOpt = Some resultCount
-                    expansion = FacetedTreeControls.ExpandedNode
+                    expansion = expansionOf "entries"
                     children =
                         filtered
-                        |> List.map (fun entry ->
-                            ({
-                                code = entryNodeCode entry.id
-                                label = (if isEntryInactive activeIds entry then entry.name + inactiveBadge else entry.name)
-                                countOpt = None
-                                expansion = FacetedTreeControls.ExpandedNode
-                                children = []
-                             } : FacetedTreeControls.TreeNode))
+                        |> List.map (fun entry -> entryLeafNode (entryNodeCode entry.id) entry)
+                        |> sortNodesByLabel
                 }
             let engineTree = Facets.buildTree (Representation m.representation.order) inputs.defs inputs.appliedAll inputs.corpus
             let facetNodes =
                 engineTree.facets
                 |> List.map (fun facet ->
+                    // Each branch paired with its member entries (computed once, reused for the
+                    // branch's own leaf children AND the facet group's distinct-member count).
+                    let branchesWithMembers =
+                        facet.branches
+                        |> List.map (fun branch -> branch, branchMembers facet.key branch.value)
+                    let branchNodes =
+                        branchesWithMembers
+                        |> List.map (fun (branch, members) ->
+                            let branchCode = "branch:" + facet.key.value + ":" + branch.value.label
+                            ({
+                                code = branchCode
+                                label = branch.label
+                                countOpt = Some branch.count.value
+                                expansion = expansionOf branchCode
+                                // The branch expands to its member entries as selectable leaves
+                                // (path-shaped codes keep them tree-unique), alphabetical by label.
+                                children =
+                                    members
+                                    |> List.map (fun entry -> entryLeafNode (branchCode + ":" + entryNodeCode entry.id) entry)
+                                    |> sortNodesByLabel
+                             } : FacetedTreeControls.TreeNode))
+                    // The facet group shows its total: the DISTINCT filtered materials it classifies
+                    // (a material a multi-valued facet lists under several branches counts once). For
+                    // a single-valued facet — every material carries exactly one class after Part B —
+                    // this equals the population and the branch counts visibly sum to it.
+                    let groupCount =
+                        branchesWithMembers
+                        |> List.collect (fun (_, members) -> members |> List.map (fun entry -> entry.id))
+                        |> List.distinct
+                        |> List.length
                     ({
                         code = "facet:" + facet.key.value
                         label = facet.name
-                        countOpt = None
-                        expansion = FacetedTreeControls.ExpandedNode
-                        children =
-                            facet.branches
-                            |> List.map (fun branch ->
-                                ({
-                                    code = "branch:" + facet.key.value + ":" + branch.value.label
-                                    label = branch.label
-                                    countOpt = Some branch.count.value
-                                    expansion = FacetedTreeControls.ExpandedNode
-                                    children = []
-                                 } : FacetedTreeControls.TreeNode))
+                        countOpt = Some groupCount
+                        expansion = expansionOf ("facet:" + facet.key.value)
+                        children = branchNodes
                      } : FacetedTreeControls.TreeNode))
+                |> sortNodesByLabel
             entriesNode :: facetNodes
     {
         tree = tree
@@ -769,6 +881,10 @@ let facetedState (m : Model) : FacetedTreeControls.State =
         filterDraft = m.textFilter.value
         resultCount = resultCount
         materialization = materialization
+        // The EXACT selected node code (spec 0040 step 003) — the control highlights the row whose
+        // code matches, so a material picked through a facet branch highlights that branch row, not
+        // the corpus-group copy. The Model tracks the clicked code; "" = nothing selected.
+        selectedCode = m.selectedNodeCode
     }
 
 /// The control's behaviour seam: every token is lifted back to its domain value HERE, at the
@@ -785,8 +901,9 @@ let facetedHandlers (dispatch : Msg -> unit) : FacetedTreeControls.Handlers =
         selectNode =
             fun code ->
                 match entryIdOfNodeCode code with
-                | Some id -> dispatch (SelectEntry id)
+                | Some id -> dispatch (SelectEntryNode (id, code))
                 | None -> ()
+        toggleNode = fun code -> dispatch (ToggleNode code)
         applyManualRange = fun _ _ -> ()
     }
 
@@ -855,6 +972,7 @@ let private targetText (target : SelectionTarget) : string =
     match target with
     | TableElementTarget _ -> "the requesting table element"
     | SampleLayerTarget _ -> "the requesting sample layer"
+    | SampleSubstrateTarget -> "the requesting sample substrate plate"
 
 /// The Select-state surface (spec 0038 step 016): exactly TWO buttons in ONE row with distinct
 /// positive/negative styling and a visible gap (§0.7) — 'Select' returns the highlighted entry,
@@ -1047,8 +1165,8 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
             else
                 match shownEntry.complexity with
-                | Some _ -> ""
-                | None -> " (view-only engine preset)"
+                | Some complexity when MaterialComplexityEditor.isEditableComplexity complexity -> ""
+                | Some _ | None -> " (view-only engine preset)"
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [

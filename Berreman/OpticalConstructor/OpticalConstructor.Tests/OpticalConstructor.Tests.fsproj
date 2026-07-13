@@ -221,6 +221,12 @@
              the same seed instances, all Result-checked, with NO database and NO file IO; a third
              test proves the stores are genuinely stateful (a second seedAll is rejected). -->
         <Compile Include="SeedingInMemoryTests.fs" />
+        <!-- Spec 0040 Part D.3 (step 012): a placed sample's default Placement.emission derives from
+             the bound sample's geometry-constrained supportedEmission (not the generic
+             defaultEmission), and the experiment's default MeasurementMode follows via ofEmission —
+             the pure Library.placementEmissionForEntry rule plus the end-to-end Ui MVU drive
+             (place a Sample, bind it, choose it to vary) for both a ThinFilm and a Plate seed. -->
+        <Compile Include="PlacedSampleEmissionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>

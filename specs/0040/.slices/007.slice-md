@@ -1,0 +1,11 @@
+# Step 007 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Make the material-editor description `TextBox` wrap instead of clip (minor, Part C.2). In `OpticalConstructor.Ui/MaterialEditorView.fs` set the description box to `AcceptsReturn true` and `TextWrapping = TextWrapping.Wrap` and give it a `MinWidth` inside the left pane so it grows multiline rather than meeting the splitter and clipping. No other layout change. Add a headless assertion in `OpticalConstructor.Ui.Tests` that the description box carries wrapping enabled.
+
+**Acceptance.** After the change, the material-editor description box MUST wrap to multiple lines rather than clip when narrowed - headless-verified that wrapping is enabled.

@@ -18,14 +18,18 @@ open OpticalConstructor.Domain.MaterialComplexityEditor
 /// Discipline notes:
 ///   • Facet KEYS are stable ids; discrete VALUE keys double as branch labels
 ///     (step 009), so every vocabulary string here is human-readable.
-///   • Dependent facets vanish entirely when inapplicable (`appliesTo`): the
-///     physics facets read the entry's serializable VALUE TREES
-///     (`MaterialComplexity` — `ConstantEpsValue` / `EpsDispersiveValue` /
-///     `RhoWithDispValue` / `MuWithDispValue`), so a coded engine preset
-///     (`complexity = None`: silicon, langasite, the vacuum spacer) offers
-///     none of them — its physics is a closure, not data. The category and
-///     constant-vs-dispersive facets read `category`/`properties` and apply
-///     to every entry.
+///   • The four single-valued classifiers — Category, Anisotropy, constant-vs-
+///     dispersive (Dispersion) and Transparency — apply to EVERY entry (TOTAL
+///     facets, spec 0040 Part B / operator 010/Q2): Category/Dispersion read
+///     `category`/`properties`; Anisotropy reads the eps VALUE TREE case; and
+///     Transparency classifies a constant eps value or lands a dispersive
+///     material under Absorbing. So over any population these four partition it —
+///     their branch counts sum to the item count. The remaining DEPENDENT facets
+///     vanish entirely when inapplicable (`appliesTo`): the dispersion-model,
+///     optical-activity and magnetic facets read the serializable VALUE TREES
+///     (`MaterialComplexity` — `EpsDispersiveValue` / `RhoWithDispValue` /
+///     `MuWithDispValue`), so an entry that carries no such sub-tree offers none
+///     of them — its absence is data, not a closure.
 ///   • Physics-derived vocabularies REUSE the editor's seams
 ///     (`availableGyrationClasses`, `gyrationClassLabel`, `Anisotropy`,
 ///     `Transparency`, `MuKind`) — never re-derived (§D.0).
@@ -212,18 +216,17 @@ module LibraryFacets =
             extract = fun entry -> [ DiscreteValue (DiscreteKey (categoryName entry.category)) ]
         }
 
-    /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree;
-    /// inapplicable to the coded presets (no value tree to classify).
+    /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
+    /// (spec 0040 Part B / operator 010/Q2): every entry carries a `complexity`
+    /// value tree after step 004, so the facet applies to ALL of them and
+    /// `extract` reads `anisotropyOf complexity` for each; the defensive `None`
+    /// (no value tree) yields `[]` but never fires over the seed corpus.
     let private materialAnisotropyDef : AttributeDef<MaterialEntry> =
         {
             key = materialAnisotropyKey
             name = "Anisotropy"
             kind = DiscreteAttribute
-            appliesTo =
-                fun entry ->
-                    match entry.complexity with
-                    | Some _ -> ApplicableAttribute
-                    | None -> InapplicableAttribute
+            appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
                     match entry.complexity with
@@ -244,26 +247,26 @@ module LibraryFacets =
             extract = fun entry -> [ DiscreteValue (dispersionKey (materialDispersion entry)) ]
         }
 
-    /// Transparent vs absorbing — offered for CONSTANT materials only
-    /// (operator, 003/Q9), from the `ConstantEpsValue` case. Both conditions
-    /// gate it: the entry classifies `ConstantMaterial` AND carries a
-    /// constant eps value tree — so the constant CODED preset (the vacuum
-    /// spacer, `complexity = None`) does not offer it either.
+    /// Transparent vs absorbing — TOTAL (spec 0040 Part B / operator 010/Q2),
+    /// classified via `materialDispersion` (the constant-vs-dispersive
+    /// discriminator): a CONSTANT material reads Transparent/Absorbing from its
+    /// `ConstantEpsValue` case (`transparencyOf`), while every DISPERSIVE
+    /// material lands under Absorbing (its wavelength-dependent eps is a segment
+    /// tree, not a single value, so it cannot be a constant transparent). The
+    /// defensive constant-without-value-tree case also folds to Absorbing, so
+    /// the facet yields exactly one branch value for every entry.
     let private materialTransparencyDef : AttributeDef<MaterialEntry> =
         {
             key = materialTransparencyKey
             name = "Transparency"
             kind = DiscreteAttribute
-            appliesTo =
-                fun entry ->
-                    match materialDispersion entry, constantEpsOf entry with
-                    | ConstantMaterial, Some _ -> ApplicableAttribute
-                    | ConstantMaterial, None | DispersiveMaterial, _ -> InapplicableAttribute
+            appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
-                    match constantEpsOf entry with
-                    | Some constant -> [ DiscreteValue (transparencyKey (transparencyOf constant)) ]
-                    | None -> []
+                    match materialDispersion entry, constantEpsOf entry with
+                    | ConstantMaterial, Some constant -> [ DiscreteValue (transparencyKey (transparencyOf constant)) ]
+                    | ConstantMaterial, None
+                    | DispersiveMaterial, _ -> [ DiscreteValue (transparencyKey Absorbing) ]
         }
 
     /// Dispersion model — MULTI-VALUED per axis/segment (a dispersive

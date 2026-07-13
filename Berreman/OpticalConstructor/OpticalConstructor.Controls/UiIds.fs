@@ -269,6 +269,10 @@ module UiIds =
         let manualRangeBox (groupCode : string) : string = "FacetManualRangeBox_" + groupCode
         /// A tree node row's clickable id, by the node's (tree-unique) code.
         let treeNode (code : string) : string = "FacetTreeNode_" + code
+        /// A tree node's disclosure-chevron id (spec 0040 step 002) — present ONLY for a parent
+        /// (a node with children); a leaf renders none. A distinct prefix from `treeNode` so the
+        /// chevron is never miscounted as a label row.
+        let treeNodeChevron (code : string) : string = "FacetTreeChevron_" + code
 
     /// The pop-out ScottPlot chart window's controls (`ChartWindow`, formerly `ChartWindowIds`).
     module ChartWindow =
@@ -455,6 +459,12 @@ module UiIds =
         let clearLowerButton = "ClearLowerButton"
         [<Literal>]
         let statusText = "SampleEditorStatus"
+        // The supported-emission R / T checkboxes (spec 0040 Part D.2 step 010): a Plate exposes
+        // both; a ThinFilm shows R fixed on + disabled and renders no T box.
+        [<Literal>]
+        let emitReflectedCheck = "SampleEmitReflectedCheck"
+        [<Literal>]
+        let emitTransmittedCheck = "SampleEmitTransmittedCheck"
         [<Literal>]
         let stackTable = "SampleStackTable"
         [<Literal>]

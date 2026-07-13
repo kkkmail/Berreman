@@ -174,6 +174,8 @@ module WireUiCompositionTests =
             // whose faceted tree lists the SEEDED store — the root wired a live MaterialProxy,
             // not an empty stand-in.
             let materialsWindow = openMaterialsWindow window
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.glass152),
                         "the Materials window must list the seeded glass152 entry from the root-wired store")
             Assert.True(isPresent materialsWindow (MW.entryNode MaterialIds.silicon),
@@ -184,6 +186,8 @@ module WireUiCompositionTests =
             // by-kind faceted tree lists BOTH the seeded live samples store and the read-only
             // preset entries — the root wired live proxies, not empty stand-ins.
             let libraryWindow = openLibraryWindow window
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaves.
+            clickOn libraryWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             Assert.True(isPresent libraryWindow (LW.entryNode (string SeedSamples.glassFilm600.id.value)),
                         "the Library window must list the seeded glassFilm600 sample from the root-wired store")
             Assert.True(isPresent libraryWindow (LW.entryNode "src-600"),
@@ -219,6 +223,7 @@ module WireUiCompositionTests =
             let libraryWindow = opened.[1]
             Assert.True(matchesId UiIds.LibraryWindow.window libraryWindow, "the strip button must open the Library window")
             commitFilter libraryWindow "n=1.75"
+            clickOn libraryWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn libraryWindow (LW.entryNode (string SeedSamples.glassFilm600.id.value))
             clickOn libraryWindow UiIds.LibraryWindow.editButton
             Dispatcher.UIThread.RunJobs()
@@ -234,6 +239,7 @@ module WireUiCompositionTests =
             // materials store's remove-block consults the LIVE samples store
             // (`samplesReferencing`) composed at the root, not a detached lookup.
             commitFilter materialsWindow "1.52"
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn materialsWindow (MW.entryNode MaterialIds.glass152)
             clickOn materialsWindow UiIds.MaterialsWindow.removeButton
             clickOn materialsWindow UiIds.MaterialsWindow.removeConfirmButton
