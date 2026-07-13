@@ -375,15 +375,17 @@ let selectedEntry (m : Model) : MaterialEntry option =
         | Ok None | Error _ -> None
     | None -> None
 
-/// The selected entry when it carries the step-013 edit model (`complexity = Some`) — the Edit
-/// verb's target. A view-only engine preset offers NO Edit affordance (removed, not greyed —
-/// the `MaterialsControls` discipline).
+/// The selected entry when it carries a LOSSLESSLY EDITABLE edit model — the Edit verb's
+/// target. A view-only engine preset offers NO Edit affordance (removed, not greyed — the
+/// `MaterialsControls` discipline). Since spec 0040 step 004 every entry carries
+/// `complexity = Some`, so the gate is `MaterialComplexityEditor.isEditableComplexity`: a
+/// coded preset whose eps is an opaque evaluated closure (Silicon / Langasite) stays view-only.
 let editableSelection (m : Model) : MaterialEntry option =
     match selectedEntry m with
     | Some entry ->
         match entry.complexity with
-        | Some _ -> Some entry
-        | None -> None
+        | Some complexity when MaterialComplexityEditor.isEditableComplexity complexity -> Some entry
+        | Some _ | None -> None
     | None -> None
 
 // ---------------------------------------------------------------------------
@@ -1096,8 +1098,8 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
             else
                 match shownEntry.complexity with
-                | Some _ -> ""
-                | None -> " (view-only engine preset)"
+                | Some complexity when MaterialComplexityEditor.isEditableComplexity complexity -> ""
+                | Some _ | None -> " (view-only engine preset)"
         let viewOnlyNote : IView list =
             if viewingOlder then
                 [ TextBlock.create [

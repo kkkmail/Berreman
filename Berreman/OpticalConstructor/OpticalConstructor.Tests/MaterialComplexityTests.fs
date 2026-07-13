@@ -8,6 +8,7 @@ open Berreman.MaterialProperties
 open Berreman.Dispersion
 open OpticalProperties.Standard
 open OpticalProperties.Active
+open OpticalProperties.Dispersive
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.DispersionModels
 open OpticalConstructor.Domain.MaterialComplexityEditor
@@ -129,12 +130,14 @@ module MaterialComplexityTests =
                     Assert.True(propertiesClose 1e-12 (entry.properties.getProperties w) expected, $"{label}: seeded properties must equal the preset at λ={w}")
 
     [<Fact>]
-    let ``silicon, langasite and the vacuum spacer keep complexity None; the nine re-expressed entries carry Some`` () =
-        for id in [ MaterialIds.silicon; MaterialIds.langasite; MaterialIds.vacuum ] do
-            let e = entryOf id
+    let ``every built-in carries Some complexity after the step-004 re-seed`` () =
+        // Spec 0040 step 004: the three former coded presets (silicon, langasite, the
+        // vacuum spacer) are re-seeded so every built-in carries its single-valued
+        // class as DATA — no entry is left with `complexity = None`.
+        for e in builtInEntries do
             match e.complexity with
-            | None -> ()
-            | Some _ -> Assert.Fail($"{e.name}: expected None complexity (engine-preset entry, view-only)")
+            | Some _ -> ()
+            | None -> Assert.Fail($"{e.name}: every built-in must carry Some complexity after the re-seed")
         let someCount =
             builtInEntries
             |> List.filter (fun e ->
@@ -142,7 +145,20 @@ module MaterialComplexityTests =
                 | Some _ -> true
                 | None -> false)
             |> List.length
-        Assert.Equal(9, someCount)
+        Assert.Equal(builtInEntries |> List.length, someCount)
+
+    [<Fact>]
+    let ``the re-seeded silicon and langasite eps reproduce the engine presets`` () =
+        // Spec 0040 step 004: silicon / langasite dispersion is re-stated through the
+        // ladder's evaluated rung. Guard the copied indices against the engine closures
+        // (`OpticalProperties/Dispersive.fs`) so a transcription slip fails here, not
+        // silently. Langasite's dispersive gyration ρ has no value-tree closure escape,
+        // so only its ε is reproduced; the ε compare uses the two engine closures.
+        for w in visibleGrid do
+            let siliconEps = (entryOf MaterialIds.silicon).properties.epsWithDisp.getEps w
+            Assert.True(epsClose 1e-12 siliconEps (siliconOpticalProperties.epsWithDisp.getEps w), $"silicon eps at λ={w}")
+            let langasiteEps = (entryOf MaterialIds.langasite).properties.epsWithDisp.getEps w
+            Assert.True(epsClose 1e-12 langasiteEps (langasiteOpticalProperties.epsWithDisp.getEps w), $"langasite eps at λ={w}")
 
     // =====================================================================
     // Spec 0035 Part C (slice 010) — dispersive gyration ρ and Polder μ editing.

@@ -18,10 +18,10 @@ open OpticalConstructor.Domain.Experiments
 /// to 800 nm is just as out-of-band as an unbound one. A CONSTANT material (a
 /// `ConstantEpsValue` eps, no segments) NEVER flags — its physics is
 /// wavelength-independent, so no request can leave its "defined range". A
-/// coded-preset material (`MaterialEntry.complexity = None` — silicon / langasite,
-/// whose dispersion is CODED not data) likewise exposes no defined segments and
-/// so never flags: the diagnostic can only speak about the ranges a material
-/// DECLARES as data.
+/// coded-preset material (silicon / langasite, whose dispersion is a coded closure
+/// valid at every wavelength) declares an UNBOUNDED band — its single re-seeded
+/// segment spans the whole spectrum — so no request can leave its defined range and
+/// it never flags: the diagnostic can only warn where a material DECLARES a finite band.
 module OutOfBandDiagnostic =
 
     /// The wavelengths an experiment actually requests (spec 0038 step 031): a
@@ -88,8 +88,9 @@ module OutOfBandDiagnostic =
 
     /// The reachable-material view of a library material entry (spec 0038 step 031):
     /// its display name and its defined dispersion segments. An entry with coded
-    /// dispersion (`complexity = None`) exposes no defined segments and so never
-    /// flags — the diagnostic only speaks about ranges a material declares as data.
+    /// dispersion (a single spectrum-spanning segment — silicon / langasite) declares
+    /// an unbounded band, so no request leaves it and it never flags — the diagnostic
+    /// only warns where a material declares a finite band.
     let reachableMaterialOf (entry : MaterialEntry) : ReachableMaterial =
         {
             materialName = entry.name

@@ -104,13 +104,19 @@ module OutOfBandDiagnosticTests =
         Assert.Equal(InBand, checkMaterialsOutOfBand [ entry ] (SweptWavelengths (band 100.0 2000.0)))
 
     [<Fact>]
-    let ``a coded-preset material (complexity = None) never flags`` () =
-        // Silicon is dispersive but its dispersion is CODED (complexity = None), so it exposes no
-        // defined segments and the diagnostic never speaks about it.
+    let ``a coded-preset material (spectrum-spanning band) never flags`` () =
+        // Silicon is dispersive but its dispersion is a CODED closure valid at every
+        // wavelength (spec 0040 step 004 re-seeds it with a single spectrum-spanning
+        // segment — an UNBOUNDED band), so no request can leave its defined range and
+        // the diagnostic never flags it — exactly as the former `complexity = None`
+        // coded preset never flagged.
         let silicon = builtInEntries |> List.find (fun e -> e.id = MaterialIds.silicon)
-        Assert.Equal(None, silicon.complexity)
-        Assert.Empty((reachableMaterialOf silicon).definedSegments)
+        match silicon.complexity with
+        | Some _ -> ()
+        | None -> Assert.Fail "silicon must carry a complexity value tree after the step-004 re-seed"
         Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 200.0 800.0)))
+        // Even an extreme sweep is covered by the unbounded band.
+        Assert.Equal(InBand, checkMaterialsOutOfBand [ silicon ] (SweptWavelengths (band 1.0 100000.0)))
 
     // ============================ extractor + entry path ============================
 

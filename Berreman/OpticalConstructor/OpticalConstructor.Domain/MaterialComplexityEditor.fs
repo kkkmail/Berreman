@@ -809,6 +809,31 @@ let private seedSegment
         model3 = SumOfTerms axis3
     }
 
+/// Whether a complexity can be LOSSLESSLY edited through this ladder (spec 0040
+/// step 004). A dispersive eps segment lowered to the OPAQUE evaluated case
+/// (`EpsAxisEvaluated` — a coded closure with no editable term coefficients, the
+/// form the re-seeded engine presets Silicon / Langasite carry) cannot be
+/// re-derived into model coefficients, so an editor seeded from it would surface a
+/// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
+/// entry opens VIEW-ONLY instead: the host editability seams
+/// (`MaterialEditorView.init`, `MaterialsWindowView.editableSelection`) gate on
+/// this predicate rather than on `complexity` presence alone. A constant or
+/// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
+let isEditableComplexity (complexity : MaterialComplexity) : bool =
+    let axisIsEvaluated (axis : EpsAxisDispersion) : bool =
+        match axis with
+        | EpsAxisEvaluated _ -> true
+        | RealNK _ | ComplexEps _ -> false
+    match complexity.eps with
+    | EpsWithoutDispValue _ -> true
+    | EpsWithDispValue dispersive ->
+        let axes =
+            match dispersive with
+            | IsotropicDispersive segments -> segments |> List.map (fun s -> s.dispersion)
+            | UniaxialDispersive segments -> segments |> List.collect (fun s -> [ s.ordinaryDispersion; s.extraordinaryDispersion ])
+            | BiaxialDispersive segments -> segments |> List.collect (fun s -> [ s.xDispersion; s.yDispersion; s.zDispersion ])
+        not (axes |> List.exists axisIsEvaluated)
+
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so
 /// `toComplexity (ofComplexity c) = Ok c` value-identically. A dispersive

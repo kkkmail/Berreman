@@ -316,18 +316,22 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                     exit = Editing
                     status = None
                 }
+            // Since spec 0040 step 004 every entry carries `complexity = Some`, so
+            // editability is gated on `isEditableComplexity`, not on complexity
+            // presence: a coded preset whose eps is an opaque evaluated closure
+            // (Silicon / Langasite — no editable coefficients to seed) stays VIEW-ONLY.
             match entry.complexity with
-            | None ->
-                { seeded with
-                    mode = ViewOnlyMaterial "this entry's physics is coded in the engine (complexity = None) — view-only"
-                    presetProperties = Some entry.properties }
-            | Some complexity ->
+            | Some complexity when isEditableComplexity complexity ->
                 match ofComplexity complexity with
                 | Ok editor -> { seeded with editor = editor }
                 | Error e ->
                     { seeded with
                         mode = ViewOnlyMaterial (editErrorReason e)
                         presetProperties = Some entry.properties }
+            | Some _ | None ->
+                { seeded with
+                    mode = ViewOnlyMaterial "this entry's physics is a coded engine closure — view-only"
+                    presetProperties = Some entry.properties }
     // Capture the edit snapshot from the fully-seeded model, so a freshly opened editor is
     // pristine and closes silently (spec 0038 step 033).
     { built with initialEdit = currentEdit built }
