@@ -642,6 +642,25 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``spec 0040 (007): the description box carries wrapping so it grows multiline rather than clipping`` () =
+        // Part C.2: the material-editor description box must WRAP to multiple lines instead of
+        // clipping against the splitter when the left pane narrows — headless-verified that the
+        // wrapping property is enabled (and AcceptsReturn, so a long description grows downward).
+        HeadlessSession.run (fun () ->
+            let materials, _ = freshProxies ()
+            let window = MaterialEditorWindow(materials, NewMaterial (newMaterialId ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            match tryFindControl window UiIds.MaterialEditor.descriptionBox with
+            | Some (:? TextBox as tb) ->
+                Assert.Equal(Avalonia.Media.TextWrapping.Wrap, tb.TextWrapping)
+                Assert.True(tb.AcceptsReturn, "the description box must accept returns so it grows multiline")
+            | Some c -> Assert.Fail($"the description box is a %s{c.GetType().Name}, not a TextBox")
+            | None -> Assert.Fail("the description box was not found in the mounted editor")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``acceptance: choosing biaxial exposes three principal-index fields`` () =
         HeadlessSession.run (fun () ->
             let materials, _ = freshProxies ()

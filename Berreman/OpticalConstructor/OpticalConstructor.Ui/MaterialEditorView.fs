@@ -589,7 +589,13 @@ let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
             labelBlock "Description:"
             TextBox.create [
                 TextBox.name UiIds.MaterialEditor.descriptionBox
-                TextBox.width 620.0
+                // Spec 0040 (007), Part C.2: wrap instead of clip. A MinWidth (not a fixed width that
+                // exceeds the left pane and meets the splitter) lets the box grow multiline within the
+                // pane; AcceptsReturn + Wrap turn a long description into extra lines rather than a
+                // horizontal overflow that clips against the splitter.
+                TextBox.minWidth 340.0
+                TextBox.acceptsReturn true
+                TextBox.textWrapping TextWrapping.Wrap
                 TextBox.text m.description
                 TextBox.onTextChanged (SetDescription >> dispatch)
             ] :> IView
