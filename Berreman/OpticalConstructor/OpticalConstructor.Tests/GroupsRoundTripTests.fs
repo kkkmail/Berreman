@@ -91,7 +91,7 @@ module GroupsRoundTripTests =
     // =======================================================================
 
     /// A representative library: a mutually-exclusive group (one member in the beam), a multi-select
-    /// group, and an experiment collection around two shared samples with on/off toggles.
+    /// group, and a workbench toggle set around two shared samples with on/off toggles.
     let private library : Groups.GroupsLibrary =
         let exclusive =
             Groups.ElementGroup.create "filters" Groups.MutuallyExclusive
@@ -101,7 +101,7 @@ module GroupsRoundTripTests =
             Groups.ElementGroup.create "lenses" Groups.MultiSelect
             |> addMembers [ configured Lens 0.4 ]
         let collection =
-            { Groups.ExperimentCollection.create "sweep" [ "sample-A"; "sample-B" ] with
+            { Groups.WorkbenchToggleSet.create "sweep" [ "sample-A"; "sample-B" ] with
                 experiments = [ Groups.Toggle.on "exp-1"; Groups.Toggle.off "exp-2" ]
                 elements = [ Groups.Toggle.on "value-Lens-0.4" ]
                 groups = [ Groups.Toggle.on "filters" ] }

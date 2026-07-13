@@ -25,6 +25,9 @@
          FuncUI control library, generic (no domain types), referenced by both the test windows and
          the main Ui. Public MIT Avalonia + FuncUI + ScottPlot NuGet only. -->
     <ItemGroup>
+        <!-- Spec 0038 (step 044): the ONE consolidated automation-id module (per-surface sub-modules
+             of [<Literal>] ids). Compiled FIRST so every control / view / window / test resolves it. -->
+        <Compile Include="UiIds.fs" />
         <Compile Include="RotationControls.fs" />
         <Compile Include="ElementPaletteControls.fs" />
         <!-- Spec 0027 (014-more-standardization): the shared "position-on-the-ray" bar (§E.4). -->
@@ -70,11 +73,17 @@
              editor's live n/k preview and the Materials-bay View panel embed this AvaPlot host, built
              through ChartPlot's shared rebuild path), replacing the deleted primitive inlineCanvas. -->
         <Compile Include="EmbeddedChart.fs" />
+        <!-- Spec 0038 Part E (012): the domain-free faceted, filterable, reconfigurable tree
+             (UICOMP_XDUO_0008) — breadcrumb chips with after-counts, count-previewed offered
+             values, representation picker, Enter/LostFocus-committing filter box, and Show/Search
+             gating of the tree body. The host projects the Part D facet-engine output in; the
+             control never touches a proxy or the engine. -->
+        <Compile Include="FacetedTreeControls.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.301" />
-        <PackageReference Include="Avalonia" Version="12.0.5" />
+        <PackageReference Include="Avalonia" Version="12.1.0" />
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <!-- Spec 0033 (017): the interactive chart-window host (moved here with ChartWindow.fs) — the
              same version both hosts already used, so one ScottPlot resolves solution-wide. -->

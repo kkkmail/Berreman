@@ -1,0 +1,15 @@
+# Step 036 — IMPLEMENT_CONTRACT STORE_XDUO_0006 ExperimentDataProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0006
+name: ExperimentDataProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Storage, OpticalConstructor.Tests]
+depends_on: [35]
+```
+
+**How to implement.** Implement the thin real-file adapter in OpticalConstructor.Storage — the ONLY new real IO this spec permits (spec-md 0.3c): createFileBacked builds an ExperimentDataProxy whose fields read the file text at the boundary (File.ReadAllText wrapped so any .NET IO exception is caught AT the boundary and mapped to a typed ExperimentDataError case carrying the reason — exceptions never cross into Domain) and delegate to the step-34 pure parsers. Tests: a temp file written under the test output round-trips a known intensity and a known ellipsometric series; a missing path yields the typed error, not a throw; parser semantics stay covered by the step-34 string tests and mocks everywhere else.
+
+**Acceptance.** After the step, createFileBacked reads a real temp file into the parsed series, maps a missing file to a typed error without throwing, and adds no parsing logic of its own.

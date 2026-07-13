@@ -3,12 +3,14 @@ namespace OpticalConstructor.Controls
 open System
 open System.Globalization
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Interactivity
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -57,24 +59,6 @@ module RotationControls =
             cancel : unit -> unit                // No → host disarms
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance) — addressed by the headless tests.
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let r1Minus = "RotationR1MinusButton"
-        let r1Plus = "RotationR1PlusButton"
-        let r2Minus = "RotationR2MinusButton"
-        let r2Plus = "RotationR2PlusButton"
-        let r3Minus = "RotationR3MinusButton"
-        let r3Plus = "RotationR3PlusButton"
-        let r1Field = "RotationR1Field"
-        let r2Field = "RotationR2Field"
-        let r3Field = "RotationR3Field"
-        let lockR3 = "RotationLockR3Button"
-        // The two reset buttons keep these stable ids in BOTH modes: "Reset"/"Reset All" when idle,
-        // and the confirmation "Yes"/"No" when a reset is armed (the label/action changes, not the id).
-        let reset = "RotationResetButton"
-        let resetAll = "RotationResetAllButton"
-
     /// The rotation step a +/- button applies: 15°, or 5° with Shift held.
     let buttonStepDegrees (shiftHeld : bool) : float = if shiftHeld then 5.0 else 15.0
 
@@ -112,11 +96,19 @@ module RotationControls =
     let private formatDegrees (v : float) : string =
         System.String.Format(CultureInfo.InvariantCulture, "{0:0.##}", v)
 
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
+    /// `Control.Name`) through FuncUI's attr builder. The reset pair swaps its label / action in
+    /// place while the bar re-renders per host update, so the boxes are regenerable — Avalonia
+    /// forbids renaming a styled control, and an AutomationId survives control reuse (the
+    /// `MaterialsControls` precedent).
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
     /// A small clickable, button-styled Border. `active` lights it up with the accent (task 009).
     /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
     let private clickBox (id : string) (label : string) (enabled : bool) (active : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
         Border.create [
-            Border.name id
+            automationId id
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush (if active then activeBackground else idleBackground))
@@ -185,10 +177,10 @@ module RotationControls =
 
     let mutable private armedAxis : Axis option = None
 
-    let private axisOfButtonName (name : string) : Axis option =
-        if name = UiIds.r1Minus || name = UiIds.r1Plus then Some R1
-        elif name = UiIds.r2Minus || name = UiIds.r2Plus then Some R2
-        elif name = UiIds.r3Minus || name = UiIds.r3Plus then Some R3
+    let private axisOfButtonId (autoId : string) : Axis option =
+        if autoId = UiIds.Rotation.r1Minus || autoId = UiIds.Rotation.r1Plus then Some R1
+        elif autoId = UiIds.Rotation.r2Minus || autoId = UiIds.Rotation.r2Plus then Some R2
+        elif autoId = UiIds.Rotation.r3Minus || autoId = UiIds.Rotation.r3Plus then Some R3
         else None
 
     /// Paint one axis +/- button (a `clickBox` Border with a `TextBlock` child) armed or idle.
@@ -199,12 +191,14 @@ module RotationControls =
         | :? TextBlock as t -> t.FontWeight <- (if isArmed then FontWeight.Bold else FontWeight.Normal)
         | _ -> ()
 
-    /// Restyle every axis button currently in a window for the current `armedAxis`.
+    /// Restyle every axis button currently in a window for the current `armedAxis`. The buttons are
+    /// found by their `AutomationProperties.AutomationId` (the boxes carry no `Name` since the
+    /// spec-0038 sweep).
     let private restyleBar (top : TopLevel) : unit =
         for v in top.GetVisualDescendants() do
             match v with
-            | :? Border as b when not (isNull b.Name) ->
-                match axisOfButtonName b.Name with
+            | :? Border as b ->
+                match axisOfButtonId (AutomationProperties.GetAutomationId b) with
                 | Some axis -> styleButton b (b.IsEnabled && armedAxis = Some axis)
                 | None -> ()
             | _ -> ()
@@ -231,11 +225,12 @@ module RotationControls =
         // An axis lights up only when its modifier is armed AND its buttons are actually live.
         let armed (axis : Axis) (groupEnabled : bool) : bool = groupEnabled && activeAxis = Some axis
         let lockButton =
-            clickBox UiIds.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleR3Lock ())
-        // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two named buttons (plus a
-        // prompt) keep their `Name` across the swap — only the label / action / prompt change. A
-        // structural swap to differently-named buttons made FuncUI reuse a Border and re-set its Name,
-        // which Avalonia forbids once it is styled ("Cannot set Name : styled element already styled").
+            clickBox UiIds.Rotation.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleR3Lock ())
+        // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two buttons (plus a
+        // prompt) keep their stable automation ids across the swap — only the label / action / prompt
+        // change. A structural swap to differently-identified buttons made FuncUI reuse a Border and
+        // re-set its then-`Name`, which Avalonia forbids once it is styled ("Cannot set Name : styled
+        // element already styled") — the ids are AutomationIds now, but the in-place swap stays.
         let armedConfirm = state.confirm <> NoConfirm
         let prompt =
             match state.confirm with
@@ -247,8 +242,8 @@ module RotationControls =
         let onResetAll () = match state.confirm with NoConfirm -> handlers.requestResetAll () | _ -> handlers.cancel ()
         let resetArea : IView list =
             [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt; TextBlock.isVisible armedConfirm ] :> IView
-              clickBox UiIds.reset resetLabel state.enabled false (fun _ -> onReset ())
-              clickBox UiIds.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
+              clickBox UiIds.Rotation.reset resetLabel state.enabled false (fun _ -> onReset ())
+              clickBox UiIds.Rotation.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 10.0
@@ -264,9 +259,9 @@ module RotationControls =
             StackPanel.isEnabled state.enabled
             StackPanel.opacity (if state.enabled then 1.0 else 0.5)
             StackPanel.children
-                ([ axisGroup handlers (UiIds.r1Minus, UiIds.r1Plus, UiIds.r1Field) "R1" R1 state.r1 state.enabled (armed R1 state.enabled)
-                   axisGroup handlers (UiIds.r2Minus, UiIds.r2Plus, UiIds.r2Field) "R2" R2 state.r2 state.enabled (armed R2 state.enabled)
-                   axisGroup handlers (UiIds.r3Minus, UiIds.r3Plus, UiIds.r3Field) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
+                ([ axisGroup handlers (UiIds.Rotation.r1Minus, UiIds.Rotation.r1Plus, UiIds.Rotation.r1Field) "R1" R1 state.r1 state.enabled (armed R1 state.enabled)
+                   axisGroup handlers (UiIds.Rotation.r2Minus, UiIds.Rotation.r2Plus, UiIds.Rotation.r2Field) "R2" R2 state.r2 state.enabled (armed R2 state.enabled)
+                   axisGroup handlers (UiIds.Rotation.r3Minus, UiIds.Rotation.r3Plus, UiIds.Rotation.r3Field) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
                    lockButton ]
                  @ resetArea)
         ] :> IView

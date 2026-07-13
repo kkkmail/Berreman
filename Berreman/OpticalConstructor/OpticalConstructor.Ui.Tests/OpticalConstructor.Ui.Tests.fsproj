@@ -28,31 +28,30 @@
         <!-- Spec 0026 Part I (slice 003): pure localization logic tests (no headless
              session needed); runs under the `ui-tests` gate (Category!=ui-smoke). -->
         <Compile Include="LocalizationTests.fs" />
-        <!-- Spec 0026 Part C / Part J (slice 004): pure drawer/table/active-element/
-             control-flavour geometry tests (no headless session); `ui-tests` gate. -->
-        <Compile Include="ConstructorViewTests.fs" />
-        <!-- Spec 0026 Part E (slice 005): the centralized-command registry + the
-             constructor MVU interaction tests (pure update, `ui-tests`) plus one
-             mount-and-render case (`ui-smoke`). -->
-        <Compile Include="CommandRegistryTests.fs" />
-        <!-- Spec 0026 Part D / Part F (slice 006): the ribbon/menu single-source
-             projection, the contextual element tab, the catalogue, and the value-id
-             modal (pure `ui-tests`) plus one constructor-page mount (`ui-smoke`). -->
-        <Compile Include="RibbonTests.fs" />
-        <!-- Spec 0026 Part G / Part K (slice 007): multiple detectors + the primary one,
-             element groups on the table, and undo/redo participation + the destructive
-             confirm gate (pure `ui-tests`) plus one overlay/Experiment-tab mount (`ui-smoke`). -->
-        <Compile Include="GroupDetectorUndoTests.fs" />
+        <!-- Spec 0038 Part B.1 (step 002): the tests that pinned the retired Elmish
+             shell (ConstructorView/CommandRegistry/Ribbon/GroupDetectorUndo/PanelView/
+             ChartPanel/ConstructionEdit/MaterialsPanel/SourcePanel/ResultsPanel/
+             FitPanel/Lifecycle/SystemView3D tests) are deleted with it. SmokeTests
+             keeps the app-host boot + persisted-theme assertions over the launcher. -->
         <Compile Include="SmokeTests.fs" />
-        <Compile Include="PanelViewTests.fs" />
-        <Compile Include="ChartPanelTests.fs" />
-        <Compile Include="ConstructionEditTests.fs" />
-        <Compile Include="MaterialsPanelTests.fs" />
-        <Compile Include="SourcePanelTests.fs" />
-        <Compile Include="ResultsPanelTests.fs" />
-        <Compile Include="FitPanelTests.fs" />
-        <Compile Include="LifecycleTests.fs" />
-        <Compile Include="SystemView3DTests.fs" />
+        <!-- Spec 0038 Part B.1 (step 002): the surviving-surface pins that replace the
+             deleted shell suites — the launcher contract (structure `ui-tests` +
+             click-opens-scene `ui-smoke`), the AppShell theme seam, and the catalogue
+             name/code contract the Main scene and renderer share. -->
+        <Compile Include="LauncherTests.fs" />
+        <!-- Spec 0038 Part C (step 004, UICOMP_XDUO_0007): the TestLauncherWindow
+             contract — the seven diagnostic scene buttons that left the product
+             launcher for the standalone OpticalConstructor.TestWindows.App
+             executable (structure by stable Name + AutomationId `ui-tests`;
+             headless render + click-opens-scene + app-host `ui-smoke`). -->
+        <Compile Include="TestLauncherTests.fs" />
+        <Compile Include="AppShellSeamTests.fs" />
+        <Compile Include="CatalogueTests.fs" />
+        <!-- Spec 0038 Part B.1 (step 002): pure-MVU coverage of the Main scene update
+             arms TableAndElementRotationTests does not pin (palette per kind, Move/
+             Render clamps, exact angles + locks, confirm-gated resets and Library
+             bind, zoom clamps, pointer threshold, workbench disarm discipline). -->
+        <Compile Include="MainSceneMsgTests.fs" />
         <!-- Spec 0027 (002-rotate-table-task): the table-rotation test window — pure MVU
              (rotations, reset, select/unselect; `ui-tests`) plus two headless render proofs
              of the FuncUI view + window host (`ui-smoke`). -->
@@ -73,6 +72,15 @@
         <Compile Include="RendererTestTests.fs" />
         <!-- Spec 0027 task 018: the shared renderer control (config DU + presets + transparency). -->
         <Compile Include="RendererControlsTests.fs" />
+        <!-- Spec 0038 step 030: the shared renderer's value-binding cue — the pure host derivation
+             (bindingStateOf) plus headless proofs that an unbound element renders dashed + ghosted, a
+             bound one solid, and a not-bindable lens normally, in both the shape and wireframe looks. -->
+        <Compile Include="ElementRendererBindingTests.fs" />
+        <!-- Spec 0038 step 031: the out-of-band dispersion warning badge — the pure host
+             derivation (a wavelength sweep past a bound sample's defined dispersion flags exactly
+             that element; a fixed in-band request flags none) plus the headless proof that the
+             flagged element renders the badge with its tooltip text (gate `ui-tests`). -->
+        <Compile Include="OutOfBandBadgeTests.fs" />
         <!-- Spec 0027 task 010: the snap-to-beam test window. -->
         <Compile Include="SnapToBeamTests.fs" />
         <!-- Spec 0027 task 012: the snap-to-reflected-light test window. -->
@@ -99,7 +107,8 @@
              headless structure proof (every UiIds control exists; simulated clicks dispatch the
              matching stub handlers; the row-targeted verbs are inert without a selection). -->
         <Compile Include="SampleLibraryControlsTests.fs" />
-        <!-- Spec 0033 (019): the pure n/k dispersion chart builder (TestWindows) on the 018
+        <!-- Spec 0033 (019): the pure n/k dispersion chart builder (Ui since the 0038
+             step-003 workbench move) on the 018
              dual-axis spine — headless model tests: n→left / k→right via the paired style seed,
              the requested spectral range in the display unit, dispersive curve vs flat line. -->
         <Compile Include="NkDispersionChartTests.fs" />
@@ -149,6 +158,71 @@
              n and k for every model kind incl. the four transcendental, and rasterizes one frame; and both
              host sites embed the AvaPlot and render for a dispersive (incl. transcendental) + non-dispersive. -->
         <Compile Include="EmbeddedChartTests.fs" />
+        <!-- Spec 0038 Part C (step 006): the app-scope composition context (AppContext) —
+             pure contract pins on `create` (settings carried, materials→samples coupling,
+             one scope shares / two scopes don't; gate `ui-tests`) plus the slice acceptance
+             (gate `ui-smoke`): two REAL Main windows over ONE app scope share the stores —
+             a material added through one window's real editor is listed by the other. -->
+        <Compile Include="AppContextTests.fs" />
+        <!-- Spec 0038 Part C (step 007, SVC_XDUO_0001 — declared): the WindowLauncher
+             contract, mock-driven — pure signature pins (modality decision, typed
+             forget/factory errors, id-keyed editor keys + EntryFreshness; gate
+             `ui-tests`) plus registry behaviour over stub-built windows (second
+             open activates, two editor keys create two windows, forget re-creates;
+             gate `ui-smoke`). -->
+        <Compile Include="WindowLauncherTests.fs" />
+        <!-- Spec 0038 Part E (step 012, UICOMP_XDUO_0008): the FacetedTreeControls component —
+             pure contract (empty state + the stable UiIds and derived per-item ids; gate
+             `ui-tests`) plus headless structure proofs (every declared automation id over a known
+             State, chip click → removeConstraint, offered-value click → applyConstraint, gated
+             mode shows Show/Search and ZERO tree rows, the filter and manual-range boxes commit
+             on Enter/LostFocus only — never per keystroke; gate `ui-smoke`). -->
+        <Compile Include="FacetedTreeControlsTests.fs" />
+        <!-- Spec 0038 Part E (step 013, UICOMP_XDUO_0009): the Materials window — pure MVU/
+             projection/disarm-discipline tests (gate `ui-tests`) plus the headless acceptance
+             (gate `ui-smoke`): the ribbon strip button opens ONE window (second click activates),
+             applying facet constraints narrows the corpus in the same render pass, the verbs
+             operate over the shared app-scoped stores through the real editors, a category
+             rename re-labels the category facet, and gating renders zero rows until Show/Search. -->
+        <Compile Include="MaterialsWindowTests.fs" />
+        <!-- Spec 0038 Part F (step 015, UICOMP_XDUO_0010): the Library window — pure MVU/
+             projection tests (the by-kind tree with per-kind counts, the polarizer-category and
+             lifted sample facets, the FIRST numeric-facet host: film-thickness buckets + manual
+             min–max range, the protected-remove refusal and confirm-gate discipline; gate
+             `ui-tests`) plus the headless acceptance (gate `ui-smoke`): the ribbon strip button
+             opens ONE window (second click activates), the by-kind tree lists every entry kind
+             with counts, the sample verbs operate over the shared app-scoped stores through the
+             real Sample editor, and removing a protected entry surfaces the typed refusal and
+             changes nothing. -->
+        <Compile Include="LibraryWindowTests.fs" />
+        <!-- Spec 0038 Part L (step 037): the inverse constructor state (initInverse — unbound sample,
+             chart gated on a hint) and the experiment-collection builder (name / save / list / load
+             through the ExperimentCollectionProxy; per-experiment data-file attach that loads +
+             validates through the ExperimentDataProxy into a typed status), over mock proxies. -->
+        <Compile Include="InverseConstructorTests.fs" />
+        <!-- Spec 0038 Part L (step 038): the measured-data picker's persistent last-folder plumbing —
+             pure tests over the re-typed EnvironmentSettings.lastFolders (Map keyed by picker purpose):
+             the next open reads the persisted folder (lastFolder), a confirmed selection records it
+             (rememberFolder / applyPick), a cancel changes nothing, and buildDataFilePickerOptions
+             builds the base picker options (title / single-select / no start location) with no real
+             picker raised (gate `ui-tests`). -->
+        <Compile Include="DataFilePickerFolderTests.fs" />
+        <!-- Spec 0038 Part L (step 039, UICOMP_XDUO_0011): the SolverHandoffWindow component — the
+             inverse flow's terminal summary + basic-validation screen. Pure per-experiment validation
+             facts over mock proxies (every non-sample element specified; a data file attached; the
+             file reads schema-valid + range-consistent through the ExperimentDataProxy) plus headless
+             semantic-tree proofs driving the REAL window by its UiIds (green ready statuses; missing
+             file + range mismatch typed messages; no solver math), gate `ui-tests` + `ui-smoke`. -->
+        <Compile Include="SolverHandoffWindowTests.fs" />
+        <!-- Spec 0038 Part N (step 047, WIRE_UI / AC-W1): the CLOSING composition acceptance — the
+             finalized composition root builds the app scope once (five stores + the file-backed
+             ExperimentDataProxy + the in-memory ExperimentCollectionProxy + the step-027 SceneProxy)
+             and drives the WHOLE root-wired surface headless: a ui-tests pin that every store proxy
+             (incl. the scene seam) is composed at the root, and the ui-smoke wiring assertion that
+             renders the launcher, both constructor states, both faceted windows in Browse and Select,
+             the three editors, and the SolverHandoff — all over ONE app scope — without throwing. Last
+             in the list (it consumes the App composition root + every Ui window). -->
+        <Compile Include="WireUiFinalCompositionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -168,8 +242,8 @@
              lives ONLY here, never in the pure OpticalConstructor.Tests project. The
              .XUnit helper is intentionally omitted: it binds to xUnit v2, while this
              project stays on xunit.v3 (see TestApp.fs). Versions track Avalonia 11.3.4. -->
-        <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+        <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -180,6 +254,9 @@
         <!-- Spec 0027 (002-rotate-table-task): the project under test for the
              table-rotation test window. -->
         <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
+        <!-- Spec 0038 Part C (step 004): the standalone diagnostic-launcher
+             executable under test (TestLauncherWindow + its App lifetime). -->
+        <ProjectReference Include="..\OpticalConstructor.TestWindows.App\OpticalConstructor.TestWindows.App.fsproj" />
     </ItemGroup>
 
 </Project>

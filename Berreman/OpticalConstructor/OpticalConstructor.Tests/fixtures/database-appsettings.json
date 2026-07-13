@@ -1,0 +1,9 @@
+{
+  "appSettings": {
+    "DatabaseProvider": "SQLite"
+  },
+  "connectionStrings": {
+    "OpticalConstructorMssql": "Server=.;Database=OpticalConstructor;Integrated Security=true;TrustServerCertificate=true",
+    "OpticalConstructorSqlite": "Data Source=optical-constructor.db"
+  }
+}

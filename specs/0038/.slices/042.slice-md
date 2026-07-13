@@ -1,0 +1,15 @@
+# Step 042 — IMPLEMENT_CONTRACT STORE_XDUO_0008 SeedingProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0008
+name: SeedingProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Seeding, OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [21, 22, 41]
+```
+
+**How to implement.** Implement SeedingProxy.createInMemory: adapt the REAL in-memory stores — the add verbs of CategoryProxy, MaterialProxy, SampleProxy and the library entry store — so seeding runs with NO database at all; a future DB cycle swaps only the record's fields. Because the existing createInMemory constructors self-seed, add EMPTY-store constructors in Domain (createInMemoryEmpty beside the seeded ones) for the seeding pipeline — the pipeline is what fills a blank store; the app composition keeps using the self-seeding constructors unchanged. Tests: seedAll over empty stores reproduces the seeded catalogue — category, material, sample, and entry counts match the Domain seed lists and the fixed seed Guids resolve — all Result-checked, no real IO.
+
+**Acceptance.** After the step, seedAll over empty in-memory stores reproduces the seeded catalogue with matching counts and fixed Guids, Result-checked with no database and no file IO.

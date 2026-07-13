@@ -1,0 +1,11 @@
+# Step 034 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [25]
+```
+
+**How to implement.** Pure measured-data parsers in OpticalConstructor.Domain — text in, values out (the text-taking parser precedent that keeps filesystem IO and exceptions out: SpectralImport.parseSpectrumCsv, OpticalConstructor.Storage/SpectralImport.fs). Types: IntensitySeries and EllipsometricSeries records over elevated point types; ExperimentDataError with cases like MalformedDataFile, EmptyDataFile, DataRangeMismatch, DataUnitsMismatch — each carrying reason : string. Intensity schema v1 (STRICT): first row is labels (ignored), then comma-separated X,Y rows, invariant culture, a typed error naming the first malformed row; the X column MEANS whatever the experiment's varied parameter says. Ellipsometric schema v1: header wavelength_nm, psi_deg, delta_deg with optional aoi_deg, one file per experiment. NO delimiter sniffing, NO unit heuristics, NO NCS or Mueller-element imports — those are future parsers, not schema changes. Add validateAgainstExperiment : series vs a step-25 experiment's varied parameter, range, and detector kind, returning typed range/units mismatches — a LOUD error, never a silent trim. Every test runs against in-memory strings.
+
+**Acceptance.** After the step, good, malformed, and empty CSV strings parse or reject with typed errors, a range or units mismatch against the experiment yields the typed validation error, and no test performs file IO.

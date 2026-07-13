@@ -1,0 +1,11 @@
+# Step 005 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.App, OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** Introduce appsettings.json read/written ONLY through Softellect.Sys.AppSettings.AppSettingsProvider (Softellect.Sys 10.1.301.54, already referenced by OpticalConstructor.Storage.fsproj; add the same package reference to OpticalConstructor.App). Create the provider ONCE at the composition root via AppSettingsProvider.tryCreate () — its SetOnMissing behaviour writes every missing key's default back so the first run self-documents. Add ONE [<RequireQualifiedAccess>] ConfigKey module of [<Literal>] key constants beside the provider read in OpticalConstructor.App; initial inventory: SelectWindowsModal (default false), QuickPickThreshold (5), TreeAutoBuildThreshold (100), ThicknessBucketCap (8), plus the connectionStrings entries and DB provider key consumed by step 40. Typed values flow inward as a pure Domain settings record (new module, e.g. OpticalConstructor.Domain/WorkbenchSettings.fs) of elevated types: SelectWindowModality = ModalSelectWindows | ModelessSelectWindows (never a naked bool) and QuickPickThreshold / TreeAutoBuildThreshold / ThicknessBucketCap as single-case DUs with .value plus tryCreate rejecting non-positive values — no view or Domain module ever reads the provider ambiently. appsettings.json is a build-copied content item of OpticalConstructor.App; user preferences REMAIN in environment.json — the two never merge. Unit tests construct the settings record directly and cover defaults and tryCreate rejection without touching disk.
+
+**Acceptance.** After the step, the app creates/opens appsettings.json through AppSettingsProvider with the four defaults written back on first run, the Domain settings record carries only elevated types with tryCreate validation, and unit tests prove the defaults path with no file IO.

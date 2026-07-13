@@ -1,0 +1,15 @@
+# Step 008 — IMPLEMENT_CONTRACT SVC_XDUO_0001 WindowLauncher
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: SVC_XDUO_0001
+name: WindowLauncher
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Ui, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [6, 7]
+```
+
+**How to implement.** Implement the real launcher over a WindowRegistry: module-level mutable Map<WindowKey, Window> held at the HOST layer, outside any Elmish model (the registered-storage-provider host-seam pattern, OpticalConstructor.App/Program.fs:96 in today's tree — that shell line is retired by step 2). Activate = Window.Activate on the registered live window; create = invoke the injected factory, register, unregister on Closed. Editor windows key by the edited entity's id: an Add-opened editor mints MaterialId.create () / SampleId.create () AT WINDOW OPEN and carries EntryFreshness = NewUnsaved — moving the id-mint off the save path (newMaterialId at MaterialEditorView.fs:416 pre-move and the SampleEditorWindow add path) — with Save routing addMaterial/addSample for NewUnsaved and updateMaterial/updateSample for Persisted. Select-state opens honor ModalSelectWindows via ShowDialog with the requesting window as owner, ModelessSelectWindows via Show; Browse windows always Show. Rewire the workbench Add/Edit/Categories verbs through the launcher, subsuming EditorLaunchers.defaults. Headless tests: Edit of the same material twice activates one window; Add twice creates two NewUnsaved windows with distinct upfront Guids; Save of a NewUnsaved editor persists through addMaterial.
+
+**Acceptance.** After the step, opening the same entity's editor twice MUST activate the existing window, a new entity MUST carry its upfront-minted Guid and NewUnsaved freshness from open through Save (addMaterial/addSample), and Select-state modality follows the appsettings switch — all verified headless.

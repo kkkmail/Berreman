@@ -1,0 +1,11 @@
+# Step 002 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: []
+```
+
+**How to implement.** Retire the dead Elmish shell — the composition comment records the old constructor shell is kept but no longer opened by the launcher Main button (OpticalConstructor.App/Program.fs:112-117). Delete the MainWindow host type and the Startup.localizationError surface from OpticalConstructor.App (Program.fs:36-110), and delete from OpticalConstructor.Ui the shell modules Shell.fs, Ribbon.fs, MaterialsView.fs, ConstructionPage.fs, ConstructorView.fs, LifecycleView.fs, Templates.fs, Help.fs plus every Ui module left without a live consumer by those deletions (delete transitively until nothing dead remains; verify by build). KEEP UserEnvironment.fs (live at Program.fs:37) and keep the theme seam App.Initialize uses (AppShell.themeVariant, Program.fs:244) by retaining or relocating that function into a small surviving module. Delete the Ui.Tests tests that pinned the deleted shell behaviour.
+
+**Acceptance.** After the retirement, OpticalConstructor.App has no MainWindow shell host, the launcher still opens the Main constructor scene, environment.json settings still load and apply the persisted theme, the dead shell modules and their tests are gone, and the solution builds warning-clean.

@@ -146,3 +146,67 @@ module LocalizationTests =
                 Assert.False(
                     neutral.Contains value,
                     $"key '%s{key}' (%s{lang}) carries the language-neutral symbol '%s{value}' as a translatable value")
+
+    // --- Spec 0038 Part B.1 (step 002): the loader/lookup edge contract. The retired
+    // --- shell's startup-error WINDOW is gone; the Localization module itself stays
+    // --- live (UserEnvironment reads it), so its documented tolerance for a partially
+    // --- malformed, hand-edited resource is pinned here.
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a non-object entry is skipped while the rest of the resource stays usable`` () =
+        // I.1.1: a hand-edited file with one broken entry still yields every entry it
+        // can — the broken key resolves to itself (visible, never a crash).
+        let resource = parse "{ \"menu.file\": { \"en\": \"File\" }, \"broken\": 5 }" |> okOr
+        Assert.Equal("File", lookup resource English "menu.file")
+        Assert.Equal("broken", lookup resource English "broken")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a non-string language value is skipped, falling back like a missing translation`` () =
+        let resource = parse "{ \"menu.file\": { \"en\": \"File\", \"ru\": 5 } }" |> okOr
+        // The RU value is not a string → treated as missing: English text shows, and
+        // the completeness check names the key for Russian.
+        Assert.Equal("File", lookup resource Russian "menu.file")
+        Assert.Equal<string list>([ "menu.file" ], (check resource Russian).missingKeys)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a non-object resource root is a typed parse error`` () =
+        match parse "[ 1, 2, 3 ]" with
+        | Error (ResourceParseError _) -> ()
+        | other -> Assert.Fail($"expected ResourceParseError, got %A{other}")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``an empty active-language value falls back to the English text`` () =
+        // I.3.1: empty means missing — a blank string must never reach the UI.
+        let resource = parse "{ \"k\": { \"en\": \"Value\", \"ru\": \"\" } }" |> okOr
+        Assert.Equal("Value", lookup resource Russian "k")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``when even the English value is empty the key itself shows`` () =
+        let resource = parse "{ \"k\": { \"en\": \"\", \"ru\": \"\" } }" |> okOr
+        Assert.Equal("k", lookup resource Russian "k")
+        Assert.Equal("k", lookup resource English "k")
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``the completeness report lists the missing keys sorted`` () =
+        let resource = parse "{ \"z.key\": { \"en\": \"Z\" }, \"a.key\": { \"en\": \"A\" } }" |> okOr
+        Assert.Equal<string list>([ "a.key"; "z.key" ], (check resource Russian).missingKeys)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a missing-resource error message names the resource file and its path`` () =
+        let message = describeError (ResourceMissing @"C:\nowhere\strings.json")
+        Assert.Contains(resourceFileName, message)
+        Assert.Contains(@"C:\nowhere\strings.json", message)
+
+    [<Fact>]
+    [<Trait("Category", "ui-tests")>]
+    let ``a parse-error message carries the underlying reason copyably`` () =
+        let message = describeError (ResourceParseError "unexpected token at line 3")
+        Assert.Contains(resourceFileName, message)
+        Assert.Contains("unexpected token at line 3", message)

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spec 0038 Part M (step 040, ADD_COMPONENT STORE_XDUO_0007): a nearly-empty C#
+       EF Core project whose ONLY purpose is proving EFC wiring (create + migrate)
+       from an OpticalConstructor.Tests F# test against SQLite. NO product project
+       references it. Modeled on the STL migrations shape
+       (Softellect/Apps/DistrProc/Migrations/Common) but trimmed to a single Test
+       entity + one SQLite-shaped migration. net10.0, x64 (Berreman is x64-only;
+       Directory.Build.props defaults Platform to x64). References ONLY the SQLite
+       provider — the test exercises SQLite only, so no SqlServer dependency. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OpticalConstructor.Database</RootNamespace>
+    <AssemblyName>Softellect.Berreman.OpticalConstructor.Database</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- NU1903 is the SQLitePCLRaw.lib.e_sqlite3 third-party advisory — outside our
+         control and exempt per the repo's warnings policy (matches the sibling App /
+         Tests projects that also pull it in). -->
+    <NoWarn>NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

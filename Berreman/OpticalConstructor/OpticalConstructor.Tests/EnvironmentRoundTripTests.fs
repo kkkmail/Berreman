@@ -2,10 +2,13 @@ namespace OpticalConstructor.Tests
 
 open System
 open System.IO
+open System.Text.Json
+open System.Text.Json.Nodes
 open Berreman.Constants
 open Berreman.MaterialProperties
 open Berreman.Media
 open OpticalConstructor.Domain.Units
+open OpticalConstructor.Storage.Errors
 open OpticalConstructor.Ui.Localization
 open OpticalConstructor.Ui.UserEnvironment
 open Xunit
@@ -34,9 +37,10 @@ module EnvironmentRoundTripTests =
         }
 
     /// A representative non-default environment exercising every persisted field —
-    /// all four favorite-pin shapes (§A.7), recent files, last folders, a Dark
-    /// theme, an edited panel layout, a non-default chart palette, and edited
-    /// preferences.
+    /// all four favorite-pin shapes (§A.7), last folders, a Dark theme, an edited
+    /// panel layout, a non-default chart palette, and edited preferences. (Recent
+    /// files are no longer an EnvironmentSettings field — they live in
+    /// `Storage.RecentFiles`.)
     let private sample : EnvironmentSettings =
         { defaults with
             favorites =
@@ -52,8 +56,7 @@ module EnvironmentRoundTripTests =
                             ]
                     }
                 ]
-            lastFolders = [ @"C:\work\optics" ]
-            recentFiles = [ "a.ocproj"; "b.ocproj" ]
+            lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\optics" ]
             theme = Dark
             // Edit the saved layout through the AppShell reducer (J.8): hide "results".
             layout = OpticalConstructor.Ui.AppShell.setPanelVisible "results" false defaults.layout
@@ -93,9 +96,8 @@ module EnvironmentRoundTripTests =
             Assert.Equal("Si", m)
             Assert.Equal("src-d65", src)
         | other -> Assert.Fail($"unexpected pins: %A{other}")
-        // Recent files, last folders, theme, palette, layout, preferences all survive.
-        Assert.Equal<string list>(sample.recentFiles, back.recentFiles)
-        Assert.Equal<string list>(sample.lastFolders, back.lastFolders)
+        // Last folders, theme, palette, layout, preferences all survive.
+        Assert.Equal<Map<string, string>>(sample.lastFolders, back.lastFolders)
         Assert.Equal(Dark, back.theme)
         Assert.Equal<string list>(sample.chartPalette, back.chartPalette)
         Assert.False((back.layout.panels |> List.find (fun p -> p.panel = "results")).visible)
@@ -227,3 +229,163 @@ module EnvironmentRoundTripTests =
                 Assert.Equal(a.visible, b.visible))
             sample.layout.panels
             back.layout.panels
+
+    // --- Spec 0038 Part B.1 (step 002): deeper pins over the surviving environment
+    // --- spine. The Elmish shell is retired; environment.json + the AppShell seam
+    // --- carry the persisted theme/layout into `App.Initialize`, so the envelope,
+    // --- the typed error channel, and the documented defaults are pinned here.
+
+    [<Fact>]
+    let ``the serialized envelope stamps the pinned schemaVersion`` () =
+        let json = serialize sample |> okOr
+        use doc = JsonDocument.Parse json
+        Assert.Equal(schemaVersion, doc.RootElement.GetProperty("schemaVersion").GetString())
+
+    [<Fact>]
+    let ``a schemaVersion mismatch is a typed SchemaValidationError, never a migration`` () =
+        let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+        envelope.["schemaVersion"] <- JsonValue.Create "9.9"
+        match deserialize (envelope.ToJsonString()) with
+        | Error (SchemaValidationError _) -> ()
+        | other -> Assert.Fail($"expected SchemaValidationError, got %A{other}")
+
+    [<Fact>]
+    let ``load falls back to defaults on a schemaVersion mismatch file`` () =
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-ver-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        try
+            let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+            envelope.["schemaVersion"] <- JsonValue.Create "9.9"
+            File.WriteAllText(path, envelope.ToJsonString())
+            Assert.Equal(defaults, load path)
+        finally
+            if File.Exists path then File.Delete path
+
+    [<Fact>]
+    let ``malformed JSON deserializes to a typed JsonParseError, never a throw`` () =
+        match deserialize "not json at all {{{" with
+        | Error (JsonParseError _) -> ()
+        | other -> Assert.Fail($"expected JsonParseError, got %A{other}")
+
+    [<Fact>]
+    let ``validate reports at least one message for an invalid document`` () =
+        use doc = JsonDocument.Parse "{ \"theme\": \"Dark\" }"
+        match validate doc.RootElement with
+        | Error (SchemaValidationError messages) -> Assert.NotEmpty messages
+        | other -> Assert.Fail($"expected SchemaValidationError with messages, got %A{other}")
+
+    [<Fact>]
+    let ``save creates the missing settings directory`` () =
+        let root = Path.Combine(Path.GetTempPath(), $"""oc-env-dir-%s{(Guid.NewGuid().ToString("N"))}""")
+        let path = Path.Combine(root, "nested", "environment.json")
+        try
+            Assert.False(Directory.Exists root)
+            save path defaults |> okOr
+            Assert.True(File.Exists path, "save must create the directory chain and write the file")
+            Assert.Equal(defaults, load path)
+        finally
+            if Directory.Exists root then Directory.Delete(root, true)
+
+    [<Fact>]
+    let ``the built-in defaults carry the documented panel arrangement`` () =
+        // §J.8: stack/materials/sources docked left, the chart in the fill region,
+        // results docked right — all visible (the AC-J6 fall-back layout).
+        let panels = defaults.layout.panels
+        Assert.Equal<string list>(
+            [ "stack"; "materials"; "sources"; "chart"; "results" ],
+            panels |> List.map (fun p -> p.panel))
+        Assert.Equal<DockSide list>(
+            [ Left; Left; Left; Center; Right ],
+            panels |> List.map (fun p -> p.dock))
+        Assert.True(panels |> List.forall (fun p -> p.visible), "every default panel starts visible")
+
+    [<Fact>]
+    let ``the built-in defaults carry the documented preferences`` () =
+        // §J.7: nanometer labels, the 400–800 nm visible range in canonical meters,
+        // 100 sweep points, 4-digit display.
+        Assert.Equal(Nanometer, defaults.preferences.lengthUnit)
+        Assert.Equal(Nanometer, defaults.preferences.wavelengthUnit)
+        Assert.Equal(400.0e-9<meter>, defaults.preferences.wavelengthRange.min)
+        Assert.Equal(800.0e-9<meter>, defaults.preferences.wavelengthRange.max)
+        Assert.Equal(100, defaults.preferences.sweepPoints)
+        Assert.Equal(4, defaults.preferences.decimalPrecision)
+
+    [<Fact>]
+    let ``the built-in defaults start with an empty board, a Light theme and English`` () =
+        Assert.Empty defaults.favorites
+        Assert.Empty defaults.lastFolders
+        Assert.Equal(Light, defaults.theme)
+        Assert.Equal(English, defaults.language)
+        Assert.Equal(5, List.length defaults.chartPalette)
+        Assert.False(List.isEmpty defaults.toolbar, "the default toolbar offers the core verbs")
+
+    [<Theory>]
+    [<InlineData("stack")>]
+    [<InlineData("materials")>]
+    [<InlineData("sources")>]
+    [<InlineData("chart")>]
+    [<InlineData("results")>]
+    let ``AC-J8 each panel's visibility edit survives the JSON round-trip`` (panel : string) =
+        let edited = { defaults with layout = OpticalConstructor.Ui.AppShell.setPanelVisible panel false defaults.layout }
+        let back = serialize edited |> okOr |> deserialize |> okOr
+        Assert.False((back.layout.panels |> List.find (fun p -> p.panel = panel)).visible)
+        Assert.Equal(1, back.layout.panels |> List.filter (fun p -> not p.visible) |> List.length)
+
+    [<Theory>]
+    [<InlineData("Light")>]
+    [<InlineData("Dark")>]
+    let ``AC-J8 each theme round-trips through the environment JSON`` (themeName : string) =
+        let theme =
+            match themeName with
+            | "Light" -> Light
+            | "Dark" -> Dark
+            | other -> failwith $"unknown theme case in the test data: {other}"
+        let back = serialize { defaults with theme = theme } |> okOr |> deserialize |> okOr
+        Assert.Equal(theme, back.theme)
+
+    [<Fact>]
+    let ``toolbar and chart palette round-trip in order`` () =
+        let edited = { defaults with toolbar = [ "solve"; "open" ]; chartPalette = [ "#010203"; "#a0b0c0"; "#ffffff" ] }
+        let back = serialize edited |> okOr |> deserialize |> okOr
+        Assert.Equal<string list>(edited.toolbar, back.toolbar)
+        Assert.Equal<string list>(edited.chartPalette, back.chartPalette)
+
+    [<Fact>]
+    let ``last folders round-trip by purpose key`` () =
+        let edited =
+            { defaults with
+                lastFolders = Map.ofList [ measuredDataFolderKey, @"C:\work\b"; "other-picker", @"C:\work\a" ] }
+        let back = serialize edited |> okOr |> deserialize |> okOr
+        Assert.Equal<Map<string, string>>(edited.lastFolders, back.lastFolders)
+
+    // --- Spec 0038 step 043: the two recent-files stores are collapsed into one.
+    // --- `EnvironmentSettings` no longer carries a `recentFiles` field (that store
+    // --- is now solely `Storage.RecentFiles`), but the total-load contract must keep
+    // --- OLD environment.json files — which still carry a `recentFiles` array — loading
+    // --- with the dropped field simply ignored (no migration, §J.6 item 3).
+
+    [<Fact>]
+    let ``an old environment.json carrying a recentFiles array still loads, field ignored, no migration`` () =
+        // Take a valid serialized envelope and graft a legacy `recentFiles` array onto
+        // it, simulating a file written before the field was dropped.
+        let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+        envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj", "b.ocproj" ]"""
+        // The root schema is permissive (no additionalProperties:false), so the legacy
+        // field still VALIDATES; STJ ignores the unmapped property on bind.
+        let back = deserialize (envelope.ToJsonString()) |> okOr
+        // Every surviving field binds normally — the load is total, not a fall-back.
+        Assert.Equal(sample, back)
+
+    [<Fact>]
+    let ``load reads an old on-disk environment.json with a recentFiles array without falling back to defaults`` () =
+        let path = Path.Combine(Path.GetTempPath(), $"""oc-env-legacy-%s{(Guid.NewGuid().ToString("N"))}.json""")
+        try
+            let envelope = (serialize sample |> okOr |> JsonNode.Parse).AsObject()
+            envelope.["recentFiles"] <- JsonNode.Parse """[ "a.ocproj" ]"""
+            File.WriteAllText(path, envelope.ToJsonString())
+            // A genuine total load off disk: the legacy file loads to the real settings,
+            // NOT the built-in defaults (which would signal a validation/migration miss).
+            let loaded = load path
+            Assert.Equal(sample, loaded)
+            Assert.NotEqual(defaults, loaded)
+        finally
+            if File.Exists path then File.Delete path

@@ -3,7 +3,9 @@ namespace OpticalConstructor.Tests
 open System
 open Xunit
 open OpticalConstructor.Domain.MaterialLibrary
-open OpticalConstructor.Domain.Library   // MaterialProxy.createInMemory (the composed referencing store)
+open OpticalConstructor.Domain.Library   // samplesReferencing (the composed referencing store)
+open OpticalConstructor.Domain.Lifecycle // VersionsInUse.empty (the injected in-use seam)
+open OpticalConstructor.Domain.MaterialStore   // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
 
 /// Spec 0035 steps 002/003 (contract STORE_XDUO_0003) — the mutating category write-seam. The
 /// first two tests keep the step-002 DECLARED-lifecycle stubs verbatim (a STUB `CategoryProxy` of
@@ -290,13 +292,13 @@ module CategoryProxyTests =
     let ``the real store blocks removeCategory on a user category a material references and leaves both stores unchanged`` () =
         // The composition-root wiring: a materials store, and a category store whose referencing
         // lookup is backed by it (`materialsReferencingCategory` — the acceptance's referenced block).
-        let materials = MaterialProxy.createInMemory (fun _ -> [])
+        let materials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         match categories.addCategory (userCategory userCategoryId "Referenced category") with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
         let referencing = referencingMaterial userCategoryId
-        match materials.addMaterial referencing with
+        match materials.saveMaterial referencing with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () adding the referencing material, got %A{other}")
         // blocked, NAMING the referencing material
@@ -315,12 +317,12 @@ module CategoryProxyTests =
     [<Fact>]
     let ``the referencing lookup is live — removing the referencing material unblocks the category`` () =
         // The lookup consults the CURRENT materials store, not a snapshot taken at construction.
-        let materials = MaterialProxy.createInMemory (fun _ -> [])
+        let materials = MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         match categories.addCategory (userCategory userCategoryId "Referenced then freed") with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () adding the user category, got %A{other}")
-        match materials.addMaterial (referencingMaterial userCategoryId) with
+        match materials.saveMaterial (referencingMaterial userCategoryId) with
         | Ok () -> ()
         | other -> Assert.Fail($"expected Ok () adding the referencing material, got %A{other}")
         match categories.removeCategory userCategoryId with

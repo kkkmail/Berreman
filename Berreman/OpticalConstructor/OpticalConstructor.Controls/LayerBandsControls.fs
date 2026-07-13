@@ -38,14 +38,6 @@ module LayerBandsControls =
             bands = []
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let stack = "LayerBandsStack"
-        let title = "LayerBandsTitle"
-        /// The i-th band's drawn rectangle (0-based, top-to-bottom in band order).
-        let band (i : int) : string = "LayerBand_" + string i
-
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
     let private idleBorder = color 120 120 120
@@ -73,7 +65,7 @@ module LayerBandsControls =
     /// thickness, carrying the stable per-index automation id.
     let private bandView (maxWeight : float) (index : int) (b : Band) : IView =
         Border.create [
-            Border.name (UiIds.band index)
+            Border.name (UiIds.LayerBands.band index)
             Border.height (bandHeight maxWeight b.heightWeight)
             Border.background (brush (parseHex b.colorHex))
             Border.borderBrush (brush idleBorder)
@@ -103,7 +95,7 @@ module LayerBandsControls =
             StackPanel.spacing 6.0
             StackPanel.children [
                 TextBlock.create [
-                    TextBlock.name UiIds.title
+                    TextBlock.name UiIds.LayerBands.title
                     TextBlock.text state.title
                     TextBlock.textWrapping TextWrapping.Wrap
                     TextBlock.maxWidth 360.0
@@ -113,7 +105,7 @@ module LayerBandsControls =
                     ScrollViewer.maxHeight 320.0
                     ScrollViewer.content (
                         StackPanel.create [
-                            StackPanel.name UiIds.stack
+                            StackPanel.name UiIds.LayerBands.stack
                             StackPanel.orientation Orientation.Vertical
                             StackPanel.width 300.0
                             StackPanel.children bandViews

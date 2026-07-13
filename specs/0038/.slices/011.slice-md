@@ -1,0 +1,11 @@
+# Step 011 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [9, 10]
+```
+
+**How to implement.** Add the two concrete facet catalogues as data (new Domain module, e.g. LibraryFacets.fs). MATERIAL facets (extractors over MaterialEntry — MaterialLibrary.fs:230-238; complexity is None for coded presets): Category (corpus-derived from the seeded catalogue, standardCategories MaterialLibrary.fs:118); Anisotropy (Isotropic/Uniaxial/Biaxial); Constant-vs-dispersive; Transparent-vs-absorbing offered for CONSTANT materials only (appliesTo); Dispersion model — MULTI-VALUED per axis/segment over the DispersionModel cases (DispersionModels.fs:168-178) so counts need not sum to the total; optical activity to symmetry class and handedness, offered only when active, the classes via availableGyrationClasses (MaterialComplexityEditor.fs:373), never re-derived; magnetic to scalar/gyromagnetic, only when magnetic. LIBRARY-ENTRY facets (LibraryEntry, ElementId.fs:188-192): the kind facet always; every material facet lifted to samples as the DISTINCT UNION over constituent materials (substrate plus film layers — any constituent matches); substrate material offered only for Plate/Wedge; 'has thin films' derived from structure.films non-empty independent of SubstrateKind; film material(s) corpus-derived, name-sorted, multiselect; per-film thickness as a NumericAttribute bucketed by step 10. Unit tests pin each extractor and each appliesTo rule over the seeded corpora (builtInEntries, SeedSamples).
+
+**Acceptance.** After the step, tests MUST prove dependent facets vanish entirely when inapplicable, the dispersion-model facet is multi-valued, sample facets match on any constituent material, and per-film thickness values flow into the step-10 buckets.

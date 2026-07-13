@@ -1,0 +1,16 @@
+# Step 041 — ADD_CONTRACT STORE_XDUO_0008 SeedingProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0008
+name: SeedingProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Seeding
+touches: [OpticalConstructor.Seeding, OpticalConstructor.Tests]
+depends_on: [14]
+```
+
+**How to implement.** Create the F# class-library project Berreman/OpticalConstructor/OpticalConstructor.Seeding (net10.0, x64; add to Berreman.slnx; references OpticalConstructor.Domain) declaring the seed-push seam: SeedingError = SeedRejected of reason : string; [<ReferenceEquality>] SeedingProxy = { saveCategory : MaterialCategory -> Result<unit, SeedingError>; saveMaterial : MaterialEntry -> Result<unit, SeedingError>; saveSample : Sample -> Result<unit, SeedingError>; saveLibraryEntry : LibraryEntry -> Result<unit, SeedingError> }; and seedAll : SeedingProxy -> Result<unit, SeedingError> pushing the EXISTING Domain seed values — standardCategories (MaterialLibrary.fs:118), builtInEntries (:363), the SeedSamples values (ElementId.fs:381), seedEntries (:532) — in category, material, sample, entry order. The seeds STAY where they live next to their types; seeded Guids are frozen forever (future foreign keys). Mock-driven test in OpticalConstructor.Tests: seedAll over a recording stub receives every seed value exactly once, in order, through the exact signatures.
+
+**Acceptance.** After the step, a mock-driven test MUST prove seedAll pushes every existing seed value exactly once, in category-material-sample-entry order, through the record's exact signatures; it passes.

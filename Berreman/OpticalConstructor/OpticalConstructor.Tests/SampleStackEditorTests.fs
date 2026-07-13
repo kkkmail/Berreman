@@ -22,8 +22,10 @@ module SampleStackEditorTests =
 
     let private deg (d : float) : Angle = Angle.degree d
 
+    // The layer pins version one of the material (spec 0038 step 022 — a `SampleLayer` carries a
+    // `MaterialVersionId`); `.materialId.materialId` recovers the identity in the assertions below.
     let private layerOf (materialId : MaterialId) (thicknessNm : float) : SampleLayer =
-        { materialId = materialId; thickness = nm thicknessNm; orientation = PrimaryAxes }
+        { materialId = MaterialVersionId.firstOf materialId; thickness = nm thicknessNm; orientation = PrimaryAxes }
 
     /// films = [ glass 100 nm; vacuum 50 nm; glass 100 nm ] — three top-level single layers.
     let private threeSingles : SampleStructure =
@@ -148,18 +150,18 @@ module SampleStackEditorTests =
             |> applyAll [ SelectByMaterial MaterialIds.glass152; SetThicknessOfSelected (nm 77.0) ]
         let expanded = state.structure.expandedFilms
         Assert.Equal(7, List.length expanded)
-        let glassLayers = expanded |> List.filter (fun l -> l.materialId = MaterialIds.glass152)
+        let glassLayers = expanded |> List.filter (fun l -> l.materialId.materialId = MaterialIds.glass152)
         Assert.Equal(3, List.length glassLayers)
         Assert.All(glassLayers, fun l -> Assert.Equal(nm 77.0, l.thickness))
-        let vacuumLayers = expanded |> List.filter (fun l -> l.materialId = MaterialIds.vacuum)
+        let vacuumLayers = expanded |> List.filter (fun l -> l.materialId.materialId = MaterialIds.vacuum)
         Assert.All(vacuumLayers, fun l -> Assert.Equal(nm 20.0, l.thickness))
 
     [<Fact>]
     let ``SetMaterialOfSelected rebinds exactly the selected layers`` () =
         let state =
             editorOf threeSingles
-            |> applyAll [ SelectLayer (AtSingleLayer 1); SetMaterialOfSelected MaterialIds.glass175 ]
-        let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId)
+            |> applyAll [ SelectLayer (AtSingleLayer 1); SetMaterialOfSelected (MaterialVersionId.firstOf MaterialIds.glass175) ]
+        let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>([ MaterialIds.glass152; MaterialIds.glass175; MaterialIds.glass152 ], materials)
 
     [<Fact>]
@@ -221,7 +223,7 @@ module SampleStackEditorTests =
         let state =
             editorOf threeSingles
             |> applyAll [ SelectLayer (AtSingleLayer 1); MoveSelectedUp ]
-        let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId)
+        let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>([ MaterialIds.vacuum; MaterialIds.glass152; MaterialIds.glass152 ], materials)
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
 
@@ -244,7 +246,7 @@ module SampleStackEditorTests =
         let state =
             editorOf threeSingles
             |> applyAll [ SelectLayer (AtSingleLayer 0); MoveSelectedDown ]
-        let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId)
+        let materials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>([ MaterialIds.vacuum; MaterialIds.glass152; MaterialIds.glass152 ], materials)
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 1 ], state.selection)
 
@@ -254,7 +256,7 @@ module SampleStackEditorTests =
             editorOf withGroup
             |> applyAll [ SelectLayer (AtCellLayer (0, 1)); MoveSelectedUp ]
         // Every period now starts with the vacuum layer.
-        let expandedMaterials = state.structure.expandedFilms |> List.map (fun l -> l.materialId)
+        let expandedMaterials = state.structure.expandedFilms |> List.map (fun l -> l.materialId.materialId)
         Assert.Equal<MaterialId list>(
             [
                 MaterialIds.vacuum; MaterialIds.glass152
@@ -272,7 +274,7 @@ module SampleStackEditorTests =
             |> applyAll [ SelectLayer (AtSingleLayer 1); MoveSelectedUp ]
         match state.structure.films with
         | [ SingleLayer single; Repeated group ] ->
-            Assert.Equal(MaterialIds.glass175, single.materialId)
+            Assert.Equal(MaterialIds.glass175, single.materialId.materialId)
             Assert.Equal(3, group.count)
         | films -> failwith $"unexpected films shape: %A{films}"
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
@@ -301,7 +303,7 @@ module SampleStackEditorTests =
         |> List.iter (fun period ->
             Assert.Equal<MaterialId list>(
                 [ MaterialIds.glass152; MaterialIds.vacuum ],
-                period |> List.map (fun l -> l.materialId)))
+                period |> List.map (fun l -> l.materialId.materialId)))
         Assert.Equal<Set<LayerPosition>>(Set.empty, state.selection)
 
     [<Fact>]
@@ -313,7 +315,7 @@ module SampleStackEditorTests =
         | [ Repeated group; SingleLayer trailing ] ->
             Assert.Equal(3, group.count)
             Assert.Equal(2, List.length group.cell)
-            Assert.Equal(MaterialIds.glass152, trailing.materialId)
+            Assert.Equal(MaterialIds.glass152, trailing.materialId.materialId)
         | films -> failwith $"unexpected films shape: %A{films}"
         Assert.Equal(2 * 3 + 1, List.length state.structure.expandedFilms)
 

@@ -14,6 +14,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.TableRotationView
+open OpticalConstructor.Ui
 
 /// Tests for the table-rotation test window (Spec 0027, task 002-rotate-table). The rotation is
 /// CONSTRAINED to one axis at a time by the documented modifier+wheel gestures (§E.3/§E.5); a
@@ -271,7 +272,7 @@ module TableRotationTests =
                 withMouseHarnessFrom (selectedModel ()) (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Rotation.r2Plus -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->

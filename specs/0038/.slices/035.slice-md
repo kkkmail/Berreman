@@ -1,0 +1,16 @@
+# Step 035 — ADD_CONTRACT STORE_XDUO_0006 ExperimentDataProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0006
+name: ExperimentDataProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [34]
+```
+
+**How to implement.** Declare in OpticalConstructor.Domain the measured-data load seam: [<ReferenceEquality>] ExperimentDataProxy = { tryLoadIntensity : DataFilePath -> Result<IntensitySeries, ExperimentDataError>; tryLoadEllipsometric : DataFilePath -> Result<EllipsometricSeries, ExperimentDataError> } (DataFilePath from step 25, the series and error types from step 34). Provide a mock (canned series keyed by path) plus a mock-driven test in OpticalConstructor.Tests exercising both fields through their exact signatures.
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub ExperimentDataProxy and exercise tryLoadIntensity and tryLoadEllipsometric through their exact signatures; it passes.

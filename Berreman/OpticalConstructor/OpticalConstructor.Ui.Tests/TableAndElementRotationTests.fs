@@ -16,7 +16,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Tests for the combined table + element rotation window (Spec 0027, task 006 #3). The rotation
 /// gestures act on whatever is selected (the table view, or an element); rotating the table leaves
@@ -178,25 +178,35 @@ module TableAndElementRotationTests =
                 window.Content <- Component(fun _ -> mainView m dispatch)
                 window.Show()
                 Dispatcher.UIThread.RunJobs()
+                // The clickable boxes carry an `AutomationProperties.AutomationId` (spec 0038 sweep);
+                // sliders / panels keep their `Name` — collect BOTH id kinds into the visible set.
                 let ns =
                     window.GetVisualDescendants()
-                    |> Seq.choose (function :? Control as c when not (isNull c.Name) && c.IsEffectivelyVisible -> Some c.Name | _ -> None)
+                    |> Seq.collect (fun v ->
+                        match v with
+                        | :? Control as c when c.IsEffectivelyVisible ->
+                            seq {
+                                if not (isNull c.Name) then yield c.Name
+                                let autoId = Avalonia.Automation.AutomationProperties.GetAutomationId c
+                                if not (isNull autoId) then yield autoId
+                            }
+                        | _ -> Seq.empty)
                     |> Set.ofSeq
                 window.Close()
                 ns
             // Every bay has a (visible) ribbon tab.
             let rotationView = visibleNames (initMain ())
             for bay in BayNames.all do
-                Assert.Contains(Ribbon.UiIds.tab bay, rotationView)
+                Assert.Contains(UiIds.Ribbon.tab bay, rotationView)
             // The default (Rotation) bay shows the rotation buttons; the Move bay's controls are hidden.
-            Assert.Contains(RotationControls.UiIds.r2Plus, rotationView)
-            Assert.DoesNotContain(RayPositionControls.UiIds.minus, rotationView)
+            Assert.Contains(UiIds.Rotation.r2Plus, rotationView)
+            Assert.DoesNotContain(UiIds.RayPosition.minus, rotationView)
             // Selecting the Render bay reveals the renderer sliders (and hides the rotation buttons).
             let renderView = visibleNames (update (SelectBay BayNames.render) (initMain ()))
-            Assert.Contains(RendererControls.UiIds.railsSlider, renderView)
-            Assert.DoesNotContain(RotationControls.UiIds.r2Plus, renderView)
+            Assert.Contains(UiIds.Renderer.railsSlider, renderView)
+            Assert.DoesNotContain(UiIds.Rotation.r2Plus, renderView)
             // Selecting the Move bay reveals the along-beam controls.
-            Assert.Contains(RayPositionControls.UiIds.minus, visibleNames (update (SelectBay BayNames.move) (initMain ()))))
+            Assert.Contains(UiIds.RayPosition.minus, visibleNames (update (SelectBay BayNames.move) (initMain ()))))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -205,7 +215,9 @@ module TableAndElementRotationTests =
         // content node between two different controls made FuncUI recycle a styled, named control. Driven
         // through the REAL Main window (its Elmish loop runs the incremental virtual-DOM patch, as in app).
         HeadlessSession.run (fun () ->
-            let window = OpticalConstructor.App.MainConstructorWindow()
+            // Spec 0038 step 006: the real window takes the injected app scope — a fresh one here
+            // (this file opens the view module, not `OpticalConstructor.Ui`, so qualify the type).
+            let window = OpticalConstructor.App.MainConstructorWindow(OpticalConstructor.Ui.AppContext.create WorkbenchSettings.WorkbenchSettings.defaults)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let click (name : string) : unit =
@@ -219,9 +231,9 @@ module TableAndElementRotationTests =
                         Dispatcher.UIThread.RunJobs()
                     else Assert.Fail($"%s{name} has no on-screen position")
                 | None -> Assert.Fail($"%s{name} not found")
-            click (Ribbon.UiIds.tab BayNames.render)     // show the Render bay
-            click RendererControls.UiIds.swapRenderer     // swap the renderer (wireframe → shapes)
-            click (Ribbon.UiIds.tab BayNames.rotation)    // back to Rotation — must NOT throw
+            click (UiIds.Ribbon.tab BayNames.render)     // show the Render bay
+            click UiIds.Renderer.swapRenderer     // swap the renderer (wireframe → shapes)
+            click (UiIds.Ribbon.tab BayNames.rotation)    // back to Rotation — must NOT throw
             Assert.True(window.IsVisible)
             window.Close())
 
@@ -431,7 +443,7 @@ module TableAndElementRotationTests =
                 withMouseHarness (fun w ->
                     let button =
                         w.GetVisualDescendants()
-                        |> Seq.choose (fun v -> match v with | :? Border as b when b.Name = RotationControls.UiIds.r2Plus -> Some b | _ -> None)
+                        |> Seq.choose (fun v -> match v with | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Rotation.r2Plus -> Some b | _ -> None)
                         |> Seq.tryHead
                     match button with
                     | Some b ->
@@ -469,7 +481,50 @@ module TableAndElementRotationTests =
             // stable id); the static test scene (empty palette) renders none.
             let removeButtons =
                 window.GetVisualDescendants()
-                |> Seq.choose (function :? Border as b when b.Name = ElementPaletteControls.UiIds.removeSelected -> Some b | _ -> None)
+                |> Seq.choose (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.ElementPalette.removeSelected -> Some b | _ -> None)
                 |> Seq.toList
             Assert.Equal(1, List.length removeButtons)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the palette's polarizer trio and sample buttons add pre-bound / unbound elements (018)`` () =
+        // Spec 0038 (018): the palette exposes THREE polarizer buttons with stable ids — LP / CPL /
+        // CPR — over the UNCHANGED CatalogueKinds; each add lands PRE-BOUND to its seeded entry,
+        // while a sample add stays UNBOUND (the inverse hook).
+        HeadlessSession.run (fun () ->
+            let mutable model = initMain ()
+            let dispatch (m : Msg) = model <- update m model
+            let window = Window(Width = canvasWidth, Height = canvasHeight + 260.0)
+            window.Content <- Component(fun _ -> view model dispatch)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            let clickAdd (code : string) : unit =
+                let id = UiIds.ElementPalette.addButton code
+                let button =
+                    window.GetVisualDescendants()
+                    |> Seq.tryPick (function
+                        | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id -> Some b
+                        | _ -> None)
+                match button with
+                | Some b ->
+                    let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+                    if c.HasValue then
+                        window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                        window.MouseUp(c.Value, MouseButton.Left, RawInputModifiers.None)
+                        Dispatcher.UIThread.RunJobs()
+                    else Assert.Fail($"%s{id} has no on-screen position")
+                | None -> Assert.Fail($"%s{id} was not rendered")
+            clickAdd "LP"
+            clickAdd "CPL"
+            clickAdd "CPR"
+            clickAdd "Sa"
+            let added = model.elements |> List.skip 2   // past the seeded source / detector
+            Assert.Equal<CatalogueKind list>(
+                [ LinearPolarizer; CircularPolarizer; CircularPolarizer; Sample ],
+                added |> List.map (fun e -> e.placement.catalogueKind))
+            Assert.Equal<string option list>(
+                [ Some SeedEntryIds.polarizerLp; Some SeedEntryIds.polarizerCpLeft; Some SeedEntryIds.polarizerCpRight; None ],
+                added |> List.map (fun e -> e.placement.valueId))
             window.Close())

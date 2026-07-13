@@ -1,0 +1,11 @@
+# Step 038 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [37]
+```
+
+**How to implement.** Wire the inert last-folder setting through the data-file picker. Re-type EnvironmentSettings.lastFolders (Ui/UserEnvironment.fs:184 — persisted but never read or updated by any picker) from string list to Map<string, string> keyed by picker purpose, initially one key for the measured-data picker; the environment loader already falls back to defaults on a shape mismatch (the total-load contract, OpticalConstructor.App/Program.fs:33-35), so an old file simply yields an empty map — NO migration code. The picker starts at the persisted folder via FilePickerOpenOptions.SuggestedStartLocation (resolved through the window's StorageProvider — the picker-raising pattern of the retired shell, Ui/Shell.fs:403-414 in today's tree) and UPDATES the stored folder ONLY on a confirmed selection, persisting through UserEnvironment.save; cancel changes nothing. Tests: a confirmed selection updates the purpose-keyed folder; cancel leaves it untouched; the next open passes the persisted folder to the picker options — the option-building logic is a pure function unit-tested without a real picker.
+
+**Acceptance.** After the step, a confirmed file selection persists the picker's folder under its purpose key, cancel changes nothing, and the next open starts from the persisted folder — with the option-building logic unit-tested purely.

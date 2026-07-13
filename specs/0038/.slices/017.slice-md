@@ -1,0 +1,11 @@
+# Step 017 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [5, 16]
+```
+
+**How to implement.** Rework the Selector bay flow: with an element selected, a 'Choose…' verb opens the Library window in Select state constrained to the element's kind (through WindowLauncher). The inline quick-pick strip — today's kind-constrained rows plus confirm panel via LibraryControls — renders ONLY when the kind-constrained entry count is below QuickPickThreshold (step 5, default 5); at or above the threshold the bay shows Choose… alone. BOTH paths converge on the SAME bind message that commits placement.valueId (today TestWindows/TableAndElementRotationView.fs:768,780). Stable ids for Choose… and the strip. Headless tests: an over-threshold kind shows Choose… and no strip; an under-threshold kind shows the strip; binding through the strip and through the Select window land the identical valueId.
+
+**Acceptance.** After the step, the quick-pick strip renders only below the threshold, Choose… opens the kind-constrained Select-state Library window, and both paths commit the identical valueId bind — verified headless.

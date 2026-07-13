@@ -50,7 +50,7 @@ module RibbonPaneTests =
     /// Elmish loop so the view re-renders in the same pass — the patch path that would recycle a
     /// styled control if the content slot were not keyed.
     let private clickTab (window : Window) (bayName : string) : unit =
-        let id = Ribbon.UiIds.tab bayName
+        let id = UiIds.Ribbon.tab bayName
         let found =
             window.GetVisualDescendants()
             |> Seq.tryPick (function :? Control as c when c.Name = id && c.IsEffectivelyVisible -> Some c | _ -> None)
@@ -83,14 +83,14 @@ module RibbonPaneTests =
     /// content is, while every bay's TAB stays present (the tab strip is unchanged).
     let private assertOnlyBayRealized (window : Window) (bayName : string) : unit =
         let names = realizedNames window
-        Assert.Contains(Ribbon.UiIds.pane bayName, names)
+        Assert.Contains(UiIds.Ribbon.pane bayName, names)
         Assert.Contains(marker bayName, names)
         for other in bayNames do
             if other <> bayName then
-                Assert.DoesNotContain(Ribbon.UiIds.pane other, names)
+                Assert.DoesNotContain(UiIds.Ribbon.pane other, names)
                 Assert.DoesNotContain(marker other, names)
         for b in bayNames do
-            Assert.Contains(Ribbon.UiIds.tab b, names)
+            Assert.Contains(UiIds.Ribbon.tab b, names)
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

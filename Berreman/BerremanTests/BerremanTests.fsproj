@@ -59,7 +59,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Softellect.Sys" Version="10.0.101.41" />
+        <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />
     </ItemGroup>
 
     <ItemGroup>

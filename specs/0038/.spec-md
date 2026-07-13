@@ -1,0 +1,513 @@
+# Spec 0038 — UI standardization: workbench relocation, faceted Materials/Library windows, lifecycle, experiments & inverse wiring
+
+Full spec authored from the operator's preliminary spec
+`specs/0038/.manual/006-ui-standardization-preliminary-spec.md` (operator
+decisions Q1–Q24 of `003`, Q25–Q29 of `005`, and the three approved
+interpretation calls of its §17 are binding). The ordered work lives in
+`.spec-jsonl`; this document carries only the binding constraints, the
+contract table, and the per-part orientation.
+
+## 0. Binding constraints (every part)
+
+0.1 **Elevate every primitive** (CLAUDE.md). New ids are single-case DUs with a
+`.value` accessor plus `create`/`tryCreate`; enumerated conditions are named
+multi-case DUs (no naked `bool`, no `enum`); every `*Error` case carries
+`reason : string` or a typed payload; public functions have explicit concrete
+signatures. Follow the existing elevated-id precedents `MaterialId`
+(`…Domain/MaterialLibrary.fs:27`) and `SampleId` / the preset DUs
+(`…Domain/ElementId.fs:139-192`). The operator's "is-new flag" and "protected
+flag" are therefore two-case DUs (`EntryFreshness`, `EntryProtection`), never
+bools.
+
+0.2 **No legacy, no fallback, no migration.** No library STATE is persisted:
+the Main-flow composition builds every store in memory at startup
+(`…App/Program.fs:129-147`, `createInMemory` proxies over the Domain seeds),
+so re-typed structures replace old ones cleanly and every app start re-seeds.
+The only library-shaped serialization in the tree is metadata-only and
+unwired from that composition — the §I.8 share/export file format
+(`…Storage/Report.fs:17-24`, module `MaterialLibrary`, whose persisted
+`MaterialEntryDto` at `:36` carries display metadata only) and the
+import/export helpers (`…Storage/MaterialImport.fs` —
+`importRefractiveIndexInfo` `:407`, `importCsv` `:432`, `exportCsv` `:459`);
+per §0.3 this spec adds no schema or import/export work, so neither gains a
+persisted-state role. The registered write-seam contracts
+`STORE_XDUO_0001 MaterialProxy` (`…Domain/MaterialLibrary.fs:506`) and
+`STORE_XDUO_0002 SampleProxy` (`…Domain/ElementId.fs:318`) keep their names,
+kinds, and declaring project; their record surfaces are re-typed **in place**
+by IMPLEMENT steps — no temporary, no shim, no compatibility overloads (the
+0035 precedent of re-typing `MaterialEntry.category` through the same
+surface). The one persisted user file this spec touches, `environment.json`,
+is loaded totally with defaults on shape mismatch (`…App/Program.fs:33-35`),
+so a re-typed settings field needs **no** migration code: an old file simply
+yields the default.
+
+0.3 **No real IO** beyond three named seams. All catalogue, scene, and
+experiment IO goes through `[<ReferenceEquality>]` proxy records with
+`createInMemory` implementations over private `ref Map`s — the existing seam
+(`SampleProxy.createInMemory`, `…Domain/ElementId.fs:652`;
+`MaterialProxy.createInMemory`, `:722`). This spec writes NO catalogue, scene,
+or experiment files to disk and adds NO schema or import/export work;
+`.ocproj` stays unwired. The only real IO permitted: (a) the existing
+`environment.json` persistence (`…Ui/UserEnvironment.fs`), (b)
+`appsettings.json` through `Softellect.Sys.AppSettings` only, and (c) the thin
+measured-data CSV file-read adapter behind `ExperimentDataProxy` (approved
+interpretation, preliminary §17.2).
+
+0.4 **UI is testable without a window** (CLAUDE.md). Every new surface is a
+pure Domain edit model plus a `State`/`Handlers` record; behaviour is
+unit-tested in Domain, structure/interaction in `Avalonia.Headless`
+(`ui-smoke`) tests. FuncUI dynamic-list hygiene: generated rows/nodes NEVER
+set `StyledElement.Name` — they use `AutomationProperties.AutomationId` (the
+documented pattern at `…Controls/MaterialsControls.fs:139-146`) plus per-item
+`View.withKey`; filter/text boxes over tree-rebuilding state commit on
+Enter/LostFocus, never per keystroke.
+
+0.5 **Interpolated strings, never `sprintf`**; four-space indent; opening `{`
+on its own line; a space before every annotation colon; `camelCase` record
+fields; LF endings.
+
+0.6 **Zero warnings from our code** (CLAUDE.md); only the third-party NuGet
+advisories `NU1701` / `NU1901`–`NU1904` are exempt. The relocation and the new
+projects MUST NOT reintroduce `MSB3277` (the WebView2 chain was already
+resolved in 0035); anything that appears is fixed at the reference level,
+never suppressed.
+
+0.7 **Operator-facing UX checklist** (condensed — this spec introduces new
+top-level windows and destructive verbs). *Discoverability:* the product
+launcher gains `Main / Inverse / Materials / Library` buttons (this order) and
+the constructor's ribbon tab-strip row gains right-aligned `Materials…` /
+`Library…` buttons — every window's entry point is named in its step.
+*Progress:* every proxy verb is synchronous and in-memory, so there are NO
+background jobs and NO progress UI; the one potentially heavy render — tree
+materialization above `TreeAutoBuildThreshold` — is gated behind an explicit
+Show/Search button (per-tree granularity). *Pre-confirmation:* no LLM calls,
+no long-duration work — no gate. *Refresh:* after every verb the owning
+window re-queries its proxies in the same MVU render pass — no manual reload
+anywhere. *Action buttons:* every opposing pair (Select/Close, Save/Cancel,
+Discard/Keep editing) is same-row with a visible gap and distinct
+positive/negative styling. *Destructive verbs:* Remove / Supersede / Mark
+inactive are confirm-gated inline with typed hard-blocks
+(`MaterialStillReferenced`, protected-entry refusals) and NO undo, justified
+because the catalogue is in-memory session state a restart re-seeds and used
+things cannot be deleted at all. *Committable files:* `appsettings.json` and
+the three new project folders collide with nothing in the root `.gitignore`
+(checked: only build dirs, `*.binz`, `*.autosave`, and arc-runner logs are
+ignored). The spec-writer web pages' hidden-controls treatment does not apply:
+these are desktop windows, not web pages.
+
+## Contract table (ids minted by the cycle)
+
+| Placeholder | kind | declared in | role |
+|---|---|---|---|
+| `<SVC:WindowLauncher>` | proxy | OpticalConstructor.Ui | window open/activate seam over the WindowRegistry |
+| `<UICOMP:TestLauncherWindow>` | component | OpticalConstructor.TestWindows.App | diagnostic-scenes launcher executable |
+| `<UICOMP:FacetedTreeControls>` | component | OpticalConstructor.Controls | domain-free faceted, filterable, reconfigurable tree |
+| `<UICOMP:MaterialsWindow>` | component | OpticalConstructor.Ui | single-instance Materials window (Browse + Select) |
+| `<UICOMP:LibraryWindow>` | component | OpticalConstructor.Ui | single-instance Library window (Browse + Select) |
+| `<UICOMP:SolverHandoffWindow>` | component | OpticalConstructor.Ui | inverse-collection summary + validation screen |
+| `<STORE:SceneProxy>` | proxy | OpticalConstructor.Domain | scene save/load seam (in-memory) |
+| `<STORE:ExperimentCollectionProxy>` | proxy | OpticalConstructor.Domain | experiment-collection save/load seam (in-memory) |
+| `<STORE:ExperimentDataProxy>` | proxy | OpticalConstructor.Domain | measured-data load seam (pure parsers behind it) |
+| `<STORE:TestDbContext>` | component | OpticalConstructor.Database | nearly-empty EFC wiring proof (C#) |
+| `<STORE:SeedingProxy>` | proxy | OpticalConstructor.Seeding | seed-push seam over the existing Domain seeds |
+
+---
+
+## Part A — FuncUI dynamic-list hygiene (CRITICAL — land first)
+
+### A.0 Problem statement
+
+The Selector bay crashes with "Cannot set Name : styled element already
+styled": `LibraryControls` sets the write-once `Border.name` on generated,
+unkeyed rows (`leafRow`, `…Controls/LibraryControls.fs:112`; `actionButton`,
+`:148`), so FuncUI recycling a row across a membership change tries to rename
+a styled control. The cure already exists in the same project — the
+freely-mutable `AutomationProperties.AutomationId` helper with the explanatory
+comment (`…Controls/MaterialsControls.fs:139-146`) and the same precedent
+noted in `…Controls/ExperimentControls.fs:261-266`. Latent copies of the
+hazard: `…Controls/RotationControls.fs:119`,
+`…Controls/RayPositionControls.fs:71`,
+`…Controls/ElementPaletteControls.fs:55`, and
+`…Controls/ExperimentControls.fs:240,581`. One sweep converts them all and
+keys every variable-membership generated list with `View.withKey`. No
+behaviour change; immediately shippable.
+
+---
+
+## Part B — Relocation: the workbench moves home; test scenes get their own launcher
+
+### B.0 Problem statement
+
+The screen users actually see is `TableAndElementRotationView.mainView` in
+**`OpticalConstructor.TestWindows`** (`…TestWindows/TableAndElementRotationView.fs:2367`),
+hosted by `MainConstructorWindow` (`…App/Program.fs:118-150`). The
+`OpticalConstructor.Ui` Elmish shell is dead code for the Main flow — the
+composition comment records that the old constructor shell "is kept but no
+longer opened by the launcher's Main button" (`…App/Program.fs:112-117`).
+The operator's decision (005/Q26–Q27): the workbench REAL-MOVES into
+`OpticalConstructor.Ui` (namespaces follow the project; no file-linking; one
+`.fsproj` per folder), the dead shell is retired, and the seven diagnostic
+scenes currently on the product launcher (`…App/Program.fs:177-224`) move to
+a tiny new executable `OpticalConstructor.TestWindows.App`, after which
+`OpticalConstructor.App` drops its `OpticalConstructor.TestWindows` project
+reference entirely — test code leaves the product dependency graph.
+
+### B.1 What stays alive through the retirement
+
+`UserEnvironment.fs` is live (`…App/Program.fs:37`) and stays. The Fluent
+theme seam the `App` type uses (`AppShell.themeVariant`,
+`…App/Program.fs:244`) survives as a function — kept or moved into a retained
+module — while the rest of the dead shell (the `MainWindow` host, `Shell.fs`,
+`Ribbon.fs`, `MaterialsView.fs`, `ConstructionPage.fs`, `ConstructorView.fs`,
+`LifecycleView.fs`, `Templates.fs`, `Help.fs`, and every Ui module plus
+Ui.Tests test left without a live consumer by those deletions) is removed,
+not paralleled. The product launcher keeps only `Main` until Part N restores
+the full four-button row — every intermediate state runs.
+
+---
+
+## Part C — appsettings, app-scoped composition, and the WindowLauncher seam
+
+### C.0 Problem statement
+
+The five domain proxies are created INSIDE `MainConstructorWindow`
+(`…App/Program.fs:129-147`), so a second window cannot share the stores; and
+no `appsettings.json` exists (user preferences live in `environment.json`,
+`…Ui/UserEnvironment.fs:181-185`). This part: (1) `appsettings.json` read
+ONLY through `Softellect.Sys.AppSettings.AppSettingsProvider`
+(`Softellect.Sys` **10.1.301.54**, already referenced by
+`…Storage/OpticalConstructor.Storage.fsproj`; its `tryCreate` opens
+`appsettings.json`, its `SetOnMissing = true` writes missing keys' defaults
+back, and it exposes typed `get*OrDefault` accessors and
+`tryGetConnectionString`) with ONE `ConfigKey` constants module and typed
+values flowing inward as a pure Domain settings record of elevated types —
+initial inventory `SelectWindowsModal = false`, `QuickPickThreshold = 5`,
+`TreeAutoBuildThreshold = 100`, `ThicknessBucketCap = 8`, plus the Part M
+`connectionStrings` entries; (2) the proxies hoist to ONE app-scope
+composition built at startup and injected everywhere; (3) window policy
+behind one seam — `<SVC:WindowLauncher>` over a host-layer `WindowRegistry`
+(mutable host state OUTSIDE the Elmish model, the registered-storage-provider
+pattern at `…App/Program.fs:96` in today's tree): Materials/Library windows
+are single-instance (a second open activates; a Select-state open re-targets),
+editor windows are multi-instance keyed by the edited entity's id, and NEW
+entities mint their Guid at Add-window open carrying
+`EntryFreshness = NewUnsaved | Persisted` — moving the id-mint off the save
+path (`newMaterialId` at `…TestWindows/MaterialEditorView.fs:416`). The seam
+generalizes the existing `EditorLaunchers` function-record
+(`…TestWindows/TableAndElementRotationView.fs:116-141`). Select-state windows
+open modal (`ShowDialog`, owner = requesting window) when the
+`SelectWindowsModal` switch is true, non-modal when false (default false);
+Browse windows always non-modal.
+
+---
+
+## Part D — The faceted engine (Domain, pure)
+
+### D.0 Problem statement
+
+One faceted-navigation core powers both windows: items + attribute
+definitions → a filterable, reconfigurable tree with live counts. Pure F# in
+a new `…Domain/Facets.fs` (plus bucketing and the concrete facet catalogues):
+`AttributeDef<'item>` with `appliesTo` (dependent facets vanish entirely when
+inapplicable) and a LIST-valued `extract` (multi-valued facets first-class —
+the dispersion-model facet is per axis/segment over the ten `DispersionModel`
+cases, `…Domain/DispersionModels.fs:168-178`, so counts need not sum to the
+total); constraints as values (discrete key-set OR within a facet, numeric
+range); the engine as naive folds (`filter`, `countFor`, breadcrumb
+after-counts, `buildTree`) — corpus sizes are tens to hundreds, no indices.
+Physics-derived offers reuse `availableGyrationClasses`
+(`…Domain/MaterialComplexityEditor.fs:373`), never re-derived. Numeric
+bucketing follows the agreed 1–2–5 log-ladder algorithm (empty buckets
+dropped, fewest-first merging under `ThicknessBucketCap`, half-open
+`[lo, hi)`, exact-value singleton, nm below 1 µm / µm above, recomputed on
+every constraint change, manual min–max as an ordinary constraint chip).
+Material facets extract from `MaterialEntry.properties`
+(`…Domain/MaterialLibrary.fs:230-238`); sample facets lift material facets as
+the distinct union over constituent materials, plus substrate material
+(Plate/Wedge only), "has thin films", film materials, and per-film thickness
+buckets. Tree behaviour: **search order ≠ representation order** — applied
+constraints never reshuffle the tree; a breadcrumb strip shows applied
+constraints in application order, each removable with its after-count;
+count-preview on every offered value; zero-count branches never shown; result
+count always live, tree materialization gated above
+`TreeAutoBuildThreshold`.
+
+---
+
+## Part E — FacetedTree control and the Materials window
+
+### E.0 Problem statement
+
+`<UICOMP:FacetedTreeControls>` is the domain-free rendering control (pure
+`State` + `Handlers`, the `…Controls/MaterialsControls.fs` shape), keyed rows
+with AutomationIds only, filter box committing on Enter/LostFocus, breadcrumb
+chips, count-previews, representation picker, Show/Search gating, all in a
+ScrollViewer. `<UICOMP:MaterialsWindow>` instantiates it over the material
+facets as the single-instance Materials window: faceted tree + view panel
+(metadata + the embeddable dual-axis chart, `…Controls/EmbeddedChart.fs`) +
+the existing verbs Add / Edit / Remove / Categories… rewired to the window.
+The Materials bay is REMOVED from the ribbon (`materialsBay` in `mainBays`,
+`…TestWindows/TableAndElementRotationView.fs:2339`); the ribbon tab-strip row
+gains the right-aligned `Materials…` button (the constructor-side entry
+point; the launcher button lands in Part N).
+
+---
+
+## Part F — Library window; ideal elements become protected entries
+
+### F.0 Problem statement
+
+*Library* = the library of optical elements (samples ∪ polarizers ∪ sources ∪
+detectors); *Materials* = homogeneous optical-property descriptions — two
+windows, one tree control (operator, Q4). The notion "ideal element"
+disappears: the seeded presets (`pol-lp` / `pol-cp-left` / `pol-cp-right` /
+`det-intensity` / `det-ellipsometer` / `src-600`,
+`…Domain/ElementId.fs:535-540`) become ordinary **protected** library entries
+— `EntryProtection = ProtectedBuiltIn | UserManaged`; protected entries
+cannot be deleted, marked inactive, or superseded. Seeded SAMPLES remain
+`UserManaged` (they are editable examples today — recorded interpretation).
+Polarizer behaviour becomes data: `PolarizerBehavior = ComputedIdeal of
+PolarizerKind | ConstantMueller of MuellerComponent list` (ordered components
+`{ matrix; offset }` stored at reference orientation, rotated
+`R(−θ)·M·R(θ)` at run time, product on demand), with
+`PolarizerCategory = LpCategory | CpCategory | LpCpCategory | CpLpCategory |
+CustomMueller` as the polarizer facet. `ComputedIdeal` synthesizes through
+the existing `Propagation.inputStokes` / `analyzerMueller`
+(`…Domain/Propagation.fs:54-89`) exactly as today; `ConstantMueller` entries
+live ONLY in the Stokes/Mueller pipeline (never the Berreman stack). The
+dedicated editor for `ConstantMueller` entries is explicitly OUT OF SCOPE
+(operator, 001) — the DU makes it a non-breaking future addition.
+`<UICOMP:LibraryWindow>` is the single-instance Library window over the whole
+`LibraryEntry` corpus (`…Domain/ElementId.fs:188-192`, via `LibraryProxy`
+`:276-281` + `SampleProxy` for the sample verbs), default representation "By
+kind"; the Library bay (`samplesBay`,
+`…TestWindows/TableAndElementRotationView.fs:2340`) is removed the same way
+as Materials.
+
+---
+
+## Part G — Select mode, Selector flow, pre-binding, sample-editor picking
+
+### G.0 Problem statement
+
+**Selector = Library in a Select state** — the same window in code, never a
+copy: `LibraryWindowMode = Browse | Select of SelectionContext` where the
+context carries the pre-applied, non-removable kind constraint, the typed
+target (table element | sample-layer position), and `onSelected` /
+`onCancelled`. Select mode adds exactly two buttons — Select (returns the
+highlighted entry, closes) and Close (cancels) — everything else IS the
+ordinary window, so add-on-the-fly works because it is the library.
+Staleness (non-modal default): a changed table selection or a vanished target
+cancels/closes the open Select window (the pending-bind-clears precedent,
+`…TestWindows/TableAndElementRotationView.fs:941-944`); a second Choose
+closes the first; `onSelected` dispatches a targeted message — a vanished
+target is a no-op plus a status line, never a throw. The Selector bay flow:
+Choose… opens the Library window kind-constrained; the inline quick-pick
+strip renders ONLY when the kind-constrained entry count is under
+`QuickPickThreshold`; both paths converge on the SAME bind message that
+commits `placement.valueId`
+(`…TestWindows/TableAndElementRotationView.fs:768,780`). Pre-binding
+(operator, Q7/Q28): every new table element except a sample is created
+pre-bound to its seeded default — light source → `src-600`, detector →
+`det-intensity`, and the polarizer palette exposes THREE add buttons LP / CPL
+/ CPR pre-binding `pol-lp` / `pol-cp-left` / `pol-cp-right` with
+`CatalogueKind` UNCHANGED (`…Domain/Placement.fs:93-101`). Samples stay
+unbound (the inverse hook). The silent ideal-analyzer fallback — the
+`Option.defaultValue Library.IdealLinear` tail of `runAnalyzerKind`
+(`…TestWindows/TableAndElementRotationView.fs:1407-1427`) — is retired in
+favour of reading the bound entry, with a typed "no analyzer present" status
+when the scene has none. The sample editor's `WrapPanel` material picker
+(`…TestWindows/SampleEditorView.fs:740-758`) is replaced by the Materials
+window in Select state targeted at a `LayerPosition`; the material list
+re-queries the proxy when a Select window returns and on window activation,
+replacing the load-once snapshot (`…TestWindows/SampleEditorWindow.fs:32-35`);
+live cross-window notifications are out of scope.
+
+---
+
+## Part H — Lifecycle: versioning + supersede, active/inactive
+
+### H.0 Problem statement
+
+Two-level identity (operator, Q18–Q20): `MaterialId` / `SampleId` stay the
+stable identities; references (sample layers, experiment descriptors) point
+at a **version** (`MaterialVersionId` / `SampleVersionId` over a
+`VersionNumber` DU), with `EntryLifecycle = ActiveEntry | InactiveEntry`.
+The version-creation rule is ONE pure shared decision: editing a **used**
+version and saving a physics change mints the next version — and only if the
+physics actually differs (structural equality; an identical save stays put);
+an **unused** version mutates in place no matter how often edited; metadata
+edits (name, description, category) never version. "Used" = referenced by a
+persisted experiment or saved project (operator, Q19); nothing is persisted
+yet, so the check is a seam — `versionsInUse : unit -> Set<VersionRef>`
+computed from the in-memory experiment store — fully unit-testable now,
+truthful later. The library always edits the latest version; older versions
+are view-only. Inactive hides an entry from new-use offers (pickers, Select
+mode, default facet counts — with a show-inactive/superseded toggle);
+resolution of existing references ignores it; superseded versions behave as
+inactive automatically. `ProtectedBuiltIn` entries can be neither inactivated
+nor superseded. Deletion remains hard-blocked while referenced (the
+`MaterialStillReferenced` block, `…Domain/ElementId.fs:755-765`) and
+additionally for any used version. Both registered proxies re-shape in place
+per §0.2. Export-embeds-versions is a recorded FUTURE decision — no export
+work this cycle (§0.3).
+
+---
+
+## Part I — Experiments hold the full setup; scene/experiment IO through proxies
+
+### I.0 Problem statement
+
+`Experiments.Experiment` holds only the varied element today
+(`…Domain/ElementId.fs:909-917`). It grows a **setup**: an ordered
+element-descriptor list (kind, placement/orientation summary, bound entry
+reference by version where versioned) with the varied element identified
+within the list; sample and light source are OPTIONAL — `E1 = LS+LP+S+LP(rotate)`,
+`E2 = LS+LP+LP(rotate)` (no sample), `E3 =` nothing (dark line) are all
+first-class; the detector kind is part of the chain and determines the
+expected data-file shape. The name collision goes away: the OLD toggle-based
+`Groups.ExperimentCollection` (`…Domain/Groups.fs:114-129`, persisted inside
+the groups JSON whose load/save lives in `…Storage/GroupsLibrary.fs` per the
+doc at `…Domain/Groups.fs:141-143`) is renamed `WorkbenchToggleSet` (type
+rename only — the JSON shape is unchanged), so *experiment collection* means
+the live constructor concept exclusively (its `commit`,
+`…Domain/ElementId.fs:1010`). Scene and experiment-collection save/load are
+proxy seams (`<STORE:SceneProxy>`, `<STORE:ExperimentCollectionProxy>`) with
+`createInMemory` implementations and round-trip unit tests — NO disk format,
+`.ocproj` stays unwired (operator, Q25); the proxies are the seam a future
+storage cycle swaps.
+
+---
+
+## Part J — Table visuals: bound / unbound / out-of-band
+
+### J.0 Problem statement
+
+The renderer input `Drawable` (`…TestWindows/ElementRenderer.fs:26-32`) gains
+a three-valued `BindingState` (bound / unbound / not-bindable — lens and
+mirrors are not bindable and render normally): unbound draws a dashed outline
+with ghosted fill (pattern, not hue — colorblind-safe); bound stays solid;
+the readout/Details keep the text. Independently, an **out-of-band**
+indicator (operator, Q22/Q29): an element flags when it is bound, some
+material reachable through its binding is dispersive, and the wavelengths
+**the actual experiment requests** (a single λ for a fixed setting; the full
+range for a sweep — 600 nm inside a 300–700 nm band is fine, a 200–800 nm
+sweep is not) fall partly outside the union of that material's defined
+dispersion segments (`EditSegment.interval`,
+`…Domain/MaterialComplexityEditor.fs:100-102`). Visual: a small warning badge
+plus a hover tooltip naming the offending material(s) with defined vs
+requested ranges; the same text in the Details bay. Constant materials never
+flag.
+
+---
+
+## Part K — Editor rework
+
+### K.0 Problem statement
+
+The Material editor's `DockPanel` layout squeezes the ladder and the preview
+into one column (`…TestWindows/MaterialEditorView.fs:1067-1132`); it becomes
+two panes split by a vertical splitter — the progressive ladder left inside a
+ScrollViewer, the chart right at full height. The single-curve preview
+(`n = Re[√ε₁₁]` / `k = Im[√ε₁₁]` only — `…TestWindows/NkDispersionChart.fs:40-64`)
+becomes **tabbed multi-curve charts**: tab *n, k* — all principal axes
+(n_x/n_y/n_z left, k_x/k_y/k_z right) with legend and per-series toggles; tab
+*Gyration* — g components vs λ, present only when optically active (series
+assembled through the engine's `RhoWithDispValue.toRhoWithDisp`,
+`OpticalProperties/Active.fs:152`); tab *μ* — Polder components vs λ, only
+when magnetic (`MuWithDispValue.toMuWithDisp`,
+`Berreman/Berreman/Dispersion.fs:671`). Tabs appear/disappear with the ladder
+toggles. Both editors gain unsaved-edit confirmation: dirty = structural
+inequality between the load-captured edit state and the current one (no
+flags), intercepting BOTH Cancel and window close — today `CancelClicked`
+closes silently (`…TestWindows/MaterialEditorView.fs:423-424`,
+`…TestWindows/SampleEditorView.fs:549-550`).
+
+---
+
+## Part L — Inverse problem: wiring only (the solver is out of scope)
+
+### L.0 Problem statement
+
+This part wires the inverse-problem FLOW; no solving, no normalization — data
+is gathered raw and corrections belong to the future solver (operator, Q23).
+The launcher's `Inverse` opens the same constructor in an inverse state: the
+sample element unbound (dashed, Part J) or bound to a HINT sample; no hint ⇒
+no experiment chart; hint ⇒ chart as today. The user builds an experiment
+collection (Part I experiments, each possibly sample-less/dark) and attaches
+**one data file per experiment**. Strict v1 schemas: intensity — first row
+labels (ignored), then comma-separated `X,Y`, invariant culture, typed parse
+errors, the X column meaning whatever the experiment's varied parameter says,
+and a range/units mismatch against the experiment a LOUD typed validation
+error; ellipsometric — `wavelength_nm, psi_deg, delta_deg` (+ optional
+`aoi_deg`), one file per experiment; NCS / Mueller-element imports are future
+parsers, not schema changes. Parsers are PURE (`string -> Result<…>`, the
+text-taking precedent `SpectralImport.parseSpectrumCsv`,
+`…Storage/SpectralImport.fs`), tested against in-memory strings; file access
+sits behind `<STORE:ExperimentDataProxy>` with a mock for every test and a
+thin real-file adapter as the runtime wiring (§0.3c). The file picker starts
+at the persisted last folder and updates it only on a confirmed selection —
+wiring the inert `EnvironmentSettings.lastFolders`
+(`…Ui/UserEnvironment.fs:184`, persisted but never read by any picker),
+re-typed to a purpose-keyed map per §0.2. The flow ends at
+`<UICOMP:SolverHandoffWindow>`: a summary of the received collection
+(experiments, setups, detector kinds, attached files, per-file
+parse/validation status) plus the message that the actual solver will be done
+separately; it performs basic validation (all elements except sample
+specified; every experiment has a readable, schema-valid file; ranges
+consistent) and reports typed errors.
+
+---
+
+## Part M — Storage scaffolding
+
+### M.0 Problem statement
+
+Two proofs, no product coupling (operator, Q24 + 001). (1) A nearly-empty C#
+EFC project `OpticalConstructor.Database` — one `Test` table, a
+`TestDbContext`, an initial migration; provider (MSSQL/SQLite) and connection
+strings from `appsettings.json` via `AppSettingsProvider.tryGetConnectionString`;
+modeled on the STL example (`C:/GitHub/Softellect/Apps/DistrProc/Migrations/Common/CommonDbContext.cs`).
+Its only purpose is proving EFC wiring creates/migrates — **the app does not
+reference or use it**, and the proof runs against SQLite in a test (no MSSQL
+server required). (2) An F# seeding project `OpticalConstructor.Seeding`
+taking a `<STORE:SeedingProxy>` (a record of `Result`-returning `save…`
+functions) and pushing the EXISTING Domain seed values — `standardCategories`
+(`…Domain/MaterialLibrary.fs:118`), `builtInEntries` (`:363`),
+`SeedSamples` (`…Domain/ElementId.fs:381`), `seedEntries` (`:532`) — which
+stay where they live, close to the source. Today's implementation of the
+proxy is the in-memory stores, i.e. seeding runs with no database at all;
+seeded Guids are frozen forever (future foreign keys).
+
+---
+
+## Part N — Consolidations, launcher, warnings, composition
+
+### N.0 Problem statement
+
+Two parallel recent-file stores exist — `EnvironmentSettings.recentFiles`
+(`…Ui/UserEnvironment.fs:185`) and the bounded-MRU module
+`…Storage/RecentFiles.fs` — ONE remains (the Storage module, keeping its pure
+`bump` invariant; the environment field is removed). Automation ids
+consolidate into ONE `[<Literal>]` constants module replacing the per-control
+`UiIds` modules (id VALUES unchanged, so tests only re-point). The product
+launcher becomes `Main / Inverse / Materials / Library` (this order) with
+stable names and automation ids. A final warning sweep holds §0.6, and the
+closing WIRE_UI step composes everything at the root and drives the whole
+surface headless.
+
+---
+
+## References
+
+- NN/g — Filters vs. facets — <https://www.nngroup.com/articles/filters-vs-facets/>
+- NN/g — Applying filters — <https://www.nngroup.com/articles/applying-filters/>
+- Preferred numbers (1–2–5 / Renard series) — <https://en.wikipedia.org/wiki/Preferred_number>
+- Slowly Changing Dimensions (Type 2) — <https://en.wikipedia.org/wiki/Slowly_changing_dimension>
+- Temporal databases — <https://en.wikipedia.org/wiki/Temporal_database>
+- Mueller calculus (incl. rotation of Mueller matrices) — <https://en.wikipedia.org/wiki/Mueller_calculus>
+- Ellipsometry (Ψ/Δ) — <https://en.wikipedia.org/wiki/Ellipsometry>
+- J.A. Woollam — Ellipsometry FAQ — <https://www.jawoollam.com/resources/ellipsometry-faq>
+- Avalonia `StyledElement.Name` (write-once after styling) — <https://api-docs.avaloniaui.net/docs/P_Avalonia_StyledElement_Name>
+- Avalonia.FuncUI virtual-DOM patcher — <https://github.com/fsprojects/Avalonia.FuncUI>
+- EF Core docs (SQL Server / SQLite providers, migrations) — <https://learn.microsoft.com/en-us/ef/core/>

@@ -1,0 +1,16 @@
+# Step 013 — ADD_COMPONENT UICOMP_XDUO_0009 MaterialsWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0009
+name: MaterialsWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Ui
+touches: [OpticalConstructor.Ui, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [8, 11, 12]
+```
+
+**How to implement.** Create the single-instance Materials WINDOW in OpticalConstructor.Ui: a HostWindow mounting an MVU model that projects MaterialProxy + CategoryProxy through the step-11 material facets into FacetedTreeControls state, beside a view panel (selected entry metadata plus the embeddable dual-axis n/k chart, Controls/EmbeddedChart.fs) and the existing verbs Add / Edit / Remove / Categories… rewired to this window — Add/Edit/Categories through the step-8 WindowLauncher editor keys, Remove keeping its inline confirm gate and the typed MaterialStillReferenced block. REMOVE the Materials bay from the ribbon: drop materialsBay from mainBays (Ui/TableAndElementRotationView.fs after the move; today TestWindows/TableAndElementRotationView.fs:2339) and its BayNames entry; the ribbon tab-strip row gains a right-aligned 'Materials…' button opening the window through WindowLauncher (MaterialsWindowKey) — the constructor-side entry point (the launcher button lands in step 45). Thread the window factory into the App composition mechanically so the solution builds (step 47 owns the composition acceptance). After every verb the window re-queries its proxies in the same render pass. Stable intent-named ids for the window, strip button, tree host, view panel, and verbs. Headless tests: the strip button opens ONE window (second click activates), applying facet constraints narrows the corpus, verbs operate over the shared app-scoped stores, and a category rename re-labels the category facet.
+
+**Acceptance.** After the step, the Materials bay is gone from the ribbon and the 'Materials…' strip button opens a single-instance Materials window whose faceted tree, view panel, and Add/Edit/Remove/Categories… verbs operate over the shared stores — verified headless.

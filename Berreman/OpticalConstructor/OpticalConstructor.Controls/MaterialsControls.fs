@@ -96,32 +96,6 @@ module MaterialsControls =
             viewMaterial : unit -> unit
         }
 
-    /// Stable intent-named automation ids (CLAUDE.md UI guidance).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        [<Literal>]
-        let searchBox = "MaterialSearchBox"
-        [<Literal>]
-        let categoryFilter = "MaterialCategoryFilter"
-        [<Literal>]
-        let dispersionFilter = "MaterialDispersionFilter"
-        [<Literal>]
-        let list = "MaterialsList"
-        [<Literal>]
-        let addButton = "AddMaterialButton"
-        [<Literal>]
-        let editButton = "EditMaterialButton"
-        [<Literal>]
-        let removeButton = "RemoveMaterialButton"
-        [<Literal>]
-        let viewButton = "ViewMaterialButton"
-        /// A listed row's clickable id — the material id, prefixed so it cannot collide.
-        let row (materialId : string) : string = "MaterialRow_" + materialId
-        /// A category facet option's clickable id, by its host-supplied code.
-        let categoryOption (code : string) : string = "MaterialCategoryOption_" + code
-        /// A dispersion facet option's clickable id, by its host-supplied code.
-        let dispersionOption (code : string) : string = "MaterialDispersionOption_" + code
-
     /// The row the current selection points at; `None` when nothing is selected or the host's
     /// filter no longer lists the selected id (the row-targeted verbs then disable).
     let selectedRow (state : State) : Row option =
@@ -145,39 +119,51 @@ module MaterialsControls =
     let private automationId (autoId : string) : IAttr<Border> =
         AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
 
-    /// A clickable, styled box (a facet option or a listed row), highlighted when chosen.
+    /// A clickable, styled box (a facet option or a listed row), highlighted when chosen, KEYED by its
+    /// id (`View.withKey`, spec 0038) so a membership change recreates a shifted box instead of
+    /// patching another item's styled control in place.
     /// `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the id or
     /// the highlight changes so a reused box can't keep a stale handler.
     let private clickBox (autoId : string) (label : string) (chosen : bool) (onClick : unit -> unit) : IView =
-        Border.create [
-            automationId autoId
-            Border.background (brush (if chosen then chosenBackground else idleBackground))
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(10.0, 4.0))
-            Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
-        ] :> IView
+        let keyedBox =
+            Border.create [
+                automationId autoId
+                Border.background (brush (if chosen then chosenBackground else idleBackground))
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(10.0, 4.0))
+                Border.margin (Thickness(0.0, 0.0, 6.0, 4.0))
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
+            ]
+            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+            |> Avalonia.FuncUI.DSL.View.withKey autoId
+        keyedBox :> IView
 
     /// A verb button (Add / Edit / Remove / View), accented when it is the primary verb.
     let private verbButton (autoId : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-        Border.create [
-            automationId autoId
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
-            Border.background (brush (if accent then chosenBackground else idleBackground))
-            Border.borderBrush (brush idleBorder)
-            Border.borderThickness 1.0
-            Border.cornerRadius (CornerRadius 3.0)
-            Border.padding (Thickness(12.0, 5.0))
-            Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
-            Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
-        ] :> IView
+        let keyedButton =
+            Border.create [
+                automationId autoId
+                Border.isEnabled enabled
+                Border.opacity (if enabled then 1.0 else 0.4)
+                Border.background (brush (if accent then chosenBackground else idleBackground))
+                Border.borderBrush (brush idleBorder)
+                Border.borderThickness 1.0
+                Border.cornerRadius (CornerRadius 3.0)
+                Border.padding (Thickness(12.0, 5.0))
+                Border.margin (Thickness(0.0, 0.0, 8.0, 0.0))
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
+            ]
+            // Keyed: the verb row's membership changes (a view-only selection REMOVES the Edit verb),
+            // so a shifted verb recreates instead of patching its neighbour's styled control.
+            |> Avalonia.FuncUI.DSL.View.withKey autoId
+        keyedButton :> IView
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the Ui materials panel's search field).
@@ -188,7 +174,7 @@ module MaterialsControls =
             StackPanel.children [
                 TextBlock.create [ TextBlock.text "Search:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 TextBox.create [
-                    TextBox.name UiIds.searchBox
+                    TextBox.name UiIds.Materials.searchBox
                     TextBox.width 220.0
                     TextBox.text state.searchText
                     TextBox.onTextChanged handlers.setSearchText
@@ -216,7 +202,7 @@ module MaterialsControls =
 
     /// One listed material row — clickable (selects it), highlighted when it is the selection.
     let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
-        clickBox (UiIds.row r.materialId) r.label (state.selectedId = Some r.materialId) (fun () -> handlers.selectMaterial r.materialId)
+        clickBox (UiIds.Materials.row r.materialId) r.label (state.selectedId = Some r.materialId) (fun () -> handlers.selectMaterial r.materialId)
 
     /// The materials list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : State) (handlers : Handlers) : IView =
@@ -224,7 +210,7 @@ module MaterialsControls =
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.list
+                    StackPanel.name UiIds.Materials.list
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView state handlers))
                 ])
@@ -242,17 +228,17 @@ module MaterialsControls =
         let editVerb =
             match selected with
             | Some { editability = ViewOnly } -> []
-            | Some { editability = Editable } -> [ verbButton UiIds.editButton "Edit" false true (fun () -> handlers.editMaterial ()) ]
-            | None -> [ verbButton UiIds.editButton "Edit" false false (fun () -> handlers.editMaterial ()) ]
+            | Some { editability = Editable } -> [ verbButton UiIds.Materials.editButton "Edit" false true (fun () -> handlers.editMaterial ()) ]
+            | None -> [ verbButton UiIds.Materials.editButton "Edit" false false (fun () -> handlers.editMaterial ()) ]
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 0.0
             StackPanel.children (
-                [ verbButton UiIds.addButton "Add" true true (fun () -> handlers.addMaterial ()) ]
+                [ verbButton UiIds.Materials.addButton "Add" true true (fun () -> handlers.addMaterial ()) ]
                 @ editVerb
                 @ [
-                    verbButton UiIds.removeButton "Remove" false hasSelection (fun () -> handlers.removeMaterial ())
-                    verbButton UiIds.viewButton "View" false hasSelection (fun () -> handlers.viewMaterial ())
+                    verbButton UiIds.Materials.removeButton "Remove" false hasSelection (fun () -> handlers.removeMaterial ())
+                    verbButton UiIds.Materials.viewButton "View" false hasSelection (fun () -> handlers.viewMaterial ())
                 ])
         ] :> IView
 
@@ -264,8 +250,8 @@ module MaterialsControls =
             StackPanel.spacing 4.0
             StackPanel.children [
                 searchRow state handlers
-                facetRow UiIds.categoryFilter "Category:" state.categoryOptions state.selectedCategory UiIds.categoryOption handlers.selectCategory
-                facetRow UiIds.dispersionFilter "Dispersion:" state.dispersionOptions state.selectedDispersion UiIds.dispersionOption handlers.selectDispersion
+                facetRow UiIds.Materials.categoryFilter "Category:" state.categoryOptions state.selectedCategory UiIds.Materials.categoryOption handlers.selectCategory
+                facetRow UiIds.Materials.dispersionFilter "Dispersion:" state.dispersionOptions state.selectedDispersion UiIds.Materials.dispersionOption handlers.selectDispersion
                 listView state handlers
                 verbRow state handlers
             ]

@@ -1,0 +1,15 @@
+# Step 027 — IMPLEMENT_CONTRACT STORE_XDUO_0004 SceneProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0004
+name: SceneProxy
+kind: proxy
+language: fsharp
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.Tests]
+depends_on: [26]
+```
+
+**How to implement.** Implement SceneProxy.createInMemory closing over a ref Map<SceneName, SceneSnapshot> (the SampleProxy.createInMemory precedent, ElementId.fs:652): saveScene validates the name (blank yields InvalidScene) and upserts; tryLoadScene and listScenes read the map. Add the pure capture/restore pair in the workbench host: captureScene projecting the live model's elements, bindings, and view state into a SceneSnapshot, and restoreScene applying a snapshot back onto a model — both pure and unit-testable without a window. Round-trip unit tests: capture, save, load, restore reproduces element ids, kinds, placements, bindings, and view state over deterministic data.
+
+**Acceptance.** After the step, createInMemory round-trips capture-save-load-restore reproducing element ids, kinds, placements, bindings, and view state — unit-verified with deterministic data.

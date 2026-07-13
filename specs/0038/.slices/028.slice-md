@@ -1,0 +1,16 @@
+# Step 028 — ADD_CONTRACT STORE_XDUO_0005 ExperimentCollectionProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0005
+name: ExperimentCollectionProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [25]
+```
+
+**How to implement.** Declare in OpticalConstructor.Domain the experiment-collection persistence seam: CollectionName single-case string DU with .value and tryCreate rejecting a blank; ExperimentCollectionSnapshot = { name : CollectionName; experiments : Experiment list } over the step-25 full-setup experiments (each carrying its optional DataFilePath attachment); ExperimentCollectionError = InvalidCollection of reason : string; and [<ReferenceEquality>] ExperimentCollectionProxy = { saveCollection : ExperimentCollectionSnapshot -> Result<unit, ExperimentCollectionError>; tryLoadCollection : CollectionName -> Result<ExperimentCollectionSnapshot option, ExperimentCollectionError>; listCollections : unit -> Result<CollectionName list, ExperimentCollectionError> }. Provide a mock plus a mock-driven test exercising every field through its exact signature.
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub ExperimentCollectionProxy and exercise all three fields through their exact signatures; it passes.

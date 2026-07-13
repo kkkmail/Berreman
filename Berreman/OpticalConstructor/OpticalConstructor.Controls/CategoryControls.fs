@@ -64,34 +64,6 @@ module CategoryControls =
             cancelCategory : string -> unit
         }
 
-    /// Stable intent-named automation ids (CLAUDE.md UI guidance). The four per-row ids are the base
-    /// intent name; the `row*` helpers prefix the row's category id so ids cannot collide and each
-    /// row's control is targetable (the `MaterialsControls.row` / `LibraryControls.entry` precedent).
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        [<Literal>]
-        let list = "CategoriesList"
-        [<Literal>]
-        let addButton = "AddCategoryButton"
-        [<Literal>]
-        let nameBox = "CategoryNameBox"
-        [<Literal>]
-        let removeButton = "RemoveCategoryButton"
-        [<Literal>]
-        let saveButton = "CategorySaveButton"
-        [<Literal>]
-        let cancelButton = "CategoryCancelButton"
-        [<Literal>]
-        let blockMessage = "CategoryBlockMessage"
-        /// A row's inline name box id — the base id prefixed with the row's category id.
-        let rowNameBox (categoryId : string) : string = nameBox + "_" + categoryId
-        /// A row's Save (rename) button id.
-        let rowSaveButton (categoryId : string) : string = saveButton + "_" + categoryId
-        /// A row's Remove button id (present only for a non-built-in row).
-        let rowRemoveButton (categoryId : string) : string = removeButton + "_" + categoryId
-        /// A row's Cancel button id.
-        let rowCancelButton (categoryId : string) : string = cancelButton + "_" + categoryId
-
     // -- The button look, identical to the other bars' idle/chosen boxes (so they MATCH). --
     let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
@@ -137,26 +109,33 @@ module CategoryControls =
     let private rowView (handlers : Handlers) (r : Row) : IView =
         let nameBox =
             TextBox.create [
-                textBoxAutoId (UiIds.rowNameBox r.categoryId)
+                textBoxAutoId (UiIds.Category.rowNameBox r.categoryId)
                 TextBox.width 200.0
                 TextBox.text r.name
                 TextBox.onTextChanged (handlers.setCategoryName r.categoryId)
             ] :> IView
         let removeVerb =
             if r.isBuiltIn then []
-            else [ button (UiIds.rowRemoveButton r.categoryId) "Remove" false (fun () -> handlers.removeCategory r.categoryId) ]
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 6.0
-            StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
-            StackPanel.children (
-                [
-                    nameBox
-                    button (UiIds.rowSaveButton r.categoryId) "Save" false (fun () -> handlers.saveCategory r.categoryId)
-                    button (UiIds.rowCancelButton r.categoryId) "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
-                ]
-                @ removeVerb)
-        ] :> IView
+            else [ button (UiIds.Category.rowRemoveButton r.categoryId) "Remove" false (fun () -> handlers.removeCategory r.categoryId) ]
+        let row =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 6.0
+                StackPanel.margin (Thickness(0.0, 0.0, 0.0, 4.0))
+                StackPanel.children (
+                    [
+                        nameBox
+                        button (UiIds.Category.rowSaveButton r.categoryId) "Save" false (fun () -> handlers.saveCategory r.categoryId)
+                        button (UiIds.Category.rowCancelButton r.categoryId) "Cancel" false (fun () -> handlers.cancelCategory r.categoryId)
+                    ]
+                    @ removeVerb)
+            ]
+            // Keyed by the category id (`View.withKey`, spec 0038): adding / removing a row recreates
+            // the rows that shift slots instead of patching one row's controls into another's.
+            // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
+            // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
+            |> Avalonia.FuncUI.DSL.View.withKey r.categoryId
+        row :> IView
 
     /// The category list: a NAMED vertical stack of the host's rows, rendered as given.
     let private listView (state : State) (handlers : Handlers) : IView =
@@ -164,7 +143,7 @@ module CategoryControls =
             ScrollViewer.maxHeight 260.0
             ScrollViewer.content (
                 StackPanel.create [
-                    StackPanel.name UiIds.list
+                    StackPanel.name UiIds.Category.list
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.children (state.rows |> List.map (rowView handlers))
                 ])
@@ -186,7 +165,7 @@ module CategoryControls =
                     Border.margin (Thickness(0.0, 2.0, 0.0, 2.0))
                     Border.child (
                         TextBlock.create [
-                            TextBlock.name UiIds.blockMessage
+                            TextBlock.name UiIds.Category.blockMessage
                             TextBlock.text state.blockMessage
                             TextBlock.textWrapping TextWrapping.Wrap
                             TextBlock.maxWidth 360.0
@@ -202,7 +181,7 @@ module CategoryControls =
             StackPanel.spacing 4.0
             StackPanel.children (
                 [
-                    button UiIds.addButton "Add category" true (fun () -> handlers.addCategory ())
+                    button UiIds.Category.addButton "Add category" true (fun () -> handlers.addCategory ())
                     listView state handlers
                 ]
                 @ blockMessagePanel state)

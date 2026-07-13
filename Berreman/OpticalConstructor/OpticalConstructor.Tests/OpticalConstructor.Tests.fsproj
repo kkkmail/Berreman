@@ -50,18 +50,21 @@
         <!-- Persistence II (§I.5-I.8, slice 013). -->
         <Compile Include="HistoryTests.fs" />
         <Compile Include="ExportImportTests.fs" />
-        <!-- Part J UX shell I (§J.1-J.5, slice 014). -->
+        <!-- Part J UX shell I (§J.1-J.5, slice 014). TemplatesTests left with the
+             retired Templates module (spec 0038 Part B.1). -->
         <Compile Include="RepeatBuilderTests.fs" />
-        <Compile Include="TemplatesTests.fs" />
         <Compile Include="SchematicGeometryTests.fs" />
         <!-- Part J UX shell II (§J.6-J.9, slice 015). -->
         <Compile Include="ValidationTests.fs" />
         <Compile Include="EnvironmentRoundTripTests.fs" />
+        <!-- Spec 0038 Part B.1 (step 002): the surviving AppShell layout seam — the
+             Avalonia-free setPanelVisible reducer over the persisted PanelLayout. -->
+        <Compile Include="AppShellLayoutTests.fs" />
         <!-- Part J UX shell III (§J.10-J.12, slice 016, LAST). The AC-J12
              SystemView3D geometry portion is added to SchematicGeometryTests.fs
-             (registered above) per the slice's files-in-scope. -->
+             (registered above) per the slice's files-in-scope. HelpGalleryTests
+             left with the retired Help module (spec 0038 Part B.1). -->
         <Compile Include="JobRunnerCancelTests.fs" />
-        <Compile Include="HelpGalleryTests.fs" />
         <!-- Spec 0026 Part G/H (slice 007): element-group + experiment-collection domain
              (member modes, lossless swap) and the separate groups/collections library
              round-trip + schema validation. Pure Domain + Storage (Avalonia-free). -->
@@ -106,10 +109,128 @@
              edits, remove, moves, MakeRepeatBlock, SetRepeatCount) without a window, plus both
              acceptance criteria and the typed repeat-count rejections. -->
         <Compile Include="SampleStackEditorTests.fs" />
+        <!-- Spec 0038 Part C (step 005): the pure WorkbenchSettings Domain record —
+             defaults (modeless / 5 / 100 / 8) and per-type tryCreate rejection of
+             non-positive thresholds, constructed directly with no file IO (the
+             AppSettingsProvider seam lives only in the App composition root). -->
+        <Compile Include="WorkbenchSettingsTests.fs" />
+        <!-- Spec 0038 Part D (step 009): the generic faceted-navigation engine over a fixed
+             six-item corpus — OR within a facet / AND across facets, multi-valued extraction
+             counted per branch, half-open + degenerate numeric ranges, zero-count branches
+             absent, inapplicable attributes omitted, cumulative breadcrumb after-counts, and
+             the plain-text filter as an ordinary constraint. -->
+        <Compile Include="FacetsTests.fs" />
+        <!-- Spec 0038 Part D (step 010): the 1–2–5 log-ladder numeric bucket builder —
+             ladder boundary generation, empty-bucket dropping, fewest-first merging under
+             ThicknessBucketCap, half-open membership, exact-value collapse, nm/µm labels,
+             recomputation over the constrained population, bucket-as-ordinary-chip, and
+             the FsCheck exactly-one-bucket property. -->
+        <Compile Include="FacetBucketsTests.fs" />
+        <!-- Spec 0038 Part D (step 011): the two concrete facet catalogues over the
+             seeded corpora — every material/library extractor and appliesTo rule,
+             dependent facets vanishing when inapplicable, the multi-valued
+             dispersion-model facet, any-constituent sample matching, and per-film
+             thicknesses flowing into the step-010 buckets. -->
+        <Compile Include="LibraryFacetsTests.fs" />
+        <!-- Spec 0038 Part F (step 014): ideal elements become ordinary protected entries and
+             polarizer behaviour becomes data — ComputedIdeal parity with the existing
+             analyzerMueller/inputStokes synthesis, the R(−θ)·M·R(θ) component rotation, the
+             ORDERED ConstantMueller compound product, EntryProtection over the seeds, and the
+             polarizer-category facet. -->
+        <Compile Include="PolarizerBehaviorTests.fs" />
+        <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
+             version-creation rule (decideVersioning) enumerated over the used/unused ×
+             physics-changed/identical × metadata-only decision table, plus the VersionNumber /
+             version-id / EntryLifecycle / VersionRef / VersionsInUse surface. Avalonia-free. -->
+        <Compile Include="LifecycleTests.fs" />
+        <!-- Spec 0038 step 026 (ADD_CONTRACT STORE_XDUO_0004): the scene persistence seam —
+             SceneName's blank-rejecting tryCreate, the SnapMode two-case DU, and the mock/stub
+             SceneProxy exercised through saveScene / tryLoadScene / listScenes' exact signatures
+             (declared contract: types + inline map-backed mock + test, no real store yet). -->
+        <Compile Include="SceneProxyTests.fs" />
+        <!-- Spec 0038 step 027 (IMPLEMENT_CONTRACT STORE_XDUO_0004): the scene persistence seam
+             is implemented — the real in-memory SceneProxy.createInMemory (ref-map store) plus the
+             pure captureScene / restoreScene pair in the workbench host. Drives the acceptance
+             round-trip capture -> saveScene -> tryLoadScene -> restoreScene onto a different base
+             model, reproducing element ids, kinds, placements, bindings, and view state; plus the
+             upsert, load-miss, and blank-name rejection. -->
+        <Compile Include="SceneRoundTripTests.fs" />
+        <!-- Spec 0038 step 028 (ADD_CONTRACT STORE_XDUO_0005): the experiment-collection persistence
+             seam — CollectionName's blank-rejecting tryCreate, and the mock/stub
+             ExperimentCollectionProxy exercised through saveCollection / tryLoadCollection /
+             listCollections' exact signatures over a named list of the step-25 full-setup Experiments
+             (the optional DataFilePath attachment riding along per experiment). Declared contract:
+             types + inline map-backed mock + test, no real store yet. -->
+        <Compile Include="ExperimentCollectionProxyTests.fs" />
+        <!-- Spec 0038 step 029 (IMPLEMENT_CONTRACT STORE_XDUO_0005): the experiment-collection
+             persistence seam is implemented — the real in-memory
+             ExperimentCollectionProxy.createInMemory (ref-map store). Drives the acceptance
+             round-trip saveCollection -> listCollections -> tryLoadCollection over a collection of a
+             full E1 setup, a sample-less E2, and a dark E3 (with and without DataFilePath
+             attachments), reproducing ordered setups, the optional sample/source/dark shapes, and the
+             per-experiment attachments value-identically; plus the upsert, load-miss, blank-name
+             rejection, and multi-collection listing. -->
+        <Compile Include="ExperimentCollectionRoundTripTests.fs" />
+        <!-- Spec 0038 Part I (step 031): the pure out-of-band dispersion diagnostic — a fixed 600 nm
+             request inside a 300-700 nm segment does not flag, a 200-800 nm sweep against the same
+             segment flags (naming the material + both ranges), adjacent multi-segment unions cover a
+             spanning request while a gap does not, constant + coded-preset materials never flag, and
+             the requested-wavelengths derivation + tooltip/Details text. -->
+        <Compile Include="OutOfBandDiagnosticTests.fs" />
+        <!-- Spec 0038 Part I (step 034): the pure measured-data parsers + validation — a good intensity
+             CSV parses X,Y with the labels row ignored (CRLF tolerated), a malformed row / wrong column
+             count / empty / header-only reject with typed ExperimentDataErrors; the 3- and 4-column
+             ellipsometric schema parses wavelength via the Units seam and Ψ/Δ/aoi as angles, a bad header
+             or bad row rejects; and validateAgainstExperiment yields DataUnitsMismatch (wrong shape for
+             the detector) and DataRangeMismatch (abscissa outside the range, never trimmed). Every case
+             runs against an in-memory string — no file IO. -->
+        <Compile Include="MeasuredDataTests.fs" />
+        <!-- Spec 0038 Part I (035, ADD_CONTRACT STORE_XDUO_0006): the measured-data LOAD seam — the
+             DECLARED [<ReferenceEquality>] ExperimentDataProxy (tryLoadIntensity / tryLoadEllipsometric).
+             The inline mock keyed by path (canned series built through the step-34 parsers) + the
+             mock-driven test exercising both fields through their EXACT signatures: a hit returns the
+             canned series, an unknown path returns a typed ExperimentDataError (never a throw), and the
+             proxy compares by reference. Declared contract: types + mock + test, no real store yet. -->
+        <Compile Include="ExperimentDataProxyTests.fs" />
+        <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the REAL file-backed
+             ExperimentDataProxy — ExperimentDataStore.createFileBacked. A temp file written under the
+             test output round-trips a known intensity and a known ellipsometric series (the store's
+             parsed result equals the step-34 parser's own output); a missing path yields a typed
+             ExperimentDataError from both fields (never a throw); an empty-but-existing file yields the
+             parser's EmptyDataFile, proving the adapter reads then delegates and adds no parsing logic. -->
+        <Compile Include="ExperimentDataStoreTests.fs" />
+        <!-- Spec 0038 Part M (step 040, ADD_COMPONENT STORE_XDUO_0007): the EFC-wiring
+             proof. The ONLY consumer of OpticalConstructor.Database — reads the provider
+             choice + connection string from a fixture appsettings.json (the step-5
+             ConfigKey literals, via AppSettingsProvider.tryGetConnectionString), parses
+             the provider into a DU, runs the initial migration against SQLite on a temp
+             file under the test output, and asserts the Test table exists + round-trips a
+             row. No MSSQL server anywhere. -->
+        <Compile Include="TestDbMigrationTests.fs" />
+        <!-- Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam — the
+             DECLARED [<ReferenceEquality>] SeedingProxy (saveCategory / saveMaterial /
+             saveSample / saveLibraryEntry) and the pure seedAll orchestrator. The recording
+             stub + mock-driven test prove seedAll pushes every EXISTING Domain seed value
+             exactly once, in category-material-sample-entry order, through the exact
+             signatures; plus the reference equality and the SeedRejected short-circuit. -->
+        <Compile Include="SeedingProxyTests.fs" />
+        <!-- Spec 0038 step 042 (IMPLEMENT_CONTRACT STORE_XDUO_0008): the REAL in-memory
+             SeedingProxy — SeedingProxy.createInMemory over four EMPTY createInMemoryEmpty
+             stores. seedAll fills the blank catalogue and the tests prove category / material /
+             sample / entry counts match the Domain seed lists and the fixed seed ids resolve to
+             the same seed instances, all Result-checked, with NO database and NO file IO; a third
+             test proves the stores are genuinely stateful (a second seedAll is rejected). -->
+        <Compile Include="SeedingInMemoryTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
         <Content Include="fixtures\Si.yml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <!-- Spec 0038 Part M (step 040): the EFC-wiring proof's appsettings fixture,
+             read by an explicit fixtures/ path so it never collides with the App's own
+             appsettings.json that also lands in the test output root. -->
+        <Content Include="fixtures\database-appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="fixtures\sample-nk.csv">
@@ -148,6 +269,15 @@
 
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <!-- Spec 0038 Part D (step 010): FsCheck for the exactly-one-bucket property —
+             the version BerremanTests pins; run via Check.One inside a [<Fact>] (the
+             solution's established FsCheck-under-xunit pattern). -->
+        <PackageReference Include="FsCheck" Version="3.3.3" />
+        <!-- Spec 0038 Part M (step 040): the EFC-wiring proof drives the SQLite provider
+             directly (UseSqlite / SqliteConnectionStringBuilder / Database.Migrate) and
+             needs the native SQLite assets in the test output. Version-matched to the
+             OpticalConstructor.Database project reference (net10.0). -->
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
@@ -162,9 +292,16 @@
 
     <ItemGroup>
         <ProjectReference Include="..\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
+        <!-- Spec 0038 step 041 (ADD_CONTRACT STORE_XDUO_0008): the seed-push seam under test. -->
+        <ProjectReference Include="..\OpticalConstructor.Seeding\OpticalConstructor.Seeding.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
         <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
+        <!-- Spec 0038 Part M (step 040): App carries the step-5 ConfigKey literals the
+             EFC-wiring proof reads; Database is the C# EFC project under test. This test
+             project is the ONLY consumer of OpticalConstructor.Database. -->
+        <ProjectReference Include="..\OpticalConstructor.App\OpticalConstructor.App.fsproj" />
+        <ProjectReference Include="..\OpticalConstructor.Database\OpticalConstructor.Database.csproj" />
     </ItemGroup>
 
 </Project>

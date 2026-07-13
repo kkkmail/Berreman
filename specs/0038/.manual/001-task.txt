@@ -1,0 +1,171 @@
+This is a discussion only until we agree. We will talk in documents. I will talk mostly in TXT, and you will reply in MD with the next NNN. 
+Eventually you will assemble the preliminary spec but not until we agree on all the points. So, for now just ask questions and provide ideas. 
+Once we agree, then I will send you to write a full preliminary spec.
+
+We are going to work on improving the Berreman app / repo (code word BMN, because BM is already taken by STL/BM) UI. Everything works more 
+or less as expected. So, these are NOT spec or implementation gaps apart from some small irregularities but rather improvements to the UI 
+based on the usage.
+
+The main idea is that we want to further standardize the UI controls, so that we can plug in pieces in some standard ways.
+
+Here are the thoughts. The Materials and Library do not seem to belong to the ribbon. Rather they should be their own complicated controls, 
+which deserve their own windows. Subsequently a Selector is basically a Library but with the “select” button. So, let’s unify them: A selector 
+is just the library with the extra buttons to select a chosen sample, which then closes the selector (library) AND close (cancel) button to 
+close the library (in the selector state) without returning the chosen sample. Subsequently we should remove Materials and Library from 
+the optical constructor screen OR make them open their own windows (TBD). I am inclined to remove them from the optical constructor form 
+and put them to the launcher form (Optical Constructor - Launcher) under Main. Consider other alternatives and why.
+Now, let’s look at the Selector ribbon. Her is how it currently works now: the use clicks Selector button, then clicks on an element on 
+the table, the system automatically shows all elements of that type available in the system, the user clicks on one of the available choices 
+represented as buttons, then clicks on confirm or cancel. This works fine ONLY when the number of choices is very small AND this does not 
+allow the user to add an element on the fly.
+Here is how it should work: the use clicks Selector button, then clicks on an element on the table (same as before), then clicks on choose 
+button, which will open the library form constrained to the element type AND in a special state (with some extra buttons shown). This is 
+exactly the same library window (to be precise, this IS the library window, NOT a copy of the library window in the code). And so, the user 
+can perform any action (e.g. add new element) that the user can perform on the library window, because, well, it is the library window. 
+This means that all LPs, CPs, etc. must be described via the library. This is straightforward using F# DUs and options: the element in 
+the library is either dynamically calculated during experiments (all the samples are dynamically calculated), OR are just described via 
+their constant Mueller matrix (constant LPs, CPs are done this way, if I am not mistaken) AND we need additional categories to describe 
+LP, CP, LPCP, CPLP, etc. We will make an additional entry point to the library so that to edit such special elements (not now). For now we 
+just dynamically add the ideal LP, CP, etc. as we do now but just add them to the library instead of wherever we add them now.
+
+The idea of using buttons to represent samples or materials on the page did not fly. It is very inconvenient. Natural representation 
+for these things is a filterable reconfigurable tree, which, when expanded, could spawn more than one page vertically. What’s worse is 
+that there could be different tree representations. Regardless of the representation the unexpanded branches must show the count of how 
+many elements are under them. So, the filter just filters out the tree (never showing branches with zero elements) and changing the 
+tree representation just changes the order of branches in the tree. The branches are powered by attributes. 
+The attributes are as follows (need to work out how to select):
+Material attributes are category (all or a choice), anisotropy, constant / dispersive (constant selects constant transparent and constant 
+absorbing, then could be further refined as transparent or absorbing), optically active / not optically active, magnetic / not magnetic. 
+Dispersive further allows constraining by the model. If optically active, then can be further constrained by the applicable symmetry classes 
+and handedness and if magnetic the further constrained by scalar or gyromagnetic. Basically these are all the “attributes” that we can set 
+to the material NOT just category and dispersion that we have now on Materials ribbon.
+Library: same as for material AND primary material (substrate), thin films / no thin films (need to work out the actual working), material 
+of the thin film(s) – must offer ONLY what is actually used, sorted by name, multiselect must be possible, available thin film ranges (must 
+dynamically build the ranges). 
+We can call the attributes applicable to the material or sample a constraint. Each of the constraints has a count and the counts of what’s 
+available when a single or multiple constraints are applied must be shown both in the tree and when choosing a constraint.
+It must be possible to apply constraints in different order. For example, the user may want to start with thin films, say we have 500 of 
+them., which has glass layer(s) – say we have 100 samples like that, then constrain further to 10-20 nm thick layer (the system must provide 
+dynamically constructed ranges that make sense OR the user specifies the range of thickness to constrain) – say we have 5. All these 500, 
+100, 5 must be visible as the user builds the search.
+If the resulting tree is small (say under 100 elements, saved into appsettings, defaulted to 100 in some const), then we automatically 
+rebuild the tree. Otherwise, the user must click the search (show ???) button to display the whole tree. The tree must be branched in the 
+order of selections. This is to be discussed.
+As always only non-empty branches must be shown.
+
+So, the common concept here is the filterable tree with multiple representations: we have a collection of items with some “attributes” 
+(these are NOT C# Attribute but properties of the elements in the collection), which have some values. The list of attributes and all 
+possible values for each attribute is known. Some attributes have fixed possible values (e.g. category) and some are just numbers 
+(e.g. thickness of the layer in nm). The attributes have, call it, natural order, e.g. category / anisotropy / … but the user may want 
+to change the order, e.g. start from optically active materials first. All this can be abstracted away and represented as F# and DUs 
+options. This means that a unified control (window) can serve both material and library view and proxies will account for the necessary 
+differences. The edit forms stay as they are because they are VERY different.
+
+Material edit form.
+The main problem of this form is that the n, k chart shrinks vertically when more and more complicated matter is set.
+The second main problem is that there might be multiple things to draw but only one is drawn. For example, if a dispersive biaxial 
+material is being created then it is unclear what is being drawn and it has zero vertical height anyway. And if optical activity is 
+added, then it may also have dispersion. Propose the solution.
+The form must ask for a confirmation if it has non-saved edits.
+
+Library form
+The library form AND the materials form now must be powered by the same standardized filterable configurable tree
+
+Sample edit form
+Here we have the same problem and that is that buttons are used to represent materials (DOES NOT WORK). We MUST use now standardized 
+materials form to choose the materials in a pop up (non-modal) window. Again this becomes the standardized approach.
+The form must ask for a confirmation if it has non-saved edits.
+
+A material / sample that has been used cannot be deleted but can be marked / unmarked as inactive after which it cannot be used in 
+new things (but it is still available in the old things). The materials that have been used cannot be deleted but can be marked as 
+obsolete / superseded by another material (thus keeping the material name). E.g. we can start with quartz with constant optical properties 
+but then want to extend it to have dispersive properties. We do not want to break the historical experiments. There are two ways to 
+address that: we either copy all properties into the experiment when we create it OR we disallow editing the material / sample, which 
+was used and make the user supersede the material / create copy of the sample. Research and advise which approach is better.
+
+Experiments – each experiment MUST hold all the information (references) to the all the elements in the setup as it is standard to 
+measure without the sample and other elements to account for imperfections. E.g. E1 = LS + LP + S + LP (rotate), E2 = LS + L1 + L2 (rotate) – 
+no sample - this captures that LPs are NOT ideal. E3 = nothing (the dark line). This captures how much extra ambient light gets into the detector without any light source. And so on.
+
+Elements that are set / not set must be distinguishable on the table. Currently there no difference. Propose.
+
+Inverse problem. All of the above gets us to the essence of the problem and that is the inverse problem, which is given the optical 
+measurements (that’s what we call experiments), determine the optical properties of the sample. This IS basically the same optical 
+constructor but with the sample undefined or partially undefined. Add a button Inverse to Launcher after Main (before added above 
+Materials and Library). The button should start the same optical constructor main form but in a special state. It starts with building 
+a collection of the experiments but without specifying the exact optical parameters. Then feed that to the reverse problem solver. 
+The reverse problem always attempt to find Mueller matrix for a given wavelength and incidence angle. Multiple such experiments 
+collections (call them experiment collection set) can be combined further to extract optical properties, which would account for such 
+a behavior. The user must specify all elements except the sample on the table and may specify some similar sample element as a hint. 
+If the hint is NOT specified, then do not draw the experiment chart and if the hint IS specified, then draw the experiment chart as 
+now. Then each experiment must be given the data file. Eventually there might be some more complicated data mapping but for this version 
+let’s say that the user must choose a standard CSV file per each experiment. If this is an intensity experiment, then each file must 
+have a standardized form: first row are labels (ignored), then comma separated X and Y. Ellipsometric data may have different structure. 
+Investigate and use. The system must remember the last folder used (unless the user cancels the dialog). Use proxies to load the file, 
+then you can write a unit test with a mock file and then later we can plug in various data queries just by swapping the proxies.
+
+Ellipsometer as a detector is missing. We need to add it along with the ability to change the detector. Currently attempting to select 
+a detector on the Selector page results in some Avalonia exceptions:
+```
+Unable to process the message: PointerUp { sx = 610.0
+            sy = 283.0 }: System.InvalidOperationException: Cannot set Name : styled element already styled.
+   at Avalonia.StyledElement.set_Name(String value)
+   at Avalonia.StyledElement.<>c.<.cctor>b__20_2(StyledElement o, String v)
+   at Avalonia.DirectProperty`2.InvokeSetter(AvaloniaObject instance, BindingValue`1 value)
+   at Avalonia.AvaloniaObject.SetDirectValueUnchecked[T](DirectPropertyBase`1 property, T value)
+   at Avalonia.AvaloniaObject.SetValue[T](DirectPropertyBase`1 property, T value)
+   at Avalonia.DirectPropertyBase`1.RouteSetValue(AvaloniaObject o, Object value, BindingPriority priority)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.action@1-1(IList collection, Int32 index, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_IList@88(FSharpList`1 delta, IList collection)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentMultiple(AvaloniaObject view, Accessor accessor, FSharpList`1 delta)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_avalonia@167(FSharpOption`1 viewElement, AvaloniaObject view, AvaloniaProperty property)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentSingle(AvaloniaObject view, Accessor accessor, FSharpOption`1 viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.action@1-1(IList collection, Int32 index, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_IList@88(FSharpList`1 delta, IList collection)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentMultiple(AvaloniaObject view, Accessor accessor, FSharpList`1 delta)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_avalonia@167(FSharpOption`1 viewElement, AvaloniaObject view, AvaloniaProperty property)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentSingle(AvaloniaObject view, Accessor accessor, FSharpOption`1 viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.action@1-1(IList collection, Int32 index, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_IList@88(FSharpList`1 delta, IList collection)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentMultiple(AvaloniaObject view, Accessor accessor, FSharpList`1 delta)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.action@1-1(IList collection, Int32 index, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_IList@88(FSharpList`1 delta, IList collection)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentMultiple(AvaloniaObject view, Accessor accessor, FSharpList`1 delta)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.action@1-1(IList collection, Int32 index, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_IList@88(FSharpList`1 delta, IList collection)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentMultiple(AvaloniaObject view, Accessor accessor, FSharpList`1 delta)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_avalonia@167(FSharpOption`1 viewElement, AvaloniaObject view, AvaloniaProperty property)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentSingle(AvaloniaObject view, Accessor accessor, FSharpOption`1 viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.action@1-1(IList collection, Int32 index, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch_IList@88(FSharpList`1 delta, IList collection)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patchContentMultiple(AvaloniaObject view, Accessor accessor, FSharpList`1 delta)
+   at Avalonia.FuncUI.VirtualDom.Patcher.patch(AvaloniaObject view, ViewDelta viewElement)
+   at Avalonia.FuncUI.VirtualDom.VirtualDom.updateRoot(ContentControl host, FSharpOption`1 last, FSharpOption`1 next)
+   at Avalonia.FuncUI.Hosts.HostWindow.update(FSharpOption`1 nextViewElement)
+   at Avalonia.FuncUI.Hosts.HostWindow.Avalonia.FuncUI.Hosts.IViewHost.Update(FSharpOption`1 next)
+   at Avalonia.FuncUI.Elmish.Program.withHost@14.Invoke(model state, FSharpFunc`2 dispatch)
+   at Elmish.ProgramModule.processMsgs@178.Invoke(Unit unitVar0)
+```
+
+Storage.
+We are NOT going to do a full storage project until all structures are stable and they are NOT yet. I am inclined to use a separate 
+C# EFC project to handle the database with the interchangeable ability to store either to MSSQL or SQLite (configured in appsettings). 
+We will also need a separate F# seeding project so that to seed the data that we currently instantiate in the in-memory structures. 
+STL repo has a good example of such EFC project. We can create a nearly empty one. The funny part about F# is that since we use 
+proxies, then we can actually implement seeding without even having the database at all and where all the data that we need will 
+go into our current in-memory structures. So, let’s do that and that will offload what we currently “hardcode” into seeding project. 
+That will include various guids and other such information. The information must be kept close to the source, NOT magically appear 
+in the seeding project. Once we decide that the time has come to implement storage project in full, then we will just switch the 
+proxies in the seeding project.
+
+Bear in mind that the description below is a collection of ideas. Evaluate them, look up best industry practices, research the 
+issues, then write comments and questions into `C:\GitHub\Berreman\specs\0038\.manual\002-<description>.md`. Make no other changes.

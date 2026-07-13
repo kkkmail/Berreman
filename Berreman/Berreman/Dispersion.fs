@@ -202,7 +202,7 @@ module Dispersion =
     /// support pown); a negative exponent inverts, so a pole stays a pole —
     /// no clamping.
     let private complexPown (z : Complex) (n : int) : Complex =
-        let p = { 1 .. abs n } |> Seq.fold (fun acc _ -> acc * z) Complex.One
+        let p = seq { 1 .. abs n } |> Seq.fold (fun acc _ -> acc * z) Complex.One
         if n >= 0 then p else Complex.One / p
 
 

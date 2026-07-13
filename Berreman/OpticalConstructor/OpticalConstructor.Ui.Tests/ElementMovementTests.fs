@@ -5,6 +5,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.TestWindows
 open OpticalConstructor.TestWindows.ElementMovementView
+open OpticalConstructor.Ui
 
 /// Tests for the element-movement test window (Spec 0027, task 010): a single element slid along the
 /// central ray by drag / arrow keys, clamped to the plate. Pure MVU — no headless session needed.

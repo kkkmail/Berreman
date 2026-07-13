@@ -1,0 +1,11 @@
+# Step 046 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.App, OpticalConstructor.Controls, OpticalConstructor.Domain, OpticalConstructor.Storage]
+depends_on: [44, 45]
+```
+
+**How to implement.** Sweep the build warning-clean per spec-md 0.6: dotnet build Berreman.slnx -c Release MUST emit no FS warning originating in our code and no MSBuild warning from our project configuration — in particular MSB3277 must not have been reintroduced by the relocation or the three new projects. Fix every finding at its source (types, references, project configuration), never with a suppression attribute or NoWarn. Only the exempt third-party NuGet advisories (NU1701, NU1901-NU1904) may remain.
+
+**Acceptance.** After the step, a Release build of Berreman.slnx completes with zero our-code FS or MSBuild warnings, with only the exempt NU1701/NU1901-NU1904 advisories remaining.

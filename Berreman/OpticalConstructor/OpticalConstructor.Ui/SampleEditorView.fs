@@ -1,0 +1,1155 @@
+/// Spec 0033 (022) — the Sample editor view (UICOMP_XDUO_0003): the pure MVU model and the
+/// FuncUI projection behind `SampleEditorWindow`. The stack table sits over the step-21 Domain
+/// `SampleStackEditor` — every bulk-toolbar verb dispatches a `SampleStackMsg` through
+/// `applySampleStackMsg`, and each `Repeated` period group renders as ONE collapsible super-row
+/// (a rotating-triangle expander) with an inline repeat-count stepper and its unit-cell layers
+/// nested beneath. Material choice goes through the MATERIALS window in Select state (spec 0038
+/// step 019 — the inline WrapPanel picker is gone): each layer row carries a Choose material…
+/// verb opening (or re-targeting) the single-instance Materials window targeted at that
+/// `LayerPosition` (`SelectionTarget.SampleLayerTarget`); the return is the TARGETED
+/// `BindMaterialToLayer` — a vanished row is a no-op plus the status line — whose picked id
+/// also becomes the toolbar's chosen material (the by-`MaterialId` selection contract,
+/// `ChooseMaterial`, is unchanged). The material list RE-QUERIES `MaterialProxy.listMaterials`
+/// whenever a Select session returns and on window activation (`RefreshMaterials` — the
+/// load-once snapshot is gone; live cross-window notifications stay out of scope); the
+/// per-layer orientation editor is INCLUDED only for
+/// anisotropic materials (absent — not greyed — for isotropic ones); the optional QWOT entry
+/// derives the physical thickness t = λ/(4n) read-only into canonical metres (the DBR λ/4
+/// precedent, `Templates.dbrCell` / `Templates.dbrPeriods`, OpticalConstructor.Ui/Templates.fs).
+/// Save persists through `SampleProxy`, routing on the target's `EntryFreshness` (spec 0038
+/// step 008) — `addSample` for a `NewUnsaved` sample whose `SampleId` was minted AT WINDOW
+/// OPEN (both NEW `SampleEditorIntent` cases carry it; the mint left the save path),
+/// `updateSample` for a `Persisted` one — via the injected `SampleEditorContext` (the
+/// functional-proxy/Context seam; tests substitute stubs); Cancel discards. Pure: `update`
+/// only reaches IO through the context's proxy fields.
+module OpticalConstructor.Ui.SampleEditorView
+
+open System
+open OpticalConstructor.Controls
+open System.Globalization
+open System.Numerics
+open Avalonia
+open Avalonia.Automation
+open Avalonia.Controls
+open Avalonia.Layout
+open Avalonia.Media
+open Avalonia.FuncUI.Builder
+open Avalonia.FuncUI.DSL
+open Avalonia.FuncUI.Types
+open Berreman.Constants
+open Berreman.Fields
+open Berreman.Geometry
+open Berreman.Media
+open OpticalConstructor.Domain
+open OpticalConstructor.Domain.MaterialLibrary
+open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.SampleStackEditor
+open OpticalConstructor.Domain.WindowMode
+
+/// What Save targets (spec 0038 step 008): the sample id — ALWAYS present, minted at
+/// Add-window open — plus its `EntryFreshness`. Save routes on the freshness (`NewUnsaved`
+/// → `addSample`, `Persisted` → `updateSample`); no save path mints an id anymore.
+type EditorTarget =
+    {
+        sampleId : SampleId
+        freshness : WindowLauncher.EntryFreshness
+    }
+
+/// How the Sample editor OPENS (spec 0035 step 014): a blank NEW sample (the Add verb), a NEW
+/// sample pre-seeded with a foldable starter multilayer period (the Make-multilayer verb — its
+/// distinct launcher path), or an EXISTING sample updated in place (the Edit verb). A DU — not a
+/// `Sample option` plus a bool — so the three open intents are NAMED. Both NEW intents carry a
+/// `SampleId` minted AT WINDOW OPEN (spec 0038 step 008 — the id-mint left the save path, so
+/// the window-policy seam keys the editor by the SAME id Save persists under); they differ
+/// only in the seeded structure.
+type SampleEditorIntent =
+    | NewBlankSample of mintedId : SampleId
+    | NewSeededMultilayer of mintedId : SampleId
+    | EditSample of Sample
+
+/// The window's IO seam (the functional-proxy Context convention): the materials read-seam the
+/// step-019 re-query reaches, the samples write-seam the Save verb persists through, the
+/// Materials-window Select-state opener behind the per-layer Choose material… verb, plus the
+/// host's close request (the window passes `this.Close`; tests substitute recording stubs).
+/// Function-valued fields have no structural equality, so the context compares by reference —
+/// the model holding it keeps its equality.
+[<ReferenceEquality>]
+type SampleEditorContext =
+    {
+        /// The LIVE materials read seam (spec 0038 step 019): `RefreshMaterials` re-queries
+        /// `listMaterials` through this on every Select-session return and window activation,
+        /// replacing the load-once snapshot.
+        materials : MaterialProxy
+        samples : SampleProxy
+        /// Open (or re-target) the single-instance MATERIALS window in SELECT state over the
+        /// session context (the per-layer Choose material… verb, spec 0038 step 019). The
+        /// composition root bakes the step-008 `WindowLauncher` under `MaterialsWindowKey`,
+        /// the app category store and the step-005 modality switch; the `Window` argument is
+        /// the requesting owner a modal Select open dialogs against.
+        openMaterialsSelect : Window -> SelectionContext<MaterialEntry> -> unit
+        requestClose : unit -> unit
+    }
+
+/// Which toolbar orientation-angle box a text edit targets.
+type AngleSlot =
+    | PhiSlot
+    | ThetaSlot
+    | PsiSlot
+
+/// Whether the editor is editing normally or showing the unsaved-edit exit confirm surface
+/// (spec 0038 step 033). A named two-case DU, never a naked `bool`: a dirty editor being closed
+/// through Cancel or the window chrome flips to `ConfirmingDiscard`, which offers Discard / Keep.
+type ExitPrompt =
+    | Editing
+    | ConfirmingDiscard
+
+/// The structurally-comparable slice of the model Save persists — the identity facets and the
+/// stack structure (spec 0038 step 033's dirtiness snapshot). Every component is a plain
+/// record/DU with structural equality; the reference-compared context / material list and the
+/// pure-UI state (selection, collapsed groups, transient entry texts) are excluded.
+type SampleEditSnapshot = string * string * SubstrateKind * SampleStructure
+
+/// The editor's model: the sample identity facets (name / description / `SubstrateKind`), the
+/// step-21 stack edit state, the material list resolved from `MaterialProxy.listMaterials`
+/// (re-queried on every Select-session return and window activation — spec 0038 step 019),
+/// and the transient entry texts. Reference-compared: a `MaterialEntry`'s engine properties
+/// carry dispersion FUNCTION cases (no structural equality), and `update` returns a fresh
+/// record anyway — so the Elmish equality gate sees every dispatch as a change and re-renders,
+/// which is exactly this window's contract.
+[<ReferenceEquality>]
+type Model =
+    {
+        context : SampleEditorContext
+        target : EditorTarget
+        name : string
+        description : string
+        substrate : SubstrateKind
+        editor : SampleStackEditState
+        materials : MaterialEntry list
+        chosenMaterial : MaterialId option
+        /// Film indices of the period groups whose super-row is collapsed (expanded default).
+        collapsedGroups : Set<int>
+        thicknessText : string
+        qwotText : string
+        phiText : string
+        thetaText : string
+        psiText : string
+        /// The toolbar stepper's fold count `MakeRepeatBlock` uses (always >= 1).
+        foldCount : int
+        /// Spec 0038 (033): the edit snapshot captured at load — dirtiness is `initialEdit`
+        /// structurally unequal to the current edit slice (no dirty flag maintained).
+        initialEdit : SampleEditSnapshot
+        /// Spec 0038 (033): normal editing vs the unsaved-edit exit confirm surface.
+        exit : ExitPrompt
+        /// The last typed-error reason (or entry-validation hint) surfaced to the user.
+        status : string option
+    }
+
+type Msg =
+    | SetName of string
+    | SetDescription of string
+    | SetSubstrate of SubstrateKind
+    | ChooseMaterial of MaterialId
+    /// Spec 0038 (019): re-query the material list from the LIVE `MaterialProxy` — dispatched
+    /// whenever a Select session returns (chosen or cancelled) and on window activation,
+    /// replacing the load-once snapshot. Live cross-window notifications stay out of scope.
+    | RefreshMaterials
+    /// A row click: adds an unselected position to the multi-selection, removes a selected one.
+    | ToggleLayer of LayerPosition
+    | ClearSelectionClicked
+    /// The super-row's rotating-triangle expander.
+    | ToggleGroup of int
+    | AddLayerClicked
+    | SelectByMaterialClicked
+    | SetThicknessText of string
+    | SetQwotText of string
+    | SetLayerHeightClicked
+    | SetLayerMaterialClicked
+    | SetOrientationText of AngleSlot * string
+    | SetOrientationClicked
+    /// The per-layer orientation editor (degrees; only anisotropic layers render one).
+    | SetLayerOrientation of LayerPosition * float * float * float
+    /// Spec 0038 (016/019): the TARGETED return of a Materials-window Select session
+    /// (`SelectionTarget.SampleLayerTarget` — the per-layer Choose material… verb composes
+    /// it): set THIS layer position's material, never "the current selection" (the modeless
+    /// window may outlive a selection change). A vanished row is a no-op plus the status
+    /// line, never a throw. A live row's pick also becomes the toolbar's CHOSEN material —
+    /// the bulk verbs' one remaining source now that the inline picker is gone (step 019).
+    | BindMaterialToLayer of LayerPosition * MaterialId
+    | RemoveSelectedClicked
+    | MoveUpClicked
+    | MoveDownClicked
+    /// The toolbar fold-count stepper (clamped at 1).
+    | FoldCountBy of int
+    | MakeRepeatBlockClicked
+    /// A group's inline stepper: resize the `Repeated` group at a films index by whole periods.
+    | GroupCountBy of int * int
+    /// Set the thick substrate plate to the chosen material (spec 0033 gap G12).
+    | SetSubstrateClicked
+    /// Clear the substrate plate (spec 0033 gap G12).
+    | ClearSubstrateClicked
+    /// Set the lower half-space to the chosen material (spec 0033 gap G12).
+    | SetLowerClicked
+    /// Clear the lower half-space back to vacuum (spec 0033 gap G12).
+    | ClearLowerClicked
+    | SaveClicked
+    /// Requested exit (the Cancel button, or the window chrome routed through `OnClosing`):
+    /// closes a pristine editor silently, shows the discard confirm on a dirty one (spec 0038 step 033).
+    | CancelClicked
+    /// Spec 0038 (033): the confirm surface's Discard changes — close without saving.
+    | DiscardConfirmed
+    /// Spec 0038 (033): the confirm surface's Keep editing — dismiss the confirm, stay in the editor.
+    | KeepEditing
+
+// ---------------------------------------------------------------------------
+// Pure helpers.
+// ---------------------------------------------------------------------------
+
+/// A new layer's starting thickness (the editor's placeholder; the bulk verbs then refine it).
+let defaultLayerThickness : Thickness = Thickness.nm 100.0<nm>
+
+/// The Euler convention the editors write (the step-20 tests' convention).
+let private defaultConvention : RotationConvention = ZmXpZm
+
+/// The reference wavelength the anisotropy classification evaluates dispersive tensors at
+/// (a dispersive entry has no single tensor until a wavelength is chosen — 600 nm is the
+/// repo's common visible-band reference).
+let private referenceWaveLength : WaveLength = WaveLength.nm 600.0<nm>
+
+let private anisotropyTolerance : float = 1.0e-12
+
+/// Whether an entry's material is anisotropic — i.e. its crystal orientation matters. True
+/// when the eps or mu tensor (evaluated at the reference wavelength through the engine
+/// `getProperties` path) has any off-diagonal component or unequal diagonal, or when ANY rho
+/// component is nonzero (gyrotropy is orientation-sensitive; the isotropic default rho is the
+/// zero matrix). The per-layer orientation editor renders ONLY for these entries.
+let isAnisotropicEntry (entry : MaterialEntry) : bool =
+    let p = entry.properties.getProperties referenceWaveLength
+    let offDiagonalOrUnequalDiagonal (get : int -> int -> Complex) : bool =
+        let offDiagonal =
+            [ (0, 1); (0, 2); (1, 0); (1, 2); (2, 0); (2, 1) ]
+            |> List.exists (fun (i, j) -> (get i j).Magnitude > anisotropyTolerance)
+        let unequalDiagonal =
+            (get 0 0 - get 1 1).Magnitude > anisotropyTolerance
+            || (get 1 1 - get 2 2).Magnitude > anisotropyTolerance
+        offDiagonal || unequalDiagonal
+    let anyNonZero (get : int -> int -> Complex) : bool =
+        [ for i in 0 .. 2 do for j in 0 .. 2 -> (i, j) ]
+        |> List.exists (fun (i, j) -> (get i j).Magnitude > anisotropyTolerance)
+    offDiagonalOrUnequalDiagonal (fun i j -> p.eps.[i, j])
+    || offDiagonalOrUnequalDiagonal (fun i j -> p.mu.[i, j])
+    || anyNonZero (fun i j -> p.rho.[i, j])
+
+/// n = Re[√ε₁₁] at the wavelength, through the engine's own eps dispersion path (the
+/// NkDispersionChart / MaterialImport.exportCsv extraction — no n formula re-derived).
+let refractionIndexAt (entry : MaterialEntry) (w : WaveLength) : float =
+    (Complex.Sqrt (entry.properties.epsWithDisp.getEps w).[0, 0]).Real
+
+/// The quarter-wave optical thickness: t = λ/(4n), stored canonical-SI through the engine
+/// `Thickness.nm` constructor (the DBR template λ/4 precedent, Templates.fs:103,106).
+let qwotThickness (lambdaNm : float) (n : float) : Thickness =
+    Thickness.nm (lambdaNm / (4.0 * n) * 1.0<nm>)
+
+let private parseFloat (s : string) : float option =
+    match Double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture) with
+    | true, v -> Some v
+    | _ -> None
+
+let private chosenEntry (m : Model) : MaterialEntry option =
+    match m.chosenMaterial with
+    | Some id -> m.materials |> List.tryFind (fun e -> e.id = id)
+    | None -> None
+
+/// The QWOT-derived physical thickness, when the entry text parses to a positive wavelength
+/// (nm) and a material is chosen to take n from. `None` otherwise — the readout shows a dash
+/// and the set-thickness verb falls back to the plain nm entry.
+let qwotDerived (m : Model) : Thickness option =
+    match chosenEntry m, parseFloat m.qwotText with
+    | Some entry, Some lambdaNm when lambdaNm > 0.0 ->
+        let n = refractionIndexAt entry (WaveLength.nm (lambdaNm * 1.0<nm>))
+        if n > 0.0 then Some (qwotThickness lambdaNm n) else None
+    | _, _ -> None
+
+/// A thickness readout in display nanometres (`∞` for the semi-infinite case).
+let thicknessLabel (t : Thickness) : string =
+    match t with
+    | Thickness meters -> $"%g{meters / nmToMeter / oneNanometer} nm"
+    | Infinity -> "∞"
+
+/// The flattened film count — each `Repeated` group expands to count × cell (the structure
+/// readout the "2-layer selection repeated K times shows 2*K films" acceptance observes).
+let filmsCount (m : Model) : int =
+    m.editor.structure.expandedFilms |> List.length
+
+/// A `SubstrateKind` facet option's stable code (the derived UiIds key).
+let substrateCode (kind : SubstrateKind) : string =
+    match kind with
+    | ThinFilm -> "ThinFilm"
+    | Plate -> "Plate"
+
+let private substrateLabel (kind : SubstrateKind) : string =
+    match kind with
+    | ThinFilm -> "Thin film"
+    | Plate -> "Plate"
+
+let private orientationDegrees (o : CrystalOrientation) : float * float * float =
+    match o with
+    | PrimaryAxes -> (0.0, 0.0, 0.0)
+    | EulerRotation (_, phi, theta, psi) -> (phi.degrees, theta.degrees, psi.degrees)
+
+/// Degrees → orientation: all-zero angles mean the material's own principal axes (the
+/// identity is DATA, not an EulerRotation carrying zeros).
+let private orientationOf (phi : float) (theta : float) (psi : float) : CrystalOrientation =
+    if phi = 0.0 && theta = 0.0 && psi = 0.0 then PrimaryAxes
+    else EulerRotation (defaultConvention, Angle.degree phi, Angle.degree theta, Angle.degree psi)
+
+let private orientationLabel (o : CrystalOrientation) : string =
+    match o with
+    | PrimaryAxes -> "primary axes"
+    | EulerRotation (_, phi, theta, psi) -> $"φ=%g{phi.degrees}° θ=%g{theta.degrees}° ψ=%g{psi.degrees}°"
+
+/// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets and
+/// the stack structure, all plain records/DUs. The transient entry texts, the selection, the
+/// collapsed-group set and the re-queried material list are pure UI / read state and excluded.
+let private currentEdit (m : Model) : SampleEditSnapshot =
+    (m.name, m.description, m.substrate, m.editor.structure)
+
+/// Whether the editor carries unsaved changes: the current edit slice differs structurally from
+/// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
+let isDirty (m : Model) : bool =
+    m.initialEdit <> currentEdit m
+
+// ---------------------------------------------------------------------------
+// init / toSample / update (pure — IO only through the context's proxy fields).
+// ---------------------------------------------------------------------------
+
+let private emptyStructure : SampleStructure =
+    {
+        films = []
+        substrate = None
+        lower = None
+    }
+
+let init (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : Model =
+    let target, name, description, substrate, structure =
+        // Both NEW intents carry the id minted AT WINDOW OPEN as a NewUnsaved target (spec 0038
+        // step 008); the seeded multilayer path opens onto the Domain starter period (spec 0035
+        // step 014), the blank Add onto nothing.
+        match intent with
+        | NewBlankSample mintedId ->
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure)
+        | NewSeededMultilayer mintedId ->
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure)
+        | EditSample s ->
+            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name, s.description, s.substrate, s.structure)
+    {
+        context = context
+        target = target
+        name = name
+        description = description
+        substrate = substrate
+        editor = SampleStackEditState.ofStructure structure
+        materials = materials
+        chosenMaterial = None
+        collapsedGroups = Set.empty
+        thicknessText = ""
+        qwotText = ""
+        phiText = ""
+        thetaText = ""
+        psiText = ""
+        foldCount = 2
+        // The edit snapshot at load — a freshly opened editor (including a seeded starter) is
+        // pristine and closes silently (spec 0038 step 033).
+        initialEdit = (name, description, substrate, structure)
+        exit = Editing
+        status = None
+    }
+
+/// The sample the model currently denotes, under the given id (Save chooses the id by target).
+let toSample (id : SampleId) (m : Model) : Sample =
+    {
+        id = id
+        name = m.name
+        structure = m.editor.structure
+        substrate = m.substrate
+        description = m.description
+    }
+
+let private stackErrorReason (e : SampleStackEditError) : string =
+    match e with
+    | InvalidRepeatCount reason
+    | SelectionNotFoldable reason
+    | NotARepeatGroup reason -> reason
+
+let private sampleErrorReason (e : SampleError) : string =
+    match e with
+    | UnknownSampleId reason
+    | DuplicateSampleId reason
+    | SampleVersionInUse reason
+    | InvalidSample reason -> reason
+
+let private materialErrorReason (e : MaterialError) : string =
+    match e with
+    | UnknownMaterialId reason
+    | DuplicateMaterialId reason
+    | MaterialStillReferenced reason
+    | MaterialVersionInUse reason
+    | InvalidMaterial reason -> reason
+
+/// Route one step-21 editor message; a typed rejection surfaces its reason as the status.
+let private applyStack (msg : SampleStackMsg) (m : Model) : Model =
+    match applySampleStackMsg msg m.editor with
+    | Ok editor -> { m with editor = editor; status = None }
+    | Error e -> { m with status = Some (stackErrorReason e) }
+
+let update (msg : Msg) (m : Model) : Model =
+    match msg with
+    | SetName s -> { m with name = s }
+    | SetDescription s -> { m with description = s }
+    | SetSubstrate kind -> { m with substrate = kind }
+    | ChooseMaterial id -> { m with chosenMaterial = Some id }
+    | RefreshMaterials ->
+        // Spec 0038 (019): re-query the material list from the LIVE proxy — a material added
+        // through another window appears here. The status is left alone (a vanished-row
+        // message must survive the refresh the same return dispatches); a store refusal keeps
+        // the current list and surfaces its typed reason instead.
+        match m.context.materials.listMaterials MaterialLibrary.ActiveOnly with
+        | Ok entries -> { m with materials = entries }
+        | Error e -> { m with status = Some (materialErrorReason e) }
+    | ToggleLayer position ->
+        if Set.contains position m.editor.selection
+        then { m with editor = { m.editor with selection = Set.remove position m.editor.selection } }
+        else applyStack (SelectLayer position) m
+    | ClearSelectionClicked -> applyStack ClearSelection m
+    | ToggleGroup groupIndex ->
+        if Set.contains groupIndex m.collapsedGroups
+        then { m with collapsedGroups = Set.remove groupIndex m.collapsedGroups }
+        else { m with collapsedGroups = Set.add groupIndex m.collapsedGroups }
+    | AddLayerClicked ->
+        // spec 0033 gap G13: appending a layer now routes through the pure Domain
+        // `AddLayer` arm (`SampleStackEditor`), not a view-level structural edit — so the
+        // behaviour stays testable without a window.
+        let materialIdOpt =
+            match m.chosenMaterial with
+            | Some id -> Some id
+            | None -> m.materials |> List.tryHead |> Option.map (fun e -> e.id)
+        match materialIdOpt with
+        | Some id ->
+            // Pin the chosen material's current version (spec 0038 step 022 — `firstOf`: every
+            // material lives at v1 until step 25's real `VersionsInUse` can drive a mint).
+            applyStack (AddLayer { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes }) m
+        | None -> { m with status = Some "no materials are available to add a layer from" }
+    | SelectByMaterialClicked ->
+        match m.chosenMaterial with
+        | Some id -> applyStack (SelectByMaterial id) m
+        | None -> { m with status = Some "choose a material to select by" }
+    | SetThicknessText s -> { m with thicknessText = s }
+    | SetQwotText s -> { m with qwotText = s }
+    | SetLayerHeightClicked ->
+        // A valid QWOT derivation wins; otherwise the plain nm entry applies.
+        match qwotDerived m with
+        | Some t -> applyStack (SetThicknessOfSelected t) m
+        | None ->
+            match parseFloat m.thicknessText with
+            | Some v when v > 0.0 -> applyStack (SetThicknessOfSelected (Thickness.nm (v * 1.0<nm>))) m
+            | Some _ | None -> { m with status = Some "enter a positive thickness in nm (or a QWOT wavelength with a chosen material)" }
+    | SetLayerMaterialClicked ->
+        match m.chosenMaterial with
+        | Some id -> applyStack (SetMaterialOfSelected (MaterialVersionId.firstOf id)) m
+        | None -> { m with status = Some "choose a material to set" }
+    | SetOrientationText (slot, s) ->
+        match slot with
+        | PhiSlot -> { m with phiText = s }
+        | ThetaSlot -> { m with thetaText = s }
+        | PsiSlot -> { m with psiText = s }
+    | SetOrientationClicked ->
+        let angleOf (s : string) : float option =
+            if String.IsNullOrWhiteSpace s then Some 0.0 else parseFloat s
+        match angleOf m.phiText, angleOf m.thetaText, angleOf m.psiText with
+        | Some phi, Some theta, Some psi -> applyStack (SetOrientationOfSelected (orientationOf phi theta psi)) m
+        | _, _, _ -> { m with status = Some "the orientation angles must be numbers (degrees)" }
+    | SetLayerOrientation (position, phi, theta, psi) ->
+        // One layer's editor: apply the selection-shaped Domain transform to JUST this
+        // position, then restore the user's multi-selection (the transform never rejects).
+        let single = { m.editor with selection = Set.ofList [ position ] }
+        match applySampleStackMsg (SetOrientationOfSelected (orientationOf phi theta psi)) single with
+        | Ok next -> { m with editor = { next with selection = m.editor.selection }; status = None }
+        | Error e -> { m with status = Some (stackErrorReason e) }
+    | BindMaterialToLayer (position, materialId) ->
+        // Spec 0038 (016): a Materials-window Select session returned for THIS layer position.
+        // The position is validated against the CURRENT structure first (the Domain seam
+        // `isValidPosition` — the row may have been deleted while the modeless window was
+        // open): a vanished row is a no-op plus the status line, never a throw. A live row
+        // takes the material through the same selection-shaped transform-and-restore dance
+        // as the per-layer orientation editor above — and the picked id also becomes the
+        // toolbar's CHOSEN material (step 019: the bulk verbs' one remaining source now that
+        // the inline picker is gone; the vanished-row no-op chooses nothing).
+        if isValidPosition m.editor.structure position then
+            let single = { m.editor with selection = Set.ofList [ position ] }
+            match applySampleStackMsg (SetMaterialOfSelected (MaterialVersionId.firstOf materialId)) single with
+            | Ok next -> { m with editor = { next with selection = m.editor.selection }; chosenMaterial = Some materialId; status = None }
+            | Error e -> { m with status = Some (stackErrorReason e) }
+        else
+            { m with status = Some "the chosen material was not applied — its target layer is no longer in the stack" }
+    | RemoveSelectedClicked -> applyStack RemoveSelected m
+    | MoveUpClicked -> applyStack MoveSelectedUp m
+    | MoveDownClicked -> applyStack MoveSelectedDown m
+    | FoldCountBy delta -> { m with foldCount = max 1 (m.foldCount + delta) }
+    | MakeRepeatBlockClicked -> applyStack (MakeRepeatBlock m.foldCount) m
+    | GroupCountBy (groupIndex, delta) ->
+        match List.tryItem groupIndex m.editor.structure.films with
+        | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count + delta)) m
+        | Some (SingleLayer _) | None -> { m with status = Some $"films item %d{groupIndex} is not a repeat group" }
+    | SetSubstrateClicked ->
+        // Qualify the Domain case — the view `Msg` also has a `SetSubstrate` (the geometry
+        // facet), so the bare name would resolve to the wrong DU.
+        match m.chosenMaterial with
+        | Some id -> applyStack (SampleStackMsg.SetSubstrate (Some { materialId = MaterialVersionId.firstOf id; thickness = defaultLayerThickness; orientation = PrimaryAxes })) m
+        | None -> { m with status = Some "choose a material to set as the substrate plate" }
+    | ClearSubstrateClicked -> applyStack (SampleStackMsg.SetSubstrate None) m
+    | SetLowerClicked ->
+        match m.chosenMaterial with
+        | Some id -> applyStack (SampleStackMsg.SetLower (Some (MaterialVersionId.firstOf id))) m
+        | None -> { m with status = Some "choose a material to set as the lower half-space" }
+    | ClearLowerClicked -> applyStack (SampleStackMsg.SetLower None) m
+    | SaveClicked ->
+        // Spec 0038 step 022: Save routes through the ONE versioned `saveSample` (the mirror of
+        // the material editor's collapse — `addSample`/`updateSample` are gone): a NewUnsaved id
+        // inserts version 1, a Persisted id runs the shared `decideVersioning` rule (mutate in
+        // place while unused, mint the next version when a bound version's structure changes). The
+        // upfront-minted id (`SampleEditorIntent`) still drives which case the store takes.
+        let saved = m.context.samples.saveSample (toSample m.target.sampleId m)
+        match saved with
+        | Ok () ->
+            m.context.requestClose ()
+            { m with status = None }
+        | Error e -> { m with status = Some (sampleErrorReason e) }
+    | CancelClicked ->
+        // Spec 0038 (033): a dirty editor MUST NOT close silently — show the discard confirm;
+        // a pristine one closes as today. The window chrome (`OnClosing`) routes here too, so
+        // both exits are equally gated.
+        if isDirty m then { m with exit = ConfirmingDiscard }
+        else
+            m.context.requestClose ()
+            m
+    | DiscardConfirmed ->
+        // Close WITHOUT saving — the discard confirm's negative action (spec 0038 step 033).
+        m.context.requestClose ()
+        m
+    | KeepEditing ->
+        // Dismiss the confirm and stay in the editor (spec 0038 step 033).
+        { m with exit = Editing }
+
+// ---------------------------------------------------------------------------
+// The FuncUI view. Styling matches the sibling bars' idle/chosen boxes; every control in a
+// variable-membership list carries a mutable AutomationId, never `Name` (a styled control
+// cannot be renamed when FuncUI recycles it — the SampleLibraryControls precedent, and this
+// window re-renders on every Elmish message).
+// ---------------------------------------------------------------------------
+
+let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
+let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
+let private idleBackground = color 232 232 232
+let private chosenBackground = color 150 185 235
+let private groupBackground = color 214 224 238
+let private saveBackground = color 186 224 186
+let private cancelBackground = color 236 202 202
+let private idleBorder = color 120 120 120
+let private hintColor = color 110 110 110
+let private errorColor = color 165 40 40
+
+/// Avalonia layout thicknesses, qualified: the bare `Thickness` in this file is the DOMAIN
+/// layer thickness (Berreman.Media), opened after Avalonia.
+let private thick (uniform : float) : Avalonia.Thickness = Avalonia.Thickness(uniform)
+let private thickLR (horizontal : float) (vertical : float) : Avalonia.Thickness = Avalonia.Thickness(horizontal, vertical)
+let private thickOf (l : float) (t : float) (r : float) (b : float) : Avalonia.Thickness = Avalonia.Thickness(l, t, r, b)
+
+/// Set `AutomationProperties.AutomationId` (freely mutable, unlike `Control.Name`) through
+/// FuncUI's attr builder — the id survives FuncUI recycling a control onto another item's slot.
+let private automationId<'t when 't :> Control> (autoId : string) : IAttr<'t> =
+    AttrBuilder<'t>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
+/// The expander triangle's literal rotation (the "rotating-triangle" affordance: 0° collapsed,
+/// 90° expanded).
+let private renderRotation (degrees : float) : IAttr<TextBlock> =
+    AttrBuilder<TextBlock>.CreateProperty<ITransform>(Visual.RenderTransformProperty, (RotateTransform degrees :> ITransform), ValueNone)
+
+/// A clickable, styled box, highlighted when chosen. `e.Handled <- true` drops FuncUI's
+/// duplicate Tunnel|Bubble pass; re-subscribe when the id or the highlight changes.
+let private clickBoxView (autoId : string) (chosen : bool) (child : IView) (onClick : unit -> unit) : IView =
+    Border.create [
+        automationId autoId
+        Border.background (brush (if chosen then chosenBackground else idleBackground))
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 10.0 4.0)
+        Border.margin (thickOf 0.0 0.0 6.0 4.0)
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child child
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, chosen)))
+    ] :> IView
+
+let private clickBox (autoId : string) (label : string) (chosen : bool) (onClick : unit -> unit) : IView =
+    clickBoxView autoId chosen (TextBlock.create [ TextBlock.text label ] :> IView) onClick
+
+/// A toolbar verb button — disabled verbs are present but inert (a disabled Border dispatches
+/// no pointer event).
+let private verbButton (autoId : string) (label : string) (accent : bool) (enabled : bool) (onClick : unit -> unit) : IView =
+    Border.create [
+        automationId autoId
+        Border.isEnabled enabled
+        Border.opacity (if enabled then 1.0 else 0.4)
+        Border.background (brush (if accent then chosenBackground else idleBackground))
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 12.0 5.0)
+        Border.margin (thickOf 0.0 0.0 8.0 0.0)
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text label ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, enabled)))
+    ] :> IView
+
+/// The Save / Cancel actions (one row, distinct positive/negative styling).
+let private actionButton (autoId : string) (label : string) (background : Color) (onClick : unit -> unit) : IView =
+    Border.create [
+        automationId autoId
+        Border.background (brush background)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 22.0 6.0)
+        Border.margin (thickOf 0.0 0.0 10.0 0.0)
+        Border.verticalAlignment VerticalAlignment.Center
+        Border.child (TextBlock.create [ TextBlock.text label ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box autoId))
+    ] :> IView
+
+/// A −/count/+ stepper (the toolbar fold count and each group's inline period count).
+let private stepper (containerId : string) (minusId : string) (plusId : string) (count : int) (stepBy : int -> unit) : IView =
+    StackPanel.create [
+        automationId containerId
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 2.0
+        StackPanel.children [
+            clickBox minusId "−" false (fun () -> stepBy (-1))
+            TextBlock.create [
+                TextBlock.text (string count)
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (thickLR 4.0 0.0)
+            ] :> IView
+            clickBox plusId "+" false (fun () -> stepBy 1)
+        ]
+    ] :> IView
+
+let private labelBlock (label : string) : IView =
+    TextBlock.create [ TextBlock.text label; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
+
+// -- the identity / facet rows -------------------------------------------------------------
+
+let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            labelBlock "Name:"
+            TextBox.create [
+                TextBox.name UiIds.SampleEditor.nameBox
+                TextBox.width 340.0
+                TextBox.text m.name
+                TextBox.onTextChanged (SetName >> dispatch)
+            ] :> IView
+        ]
+    ] :> IView
+
+let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            labelBlock "Description:"
+            TextBox.create [
+                TextBox.name UiIds.SampleEditor.descriptionBox
+                TextBox.width 620.0
+                TextBox.text m.description
+                TextBox.onTextChanged (SetDescription >> dispatch)
+            ] :> IView
+        ]
+    ] :> IView
+
+let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.children (
+            labelBlock "Geometry:"
+            :: ([ ThinFilm; Plate ]
+                |> List.map (fun kind ->
+                    clickBox (UiIds.SampleEditor.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
+    ] :> IView
+
+// -- the stack table -------------------------------------------------------------------------
+
+/// Compose one Select session for a layer row and open (or re-target) the Materials window
+/// through the context seam (spec 0038 step 019 — the step-017 `chooseFromLibrary` precedent:
+/// composed in the VIEW, where the render's dispatch is the return path into the loop).
+/// `onSelected` bakes the TARGETED `BindMaterialToLayer` — the vanished-row no-op lives in its
+/// arm — and BOTH outcomes re-query the material list (`RefreshMaterials`): a Select window
+/// returning is one of the two re-query triggers, however the session ended.
+let private chooseMaterialForLayer (m : Model) (dispatch : Msg -> unit) (position : LayerPosition) (owner : Window) : unit =
+    let selectContext : SelectionContext<MaterialEntry> =
+        {
+            // The sample-layer pick's fixed kind (the step-016 banner names it); the material
+            // corpus satisfies it structurally, so it narrows nothing in the Materials window.
+            kindConstraint = KindConstraint Placement.CatalogueKind.Sample
+            target = SampleLayerTarget position
+            onSelected =
+                fun (entry : MaterialEntry) ->
+                    dispatch (BindMaterialToLayer (position, entry.id))
+                    dispatch RefreshMaterials
+            onCancelled = fun () -> dispatch RefreshMaterials
+        }
+    m.context.openMaterialsSelect owner selectContext
+
+/// The per-layer Choose material… verb (spec 0038 step 019): opens the Materials window in
+/// Select state targeted at THIS row's position. Rendered BESIDE its row, never inside the
+/// row's Border — the row's tunnel-phase ToggleLayer press handler would swallow a nested
+/// clickable. The owner window for a modal Select open is resolved from the click's own visual
+/// tree at dispatch time (the step-017 precedent); the subscription re-patches on the id — the
+/// closure's only other captures (the context seam, dispatch) are render-stable.
+let private chooseMaterialVerb (m : Model) (dispatch : Msg -> unit) (position : LayerPosition) (chooseId : string) : IView =
+    Border.create [
+        automationId chooseId
+        Border.background (brush idleBackground)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 10.0 3.0)
+        Border.margin (thickOf 6.0 0.0 0.0 3.0)
+        Border.verticalAlignment VerticalAlignment.Top
+        Border.child (TextBlock.create [ TextBlock.text "Choose material…" ])
+        Border.onPointerPressed ((fun e ->
+            e.Handled <- true
+            match e.Source with
+            | :? Visual as source ->
+                match TopLevel.GetTopLevel source with
+                | :? Window as owner -> chooseMaterialForLayer m dispatch position owner
+                | _ -> ()
+            | _ -> ()), SubPatchOptions.OnChangeOf chooseId)
+    ] :> IView
+
+/// One layer's inline orientation editor (φ/θ/ψ in degrees) — rendered ONLY when the layer's
+/// material is anisotropic; an unparsable entry dispatches nothing.
+let private orientationEditorView (dispatch : Msg -> unit) (position : LayerPosition) (orientationId : string) (orientation : CrystalOrientation) : IView =
+    let phi, theta, psi = orientationDegrees orientation
+    let angleBox (label : string) (current : float) (toMsg : float -> Msg) : IView list =
+        [
+            labelBlock label
+            TextBox.create [
+                TextBox.width 46.0
+                TextBox.text $"%g{current}"
+                TextBox.onTextChanged (
+                    (fun s ->
+                        match parseFloat s with
+                        | Some v -> dispatch (toMsg v)
+                        | None -> ()),
+                    SubPatchOptions.OnChangeOf (box (orientationId, label, phi, theta, psi)))
+            ] :> IView
+        ]
+    StackPanel.create [
+        automationId orientationId
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 4.0
+        StackPanel.children (
+            angleBox "φ°" phi (fun v -> SetLayerOrientation (position, v, theta, psi))
+            @ angleBox "θ°" theta (fun v -> SetLayerOrientation (position, phi, v, psi))
+            @ angleBox "ψ°" psi (fun v -> SetLayerOrientation (position, phi, theta, v)))
+    ] :> IView
+
+/// One film-layer row (a top-level single or a group's nested cell slot): clickable
+/// multi-select, the material name, the thickness readout cell, the orientation summary, and
+/// — for anisotropic materials only — the inline orientation editor.
+let private layerRowView
+    (m : Model)
+    (dispatch : Msg -> unit)
+    (position : LayerPosition)
+    (rowId : string)
+    (thicknessId : string)
+    (orientationId : string)
+    (indent : float)
+    (layer : SampleLayer) : IView =
+    let selected = Set.contains position m.editor.selection
+    let entryOpt = m.materials |> List.tryFind (fun e -> e.id = layer.materialId.materialId)
+    let materialName =
+        match entryOpt with
+        | Some entry -> entry.name
+        | None -> $"unknown material %s{string layer.materialId.materialId.value}"
+    let orientationEditor =
+        match entryOpt with
+        | Some entry when isAnisotropicEntry entry -> [ orientationEditorView dispatch position orientationId layer.orientation ]
+        | Some _ | None -> []
+    Border.create [
+        automationId rowId
+        Border.margin (thickOf indent 0.0 0.0 3.0)
+        Border.background (brush (if selected then chosenBackground else idleBackground))
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 8.0 3.0)
+        Border.onPointerPressed ((fun e -> e.Handled <- true; dispatch (ToggleLayer position)), SubPatchOptions.OnChangeOf (box (rowId, selected)))
+        Border.child (
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 10.0
+                StackPanel.children (
+                    [
+                        TextBlock.create [
+                            TextBlock.text materialName
+                            TextBlock.width 230.0
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                        ] :> IView
+                        TextBlock.create [
+                            automationId thicknessId
+                            TextBlock.text (thicknessLabel layer.thickness)
+                            TextBlock.width 90.0
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                        ] :> IView
+                        TextBlock.create [
+                            TextBlock.text (orientationLabel layer.orientation)
+                            TextBlock.foreground (brush hintColor)
+                            TextBlock.verticalAlignment VerticalAlignment.Center
+                        ] :> IView
+                    ]
+                    @ orientationEditor)
+            ])
+    ] :> IView
+
+/// A period group's ONE collapsible super-row: the rotating-triangle expander, the cell
+/// summary, and the inline repeat-count stepper (whole periods through `SetRepeatCount`).
+let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int) (group : PeriodGroup) : IView =
+    let collapsed = Set.contains groupIndex m.collapsedGroups
+    let triangle =
+        TextBlock.create [
+            TextBlock.text "▶"
+            renderRotation (if collapsed then 0.0 else 90.0)
+            TextBlock.verticalAlignment VerticalAlignment.Center
+        ] :> IView
+    Border.create [
+        automationId (UiIds.SampleEditor.groupRow groupIndex)
+        Border.margin (thickOf 0.0 0.0 0.0 3.0)
+        Border.background (brush groupBackground)
+        Border.borderBrush (brush idleBorder)
+        Border.borderThickness 1.0
+        Border.cornerRadius (CornerRadius 3.0)
+        Border.padding (thickLR 8.0 3.0)
+        Border.child (
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 8.0
+                StackPanel.children [
+                    clickBoxView (UiIds.SampleEditor.groupExpander groupIndex) false triangle (fun () -> dispatch (ToggleGroup groupIndex))
+                    TextBlock.create [
+                        TextBlock.text $"%d{List.length group.cell}-layer cell"
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                    ] :> IView
+                    stepper
+                        (UiIds.SampleEditor.groupStepper groupIndex)
+                        (UiIds.SampleEditor.groupStepperMinus groupIndex)
+                        (UiIds.SampleEditor.groupStepperPlus groupIndex)
+                        group.count
+                        (fun delta -> dispatch (GroupCountBy (groupIndex, delta)))
+                    TextBlock.create [
+                        TextBlock.text $"× %d{group.count} periods = %d{group.count * List.length group.cell} films"
+                        TextBlock.foreground (brush hintColor)
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                    ] :> IView
+                ]
+            ])
+    ] :> IView
+
+let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
+    // Each layer row is paired with its Choose material… verb in one horizontal slot (spec
+    // 0038 step 019) — the verb sits beside the row, outside its toggling Border.
+    let rowWithChooser (row : IView) (position : LayerPosition) (chooseId : string) : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.children [ row; chooseMaterialVerb m dispatch position chooseId ]
+        ] :> IView
+    m.editor.structure.films
+    |> List.mapi (fun i item ->
+        match item with
+        | SingleLayer layer ->
+            [ rowWithChooser
+                  (layerRowView m dispatch (AtSingleLayer i) (UiIds.SampleEditor.layerRow i) (UiIds.SampleEditor.layerThickness i) (UiIds.SampleEditor.layerOrientation i) 0.0 layer)
+                  (AtSingleLayer i)
+                  (UiIds.SampleEditor.chooseMaterialButton i) ]
+        | Repeated group ->
+            let superRow = groupRowView m dispatch i group
+            let cellRows =
+                if Set.contains i m.collapsedGroups then []
+                else
+                    group.cell
+                    |> List.mapi (fun j layer ->
+                        rowWithChooser
+                            (layerRowView m dispatch (AtCellLayer (i, j)) (UiIds.SampleEditor.cellLayerRow i j) (UiIds.SampleEditor.cellLayerThickness i j) (UiIds.SampleEditor.cellLayerOrientation i j) 28.0 layer)
+                            (AtCellLayer (i, j))
+                            (UiIds.SampleEditor.cellChooseMaterialButton i j))
+            superRow :: cellRows)
+    |> List.concat
+
+let private filmsCountRow (m : Model) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.margin (thickOf 0.0 0.0 0.0 4.0)
+        StackPanel.children [
+            labelBlock "Films (expanded):"
+            TextBlock.create [
+                TextBlock.name UiIds.SampleEditor.filmsCount
+                TextBlock.text (string (filmsCount m))
+                TextBlock.verticalAlignment VerticalAlignment.Center
+            ] :> IView
+        ]
+    ] :> IView
+
+// -- the bulk toolbar / QWOT / status / actions ----------------------------------------------
+
+let private hasSelection (m : Model) : bool =
+    not (Set.isEmpty m.editor.selection)
+
+let private hasChosenMaterial (m : Model) : bool =
+    match m.chosenMaterial with
+    | Some _ -> true
+    | None -> false
+
+/// A material's display name by id (a placeholder when the id is unresolved).
+let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
+    match m.materials |> List.tryFind (fun e -> e.id = id) with
+    | Some e -> e.name
+    | None -> $"unknown ({id.value})"
+
+/// The substrate-plate and lower-half-space editor (spec 0033 gap G12): both
+/// `SampleStructure` fields were previously invisible and uneditable. Each shows
+/// its current material and offers Set-from-chosen / Clear (lower clears to
+/// vacuum). Set requires a chosen material; Clear is always available.
+let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
+    let substrateText =
+        match m.editor.structure.substrate with
+        | Some layer -> $"{nameOfMaterialId m layer.materialId.materialId} ({thicknessLabel layer.thickness})"
+        | None -> "none"
+    let lowerText =
+        match m.editor.structure.lower with
+        | Some mvid -> nameOfMaterialId m mvid.materialId
+        | None -> "vacuum"
+    let summary (autoId : string) (text : string) : IView =
+        TextBlock.create [
+            TextBlock.name autoId
+            TextBlock.text text
+            TextBlock.width 200.0
+            TextBlock.verticalAlignment VerticalAlignment.Center
+        ] :> IView
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 2.0
+        StackPanel.children [
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children [
+                    labelBlock "Substrate plate:"
+                    summary UiIds.SampleEditor.substrateSummary substrateText
+                    verbButton UiIds.SampleEditor.setSubstrateButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetSubstrateClicked)
+                    verbButton UiIds.SampleEditor.clearSubstrateButton "Clear" false true (fun () -> dispatch ClearSubstrateClicked)
+                ]
+            ] :> IView
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                WrapPanel.children [
+                    labelBlock "Lower half-space:"
+                    summary UiIds.SampleEditor.lowerSummary lowerText
+                    verbButton UiIds.SampleEditor.setLowerButton "Set from chosen" false (hasChosenMaterial m) (fun () -> dispatch SetLowerClicked)
+                    verbButton UiIds.SampleEditor.clearLowerButton "Clear (vacuum)" false true (fun () -> dispatch ClearLowerClicked)
+                ]
+            ] :> IView
+        ]
+    ] :> IView
+
+/// Selection verbs: select-by-material, clear, remove, move up/down, and the make-repeat-block
+/// entry with its fold-count stepper (the mandated `RepeatCountStepper`). A WRAP panel: the
+/// headless font metrics run a single row past the window edge, and an off-screen verb cannot
+/// be clicked.
+let private selectionToolbar (m : Model) (dispatch : Msg -> unit) : IView =
+    WrapPanel.create [
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children [
+            verbButton UiIds.SampleEditor.addLayerButton "Add layer" true (not (List.isEmpty m.materials)) (fun () -> dispatch AddLayerClicked)
+            verbButton UiIds.SampleEditor.selectByMaterialButton "Select by material" false (hasChosenMaterial m) (fun () -> dispatch SelectByMaterialClicked)
+            verbButton UiIds.SampleEditor.clearSelectionButton "Clear selection" false (hasSelection m) (fun () -> dispatch ClearSelectionClicked)
+            verbButton UiIds.SampleEditor.removeSelectedLayersButton "Remove" false (hasSelection m) (fun () -> dispatch RemoveSelectedClicked)
+            verbButton UiIds.SampleEditor.moveUpButton "Move up" false (hasSelection m) (fun () -> dispatch MoveUpClicked)
+            verbButton UiIds.SampleEditor.moveDownButton "Move down" false (hasSelection m) (fun () -> dispatch MoveDownClicked)
+            stepper UiIds.SampleEditor.repeatCountStepper UiIds.SampleEditor.repeatCountStepperMinus UiIds.SampleEditor.repeatCountStepperPlus m.foldCount (fun delta -> dispatch (FoldCountBy delta))
+            verbButton UiIds.SampleEditor.makeRepeatBlockButton "Make repeat block" false (hasSelection m) (fun () -> dispatch MakeRepeatBlockClicked)
+        ]
+    ] :> IView
+
+/// Edit verbs over the selection: thickness (nm), material, and the toolbar orientation entry.
+/// A WRAP panel (same off-screen-verb reason as the selection toolbar); each label+box pair is
+/// one wrap item so a wrap never splits a label from its entry.
+let private editToolbar (m : Model) (dispatch : Msg -> unit) : IView =
+    let labelled (label : string) (entry : IView) : IView =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 4.0
+            StackPanel.margin (thickOf 0.0 0.0 8.0 0.0)
+            StackPanel.children [ labelBlock label; entry ]
+        ] :> IView
+    let angleBox (boxId : string) (label : string) (text : string) (slot : AngleSlot) : IView =
+        labelled label (
+            TextBox.create [
+                TextBox.name boxId
+                TextBox.width 46.0
+                TextBox.text text
+                TextBox.onTextChanged (fun s -> dispatch (SetOrientationText (slot, s)))
+            ] :> IView)
+    WrapPanel.create [
+        WrapPanel.orientation Orientation.Horizontal
+        WrapPanel.children [
+            labelled "Thickness (nm):" (
+                TextBox.create [
+                    TextBox.name UiIds.SampleEditor.layerHeightBox
+                    TextBox.width 70.0
+                    TextBox.text m.thicknessText
+                    TextBox.onTextChanged (SetThicknessText >> dispatch)
+                ] :> IView)
+            verbButton UiIds.SampleEditor.setLayerHeightButton "Set thickness" false (hasSelection m) (fun () -> dispatch SetLayerHeightClicked)
+            verbButton UiIds.SampleEditor.setLayerMaterialButton "Set material" false (hasSelection m && hasChosenMaterial m) (fun () -> dispatch SetLayerMaterialClicked)
+            angleBox UiIds.SampleEditor.phiBox "φ°" m.phiText PhiSlot
+            angleBox UiIds.SampleEditor.thetaBox "θ°" m.thetaText ThetaSlot
+            angleBox UiIds.SampleEditor.psiBox "ψ°" m.psiText PsiSlot
+            verbButton UiIds.SampleEditor.setOrientationOfSelectedButton "Set orientation" false (hasSelection m) (fun () -> dispatch SetOrientationClicked)
+        ]
+    ] :> IView
+
+/// The optional QWOT entry: λ (nm) → the read-only derived t = λ/(4n) in canonical metres
+/// (n from the chosen material at λ); Set-thickness applies it while it is valid.
+let private qwotRow (m : Model) (dispatch : Msg -> unit) : IView =
+    // spec 0033 gap G14.1: render the derived thickness in display nanometres (the unit
+    // every other thickness readout uses), not raw metres.
+    let derivedLabel =
+        match qwotDerived m with
+        | Some t -> thicknessLabel t
+        | None -> "—"
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 6.0
+        StackPanel.children [
+            labelBlock "QWOT λ (nm):"
+            TextBox.create [
+                TextBox.name UiIds.SampleEditor.qwotEntryBox
+                TextBox.width 70.0
+                TextBox.text m.qwotText
+                TextBox.onTextChanged (SetQwotText >> dispatch)
+            ] :> IView
+            labelBlock "→ t = λ/(4n) ="
+            TextBlock.create [
+                TextBlock.name UiIds.SampleEditor.qwotDerivedText
+                TextBlock.text derivedLabel
+                TextBlock.verticalAlignment VerticalAlignment.Center
+            ] :> IView
+        ]
+    ] :> IView
+
+let private statusRow (m : Model) : IView =
+    TextBlock.create [
+        TextBlock.name UiIds.SampleEditor.statusText
+        TextBlock.foreground (brush errorColor)
+        TextBlock.text (
+            match m.status with
+            | Some reason -> reason
+            | None -> "")
+    ] :> IView
+
+let private saveCancelRow (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 0.0
+        StackPanel.children [
+            actionButton UiIds.SampleEditor.saveButton "Save" saveBackground (fun () -> dispatch SaveClicked)
+            actionButton UiIds.SampleEditor.cancelButton "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
+        ]
+    ] :> IView
+
+/// The unsaved-edit exit confirm surface (spec 0038 step 033): shown in place of the Save/Cancel
+/// row while a dirty editor is being closed. Discard changes (negative styling) closes without
+/// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
+let private exitConfirmRow (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        automationId UiIds.SampleEditor.exitConfirm
+        StackPanel.orientation Orientation.Horizontal
+        StackPanel.spacing 0.0
+        StackPanel.children [
+            TextBlock.create [
+                TextBlock.text "Discard unsaved changes?"
+                TextBlock.foreground (brush errorColor)
+                TextBlock.verticalAlignment VerticalAlignment.Center
+                TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
+            ] :> IView
+            actionButton UiIds.SampleEditor.discardButton "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
+            actionButton UiIds.SampleEditor.keepEditingButton "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+        ]
+    ] :> IView
+
+/// The bottom action area: the normal Save/Cancel row, or — while `exit = ConfirmingDiscard` —
+/// the discard confirm surface (spec 0038 step 033).
+let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
+    match m.exit with
+    | Editing -> saveCancelRow dispatch
+    | ConfirmingDiscard -> exitConfirmRow dispatch
+
+/// The whole editor: identity + facets on top (material picking moved to the per-layer Choose
+/// material… verbs — spec 0038 step 019); the bulk toolbars, QWOT row, status line and the
+/// Save/Cancel row pinned to the bottom; the stack table (with the expanded-films readout)
+/// filling the centre.
+let view (m : Model) (dispatch : Msg -> unit) : IView =
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [
+                Border.dock Dock.Top
+                Border.padding (thick 8.0)
+                Border.child (
+                    StackPanel.create [
+                        StackPanel.orientation Orientation.Vertical
+                        StackPanel.spacing 6.0
+                        StackPanel.children [
+                            nameRow m dispatch
+                            descriptionRow m dispatch
+                            substrateRow m dispatch
+                        ]
+                    ])
+            ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 6.0); Border.child (actionsRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 0.0); Border.child (statusRow m) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (qwotRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (halfSpacesRow m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (editToolbar m dispatch) ]
+            Border.create [ Border.dock Dock.Bottom; Border.padding (thickLR 8.0 2.0); Border.child (selectionToolbar m dispatch) ]
+            Border.create [
+                Border.padding (thickLR 8.0 4.0)
+                Border.child (
+                    DockPanel.create [
+                        DockPanel.children [
+                            Border.create [ Border.dock Dock.Top; Border.child (filmsCountRow m) ]
+                            ScrollViewer.create [
+                                ScrollViewer.content (
+                                    StackPanel.create [
+                                        StackPanel.name UiIds.SampleEditor.stackTable
+                                        StackPanel.orientation Orientation.Vertical
+                                        StackPanel.children (stackRows m dispatch)
+                                    ])
+                            ] :> IView
+                        ]
+                    ])
+            ]
+        ]
+    ] :> IView

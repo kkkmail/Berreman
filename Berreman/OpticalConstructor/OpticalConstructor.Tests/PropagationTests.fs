@@ -12,6 +12,8 @@ open OpticalProperties.Active
 open OpticalProperties.Dispersive
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Library
+open OpticalConstructor.Domain.Lifecycle       // VersionsInUse.empty (spec 0038 step 022)
+open OpticalConstructor.Domain.MaterialStore   // MaterialProxy.createInMemory (versioned, spec 0038 step 021)
 open OpticalConstructor.Domain.Propagation
 
 /// Spec 0027 (024) Phase 3/4 — the pure MM/SV propagation pipeline. The headline proof is Malus' law:
@@ -116,17 +118,24 @@ module PropagationTests =
             structure =
                 {
                     films = []
-                    substrate = Some { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
+                    substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                     lower = None
                 }
             substrate = Library.Plate
             description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
         }
 
-    /// Resolve a sample against the standard material library, failing the test on a typed error (every
+    /// The versioned material store over the standard built-ins (spec 0038 step 022): the sample
+    /// resolver now takes a `MaterialProxy` and resolves each layer's pinned `MaterialVersionId`
+    /// through the store's by-version `resolveVersion`. The seeds pin version one, which this store
+    /// seeds active, so every known built-in resolves.
+    let private standardProxy : MaterialLibrary.MaterialProxy =
+        MaterialLibrary.MaterialProxy.createInMemory (fun _ -> []) VersionsInUse.empty
+
+    /// Resolve a sample against the standard material store, failing the test on a typed error (every
     /// sample used by these tests references known built-in ids).
     let private resolveOrFail (s : Sample) : ResolvedSample =
-        match resolveSampleMaterials MaterialLibrary.standard s with
+        match resolveSampleMaterials standardProxy s with
         | Ok r -> r
         | Error e -> failwith ($"sample %s{s.name} did not resolve: %A{e}")
 
@@ -350,11 +359,11 @@ module PropagationTests =
                 id = SampleId.create ()
                 structure =
                     {
-                        films = [ SingleLayer { materialId = missing; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
+                        films = [ SingleLayer { materialId = MaterialLibrary.MaterialVersionId.firstOf missing; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
                         substrate = None
                         lower = None
                     } }
-        match resolveSampleMaterials MaterialLibrary.standard sample with
+        match resolveSampleMaterials standardProxy sample with
         | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
         | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
 
@@ -366,18 +375,18 @@ module PropagationTests =
                 id = SampleId.create ()
                 structure =
                     {
-                        films = [ SingleLayer { materialId = MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
+                        films = [ SingleLayer { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes } ]
                         substrate = None
-                        lower = Some missing
+                        lower = Some (MaterialLibrary.MaterialVersionId.firstOf missing)
                     } }
-        match resolveSampleMaterials MaterialLibrary.standard sample with
+        match resolveSampleMaterials standardProxy sample with
         | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
         | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
 
     [<Fact>]
     let ``every seeded sample resolves against the standard material library`` () =
         for s in seededSamples do
-            match resolveSampleMaterials MaterialLibrary.standard s with
+            match resolveSampleMaterials standardProxy s with
             | Ok _ -> ()
             | Error e -> Assert.Fail($"%s{s.name} did not resolve: %A{e}")
 
@@ -474,7 +483,7 @@ module PropagationTests =
             name = "Uniaxial film (oriented)"
             structure =
                 {
-                    films = [ SingleLayer { materialId = MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.nm 1000.0<nm>; orientation = orientation } ]
+                    films = [ SingleLayer { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.nm 1000.0<nm>; orientation = orientation } ]
                     substrate = None
                     lower = None
                 }
@@ -491,7 +500,7 @@ module PropagationTests =
             structure =
                 {
                     films = []
-                    substrate = Some { materialId = MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.mm 1.0<mm>; orientation = orientation }
+                    substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.mm 1.0<mm>; orientation = orientation }
                     lower = None
                 }
             substrate = Library.Plate

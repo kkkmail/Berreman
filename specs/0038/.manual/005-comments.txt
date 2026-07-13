@@ -1,0 +1,14 @@
+Here are comments / answers.
+`Window policy (Q3)` - The new windows must get a new id (guid) + is new = true flag because guid can be cheaply assigned upfront. 
+That resolves all wiring issues where the guid then must be assigned all over the place on save.
+Q25. Since .ocproj are not wired yet, then we keep not using them yet. I will keep that in mind, but they are out of scope of the 
+current spec. Just to clarify: we are not doing any IO until we iron our the structures. That includes wiring through proxies the 
+scene / experiments IO but without the real IO. This is fully testable as unit tests.
+Q26. Agree on the proposal.
+Q27.Agree on the proposal to give test windows their own tiny executable.
+Q28. We need default LP, CPL, CPR.
+Q29. The experiment could be a fixed length or range. Evaluate against the actual experiment, e.g. 600 could be in range of the 
+sample band but 200-800 is out of range of element band 300 – 700.
+
+Address the next round of questions / comments into the next NNN and if there are none, then write a preliminary spec into the next NNN.
+

@@ -21,10 +21,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
-
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "ElementMovementCanvas"
+open OpticalConstructor.Ui
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
 let canvasWidth : float = TableScene.canvasWidth
@@ -123,7 +120,7 @@ let private elementView (m : Model) : IView =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.ElementMovement.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -170,7 +167,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     ] :> IView
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.ElementMovement.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]

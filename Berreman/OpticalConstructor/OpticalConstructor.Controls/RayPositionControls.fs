@@ -2,10 +2,12 @@ namespace OpticalConstructor.Controls
 
 open System.Globalization
 open Avalonia
+open Avalonia.Automation
 open Avalonia.Controls
 open Avalonia.Input
 open Avalonia.Layout
 open Avalonia.Media
+open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
@@ -36,15 +38,6 @@ module RayPositionControls =
             reset : unit -> unit            // Reset → host returns the element to its origin
         }
 
-    /// Stable automation ids (CLAUDE.md UI guidance) — addressed by the headless tests.
-    [<RequireQualifiedAccess>]
-    module UiIds =
-        let minus = "RayPositionMinusButton"
-        let plus = "RayPositionPlusButton"
-        let field = "RayPositionField"
-        let reset = "RayPositionResetButton"
-        let readout = "RayPositionReadout"
-
     /// The step a − / + button applies: 0.05 m, or a larger 0.20 m with Shift held (matching the
     /// element-movement screen's arrow-key steps).
     let stepMeters (shiftHeld : bool) : float = if shiftHeld then 0.20 else 0.05
@@ -64,11 +57,18 @@ module RayPositionControls =
     let private formatMeters (v : float) : string =
         System.String.Format(CultureInfo.InvariantCulture, "{0:+0.000;-0.000;0.000}", v)
 
+    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
+    /// `Control.Name`) through FuncUI's attr builder: the bar's boxes are regenerable per host
+    /// re-render, and Avalonia forbids renaming a styled control — an AutomationId survives control
+    /// reuse (the `MaterialsControls` precedent).
+    let private automationId (autoId : string) : IAttr<Border> =
+        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+
     /// A small clickable, button-styled Border, matching `RotationControls`. `e.Handled <- true` drops
     /// FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
     let private clickBox (id : string) (label : string) (enabled : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
         Border.create [
-            Border.name id
+            automationId id
             Border.isEnabled enabled
             Border.opacity (if enabled then 1.0 else 0.4)
             Border.background (brush idleBackground)
@@ -91,7 +91,7 @@ module RayPositionControls =
             | :? TextBox as tb when not (isNull tb.Text) -> parseMeters tb.Text |> Option.iter handlers.setPosition
             | _ -> ()
         TextBox.create [
-            TextBox.name UiIds.field
+            TextBox.name UiIds.RayPosition.field
             TextBox.width 80.0
             TextBox.isEnabled enabled
             TextBox.text (formatMeters value)
@@ -110,13 +110,13 @@ module RayPositionControls =
             StackPanel.opacity (if state.enabled then 1.0 else 0.5)
             StackPanel.children [
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "Along beam:" ]
-                stepButton handlers UiIds.minus "−" -1.0 state.enabled
-                stepButton handlers UiIds.plus "+" 1.0 state.enabled
+                stepButton handlers UiIds.RayPosition.minus "−" -1.0 state.enabled
+                stepButton handlers UiIds.RayPosition.plus "+" 1.0 state.enabled
                 field handlers state.position state.enabled
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
-                clickBox UiIds.reset "Reset position" state.enabled (fun _ -> handlers.reset ())
+                clickBox UiIds.RayPosition.reset "Reset position" state.enabled (fun _ -> handlers.reset ())
                 TextBlock.create [
-                    TextBlock.name UiIds.readout
+                    TextBlock.name UiIds.RayPosition.readout
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
                     TextBlock.text (System.String.Format(CultureInfo.InvariantCulture, "x = {0:+0.000;-0.000;0.000} m along the beam", state.position))

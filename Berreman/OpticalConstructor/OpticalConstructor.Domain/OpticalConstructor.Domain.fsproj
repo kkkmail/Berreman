@@ -25,6 +25,11 @@
          Slice 001 ships these as empty placeholder modules; later slices fill them. -->
     <ItemGroup>
         <Compile Include="Units.fs" />
+        <!-- Spec 0038 Part C (step 005): the pure, elevated workbench-settings record —
+             the Domain shape of the app-level appsettings.json values. Depends on
+             nothing; the App composition root is the only place the raw wire values
+             are read (AppSettingsProvider) and elevated into this record. -->
+        <Compile Include="WorkbenchSettings.fs" />
         <!-- Spec 0033 (019): the pure spectral-axis helpers (label / canonical-meter range /
              display-unit ticks), REAL-MOVED here from Ui's MaterialPreview so non-Ui chart
              hosts (TestWindows' n/k dispersion chart) share them. Depends only on Units and
@@ -65,6 +70,12 @@
              errors). Mirrors Ui's StackEditor message discipline at the material-id
              level; depends only on ElementId/MaterialLibrary above. -->
         <Compile Include="SampleStackEditor.fs" />
+        <!-- Spec 0038 Part G (step 016): the Browse/Select window-mode domain — the
+             kind constraint, the typed selection target (table element | sample-layer
+             position), the SelectionContext callbacks, and the LibraryWindowMode DU
+             both catalogue windows share. Depends on Placement (CatalogueKind),
+             ElementId (Library.ElementId) and SampleStackEditor (LayerPosition). -->
+        <Compile Include="WindowMode.fs" />
         <!-- Spec 0033 (023): the pure, Avalonia-free MATERIAL edit model over
              MaterialComplexity (the Part F progressive-unlock ladder): state +
              message DU + Result-returning apply, toComplexity/ofComplexity onto
@@ -78,6 +89,105 @@
              add/rename/remove intents the host dispatches to CategoryProxy. Reuses the step-2
              CategoryError (blank name -> InvalidCategory). Depends only on MaterialLibrary above. -->
         <Compile Include="CategoryEditor.fs" />
+        <!-- Spec 0038 Part D (step 009): the generic faceted-navigation engine — pure,
+             Avalonia-free, generic over the item type (defs + constraints as values;
+             filter / countFor / breadcrumbCounts / buildTree as naive folds; the plain-text
+             filter as an ordinary constraint). Depends on nothing; step 010's numeric
+             bucket builder and step 011's concrete facet catalogues compile after it. -->
+        <Compile Include="Facets.fs" />
+        <!-- Spec 0038 Part D (step 010): the 1–2–5 log-ladder numeric bucket builder
+             every NumericAttribute branch uses (ladder boundaries over the constrained
+             population's min/max, empty buckets dropped, fewest-first merging under
+             ThicknessBucketCap, half-open intervals, exact-value collapse, nm/µm
+             labels). Depends on Facets (NumericRange/ItemCount/engine), WorkbenchSettings
+             (the cap), and Units (unit symbols); step 011's catalogues compile after it. -->
+        <Compile Include="FacetBuckets.fs" />
+        <!-- Spec 0038 Part D (step 011): the two CONCRETE facet catalogues as data —
+             material facets over MaterialEntry (category / anisotropy / dispersion /
+             transparency / dispersion model / activity class + handedness / magnetic)
+             and library-entry facets over LibraryEntry (kind, the material facets
+             lifted to samples as the distinct union over constituents, substrate
+             material, has-thin-films, film materials, per-film thickness). Depends on
+             Facets/FacetBuckets, MaterialLibrary, ElementId (Library), DispersionModels
+             and MaterialComplexityEditor above. -->
+        <Compile Include="LibraryFacets.fs" />
+        <!-- Spec 0038 Part H (step 020): the entry-lifecycle foundation — VersionNumber,
+             the Material/Sample version ids, EntryLifecycle, the cross-store VersionRef,
+             the VersionsInUse seam, and the ONE pure version-creation decision rule
+             (decideVersioning) the material/sample stores (steps 21/22) share. Pure and
+             Avalonia-free; depends only on MaterialLibrary (MaterialId) and ElementId's
+             Library (SampleId) above. -->
+        <Compile Include="Lifecycle.fs" />
+        <!-- Spec 0038 Part I (step 025): the Experiments domain — grown so an `Experiment` carries an
+             ordered `ElementDescriptor` setup (kind + placement/orientation summary + versioned
+             `VersionRef` binding, sample/source optional, detector included), a `DataFilePath` +
+             optional per-experiment attachment, and the `boundVersions` / `versionsInUseSeam` builders
+             the stores' `VersionsInUse` is wired over. Moved out of `ElementId.fs` to here because the
+             descriptor binding reuses the step-020 `VersionRef` (`Lifecycle.fs`, above); nothing between
+             `ElementId.fs` and here references `Experiments`, so the module name is unchanged. -->
+        <Compile Include="Experiments.fs" />
+        <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
+             registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
+             stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation
+             lives HERE because it applies the shared decideVersioning rule from Lifecycle.fs
+             above and its samplesReferencing parameter is Sample-typed (Library, ElementId.fs). -->
+        <Compile Include="MaterialStore.fs" />
+        <!-- Spec 0038 Part H (step 022): the versioned in-memory SAMPLE store behind the registered
+             SampleProxy write-seam (STORE_XDUO_0002). The SampleProxy record stays re-typed in place
+             in ElementId.fs; its createInMemory augmentation lives HERE because it applies the shared
+             decideVersioning rule from Lifecycle.fs above and takes the VersionsInUse seam. Mirrors
+             MaterialStore.fs. -->
+        <Compile Include="SampleStore.fs" />
+        <!-- Spec 0038 (026, ADD_CONTRACT STORE_XDUO_0004): the scene persistence seam —
+             SceneName / SceneSnapshot (elements + table view state + snap mode, all pure data) /
+             SceneStoreError / the [<ReferenceEquality>] SceneProxy functional-proxy record. The
+             DECLARED seam only (no disk format, no .ocproj wiring); a future storage cycle swaps
+             in a real file-backed store. Depends on Library (ElementId), Placement
+             (ElementPlacement / CatalogueKind) and Table (TableViewState) above. -->
+        <Compile Include="Scene.fs" />
+        <!-- Spec 0038 (028, ADD_CONTRACT STORE_XDUO_0005): the experiment-collection persistence
+             seam — CollectionName (blank-rejecting tryCreate) / ExperimentCollectionSnapshot (a
+             named list of the step-25 full-setup Experiments, each with its optional DataFilePath
+             attachment) / ExperimentCollectionError / the [<ReferenceEquality>]
+             ExperimentCollectionProxy functional-proxy record. The DECLARED seam only (no disk
+             format, no .ocproj wiring); a future storage cycle swaps in a real file-backed store.
+             Named ExperimentCollectionStore (NOT ExperimentCollection) to avoid colliding with the
+             Experiments.ExperimentCollection type; compiles after Experiments.fs (reuses its
+             Experiment). -->
+        <Compile Include="ExperimentCollectionStore.fs" />
+        <!-- Spec 0038 Part I (step 031): the pure OUT-OF-BAND dispersion diagnostic — given the
+             materials reachable through an element's binding and the wavelengths an experiment
+             requests (a fixed λ, or a wavelength sweep's full range), flag every reachable material
+             whose DEFINED dispersion segments do not cover the request (constant / coded materials
+             never flag), carrying per-material defined-vs-requested ranges as typed data plus the
+             tooltip/Details text. Depends on MaterialLibrary (MaterialComplexity/MaterialEntry),
+             Experiments (VariableParameter/VariableRange/Experiment) and Units (the nm seam); nothing
+             else depends on it, so it compiles last. -->
+        <Compile Include="OutOfBandDiagnostic.fs" />
+        <!-- Spec 0038 Part I (step 034): the pure measured-data PARSERS (text in, values out) — strict
+             schema-v1 intensity (labels row ignored, then invariant-culture X,Y rows) and ellipsometric
+             (wavelength_nm,psi_deg,delta_deg with optional aoi_deg) parsers over elevated point types,
+             the ExperimentDataError channel, and validateAgainstExperiment (series vs a step-25
+             experiment's varied parameter / range / detector kind, a LOUD typed range/units mismatch,
+             never a silent trim). Follows the SpectralImport.parseSpectrumCsv text-taking precedent so
+             filesystem IO and exceptions stay out; reuses Units (the sole unit seam), the engine Angle,
+             and Experiments/Library (VariableParameter/VariableRange/DetectorKind). Nothing else in the
+             Domain depends on it, so it compiles last. -->
+        <Compile Include="MeasuredData.fs" />
+        <!-- Spec 0038 Part I (035, ADD_CONTRACT STORE_XDUO_0006): the measured-data LOAD seam —
+             the DECLARED [<ReferenceEquality>] ExperimentDataProxy (tryLoadIntensity /
+             tryLoadEllipsometric : DataFilePath -> Result<series, ExperimentDataError>), the IO
+             boundary the pure step-34 MeasuredData parsers sit behind. Declared only (no disk read);
+             the real file-backed create lands in a later IMPLEMENT_CONTRACT in OpticalConstructor.Storage.
+             Names Experiments (DataFilePath, step 025) and MeasuredData (series + error types, step 034),
+             so it compiles after MeasuredData.fs; nothing in the Domain depends on it. -->
+        <Compile Include="ExperimentDataProxy.fs" />
+        <!-- Spec 0038 Part L (037): the pure orchestration that loads + validates an experiment's
+             attached data file through the ExperimentDataProxy (in the shape its detector kind fixes)
+             and MeasuredData.validateAgainstExperiment. Reused by the inverse bay's per-experiment
+             attach status and the future SolverHandoffWindow. Names Library / Experiments / MeasuredData
+             / ExperimentData, so it compiles LAST; nothing in the Domain depends on it. -->
+        <Compile Include="ExperimentDataLoad.fs" />
     </ItemGroup>
 
     <ItemGroup>

@@ -1,0 +1,16 @@
+# Step 039 — ADD_COMPONENT UICOMP_XDUO_0011 SolverHandoffWindow
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0011
+name: SolverHandoffWindow
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Ui
+touches: [OpticalConstructor.Ui, OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [29, 36, 37]
+```
+
+**How to implement.** Create the inverse flow's terminal screen in OpticalConstructor.Ui, opened from the inverse constructor through WindowLauncher (single instance): it lists GENERAL information about the received collection — each experiment with its ordered setup, detector kind, attached file, and per-file parse/validation status — plus the fixed message that the actual solver will be done separately. It performs basic validation and reports TYPED per-experiment errors: every element except the sample is specified; every experiment has a readable, schema-valid data file (through ExperimentDataProxy); ranges are consistent (step-34 validateAgainstExperiment). NO solving and NO normalization occur — data is gathered raw; corrections belong to the future solver. Stable intent-named ids for the window, the summary list, and each status row. Headless tests over mock proxies: a fully valid collection lists green statuses; a missing file and a range mismatch each show their typed message; no computation beyond validation runs.
+
+**Acceptance.** After the step, the handoff window summarizes the collection with per-experiment typed validation statuses and the solver-comes-later message, flagging missing files and range mismatches, with no solver math anywhere — verified headless over mocks.

@@ -1,0 +1,16 @@
+# Step 026 — ADD_CONTRACT STORE_XDUO_0004 SceneProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0004
+name: SceneProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: [21, 22]
+```
+
+**How to implement.** Declare in OpticalConstructor.Domain the scene persistence seam (the LibraryProxy functional-proxy convention, ElementId.fs:276): SceneName single-case string DU with .value and tryCreate rejecting a blank; SceneSnapshot — a pure record capturing the constructor scene as data (elements with id, CatalogueKind, placement, zoom, and valueId binding; the view state; the snap flag); SceneStoreError = InvalidScene of reason : string; and [<ReferenceEquality>] SceneProxy = { saveScene : SceneName -> SceneSnapshot -> Result<unit, SceneStoreError>; tryLoadScene : SceneName -> Result<SceneSnapshot option, SceneStoreError>; listScenes : unit -> Result<SceneName list, SceneStoreError> }. NO disk format and NO .ocproj wiring — the proxy is the seam a future storage cycle swaps. Provide a mock (an inline stub over a fixed map) plus a mock-driven test in OpticalConstructor.Tests exercising every field through its exact signature.
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub SceneProxy and exercise saveScene, tryLoadScene, and listScenes through their exact signatures; it passes.

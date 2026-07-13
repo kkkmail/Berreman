@@ -10,7 +10,7 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (026) Part 4 — the Details bay: the reusable `LayerBandsControls` band component (pure
 /// contract + a headless render proof) and the host's `detailsState` band-builder (the selected element's
@@ -37,21 +37,22 @@ module LayerBandsControlsTests =
 
     [<Fact>]
     let ``the LayerBands UiIds prefix band ids and are stable`` () =
-        Assert.Equal("LayerBandsStack", LayerBandsControls.UiIds.stack)
-        Assert.Equal("LayerBandsTitle", LayerBandsControls.UiIds.title)
-        Assert.Equal("LayerBand_0", LayerBandsControls.UiIds.band 0)
-        Assert.Equal("LayerBand_3", LayerBandsControls.UiIds.band 3)
+        Assert.Equal("LayerBandsStack", UiIds.LayerBands.stack)
+        Assert.Equal("LayerBandsTitle", UiIds.LayerBands.title)
+        Assert.Equal("LayerBand_0", UiIds.LayerBands.band 0)
+        Assert.Equal("LayerBand_3", UiIds.LayerBands.band 3)
 
     // ============================ the Details bay in the ribbon ============================
 
     [<Fact>]
-    let ``the ribbon offers the Details bay after Experiments, ahead of the full-surface workbenches`` () =
-        // Spec 0035 (008): the Materials & Library workbenches are the LAST two bays (full-surface bays
-        // that replace the table canvas); now that step-007 pane hosting is order-independent, the
-        // Details-LAST pin is retired. Details still sits immediately after Experiments.
-        Assert.Equal<string list>(
-            [ BayNames.materials; BayNames.library ],
-            BayNames.all |> List.rev |> List.truncate 2 |> List.rev)
+    let ``the ribbon offers the Details bay LAST, after Experiments`` () =
+        // Spec 0038 (013) removed the Materials bay (the Materials WINDOW carries that
+        // workbench now) and spec 0038 (015) removed the Library (samples) workbench bay the
+        // same way (the Library WINDOW), so Details is the last bay, still immediately after
+        // Experiments.
+        Assert.Equal(Some BayNames.details, List.tryLast BayNames.all)
+        Assert.DoesNotContain("Materials", BayNames.all)
+        Assert.DoesNotContain("Library", BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore
         let names = bays |> List.map (fun b -> b.name)
@@ -111,11 +112,11 @@ module LayerBandsControlsTests =
             let named (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name && c.IsEffectivelyVisible | _ -> false)
-            Assert.True(named LayerBandsControls.UiIds.stack, "the band stack was not present")
-            Assert.True(named LayerBandsControls.UiIds.title, "the band title was not present")
-            Assert.True(named (LayerBandsControls.UiIds.band 0), "band 0 was not present")
-            Assert.True(named (LayerBandsControls.UiIds.band 1), "band 1 was not present")
-            Assert.True(named (LayerBandsControls.UiIds.band 2), "band 2 was not present")
+            Assert.True(named UiIds.LayerBands.stack, "the band stack was not present")
+            Assert.True(named UiIds.LayerBands.title, "the band title was not present")
+            Assert.True(named (UiIds.LayerBands.band 0), "band 0 was not present")
+            Assert.True(named (UiIds.LayerBands.band 1), "band 1 was not present")
+            Assert.True(named (UiIds.LayerBands.band 2), "band 2 was not present")
             window.Close())
 
     [<Fact>]
@@ -128,7 +129,7 @@ module LayerBandsControlsTests =
             Dispatcher.UIThread.RunJobs()
             let bandPresent () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? Control as c -> c.Name = LayerBandsControls.UiIds.band 0 | _ -> false)
+                |> Seq.exists (function :? Control as c -> c.Name = UiIds.LayerBands.band 0 | _ -> false)
             Assert.False(bandPresent (), "an empty state must draw no bands")
             window.Close())
 
@@ -151,7 +152,7 @@ module LayerBandsControlsTests =
             let named (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name && c.IsEffectivelyVisible | _ -> false)
-            Assert.True(named LayerBandsControls.UiIds.stack, "the Details band stack was not visible")
-            Assert.True(named (LayerBandsControls.UiIds.band 0), "the first collapsed band was not visible")
-            Assert.True(named (LayerBandsControls.UiIds.band 1), "the second collapsed band was not visible")
+            Assert.True(named UiIds.LayerBands.stack, "the Details band stack was not visible")
+            Assert.True(named (UiIds.LayerBands.band 0), "the first collapsed band was not visible")
+            Assert.True(named (UiIds.LayerBands.band 1), "the second collapsed band was not visible")
             window.Close())

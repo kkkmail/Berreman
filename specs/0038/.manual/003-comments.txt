@@ -1,0 +1,63 @@
+Here are the answers:
+Q1. Yes, the optical constructor must move to the proper place. Test windows stay whey they are. Let’s make a main test window 
+launcher where all test windows will be wired and the main launcher moved into its proper place (outside of test project(s)).
+Q2. Agree on b.
+Q3. Let’s activate on reopen. But edit windows must be allowed to have multiple windows unless the user opens the same material / sample 
+that is already opened, in which case we need to reactivate.
+Q4. Materials and Library are two different things. Library was only for samples, and we now unified samples with LP , CP, etc.. – it 
+is the library of optical elements. Materials are infinite homogeneous thing that describe the optical properties.
+Q5. Let’s make modal s switch (in appsettings, currently default it to false == non-modal). I will play around with that and advise.
+Q6. Good question. Let’s keep the select button always available (the user can always take this path). The reduced strip should only appear 
+if the number of the element kind is less that some value (stored in appsettings, default 5 if missing).
+Q7. Ideal elements should become the part of the library / seeding with an explicit flag so that they could not be marked as inactive. 
+Then the whole notion of ideal elements disappears, and we just have the elements. And let’s prebind LP / CP – everything except a sample 
+to ideal values.
+Q8. Yes, store as ordered components (as recommended).
+Q9. Yes transparent / absorbing is for constant materials only.
+Q10. Only thick plate and wedge have substrate material. And practically a thin film only sample likely cannot be easily created.
+Q11. Yes, derive from films.Count | Length > 0
+Q12. We are talking only about per film thickness. Basically, we take all thicknesses available in the library and then bucket them. I am not 
+sure how. So propose. And, no matter what we come up with, there will be cases where that will be inconvenient. That’s why we let the user 
+specify the bracket by hand if needed. I agree with the proposed log scale, and then let’s see how it works out.
+Q13. “Same as for material” here means that the Library should have the same attributes as the Materials have AND some extra. We take all 
+the materials that make the sample (substrate and possible layers) and make a distinct union of all the material attributes so that any of 
+the materials in the sample will match the selector. So, yes, that’s “any” in your description.
+Q14. Yeah, tough question. Let’s separate the search order from the representation order so that the tree does not reshuffle. If the user 
+wants to reshuffle, then they must explicitly say so.
+Q15. I keep saying that we should put things into appsettings. So if we don’t introduce it now, then we will keep hardcoding stuff and that 
+will be time consuming to unentangle later. Note that Softellect.Sys has extensive F# library to deal with the appsettings. You must use 
+that instead of reading / writing it directly. STL repo has extensive examples of the usage.
+Q16. Agree on the vertical split. And agree with multiple tabs.
+Q17. Let’s start with requery on return. It is simple and is already covered by proxies. 
+Q18. Yes, agree on B and export uses A as you proposed.
+Q19. Nothing is persisted yet but we do must make a decision to be consistent. Agree on recommendation.
+Q20. Definitely NOT an every save. Say we are on v1 and v1 was used on some experiment. Then the user opened and element and edited by 
+changing something. It automatically becomes v2 because it is different from v1. Until this v2 is used anywhere it must stay v2 no matter 
+how many times the user decides to edit it.
+Q21. Yes, ordered element-descriptor list, given B on Q18.
+Q22. Let’s make the “set” have two meanings: the first one is that the element was actually assigned an id from the library. The second 
+one (and we need some separate visual with a hover over tool-tip) and that is what if a dispersive element was chosen but the wavelength 
+is out of defined bands.
+Q23. No, any normalization is up to the inverse problem solver. Our task is to just gather the data. If any data is missing, then the solver 
+WILL tell us (but not now).
+
+`11. Inverse problem`
+Intensity CSV – I agree on the strict schema to start from AND you can test against proxy (no IO) and against in memory stream for CSV 
+parsing (again no IO is needed).
+Ellipsometric data – let’s start with wavelength, psi, delta representation for now.
+The actual inverse problem is very complicated as it requires combination of sample / no sample / dark line, etc. So, let’s keep the actual 
+inverse problem solver out of this spec. Our current ask is to ensure that everything is wired on the UI and that we have a button to launch 
+an Inverse Problem Solver. For the purpose of this spec the inverse problem solver should be just a very simple screen stating some general 
+information about the experiments and a message that it will be done separately. So, full implementation of inverse problem solver is 
+explicitly out of scope, but wiring is NOT and it must be done now. Wiring must confirm that inverse problem solver gets and validates all 
+the data (more detailed validation will be added later when we work on the actual solver).
+
+Q24. We don’t do any real database yet. Rather we just create a nearly empty C# EFC project, say create a “test” table just to ensure that 
+EFC is correctly wired and can create it and that’ll. It make no sense to wire up the DB until all the structures are stable and they are 
+NOT. That’s why we stick with the native in-memory structures. So, no split, no real database in the current version. Also explain to me 
+what are these .ocproj files?
+
+`14. Smaller observations picked up along the way`
+Recent-files and UiIds definitely must be consolidated into their respective single places and I think that window policy is addressed above.
+
+Address the next round of questions / comments into the next NNN and if there are none, then write a preliminary spec into the next NNN.

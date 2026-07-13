@@ -11,8 +11,8 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (028) — the redesigned Experiments bay: the multi-step, editable experiment builder (choose
 /// element → element-constrained variable → T/R/both capture → range → Add) and the persistent collection
@@ -51,13 +51,13 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``the Experiments UiIds prefix ids and are stable`` () =
-        Assert.Equal("ExperimentCandidate_src", ExperimentControls.UiIds.candidate "src")
-        Assert.Equal("ExperimentVariable_r1", ExperimentControls.UiIds.variable "r1")
-        Assert.Equal("ExperimentMeasurement_both", ExperimentControls.UiIds.measurement "both")
-        Assert.Equal("ExperimentReadout", ExperimentControls.UiIds.readout)
-        Assert.Equal("ExperimentAddButton", ExperimentControls.UiIds.addButton)
-        Assert.Equal("ExperimentEdit_3", ExperimentControls.UiIds.editButton "3")
-        Assert.Equal("ExperimentRemove_3", ExperimentControls.UiIds.removeButton "3")
+        Assert.Equal("ExperimentCandidate_src", UiIds.Experiment.candidate "src")
+        Assert.Equal("ExperimentVariable_r1", UiIds.Experiment.variable "r1")
+        Assert.Equal("ExperimentMeasurement_both", UiIds.Experiment.measurement "both")
+        Assert.Equal("ExperimentReadout", UiIds.Experiment.readout)
+        Assert.Equal("ExperimentAddButton", UiIds.Experiment.addButton)
+        Assert.Equal("ExperimentEdit_3", UiIds.Experiment.editButton "3")
+        Assert.Equal("ExperimentRemove_3", UiIds.Experiment.removeButton "3")
 
     [<Fact>]
     let ``the variable / measurement codes and labels are the mirror mapping`` () =
@@ -69,13 +69,13 @@ module ExperimentControlsTests =
         Assert.Equal("both", ExperimentControls.measurementCode ExperimentControls.CaptureBoth)
 
     [<Fact>]
-    let ``the ribbon offers every bay including Experiments, Details and the step-024 workbenches`` () =
-        // Spec 0035 (008): the step-024 workbenches (Materials, Library) are the LAST two bays —
-        // full-surface bays that replace the table canvas. Now that step-007 pane hosting is
-        // order-independent, the earlier Details-LAST pin / deferred reorder is retired.
+    let ``the ribbon offers every bay including Experiments and Details`` () =
+        // Spec 0038 (013): the Materials bay left the ribbon (the Materials WINDOW carries that
+        // workbench now); spec 0038 (015): the Library (samples) workbench bay left the same
+        // way (the Library WINDOW), so seven in-pane bays remain, Details last.
         Assert.Equal<string list>(
             [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector
-              BayNames.experiments; BayNames.details; BayNames.materials; BayNames.library ],
+              BayNames.experiments; BayNames.details ],
             BayNames.all)
         let m = initMain ()
         let bays = mainBays m ignore
@@ -251,6 +251,60 @@ module ExperimentControlsTests =
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
         Assert.Empty((experimentResult m1).series)
 
+    // ============ step 018 — the silent ideal-analyzer fallback is RETIRED ============
+
+    [<Fact>]
+    let ``runAnalyzerKind prefers the VARIED element's bound polarizer over the scene's`` () =
+        // Two pre-bound polarizers: the linear one (idx 2) and — LAST in the scene — the CPR
+        // button's right-circular one (idx 3). The varied element's own bound entry wins; the
+        // scene's last bound polarizer only serves a non-polarizer varied element.
+        let m =
+            initMain ()
+            |> update (AddElement LinearPolarizer)                                                  // pre-bound pol-lp
+            |> update (AddElementBoundTo (CircularPolarizer, Some SeedEntryIds.polarizerCpRight))   // pre-bound pol-cp-right
+        Assert.Equal(ResolvedAnalyzer Library.IdealLinear, runAnalyzerKind m (Some (elem 2 m).id))
+        Assert.Equal(ResolvedAnalyzer Library.IdealCircularRight, runAnalyzerKind m (Some (elem 3 m).id))
+
+    [<Fact>]
+    let ``runAnalyzerKind reads the scene's bound polarizer for a non-polarizer varied element — never an assumed linear`` () =
+        // A circular-only scene: the resolution is the BOUND entry's kind (circular). The retired
+        // fallback would have silently answered IdealLinear here.
+        let m =
+            initMain ()
+            |> update (AddElement CircularPolarizer)   // pre-bound pol-cp-left
+            |> update (AddElement Sample)              // unbound (the inverse hook)
+        Assert.Equal(ResolvedAnalyzer Library.IdealCircularLeft, runAnalyzerKind m (Some (elem 3 m).id))
+
+    [<Fact>]
+    let ``runAnalyzerKind reports the typed NoAnalyzerPresent status when the scene holds no bound polarizer`` () =
+        // initMain = source + detector only; adding an (unbound) sample binds no polarizer entry.
+        let m = initMain () |> update (AddElement Sample)
+        Assert.Equal(NoAnalyzerPresent, runAnalyzerKind m (Some (elem 2 m).id))
+        Assert.Equal(NoAnalyzerPresent, runAnalyzerKind m None)
+
+    [<Fact>]
+    let ``a rotate-R1 intensity run with NO analyzer reports the typed status chart — no silent Malus curve`` () =
+        // The retired fallback would have synthesized an IdealLinear Malus curve here; the
+        // experiment surface now reports the typed 'no analyzer present' status instead.
+        let m = initMain () |> update (AddElement Sample)
+        let m1 = m |> update (ExpChooseElement (idOf 2 m))     // a sample defaults to VaryR1
+        let chart = experimentResult m1
+        Assert.Empty(chart.series)
+        Assert.Equal(noAnalyzerTitle, chart.title)
+        Assert.Equal(noAnalyzerStatus, chart.description)
+        // The Experiments bay surfaces the same status through its state.
+        Assert.Equal(noAnalyzerStatus, (experimentState m1).description)
+
+    [<Fact>]
+    let ``a rotate-R1 intensity run with a pre-bound polarizer still yields the Malus curve`` () =
+        // The step-018 add path pre-binds the polarizer, so the analyzer resolves from the BOUND
+        // entry — the surface that used to lean on the silent fallback keeps its curve.
+        let m = initMain () |> update (AddElement LinearPolarizer)
+        Assert.Equal(Some SeedEntryIds.polarizerLp, (elem 2 m).placement.valueId)
+        let chart = experimentResult (m |> update (ExpChooseElement (idOf 2 m)))
+        Assert.Single(chart.series) |> ignore
+        Assert.Equal("Rotating analyzer (Malus)", chart.title)
+
     // ============================ ExperimentChart CSV (unchanged data model) ============================
 
     [<Fact>]
@@ -276,16 +330,16 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``ChartWindow ids are stable and distinct incl the element picker + polar toggle`` () =
-        Assert.Equal("ChartWindowElement", ChartWindowIds.elementSelector)
-        Assert.Equal("ChartWindowPolar", ChartWindowIds.polarToggle)
+        Assert.Equal("ChartWindowElement", UiIds.ChartWindow.elementSelector)
+        Assert.Equal("ChartWindowPolar", UiIds.ChartWindow.polarToggle)
         let ids =
-            [ ChartWindowIds.plot; ChartWindowIds.elementSelector; ChartWindowIds.propertiesPanel
-              ChartWindowIds.fontMinus; ChartWindowIds.fontPlus; ChartWindowIds.fontSize
-              ChartWindowIds.axisAuto; ChartWindowIds.axisMin; ChartWindowIds.axisMax; ChartWindowIds.axisFormat
-              ChartWindowIds.axisDecimals; ChartWindowIds.legendVisible; ChartWindowIds.legendPlacement
-              ChartWindowIds.seriesVisible; ChartWindowIds.seriesThickness; ChartWindowIds.seriesColor
-              ChartWindowIds.seriesMarkers; ChartWindowIds.seriesAxis; ChartWindowIds.polarToggle; ChartWindowIds.majorGrid
-              ChartWindowIds.minorGrid; ChartWindowIds.exportPng; ChartWindowIds.exportCsv; ChartWindowIds.description ]
+            [ UiIds.ChartWindow.plot; UiIds.ChartWindow.elementSelector; UiIds.ChartWindow.propertiesPanel
+              UiIds.ChartWindow.fontMinus; UiIds.ChartWindow.fontPlus; UiIds.ChartWindow.fontSize
+              UiIds.ChartWindow.axisAuto; UiIds.ChartWindow.axisMin; UiIds.ChartWindow.axisMax; UiIds.ChartWindow.axisFormat
+              UiIds.ChartWindow.axisDecimals; UiIds.ChartWindow.legendVisible; UiIds.ChartWindow.legendPlacement
+              UiIds.ChartWindow.seriesVisible; UiIds.ChartWindow.seriesThickness; UiIds.ChartWindow.seriesColor
+              UiIds.ChartWindow.seriesMarkers; UiIds.ChartWindow.seriesAxis; UiIds.ChartWindow.polarToggle; UiIds.ChartWindow.majorGrid
+              UiIds.ChartWindow.minorGrid; UiIds.ChartWindow.exportPng; UiIds.ChartWindow.exportCsv; UiIds.ChartWindow.description ]
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
 
     /// A small sample chart with two series, axis labels, a title, and a description.
@@ -313,10 +367,10 @@ module ExperimentControlsTests =
             let hasNamed (name : string) : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function :? Control as c -> c.Name = name | _ -> false)
-            Assert.True(hasNamed ChartWindowIds.plot, "the ScottPlot host control was not present")
-            Assert.True(hasNamed ChartWindowIds.elementSelector, "the element picker was not present")
-            Assert.True(hasNamed ChartWindowIds.propertiesPanel, "the properties panel was not present")
-            Assert.True(hasNamed ChartWindowIds.polarToggle, "the polar toggle was not present for an angular chart")
+            Assert.True(hasNamed UiIds.ChartWindow.plot, "the ScottPlot host control was not present")
+            Assert.True(hasNamed UiIds.ChartWindow.elementSelector, "the element picker was not present")
+            Assert.True(hasNamed UiIds.ChartWindow.propertiesPanel, "the properties panel was not present")
+            Assert.True(hasNamed UiIds.ChartWindow.polarToggle, "the polar toggle was not present for an angular chart")
             window.Close())
 
     [<Fact>]
@@ -329,7 +383,7 @@ module ExperimentControlsTests =
             let ctrl (name : string) : Control option =
                 window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
             // Toggle polar ON (exercises the PolarAxis + GetCoordinates rebuild) and back to XY.
-            match ctrl ChartWindowIds.polarToggle with
+            match ctrl UiIds.ChartWindow.polarToggle with
             | Some c ->
                 let b = c :?> Button
                 b.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent))
@@ -338,11 +392,11 @@ module ExperimentControlsTests =
                 (try Dispatcher.UIThread.RunJobs() with _ -> ())
             | None -> Assert.Fail("no polar toggle")
             // Pick the X axis and turn Auto off (exercises the axis panel + SetLimitsX path).
-            match ctrl ChartWindowIds.elementSelector with
+            match ctrl UiIds.ChartWindow.elementSelector with
             | Some c -> (c :?> ComboBox).SelectedIndex <- 1
             | None -> Assert.Fail("no element selector")
             (try Dispatcher.UIThread.RunJobs() with _ -> ())
-            match ctrl ChartWindowIds.axisAuto with
+            match ctrl UiIds.ChartWindow.axisAuto with
             | Some c -> (c :?> CheckBox).IsChecked <- System.Nullable false; (try Dispatcher.UIThread.RunJobs() with _ -> ())
             | None -> Assert.Fail("the X-axis panel (Auto checkbox) was not shown after selecting X axis")
             window.Close())
@@ -366,7 +420,7 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let chartVisible () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? Polyline as p when p.Name = ExperimentControls.UiIds.chart && p.IsEffectivelyVisible -> true | _ -> false)
+                |> Seq.exists (function :? Polyline as p when p.Name = UiIds.Experiment.chart && p.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(chartVisible (), "the intensity polyline was not visible")
             window.Close())
 
@@ -382,9 +436,9 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let readoutVisible () : bool =
                 window.GetVisualDescendants()
-                |> Seq.exists (function :? TextBlock as t when t.Name = ExperimentControls.UiIds.readout && t.IsEffectivelyVisible -> true | _ -> false)
+                |> Seq.exists (function :? TextBlock as t when t.Name = UiIds.Experiment.readout && t.IsEffectivelyVisible -> true | _ -> false)
             Assert.True(readoutVisible (), "the Experiment readout was not visible")
-            let candName = ExperimentControls.UiIds.candidate "src"
+            let candName = UiIds.Experiment.candidate "src"
             let findCand () : Border option =
                 window.GetVisualDescendants()
                 |> Seq.tryPick (function :? Border as b when matchesId candName b && b.IsEffectivelyVisible -> Some b | _ -> None)
@@ -418,7 +472,7 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             let findAdd () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.addButton && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when matchesId UiIds.Experiment.addButton b && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findAdd () with
             | None -> Assert.Fail("the Add button was not visible")
             | Some b ->
@@ -473,7 +527,7 @@ module ExperimentControlsTests =
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (ExperimentControls.UiIds.removeButton "1")   // remove the FIRST (list shifts)
+            clickIn window (UiIds.Experiment.removeButton "1")   // remove the FIRST (list shifts)
             window.Close())
 
     [<Fact>]
@@ -493,8 +547,8 @@ module ExperimentControlsTests =
             Dispatcher.UIThread.RunJobs()
             // The Remove control lives in the Add bay: switch to it and click Remove selected. The
             // Experiments pane (kept present by the ribbon) re-renders its candidate list on the change.
-            clickIn window (Ribbon.UiIds.tab BayNames.add)
-            clickIn window ElementPaletteControls.UiIds.removeSelected
+            clickIn window (UiIds.Ribbon.tab BayNames.add)
+            clickIn window UiIds.ElementPalette.removeSelected
             window.Close())
 
     [<Fact>]
@@ -512,8 +566,8 @@ module ExperimentControlsTests =
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (ExperimentControls.UiIds.candidate pid)     // → polarizer ([r1])
-            clickIn window (ExperimentControls.UiIds.candidate "src")   // → source ([wavelength])
+            clickIn window (UiIds.Experiment.candidate pid)     // → polarizer ([r1])
+            clickIn window (UiIds.Experiment.candidate "src")   // → source ([wavelength])
             window.Close())
 
     [<Fact>]
@@ -531,9 +585,9 @@ module ExperimentControlsTests =
             let window = liveComponent seed
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (ExperimentControls.UiIds.measurement "t")      // 2 series → 1
-            clickIn window (ExperimentControls.UiIds.measurement "both")   // 1 → 2
-            clickIn window (ExperimentControls.UiIds.measurement "r")      // 2 → 1
+            clickIn window (UiIds.Experiment.measurement "t")      // 2 series → 1
+            clickIn window (UiIds.Experiment.measurement "both")   // 1 → 2
+            clickIn window (UiIds.Experiment.measurement "r")      // 2 → 1
             window.Close())
 
     [<Fact>]
@@ -561,7 +615,7 @@ module ExperimentControlsTests =
             let window = Window(Width = 1000.0, Height = 980.0, Content = comp)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            clickIn window (ExperimentControls.UiIds.editButton "1")          // select the FIRST experiment
+            clickIn window (UiIds.Experiment.editButton "1")          // select the FIRST experiment
             Assert.Equal(Some 1, latest.Value.experimentCollection.draft.editingId |> Option.map (fun i -> i.value))
             // The editor loaded experiment #1's element (the polarizer), not the source it was on.
             Assert.Equal(Some pid, latest.Value.experimentCollection.draft.elementId |> Option.map (fun i -> i.value))
@@ -578,9 +632,9 @@ module ExperimentControlsTests =
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
                 window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
-            let ava = (ctrl ChartWindowIds.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let ava = (ctrl UiIds.ChartWindow.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
             let lim0 = ava.Plot.Axes.GetLimits()
-            let btn = (ctrl ChartWindowIds.polarToggle |> Option.get) :?> Button
+            let btn = (ctrl UiIds.ChartWindow.polarToggle |> Option.get) :?> Button
             let click () = btn.RaiseEvent(Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); (try Dispatcher.UIThread.RunJobs() with _ -> ())
             click ()   // → polar (hides the cartesian axes)
             click ()   // → XY (must restore them)
@@ -605,7 +659,7 @@ module ExperimentControlsTests =
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let ctrl (name : string) : Control option =
                 window.GetVisualDescendants() |> Seq.tryPick (function :? Control as c when c.Name = name -> Some c | _ -> None)
-            let ava = (ctrl ChartWindowIds.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
+            let ava = (ctrl UiIds.ChartWindow.plot |> Option.get) :?> ScottPlot.Avalonia.AvaPlot
             let scatters () : ScottPlot.Plottables.Scatter list =
                 ava.Plot.GetPlottables()
                 |> Seq.choose (function :? ScottPlot.Plottables.Scatter as s -> Some s | _ -> None)
@@ -614,9 +668,9 @@ module ExperimentControlsTests =
                 scatters () |> List.forall (fun s -> obj.ReferenceEquals(s.Axes.YAxis, ava.Plot.Axes.Left)),
                 "every series should START on the left axis")
             // The element picker: Header, X axis, Y left, Y right, Legend, series 0, series 1 → index 6.
-            (ctrl ChartWindowIds.elementSelector |> Option.get :?> ComboBox).SelectedIndex <- 6
+            (ctrl UiIds.ChartWindow.elementSelector |> Option.get :?> ComboBox).SelectedIndex <- 6
             (try Dispatcher.UIThread.RunJobs() with _ -> ())
-            match ctrl ChartWindowIds.seriesAxis with
+            match ctrl UiIds.ChartWindow.seriesAxis with
             | Some c -> (c :?> ComboBox).SelectedIndex <- 1     // Left → Right
             | None -> Assert.Fail("the series panel offered no axis-side picker")
             (try Dispatcher.UIThread.RunJobs() with _ -> ())
@@ -682,7 +736,7 @@ module ExperimentControlsTests =
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let before = ChartWindow.ConstructedCount
-            clickIn window (ExperimentControls.UiIds.viewButton expIdStr)
+            clickIn window (UiIds.Experiment.viewButton expIdStr)
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             Assert.True(ChartWindow.ConstructedCount > before, "the View button did not open a ChartWindow")
             window.Close())
@@ -712,7 +766,7 @@ module ExperimentControlsTests =
             window.Content <- Component(fun _ -> ExperimentControls.view state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when b.Name = ExperimentControls.UiIds.openChart -> Some b | _ -> None) with
+            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId UiIds.Experiment.openChart b -> Some b | _ -> None) with
             | Some b ->
                 match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
                 | p when p.HasValue ->

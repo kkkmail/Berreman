@@ -1,0 +1,29 @@
+Here are the comments related to BMN 0038 implementation. These are NOT gaps in the spec or implementation but observation of inconveniences.
+
+The tree.
+The tree is rendered as a list of buttons that occupy the whole width to the right. This is ugly. The tree must be rendered as a “normal” 
+tree with collapsible / expandable branches. Selected node / leaf must be distinctly visible in the tree.
+The tree is broken: some leaves are repeated and some nodes are NOT expandable. For example, materials => view by physics shows 12 
+elements in materials, then Biaxial (3) and Isotropic (6). If different representations are represented by different top nodes 
+(that’s what I called repetitions), then that’s OK. However, that means that all top nodes must be collapsed by default AND that each top node MUST map to the whole selected domain. Currently it is NOT as 3 + 6 != 12. Similarly, Transparency shows Absorbing (2) and Transparent (7) != 12. This discrepancy is likely due to dispersive NOT categorized as absorbing. The top-level tree nodes (and all the internal nodes and leaves) MUST be sorted alphabetically.
+
+Material Editor – new material
+BUG – choice of anisotropy determines which n, k dispersive pairs are available for drawing. Currently the window shows n1, n2, n3, k1, k2, k3 
+regardless of the choice of anisotropy. The same BUG is applicable when optically active and / or magnetic is selected. Only what is applicable 
+to the current choice must be available on the chart AND the names must match what’s applicable, e.g. (n , k)m (n_o, k_o, n_e, k_e), etc…
+Description text box seems to have a fixed width and so if the splitter is dragged left, then it hits the boundary of the splitter. This is 
+very minor. If it can be made to become multiline when it does not fit, then that’s OK. If not, then leave it as is.
+
+Sample editor – new sample
+The geometries are: 
+1. Current `Thin film`, which actually means a 0+ layers multi-layer thin film on a semi-infinite substrate. This setting only supports R as 
+T makes no sense. This is essentially equivalent to the wedge, so let’s remove the wedge.
+2. Current `Plate`, which means a 0+ layers multi-layer thin film on a thick plate (substrate). The substrate MUST be specified and since 
+we calculate Mueller matrix, then the lower media in this setting is always vacuum.
+It is unclear how to set a substrate plate as `Set from chosen` is always disabled.
+The sample must allow specifying if it supports R, T or both. One or both must be specified (when allowed). Clearing the second one 
+(when both are allowed) must automatically set the other one and if only one is allowed (as for current `Thin film`), then clearing 
+that single R or T must NOT be allowed. This R, T, R + T will then be used on the optical table constructor to wire up the beams.
+
+Address the comments. Write an implementation log into: C:\GitHub\Berreman\specs\0038\.manual\008-<description>.md.
+

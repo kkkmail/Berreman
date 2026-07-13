@@ -31,23 +31,11 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui
 
 // ---------------------------------------------------------------------------
 // Stable automation ids (CLAUDE.md UI guidance).
 // ---------------------------------------------------------------------------
-
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "ElementRotationCanvas"
-    let rotateR1Minus = "ElemRotateR1MinusButton"
-    let rotateR1Plus = "ElemRotateR1PlusButton"
-    let rotateR2Minus = "ElemRotateR2MinusButton"
-    let rotateR2Plus = "ElemRotateR2PlusButton"
-    let rotateR3Minus = "ElemRotateR3MinusButton"
-    let rotateR3Plus = "ElemRotateR3PlusButton"
-    let unlockR3 = "ElemUnlockR3Button"
-    let reset = "ElemResetButton"
-    let readout = "ElemRotationReadout"
 
 // ---------------------------------------------------------------------------
 // Wheel gesture map (mirrors Commands.fs §E.3 for the rotations; the two element-zoom
@@ -433,7 +421,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
             TextBlock.create [
-                TextBlock.name UiIds.readout
+                TextBlock.name UiIds.ElementRotation.readout
                 TextBlock.text readout
             ]
             TextBlock.create [
@@ -451,7 +439,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.ElementRotation.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -461,7 +449,7 @@ let private tableCanvas (model : Model) : IView =
 
 /// The whole element-rotation test surface.
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.ElementRotation.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [

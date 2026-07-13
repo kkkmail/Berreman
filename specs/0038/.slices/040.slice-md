@@ -1,0 +1,16 @@
+# Step 040 — ADD_COMPONENT STORE_XDUO_0007 TestDbContext
+
+```step
+anchor: ADD_COMPONENT
+id: STORE_XDUO_0007
+name: TestDbContext
+kind: component
+language: csharp
+declaring_project: OpticalConstructor.Database
+touches: [OpticalConstructor.Database, OpticalConstructor.Tests]
+depends_on: [5]
+```
+
+**How to implement.** Create the nearly-empty C# EFC project Berreman/OpticalConstructor/OpticalConstructor.Database (net10.0, x64; add to Berreman.slnx), modeled on the STL migrations shape (Softellect/Apps/DistrProc/Migrations/Common — CommonDbContext.cs and its per-service migrations): ONE Test entity (an int Id key plus a Name column), TestDbContext, and an initial EFC migration. Provider selection (MSSQL vs SQLite, an enumerated choice parsed to a DU on the F# side of the test) and connection strings come from appsettings.json via AppSettingsProvider.tryGetConnectionString and the step-5 ConfigKey entries — never a hardcoded string. Its ONLY purpose is proving EFC wiring creates and migrates; NO product project references it. An OpticalConstructor.Tests F# test references the project and runs Database.Migrate() against SQLite on a temp file under the test output, asserting the Test table exists; no MSSQL server is required anywhere.
+
+**Acceptance.** After the step, the initial migration creates the Test table against SQLite inside a test, provider and connection string come from appsettings, and no product project references OpticalConstructor.Database.

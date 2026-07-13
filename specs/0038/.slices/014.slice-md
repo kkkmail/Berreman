@@ -1,0 +1,11 @@
+# Step 014 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** In OpticalConstructor.Domain make ideal elements ordinary protected entries and polarizer behaviour data. EntryProtection = ProtectedBuiltIn | UserManaged, exposed by every LibraryEntry (ElementId.fs:188-192): the seeded presets src-600 / det-intensity / det-ellipsometer / pol-lp / pol-cp-left / pol-cp-right (seedEntries, ElementId.fs:532-541) are ProtectedBuiltIn; samples (seeded and user-created) are UserManaged. PolarizerBehavior = ComputedIdeal of PolarizerKind | ConstantMueller of MuellerComponent list with MuellerComponent = { matrix : MuellerMatrix; offset : Angle } — components stored at reference orientation, rotated at run time R(-theta)*M*R(theta), the compound evaluated as the ORDERED product on demand; PolarizerCategory = LpCategory | CpCategory | LpCpCategory | CpLpCategory | CustomMueller as the polarizer facet value. PolarizerPreset (ElementId.fs:179-184) carries behavior + category; the three seeded ideals become ComputedIdeal entries that synthesize through the EXISTING Propagation.inputStokes / analyzerMueller (Propagation.fs:54-89) exactly as today. ConstantMueller entries evaluate ONLY in the Stokes/Mueller pipeline — they never enter the Berreman stack; the dedicated editor for ConstantMueller entries is OUT OF SCOPE (the DU makes it a non-breaking future addition). Unit tests: ComputedIdeal matrices equal Propagation.analyzerMueller across sampled orientations; a two-component ConstantMueller (two linear polarizers at different offsets) multiplies in order with each component rotated by its offset; every seeded preset reports ProtectedBuiltIn and every seeded sample UserManaged.
+
+**Acceptance.** After the step, tests MUST prove ComputedIdeal parity with the existing analyzer synthesis across orientations, ordered rotated-product evaluation for a ConstantMueller compound, and ProtectedBuiltIn on every seeded preset with seeded samples UserManaged.

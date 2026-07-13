@@ -23,7 +23,22 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Spec 0038 Part C (step 005): the ConfigKey inventory + the single
+             AppSettingsProvider read seam, compiled before the composition root
+             that calls it once at startup. -->
+        <Compile Include="AppConfig.fs" />
         <Compile Include="Program.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Spec 0038 Part C (step 005): appsettings.json is a build-copied content
+             item; AppSettingsProvider opens it BESIDE the assembly and SetOnMissing
+             writes every missing key's default back on first run (the file
+             self-documents). User preferences REMAIN in environment.json — the two
+             stores never merge. -->
+        <Content Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <!-- The composition root (Program.fs) directly hosts the FuncUI shell, so it
@@ -33,21 +48,27 @@
          OpticalConstructor.Ui. -->
     <ItemGroup>
         <PackageReference Update="FSharp.Core" Version="10.1.301" />
-        <PackageReference Include="Avalonia" Version="12.0.5" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+        <PackageReference Include="Avalonia" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <!-- spec 0024 §U1.1 / R-1: the Elmish host packages so the composition root
              mounts the MVU program. Version-aligned with FuncUI 2.0.0-preview1 (Avalonia 12); MIT NuGet. -->
         <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
         <PackageReference Include="Elmish" Version="5.0.2" />
+        <!-- Spec 0038 Part C (step 005): appsettings.json is read/written ONLY through
+             Softellect.Sys.AppSettings.AppSettingsProvider — version-matched to the
+             existing OpticalConstructor.Storage reference. -->
+        <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />
     </ItemGroup>
 
     <ItemGroup>
+        <!-- Spec 0038 Part C (step 004): the product references ONLY the Ui project.
+             The former OpticalConstructor.TestWindows reference moved with the seven
+             diagnostic launcher buttons to the standalone
+             OpticalConstructor.TestWindows.App executable — test code stays out of
+             the product dependency graph. -->
         <ProjectReference Include="..\OpticalConstructor.Ui\OpticalConstructor.Ui.fsproj" />
-        <!-- Spec 0027 (002-rotate-table-task): the launcher's `<test>` button opens the
-             diagnostic table-rotation window, which lives in this separate project. -->
-        <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
     </ItemGroup>
 
 </Project>

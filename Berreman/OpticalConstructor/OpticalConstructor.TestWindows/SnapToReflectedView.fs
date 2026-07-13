@@ -23,11 +23,7 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
-
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "SnapReflectedCanvas"
-    let readout = "SnapReflectedReadout"
+open OpticalConstructor.Ui
 
 // ---------------------------------------------------------------------------
 // Wheel gestures: rotate the selection (Shift/Ctrl+Shift/Alt) or zoom the table (plain/Ctrl).
@@ -361,7 +357,7 @@ let private sceneViews (m : Model) : IView list =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.SnapToReflected.canvas
         Canvas.width TableScene.canvasWidth
         Canvas.height TableScene.canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -403,7 +399,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.margin (Thickness 8.0)
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
-            TextBlock.create [ TextBlock.name UiIds.readout; TextBlock.text (readoutText model) ]
+            TextBlock.create [ TextBlock.name UiIds.SnapToReflected.readout; TextBlock.text (readoutText model) ]
             TextBlock.create [
                 TextBlock.foreground (brush (color 100 100 100))
                 TextBlock.text "click the mirror (or source/detector) to select it · the bar / wheel rotate the selection · drag = pan · wheel = zoom table"
@@ -418,7 +414,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
     |> Set.ofList
 
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.SnapToReflected.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]

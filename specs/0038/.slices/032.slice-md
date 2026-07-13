@@ -1,0 +1,11 @@
+# Step 032 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: [3]
+```
+
+**How to implement.** Rework the Material editor layout and preview. Layout: replace the single-column DockPanel arrangement (MaterialEditorView view, today MaterialEditorView.fs:1067-1132) with TWO panes split by a vertical GridSplitter — left: identity rows plus the progressive ladder inside a ScrollViewer (actions/status pinned below); right: the chart area filling the FULL pane height, both panes with sensible minimum widths. Preview: replace the single-curve chart (n/k from sqrt of eps11 only — NkDispersionChart.fs:40-64) with TABBED multi-curve charts: tab 'n, k' — ALL principal axes (n_x/n_y/n_z on the left axis, k_x/k_y/k_z on the right) with a legend and per-series show/hide toggles, extending the builder to per-axis sampling through the same engine getEps path; tab 'Gyration' — g components vs wavelength, PRESENT ONLY when optically active (series assembled through the engine RhoWithDispValue.toRhoWithDisp, OpticalProperties/Active.fs:152); tab 'mu' — Polder components vs wavelength, only when magnetic (MuWithDispValue.toMuWithDisp, Berreman/Berreman/Dispersion.fs:671). Tabs appear and disappear with the ladder toggles, so the visible tab plus legend always answer what is being drawn. Charts embed through EmbeddedChart (Controls/EmbeddedChart.fs) and MUST render under the headless ui-smoke frame without throwing; the Materials window view panel reuses the 'n, k' tab builder. Headless tests: the splitter and full-height chart exist; the Gyration and mu tabs track the activity/magnetic toggles; one frame renders per tab for an isotropic, a biaxial, an active, and a magnetic entry.
+
+**Acceptance.** After the step, the Material editor is a two-pane vertical-splitter layout with a full-height tabbed chart — per-axis n/k always, Gyration exactly when active, mu exactly when magnetic — all rendering headless without throwing.

@@ -1,0 +1,339 @@
+{
+  "manifest": "C:\\GitHub\\Berreman\\specs\\0038\\.manifest",
+  "branch": "0038",
+  "started_utc": "2026-07-10T22:12:07Z",
+  "last_updated_utc": "2026-07-12T01:56:13Z",
+  "completed_slices": [
+    {
+      "index": 0,
+      "path": "specs\\0038\\.slices\\001.slice-md",
+      "commit": "c5b600fd251a0a12eb047e7b2a58e7208017bf97",
+      "manual": false,
+      "utc": "2026-07-10T22:52:00Z"
+    },
+    {
+      "index": 1,
+      "path": "specs\\0038\\.slices\\002.slice-md",
+      "commit": "e886f9081cca753651238854f4e2a84abc82817d",
+      "manual": false,
+      "utc": "2026-07-10T23:46:45Z"
+    },
+    {
+      "index": 2,
+      "path": "specs\\0038\\.slices\\003.slice-md",
+      "commit": "aa408b721289208c0fd6f978849894decae9aa9d",
+      "manual": false,
+      "utc": "2026-07-11T00:08:04Z"
+    },
+    {
+      "index": 3,
+      "path": "specs\\0038\\.slices\\004.slice-md",
+      "commit": "73289a310075cdf4a20b4690986fda50bb090044",
+      "manual": false,
+      "utc": "2026-07-11T00:28:51Z"
+    },
+    {
+      "index": 4,
+      "path": "specs\\0038\\.slices\\005.slice-md",
+      "commit": "00b8ef6f45ea6c4e13cb8af4f5f91c5643eb051b",
+      "manual": false,
+      "utc": "2026-07-11T00:54:23Z"
+    },
+    {
+      "index": 5,
+      "path": "specs\\0038\\.slices\\006.slice-md",
+      "commit": "d9c8821f8b8bed934ce4c32e302c669476574c3f",
+      "manual": false,
+      "utc": "2026-07-11T01:17:53Z"
+    },
+    {
+      "index": 6,
+      "path": "specs\\0038\\.slices\\007.slice-md",
+      "commit": "8fea27c00a8ca0d71a74f5669e23076742d60e3d",
+      "manual": false,
+      "utc": "2026-07-11T01:38:59Z"
+    },
+    {
+      "index": 7,
+      "path": "specs\\0038\\.slices\\008.slice-md",
+      "commit": "22f86e30d025c48efd1a82ec52b18eff591948cf",
+      "manual": false,
+      "utc": "2026-07-11T02:19:34Z"
+    },
+    {
+      "index": 8,
+      "path": "specs\\0038\\.slices\\009.slice-md",
+      "commit": "67abecd6476b44e84a6d07b2b764af02a86a5e31",
+      "manual": false,
+      "utc": "2026-07-11T02:41:32Z"
+    },
+    {
+      "index": 9,
+      "path": "specs\\0038\\.slices\\010.slice-md",
+      "commit": "e96663edc17af97ad4c5103632e83e02b4ac40b9",
+      "manual": false,
+      "utc": "2026-07-11T03:09:15Z"
+    },
+    {
+      "index": 10,
+      "path": "specs\\0038\\.slices\\011.slice-md",
+      "commit": "16233f297c2cda414658edbdb4cde105c119ff91",
+      "manual": false,
+      "utc": "2026-07-11T04:27:07Z"
+    },
+    {
+      "index": 11,
+      "path": "specs\\0038\\.slices\\012.slice-md",
+      "commit": "818e9ad144750c0cf322b1417e9bc22531e81f05",
+      "manual": false,
+      "utc": "2026-07-11T04:53:49Z"
+    },
+    {
+      "index": 12,
+      "path": "specs\\0038\\.slices\\013.slice-md",
+      "commit": "cc956907fc6020f58f40341b3d3acca2884100dd",
+      "manual": false,
+      "utc": "2026-07-11T05:52:12Z"
+    },
+    {
+      "index": 13,
+      "path": "specs\\0038\\.slices\\014.slice-md",
+      "commit": "fcb2971cb76f59fc0ead1987fe2bd33397d69e7e",
+      "manual": false,
+      "utc": "2026-07-11T06:17:45Z"
+    },
+    {
+      "index": 14,
+      "path": "specs\\0038\\.slices\\015.slice-md",
+      "commit": "cc8f7b8d428918db0c7826b1576c61f157e6e8d6",
+      "manual": false,
+      "utc": "2026-07-11T07:02:37Z"
+    },
+    {
+      "index": 15,
+      "path": "specs\\0038\\.slices\\016.slice-md",
+      "commit": "3a8f20a4203171ae4382239ffb2bd67152383146",
+      "manual": false,
+      "utc": "2026-07-11T07:56:53Z"
+    },
+    {
+      "index": 16,
+      "path": "specs\\0038\\.slices\\017.slice-md",
+      "commit": "e9566df53206c9c041877342b01a767cc2a359c0",
+      "manual": false,
+      "utc": "2026-07-11T09:29:29Z"
+    },
+    {
+      "index": 17,
+      "path": "specs\\0038\\.slices\\018.slice-md",
+      "commit": "9b616df68b8a2cd2908356c31dbb87ca253b09ed",
+      "manual": false,
+      "utc": "2026-07-11T09:58:46Z"
+    },
+    {
+      "index": 18,
+      "path": "specs\\0038\\.slices\\019.slice-md",
+      "commit": "8d3bd0980a1ccfafbbe0cc970536071de585317e",
+      "manual": false,
+      "utc": "2026-07-11T10:45:52Z"
+    },
+    {
+      "index": 19,
+      "path": "specs\\0038\\.slices\\020.slice-md",
+      "commit": "b8f60494176a93b6fe911e6e50602686f3c9c221",
+      "manual": false,
+      "utc": "2026-07-11T11:19:00Z"
+    },
+    {
+      "index": 20,
+      "path": "specs\\0038\\.slices\\021.slice-md",
+      "commit": "6306ae4a197fec7f9f0b1502eed1203d97016c6e",
+      "manual": false,
+      "utc": "2026-07-11T12:06:45Z"
+    },
+    {
+      "index": 21,
+      "path": "specs\\0038\\.slices\\022.slice-md",
+      "commit": "a89386fdf31dc2f47c4d84f6f7dcedd73cc30fe0",
+      "manual": false,
+      "utc": "2026-07-11T12:52:46Z"
+    },
+    {
+      "index": 22,
+      "path": "specs\\0038\\.slices\\023.slice-md",
+      "commit": "34be9ac1c0e469488df1dfa70ec305088b643c82",
+      "manual": false,
+      "utc": "2026-07-11T13:31:48Z"
+    },
+    {
+      "index": 23,
+      "path": "specs\\0038\\.slices\\024.slice-md",
+      "commit": "7e91954ac755ad6e32924adb251efec10b08bf11",
+      "manual": false,
+      "utc": "2026-07-11T13:45:25Z"
+    },
+    {
+      "index": 24,
+      "path": "specs\\0038\\.slices\\025.slice-md",
+      "commit": "70d7714d9bd4914869d8b7f34025617e5093ac24",
+      "manual": false,
+      "utc": "2026-07-11T15:01:30Z"
+    },
+    {
+      "index": 25,
+      "path": "specs\\0038\\.slices\\026.slice-md",
+      "commit": "49f493751da28fd018e343da29fdadcbda49ee06",
+      "manual": false,
+      "utc": "2026-07-11T15:22:27Z"
+    },
+    {
+      "index": 26,
+      "path": "specs\\0038\\.slices\\027.slice-md",
+      "commit": "6505a0dcdbd7d28f42d922c8916a4e9fc43be9d2",
+      "manual": false,
+      "utc": "2026-07-11T15:41:34Z"
+    },
+    {
+      "index": 27,
+      "path": "specs\\0038\\.slices\\028.slice-md",
+      "commit": "70e419bf9f306421b5d6f0247b226e3ef0fff968",
+      "manual": false,
+      "utc": "2026-07-11T15:55:11Z"
+    },
+    {
+      "index": 28,
+      "path": "specs\\0038\\.slices\\029.slice-md",
+      "commit": "c38a9e7ce5c5cc99b9d44a342f1f9bf9037c0efe",
+      "manual": false,
+      "utc": "2026-07-11T16:11:34Z"
+    },
+    {
+      "index": 29,
+      "path": "specs\\0038\\.slices\\030.slice-md",
+      "commit": "a063af84e35edcf8578c9d4ae2665f4caa8cd1aa",
+      "manual": false,
+      "utc": "2026-07-11T16:46:49Z"
+    },
+    {
+      "index": 30,
+      "path": "specs\\0038\\.slices\\031.slice-md",
+      "commit": "a43d5730bf4d30bbcd5550fb0bf41a6f68d5daeb",
+      "manual": false,
+      "utc": "2026-07-11T17:40:47Z"
+    },
+    {
+      "index": 31,
+      "path": "specs\\0038\\.slices\\032.slice-md",
+      "commit": "1ce2a68649065b2ca46128985fbd08c27f36b955",
+      "manual": false,
+      "utc": "2026-07-11T19:10:12Z"
+    },
+    {
+      "index": 32,
+      "path": "specs\\0038\\.slices\\033.slice-md",
+      "commit": "f487acdcf307998a46d79c21e20c75cbf4785f01",
+      "manual": false,
+      "utc": "2026-07-11T19:58:11Z"
+    },
+    {
+      "index": 33,
+      "path": "specs\\0038\\.slices\\034.slice-md",
+      "commit": "2c303be1f224ab0d6708f7cc4fd9ca19ec17c4c4",
+      "manual": false,
+      "utc": "2026-07-11T20:17:45Z"
+    },
+    {
+      "index": 34,
+      "path": "specs\\0038\\.slices\\035.slice-md",
+      "commit": "ad147b9dee1588ed6e2048a91dd38c15511d9ab2",
+      "manual": false,
+      "utc": "2026-07-11T20:31:22Z"
+    },
+    {
+      "index": 35,
+      "path": "specs\\0038\\.slices\\036.slice-md",
+      "commit": "5f0aa4ff7b1bc03c345e152013fa5ec298ae6688",
+      "manual": false,
+      "utc": "2026-07-11T20:44:53Z"
+    },
+    {
+      "index": 36,
+      "path": "specs\\0038\\.slices\\037.slice-md",
+      "commit": "b4d470e351efe5ed1fcc48e0cd659e81c551c87f",
+      "manual": false,
+      "utc": "2026-07-11T21:34:29Z"
+    },
+    {
+      "index": 37,
+      "path": "specs\\0038\\.slices\\038.slice-md",
+      "commit": "593472583d893df1454857166857673ae7335d78",
+      "manual": false,
+      "utc": "2026-07-11T22:02:10Z"
+    },
+    {
+      "index": 38,
+      "path": "specs\\0038\\.slices\\039.slice-md",
+      "commit": "ea70b0655205bea9a62ed8871d6181af020f5c15",
+      "manual": false,
+      "utc": "2026-07-11T22:35:02Z"
+    },
+    {
+      "index": 39,
+      "path": "specs\\0038\\.slices\\040.slice-md",
+      "commit": "13dd4f5ea30baf41ec7115220dbaa3ac2b63a7b1",
+      "manual": false,
+      "utc": "2026-07-11T23:00:27Z"
+    },
+    {
+      "index": 40,
+      "path": "specs\\0038\\.slices\\041.slice-md",
+      "commit": "6fbfdb6add81606f8b9e61af4be35f3f7c78a9b6",
+      "manual": false,
+      "utc": "2026-07-11T23:17:18Z"
+    },
+    {
+      "index": 41,
+      "path": "specs\\0038\\.slices\\042.slice-md",
+      "commit": "567e0e681747516fd9ea655cd59187989c78e858",
+      "manual": false,
+      "utc": "2026-07-11T23:48:36Z"
+    },
+    {
+      "index": 42,
+      "path": "specs\\0038\\.slices\\043.slice-md",
+      "commit": "64cc4cbf81732475d9d2edcf42a372a444f2bb2a",
+      "manual": false,
+      "utc": "2026-07-12T00:03:38Z"
+    },
+    {
+      "index": 43,
+      "path": "specs\\0038\\.slices\\044.slice-md",
+      "commit": "d75458b26d135ddcad3aa5455dbfb387ce74c4b4",
+      "manual": false,
+      "utc": "2026-07-12T00:48:29Z"
+    },
+    {
+      "index": 44,
+      "path": "specs\\0038\\.slices\\045.slice-md",
+      "commit": "77e6cf1fd98d410b7483f9e761e27919b4a436a3",
+      "manual": false,
+      "utc": "2026-07-12T01:08:17Z"
+    },
+    {
+      "index": 45,
+      "path": "specs\\0038\\.slices\\046.slice-md",
+      "commit": "d8f03e7a2be3a076c28061f7156c3786defe1e0a",
+      "manual": false,
+      "utc": "2026-07-12T01:23:28Z"
+    },
+    {
+      "index": 46,
+      "path": "specs\\0038\\.slices\\047.slice-md",
+      "commit": "cc0ae5ee2034758e9ea440121e3ed87155050b2c",
+      "manual": false,
+      "utc": "2026-07-12T01:56:13Z"
+    }
+  ],
+  "current_slice": null,
+  "remaining_slices": []
+}

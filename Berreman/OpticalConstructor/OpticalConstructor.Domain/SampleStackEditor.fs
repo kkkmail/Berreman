@@ -65,11 +65,15 @@ type SampleStackMsg =
     /// an invalid position is a no-op, the StackEditor out-of-range precedent).
     | SelectLayer of LayerPosition
     /// REPLACE the selection with every position whose layer references the
-    /// material — top-level single layers and period-cell slots alike.
+    /// material IDENTITY (any version — select-by-material is per identity, spec
+    /// 0038 step 022).
     | SelectByMaterial of MaterialId
     | ClearSelection
     | SetThicknessOfSelected of Thickness
-    | SetMaterialOfSelected of MaterialId
+    /// Rebind the selected layers to a pinned material VERSION (spec 0038 step
+    /// 022 — a layer carries a `MaterialVersionId`; the view pins the chosen
+    /// material's current version through `MaterialVersionId.firstOf`).
+    | SetMaterialOfSelected of MaterialVersionId
     | SetOrientationOfSelected of CrystalOrientation
     | RemoveSelected
     | MoveSelectedUp
@@ -90,15 +94,19 @@ type SampleStackMsg =
     /// edit `SampleStructure.substrate`).
     | SetSubstrate of SampleLayer option
     /// Set (`Some`) or clear (`None` = vacuum) the lower half-space material
-    /// (spec 0033 gap G12 — likewise for `SampleStructure.lower`).
-    | SetLower of MaterialId option
+    /// VERSION (spec 0033 gap G12; a pinned `MaterialVersionId` at step 022 —
+    /// likewise for `SampleStructure.lower`).
+    | SetLower of MaterialVersionId option
 
 // ---------------------------------------------------------------------------
 // Selection helpers.
 // ---------------------------------------------------------------------------
 
-/// Whether `position` names an existing film layer of `structure`.
-let private isValidPosition (structure : SampleStructure) (position : LayerPosition) : bool =
+/// Whether `position` names an existing film layer of `structure`. Public since spec 0038
+/// step 016: a Select-state window's TARGETED return (`SampleLayerTarget`) checks its layer
+/// still exists through THIS seam — a vanished row is a no-op plus a status line, never a
+/// throw (the same rule `SelectLayer` applies to a stale click).
+let isValidPosition (structure : SampleStructure) (position : LayerPosition) : bool =
     match position with
     | AtSingleLayer i ->
         match List.tryItem i structure.films with
@@ -116,11 +124,13 @@ let private positionsOfMaterial (materialId : MaterialId) (structure : SampleStr
     |> List.indexed
     |> List.collect (fun (i, item) ->
         match item with
-        | SingleLayer l -> if l.materialId = materialId then [ AtSingleLayer i ] else []
+        // Select-by-material is per material IDENTITY (spec 0038 step 022): the layer pins a
+        // `MaterialVersionId`, so we compare its `.materialId` — any version of the material matches.
+        | SingleLayer l -> if l.materialId.materialId = materialId then [ AtSingleLayer i ] else []
         | Repeated g ->
             g.cell
             |> List.indexed
-            |> List.choose (fun (j, l) -> if l.materialId = materialId then Some (AtCellLayer (i, j)) else None))
+            |> List.choose (fun (j, l) -> if l.materialId.materialId = materialId then Some (AtCellLayer (i, j)) else None))
     |> Set.ofList
 
 // ---------------------------------------------------------------------------

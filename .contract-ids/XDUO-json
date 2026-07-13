@@ -70,5 +70,93 @@
     "declaringProject": "OpticalConstructor.TestWindows",
     "status": "active",
     "formerNames": []
+  },
+  "UICOMP_XDUO_0007": {
+    "name": "TestLauncherWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.TestWindows.App",
+    "status": "active",
+    "formerNames": []
+  },
+  "SVC_XDUO_0001": {
+    "name": "WindowLauncher",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Ui",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0008": {
+    "name": "FacetedTreeControls",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Controls",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0009": {
+    "name": "MaterialsWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Ui",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0010": {
+    "name": "LibraryWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Ui",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0004": {
+    "name": "SceneProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0005": {
+    "name": "ExperimentCollectionProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0006": {
+    "name": "ExperimentDataProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "UICOMP_XDUO_0011": {
+    "name": "SolverHandoffWindow",
+    "kind": "component",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Ui",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0007": {
+    "name": "TestDbContext",
+    "kind": "component",
+    "language": "csharp",
+    "declaringProject": "OpticalConstructor.Database",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0008": {
+    "name": "SeedingProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Seeding",
+    "status": "active",
+    "formerNames": []
   }
 }

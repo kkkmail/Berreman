@@ -48,12 +48,38 @@ module Library =
     /// collision `elementId` documents; this is the unambiguous call site for qualified callers).
     let newSampleId () : SampleId = SampleId.create ()
 
-    /// Whether a sample's geometry is a thin film, a thick plate, or a wedge (spec §2a). A DU, not a
-    /// bool/enum, so the sample editor can add geometries case-by-case (compiler-guided).
+    /// A specific version of a sample entry (spec 0038 Part H): the sample identity plus the version
+    /// number. Mirrors `MaterialVersionId` (`MaterialLibrary.fs`) — a versioned binding (an
+    /// experiment descriptor, step 25) pins the exact version it was built against, so a later mint
+    /// of the sample's `.next` version never silently rewrites an existing experiment's physics.
+    /// Moved here from `Lifecycle.fs` at step 022 (which compiles AFTER this file) so the versioned
+    /// `SampleProxy` record below can name it while the record stays re-typed IN PLACE — the exact
+    /// move step 021 made for `MaterialVersionId` (a version-id type lives with its identity type).
+    /// `VersionNumber` is in scope through the `open …MaterialLibrary` above.
+    type SampleVersionId =
+        {
+            sampleId : SampleId
+            version : VersionNumber
+        }
+
+        /// The version-ONE reference of a sample (spec 0038 step 025) — the pin a freshly-bound
+        /// experiment descriptor carries. At this in-memory step every sample lives at version 1
+        /// (`SampleStore` seeds v1 active; a mint needs a USED version, and until an experiment binds
+        /// one the `VersionsInUse` set is empty), so `firstOf` IS the sample's current latest version.
+        /// Mirrors `MaterialVersionId.firstOf` so the sample layer / experiment binding pin through ONE
+        /// helper — step 25 (real `VersionsInUse`) has a single place to revisit pin-latest.
+        static member firstOf (sampleId : SampleId) : SampleVersionId =
+            { sampleId = sampleId; version = VersionNumber.first }
+
+    /// Whether a sample's geometry is a thin film (0+ layers on a semi-infinite substrate — reflectance
+    /// only) or a thick plate (0+ layers on a specified substrate plate — reflectance and/or
+    /// transmittance). A DU, not a bool/enum, so the sample editor can add geometries case-by-case
+    /// (compiler-guided). The former `Wedge` case was removed (spec 0038 comment 007): a thin film
+    /// already covers the semi-infinite case it duplicated. (This is the display/search geometry facet,
+    /// distinct from the engine `Berreman.Media.Substrate` whose `Wedge` case is unaffected.)
     type SubstrateKind =
         | ThinFilm
         | Plate
-        | Wedge
 
     /// How a layer's crystal tensors are oriented relative to the lab frame (spec 0033 step 020):
     /// `PrimaryAxes` keeps the material's own principal axes (the identity — tensors exactly as
@@ -79,7 +105,13 @@ module Library =
     /// (spec 0033 step 002) — the same key `resolveMaterialWithDisp` looks up.
     type SampleLayer =
         {
-            materialId : MaterialId
+            /// The pinned material VERSION this layer is built against (spec 0038 Part H, step 022 —
+            /// references point at a version, not merely a material): re-typed IN PLACE from
+            /// `MaterialId` to `MaterialVersionId`, resolved through the versioned material store's
+            /// by-version `resolveVersion` (`Propagation.resolveMaterialVersion`), so a later mint of
+            /// the material's `.next` version never rewrites this layer's physics. The seeds and
+            /// freshly-authored layers pin version one (`MaterialVersionId.firstOf`).
+            materialId : MaterialVersionId
             thickness : Thickness
             orientation : CrystalOrientation
         }
@@ -104,7 +136,11 @@ module Library =
         {
             films : StackItem list
             substrate : SampleLayer option
-            lower : MaterialId option
+            /// The lower half-space material VERSION (`None` = vacuum). Re-typed IN PLACE from
+            /// `MaterialId option` to `MaterialVersionId option` at step 022 — every material
+            /// reference a sample carries points at a version (spec 0038 Part H), resolved through
+            /// the by-version resolve; the seeds pin version one (`MaterialVersionId.firstOf`).
+            lower : MaterialVersionId option
         }
 
         /// The flattened film layers in order — each `Repeated` expands to `count` copies of its cell
@@ -121,16 +157,19 @@ module Library =
         /// reference), the substrate plate's material, and the lower half-space material.
         /// Pure — the referencing lookup `MaterialProxy.removeMaterial` consults is built
         /// over this (`samplesReferencing`).
+        /// Every material IDENTITY the structure references (spec 0033 step 006; re-based on the
+        /// versioned layers at step 022 — the removal hard-block is per material identity, so this
+        /// projects each pinned `MaterialVersionId` down to its `MaterialId`, dropping the version).
         member this.referencedMaterials : Set<MaterialId> =
             let filmMaterialIds =
                 this.films
                 |> List.collect (fun item ->
                     match item with
-                    | SingleLayer l -> [ l.materialId ]
-                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId))
+                    | SingleLayer l -> [ l.materialId.materialId ]
+                    | Repeated g -> g.cell |> List.map (fun l -> l.materialId.materialId))
             let substrateMaterialIds =
-                this.substrate |> Option.toList |> List.map (fun l -> l.materialId)
-            let lowerMaterialIds = this.lower |> Option.toList
+                this.substrate |> Option.toList |> List.map (fun l -> l.materialId.materialId)
+            let lowerMaterialIds = this.lower |> Option.toList |> List.map (fun mvid -> mvid.materialId)
             filmMaterialIds @ substrateMaterialIds @ lowerMaterialIds |> Set.ofList
 
     /// A cut-out plate (spec §2a): a material structure cut to a plate / thin-film geometry → Layer(s)/an
@@ -148,12 +187,23 @@ module Library =
             description : string
         }
 
+    /// Whether a library entry is a seeded built-in the user must not delete, inactivate, or
+    /// supersede, or an ordinary user-managed entry (spec 0038 Part F — the notion "ideal element"
+    /// disappears; the seeded presets become ordinary PROTECTED entries). A two-case DU, not a bool:
+    /// protection is DATA on each preset record so a future user-created preset is `UserManaged`
+    /// without a type change. Samples carry no field — every sample (seeded or user-created) is
+    /// `UserManaged` (they are editable examples — recorded interpretation, spec F.0).
+    type EntryProtection =
+        | ProtectedBuiltIn
+        | UserManaged
+
     /// A monochromatic source preset — defines λ (spec Q3: source = wavelength).
     type SourcePreset =
         {
             id : string
             name : string
             waveLength : WaveLength
+            protection : EntryProtection
         }
 
     /// The detector type fixes the measurement (spec §4): Intensity records S0; Ellipsometer records
@@ -167,20 +217,63 @@ module Library =
             id : string
             name : string
             kind : DetectorKind
+            protection : EntryProtection
         }
 
-    /// Ideal polarizers only now (spec Q2); non-ideal variants are added later. The circular cases
+    /// The ideal polarizer kinds the pipeline synthesizes analytically (spec Q2). The circular cases
     /// carry handedness (left / right).
     type PolarizerKind =
         | IdealLinear
         | IdealCircularLeft
         | IdealCircularRight
 
+    /// One component of a compound constant-Mueller polarizer (spec 0038 Part F): a 4×4 Mueller
+    /// matrix stored at REFERENCE orientation plus the component's fixed angular offset within the
+    /// compound. Nothing is stored rotated — the Stokes/Mueller pipeline rotates the component at
+    /// run time as R(−θ)·M·R(θ) (`Propagation.componentMueller`).
+    type MuellerComponent =
+        {
+            matrix : MuellerMatrix
+            offset : Angle
+        }
+
+    /// A polarizer's physics as DATA (spec 0038 Part F): `ComputedIdeal` synthesizes through the
+    /// EXISTING `Propagation.inputStokes` / `analyzerMueller` exactly as today; `ConstantMueller`
+    /// is an ORDERED component list (light-traversal order — the first component is the first
+    /// surface light hits) whose compound matrix the Stokes/Mueller pipeline evaluates on demand
+    /// (`Propagation.compoundMueller`). ConstantMueller entries live ONLY in the Stokes/Mueller
+    /// pipeline — they never enter the Berreman stack; their dedicated editor is a non-breaking
+    /// future addition this DU enables.
+    type PolarizerBehavior =
+        | ComputedIdeal of PolarizerKind
+        | ConstantMueller of MuellerComponent list
+
+    /// The polarizer classification facet value (spec 0038 Part F — the Library window's polarizer
+    /// facet): linear, circular, the two compound orders (named in light-traversal order), or a
+    /// custom Mueller stack.
+    type PolarizerCategory =
+        | LpCategory
+        | CpCategory
+        | LpCpCategory
+        | CpLpCategory
+        | CustomMueller
+
+        /// The human-readable facet/branch label (the discrete facet key doubles as the label).
+        member this.label : string =
+            match this with
+            | LpCategory -> "Linear"
+            | CpCategory -> "Circular"
+            | LpCpCategory -> "Linear + circular"
+            | CpLpCategory -> "Circular + linear"
+            | CustomMueller -> "Custom Mueller"
+
     type PolarizerPreset =
         {
             id : string
             name : string
-            kind : PolarizerKind
+            behavior : PolarizerBehavior
+            category : PolarizerCategory
+            protection : EntryProtection
         }
 
     /// The choosable, kind-constrained Library things (spec §2a). The entry id IS the `valueId`
@@ -208,6 +301,16 @@ module Library =
             | DetectorItem d -> d.name
             | PolarizerItem p -> p.name
 
+        /// Whether this entry is a protected built-in or user-managed (spec 0038 Part F). The
+        /// presets carry protection as data; a sample is ALWAYS `UserManaged` — seeded samples are
+        /// editable examples (recorded interpretation, spec F.0).
+        member this.protection : EntryProtection =
+            match this with
+            | SampleItem _ -> UserManaged
+            | SourceItem s -> s.protection
+            | DetectorItem d -> d.protection
+            | PolarizerItem p -> p.protection
+
         /// The FULL, human-readable description of what this entry IS (spec 0027 / 026 — the Library
         /// confirm step and the Details element-view show it before / after binding). A sample carries its
         /// own curated `description` (materials + thicknesses + stack); the other presets get prose built
@@ -223,23 +326,26 @@ module Library =
                 | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
                 | Ellipsometer -> "Ellipsometer — records the ellipsometric angles Ψ and Δ."
             | PolarizerItem p ->
-                match p.kind with
-                | IdealLinear -> "Ideal linear polarizer — transmits the linear component along its R1 orientation."
-                | IdealCircularLeft -> "Ideal circular polarizer (left-handed) — transmits left-circular light."
-                | IdealCircularRight -> "Ideal circular polarizer (right-handed) — transmits right-circular light."
+                match p.behavior with
+                | ComputedIdeal IdealLinear -> "Ideal linear polarizer — transmits the linear component along its R1 orientation."
+                | ComputedIdeal IdealCircularLeft -> "Ideal circular polarizer (left-handed) — transmits left-circular light."
+                | ComputedIdeal IdealCircularRight -> "Ideal circular polarizer (right-handed) — transmits right-circular light."
+                | ConstantMueller components ->
+                    $"%s{p.category.label} polarizer — %d{List.length components} constant Mueller component(s) at fixed offsets, evaluated in the Stokes/Mueller pipeline."
 
         /// The catalogue kinds this entry is valid for (kind-constrained selection, §2a). A polarizer
-        /// entry serves either the LinearPolarizer role (the ideal LP) or the CircularPolarizer role
-        /// (the two CP presets) — never both.
+        /// entry serves the role its CATEGORY names: linear (the ideal LP), circular (the two CP
+        /// presets), or — for the compound/custom categories (spec 0038 Part F) — either role.
         member this.forKinds : CatalogueKind list =
             match this with
             | SampleItem _ -> [ CatalogueKind.Sample ]
             | SourceItem _ -> [ LightSource ]
             | DetectorItem _ -> [ Detector ]
             | PolarizerItem p ->
-                match p.kind with
-                | IdealLinear -> [ LinearPolarizer ]
-                | IdealCircularLeft | IdealCircularRight -> [ CircularPolarizer ]
+                match p.category with
+                | LpCategory -> [ LinearPolarizer ]
+                | CpCategory -> [ CircularPolarizer ]
+                | LpCpCategory | CpLpCategory | CustomMueller -> [ LinearPolarizer; CircularPolarizer ]
 
     /// A node-path label (a tree grouping level: "Samples", "Glass", a glass kind, …). Elevated so a
     /// label is never a bare string in the domain.
@@ -305,39 +411,66 @@ module Library =
         | UnknownSampleId of reason : string
         | DuplicateSampleId of reason : string
         | InvalidSample of reason : string
+        /// Spec 0038 Part H (step 022): removal is additionally hard-blocked when ANY version of the
+        /// sample is currently bound by a live experiment (the injected `VersionsInUse` seam — the
+        /// mirror of the material store's `MaterialVersionInUse`). A used version can never be
+        /// deleted; the case names the offending versions so the refusal is actionable in a log.
+        | SampleVersionInUse of reason : string
 
     /// The mutating samples write-seam (spec 0033 steps 004/005, contract STORE_XDUO_0002 —
-    /// IMPLEMENTED lifecycle): the same functional-proxy shape as step 003's `MaterialProxy`
-    /// (`MaterialLibrary.fs`) — a record of camelCase `Result`-returning functions; a test
-    /// substitutes a stub of the SAME shape. Function-valued fields have no structural equality,
-    /// so the proxy compares by reference — a host model holding one keeps its (Elmish-required)
-    /// equality. The real, stateful in-memory store behind this surface is
-    /// `SampleProxy.createInMemory` (declared as a type augmentation below `seedEntries`, which
-    /// seeds it).
+    /// IMPLEMENTED lifecycle; re-typed IN PLACE at spec 0038 Part H step 022 into the VERSIONED
+    /// surface, the exact mirror of step 021's `MaterialProxy`): the functional-proxy convention —
+    /// a record of camelCase `Result`-returning functions; a test substitutes a stub of the SAME
+    /// shape. Function-valued fields have no structural equality, so the proxy compares by reference
+    /// — a host model holding one keeps its (Elmish-required) equality. The store is now versions
+    /// per `SampleId`:
+    ///
+    /// - `listSamples scope` — the LATEST version of each sample, filtered by `scope` (`ActiveOnly`
+    ///   for offers, `IncludeInactive` for the show-inactive toggle);
+    /// - `searchSamples q` — the name / substrate facets over the latest-ACTIVE versions (offers);
+    /// - `tryGetSample id` — the latest version's sample, if any;
+    /// - `resolveVersion svid` — the EXACT version's sample, IGNORING lifecycle (reference
+    ///   resolution: an experiment binding a superseded/inactive version still resolves it);
+    /// - `saveSample sample` — applies the step-20 shared `decideVersioning` rule against the
+    ///   injected `VersionsInUse` (a new sample inserts version 1; an existing one mutates in
+    ///   place, mints the next version, or is a no-op) — it replaces the old `addSample`/`updateSample`;
+    /// - `markSampleInactive` / `markSampleActive` — retire / revive the latest version;
+    /// - `supersedeSample` — retire the latest version (a superseded version behaves as inactive);
+    /// - `removeSample id` — deletes an unused sample and refuses any sample carrying a used
+    ///   version (`SampleVersionInUse`); an unknown id is `UnknownSampleId`.
+    ///
+    /// The real, stateful in-memory store behind this surface is `SampleProxy.createInMemory` (a
+    /// type augmentation in `SampleStore.fs`, after `Lifecycle.fs`: it needs the shared
+    /// `decideVersioning` rule and the `VersionsInUse` seam).
     [<ReferenceEquality>]
     type SampleProxy =
         {
-            listSamples : unit -> Result<Sample list, SampleError>
+            listSamples : InactiveVisibility -> Result<Sample list, SampleError>
             searchSamples : SampleQuery -> Result<Sample list, SampleError>
             tryGetSample : SampleId -> Result<Sample option, SampleError>
-            addSample : Sample -> Result<unit, SampleError>
-            updateSample : Sample -> Result<unit, SampleError>
+            resolveVersion : SampleVersionId -> Result<Sample option, SampleError>
+            saveSample : Sample -> Result<unit, SampleError>
+            markSampleInactive : SampleId -> Result<unit, SampleError>
+            markSampleActive : SampleId -> Result<unit, SampleError>
+            supersedeSample : SampleId -> Result<unit, SampleError>
             removeSample : SampleId -> Result<unit, SampleError>
         }
 
-    /// A single-layer thin-film structure between vacuum (the common seed shape).
+    /// A single-layer thin-film structure between vacuum (the common seed shape). The layer pins
+    /// version one of the material (spec 0038 step 022 — the seeds carry version-pinned references).
     let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
-            films = [ SingleLayer { materialId = materialId; thickness = thickness; orientation = PrimaryAxes } ]
+            films = [ SingleLayer { materialId = MaterialVersionId.firstOf materialId; thickness = thickness; orientation = PrimaryAxes } ]
             substrate = None
             lower = None
         }
 
-    /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer).
+    /// A thick-plate structure in vacuum (films empty; the plate is the substrate layer). The plate
+    /// pins version one of the material (spec 0038 step 022).
     let private plateStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
         {
             films = []
-            substrate = Some { materialId = materialId; thickness = thickness; orientation = PrimaryAxes }
+            substrate = Some { materialId = MaterialVersionId.firstOf materialId; thickness = thickness; orientation = PrimaryAxes }
             lower = None
         }
 
@@ -363,8 +496,8 @@ module Library =
                         {
                             cell =
                                 [
-                                    { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                    { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                    { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                    { materialId = MaterialVersionId.firstOf MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                 ]
                             count = 1
                         }
@@ -437,12 +570,12 @@ module Library =
                                     {
                                         cell =
                                             [
-                                                { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 20
                                     }
-                                SingleLayer { materialId = MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
+                                SingleLayer { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
                             ]
                         substrate = None
                         lower = None
@@ -463,8 +596,8 @@ module Library =
                                     {
                                         cell =
                                             [
-                                                { materialId = MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.euvMolybdenum; thickness = euvLayerThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.euvSilicon; thickness = euvLayerThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 100
                                     }
@@ -509,9 +642,9 @@ module Library =
                 name = "Langasite film on silicon (10 µm, dispersive)"
                 structure =
                     {
-                        films = [ SingleLayer { materialId = MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
+                        films = [ SingleLayer { materialId = MaterialVersionId.firstOf MaterialIds.langasite; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
                         substrate = None
-                        lower = Some MaterialIds.silicon
+                        lower = Some (MaterialVersionId.firstOf MaterialIds.silicon)
                     }
                 substrate = ThinFilm
                 description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
@@ -528,16 +661,19 @@ module Library =
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
     /// LP + two ideal CP, and one monochromatic source. Every sample's stack is DATA (spec 0033
     /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
-    /// the samples are the named `SeedSamples` values (spec 0033 step 002).
+    /// the samples are the named `SeedSamples` values (spec 0033 step 002). The six presets are
+    /// ordinary PROTECTED entries (spec 0038 Part F — `ProtectedBuiltIn`); the seeded samples stay
+    /// `UserManaged` (editable examples). The three ideals are `ComputedIdeal` behaviour data that
+    /// still synthesizes through `Propagation.inputStokes` / `analyzerMueller` exactly as before.
     let seedEntries : LibraryEntry list =
         (SeedSamples.all |> List.map SampleItem)
         @ [
-            DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity }
-            DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer }
-            PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; kind = IdealLinear }
-            PolarizerItem { id = "pol-cp-left"; name = "Ideal circular polarizer (left)"; kind = IdealCircularLeft }
-            PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; kind = IdealCircularRight }
-            SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm> }
+            DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn }
+            DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer; protection = ProtectedBuiltIn }
+            PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
+            PolarizerItem { id = "pol-cp-left"; name = "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
+            PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
+            SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm>; protection = ProtectedBuiltIn }
         ]
 
     /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
@@ -616,14 +752,54 @@ module Library =
             tryGetEntry = fun id -> Ok (entries |> List.tryFind (fun e -> e.entryId = id))
         }
 
-    /// The write-seam validation the samples store's write functions share. Two rules, in order:
+    /// The EMPTY, WRITABLE in-memory library-entry store for the seeding pipeline (spec 0038 step
+    /// 042 — IMPLEMENT_CONTRACT STORE_XDUO_0008). The read-only seeded `createInMemory` above closes
+    /// over an immutable `seedEntries` and so has NO write verb; the seeding pipeline needs one.
+    /// `createInMemoryEmpty` bundles the read-only `LibraryProxy` (over a shared mutable list) with
+    /// the `addEntry` write verb the pipeline pushes each `LibraryEntry` through — the analogue of
+    /// the catalogue stores' add verbs (`addCategory` / `saveMaterial` / `saveSample`). A future DB
+    /// cycle swaps this whole builder, leaving the `SeedingProxy` that adapts `addEntry` unchanged.
+    [<ReferenceEquality>]
+    type LibraryEntryStore =
+        {
+            proxy : LibraryProxy
+            addEntry : LibraryEntry -> Result<unit, LibraryError>
+        }
+
+    /// Build the empty writable library-entry store: `addEntry` appends a new entry (preserving
+    /// insertion order, so `entriesForKind` / `tryGetEntry` read exactly as the seeded store does)
+    /// and rejects a duplicate entry id (`LibraryUnavailable` — the only fitting existing case;
+    /// never a throw). Mutation stays INSIDE the closure (the IO boundary), so logic holding the
+    /// proxy stays pure. `libraryTrees` is empty until a store cycle seeds grouping trees — the
+    /// seed-push pipeline fills entries, not trees.
+    let createInMemoryEmpty () : LibraryEntryStore =
+        let store = ref ([] : LibraryEntry list)
+        let proxy =
+            {
+                entriesForKind = fun kind -> Ok (store.Value |> List.filter (fun e -> e.forKinds |> List.contains kind))
+                libraryTrees = fun () -> Ok []
+                tryGetEntry = fun id -> Ok (store.Value |> List.tryFind (fun e -> e.entryId = id))
+            }
+        let addEntry (entry : LibraryEntry) : Result<unit, LibraryError> =
+            match store.Value |> List.tryFind (fun e -> e.entryId = entry.entryId) with
+            | Some _ -> Error (LibraryUnavailable $"library entry '%s{entry.entryId}' is already present")
+            | None ->
+                store.Value <- store.Value @ [ entry ]
+                Ok ()
+        {
+            proxy = proxy
+            addEntry = addEntry
+        }
+
+    /// The write-seam validation the samples store's `saveSample` runs. Two rules, in order:
     /// (spec 0033 steps 004/005) a `Sample` whose display name is empty/whitespace is
     /// `InvalidSample`; and (spec 0035 step 012) a `Sample` whose structure carries NO films AND
     /// NO substrate (`films = []`, `substrate = None` on `SampleStructure`) is structurally empty —
     /// there is nothing for the engine mapping to expand — and is likewise `InvalidSample`, even
-    /// when its name is non-blank. Both `addSample` and `updateSample` run this, so the guard holds
-    /// on every save.
-    let private validateSample (s : Sample) : Result<unit, SampleError> =
+    /// when its name is non-blank. Not private: the real store is a type augmentation in
+    /// `SampleStore.fs`, and an optional extension in another file cannot reach a module-private
+    /// binding (the `validateEntry` precedent, `MaterialLibrary.fs`).
+    let validateSample (s : Sample) : Result<unit, SampleError> =
         let structurallyEmpty =
             match s.structure.films, s.structure.substrate with
             | [], None -> true
@@ -634,471 +810,24 @@ module Library =
         then Error (InvalidSample $"sample '%s{string s.id.value}' has no films and no substrate")
         else Ok ()
 
-    /// The real, stateful in-memory samples store behind the write-seam (spec 0033 step 005 —
-    /// IMPLEMENT_CONTRACT STORE_XDUO_0002; replaces the step-004 validate-only mock).
-    /// `createInMemory` closes over a `ref` `Map<SampleId, Sample>` seeded from the samples in
-    /// `seedEntries` — the elevated `SampleId` is the Map key directly. Mutation stays INSIDE
-    /// the closure (the IO boundary), so the logic holding the proxy stays pure: reads answer
-    /// from the current map; `searchSamples` matches the name fragment case-insensitively, then
-    /// the `SubstrateKind` facet; `addSample` persists a fresh sample and rejects an id the
-    /// store already holds (`DuplicateSampleId`); `updateSample` replaces a known sample and
-    /// rejects an unknown id (`UnknownSampleId`); `removeSample` deletes a known id and rejects
-    /// an unknown one; both writes keep the step-004 blank-name validation (`InvalidSample`).
-    /// Deterministic under test — every entry carries its own id, no clock, no IO. (A static
-    /// member, not a module `let`: `createInMemory` at module level already builds the
-    /// `LibraryProxy`; the augmentation sits here because it needs `seedEntries` above.)
-    type SampleProxy with
-
-        static member createInMemory () : SampleProxy =
-            let seeded =
-                seedEntries
-                |> List.choose (fun e ->
-                    match e with
-                    | SampleItem s -> Some (s.id, s)
-                    | SourceItem _ | DetectorItem _ | PolarizerItem _ -> None)
-            let store = ref (Map.ofList seeded)
-            let currentSamples () : Sample list =
-                store.Value |> Map.toList |> List.map snd
-            let unknown (id : SampleId) : SampleError =
-                UnknownSampleId $"unknown sample id '%s{string id.value}'"
-            {
-                listSamples = fun () -> Ok (currentSamples ())
-                searchSamples =
-                    fun q ->
-                        let byText =
-                            currentSamples ()
-                            |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
-                        match q.substrate with
-                        | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
-                        | None -> Ok byText
-                tryGetSample = fun id -> Ok (store.Value |> Map.tryFind id)
-                addSample =
-                    fun sample ->
-                        validateSample sample
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind sample.id with
-                            | Some existing ->
-                                Error (DuplicateSampleId $"sample id '%s{string sample.id.value}' already names '%s{existing.name}'")
-                            | None ->
-                                store.Value <- store.Value |> Map.add sample.id sample
-                                Ok ())
-                updateSample =
-                    fun sample ->
-                        validateSample sample
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind sample.id with
-                            | Some _ ->
-                                store.Value <- store.Value |> Map.add sample.id sample
-                                Ok ()
-                            | None -> Error (unknown sample.id))
-                removeSample =
-                    fun id ->
-                        match store.Value |> Map.tryFind id with
-                        | Some _ ->
-                            store.Value <- store.Value |> Map.remove id
-                            Ok ()
-                        | None -> Error (unknown id)
-            }
-
-    /// The real, stateful in-memory materials store behind the write-seam (spec 0033 step 006
-    /// — IMPLEMENT_CONTRACT STORE_XDUO_0001; replaces the step-003 validate-only mock).
-    /// `createInMemory` closes over a `ref` `Map<MaterialId, MaterialEntry>` seeded from
-    /// `MaterialLibrary.builtInEntries` — the elevated `MaterialId` is the Map key directly.
-    /// Mutation stays INSIDE the closure (the IO boundary), so logic holding the proxy stays
-    /// pure: reads answer from the current map; `searchMaterials` answers through the pure
-    /// query seam (`byQuery` — the §D.8 `byNameContains`/`byCategory` filters plus the
-    /// `DispersionFilter` facet); `addMaterial` persists a fresh entry and hard-blocks an id
-    /// the store already holds (`DuplicateMaterialId`); `updateMaterial` replaces a known
-    /// entry and rejects an unknown one; `removeMaterial` consults `samplesReferencing` and
-    /// returns `MaterialStillReferenced` NAMING the referencing samples whenever any remain —
-    /// it never cascades and never silently deletes; both writes keep the step-003 blank-name
-    /// validation (`InvalidMaterial`). Deterministic under test — every entry carries its own
-    /// id, no clock, no IO. (A type augmentation HERE, not beside the type in
-    /// `MaterialLibrary.fs`: the referencing lookup is `Sample`-typed, and `Sample` compiles
-    /// after that file. At composition the lookup is `samplesReferencing` below, backed by
-    /// the step-005 `SampleProxy` store.)
-    type MaterialProxy with
-
-        static member createInMemory (samplesReferencing : MaterialId -> Sample list) : MaterialProxy =
-            let store = ref (builtInEntries |> List.map (fun e -> e.id, e) |> Map.ofList)
-            let currentEntries () : MaterialEntry list =
-                store.Value |> Map.toList |> List.map snd
-            let unknown (id : MaterialId) : MaterialError =
-                UnknownMaterialId $"unknown material id '%s{string id.value}'"
-            {
-                listMaterials = fun () -> Ok (currentEntries ())
-                searchMaterials = fun q -> Ok (byQuery q { entries = currentEntries () })
-                tryGetMaterial = fun id -> Ok (store.Value |> Map.tryFind id)
-                addMaterial =
-                    fun entry ->
-                        validateEntry entry
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind entry.id with
-                            | Some existing ->
-                                Error (DuplicateMaterialId $"material id '%s{string entry.id.value}' already names '%s{existing.name}'")
-                            | None ->
-                                store.Value <- store.Value |> Map.add entry.id entry
-                                Ok ())
-                updateMaterial =
-                    fun entry ->
-                        validateEntry entry
-                        |> Result.bind (fun () ->
-                            match store.Value |> Map.tryFind entry.id with
-                            | Some _ ->
-                                store.Value <- store.Value |> Map.add entry.id entry
-                                Ok ()
-                            | None -> Error (unknown entry.id))
-                removeMaterial =
-                    fun id ->
-                        match store.Value |> Map.tryFind id with
-                        | Some entry ->
-                            match samplesReferencing id with
-                            | [] ->
-                                store.Value <- store.Value |> Map.remove id
-                                Ok ()
-                            | referencing ->
-                                let names =
-                                    referencing
-                                    |> List.map (fun s -> $"'%s{s.name}'")
-                                    |> List.sort
-                                    |> String.concat ", "
-                                Error (MaterialStillReferenced $"material '%s{entry.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
-                        | None -> Error (unknown id)
-            }
+    // The real, stateful in-memory samples store behind the write-seam (STORE_XDUO_0002) moved to
+    // `SampleStore.fs` at spec 0038 Part H step 022 (mirroring the material store's step-021 move):
+    // the VERSIONED store needs the shared `decideVersioning` rule and the `VersionsInUse` seam
+    // (`Lifecycle.fs`, which compiles AFTER this file because it needs `SampleId` from `Library`
+    // above), so its `createInMemory` augmentation can no longer live here. The `SampleProxy` record
+    // itself stays re-typed IN PLACE above; `validateSample` (public, just above) is shared by the
+    // store; `samplesReferencing` (its composition lookup) stays below (it is `SampleProxy`-typed).
 
     /// The composition-root referencing lookup for `MaterialProxy.createInMemory` (spec 0033
     /// step 006): every sample the samples store currently holds whose structure references
-    /// the material. Backed by the LIVE step-005 `SampleProxy` store — once the referencing
-    /// samples are removed the material becomes removable; there is no snapshot to refresh.
-    /// The in-memory `listSamples` is total (always `Ok`); the signature carries no error
-    /// channel, so a future store whose listing can fail must supply its own conservative
-    /// lookup instead of this one.
+    /// the material. Backed by the LIVE `SampleProxy` store — once the referencing samples are
+    /// removed the material becomes removable; there is no snapshot to refresh. Lists the
+    /// latest-ACTIVE versions (`ActiveOnly`): a retired sample no longer offers new use, so it no
+    /// longer holds a material from removal (the material's own used-version block still guards any
+    /// version a live experiment binds). The in-memory `listSamples` is total (always `Ok`); the
+    /// signature carries no error channel, so a future store whose listing can fail must supply its
+    /// own conservative lookup instead of this one.
     let samplesReferencing (samples : SampleProxy) (id : MaterialId) : Sample list =
-        match samples.listSamples () with
+        match samples.listSamples ActiveOnly with
         | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)
         | Error _ -> []
-
-/// Spec 0027 (028) — the Experiments domain, redesigned around a multi-step, EDITABLE experiment built
-/// from the live setup:
-///   1. the SETUP is the scene itself (the elements, plus their bound materials / geometry);
-///   2. the user picks WHICH element to vary — and the element's CATALOGUE KIND determines what may be
-///      varied. This is DATA (`variablesFor`), attached to the element through its kind, NOT hard-coded at
-///      the bay: a light source varies only its wavelength, a polarizer only its R1, a sample its R1 and R2
-///      (for now), and other kinds nothing yet;
-///   3. the user picks what to CAPTURE (transmitted / reflected / both — replacing the old hard-coded
-///      T-only for samples and R for mirrors), sets the numeric range, and CONFIRMS, which ADDS the
-///      experiment to a collection that persists. Experiments can be EDITED (re-confirm updates in place —
-///      never duplicates an already-added experiment) and REMOVED.
-/// Every primitive is elevated (the variable, the measurement, the id and the range are DUs / records, not
-/// bare strings / floats), and an experiment references its element by the serializable `ElementId` so it
-/// survives save-load. The mock `ExperimentProxy` (the functional-proxy seam) lists seed template
-/// experiments; a real disk-backed `create` would later live in `OpticalConstructor.Storage`.
-module Experiments =
-
-    open Placement
-    open Library
-
-    /// A quantity an experiment can vary on an element (spec 028). An elevated DU — not an enum / string.
-    type VariableParameter =
-        | VaryWaveLength
-        | VaryR1
-        | VaryR2
-
-        /// A short, stable code (the automation ids and the Controls-layer mirror map back through this).
-        member this.code : string =
-            match this with
-            | VaryWaveLength -> "wavelength"
-            | VaryR1 -> "r1"
-            | VaryR2 -> "r2"
-
-        /// A human-readable name for the varied quantity.
-        member this.label : string =
-            match this with
-            | VaryWaveLength -> "Wavelength"
-            | VaryR1 -> "Rotation R1"
-            | VaryR2 -> "Incidence R2"
-
-        /// The display unit of the varied quantity.
-        member this.unitLabel : string =
-            match this with
-            | VaryWaveLength -> "nm"
-            | VaryR1 | VaryR2 -> "°"
-
-    /// What each catalogue kind permits varying (spec 028) — declared HERE as DATA (attached to the element
-    /// through its kind) so the Experiments bay READS the allowed set rather than hard-coding it. A light
-    /// source varies only its wavelength; a linear / circular polarizer only its R1; a sample its R1 and R2
-    /// (for now); a lens / mirror / detector expose nothing to vary yet (future kinds add cases here).
-    let variablesFor (kind : CatalogueKind) : VariableParameter list =
-        match kind with
-        | LightSource -> [ VaryWaveLength ]
-        | LinearPolarizer
-        | CircularPolarizer -> [ VaryR1 ]
-        | Sample -> [ VaryR1; VaryR2 ]
-        | Lens
-        | FlatMirror
-        | CurvedMirror
-        | Detector -> []
-
-    /// What an experiment CAPTURES at the detector (spec 028): the transmitted branch, the reflected
-    /// branch, or both. A DU — not a bool / enum — that REPLACES the previously hard-coded "always T"
-    /// (samples) and "mirror ⇒ R"; it defaults from the varied element's `Emission` via `ofEmission`.
-    type MeasurementMode =
-        | CaptureTransmitted
-        | CaptureReflected
-        | CaptureBoth
-
-        member this.code : string =
-            match this with
-            | CaptureTransmitted -> "t"
-            | CaptureReflected -> "r"
-            | CaptureBoth -> "both"
-
-        member this.label : string =
-            match this with
-            | CaptureTransmitted -> "Transmitted (T)"
-            | CaptureReflected -> "Reflected (R)"
-            | CaptureBoth -> "Both (T + R)"
-
-        member this.capturesTransmitted : bool =
-            match this with
-            | CaptureTransmitted | CaptureBoth -> true
-            | CaptureReflected -> false
-
-        member this.capturesReflected : bool =
-            match this with
-            | CaptureReflected | CaptureBoth -> true
-            | CaptureTransmitted -> false
-
-        /// The natural default measurement for an element, from its emission metadata (spec 028: a mirror
-        /// emits only its reflected branch, everything else both — so a varied mirror defaults to R, a
-        /// varied sample to both; the user can still switch it).
-        static member ofEmission (e : Emission) : MeasurementMode =
-            match e.emitsReflected, e.emitsTransmitted with
-            | true, true -> CaptureBoth
-            | true, false -> CaptureReflected
-            | false, _ -> CaptureTransmitted
-
-    /// A numeric variation range: [min, max] over `points` samples, in the varied quantity's display unit.
-    type VariableRange =
-        {
-            min : float
-            max : float
-            points : int
-        }
-
-        /// The default range for a variable (spec 028): R1 0…360° (73 pts); R2 0…89° incidence (91 pts —
-        /// 90° itself is not computable, so the top is 89, drawn to 90 by the chart); wavelength 200…800 nm
-        /// (91 pts).
-        static member forVariable (v : VariableParameter) : VariableRange =
-            match v with
-            | VaryR1 -> { min = 0.0; max = 360.0; points = 73 }
-            | VaryR2 -> { min = 0.0; max = 89.0; points = 91 }
-            | VaryWaveLength -> { min = 200.0; max = 800.0; points = 91 }
-
-    /// A stable identity for an experiment in the collection (a monotonic int — deterministic, so add /
-    /// edit / remove are unit-testable without a Guid clock).
-    type ExperimentId =
-        | ExperimentId of int
-
-        member this.value = let (ExperimentId i) = this in i
-        static member create (i : int) : ExperimentId = ExperimentId i
-
-    /// A fully-specified, editable experiment (spec 028): the varied element (by serializable id, plus a
-    /// human label captured at add-time so the row survives the element's removal), the varied quantity,
-    /// the capture mode, and the numeric range.
-    type Experiment =
-        {
-            id : ExperimentId
-            elementId : ElementId
-            elementLabel : string
-            variable : VariableParameter
-            measurement : MeasurementMode
-            range : VariableRange
-        }
-
-        /// A short, human-readable description (the collection row + readout use this).
-        member this.description : string =
-            $"%s{this.elementLabel}: vary %s{this.variable.label} over %g{this.range.min}…%g{this.range.max} %s{this.variable.unitLabel} (%d{this.range.points} pts), capture %s{this.measurement.label}"
-
-    /// The in-progress experiment being built or edited (spec 028, the multi-step editor). `elementId` /
-    /// `variable` are `None` until chosen; `commit` needs both. When `editingId` is `Some` the next
-    /// `commit` UPDATES that stored experiment (never duplicates); otherwise it APPENDS a new one.
-    type ExperimentDraft =
-        {
-            elementId : ElementId option
-            elementLabel : string
-            variable : VariableParameter option
-            measurement : MeasurementMode
-            range : VariableRange
-            editingId : ExperimentId option
-        }
-
-        static member empty : ExperimentDraft =
-            {
-                elementId = None
-                elementLabel = ""
-                variable = None
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
-                editingId = None
-            }
-
-    /// The editable collection of experiments plus the id counter and the live draft (spec 028). Pure —
-    /// choose / commit / edit / remove are unit-tested without any UI.
-    type ExperimentCollection =
-        {
-            experiments : Experiment list
-            nextId : int
-            draft : ExperimentDraft
-        }
-
-        static member empty : ExperimentCollection =
-            { experiments = []; nextId = 1; draft = ExperimentDraft.empty }
-
-    /// Whether the draft is complete enough to commit (an element AND a variable are chosen).
-    let canCommit (c : ExperimentCollection) : bool =
-        match c.draft.elementId, c.draft.variable with
-        | Some _, Some _ -> true
-        | _ -> false
-
-    /// Start a brand-new draft (clears the editor and the editing cursor).
-    let newDraft (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = ExperimentDraft.empty }
-
-    /// Choose the element to vary (spec 028 step 2). The allowed variables (`variablesFor kind`) and the
-    /// default measurement (from the element's emission) are supplied by the host; the draft's variable
-    /// defaults to the first allowed one (`None` when the element exposes nothing to vary), and its range
-    /// to that variable's default.
-    let chooseElement
-        (id : ElementId)
-        (label : string)
-        (allowed : VariableParameter list)
-        (defaultMeasurement : MeasurementMode)
-        (c : ExperimentCollection) : ExperimentCollection =
-        let variable = List.tryHead allowed
-        let range = variable |> Option.map VariableRange.forVariable |> Option.defaultValue c.draft.range
-        { c with
-            draft =
-                { c.draft with
-                    elementId = Some id
-                    elementLabel = label
-                    variable = variable
-                    measurement = defaultMeasurement
-                    range = range } }
-
-    /// Choose the varied quantity (spec 028). Resets the range to that variable's default.
-    let chooseVariable (v : VariableParameter) (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = { c.draft with variable = Some v; range = VariableRange.forVariable v } }
-
-    /// Choose what the experiment captures (T / R / both, spec 028).
-    let chooseMeasurement (m : MeasurementMode) (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = { c.draft with measurement = m } }
-
-    let setRangeMin (v : float) (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = { c.draft with range = { c.draft.range with min = v } } }
-
-    let setRangeMax (v : float) (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = { c.draft with range = { c.draft.range with max = v } } }
-
-    let setRangePoints (n : int) (c : ExperimentCollection) : ExperimentCollection =
-        { c with draft = { c.draft with range = { c.draft.range with points = max 2 n } } }
-
-    /// Confirm the draft (spec 028 step 3). From a fresh draft this APPENDS a new experiment (minting the
-    /// next id) and leaves the draft EDITING it, so a follow-up confirm UPDATES rather than duplicating an
-    /// already-added experiment; while editing an existing one it updates that experiment in place. Inert
-    /// when the draft is incomplete.
-    let commit (c : ExperimentCollection) : ExperimentCollection =
-        match c.draft.elementId, c.draft.variable with
-        | Some elementId, Some variable ->
-            match c.draft.editingId with
-            | Some existing ->
-                let experiments =
-                    c.experiments
-                    |> List.map (fun e ->
-                        if e.id = existing then
-                            { e with
-                                elementId = elementId
-                                elementLabel = c.draft.elementLabel
-                                variable = variable
-                                measurement = c.draft.measurement
-                                range = c.draft.range }
-                        else e)
-                { c with experiments = experiments }
-            | None ->
-                let exp =
-                    {
-                        id = ExperimentId c.nextId
-                        elementId = elementId
-                        elementLabel = c.draft.elementLabel
-                        variable = variable
-                        measurement = c.draft.measurement
-                        range = c.draft.range
-                    }
-                { c with
-                    experiments = c.experiments @ [ exp ]
-                    nextId = c.nextId + 1
-                    draft = { c.draft with editingId = Some exp.id } }
-        | _ -> c
-
-    /// Load an existing experiment into the draft for editing (spec 028: "if the user chooses an experiment
-    /// then the user can change anything in the experiment"). A later `commit` updates it in place.
-    let edit (id : ExperimentId) (c : ExperimentCollection) : ExperimentCollection =
-        match c.experiments |> List.tryFind (fun e -> e.id = id) with
-        | Some e ->
-            { c with
-                draft =
-                    {
-                        elementId = Some e.elementId
-                        elementLabel = e.elementLabel
-                        variable = Some e.variable
-                        measurement = e.measurement
-                        range = e.range
-                        editingId = Some e.id
-                    } }
-        | None -> c
-
-    /// Remove an experiment from the collection (spec 028). If it was the one being edited the draft resets.
-    let remove (id : ExperimentId) (c : ExperimentCollection) : ExperimentCollection =
-        let experiments = c.experiments |> List.filter (fun e -> e.id <> id)
-        let draft = if c.draft.editingId = Some id then ExperimentDraft.empty else c.draft
-        { c with experiments = experiments; draft = draft }
-
-    /// The Experiments error channel (errors as values; each case carries a `reason`).
-    type ExperimentError =
-        | UnknownExperiment of reason : string
-        | ExperimentUnavailable of reason : string
-
-    /// The mock Experiments IO seam (the functional-proxy convention): a record of camelCase
-    /// `Result`-returning functions. A test substitutes a stub of the SAME shape. Function-valued
-    /// fields have no structural equality, so the proxy compares by reference — letting a host model
-    /// that holds the proxy keep its (Elmish-required) equality.
-    [<ReferenceEquality>]
-    type ExperimentProxy =
-        {
-            listExperiments : unit -> Result<Experiment list, ExperimentError>
-            tryGetExperiment : int -> Result<Experiment option, ExperimentError>
-        }
-
-    /// Seed template experiments (listable; the live bay builds experiments against the present scene). The
-    /// referenced element id ("analyzer") is the template's placeholder.
-    let seedExperiments : Experiment list =
-        [
-            {
-                id = ExperimentId 1
-                elementId = ElementId.create "analyzer"
-                elementLabel = "Analyzer"
-                variable = VaryR1
-                measurement = CaptureTransmitted
-                range = VariableRange.forVariable VaryR1
-            }
-        ]
-
-    /// The in-memory mock proxy (spec §3 / Q7): closes over the seed templates, no IO, deterministic for
-    /// tests. A real disk-backed `create` would live in `OpticalConstructor.Storage`, leaving the
-    /// bay / logic unchanged.
-    let createInMemory () : ExperimentProxy =
-        let seeds = seedExperiments
-        {
-            listExperiments = fun () -> Ok seeds
-            tryGetExperiment = fun i -> Ok (seeds |> List.tryFind (fun e -> e.id.value = i))
-        }

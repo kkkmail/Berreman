@@ -1,0 +1,11 @@
+# Step 044 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui, OpticalConstructor.TestWindows, OpticalConstructor.Ui.Tests]
+depends_on: [13, 15, 39]
+```
+
+**How to implement.** Consolidate automation ids into ONE [<RequireQualifiedAccess>] module of [<Literal>] intent-named constants (e.g. OpticalConstructor.Controls/UiIds.fs, compiled first in Controls) with nested per-surface sub-modules (Selector, Materials, Library, FacetedTree, Editors, Launcher, Handoff, and the rest), replacing every per-control UiIds module scattered through Controls and the Ui views. Id VALUES are unchanged — only the declaring module moves — so control sites and tests re-point their references mechanically and no duplicate id literal remains anywhere.
+
+**Acceptance.** After the step, exactly one module holds every automation-id literal, no per-control UiIds module remains, id values are unchanged, and every headless test still locates its controls.

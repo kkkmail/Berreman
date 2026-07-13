@@ -1,0 +1,16 @@
+# Step 012 — ADD_COMPONENT UICOMP_XDUO_0008 FacetedTreeControls
+
+```step
+anchor: ADD_COMPONENT
+id: UICOMP_XDUO_0008
+name: FacetedTreeControls
+kind: component
+language: fsharp
+declaring_project: OpticalConstructor.Controls
+touches: [OpticalConstructor.Controls, OpticalConstructor.Ui.Tests]
+depends_on: [9, 10]
+```
+
+**How to implement.** Create OpticalConstructor.Controls/FacetedTreeControls.fs, domain-free (the MaterialsControls State+Handlers shape): a pure State record (the built tree, applied-constraint breadcrumbs with labels and after-counts, offered values with count-previews, named representations plus the active one, the text-filter draft, the live result count, and a materialization mode) and a Handlers record of unit-returning functions (applyConstraint, removeConstraint, commitTextFilter, chooseRepresentation, requestBuild, selectNode, applyManualRange). Render: a breadcrumb strip of removable chips each showing its after-count; the live result count; a Show/Search button INSTEAD of tree rows whenever State says materialization is gated (result count above TreeAutoBuildThreshold); branch rows showing 'label (count)' with unexpanded branches carrying their counts; everything in a ScrollViewer (the tree may span pages). The text filter commits on Enter/LostFocus ONLY — never per keystroke. Every generated row is keyed with View.withKey and carries AutomationProperties.AutomationId, never StyledElement.Name; ids are intent-named [<Literal>] constants. The control renders exactly what it is given and never touches a proxy or the facet engine — the host projects Domain state in. Headless Ui.Tests: mount over a known State, find every id, assert chip click dispatches removeConstraint, offered-value click dispatches applyConstraint, gated mode shows the button and zero tree rows, and typing does not dispatch per keystroke.
+
+**Acceptance.** After the step, a headless test MUST mount FacetedTreeControls over a known State, locate every declared automation id, observe apply/remove/build handler dispatch, and confirm the filter box never commits per keystroke.

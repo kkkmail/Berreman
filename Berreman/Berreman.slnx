@@ -23,6 +23,12 @@
   <Project Path="OpticalConstructor/OpticalConstructor.Domain/OpticalConstructor.Domain.fsproj">
     <Platform Project="x64" />
   </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Seeding/OpticalConstructor.Seeding.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.Database/OpticalConstructor.Database.csproj">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.Storage/OpticalConstructor.Storage.fsproj">
     <Platform Project="x64" />
   </Project>
@@ -36,6 +42,9 @@
     <Platform Project="x64" />
   </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.TestWindows/OpticalConstructor.TestWindows.fsproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="OpticalConstructor/OpticalConstructor.TestWindows.App/OpticalConstructor.TestWindows.App.fsproj">
     <Platform Project="x64" />
   </Project>
   <Project Path="OpticalConstructor/OpticalConstructor.App/OpticalConstructor.App.fsproj">

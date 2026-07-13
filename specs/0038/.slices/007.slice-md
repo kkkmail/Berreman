@@ -1,0 +1,16 @@
+# Step 007 — ADD_CONTRACT SVC_XDUO_0001 WindowLauncher
+
+```step
+anchor: ADD_CONTRACT
+id: SVC_XDUO_0001
+name: WindowLauncher
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Ui
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [3, 5]
+```
+
+**How to implement.** Declare in OpticalConstructor.Ui the window-opening seam, generalizing the EditorLaunchers function-record precedent (today at TestWindows/TableAndElementRotationView.fs:116-141, in Ui after step 3): a WindowKey DU naming every managed window — MaterialsWindowKey, LibraryWindowKey, SolverHandoffWindowKey, CategoryEditorKey, and id-keyed editor keys MaterialEditorKey of MaterialId / SampleEditorKey of SampleId; EntryFreshness = NewUnsaved | Persisted (new entities mint their Guid at Add-window open so the registry keys uniformly by id from the first moment); and the [<ReferenceEquality>] record WindowLauncher of camelCase Result-returning functions that open-or-activate a window for a key (create through an injected per-key window factory when absent, activate the live window when present, re-target an existing Select-state window per step 16), forget a key on close, and decide Select-state modality from the step-5 SelectWindowModality. Provide a mock (stub factories recording calls) plus a mock-driven Ui.Tests test exercising every field through its exact signature.
+
+**Acceptance.** After the step, a mock-driven headless test MUST build a stub WindowLauncher and observe that a second open of the same WindowKey activates instead of creating, two different editor keys create two windows, and every record field is exercised through its exact signature; it passes.

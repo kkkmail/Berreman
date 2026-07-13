@@ -3,8 +3,9 @@
 /// working environment between sessions and seeds defaults for new projects: a
 /// named/grouped favorites board (pinned reused engine `Layer`/`OpticalSystem`
 /// fragments and `materialEntry`/`sourceSpec` ids — §A.7 shapes, by value), the
-/// last working folder(s) and the ordered recent-files list, the window/panel
-/// layout and theme (J.8), the toolbar contents, and the `Preferences` (J.7).
+/// last working folder(s), the window/panel layout and theme (J.8), the toolbar
+/// contents, and the `Preferences` (J.7). The ordered recent-files list is NOT a
+/// field here — it lives solely in `Storage.RecentFiles` (its own `recent.json`).
 ///
 /// Persistence is JSON validated on load against `optical-constructor-environment.
 /// schema.json` (added to the §A.7 schema family, same `JsonSchema.Net` library) —
@@ -174,15 +175,21 @@ type FavoriteGroup =
 // ---------------------------------------------------------------------------
 
 /// The persistent user environment (§J.6 [Core] + J.7/J.8 fields). Persisted as
-/// schema-validated JSON (NOT `.binz`); the favorites board, recent files, last
-/// folders, panel layout, theme, toolbar, and preferences all round-trip through
-/// it (AC-J6/AC-J8). This is the net-new persistent customization from 010 Part
+/// schema-validated JSON (NOT `.binz`); the favorites board, last folders, panel
+/// layout, theme, toolbar, and preferences all round-trip through it (AC-J6/AC-J8).
+/// The recent-files list is NOT persisted here — `Storage.RecentFiles` is the single
+/// recent-files store. This is the net-new persistent customization from 010 Part
 /// II §1.
 type EnvironmentSettings =
     {
         favorites : FavoriteGroup list
-        lastFolders : string list
-        recentFiles : string list
+        /// The last working folder PER picker purpose (§J.6), keyed by a purpose id (e.g.
+        /// `measuredDataFolderKey`) — a `Map<purpose, folder>` so each picker resumes where it left
+        /// off and a NEW picker adds a key, not a parallel field. A picker seeds its
+        /// `SuggestedStartLocation` from `lastFolder` and records the confirmed folder through
+        /// `rememberFolder`. An old array-shaped file fails schema validation and the total `load`
+        /// falls back to the empty map (no migration, §J.6 item 3).
+        lastFolders : Map<string, string>
         layout : PanelLayout
         theme : Theme
         /// Chart color palettes surfaced to Part H (J.8); hex color strings. The
@@ -237,8 +244,7 @@ let defaultPreferences : Preferences =
 let defaults : EnvironmentSettings =
     {
         favorites = []
-        lastFolders = []
-        recentFiles = []
+        lastFolders = Map.empty
         layout = { panels = defaultPanels }
         theme = Light
         chartPalette = [ "#1f77b4"; "#ff7f0e"; "#2ca02c"; "#d62728"; "#9467bd" ]
@@ -362,3 +368,46 @@ let save (path : string) (settings : EnvironmentSettings) : Result<unit, Storage
             File.WriteAllText(path, json)
             Ok()
         with e -> Error(FileIoError e)
+
+// ---------------------------------------------------------------------------
+// Picker last-folder (§J.6 `lastFolders`, keyed by picker purpose). The field is a
+// `Map<purpose, folder>` so each picker starts where it last left off; a second picker adds a
+// key, not a parallel field. These pure transitions are the option-building INPUT and the
+// confirmed-selection PERSISTENCE the data-file picker composes at its IO edge — logic that
+// stays testable without ever raising a real dialog.
+// ---------------------------------------------------------------------------
+
+/// The picker-purpose key for the measured-data file picker (the collection builder's
+/// per-experiment attach). The only key today; a centralized `[<Literal>]` so the id is never
+/// scattered through the codebase.
+[<Literal>]
+let measuredDataFolderKey = "measured-data"
+
+/// The persisted last-used folder for `purpose`, if any. `None` on a fresh environment, or when an
+/// old array-shaped `lastFolders` file failed validation and the total `load` fell back to the
+/// empty-map default (no migration) — the picker then opens at the host default. A pure lookup: the
+/// option-building input.
+let lastFolder (purpose : string) (settings : EnvironmentSettings) : string option =
+    settings.lastFolders |> Map.tryFind purpose
+
+/// Record the directory of a confirmed `selectedFile` under `purpose` — the pure state transition the
+/// picker persists on a confirmed selection. A path with no directory part leaves the map untouched.
+let rememberFolder (purpose : string) (selectedFile : string) (settings : EnvironmentSettings) : EnvironmentSettings =
+    let folder = Path.GetDirectoryName selectedFile
+    if String.IsNullOrEmpty folder then settings
+    else { settings with lastFolders = settings.lastFolders |> Map.add purpose folder }
+
+/// The outcome of a file-picker interaction, modeled as pure DATA (the "IO as data" discipline) so the
+/// confirmed-vs-cancel decision the picker makes at its IO edge folds through `applyPick` here rather
+/// than living as untested control flow.
+type DataFilePick =
+    | FilePicked of string
+    | PickCancelled
+
+/// Fold a picker outcome into the environment: a confirmed selection records its folder under
+/// `purpose`; a cancel leaves the settings untouched (cancel changes nothing). Pure — both branches
+/// are exercised without a real dialog.
+let applyPick (purpose : string) (pick : DataFilePick) (settings : EnvironmentSettings) : EnvironmentSettings =
+    match pick with
+    | FilePicked selectedFile -> rememberFolder purpose selectedFile settings
+    | PickCancelled -> settings

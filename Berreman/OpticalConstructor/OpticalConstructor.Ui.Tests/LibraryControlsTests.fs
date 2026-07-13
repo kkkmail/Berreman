@@ -10,7 +10,7 @@ open Xunit
 open OpticalConstructor.Controls
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
-open OpticalConstructor.TestWindows.TableAndElementRotationView
+open OpticalConstructor.Ui.TableAndElementRotationView
 
 /// Spec 0027 (024) Phase 1 — the Selector bay (labelled "Library" until spec 0033 step 014): the pure
 /// control contract, the host's kind-constrained `libraryState` flattening, the `BindValueId` MVU
@@ -40,16 +40,22 @@ module LibraryControlsTests =
     let ``the Library UiIds prefix leaf ids and are stable`` () =
         // `entry` is a pure prefix over ANY entry id string (a seeded sample's id is its Guid
         // string form since spec 0033 step 002).
-        Assert.Equal("LibraryEntry_abc", LibraryControls.UiIds.entry "abc")
-        Assert.Equal("LibraryEntry_" + glass1mmId, LibraryControls.UiIds.entry glass1mmId)
-        Assert.Equal("LibraryTree", LibraryControls.UiIds.tree)
-        Assert.Equal("LibraryBoundReadout", LibraryControls.UiIds.readout)
+        Assert.Equal("LibraryEntry_abc", UiIds.Library.entry "abc")
+        Assert.Equal("LibraryEntry_" + glass1mmId, UiIds.Library.entry glass1mmId)
+        Assert.Equal("LibraryTree", UiIds.Library.tree)
+        Assert.Equal("LibraryBoundReadout", UiIds.Library.readout)
 
     // ============================ host libraryState (pure) ============================
 
     /// Build the model with a single Sample element selected (so the Selector bay shows samples).
     let private withSampleSelected () : Model =
         initMain () |> update (AddElement Sample)   // appends a Sample at index 2, selects it
+
+    /// Spec 0038 (017): the quick-pick strip is threshold-gated now, and the 11 seeded sample
+    /// entries sit AT/ABOVE the default threshold 5 (Choose… alone). These tests pin the STRIP
+    /// mechanics — unchanged below the threshold — so their fixtures open the gate wide.
+    let private withWideQuickPick (m : Model) : Model =
+        { m with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 100 }
 
     [<Fact>]
     let ``libraryState for a selected Sample lists ONLY sample leaf rows, kind-labelled Sample`` () =
@@ -91,16 +97,16 @@ module LibraryControlsTests =
         Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
 
     [<Fact>]
-    let ``the ribbon offers the Selector bay; Library now names the samples workbench`` () =
+    let ``the ribbon offers the Selector bay; the Library workbench left for its window`` () =
         // The Selector bay is present, in order, after Render (the Experiments bay was added in Phase 2,
         // so `BayNames.all` is now longer than the original five; assert membership + the prefix order
         // rather than an exact five-element list). Spec 0033 step 014 renamed the bay label from
-        // "Library" to "Selector" (same behaviour) — and spec 0033 step 024 REUSES the freed label:
-        // "Library" is offered again, now as the SAMPLES WORKBENCH bay, distinct from the Selector.
+        // "Library" to "Selector" (same behaviour); spec 0033 step 024 reused the freed label for the
+        // SAMPLES WORKBENCH bay — which spec 0038 step 015 moved into the single-instance Library
+        // WINDOW, so no "Library" bay is offered any more (the Selector alone keeps binding duty).
         Assert.Equal("Selector", BayNames.selector)
         Assert.Contains(BayNames.selector, BayNames.all)
-        Assert.Equal("Library", BayNames.library)
-        Assert.Contains(BayNames.library, BayNames.all)
+        Assert.DoesNotContain("Library", BayNames.all)
         Assert.Equal<string list>(
             [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector ],
             BayNames.all |> List.truncate 5)
@@ -163,6 +169,7 @@ module LibraryControlsTests =
             // shown — so the confirm panel (the entry's full description + Confirm / Cancel) renders up front.
             let mutable model =
                 withSampleSelected ()
+                |> withWideQuickPick
                 |> update (SelectBay BayNames.selector)
                 |> update (RequestBindValueId glass1mmId)
             let dispatch (msg : Msg) = model <- update msg model
@@ -170,28 +177,28 @@ module LibraryControlsTests =
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            // The ribbon shows a Selector tab (spec 0033 step 014); the Library tab is the
-            // step-024 SAMPLES WORKBENCH, not this Selector bay.
+            // The ribbon shows a Selector tab (spec 0033 step 014); NO Library tab remains —
+            // the samples workbench is the Library WINDOW now (spec 0038 step 015).
             let tabNames =
                 window.GetVisualDescendants()
                 |> Seq.choose (function
                     | :? Border as b when not (System.String.IsNullOrEmpty b.Name) && b.Name.StartsWith("RibbonTab_") -> Some b.Name
                     | _ -> None)
                 |> List.ofSeq
-            Assert.Contains(Ribbon.UiIds.tab BayNames.selector, tabNames)
-            Assert.Contains(Ribbon.UiIds.tab BayNames.library, tabNames)
+            Assert.Contains(UiIds.Ribbon.tab BayNames.selector, tabNames)
+            Assert.DoesNotContain(UiIds.Ribbon.tab "Library", tabNames)
             // The pending entry's full description is shown (and the element is NOT bound yet).
             Assert.Equal(None, (elem 2 model).placement.valueId)
             let descriptionShown () : bool =
                 window.GetVisualDescendants()
                 |> Seq.exists (function
-                    | :? TextBlock as t -> t.Name = LibraryControls.UiIds.description && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
+                    | :? TextBlock as t -> t.Name = UiIds.Library.description && not (System.String.IsNullOrWhiteSpace t.Text) && t.IsEffectivelyVisible
                     | _ -> false)
             Assert.True(descriptionShown (), "the pending entry's full description was not shown")
             // Click Confirm — now it binds the selected element's valueId.
             let findConfirm () : Border option =
                 window.GetVisualDescendants()
-                |> Seq.tryPick (function :? Border as b when b.Name = LibraryControls.UiIds.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
+                |> Seq.tryPick (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Library.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findConfirm () with
             | None -> Assert.Fail("the Confirm button was not visible in the Selector bay")
             | Some b ->
@@ -203,4 +210,116 @@ module LibraryControlsTests =
                     Dispatcher.UIThread.RunJobs()
                     Assert.Equal(Some glass1mmId, (elem 2 model).placement.valueId)
                 else Assert.Fail("the Confirm button has no on-screen position")
+            window.Close())
+
+    // ============================ FuncUI recycling regressions (spec 0038) ============================
+    // The leaf rows are GENERATED from a kind-constrained list whose membership changes with the
+    // selection, so a re-render can shift one entry onto another's reused control. A `Border.name`
+    // there made FuncUI re-set a styled element's `Name` and throw "Cannot set Name : styled element
+    // already styled" (the live Selector-bay crash); the rows now carry a freely-mutable
+    // `AutomationProperties.AutomationId` and are keyed with `View.withKey`. These drive the bay
+    // through a REAL re-rendering Component (the app's Elmish patch path) to guard that.
+
+    /// A Border in `window` carrying this automation id (the converted boxes carry no `Name`).
+    let private borderWithId (window : Window) (id : string) : Border option =
+        window.GetVisualDescendants()
+        |> Seq.tryPick (function
+            | :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = id && b.IsEffectivelyVisible -> Some b
+            | _ -> None)
+
+    let private clickIn (window : Window) (id : string) : unit =
+        match borderWithId window id with
+        | Some b ->
+            let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
+            if c.HasValue then
+                window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            else Assert.Fail($"%s{id} has no on-screen position")
+        | None -> Assert.Fail($"%s{id} not found")
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a leaf-row membership shift re-renders without a styled-element rename throw`` () =
+        // The mechanism regression, at the control level: rows [alpha; beta; gamma] → [beta; gamma]
+        // shifts 'beta' onto 'alpha''s reused Border (same type, same slot). With `Border.name` this
+        // threw "Cannot set Name : styled element already styled"; the AutomationId + ViewKey sweep
+        // recreates the shifted rows instead.
+        HeadlessSession.run (fun () ->
+            let rowFor (id : string) (label : string) : LibraryControls.Row =
+                { label = label; depth = 0; entryId = id; isBound = false }
+            let fullRows = [ rowFor "alpha" "Alpha"; rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
+            let shiftedRows = [ rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
+            let stateFor (rows : LibraryControls.Row list) : LibraryControls.State =
+                { LibraryControls.empty with rows = rows; kindLabel = "Sample"; enabled = true }
+            let handlers : LibraryControls.Handlers =
+                { selectEntry = ignore; confirmEntry = ignore; cancelEntry = ignore }
+            let setRows : (LibraryControls.Row list -> unit) ref = ref (fun _ -> ())
+            let host =
+                Component(fun ctx ->
+                    let rows = ctx.useState fullRows
+                    setRows.Value <- rows.Set
+                    LibraryControls.view (stateFor rows.Current) handlers)
+            let window = Window(Width = 640.0, Height = 480.0, Content = host)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // Shift the membership (the first leaf disappears) — must not throw…
+            setRows.Value shiftedRows
+            Dispatcher.UIThread.RunJobs()
+            // …and back to the full list (the reverse shift).
+            setRows.Value fullRows
+            Dispatcher.UIThread.RunJobs()
+            let hasEntry (id : string) : bool =
+                match borderWithId window (UiIds.Library.entry id) with
+                | Some _ -> true
+                | None -> false
+            Assert.True(hasEntry "alpha" && hasEntry "beta" && hasEntry "gamma",
+                        "the re-rendered leaf rows were not locatable by AutomationId")
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Selector bay survives select, bind, and kind-change re-renders`` () =
+        // The acceptance drive over the LIVE main view: select an entry (pending), bind it (Confirm),
+        // then change the selected element's KIND twice — rows collapse for a polarizer and rebuild for
+        // a fresh sample — with every step re-rendering through the FuncUI patch path.
+        HeadlessSession.run (fun () ->
+            let seed = withSampleSelected () |> withWideQuickPick |> update (SelectBay BayNames.selector)
+            let latest : Model ref = ref seed
+            let dispatchRef : (Msg -> unit) ref = ref ignore
+            let comp =
+                Component(fun ctx ->
+                    let st = ctx.useState seed
+                    latest.Value <- st.Current
+                    let dispatch (msg : Msg) =
+                        let m = update msg st.Current
+                        latest.Value <- m
+                        st.Set m
+                    dispatchRef.Value <- dispatch
+                    mainView st.Current dispatch)
+            let window = Window(Width = 980.0, Height = canvasHeight + 360.0, Content = comp)
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // SELECT: click a leaf entry — the pending confirm panel renders on the patched tree.
+            clickIn window (UiIds.Library.entry glass1mmId)
+            Assert.Equal(Some glass1mmId, latest.Value.pendingEntry)
+            // BIND: click Confirm — the pending entry commits to the selected element's valueId.
+            clickIn window UiIds.Library.confirm
+            Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
+            let sampleLeafShown () : bool =
+                match borderWithId window (UiIds.Library.entry glass1mmId) with
+                | Some _ -> true
+                | None -> false
+            // KIND-CHANGE 1: add (and select) a polarizer — no library entries for its kind, so the
+            // leaf rows COLLAPSE on the re-render.
+            dispatchRef.Value (AddElement LinearPolarizer)
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(sampleLeafShown (), "a sample leaf row survived the polarizer kind-change")
+            // KIND-CHANGE 2: add (and select) another sample — the full sample tree REBUILDS.
+            dispatchRef.Value (AddElement Sample)
+            Dispatcher.UIThread.RunJobs()
+            Assert.True(sampleLeafShown (), "the sample leaf rows did not rebuild after the kind-change back")
+            // The first sample kept its binding across the re-renders.
+            Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
             window.Close())

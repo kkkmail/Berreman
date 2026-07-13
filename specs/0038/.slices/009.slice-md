@@ -1,0 +1,11 @@
+# Step 009 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Tests]
+depends_on: []
+```
+
+**How to implement.** Create OpticalConstructor.Domain/Facets.fs — pure, Avalonia-free. Types: AttributeKey and DiscreteKey single-case string DUs with .value; AttributeValue = DiscreteValue of DiscreteKey | NumericValue of double; Applicability = ApplicableAttribute | InapplicableAttribute; AttributeKind = DiscreteAttribute | NumericAttribute; AttributeDef<'item> = { key : AttributeKey; name : string; kind : AttributeKind; appliesTo : 'item -> Applicability; extract : 'item -> AttributeValue list } (extract returns a LIST — multi-valued facets are first-class); FacetSelection = DiscreteSelection of Set<DiscreteKey> (OR within a facet) | NumericRangeSelection of a lower/upper pair; AppliedConstraint = { key : AttributeKey; selection : FacetSelection }; Representation = an ordered AttributeKey list. Engine functions with explicit concrete signatures, all naive folds (corpus is tens to hundreds; no indices): filter (defs, applied constraints, items to items — AND across facets, OR within one), countFor (count-preview of one candidate constraint under the applied set), breadcrumb after-counts (the cumulative result count after each applied constraint in application order), and buildTree (representation, defs, constraints, items to a FacetTree whose branches carry value label + count, zero-count branches dropped, inapplicable attributes omitted entirely); a plain-text filter participates as an ordinary constraint over a caller-supplied text extractor. Unit tests in OpticalConstructor.Tests cover every function including multi-valued extraction, where branch counts need not sum to the total.
+
+**Acceptance.** After the step, pure unit tests MUST prove filter, countFor, and buildTree over a fixed corpus: OR within a facet, AND across facets, multi-valued attributes counted per branch, zero-count branches absent, inapplicable attributes absent, and cumulative breadcrumb after-counts in application order.

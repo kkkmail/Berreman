@@ -34,22 +34,11 @@ open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Domain.Table
 open OpticalConstructor.Domain.TableView
 open OpticalConstructor.Controls
+open OpticalConstructor.Ui
 
 // ---------------------------------------------------------------------------
 // Stable automation ids (CLAUDE.md UI guidance): one place, never duplicated.
 // ---------------------------------------------------------------------------
-
-[<RequireQualifiedAccess>]
-module UiIds =
-    let canvas = "TableRotationCanvas"
-    let rotateR1Minus = "RotateR1MinusButton"
-    let rotateR1Plus = "RotateR1PlusButton"
-    let rotateR2Minus = "RotateR2MinusButton"
-    let rotateR2Plus = "RotateR2PlusButton"
-    let rotateR3Minus = "RotateR3MinusButton"
-    let rotateR3Plus = "RotateR3PlusButton"
-    let resetView = "ResetViewButton"
-    let readout = "TableRotationReadout"
 
 // ---------------------------------------------------------------------------
 // Pure model (no Avalonia handle).
@@ -327,7 +316,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.children [
             RotationControls.view (rotationState model) (rotationHandlers dispatch)
             TextBlock.create [
-                TextBlock.name UiIds.readout
+                TextBlock.name UiIds.TableRotation.readout
                 TextBlock.text readout
             ]
             TextBlock.create [
@@ -339,7 +328,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
 
 let private tableCanvas (model : Model) : IView =
     Canvas.create [
-        Canvas.name UiIds.canvas
+        Canvas.name UiIds.TableRotation.canvas
         Canvas.width canvasWidth
         Canvas.height canvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
@@ -357,7 +346,7 @@ let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
 /// the content origin, a top-level pointer position equals a canvas coordinate. `e.Handled <-
 /// true` drops FuncUI's duplicate Tunnel|Bubble pass, so a wheel notch is exactly one step.
 let view (model : Model) (dispatch : Msg -> unit) : IView =
-    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.canvas e
+    let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableRotation.canvas e
     DockPanel.create [
         DockPanel.children [
             Border.create [

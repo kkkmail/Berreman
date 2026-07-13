@@ -1,0 +1,11 @@
+# Step 031 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, OpticalConstructor.Ui, OpticalConstructor.Tests, OpticalConstructor.Ui.Tests]
+depends_on: [25, 30]
+```
+
+**How to implement.** Add the out-of-band diagnostic, independent of bound/unbound. A PURE Domain function: given an element's binding, the materials reachable through it (a sample's layer material versions; a directly bound material), and the wavelengths THE ACTUAL EXPERIMENT REQUESTS (a single lambda for a fixed setting; the full swept range for a wavelength sweep — derived from the step-25 experiment setup or the scene source), it flags when SOME reachable material is dispersive AND the requested set falls partly outside the union of that material's defined dispersion segments (EditSegment.interval, MaterialComplexityEditor.fs:100-102); constant materials NEVER flag; the result carries per-material defined vs requested ranges as typed data. Render a small warning badge on the flagged element with a hover tooltip naming the offending material(s) and both ranges; the same text appears in the Details bay. Unit tests: 600 nm inside a 300-700 nm segment does not flag; a 200-800 nm sweep against the same segment flags; multi-segment unions; constant materials never flag. Headless test: the badge renders on a flagged element.
+
+**Acceptance.** After the step, a fixed 600 nm request inside a 300-700 nm segment MUST NOT flag while a 200-800 nm sweep MUST flag naming the material with defined vs requested ranges, constant materials never flag, and the badge plus tooltip text render headless.

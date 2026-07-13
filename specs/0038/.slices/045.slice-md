@@ -1,0 +1,11 @@
+# Step 045 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.App, OpticalConstructor.Ui.Tests]
+depends_on: [4, 13, 15, 37]
+```
+
+**How to implement.** Finalize the product launcher (LauncherWindow in OpticalConstructor.App/Program.fs, slimmed to Main by step 4): FOUR buttons in THIS order — Main / Inverse / Materials / Library — each with a stable Name and AutomationId. Main opens the constructor as today; Inverse opens the constructor in the step-37 inverse state; Materials and Library open the step-13/15 windows through the app-scoped WindowLauncher, sharing the SAME single instances as constructor-opened ones (the launcher and the constructor share the step-6 app scope). Headless tests: all four buttons present in order; each opens or activates its surface; opening Materials from the launcher and then from the constructor strip yields ONE window.
+
+**Acceptance.** After the step, the launcher shows Main/Inverse/Materials/Library in order, each button opens its surface over the shared app scope, and Materials opened from launcher then constructor activates one single instance — verified headless.

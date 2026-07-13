@@ -1,0 +1,11 @@
+# Step 023 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Ui, OpticalConstructor.Ui.Tests]
+depends_on: [13, 15, 21, 22]
+```
+
+**How to implement.** Surface lifecycle in BOTH windows: verbs Mark inactive / Mark active / Supersede… on the selected entry, confirm-gated inline, each block a typed inline message; ProtectedBuiltIn library entries expose NO lifecycle verbs (removed, not greyed). A 'show inactive/superseded' toggle (default hidden) adds them to the tree and counts with a visible badge. Pickers, Select mode, and default facet counts EXCLUDE inactive and superseded entries; resolution of existing references ignores lifecycle (the table keeps drawing a bound inactive entry). The view panel lists an entry's versions; older versions open VIEW-ONLY (no Save path); the library always edits the latest. Headless tests: marking an entry inactive removes it from Select offers while its bound reference still resolves on the table; a protected entry shows no lifecycle verbs; the toggle reveals badged inactive entries; an older version opens read-only.
+
+**Acceptance.** After the step, headless tests MUST prove inactive/superseded exclusion from offers with references still resolving, no lifecycle verbs on protected entries, the badged show-inactive toggle, and view-only older versions.

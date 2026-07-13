@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Platforms>x64</Platforms>
+        <AssemblyName>Softellect.Berreman.OpticalConstructor.TestWindows.App</AssemblyName>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <PlatformTarget>x64</PlatformTarget>
+        <DefineConstants>DEBUG</DefineConstants>
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
+        <PlatformTarget>x64</PlatformTarget>
+        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
+    </PropertyGroup>
+
+    <!-- Spec 0038 Part C (step 004, UICOMP_XDUO_0007): the standalone executable
+         home for the diagnostic test launcher. The seven diagnostic scene windows
+         stay in OpticalConstructor.TestWindows; this project hosts only the
+         launcher window and its Avalonia application/entry point, so the product
+         OpticalConstructor.App can drop its TestWindows reference entirely. -->
+    <ItemGroup>
+        <Compile Include="TestLauncherWindow.fs" />
+        <Compile Include="Program.fs" />
+    </ItemGroup>
+
+    <!-- The Avalonia package set mirrors OpticalConstructor.App (same public MIT
+         NuGet surface, same versions) so both composition roots pin an identical
+         dependency graph. The audit-gated clone at Avalonia.FuncUI.Clone stays
+         UNREFERENCED (constraint 5 / §A.9 / AC-A8). -->
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Include="Avalonia" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
+        <PackageReference Include="Elmish" Version="5.0.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The seven diagnostic scene windows this launcher opens; Ui / Controls /
+             Domain flow transitively through it. -->
+        <ProjectReference Include="..\OpticalConstructor.TestWindows\OpticalConstructor.TestWindows.fsproj" />
+    </ItemGroup>
+
+</Project>
