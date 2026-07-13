@@ -83,6 +83,7 @@ module OutOfBandBadgeTests =
                 }
             substrate = Plate
             description = "A single dispersive film for the out-of-band diagnostic test."
+            supportedEmission = defaultSupportedEmission Plate
         }
 
     /// A Main-scene model with a bound-sample element reaching a 300–700 nm dispersive material, whose

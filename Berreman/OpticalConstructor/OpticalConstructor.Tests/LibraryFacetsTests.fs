@@ -178,6 +178,7 @@ module LibraryFacetsTests =
             structure = { films = films; substrate = None; lower = None }
             substrate = ThinFilm
             description = name
+            supportedEmission = defaultSupportedEmission ThinFilm
         }
 
     /// Glass + EUV-molybdenum films: one Transparent and one Absorbing
@@ -213,6 +214,7 @@ module LibraryFacetsTests =
                 }
             substrate = ThinFilm
             description = "Repeated film"
+            supportedEmission = defaultSupportedEmission ThinFilm
         }
 
     let private polarizerEntry : LibraryEntry =

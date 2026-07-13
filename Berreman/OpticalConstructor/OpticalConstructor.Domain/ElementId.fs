@@ -185,7 +185,45 @@ module Library =
             /// shown in the Details element-view and the Library confirm step. Multilayer samples spell
             /// out the repeating unit and layer count rather than a per-layer list.
             description : string
+            /// The ray groups this sample can emit, geometry-constrained (spec 0040 Part D.2 / operator
+            /// 010/Q3 Part D.2). Reuses the shared `Emission` DU (`Placement.fs`), so the "both groups
+            /// off" state stays unrepresentable. The invariant is DATA: a `ThinFilm` (semi-infinite on
+            /// both sides — observable in reflection off its stack ALONE) is pinned to
+            /// `EmitReflectedOnly` and can never clear its R branch; a `Plate` (a finite two-surface
+            /// slab that reflects AND transmits) defaults to `EmitBoth` and is constrainable to R-only
+            /// or T-only through `Emission`'s smart setters. Defaulted by `defaultSupportedEmission` and
+            /// mutated by `withSupportedEmission`, both of which route through `constrainEmission`.
+            supportedEmission : Emission
         }
+
+    /// The geometry-constrained DEFAULT supported emission of a sample (spec 0040 Part D.2 / operator
+    /// 010/Q3): a `ThinFilm` sits between semi-infinite half-spaces and is observable in reflection off
+    /// its stack ALONE, so it supports `EmitReflectedOnly`; a `Plate` is a finite slab that both
+    /// reflects and transmits, so it defaults to `EmitBoth`. Pure — the seeds and the sample editor
+    /// derive the field from the geometry rather than restating an `Emission` literal per site.
+    let defaultSupportedEmission (kind : SubstrateKind) : Emission =
+        match kind with
+        | ThinFilm -> EmitReflectedOnly
+        | Plate -> EmitBoth
+
+    /// Force a candidate supported emission back inside its geometry's constraint (spec 0040 Part D.2).
+    /// Under `ThinFilm` the reflected-only rule is ABSOLUTE: any candidate collapses to
+    /// `EmitReflectedOnly`, so a thin film can never clear its R branch (nor gain a transmitted branch
+    /// its physics does not support). Under `Plate` the candidate passes through untouched, so the
+    /// existing `Emission.withReflected` / `Emission.withTransmitted` setters constrain a plate to
+    /// R-only or T-only freely. This is the single enforcement point every emission change routes
+    /// through (`withSupportedEmission`).
+    let constrainEmission (kind : SubstrateKind) (candidate : Emission) : Emission =
+        match kind with
+        | ThinFilm -> EmitReflectedOnly
+        | Plate -> candidate
+
+    /// Set a sample's `supportedEmission`, re-imposing its geometry constraint (spec 0040 Part D.2):
+    /// the candidate is routed through `constrainEmission s.substrate`, so a `ThinFilm` sample stays
+    /// `EmitReflectedOnly` no matter what is offered (unclearable) and a `Plate` takes the candidate as
+    /// given. The single write path that keeps the field's invariant intact.
+    let withSupportedEmission (candidate : Emission) (s : Sample) : Sample =
+        { s with supportedEmission = constrainEmission s.substrate candidate }
 
     /// Whether a library entry is a seeded built-in the user must not delete, inactivate, or
     /// supersede, or an ordinary user-managed entry (spec 0038 Part F — the notion "ideal element"
@@ -520,6 +558,7 @@ module Library =
                 structure = plateStructure MaterialIds.glass152 (Thickness.mm 1.0<mm>)
                 substrate = Plate
                 description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
+                supportedEmission = defaultSupportedEmission Plate
             }
 
         let glassPlate2mm : Sample =
@@ -529,6 +568,7 @@ module Library =
                 structure = plateStructure MaterialIds.glass152 (Thickness.mm 2.0<mm>)
                 substrate = Plate
                 description = "Single transparent-glass plate, n = 1.52, thickness 2 mm, in vacuum."
+                supportedEmission = defaultSupportedEmission Plate
             }
 
         let glassFilm600 : Sample =
@@ -538,6 +578,7 @@ module Library =
                 structure = filmStructure MaterialIds.glass175 (Thickness.nm 600.0<nm>)
                 substrate = ThinFilm
                 description = "Single transparent-glass thin film, n = 1.75, thickness 600 nm, between vacuum."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         let glassVacuum : Sample =
@@ -547,6 +588,7 @@ module Library =
                 structure = plateStructure MaterialIds.glass150 (Thickness.mm 1.0<mm>)
                 substrate = Plate
                 description = "Semi-infinite transparent-glass / vacuum interface, n = 1.50 — the Fresnel / total-reflection demo."
+                supportedEmission = defaultSupportedEmission Plate
             }
 
         let glassFilm200 : Sample =
@@ -556,6 +598,7 @@ module Library =
                 structure = filmStructure MaterialIds.glass152 (Thickness.nm 200.0<nm>)
                 substrate = ThinFilm
                 description = "Single transparent-glass thin film, n = 1.52, 200 nm, between vacuum."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         let multilayerQw : Sample =
@@ -582,6 +625,7 @@ module Library =
                     }
                 substrate = ThinFilm
                 description = "41-layer quarter-wave stack: alternating glass (n=1.52) and vacuum λ/4 films for 600 nm, 21 glass + 20 vacuum layers."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         let euvMoSi : Sample =
@@ -607,6 +651,7 @@ module Library =
                     }
                 substrate = ThinFilm
                 description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         let uniaxial : Sample =
@@ -616,6 +661,7 @@ module Library =
                 structure = filmStructure MaterialIds.uniaxialCrystal (Thickness.nm 1000.0<nm>)
                 substrate = ThinFilm
                 description = "Uniaxial crystal thin film, nₒ = 1.5, nₑ = 1.65, thickness 1 µm, between vacuum."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         let biaxial : Sample =
@@ -625,6 +671,7 @@ module Library =
                 structure = filmStructure MaterialIds.biaxialCrystal (Thickness.nm 1000.0<nm>)
                 substrate = ThinFilm
                 description = "Biaxial crystal thin film, n = (1.5, 1.65, 1.75), thickness 1 µm, between vacuum."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         let activeCrystal : Sample =
@@ -634,6 +681,7 @@ module Library =
                 structure = plateStructure MaterialIds.activeCrystal Thickness.oneCentiMeter
                 substrate = Plate
                 description = "Planar active (gyrotropic) crystal plate, n₁₁ = 2.315, n₃₃ = 2.226, optical-activity ρ₁₂ = 1.5e-6, thickness 1 cm."
+                supportedEmission = defaultSupportedEmission Plate
             }
 
         let langasiteSilicon : Sample =
@@ -648,6 +696,7 @@ module Library =
                     }
                 substrate = ThinFilm
                 description = "Dispersive langasite thin film (10 µm) on a silicon substrate — wavelength-dependent n, k."
+                supportedEmission = defaultSupportedEmission ThinFilm
             }
 
         /// All seeded samples in Library display order (the order `seedEntries` lists them).

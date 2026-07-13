@@ -373,6 +373,10 @@ let toSample (id : SampleId) (m : Model) : Sample =
         structure = m.editor.structure
         substrate = m.substrate
         description = m.description
+        // No emission control in the editor yet (spec 0040 Part D.2 is Domain-only); the geometry
+        // default is the invariant-respecting value — a ThinFilm resolves to EmitReflectedOnly, a
+        // Plate to EmitBoth.
+        supportedEmission = defaultSupportedEmission m.substrate
     }
 
 let private stackErrorReason (e : SampleStackEditError) : string =

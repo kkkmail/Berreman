@@ -189,6 +189,7 @@ module SampleEditorWindowTests =
                 }
             substrate = ThinFilm
             description = "test three-film stack"
+            supportedEmission = defaultSupportedEmission ThinFilm
         }
 
     let private newModel () : Model =
@@ -809,6 +810,7 @@ module SampleEditorWindowTests =
                         }
                     substrate = ThinFilm
                     description = "uniaxial over glass"
+                    supportedEmission = defaultSupportedEmission ThinFilm
                 }
             let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
             window.Show()
@@ -968,6 +970,7 @@ module SampleEditorWindowTests =
                         }
                     substrate = ThinFilm
                     description = "step-019 activation re-query"
+                    supportedEmission = defaultSupportedEmission ThinFilm
                 }
             let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
             window.Show()
