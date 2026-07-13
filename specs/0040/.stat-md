@@ -1,0 +1,107 @@
+# Stats for 0040
+
+Generated: 2026-07-13T09:30:58Z (schema 7, tool 7)
+
+## TL;DR
+
+| arc_status | wall_clock_s | total_usd | slices | top_anomaly |
+| --- | --- | --- | --- | --- |
+| COMPLETE | 28795.000 | (none) | 13 | (none) |
+
+## timing
+
+| key | value |
+| --- | --- |
+| arc_started_at | 2026-07-13T00:10:32Z |
+| arc_ended_at | 2026-07-13T08:10:27Z |
+| total_wall_clock_seconds | 28795.000 |
+| spec_writer_seconds | 4093.000 |
+| splitter_seconds | (none) |
+| arc_runner_seconds | 24345.000 |
+| active_compute_seconds | 21628.998 |
+| arc_overhead_seconds | 2716.002 |
+| idle_gap_seconds (log-quiet, not wait) | 22666.000 |
+| largest_gaps | 2026-07-13T02:59:17Z=+4526s, 2026-07-13T01:49:50Z=+2270s, 2026-07-13T04:41:31Z=+1705s, 2026-07-13T06:21:44Z=+1350s |
+
+## cost
+
+| key | value |
+| --- | --- |
+| total_usd | (none) |
+| total_tokens | (none) |
+| by_phase | (empty) |
+| by_role | splitter=(none), arc_runner_worker=(none), architecture_critic=(none), reuse_critic=(none), code_judge=(none), resolver=(none), spec_author=(none), claim_checker=(none), gate_keeper=(none), handoff_verifier=(none) |
+| by_slice | (empty) |
+| cost_per_accepted_slice | (none) |
+| review_share | (none) |
+
+## iterations
+
+| key | value |
+| --- | --- |
+| spec_writer.cycles_by_intent | spec=1, claim-check=1, gates=1, handoff=2 |
+| splitter.rounds | 0 |
+| splitter.verifier_iterations_per_round | max=0 median=0.000 |
+| arc_runner.slice_attempts_total | 15 |
+| arc_runner.slices_with_retries | 2 |
+| arc_runner.review_cycles_per_slice | max=2 median=1.000 |
+| arc_runner.resolver_invocations | 0 |
+| arc_runner.route_backs_total | 1 |
+| arc_runner.max_route_backs_per_slice | 1 |
+
+## outcomes
+
+| key | value |
+| --- | --- |
+| arc_status | COMPLETE |
+| escalation_count | 0 |
+| escalations_by_reason | (empty) |
+| arc_escalation_trigger (terminal) | (none) |
+| gate_pass_rate | 0.986 |
+| gates_failed_top | build: failures=1 last=2026-07-13T06:44:51+00:00 exit=1 |
+| hangup_count | 0 |
+| operator_overrides | 0 |
+
+## sizes
+
+| key | value |
+| --- | --- |
+| spec_md_bytes | 12882 |
+| spec_md_lines | 214 |
+| spec_md_section_count | 7 |
+| slice_count | 13 |
+| gate_count_chosen | 65 |
+| gate_count_proposed_open | 0 |
+| per_slice | slice 001=sow:5551b impl:7769b tests:0; slice 002=sow:6006b impl:4120b tests:0; slice 003=sow:5691b impl:4258b tests:0; slice 004=sow:6438b impl:7928b tests:0; slice 005=sow:6219b impl:4151b tests:0; slice 006=sow:6607b impl:4744b tests:0; slice 007=sow:4417b impl:5047b tests:0; slice 008=sow:4618b impl:1991b tests:0; slice 009=sow:6691b impl:3481b tests:0; slice 010=sow:8523b impl:9178b tests:0; slice 011=sow:7437b impl:4710b tests:0; slice 012=sow:7429b impl:6096b tests:0; slice 013=sow:7733b impl:6106b tests:0 |
+| git | files_touched=116, lines_added=7535, lines_removed=317, commit_count=18 |
+
+## agent_mix
+
+| role | agent_name | runs | nonzero_exits |
+| --- | --- | --- | --- |
+| splitter | (none) | 0 | 0 |
+| arc_runner_worker | (none) | 0 | 0 |
+| architecture_critic | (none) | 0 | 0 |
+| reuse_critic | (none) | 0 | 0 |
+| code_judge | claude-opus-4-7 | 14 | 0 |
+| resolver | (none) | 0 | 0 |
+| spec_author | (none) | 0 | 0 |
+| claim_checker | (none) | 0 | 0 |
+| gate_keeper | (none) | 0 | 0 |
+| handoff_verifier | (none) | 0 | 0 |
+| implement_worker | claude-opus-4-7 | 14 | 0 |
+| wire_ui_worker | claude-opus-4-7 | 1 | 0 |
+
+## anomalies
+
+| category | entries |
+| --- | --- |
+| review_cost_exceeds_worker | (none) |
+| resolver_invocations_gt_one | (none) |
+| gates_over_estimate | (none) |
+| idle_gaps_over_30min | 2026-07-13T01:49:50Z=2270.0; 2026-07-13T02:59:17Z=4526.0 |
+| escalations | (none) |
+| hangups | (none) |
+| operator_overrides | (none) |
+
+
