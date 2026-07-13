@@ -276,6 +276,34 @@ module FacetsTests =
         let tree = buildTree (Representation [ AttributeKey "nonexistent"; familyKey ]) defs [] [ alpha ]
         Assert.Equal<AttributeKey list>([ familyKey ], tree.facets |> List.map (fun f -> f.key))
 
+    [<Fact>]
+    let ``buildTree orders branches case-insensitively by display label, overriding the ordinal value order`` () =
+        // Mixed-case discrete keys whose case-SENSITIVE ordinal order (the old
+        // structural value sort — 'B'=66 < 'Z'=90 < 'a'=97, so "Banana"; "Zinc";
+        // "apple") DISAGREES with the required case-INSENSITIVE label order
+        // (operator 010/Q1). The probe a value sort could never pass.
+        let labelKey = AttributeKey "label"
+        let labelDef : AttributeDef<TestEntry> =
+            {
+                key = labelKey
+                name = "Label"
+                kind = DiscreteAttribute
+                appliesTo = fun _ -> ApplicableAttribute
+                extract = fun e -> [ DiscreteValue (DiscreteKey e.family) ]
+            }
+        let items =
+            [
+                { entryName = "z"; kinds = []; family = "Zinc"; thicknessNm = None }
+                { entryName = "a"; kinds = []; family = "apple"; thicknessNm = None }
+                { entryName = "b"; kinds = []; family = "Banana"; thicknessNm = None }
+            ]
+        let tree = buildTree (Representation [ labelKey ]) [ labelDef ] [] items
+        let labels =
+            match tree.facets with
+            | [ node ] -> node.branches |> List.map (fun b -> b.label)
+            | other -> failwith $"expected exactly the label facet, got %A{other}"
+        Assert.Equal<string list>([ "apple"; "Banana"; "Zinc" ], labels)
+
     // ---- the plain-text filter as an ordinary constraint ----
 
     let private nameDef (query : string) : AttributeDef<TestEntry> =

@@ -223,10 +223,11 @@ module Facets =
     /// Multi-valued items count once in each branch they carry (so branch
     /// counts need not sum to the total) and at most once per branch.
     /// Branches derive from the filtered population, so zero-count branches
-    /// are absent by construction; branch order is the structural sort of the
-    /// value (discrete by key string, numeric by magnitude). An attribute
-    /// inapplicable to every filtered item is omitted entirely, as is one
-    /// that extracts no values at all and a representation key with no def.
+    /// are absent by construction; branch order is the case-insensitive
+    /// (ordinal) sort of the branch DISPLAY LABEL (operator 010/Q1), so the
+    /// tree reads alphabetically regardless of key casing or corpus order. An
+    /// attribute inapplicable to every filtered item is omitted entirely, as is
+    /// one that extracts no values at all and a representation key with no def.
     let buildTree (representation : Representation) (defs : AttributeDef<'Item> list) (applied : AppliedConstraint list) (items : 'Item list) : FacetTree =
         let filtered = filter defs applied items
 
@@ -245,7 +246,8 @@ module Facets =
                             label = value.label
                             count = ItemCount (List.length occurrences)
                         })
-                    |> List.sortBy (fun (b : FacetBranch) -> b.value)
+                    |> List.sortWith (fun (a : FacetBranch) (b : FacetBranch) ->
+                        String.Compare(a.label, b.label, StringComparison.OrdinalIgnoreCase))
 
                 match branches with
                 | [] -> None

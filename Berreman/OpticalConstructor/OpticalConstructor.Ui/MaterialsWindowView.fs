@@ -653,6 +653,14 @@ let private chipLabel (defs : AttributeDef<MaterialEntry> list) (applied : Appli
         | NumericRangeSelection range -> $"%g{range.lower}–%g{range.upper}"
     $"%s{facetName}: %s{valueText}"
 
+/// Sort projected tree nodes alphabetically (case-insensitive, ordinal) by their display
+/// label (operator 010/Q1): the top-level facet groups and the entry leaves read
+/// alphabetically, OVERRIDING the representation / corpus order the engine hands back.
+let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : FacetedTreeControls.TreeNode list =
+    nodes
+    |> List.sortWith (fun (a : FacetedTreeControls.TreeNode) (b : FacetedTreeControls.TreeNode) ->
+        System.String.Compare(a.label, b.label, System.StringComparison.OrdinalIgnoreCase))
+
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, tree, previews), so
 /// a verb's write — or a category rename through the shared proxy — shows in the same pass.
@@ -736,6 +744,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                                 expansion = FacetedTreeControls.ExpandedNode
                                 children = []
                              } : FacetedTreeControls.TreeNode))
+                        |> sortNodesByLabel
                 }
             let engineTree = Facets.buildTree (Representation m.representation.order) inputs.defs inputs.appliedAll inputs.corpus
             let facetNodes =
@@ -757,6 +766,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                                     children = []
                                  } : FacetedTreeControls.TreeNode))
                      } : FacetedTreeControls.TreeNode))
+                |> sortNodesByLabel
             entriesNode :: facetNodes
     {
         tree = tree

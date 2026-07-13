@@ -451,20 +451,56 @@ module MaterialsWindowTests =
         | other -> Assert.Fail($"expected a selectable but non-editable preset, got %A{other}")
 
     [<Fact>]
-    let ``choosing a representation reshapes the tree facet order but never the constraints or the corpus`` () =
+    let ``the tree reads alphabetically regardless of representation, while the picker still reshapes the offers`` () =
+        // The faceted TREE is now sorted case-insensitively by display label at every level
+        // (operator 010/Q1), OVERRIDING representation order — so choosing a representation no
+        // longer reshapes the tree. The picker's effect survives in the OFFERS, which still
+        // follow the chosen facet order.
         let _, m = freshModel ()
-        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
-        let firstFacetCode (model : MW.Model) : string =
-            ((MW.facetedState model).tree |> List.item 1).code
-        Assert.Equal("facet:" + materialCategoryKey.value, firstFacetCode constrained)
-        let reshaped = MW.update (MW.ChooseRepresentation "by-physics") constrained
+        let caseInsensitive (a : string) (b : string) : int =
+            System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
+        let treeFacetLabels (model : MW.Model) : string list =
+            (MW.facetedState model).tree |> List.tail |> List.map (fun n -> n.label)
+        let firstOfferCode (model : MW.Model) : string =
+            (MW.facetedState model).offers |> List.head |> fun g -> g.code
+        // The tree's facet groups read alphabetically — NOT in the category-first representation
+        // order (Category would otherwise lead, not Anisotropy).
+        let byCategoryTree = treeFacetLabels m
+        Assert.Equal<string list>(List.sortWith caseInsensitive byCategoryTree, byCategoryTree)
+        Assert.Equal(materialCategoryKey.value, firstOfferCode m)
+        // The physics reshuffle reorders the OFFERS (Anisotropy now leads) but leaves the tree
+        // alphabetical and identical.
+        let reshaped = MW.update (MW.ChooseRepresentation "by-physics") m
         Assert.Equal("by-physics", (MW.facetedState reshaped).activeRepresentation)
-        Assert.Equal("facet:" + materialAnisotropyKey.value, firstFacetCode reshaped)
-        // Search order ≠ representation order: the applied chip and the result set are untouched.
-        Assert.Equal(1, List.length (MW.facetedState reshaped).breadcrumbs)
-        Assert.Equal(4, (MW.facetedState reshaped).resultCount)
+        Assert.Equal(materialAnisotropyKey.value, firstOfferCode reshaped)
+        Assert.Equal<string list>(byCategoryTree, treeFacetLabels reshaped)
+        // Search order ≠ representation order: applying a constraint after the reshuffle keeps its
+        // chip and count regardless of the active representation.
+        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) reshaped
+        Assert.Equal(1, List.length (MW.facetedState constrained).breadcrumbs)
+        Assert.Equal(4, (MW.facetedState constrained).resultCount)
         // An unknown code is inert.
-        Assert.Equal<MW.Model>(reshaped, MW.update (MW.ChooseRepresentation "no-such") reshaped)
+        Assert.Equal<MW.Model>(constrained, MW.update (MW.ChooseRepresentation "no-such") constrained)
+
+    [<Fact>]
+    let ``the projected tree lists entry leaves and facet branches in case-insensitive alphabetical label order`` () =
+        // Both the entry leaves (corpus order overridden) and every facet's branches read
+        // alphabetically by label (operator 010/Q1) — the window-projection half of the acceptance.
+        let _, m = freshModel ()
+        let state = MW.facetedState m
+        let caseInsensitive (a : string) (b : string) : int =
+            System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
+        let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
+        // Level 1 — the entry leaves under the entries group (the seeded corpus is NOT alphabetical).
+        let entries = List.head state.tree
+        let leafLabels = entries.children |> List.map (fun n -> n.label)
+        Assert.Equal(12, List.length leafLabels)
+        Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
+        // Level 2/3 — every facet group's branches (each material facet is discrete, so its
+        // branches come straight from the engine's now-alphabetical buildTree).
+        for group in state.tree |> List.tail do
+            let branchLabels = group.children |> List.map (fun n -> n.label)
+            Assert.True(isSorted branchLabels, $"branches of %s{group.label} must be alphabetical: %A{branchLabels}")
 
     [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =

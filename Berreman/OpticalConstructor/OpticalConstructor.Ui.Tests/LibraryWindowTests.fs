@@ -251,6 +251,27 @@ module LibraryWindowTests =
             kindOffer.values |> List.map (fun v -> v.code, v.previewCount))
 
     [<Fact>]
+    let ``the projected tree lists entry leaves and facet groups in case-insensitive alphabetical label order`` () =
+        // The window-projection half of the acceptance (operator 010/Q1): both the entry leaves
+        // (corpus order overridden) and the top-level facet groups (representation order
+        // overridden — "By kind" leads with Kind, not the alphabetical head) read alphabetically
+        // by label. The numeric film-thickness BUCKETS keep their range order and are not asserted.
+        let _, m = freshModel ()
+        let state = LW.facetedState m
+        let caseInsensitive (a : string) (b : string) : int =
+            System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
+        let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
+        // Level 1a — the entry leaves (17 seeded entries, NOT in alphabetical corpus order).
+        let entries = List.head state.tree
+        let leafLabels = entries.children |> List.map (fun n -> n.label)
+        Assert.Equal(17, List.length leafLabels)
+        Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
+        // Level 1b — the top-level facet groups (Kind no longer leads by representation order).
+        let facetLabels = state.tree |> List.tail |> List.map (fun n -> n.label)
+        Assert.True(List.length facetLabels > 1, "the by-kind tree offers several facet groups")
+        Assert.True(isSorted facetLabels, $"facet groups must be alphabetical: %A{facetLabels}")
+
+    [<Fact>]
     let ``the committed text filter narrows the corpus over display names and echoes as the box draft`` () =
         let _, m = freshModel ()
         let narrowed = LW.update (LW.CommitTextFilter "glass") m
