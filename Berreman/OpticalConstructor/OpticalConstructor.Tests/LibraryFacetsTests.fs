@@ -303,16 +303,19 @@ module LibraryFacetsTests =
         Assert.Equal<string list>([ "Constant" ], extractedKeys def glass150Entry)
 
     [<Fact>]
-    let ``the transparency facet is offered for constant data-carrying materials only`` () =
+    let ``the transparency facet is total and lands dispersive materials under Absorbing`` () =
+        // Spec 0040 step 005 (operator 010/Q2): the constant-only gate is dropped, so the
+        // transparency facet applies to EVERY entry. Constant materials still classify from
+        // their eps value tree; every dispersive material lands under Absorbing.
         let def = materialDef materialTransparencyKey
-        Assert.True(applies def glass152Entry)
-        Assert.True(applies def euvMolybdenumEntry)
-        // Dispersive → never offered (operator, 003/Q9): silicon/langasite are dispersive.
-        Assert.False(applies def siliconEntry)
-        Assert.False(applies def langasiteEntry)
-        // Spec 0040 step 004: the vacuum spacer now carries a CONSTANT value tree, so it
-        // classifies (Transparent) rather than being skipped as a coded preset.
-        Assert.True(applies def vacuumEntry)
+        for entry in builtInEntries do
+            Assert.True(applies def entry)
+        Assert.Equal<string list>([ "Transparent" ], extractedKeys def glass152Entry)
+        Assert.Equal<string list>([ "Absorbing" ], extractedKeys def euvMolybdenumEntry)
+        // Dispersive silicon/langasite now classify Absorbing (previously they offered nothing).
+        Assert.Equal<string list>([ "Absorbing" ], extractedKeys def siliconEntry)
+        Assert.Equal<string list>([ "Absorbing" ], extractedKeys def langasiteEntry)
+        // The re-seeded constant vacuum spacer still classifies from its value tree.
         Assert.Equal<string list>([ "Transparent" ], extractedKeys def vacuumEntry)
 
     [<Fact>]
@@ -322,28 +325,64 @@ module LibraryFacetsTests =
         Assert.Equal<string list>([ "Transparent" ], extractedKeys def activeEntry)
         Assert.Equal<string list>([ "Absorbing" ], extractedKeys def euvMolybdenumEntry)
 
+    [<Fact>]
+    let ``category, anisotropy, dispersion and transparency branch counts each sum to the material count`` () =
+        // Spec 0040 step 005 acceptance: the four single-valued facets are TOTAL over the seed
+        // corpus — every built-in contributes exactly one branch value to each, so a single-facet
+        // tree's branch counts sum to the material count. The MULTI-valued dispersion-model facet
+        // is deliberately excluded (its per-axis/segment counts need not sum to the total).
+        let materialCount = List.length builtInEntries
+        let branchCountSum (key : AttributeKey) : int =
+            let tree = buildTree (Representation [ key ]) materialFacets [] builtInEntries
+            let node = List.exactlyOne tree.facets
+            node.branches |> List.sumBy (fun b -> b.count.value)
+        for key in [ materialCategoryKey; materialAnisotropyKey; materialDispersionKey; materialTransparencyKey ] do
+            Assert.Equal(materialCount, branchCountSum key)
+
+    [<Fact>]
+    let ``every dispersive material appears under the Transparency Absorbing branch`` () =
+        // Spec 0040 step 005 acceptance: the transparency facet is total, and every dispersive
+        // material lands under Absorbing (its wavelength-dependent eps is a segment tree, never a
+        // constant transparent value).
+        let def = materialDef materialTransparencyKey
+        let dispersiveEntries =
+            builtInEntries |> List.filter (fun e -> materialDispersion e = DispersiveMaterial)
+        // The seed corpus does carry dispersive materials (silicon / langasite / the EUV metals).
+        Assert.NotEmpty(dispersiveEntries)
+        for entry in dispersiveEntries do
+            Assert.Equal<string list>([ "Absorbing" ], extractedKeys def entry)
+        // ... and the Absorbing branch of the built tree counts every one of them.
+        let tree = buildTree (Representation [ materialTransparencyKey ]) materialFacets [] builtInEntries
+        let node = List.exactlyOne tree.facets
+        let absorbingCount =
+            node.branches
+            |> List.filter (fun b -> b.label = (transparencyKey Absorbing).value)
+            |> List.sumBy (fun b -> b.count.value)
+        Assert.True(absorbingCount >= List.length dispersiveEntries)
+
     // =======================================================================
     // Dependent facets vanish; the seeded corpus tree.
     // =======================================================================
 
     [<Fact>]
     let ``dependent facets vanish entirely over a population they never apply to`` () =
-        // Silicon + langasite are DISPERSIVE, so transparency (constant-only) and
-        // magnetic (neither is magnetic) vanish — no greyed/empty nodes exist. Since
-        // spec 0040 step 004 both carry dispersive value trees, so anisotropy, the
-        // dispersion-model facet and (langasite) the activity facets DO apply.
+        // Silicon + langasite are neither MAGNETIC, so the magnetic facet vanishes — no
+        // greyed/empty node exists. Since spec 0040 step 005 the anisotropy and transparency
+        // facets are TOTAL, both apply (both land under Absorbing for transparency); and both
+        // carry dispersive value trees, so the dispersion-model facet and (langasite) the
+        // activity facets also apply.
         let tree = buildTree materialRepresentation materialFacets [] [ siliconEntry; langasiteEntry ]
         Assert.Equal<AttributeKey list>(
             [
                 materialCategoryKey
                 materialAnisotropyKey
                 materialDispersionKey
+                materialTransparencyKey
                 materialDispersionModelKey
                 materialGyrationClassKey
                 materialHandednessKey
             ],
             tree.facets |> List.map (fun f -> f.key))
-        Assert.DoesNotContain(materialTransparencyKey, tree.facets |> List.map (fun f -> f.key))
         Assert.DoesNotContain(materialMagneticKey, tree.facets |> List.map (fun f -> f.key))
 
     [<Fact>]
@@ -516,17 +555,21 @@ module LibraryFacetsTests =
 
     [<Fact>]
     let ``a lifted facet vanishes when no constituent offers it`` () =
-        // Both constituents of langasite-on-silicon are DISPERSIVE, so the lifted
-        // transparency facet (constant-only) is inapplicable and its node is absent.
-        // Since spec 0040 step 004 both carry a value tree, so the lifted ANISOTROPY
-        // facet now applies — the coded-preset gap is closed.
+        // Neither constituent of langasite-on-silicon is MAGNETIC, so the lifted magnetic
+        // facet is inapplicable and its node is absent. Since spec 0040 steps 004/005 both
+        // constituents carry a value tree and the anisotropy/transparency facets are TOTAL,
+        // both of those lifted facets now apply — the coded-preset gap is closed (the lifted
+        // transparency is the distinct union over the two Absorbing constituents).
         let entry = SampleItem SeedSamples.langasiteSilicon
         Assert.True(applies (libraryDef materialAnisotropyKey) entry)
-        Assert.False(applies (libraryDef materialTransparencyKey) entry)
+        Assert.True(applies (libraryDef materialTransparencyKey) entry)
+        Assert.Equal<string list>([ "Absorbing" ], extractedKeys (libraryDef materialTransparencyKey) entry)
+        Assert.False(applies (libraryDef materialMagneticKey) entry)
         let tree = buildTree libraryRepresentation libraryDefs [] [ entry ]
         let keys = tree.facets |> List.map (fun f -> f.key)
         Assert.Contains(materialAnisotropyKey, keys)
-        Assert.DoesNotContain(materialTransparencyKey, keys)
+        Assert.Contains(materialTransparencyKey, keys)
+        Assert.DoesNotContain(materialMagneticKey, keys)
         // The substrate-material facet is likewise absent (ThinFilm geometry).
         Assert.DoesNotContain(sampleSubstrateMaterialKey, keys)
         Assert.Contains(materialCategoryKey, keys)
