@@ -450,6 +450,8 @@ module WindowLauncherTests =
             materialsWindow.Show()
             Dispatcher.UIThread.RunJobs()
             commitFilter materialsWindow "1.52"
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn materialsWindow (MaterialsWindowView.entryNode MaterialLibrary.MaterialIds.glass152)
             // Observe the editors the real launcher opens (the WireUiComposition seam).
             let opened = ResizeArray<Window>()

@@ -269,6 +269,10 @@ module UiIds =
         let manualRangeBox (groupCode : string) : string = "FacetManualRangeBox_" + groupCode
         /// A tree node row's clickable id, by the node's (tree-unique) code.
         let treeNode (code : string) : string = "FacetTreeNode_" + code
+        /// A tree node's disclosure-chevron id (spec 0040 step 002) — present ONLY for a parent
+        /// (a node with children); a leaf renders none. A distinct prefix from `treeNode` so the
+        /// chevron is never miscounted as a label row.
+        let treeNodeChevron (code : string) : string = "FacetTreeChevron_" + code
 
     /// The pop-out ScottPlot chart window's controls (`ChartWindow`, formerly `ChartWindowIds`).
     module ChartWindow =

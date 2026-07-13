@@ -82,6 +82,23 @@ type TreeBuildRequest =
     | RequestedTreeBuild
     | NoTreeBuildRequest
 
+/// The tree-node codes the user has explicitly expanded (spec 0040 step 002): an elevated named
+/// wrapper over the code set — never a naked `Set<string>` on the model surface. The tree is
+/// COLLAPSED by default (a code absent from the set projects `CollapsedNode`); a disclosure-chevron
+/// press toggles exactly one code's membership, and the choice PERSISTS across projections.
+type ExpandedNodes =
+    | ExpandedNodes of Set<string>
+
+    member this.value = let (ExpandedNodes codes) = this in codes
+    /// Whether the node with this code is expanded (its children render).
+    member this.isExpanded (code : string) : bool = this.value.Contains code
+    /// Flip one code's membership — expand a collapsed node, collapse an expanded one.
+    member this.toggle (code : string) : ExpandedNodes =
+        let codes = this.value
+        ExpandedNodes (if codes.Contains code then Set.remove code codes else Set.add code codes)
+
+    static member empty : ExpandedNodes = ExpandedNodes Set.empty
+
 /// The window's typed refusals, surfaced as the inline message (errors are values — never a
 /// dialog, never a throw). Each case carries its diagnostic payload.
 type LibraryWindowError =
@@ -192,6 +209,9 @@ type Model =
         representation : LibraryRepresentation
         /// Whether the user has explicitly materialized a gated tree.
         buildRequest : TreeBuildRequest
+        /// The tree-node codes the user has explicitly expanded (spec 0040 step 002) — the tree is
+        /// collapsed by default, so this starts empty and every top-level node opens collapsed.
+        expandedNodes : ExpandedNodes
         /// The selected entry's `entryId` (the Edit / Remove verbs' target and the view panel's
         /// subject). The entry-id STRING is the Library domain's uniform entry-identity seam
         /// (`LibraryEntry.entryId` / `tryGetEntry` — a sample's elevated `SampleId` crosses it
@@ -224,6 +244,7 @@ let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry
         textFilter = TextQuery ""
         representation = byKindRepresentation
         buildRequest = NoTreeBuildRequest
+        expandedNodes = ExpandedNodes.empty
         selectedEntryId = None
         showInactive = ActiveOnly
         removeGate = NoPendingRemove
@@ -246,6 +267,8 @@ type Msg =
     | ChooseRepresentation of string
     /// Materialize the gated tree (the Show/Search button).
     | RequestTreeBuild
+    /// Toggle one tree node's expansion (a disclosure-chevron press — spec 0040 step 002).
+    | ToggleNode of string
     /// Select the entry leaf with this `entryId` (the view panel's subject).
     | SelectEntry of string
     /// The verbs, rewired from the retired Library bay (spec 0038 step 015).
@@ -582,6 +605,10 @@ let update (msg : Msg) (m : Model) : Model =
         | None -> m
     | RequestTreeBuild ->
         { m with buildRequest = RequestedTreeBuild }
+    | ToggleNode code ->
+        // Flip one tree node's expansion (a disclosure-chevron press) — a display-only change, so
+        // no gate is disarmed and no selection moves.
+        { m with expandedNodes = m.expandedNodes.toggle code }
     | SelectEntry id ->
         // A new selection shows its LATEST version (the editable default) and disarms both gates.
         { disarmed m with selectedEntryId = Some id; viewedVersion = None }
@@ -768,6 +795,11 @@ let facetedState (m : Model) : FacetedTreeControls.State =
     // toggle off the sample corpus is `ActiveOnly`, so no leaf ever badges; with it on, a retired
     // sample's latest version reads `label — inactive` (presets never badge).
     let activeIds = activeSampleIds m
+    // The tree is collapsed by default (spec 0040 step 002): a node renders `ExpandedNode` only
+    // when its code is in the persisted expanded-node set, `CollapsedNode` otherwise.
+    let expansionOf (code : string) : FacetedTreeControls.NodeExpansion =
+        if m.expandedNodes.isExpanded code then FacetedTreeControls.ExpandedNode
+        else FacetedTreeControls.CollapsedNode
     // The host decides gating (result count above the Domain threshold, no explicit build yet);
     // the control only obeys (step 012). A gated pass projects NO tree at all — the whole point
     // is skipping the one potentially heavy render (§0.7).
@@ -858,7 +890,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                     code = "entries"
                     label = "Library"
                     countOpt = Some resultCount
-                    expansion = FacetedTreeControls.ExpandedNode
+                    expansion = expansionOf "entries"
                     children =
                         filtered
                         |> List.map (fun entry ->
@@ -866,7 +898,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                                 code = entryNodeCode entry.entryId
                                 label = (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
                                 countOpt = None
-                                expansion = FacetedTreeControls.ExpandedNode
+                                expansion = expansionOf (entryNodeCode entry.entryId)
                                 children = []
                              } : FacetedTreeControls.TreeNode))
                         |> sortNodesByLabel
@@ -884,7 +916,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                                     code = "branch:" + facet.key.value + ":" + numericRangeCode bucket.range
                                     label = numericRangeText bucket.range
                                     countOpt = Some bucket.count.value
-                                    expansion = FacetedTreeControls.ExpandedNode
+                                    expansion = expansionOf ("branch:" + facet.key.value + ":" + numericRangeCode bucket.range)
                                     children = []
                                  } : FacetedTreeControls.TreeNode))
                         | Some _ | None ->
@@ -894,14 +926,14 @@ let facetedState (m : Model) : FacetedTreeControls.State =
                                     code = "branch:" + facet.key.value + ":" + branch.value.label
                                     label = branch.label
                                     countOpt = Some branch.count.value
-                                    expansion = FacetedTreeControls.ExpandedNode
+                                    expansion = expansionOf ("branch:" + facet.key.value + ":" + branch.value.label)
                                     children = []
                                  } : FacetedTreeControls.TreeNode))
                     ({
                         code = "facet:" + facet.key.value
                         label = facet.name
                         countOpt = None
-                        expansion = FacetedTreeControls.ExpandedNode
+                        expansion = expansionOf ("facet:" + facet.key.value)
                         children = branches
                      } : FacetedTreeControls.TreeNode))
                 |> sortNodesByLabel
@@ -944,6 +976,7 @@ let facetedHandlers (dispatch : Msg -> unit) : FacetedTreeControls.Handlers =
                 match entryIdOfNodeCode code with
                 | Some id -> dispatch (SelectEntry id)
                 | None -> ()
+        toggleNode = fun code -> dispatch (ToggleNode code)
         applyManualRange =
             fun groupCode raw ->
                 match parseManualRange raw with

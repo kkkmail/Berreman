@@ -81,6 +81,16 @@ module LibraryWindowTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    /// Expand the tree node with this code by clicking its disclosure chevron (spec 0040 step 002).
+    /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
+    /// only after this — and the expansion PERSISTS across the window's later re-renders.
+    let private expandNode (window : Window) (code : string) : unit =
+        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+
+    /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
+    /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
+    let private expandEntries (window : Window) : unit = expandNode window "entries"
+
     /// The display text under the control carrying `id` (the control itself when it is a
     /// TextBlock, its first TextBlock descendant otherwise).
     let private textOf (window : Window) (id : string) : string =
@@ -270,6 +280,32 @@ module LibraryWindowTests =
         let facetLabels = state.tree |> List.tail |> List.map (fun n -> n.label)
         Assert.True(List.length facetLabels > 1, "the by-kind tree offers several facet groups")
         Assert.True(isSorted facetLabels, $"facet groups must be alphabetical: %A{facetLabels}")
+
+    [<Fact>]
+    let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
+        // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
+        // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
+        let _, m = freshModel ()
+        let entriesOf (model : LW.Model) : FacetedTreeControls.TreeNode = List.head (LW.facetedState model).tree
+        // First open: EVERY top-level node (the entries group and every facet group) is CollapsedNode.
+        let opened = LW.facetedState m
+        for node in opened.tree do
+            Assert.Equal(FacetedTreeControls.CollapsedNode, node.expansion)
+        // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
+        Assert.Equal(17, List.length (entriesOf m).children)
+        // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
+        let expanded = LW.update (LW.ToggleNode "entries") m
+        Assert.True(expanded.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
+        // A facet group toggles INDEPENDENTLY while entries stays expanded (the set holds both).
+        let bothOpen = LW.update (LW.ToggleNode ("facet:" + entryKindFacetKey.value)) expanded
+        Assert.True(bothOpen.expandedNodes.isExpanded "entries")
+        let kindNode = (LW.facetedState bothOpen).tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+        Assert.Equal(FacetedTreeControls.ExpandedNode, kindNode.expansion)
+        // A second toggle collapses entries again (persisted).
+        let collapsed = LW.update (LW.ToggleNode "entries") bothOpen
+        Assert.False(collapsed.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
 
     [<Fact>]
     let ``the committed text filter narrows the corpus over display names and echoes as the box draft`` () =
@@ -611,6 +647,9 @@ module LibraryWindowTests =
         let window = LibraryWindow(library, samples, materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
+        // clicking proofs below find their rows (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     [<Fact>]
@@ -659,10 +698,15 @@ module LibraryWindowTests =
             let library, samples, materials = freshStores ()
             let window = mountLibraryWindow library samples materials
             Assert.Equal("17 results", textOf window UiIds.FacetedTree.resultCount)
-            // Sample and preset leaves both render.
+            // Sample and preset leaves both render (entries is auto-expanded by the mount helper).
             Assert.True(isPresent window (LW.entryNode glassFilm600EntryId))
             Assert.True(isPresent window (LW.entryNode "src-600"))
-            // The kind facet's branches: every entry kind, each with its count.
+            // The kind facet's branches: every entry kind, each with its count. The facet group
+            // opens collapsed (spec 0040 step 002); collapse the entries group first (so the facet
+            // rows rise back to the top and the facet chevron is reachable), then expand the kind
+            // facet to reveal its branches.
+            expandEntries window
+            expandNode window ("facet:" + entryKindFacetKey.value)
             for kind, count in [ "Sample", 11; "Source", 1; "Detector", 2; "Polarizer", 3 ] do
                 let branchId = UiIds.FacetedTree.treeNode ("branch:" + entryKindFacetKey.value + ":" + kind)
                 Assert.True(isPresent window branchId, $"the by-kind tree must list the %s{kind} branch")
@@ -832,7 +876,37 @@ module LibraryWindowTests =
             Assert.Equal("17 results", textOf window UiIds.FacetedTree.resultCount)
             clickOn window UiIds.FacetedTree.showTreeButton
             Assert.True(treeRowCount () > 0, "the explicit build must materialize the tree")
+            // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
+            // the leaves.
+            expandEntries window
             Assert.True(isPresent window (LW.entryNode "src-600"))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (002): the tree opens collapsed and the entries chevron toggles its leaves in the same render pass`` () =
+        HeadlessSession.run (fun () ->
+            let library, samples, materials = freshStores ()
+            let _, context = stubContext library samples materials
+            // Mount the REAL MVU loop directly (NOT the auto-expanding helper) so the first render
+            // is the collapsed default.
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple (fun () -> LW.init context Browse) LW.update LW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // First open: the entries group renders a collapsed row WITH a chevron, but its leaves
+            // do NOT render.
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNode "entries"), "the entries group row must render")
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "entries"), "the entries group must carry a disclosure chevron")
+            Assert.False(isPresent window (LW.entryNode "src-600"), "a collapsed tree must hide its entry leaves on first open")
+            // Clicking the chevron expands the group — the leaves render in the same pass.
+            expandEntries window
+            Assert.True(isPresent window (LW.entryNode "src-600"), "the chevron click must reveal the entry leaves")
+            // A second click collapses it again.
+            expandEntries window
+            Assert.False(isPresent window (LW.entryNode "src-600"), "a second chevron click must collapse the group")
             window.Close())
 
     // ============================ step 016 — Select mode (pure) ============================
@@ -938,6 +1012,9 @@ module LibraryWindowTests =
         let window = LibraryWindow(library, samples, materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
+        // their leaves (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     /// Mount the REAL Main workbench MVU loop headless WITH a captured dispatch (the
@@ -1182,6 +1259,9 @@ module LibraryWindowTests =
             let banner = textOf selectWindow UiIds.LibraryWindow.selectConstraint
             Assert.Contains("Detector", banner)
             Assert.Contains("fixed", banner)
+            // The launcher-opened window opens collapsed (spec 0040 step 002) — expand its entries
+            // group to reach the offered leaves.
+            expandEntries selectWindow
             Assert.True(isPresent selectWindow (LW.entryNode "det-intensity"))
             Assert.False(isPresent selectWindow (LW.entryNode "src-600"), "an out-of-kind entry must not be offered")
             Assert.True(isPresent selectWindow UiIds.LibraryWindow.selectButton)
@@ -1430,6 +1510,8 @@ module LibraryWindowTests =
             |> Program.run
             window.Show()
             Dispatcher.UIThread.RunJobs()
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
+            expandEntries window
             clickOn window (LW.entryNode entryId)
             // The version list renders both versions; the latest view carries NO view-only note.
             Assert.True(isPresent window UiIds.LibraryWindow.versionsPanel, "the view panel must list the sample's versions")

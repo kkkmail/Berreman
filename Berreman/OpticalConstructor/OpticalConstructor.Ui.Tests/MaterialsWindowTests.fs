@@ -75,6 +75,16 @@ module MaterialsWindowTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    /// Expand the tree node with this code by clicking its disclosure chevron (spec 0040 step 002).
+    /// The tree is collapsed by default, so a node's children (entry leaves, facet branches) render
+    /// only after this — and the expansion PERSISTS across the window's later re-renders.
+    let private expandNode (window : Window) (code : string) : unit =
+        clickOn window (UiIds.FacetedTree.treeNodeChevron code)
+
+    /// Expand the "entries" group so its entry-leaf children render (the common precondition for the
+    /// leaf-clicking headless proofs, which pre-date the collapsed-by-default tree).
+    let private expandEntries (window : Window) : unit = expandNode window "entries"
+
     /// The display text under the control carrying `id` (the control itself when it is a
     /// TextBlock, its first TextBlock descendant otherwise).
     let private textOf (window : Window) (id : string) : string =
@@ -503,6 +513,28 @@ module MaterialsWindowTests =
             Assert.True(isSorted branchLabels, $"branches of %s{group.label} must be alphabetical: %A{branchLabels}")
 
     [<Fact>]
+    let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
+        // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
+        // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
+        let _, m = freshModel ()
+        let entriesOf (model : MW.Model) : FacetedTreeControls.TreeNode = List.head (MW.facetedState model).tree
+        // First open: EVERY top-level node (the entries group and every facet group) is CollapsedNode.
+        let opened = MW.facetedState m
+        for node in opened.tree do
+            Assert.Equal(FacetedTreeControls.CollapsedNode, node.expansion)
+        // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
+        Assert.Equal(12, List.length (entriesOf m).children)
+        // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
+        let expanded = MW.update (MW.ToggleNode "entries") m
+        Assert.True(expanded.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
+        Assert.Equal(12, List.length (entriesOf expanded).children)
+        // A second toggle collapses it again (persisted, so it survives an unrelated re-projection).
+        let collapsed = MW.update (MW.ToggleNode "entries") expanded
+        Assert.False(collapsed.expandedNodes.isExpanded "entries")
+        Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
+
+    [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
@@ -552,6 +584,9 @@ module MaterialsWindowTests =
         let window = MaterialsWindow(materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
+        // clicking proofs below find their rows (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     [<Fact>]
@@ -760,7 +795,37 @@ module MaterialsWindowTests =
             Assert.Equal("12 results", textOf window UiIds.FacetedTree.resultCount)
             clickOn window UiIds.FacetedTree.showTreeButton
             Assert.True(treeRowCount window > 0, "the explicit build must materialize the tree")
+            // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
+            // the leaves.
+            expandEntries window
             Assert.True(isPresent window (MW.entryNode MaterialIds.glass152))
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (002): the tree opens collapsed and the entries chevron toggles its leaves in the same render pass`` () =
+        HeadlessSession.run (fun () ->
+            let materials, _, categories = freshStores ()
+            let _, context = stubContext materials categories
+            // Mount the REAL MVU loop directly (NOT the auto-expanding helper) so the first render
+            // is the collapsed default.
+            let window = HostWindow(Width = 900.0, Height = 760.0)
+            Program.mkSimple (fun () -> MW.init context Browse) MW.update MW.view
+            |> Program.withHost window
+            |> Program.run
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // First open: the entries group renders a collapsed row WITH a chevron, but its leaves
+            // do NOT render.
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNode "entries"), "the entries group row must render")
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "entries"), "the entries group must carry a disclosure chevron")
+            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a collapsed tree must hide its entry leaves on first open")
+            // Clicking the chevron expands the group — the leaves render in the same pass.
+            expandEntries window
+            Assert.True(isPresent window (MW.entryNode MaterialIds.glass152), "the chevron click must reveal the entry leaves")
+            // A second click collapses it again.
+            expandEntries window
+            Assert.False(isPresent window (MW.entryNode MaterialIds.glass152), "a second chevron click must collapse the group")
             window.Close())
 
     // ============================ step 016 — Select mode (pure) ============================
@@ -839,6 +904,9 @@ module MaterialsWindowTests =
         let window = MaterialsWindow(materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
+        // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
+        // their leaves (expansion persists across the window's lifetime).
+        expandEntries window
         window
 
     /// Mount the REAL Sample-editor MVU loop headless WITH a captured dispatch, so a Materials
@@ -1206,6 +1274,8 @@ module MaterialsWindowTests =
             |> Program.run
             window.Show()
             Dispatcher.UIThread.RunJobs()
+            // The tree opens collapsed (spec 0040 step 002) — expand entries to reach the leaf.
+            expandEntries window
             clickOn window (MW.entryNode id)
             // The version list renders both versions; the latest view carries NO view-only note.
             Assert.True(isPresent window UiIds.MaterialsWindow.versionsPanel, "the view panel must list the entry's versions")

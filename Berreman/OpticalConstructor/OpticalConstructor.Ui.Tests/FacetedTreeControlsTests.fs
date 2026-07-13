@@ -138,6 +138,7 @@ module FacetedTreeControlsTests =
                 chooseRepresentation = fun code -> calls.Add("repr:" + code)
                 requestBuild = fun () -> calls.Add("build")
                 selectNode = fun code -> calls.Add("node:" + code)
+                toggleNode = fun code -> calls.Add("toggle:" + code)
                 applyManualRange = fun group text -> calls.Add($"range:%s{group}=%s{text}")
             }
         calls, handlers
@@ -174,6 +175,7 @@ module FacetedTreeControlsTests =
         Assert.Equal("FacetOfferedValue_category_glass", UiIds.FacetedTree.offeredValue "category" "glass")
         Assert.Equal("FacetManualRangeBox_thickness", UiIds.FacetedTree.manualRangeBox "thickness")
         Assert.Equal("FacetTreeNode_kind/sample", UiIds.FacetedTree.treeNode "kind/sample")
+        Assert.Equal("FacetTreeChevron_kind/sample", UiIds.FacetedTree.treeNodeChevron "kind/sample")
 
     // ============================ headless structure proofs ============================
 
@@ -321,6 +323,27 @@ module FacetedTreeControlsTests =
             Assert.True(isPresent window UiIds.FacetedTree.offersPanel)
             clickOn window UiIds.FacetedTree.showTreeButton
             Assert.Equal<string>([ "build" ], calls)
+            window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``a parent node renders a disclosure chevron whose click dispatches toggleNode; a leaf renders none`` () =
+        HeadlessSession.run (fun () ->
+            let calls, handlers = recorder ()
+            let window = mount knownState handlers
+            // Every PARENT (a node with children) carries a chevron — expanded OR collapsed…
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind"), "the heading is a parent — it must carry a chevron")
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind/sample"), "an expanded branch with children must carry a chevron")
+            Assert.True(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind/polarizer"), "a collapsed branch with children must carry a chevron")
+            // …while a leaf (empty children) carries NONE.
+            Assert.False(isPresent window (UiIds.FacetedTree.treeNodeChevron "kind/sample/quartz"), "a leaf must carry NO chevron")
+            // The chevron and the label are DISTINCT surfaces: the chevron toggles, the label
+            // selects, and clicking the chevron dispatches toggleNode with ITS code and nothing else.
+            clickOn window (UiIds.FacetedTree.treeNodeChevron "kind/sample")
+            Assert.Equal<string>([ "toggle:kind/sample" ], calls)
+            // The label still selects (never toggles).
+            clickOn window (UiIds.FacetedTree.treeNode "kind/sample")
+            Assert.Equal<string>([ "toggle:kind/sample"; "node:kind/sample" ], calls)
             window.Close())
 
     [<Fact>]

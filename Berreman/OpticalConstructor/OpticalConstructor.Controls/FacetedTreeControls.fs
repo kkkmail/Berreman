@@ -160,6 +160,11 @@ module FacetedTreeControls =
             requestBuild : unit -> unit
             /// Select the tree node with this `code`.
             selectNode : string -> unit
+            /// Toggle the tree node with this `code` between expanded and collapsed — a
+            /// disclosure-chevron press (spec 0040 step 002). Only a PARENT node (one with
+            /// children) renders a chevron, so only a parent's code is ever dispatched here; the
+            /// HOST holds the expanded-code set and re-projects each node's `expansion`.
+            toggleNode : string -> unit
             /// Apply a manual min–max range on the offer group with this `code`; the second
             /// argument is the range box's RAW text (e.g. "10-20") — the HOST parses it and, on
             /// success, applies an ordinary constraint chip.
@@ -345,11 +350,13 @@ module FacetedTreeControls =
         | Some count -> $"%s{node.label} (%d{count})"
         | None -> node.label
 
-    /// One node's rows: its own clickable, depth-indented row, then — only when expanded — its
-    /// children's rows below it. The flattened rows are siblings in ONE vertical stack, so every
-    /// row is keyed by its (tree-unique) node code.
+    /// One node's rows: a horizontal row of its disclosure chevron (a PARENT only — a leaf with
+    /// empty `children` shows none) and its clickable, depth-indented label, then — only when the
+    /// node is expanded — its children's rows below it. The chevron press toggles the node; the
+    /// label press selects it. The flattened rows are siblings in ONE vertical stack, so every row
+    /// (and the chevron and label within it) is keyed by its (tree-unique) node code.
     let rec private nodeRows (handlers : Handlers) (depth : int) (node : TreeNode) : IView list =
-        let row =
+        let label =
             Border.create [
                 automationId<Border> (UiIds.FacetedTree.treeNode node.code)
                 Border.background (brush idleBackground)
@@ -357,11 +364,46 @@ module FacetedTreeControls =
                 Border.borderThickness 1.0
                 Border.cornerRadius (CornerRadius 3.0)
                 Border.padding (Thickness(10.0, 3.0))
-                Border.margin (Thickness(float depth * 16.0, 0.0, 0.0, 2.0))
+                Border.verticalAlignment VerticalAlignment.Center
                 Border.child (TextBlock.create [ TextBlock.text (nodeText node) ])
                 Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.selectNode node.code), SubPatchOptions.OnChangeOf (box node.code))
             ]
             |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.treeNode node.code)
+            :> IView
+        // A per-parent disclosure chevron (▾ expanded, ▸ collapsed): a node with no children shows
+        // none. `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when
+        // the code or the glyph changes so a reused box can't keep a stale handler (the `clickBox`
+        // discipline).
+        let chevron : IView list =
+            match node.children with
+            | [] -> []
+            | _ :: _ ->
+                let glyph =
+                    match node.expansion with
+                    | ExpandedNode -> "▾"
+                    | CollapsedNode -> "▸"
+                let chevronId = UiIds.FacetedTree.treeNodeChevron node.code
+                [ Border.create [
+                      automationId<Border> chevronId
+                      Border.background (brush idleBackground)
+                      Border.borderBrush (brush idleBorder)
+                      Border.borderThickness 1.0
+                      Border.cornerRadius (CornerRadius 3.0)
+                      Border.padding (Thickness(6.0, 3.0))
+                      Border.margin (Thickness(0.0, 0.0, 4.0, 0.0))
+                      Border.verticalAlignment VerticalAlignment.Center
+                      Border.child (TextBlock.create [ TextBlock.text glyph ])
+                      Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.toggleNode node.code), SubPatchOptions.OnChangeOf (box (node.code, glyph)))
+                  ]
+                  |> Avalonia.FuncUI.DSL.View.withKey chevronId
+                  :> IView ]
+        let row =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.margin (Thickness(float depth * 16.0, 0.0, 0.0, 2.0))
+                StackPanel.children (chevron @ [ label ])
+            ]
+            |> Avalonia.FuncUI.DSL.View.withKey ("FacetTreeRow_" + node.code)
             :> IView
         match node.expansion with
         | ExpandedNode -> row :: (node.children |> List.collect (nodeRows handlers (depth + 1)))

@@ -872,6 +872,7 @@ module SampleEditorWindowTests =
             // Pick the 1.75 glass: filter → highlight the leaf → Select. The TARGETED return
             // re-materials ROW 1 (never "the current selection") and closes the window.
             commitFilter materialsWindow "1.75"
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
             clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
@@ -907,6 +908,7 @@ module SampleEditorWindowTests =
             // The re-pointed session serves ROW 2: the return re-materials it; the superseded
             // row-0 session binds nothing.
             commitFilter materialsWindow "1.75"
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
             clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
@@ -936,6 +938,7 @@ module SampleEditorWindowTests =
             // The Select return now targets a vanished row: a NO-OP plus the status line —
             // never a throw, and no surviving row takes the returned material.
             commitFilter materialsWindow "1.75"
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn materialsWindow (MaterialsWindowView.entryNode MaterialIds.glass175)
             clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
@@ -1010,6 +1013,7 @@ module SampleEditorWindowTests =
             // picking it can only NAME the row if the editor re-queried its own list on the
             // Select return.
             commitFilter materialsWindow "Mid-session titania"
+            clickOn materialsWindow (UiIds.FacetedTree.treeNodeChevron "entries")
             clickOn materialsWindow (MaterialsWindowView.entryNode added.id)
             clickOn materialsWindow UiIds.MaterialsWindow.selectButton
             Dispatcher.UIThread.RunJobs()
