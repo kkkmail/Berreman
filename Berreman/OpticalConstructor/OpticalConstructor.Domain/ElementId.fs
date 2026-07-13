@@ -385,6 +385,19 @@ module Library =
                 | CpCategory -> [ CircularPolarizer ]
                 | LpCpCategory | CpLpCategory | CustomMueller -> [ LinearPolarizer; CircularPolarizer ]
 
+    /// Spec 0040 Part D.3: the placement emission a table element takes when bound to a library ENTRY.
+    /// A bound SAMPLE bounds the placed element by its geometry-constrained `supportedEmission` (a
+    /// `ThinFilm` reflects only, a `Plate` emits both by default, or the R/T-only it was constrained
+    /// to) rather than the generic per-kind `Placement.defaultEmission` (which hands every non-mirror
+    /// element `EmitBoth`). A source / detector / polarizer carries no such geometry constraint, so a
+    /// placement bound to one keeps the `fallback` emission its catalogue kind already gave it. Pure —
+    /// the host seeds a placed sample's emission through this, and the experiment's default
+    /// `MeasurementMode` then follows via `Experiments.MeasurementMode.ofEmission`.
+    let placementEmissionForEntry (fallback : Emission) (entry : LibraryEntry) : Emission =
+        match entry with
+        | SampleItem s -> s.supportedEmission
+        | SourceItem _ | DetectorItem _ | PolarizerItem _ -> fallback
+
     /// A node-path label (a tree grouping level: "Samples", "Glass", a glass kind, …). Elevated so a
     /// label is never a bare string in the domain.
     type TreeLabel =
