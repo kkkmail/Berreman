@@ -1,0 +1,409 @@
+{
+  "data_version": 7,
+  "spec_md_sha": "932f56d8f1513666b400ea2d1731084eca8a538078b465cbc0cd3e0c00b7516b",
+  "claims": [
+    {
+      "id": 1,
+      "phrase": "R/T is the existing `Emission` DU (`Placement.fs:108-138`)",
+      "spec_location": "§0.1",
+      "evidence": "Read Placement.fs:108 -> type Emission = EmitReflectedOnly | EmitTransmittedOnly | EmitBoth; smart setters withReflected/withTransmitted run through :138.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 2,
+      "phrase": "the tree is the existing `FacetedTreeControls.TreeNode` recursive model (`FacetedTreeControls.fs:102-109`)",
+      "spec_location": "§0.1",
+      "evidence": "Read FacetedTreeControls.fs:102-109 -> type TreeNode = { code; label; countOpt; expansion; children : TreeNode list }.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 3,
+      "phrase": "with its `NodeExpansion` (`:46-48`)",
+      "spec_location": "§0.1",
+      "evidence": "Read FacetedTreeControls.fs:46-48 -> type NodeExpansion = ExpandedNode | CollapsedNode.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 4,
+      "phrase": "the facet engine is the existing `Facets.buildTree` (`Facets.fs:230-254`)",
+      "spec_location": "§0.1",
+      "evidence": "Read Facets.fs:230 -> let buildTree (representation) (defs) (applied) (items) : FacetTree; body ends at :254.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 5,
+      "phrase": "the `LibraryFacets` catalogue (`LibraryFacets.fs`)",
+      "spec_location": "§0.1",
+      "evidence": "Glob -> Berreman/OpticalConstructor/OpticalConstructor.Domain/LibraryFacets.fs exists.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 6,
+      "phrase": "the gyration/μ component vocabularies are the existing `MaterialComplexityEditor` seams (`gyrationComponents` `MaterialComplexityEditor.fs:436-444`)",
+      "spec_location": "§0.1",
+      "evidence": "Read MaterialComplexityEditor.fs:436 -> let gyrationComponents (gyration : GyrationClass<'g>) : (GyrationComponent * 'g) list; ends :444.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 7,
+      "phrase": "`MuKind` `:72-74`",
+      "spec_location": "§0.1",
+      "evidence": "Read MaterialComplexityEditor.fs:72-74 -> type MuKind = ScalarMuKind | GyromagneticMuKind.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 8,
+      "phrase": "new control-local fields stay `string`-shaped to match the module's own convention (`activeRepresentation`, `FacetedTreeControls.fs:124`, `140`)",
+      "spec_location": "§0.2",
+      "evidence": "Read FacetedTreeControls.fs:124 -> activeRepresentation : string field on State; :140 -> activeRepresentation = \"\" in empty.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 9,
+      "phrase": "the one `UiIds` module (`OpticalConstructor.Controls/UiIds.fs`)",
+      "spec_location": "§0.3",
+      "evidence": "Glob -> Berreman/OpticalConstructor/OpticalConstructor.Controls/UiIds.fs exists.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 10,
+      "phrase": "generated list rows never set `StyledElement.Name` and are keyed with `View.withKey` (the existing `FacetedTreeControls.fs:364` idiom)",
+      "spec_location": "§0.3",
+      "evidence": "Read FacetedTreeControls.fs:364 -> |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.treeNode node.code).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 11,
+      "phrase": "`FacetedTreeControls.nodeRows` (`FacetedTreeControls.fs:351-368`) already switches on `node.expansion`",
+      "spec_location": "§A.0",
+      "evidence": "Read FacetedTreeControls.fs:351 -> let rec private nodeRows ...; :366 match node.expansion (ExpandedNode/CollapsedNode); ends :368.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 12,
+      "phrase": "every projected node hardcodes `ExpandedNode` (`MaterialsWindowView.fs:719-760`)",
+      "spec_location": "§A.0",
+      "evidence": "Read MaterialsWindowView.fs:719-760 -> tree binding; expansion = FacetedTreeControls.ExpandedNode hardcoded at :728,:736,:748,:756.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 13,
+      "phrase": "every projected node hardcodes `ExpandedNode` (`LibraryWindowView.fs:844-898`)",
+      "spec_location": "§A.0",
+      "evidence": "Read LibraryWindowView.fs:844-898 -> tree binding; expansion = FacetedTreeControls.ExpandedNode hardcoded at :853,:861,:878,:888,:895.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 14,
+      "phrase": "`Handlers` (`FacetedTreeControls.fs:149-167`) carries `selectNode` but no toggle",
+      "spec_location": "§A.0",
+      "evidence": "Read FacetedTreeControls.fs:149-167 -> type Handlers with selectNode (:162); no toggleNode field present in the record.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 15,
+      "phrase": "every row paints the same `idleBackground` (`FacetedTreeControls.fs:355`)",
+      "spec_location": "§A.0",
+      "evidence": "Read FacetedTreeControls.fs:355 -> Border.background (brush idleBackground) inside nodeRows.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 16,
+      "phrase": "`Facets.buildTree`, which today sorts by the structural value (`Facets.fs:248`)",
+      "spec_location": "§A.1",
+      "evidence": "Read Facets.fs:248 -> |> List.sortBy (fun (b : FacetBranch) -> b.value).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 17,
+      "phrase": "rows are already keyed by `code`, `FacetedTreeControls.fs:364`",
+      "spec_location": "§A.2",
+      "evidence": "Read FacetedTreeControls.fs:364 -> View.withKey keyed by UiIds.FacetedTree.treeNode node.code.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 18,
+      "phrase": "the existing `chosenBackground` (`FacetedTreeControls.fs:173`)",
+      "spec_location": "§A.3",
+      "evidence": "Read FacetedTreeControls.fs:173 -> let private chosenBackground = color 150 185 235.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 19,
+      "phrase": "the `clickBox` highlight precedent, `:191-208`",
+      "spec_location": "§A.3",
+      "evidence": "Read FacetedTreeControls.fs:191 -> let private clickBox ...; paints chosenBackground when chosen (:195); ends :208.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 20,
+      "phrase": "they read the entry's `complexity` value tree (`LibraryFacets.anisotropyOf` `LibraryFacets.fs:132-143`)",
+      "spec_location": "§B.0",
+      "evidence": "Read LibraryFacets.fs:132-143 -> let anisotropyOf (complexity : MaterialComplexity) : Anisotropy matches complexity.eps.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 21,
+      "phrase": "`transparencyOf` `:147-150`",
+      "spec_location": "§B.0",
+      "evidence": "Read LibraryFacets.fs:147-150 -> let transparencyOf (constant : ConstantEpsValue) : Transparency.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 22,
+      "phrase": "gate themselves off when it is absent (`materialAnisotropyDef` `:217-232`)",
+      "spec_location": "§B.0 / §B.2",
+      "evidence": "Read LibraryFacets.fs:217-232 -> materialAnisotropyDef; appliesTo returns InapplicableAttribute when entry.complexity = None (:224-226).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 23,
+      "phrase": "`materialTransparencyDef` `:252-267`",
+      "spec_location": "§B.0 / §B.2",
+      "evidence": "Read LibraryFacets.fs:252-267 -> materialTransparencyDef; appliesTo gates ConstantMaterial + Some constant (:257-261).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 24,
+      "phrase": "Silicon (`MaterialLibrary.fs:376`) ... falls out",
+      "spec_location": "§B.0",
+      "evidence": "Read MaterialLibrary.fs:376 -> complexity = None inside the Silicon entry (id = MaterialIds.silicon at :371).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 25,
+      "phrase": "Langasite (`:384`)",
+      "spec_location": "§B.0",
+      "evidence": "Read MaterialLibrary.fs:384 -> complexity = None inside the Langasite entry (id = MaterialIds.langasite at :379).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 26,
+      "phrase": "the Vacuum spacer (`:440`)",
+      "spec_location": "§B.0",
+      "evidence": "Read MaterialLibrary.fs:440 -> complexity = None inside the Vacuum entry (:435, description 'the spacer material of the structural multilayer stacks').",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 27,
+      "phrase": "the three coded presets that carry `complexity = None` — Silicon, Langasite, and the Vacuum spacer",
+      "spec_location": "§B.0",
+      "evidence": "Grep 'complexity = None' in MaterialLibrary.fs -> exactly 3 code occurrences (:376 Silicon, :384 Langasite, :440 Vacuum); the other hits (:363,:598) are doc comments. Live count 3 matches the cited count.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 28,
+      "phrase": "the existing `complexity = Some … ; properties = ….toProperties` seed convention (`MaterialLibrary.fs:391-464`)",
+      "spec_location": "§B.0",
+      "evidence": "Read MaterialLibrary.fs:391-464 -> entries follow properties = X.toProperties; complexity = Some X (glass152 :391-392 ... activeCrystal :463-464).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 29,
+      "phrase": "The Dispersion facet already reads `properties` and is total (`materialDispersion`, `MaterialLibrary.fs:606-609`); it stays as is.",
+      "spec_location": "§B.0",
+      "evidence": "Read MaterialLibrary.fs:606-609 -> let materialDispersion (e : MaterialEntry) : MaterialDispersion over e.properties.epsWithDisp/muWithDisp/rhoWithDisp; appliesTo = fun _ -> ApplicableAttribute at LibraryFacets.fs:243.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 30,
+      "phrase": "`euvSiliconComplexity` `MaterialLibrary.fs:456` ... are the reuse precedents",
+      "spec_location": "§B.1",
+      "evidence": "Read MaterialLibrary.fs:456 -> complexity = Some euvSiliconComplexity (euvSilicon entry).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 31,
+      "phrase": "`uniaxialCrystalComplexity` `:424`",
+      "spec_location": "§B.1",
+      "evidence": "Read MaterialLibrary.fs:424 -> complexity = Some uniaxialCrystalComplexity (uniaxialCrystal entry).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 32,
+      "phrase": "`activeCrystalComplexity` `:464`",
+      "spec_location": "§B.1",
+      "evidence": "Read MaterialLibrary.fs:464 -> complexity = Some activeCrystalComplexity (activeCrystal entry).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 33,
+      "phrase": "`gyrationChart` (`NkDispersionChart.fs:110-130`) emits all six gyration components",
+      "spec_location": "§C.1",
+      "evidence": "Read NkDispersionChart.fs:110 -> let gyrationChart ...; series comp g₁₁,g₂₂,g₃₃,g₁₂,g₁₃,g₂₃ (:118-123); ends :130.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 34,
+      "phrase": "`muChart` (`:141-162`) all three diagonals plus a gyration magnitude",
+      "spec_location": "§C.1",
+      "evidence": "Read NkDispersionChart.fs:141 -> let muChart ...; diagSeries μ₁₁/μ₂₂/μ₃₃ plus gyration magnitude 'g' (:152-155); ends :162.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 35,
+      "phrase": "reusing the editor seams — `gyrationComponents` (`MaterialComplexityEditor.fs:436-444`) yields exactly the class's admitted components in display order",
+      "spec_location": "§C.1",
+      "evidence": "Read MaterialComplexityEditor.fs:436-444 -> gyrationComponents matches each GyrationClass case to its admitted (GyrationComponent * 'g) list in display order.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 36,
+      "phrase": "`gyrationComponentLabel` (`:421-428`) names them",
+      "spec_location": "§C.1",
+      "evidence": "Read MaterialComplexityEditor.fs:421-428 -> let gyrationComponentLabel (comp : GyrationComponent) : string maps each case to its label.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 37,
+      "phrase": "each `GyrationComponent` maps to its (i, j) tensor slot (`:88-94`)",
+      "spec_location": "§C.1",
+      "evidence": "Read MaterialComplexityEditor.fs:88-94 -> type GyrationComponent = G11 | G22 | G33 | G12 | G13 | G23 (cases named by (i,j) tensor slot).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 38,
+      "phrase": "`MuKind` (`:72-74`) decides whether μ exposes a single scalar component or the gyromagnetic diagonal-plus-gyration set",
+      "spec_location": "§C.1",
+      "evidence": "Read MaterialComplexityEditor.fs:72-74 -> type MuKind = ScalarMuKind | GyromagneticMuKind.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 39,
+      "phrase": "mirroring `anisotropyOfEntry` (`NkDispersionChart.fs:74-77`)",
+      "spec_location": "§C.1",
+      "evidence": "Read NkDispersionChart.fs:74-77 -> let anisotropyOfEntry (entry : MaterialEntry) : Anisotropy matches entry.complexity (Some -> anisotropyOf; None -> Biaxial).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 40,
+      "phrase": "exactly as the n/k chart already falls back to Biaxial",
+      "spec_location": "§C.1",
+      "evidence": "Read NkDispersionChart.fs:77 -> anisotropyOfEntry's | None -> Biaxial fallback (the cited existing behaviour).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 41,
+      "phrase": "The call sites are `MaterialEditorView.fs:1028-1046`.",
+      "spec_location": "§C.1",
+      "evidence": "Read MaterialEditorView.fs:1028-1046 -> nkDispersionChart (:1028), gyrationChart call (:1040-1041), muChart call (:1044-1045).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 42,
+      "phrase": "A sample's `SubstrateKind` (`ElementId.fs:80-82`) is `ThinFilm | Plate`.",
+      "spec_location": "§D.0",
+      "evidence": "Read ElementId.fs:80-82 -> type SubstrateKind = ThinFilm | Plate.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 43,
+      "phrase": "the lower half-space is semi-infinite, `Propagation.sampleToSystem` `Propagation.fs:249-256`",
+      "spec_location": "§D.0",
+      "evidence": "Read Propagation.fs:249-256 -> let sampleToSystem (sample : ResolvedSample) (w : WaveLength) : OpticalSystem; lower = sample.lower.getProperties w (:255).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 44,
+      "phrase": "Extend `validateSample` (`ElementId.fs:802-811`, today only blank-name and structurally-empty)",
+      "spec_location": "§D.1",
+      "evidence": "Read ElementId.fs:802-811 -> validateSample checks blank name (:807-808) and structurallyEmpty (:803-810); no Plate/substrate check today.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 45,
+      "phrase": "Give `Sample` (`ElementId.fs:178-188`) a `supportedEmission : Emission` field",
+      "spec_location": "§D.2",
+      "evidence": "Read ElementId.fs:178-188 -> type Sample = { id; name; structure; substrate; description } (supportedEmission is the new field this step adds).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 46,
+      "phrase": "`supportedEmission : Emission` field reusing the existing DU",
+      "spec_location": "§D.2",
+      "evidence": "Existing Emission DU confirmed at Placement.fs:108-138 (see claim 1).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 47,
+      "phrase": "the existing smart setters `Emission.withReflected` / `withTransmitted` (`Placement.fs:126-138`)",
+      "spec_location": "§D.2",
+      "evidence": "Read Placement.fs:126-138 -> static member withReflected (:126) and static member withTransmitted (:134) on Emission.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 48,
+      "phrase": "its dirty snapshot (`SampleEditSnapshot`, `SampleEditorView.fs:110`)",
+      "spec_location": "§D.2",
+      "evidence": "Read SampleEditorView.fs:110 -> type SampleEditSnapshot = string * string * SubstrateKind * SampleStructure.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 49,
+      "phrase": "`toSample` (`:369-376`)",
+      "spec_location": "§D.2",
+      "evidence": "Read SampleEditorView.fs:369-376 -> let toSample (id : SampleId) (m : Model) : Sample building the Sample record.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 50,
+      "phrase": "rather than the generic `defaultEmission` (`Placement.fs:168-171`)",
+      "spec_location": "§D.3",
+      "evidence": "Read Placement.fs:168-171 -> let defaultEmission (kind : CatalogueKind) : Emission.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 51,
+      "phrase": "the existing `MeasurementMode.ofEmission` (`Experiments.fs:106-110`)",
+      "spec_location": "§D.3",
+      "evidence": "Read Experiments.fs:106-110 -> static member ofEmission (e : Emission) : MeasurementMode.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 52,
+      "phrase": "enabled only by `hasChosenMaterial` (`SampleEditorView.fs:961`, `:921-922`)",
+      "spec_location": "§D.4",
+      "evidence": "Read SampleEditorView.fs:921-924 -> let private hasChosenMaterial (m : Model) : bool; :961 -> setSubstrateButton enabled by (hasChosenMaterial m).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 53,
+      "phrase": "model the substrate \"Set…\" on `chooseMaterialForLayer` (`SampleEditorView.fs:700-720`)",
+      "spec_location": "§D.4",
+      "evidence": "Read SampleEditorView.fs:700 -> let private chooseMaterialForLayer ...; target = SampleLayerTarget position (:706); the cited range spans the function.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 54,
+      "phrase": "add a `SampleSubstrateTarget` case to `SelectionTarget` (`WindowMode.fs:31-33`) beside `SampleLayerTarget`",
+      "spec_location": "§D.4",
+      "evidence": "Read WindowMode.fs:31-33 -> type SelectionTarget = TableElementTarget of ElementId | SampleLayerTarget of LayerPosition.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 55,
+      "phrase": "route the targeted return to `SampleStackMsg.SetSubstrate` (`SampleStackEditor.fs:95`, `:367`)",
+      "spec_location": "§D.4",
+      "evidence": "Read SampleStackEditor.fs:95 -> | SetSubstrate of SampleLayer option (Msg case); :367 -> | SetSubstrate substrate -> update arm.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 56,
+      "phrase": "the operator's preliminary spec `specs/0038/.manual/011-tree-chart-geometry-spec.md`",
+      "spec_location": "intro / References",
+      "evidence": "Glob -> specs/0038/.manual/011-tree-chart-geometry-spec.md exists.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 57,
+      "phrase": "Spec 0027 (`specs/0027/.manual/024-materials-and-experiments-spec.md`) — the `Emission` / `MeasurementMode` R/T model reused in Part D",
+      "spec_location": "References",
+      "evidence": "Glob -> specs/0027/.manual/024-materials-and-experiments-spec.md exists.",
+      "verdict": "CONFIRMED"
+    }
+  ],
+  "stub_check": {
+    "verdict": "WORKING-APP-COMMITTED",
+    "evidence": "no unmatched stub-ref anchors in .spec-md (0 stub-ref / 0 impl-ref anchors; all resolved)"
+  }
+}
