@@ -70,6 +70,32 @@ module SampleEditorWindowTests =
                     Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
+    /// Click the centre of ANY control carrying `id` (not only a Border) — a CheckBox toggles and
+    /// raises its Click on this pointer press/release exactly as a user interaction does (the
+    /// emission R/T boxes, spec 0040 Part D.2 step 010).
+    let private clickControl (window : Window) (id : string) : unit =
+        let found =
+            window.GetVisualDescendants()
+            |> Seq.tryPick (function :? Control as c when matchesId id c && c.IsEffectivelyVisible -> Some c | _ -> None)
+        match found with
+        | None -> Assert.Fail($"%s{id} was not found (or not visible)")
+        | Some c ->
+            let p = c.TranslatePoint(Point(c.Bounds.Width / 2.0, c.Bounds.Height / 2.0), window)
+            if p.HasValue then
+                window.MouseDown(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+                window.MouseUp(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
+                Dispatcher.UIThread.RunJobs()
+            else Assert.Fail($"%s{id} has no on-screen position")
+
+    /// The CheckBox carrying `id` (fails loudly when absent or a different control) — the tests
+    /// read its `IsChecked` / `IsEnabled` directly.
+    let private checkBox (window : Window) (id : string) : CheckBox =
+        match tryFindControl window id with
+        | Some (:? CheckBox as cb) -> cb
+        | Some c -> failwith $"%s{id} is a %s{c.GetType().Name}, not a CheckBox"
+        | None -> failwith $"%s{id} was not found"
+
     /// Set the text of the TextBox carrying `id` (fires the property-change subscription the
     /// view's `onTextChanged` binds — still driving the control found by its UiId).
     let private setText (window : Window) (id : string) (text : string) : unit =
@@ -192,6 +218,12 @@ module SampleEditorWindowTests =
             supportedEmission = defaultSupportedEmission ThinFilm
         }
 
+    /// A `Plate` variant of the three-film sample (geometry `Plate`, default `EmitBoth`) — the
+    /// emission-editing fixture (spec 0040 Part D.2 step 010): a Plate exposes the R and T
+    /// checkboxes, a ThinFilm pins R on.
+    let private threeFilmPlate () : Sample =
+        { threeFilmSample () with substrate = Plate; supportedEmission = defaultSupportedEmission Plate }
+
     let private newModel () : Model =
         let _, context = recordingContext ()
         // The Add-open shape (spec 0038 step 008): the id is minted AT WINDOW OPEN.
@@ -214,6 +246,9 @@ module SampleEditorWindowTests =
         Assert.Equal("QwotEntryBox", UiIds.SampleEditor.qwotEntryBox)
         Assert.Equal("SampleEditorSaveButton", UiIds.SampleEditor.saveButton)
         Assert.Equal("SampleEditorCancelButton", UiIds.SampleEditor.cancelButton)
+        // The supported-emission R/T checkboxes (spec 0040 Part D.2 step 010).
+        Assert.Equal("SampleEmitReflectedCheck", UiIds.SampleEditor.emitReflectedCheck)
+        Assert.Equal("SampleEmitTransmittedCheck", UiIds.SampleEditor.emitTransmittedCheck)
         // The derived per-row / per-group id families are prefixed so they cannot collide.
         Assert.Equal("SampleLayerRow_1", UiIds.SampleEditor.layerRow 1)
         Assert.Equal("SampleLayerRow_0_1", UiIds.SampleEditor.cellLayerRow 0 1)
@@ -505,6 +540,73 @@ module SampleEditorWindowTests =
         // The vanished-row return stays a strict no-op plus the status line.
         let vanished = update (BindMaterialToLayer (AtSingleLayer 7, MaterialIds.glass175)) m
         Assert.Equal<MaterialId option>(None, vanished.chosenMaterial)
+
+    // ========== step 010 — the supported-emission R/T constraint (pure) ==========
+
+    [<Fact>]
+    let ``a Plate editor toggles T off leaving R on and marks the editor dirty`` () =
+        let _, context = recordingContext ()
+        let m = init context builtInEntries (EditSample (threeFilmPlate ()))
+        // A freshly opened Plate editor is pristine and emits BOTH groups by default.
+        Assert.False(isDirty m, "a freshly opened editor is pristine")
+        Assert.True(m.supportedEmission.emitsReflected, "a Plate defaults to emitting the reflected group")
+        Assert.True(m.supportedEmission.emitsTransmitted, "a Plate defaults to emitting the transmitted group")
+        // Turning T off leaves R on (never neither) and dirties the editor.
+        let tOff = update (SetTransmittedEmission false) m
+        Assert.True(tOff.supportedEmission.emitsReflected, "R stays on when T is cleared")
+        Assert.False(tOff.supportedEmission.emitsTransmitted, "T is now off")
+        Assert.True(isDirty tOff, "an emission change marks the editor dirty")
+        // Symmetrically, a Plate can be constrained to T-only (clear R while T is on).
+        let rOff = update (SetReflectedEmission false) m
+        Assert.False(rOff.supportedEmission.emitsReflected, "R is now off")
+        Assert.True(rOff.supportedEmission.emitsTransmitted, "T stays on when R is cleared")
+
+    [<Fact>]
+    let ``clearing both emission groups is impossible on a Plate`` () =
+        let _, context = recordingContext ()
+        let m = init context builtInEntries (EditSample (threeFilmPlate ()))
+        // Clear R (T forced on), then clear the last remaining group: R is forced back on — the
+        // both-off state is unrepresentable through the smart setters.
+        let rOff = update (SetReflectedEmission false) m
+        Assert.False(rOff.supportedEmission.emitsReflected)
+        Assert.True(rOff.supportedEmission.emitsTransmitted, "clearing R forces T on")
+        let lastCleared = update (SetTransmittedEmission false) rOff
+        Assert.True(lastCleared.supportedEmission.emitsReflected, "clearing the last group forces the other back on")
+        Assert.False(lastCleared.supportedEmission.emitsTransmitted)
+
+    [<Fact>]
+    let ``a ThinFilm editor pins R on under any emission message and a geometry flip re-imposes it`` () =
+        let _, context = recordingContext ()
+        // A ThinFilm is EmitReflectedOnly at open — R on, T off (the step-9 invariant).
+        let m = init context builtInEntries (EditSample (threeFilmSample ()))
+        Assert.True(m.supportedEmission.emitsReflected)
+        Assert.False(m.supportedEmission.emitsTransmitted)
+        // A stray T-on or R-off message cannot escape the ThinFilm constraint.
+        let tryGainT = update (SetTransmittedEmission true) m
+        Assert.True(tryGainT.supportedEmission.emitsReflected)
+        Assert.False(tryGainT.supportedEmission.emitsTransmitted, "a ThinFilm can never gain a transmitted branch")
+        let tryClearR = update (SetReflectedEmission false) m
+        Assert.True(tryClearR.supportedEmission.emitsReflected, "a ThinFilm's reflected branch is unclearable")
+        // A Plate constrained to T-only, then flipped to ThinFilm, re-pins R-only.
+        let plate = init context builtInEntries (EditSample (threeFilmPlate ()))
+        let tOnly = update (SetReflectedEmission false) plate
+        Assert.True(tOnly.supportedEmission.emitsTransmitted && not tOnly.supportedEmission.emitsReflected, "the Plate is T-only")
+        let flipped = update (SetSubstrate ThinFilm) tOnly
+        Assert.True(flipped.supportedEmission.emitsReflected, "flipping to ThinFilm re-pins the reflected branch on")
+        Assert.False(flipped.supportedEmission.emitsTransmitted, "flipping to ThinFilm clears the transmitted branch")
+
+    [<Fact>]
+    let ``toSample carries the edited supported emission and init seeds it from the sample`` () =
+        let _, context = recordingContext ()
+        // An edited Plate sample's emission is seeded into the model and preserved through toSample.
+        let m = init context builtInEntries (EditSample (threeFilmPlate ()))
+        let tOnly = update (SetReflectedEmission false) m
+        let saved = toSample (newSampleId ()) tOnly
+        Assert.True(saved.supportedEmission.emitsTransmitted && not saved.supportedEmission.emitsReflected, "toSample carries the T-only choice")
+        // A ThinFilm always saves EmitReflectedOnly, whatever messages arrived.
+        let thin = init context builtInEntries (EditSample (threeFilmSample ())) |> update (SetTransmittedEmission true)
+        let savedThin = toSample (newSampleId ()) thin
+        Assert.True(savedThin.supportedEmission.emitsReflected && not savedThin.supportedEmission.emitsTransmitted, "a ThinFilm saves reflected-only")
 
     // ============================ headless semantic-tree proofs ============================
 
@@ -817,6 +919,48 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             Assert.True(isPresent window (UiIds.SampleEditor.layerOrientation 0), "the anisotropic layer must carry its orientation editor")
             Assert.False(isPresent window (UiIds.SampleEditor.layerOrientation 1), "the isotropic layer's orientation editor must be REMOVED, not greyed")
+            window.Close())
+
+    // ========== step 010 — the supported-emission checkboxes (headless) ==========
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (010): a Plate editor renders both emission checkboxes; a T click clears T, leaves R, and dirties the editor`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmPlate ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            // Both R and T checkboxes render for a Plate, both checked (EmitBoth), both enabled.
+            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render")
+            Assert.True(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "the T checkbox must render for a Plate")
+            Assert.True((checkBox window UiIds.SampleEditor.emitReflectedCheck).IsChecked.GetValueOrDefault false, "R starts checked")
+            Assert.True((checkBox window UiIds.SampleEditor.emitTransmittedCheck).IsChecked.GetValueOrDefault false, "T starts checked")
+            Assert.True((checkBox window UiIds.SampleEditor.emitTransmittedCheck).IsEnabled, "the Plate T checkbox is enabled")
+            // A user click on the T box clears T; R stays checked (never neither).
+            clickControl window UiIds.SampleEditor.emitTransmittedCheck
+            Assert.False((checkBox window UiIds.SampleEditor.emitTransmittedCheck).IsChecked.GetValueOrDefault true, "the T click cleared T")
+            Assert.True((checkBox window UiIds.SampleEditor.emitReflectedCheck).IsChecked.GetValueOrDefault false, "R remains on after clearing T")
+            // The emission edit dirtied the editor: Cancel is gated behind the discard confirm.
+            clickOn window UiIds.SampleEditor.cancelButton
+            Assert.True(window.IsVisible, "an emission edit makes a dirty Cancel show the confirm, not close")
+            Assert.True(isPresent window UiIds.SampleEditor.exitConfirm, "the emission change marks the editor dirty")
+            clickOn window UiIds.SampleEditor.discardButton
+            Assert.False(window.IsVisible))
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``acceptance (010): a ThinFilm editor shows the R emission checkbox fixed on and disabled, with no T control`` () =
+        HeadlessSession.run (fun () ->
+            let materials, samples, categories = freshProxies ()
+            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            window.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a ThinFilm")
+            let rBox = checkBox window UiIds.SampleEditor.emitReflectedCheck
+            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the ThinFilm R checkbox is fixed on")
+            Assert.False(rBox.IsEnabled, "the ThinFilm R checkbox is disabled (fixed)")
+            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a ThinFilm shows no T control")
             window.Close())
 
     [<Fact>]

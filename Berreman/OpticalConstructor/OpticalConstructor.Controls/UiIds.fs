@@ -459,6 +459,12 @@ module UiIds =
         let clearLowerButton = "ClearLowerButton"
         [<Literal>]
         let statusText = "SampleEditorStatus"
+        // The supported-emission R / T checkboxes (spec 0040 Part D.2 step 010): a Plate exposes
+        // both; a ThinFilm shows R fixed on + disabled and renders no T box.
+        [<Literal>]
+        let emitReflectedCheck = "SampleEmitReflectedCheck"
+        [<Literal>]
+        let emitTransmittedCheck = "SampleEmitTransmittedCheck"
         [<Literal>]
         let stackTable = "SampleStackTable"
         [<Literal>]
