@@ -1,2 +1,21 @@
+Let’s work on the inverse problem.
 
+Here is the real Mueller matrix experimental repo: `C:\GitHub\optics-mueller\` (`OPM` repo), data: `C:\GitHub\optics-mueller\data\raw\final\`, 
+setup info: `C:\GitHub\optics-mueller\notes\setup_intro.txt`, and the related report: C:\GitHub\Berreman\specs\0042\.manual\MuellerMatrix_final.pdf. 
+The report is in Russian, but I am sure that you can sort this out. The experiment column encodes the content of the experiment as described 
+in the setup info.
 
+Let’s start with the UI-less test(s) which will mimic the results of the report (paragraph 7.2). It is OK to “hardcode” all the procedures 
+for the purpose of the test(s). However, make sure that we have many tiny pure reusable functions (the IO must be handled by proxies, as usual) 
+that do small steps rather than a huge function that does it all. It is also OK for that test to pull the data directly from `OPM` repo. 
+Just use relative paths.
+
+Your task is to analyze all the presented data and experimental repo, then write a preliminary spec of how we can repeat that in the test 
+here in this repo (`BNM`) and in F# (with necessary calls to the available optimization libraries, e.g. ALGLIB). If currently available 
+for F# optimization code is NOT capable of running the required minimization tasks, then the spec MUST propose the alternatives, e.g. 
+call Python or Wolfram (I do have an interop and I can point you to it if necessary).
+
+Perform web reserach for the industry practices and best approach to address such problems.
+
+Write the preliminary spec into C:\GitHub\Berreman\specs\0042\.manual\002-<description>.md AND if you have any questions, then add 
+them at the end.
