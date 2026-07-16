@@ -496,3 +496,64 @@ type MuellerReconstructionTests() =
             let source = sourceCplFromLpFrame qLp uLp
             Assert.True(abs (source.thetaRel.degrees - 39.31) < 1.0, $"θ_src = {source.thetaRel.degrees}")
             Assert.True(abs (source.retardance.degrees - 82.55) < 1.0, $"δ_src = {source.retardance.degrees}")
+
+    [<Fact>]
+    member _.``Stage-3 signal reduction pins darkSubtract, scalarGain, airIdentityPred, correctSignal and every per-family familyGain rule (always-run)`` () =
+        // Spec 0042 (009) acceptance (always-run, deterministic — fixed-literal timestamps, no ambient clock):
+        // pin the Stage-3 reduction primitives on known values, and familyGain firing each per-family rule.
+
+        // scalarGain — a proportional pair signal = 2·model has best scalar gain exactly 2 …
+        let model = [| 1.0; 2.0; 3.0; 4.0 |]
+        let signalProp = model |> Array.map (fun m -> 2.0 * m)
+        Assert.True(abs (scalarGain signalProp model - 2.0) < allowedDiff, $"scalarGain (proportional) = {scalarGain signalProp model}")
+        // … and a general pair matches the closed form Σ(s·m)/Σ(m²).
+        let signalGen = [| 3.0; 1.0; 4.0; 1.0 |]
+        let expectedGain = (Array.map2 (*) signalGen model |> Array.sum) / (Array.map2 (*) model model |> Array.sum)
+        Assert.True(abs (scalarGain signalGen model - expectedGain) < allowedDiff, $"scalarGain (general) = {scalarGain signalGen model}, expected {expectedGain}")
+
+        // darkSubtract — avg_total − dark_mean, with the ≈ 869.666 OPM dark mean passed in as data.
+        let darkMean = DarkMean 869.666
+        Assert.True(abs (darkSubtract darkMean 1000.0 - (1000.0 - 869.666)) < allowedDiff, $"darkSubtract = {darkSubtract darkMean 1000.0}")
+
+        // correctSignal — (avg_total − dark_mean) / gain (dark-subtract composed with the gain divide).
+        Assert.True(abs (correctSignal darkMean 1000.0 2.0 - ((1000.0 - 869.666) / 2.0)) < allowedDiff, $"correctSignal = {correctSignal darkMean 1000.0 2.0}")
+
+        // airIdentityPred — a·s, the effective-analyzer row dotted with the effective source Stokes state.
+        let s = StokesVector.create [ 1.0; 0.5; -0.3; 0.2 ]
+        let a = RealVector4.create [ 2.0; -1.0; 0.4; 0.8 ]
+        let expectedDot = 2.0 * 1.0 + (-1.0) * 0.5 + 0.4 * (-0.3) + 0.8 * 0.2
+        Assert.True(abs (airIdentityPred s a - expectedDot) < allowedDiff, $"airIdentityPred = {airIdentityPred s a}, expected {expectedDot}")
+
+        // familyGain — one calibration bundle, then assert each per-family rule fires (fixed-literal times).
+        let t0 = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero)
+        let cal =
+            {
+                lpLp = { gainA = 10.0; gainB = 20.0 }                            // mean → 15.0
+                lpCpl = { gainA = 4.0; gainB = 6.0 }                             // mean → 5.0
+                cplLp = { gainPre = 100.0; gainPost = 200.0; splitTime = t0 }    // split at t0
+                cplCpl = Day2Single 42.0                                         // single AIR block → 42.0
+            }
+
+        // LP-LP / LP-CPL — the mean of the two AIR repeats (time-independent).
+        Assert.True(abs (familyGain LpLp cal t0 - 15.0) < allowedDiff, $"familyGain LpLp = {familyGain LpLp cal t0}")
+        Assert.True(abs (familyGain LpCpl cal t0 - 5.0) < allowedDiff, $"familyGain LpCpl = {familyGain LpCpl cal t0}")
+
+        // CPL-LP — split at the BullshitCheck timestamp: strictly before → pre, at/after → post.
+        let before = t0.AddMinutes(-5.0)
+        let after = t0.AddMinutes(5.0)
+        Assert.True(abs (familyGain CplLp cal before - 100.0) < allowedDiff, $"familyGain CplLp (before) = {familyGain CplLp cal before}")
+        Assert.True(abs (familyGain CplLp cal after - 200.0) < allowedDiff, $"familyGain CplLp (after) = {familyGain CplLp cal after}")
+        Assert.True(abs (familyGain CplLp cal t0 - 200.0) < allowedDiff, $"familyGain CplLp (at split) = {familyGain CplLp cal t0}")
+
+        // CPL-CPL day2 — the single AIR block's gain.
+        Assert.True(abs (familyGain CplCpl cal t0 - 42.0) < allowedDiff, $"familyGain CplCpl (day2) = {familyGain CplCpl cal t0}")
+
+        // CPL-CPL day1 — time-interpolated between the two AIR blocks (10:00 → 14:00, gains 30 → 50).
+        let tStart = System.DateTimeOffset(2026, 7, 15, 10, 0, 0, System.TimeSpan.Zero)
+        let tEnd = System.DateTimeOffset(2026, 7, 15, 14, 0, 0, System.TimeSpan.Zero)
+        let calDay1 = { cal with cplCpl = Day1Interp (30.0, tStart, 50.0, tEnd) }
+        Assert.True(abs (familyGain CplCpl calDay1 t0 - 40.0) < allowedDiff, $"familyGain CplCpl (day1 midpoint) = {familyGain CplCpl calDay1 t0}")   // 12:00 → 0.5·30 + 0.5·50
+        Assert.True(abs (familyGain CplCpl calDay1 tStart - 30.0) < allowedDiff, $"familyGain CplCpl (day1 start) = {familyGain CplCpl calDay1 tStart}")
+        Assert.True(abs (familyGain CplCpl calDay1 tEnd - 50.0) < allowedDiff, $"familyGain CplCpl (day1 end) = {familyGain CplCpl calDay1 tEnd}")
+        Assert.True(abs (familyGain CplCpl calDay1 (tStart.AddHours(-1.0)) - 30.0) < allowedDiff, $"familyGain CplCpl (day1 clamp below) = {familyGain CplCpl calDay1 (tStart.AddHours(-1.0))}")
+        Assert.True(abs (familyGain CplCpl calDay1 (tEnd.AddHours(1.0)) - 50.0) < allowedDiff, $"familyGain CplCpl (day1 clamp above) = {familyGain CplCpl calDay1 (tEnd.AddHours(1.0))}")

@@ -615,3 +615,127 @@ module MuellerReconstruction =
             thetaRel = Angle.degree (wrapDeg180 (0.5 * (twoTheta / degree)))
             retardance = Retardance (acos clampedCosDelta)
         }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (009, IMPLEMENT) — Stage-3 signal reduction (the reference `matrix_fit_linear.py`
+    // `assign_gain_model`). Turns each science row's raw averaged intensity into the `signal_corrected`
+    // target the least-squares reconstruction fits, in three composable steps: dark-subtract the CCD floor,
+    // fit the per-family AIR SCALAR gain, and divide it out. Only dot products, a mean, and a linear time
+    // interpolation — no optimizer. The per-family AIR gain is fit against the `airIdentityPred` model
+    // (`a·s`, the effective-analyzer row dotted with the effective source Stokes state — the ideal AIR#0
+    // prediction from step 007's `effectiveSource` / `effectiveAnalyzer`) via `scalarGain`. The
+    // procedure-level constants (dark mean ≈ 869.666, the first-BullshitCheck split timestamp, the excluded
+    // contaminated point) are DATA the caller supplies — never embedded in these pure functions — so the
+    // Domain stays reusable and the test pins them explicitly.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// The mean dark-frame (`darkness_checks.csv`) averaged intensity — the CCD/read-noise floor subtracted
+    /// from every science row before fitting (the reference `dark_mean`, matrix_fit_linear.py:75). Elevated to
+    /// its own single-case DU so a raw intensity floor is never confused with a corrected `signal`: `.value` is
+    /// the mean count (read only at the arithmetic seam). On the OPM data it is ≈ 869.666.
+    type DarkMean =
+        | DarkMean of double
+
+        /// The mean dark-frame intensity (the IO/arithmetic seam — read only where a raw count is needed).
+        member this.value = let (DarkMean d) = this in d
+
+    /// Dark subtraction — the reference `signal_dark_sub = value_col − dark_mean` (matrix_fit_linear.py:76):
+    /// the raw averaged intensity `avgTotal` minus the `DarkMean` floor. The elementary first step of Stage-3;
+    /// `correctSignal` composes it with the gain divide.
+    let darkSubtract (darkMean : DarkMean) (avgTotal : float) : float =
+        avgTotal - darkMean.value
+
+    /// The AIR identity prediction for one measurement — the reference `identity_prediction`
+    /// (matrix_fit_linear.py:60): `a · s`, the effective-analyzer row `a` (`effectiveAnalyzer`) dotted with the
+    /// effective source Stokes state `s` (`effectiveSource`). For an AIR#0 row (no sample) the true Mueller
+    /// matrix is the identity, so `a·(I·s) = a·s` is the ideal normalized intensity the scalar gain scales the
+    /// measured `signal` onto. `s` is read by unwrapping its backing `RealVector4`; `a` directly.
+    let airIdentityPred (s : StokesVector) (a : RealVector4) : float =
+        let (StokesVector sv) = s
+        [ 0 .. 3 ] |> List.sumBy (fun i -> a.[i] * sv.[i])
+
+    /// The scalar gain that best (least-squares) scales `model` onto `signal` — the reference `fit_scalar_gain`
+    /// (matrix_fit_linear.py:66): `Σ(signalᵢ·modelᵢ) / Σ(modelᵢ²)` (`dot(signal, model) / dot(model, model)`),
+    /// the closed-form 1-parameter fit of `signal ≈ gain · model` over a family's AIR#0 rows (`model` = the
+    /// per-row `airIdentityPred`). `signal` and `model` are paired equal-length arrays (one entry per AIR row).
+    /// Stays TOTAL: where the reference RAISES on a degenerate `Σ(modelᵢ²) ≤ 0`, the F# returns the IEEE result
+    /// of the division (CLAUDE.md forbids throwing across this boundary; a real AIR model is never degenerate).
+    let scalarGain (signal : float[]) (model : float[]) : float =
+        let dot (x : float[]) (y : float[]) : float = Array.map2 (*) x y |> Array.sum
+        (dot signal model) / (dot model model)
+
+    /// The AIR gain of a "mean of two repeats" family (the stable `lp_lp` / `lp_cpl` families,
+    /// matrix_fit_linear.py:123/:132): the two valid AIR#0 repeat gains, whose mean `familyGain` applies to
+    /// every row of the family. Bare `float` gains by the slice's `scalarGain … : float` contract — a gain is a
+    /// dimensionless scale readout, elevated where the corrected signal is consumed downstream.
+    type RepeatPairGain =
+        {
+            gainA : float
+            gainB : float
+        }
+
+    /// The CPL-CPL family's AIR gain, whose two acquisition days need different rules (matrix_fit_linear.py:92/
+    /// :116). `Day1Interp` time-INTERPOLATES between the family's opening and closing AIR blocks — `gainStart`
+    /// at the block's mean capture time `timeStart`, `gainEnd` at `timeEnd`; `Day2Single` is the one AIR block's
+    /// gain (a stable session). The caller picks the case matching the row's acquisition session (the reference
+    /// dispatches on `source_glue_file`).
+    type CplCplGain =
+        | Day1Interp of gainStart : float * timeStart : System.DateTimeOffset * gainEnd : float * timeEnd : System.DateTimeOffset
+        | Day2Single of gain : float
+
+    /// The CPL-LP family's AIR gain, SPLIT at the first BullshitCheck timestamp (matrix_fit_linear.py:141): rows
+    /// captured strictly before `splitTime` take `gainPre` (the pre-check AIR block); rows at or after it take
+    /// `gainPost` (the post-check AIR block). `splitTime` is the caller-supplied split constant (the reference
+    /// reads it from `bullshit_checks_comparison.json[0]`), never embedded here.
+    type SplitGain =
+        {
+            gainPre : float
+            gainPost : float
+            splitTime : System.DateTimeOffset
+        }
+
+    /// The per-family AIR gain calibration bundle — one entry per family's gain rule (matrix_fit_linear.py's
+    /// `assign_gain_model` branches). `familyGain` selects the entry by `Family` and applies its rule at a
+    /// capture time. `Family` is 4-case but the reference has five gain rules (CPL-CPL splits into day1/day2), so
+    /// `cplCpl` carries a `CplCplGain` DU the caller resolves per acquisition session — using both mandated
+    /// `familyGain` parameters (`family` as the dispatch key, `cal` as the data) meaningfully.
+    type GainCalibration =
+        {
+            lpLp : RepeatPairGain
+            lpCpl : RepeatPairGain
+            cplLp : SplitGain
+            cplCpl : CplCplGain
+        }
+
+    /// The per-family scalar AIR gain to divide out of a science row captured at time `t` — the reference
+    /// `assign_gain_model` per-`source_glue_file` dispatch (matrix_fit_linear.py:73) collapsed to a pure
+    /// function keyed by `Family`:
+    ///   - `LpLp` / `LpCpl` — the mean of the family's two AIR repeat gains (time-independent, a stable family);
+    ///   - `CplLp` — split at the first BullshitCheck timestamp: `gainPre` when `t < splitTime`, else `gainPost`;
+    ///   - `CplCpl` `Day2Single` — the one AIR block's gain; `Day1Interp` — the time-interpolated gain
+    ///     `(1−w)·gainStart + w·gainEnd`, `w = clamp₀₁((t − timeStart)/(timeEnd − timeStart))` (the reference's
+    ///     clipped linear weight, matrix_fit_linear.py:108).
+    /// Stays TOTAL: where the reference RAISES on a non-positive `Day1Interp` interval, the F# uses weight 0
+    /// (a degenerate interval never arises on real AIR data; CLAUDE.md forbids throwing across this boundary).
+    let familyGain (family : Family) (cal : GainCalibration) (t : System.DateTimeOffset) : float =
+        let meanPair (p : RepeatPairGain) : float = 0.5 * (p.gainA + p.gainB)
+        match family with
+        | LpLp -> meanPair cal.lpLp
+        | LpCpl -> meanPair cal.lpCpl
+        | CplLp -> if t < cal.cplLp.splitTime then cal.cplLp.gainPre else cal.cplLp.gainPost
+        | CplCpl ->
+            match cal.cplCpl with
+            | Day2Single gain -> gain
+            | Day1Interp (gainStart, timeStart, gainEnd, timeEnd) ->
+                let span = (timeEnd - timeStart).TotalSeconds
+                let weight =
+                    if span <= 0.0 then 0.0
+                    else max 0.0 (min 1.0 ((t - timeStart).TotalSeconds / span))
+                (1.0 - weight) * gainStart + weight * gainEnd
+
+    /// The corrected science-row signal the reconstruction fits — the reference `signal_corrected =
+    /// signal_dark_sub / gain_est` (matrix_fit_linear.py:160): dark-subtract the raw `avgTotal`, then divide by
+    /// the per-family AIR `gain` (from `familyGain`). Composes `darkSubtract` with the gain divide, so a single
+    /// dark-mean seam governs both readouts.
+    let correctSignal (darkMean : DarkMean) (avgTotal : float) (gain : float) : float =
+        (darkSubtract darkMean avgTotal) / gain
