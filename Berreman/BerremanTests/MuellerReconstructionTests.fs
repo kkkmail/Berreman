@@ -30,6 +30,26 @@ type MuellerReconstructionTests() =
               [ -0.9; 1.0; 0.1; 0.2 ]
               [ 0.3; -0.4; 0.5; 0.6 ] ]
 
+    // Spec 0042 (003, ADD_CONTRACT SVC_XDUO_0002) — the least-squares SOLVE seam. The MOCK and its canned
+    // solution are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes the
+    // first member). `makeMockSolver` is an inline `MuellerSolverProxy` stub whose `solveLinearLeastSquares`
+    // keys off the design HEIGHT (16 = the Mueller-vec unknown count): a full-height design returns the canned
+    // `LeastSquaresSolution`; fewer rows than unknowns returns `Error (RankDeficient rows)`; an empty design
+    // returns `Error (SingularDesign _)`. This exercises the exact signature and BOTH typed error cases with
+    // no real linear algebra — the real MathNet-SVD proxy (`createMathNetSvd ()`) lands in step 004.
+    let cannedSolution : LeastSquaresSolution =
+        { solution = Array.init 16 (fun k -> 0.1 * float k); rank = 16; rmse = 0.0 }
+
+    let makeMockSolver () : MuellerSolverProxy =
+        {
+            solveLinearLeastSquares =
+                fun (design : float[][]) (_rhs : float[]) ->
+                    match design with
+                    | [||] -> Error (SingularDesign "the mock rejects an empty design matrix")
+                    | rows when rows.Length < 16 -> Error (RankDeficient rows.Length)
+                    | _ -> Ok cannedSolution
+        }
+
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
         // A wave plate with no phase delay is a pass-through, whatever its azimuth: R(-θ)·I·R(θ) = I.
@@ -111,3 +131,45 @@ type MuellerReconstructionTests() =
         Assert.True(abs (d.maxAbs - 2.0) < allowedDiff, $"maxAbs = {d.maxAbs}")
         Assert.True(abs (d.frobenius - 2.0) < allowedDiff, $"frobenius = {d.frobenius}")
         Assert.True(abs (d.meanAbs - (2.0 / 16.0)) < allowedDiff, $"meanAbs = {d.meanAbs}")
+
+    [<Fact>]
+    member _.``a mock MuellerSolverProxy solves through its exact signature, returning a canned solution and typed SolverErrors`` () =
+        // Spec 0042 (003) acceptance: build a stub MuellerSolverProxy and call solveLinearLeastSquares
+        // through its EXACT signature, returning a canned solution AND a typed SolverError.
+        let proxy = makeMockSolver ()
+
+        // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local:
+        // the compiler rejects the file if `solveLinearLeastSquares` drifts from its declared shape.
+        let solve : float[][] -> float[] -> Result<LeastSquaresSolution, SolverError> = proxy.solveLinearLeastSquares
+
+        // A full-height design (16 rows for the 16 Mueller unknowns) returns the canned solution.
+        let fullDesign : float[][] = Array.init 16 (fun r -> Array.init 16 (fun c -> if r = c then 1.0 else 0.0))
+        let rhs : float[] = Array.init 16 (fun r -> 0.1 * float r)
+        match solve fullDesign rhs with
+        | Ok sol ->
+            Assert.Equal(16, sol.solution.Length)
+            for k in 0 .. 15 do
+                Assert.True(abs (sol.solution.[k] - 0.1 * float k) < allowedDiff, $"solution[{k}] = {sol.solution.[k]}")
+            Assert.Equal(16, sol.rank)
+            Assert.True(abs sol.rmse < allowedDiff, $"rmse = {sol.rmse}")
+        | Error e -> Assert.Fail($"expected the canned LeastSquaresSolution, got %A{e}")
+
+        // An under-determined design (fewer rows than the 16 unknowns) returns a typed RankDeficient — never a throw.
+        match solve [| [| 1.0; 0.0 |]; [| 0.0; 1.0 |] |] rhs with
+        | Error (RankDeficient rank) -> Assert.Equal(2, rank)
+        | other -> Assert.Fail($"expected Error (RankDeficient _), got %A{other}")
+
+        // An empty design returns a typed SingularDesign carrying a non-empty reason — never a throw.
+        match solve [||] rhs with
+        | Error (SingularDesign reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (SingularDesign _), got %A{other}")
+
+    [<Fact>]
+    member _.``a MuellerSolverProxy compares by reference (the ReferenceEquality convention)`` () =
+        // The proxy's only field is function-valued, so it has no structural equality; the
+        // [<ReferenceEquality>] attribute makes it compare by identity, so a host context holding one
+        // stays comparable (mirrors the ExperimentDataProxy convention).
+        let p = makeMockSolver ()
+        let same = p
+        Assert.True((p = same))
+        Assert.False((p = makeMockSolver ()))

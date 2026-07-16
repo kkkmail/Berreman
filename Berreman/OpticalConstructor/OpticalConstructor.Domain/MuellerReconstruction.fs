@@ -104,3 +104,61 @@ module MuellerReconstruction =
             maxAbs = maxAbs
             argMax = argMax
         }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (003, ADD_CONTRACT SVC_XDUO_0002) — the least-squares SOLVE seam. Declares, in the Domain,
+    // the DECLARED-lifecycle `MuellerSolverProxy`: the optimization boundary that turns the over-determined
+    // design system (the stacked Kronecker rows `A` from `kron4`, and the measured intensities `b`) into the
+    // reconstructed Mueller vec, or a typed `SolverError`. It sits behind the pure column-major core above —
+    // each `A` row is one `kron4 s a`; the returned solution un-vecs back to a `MuellerMatrix` via
+    // `muellerOfVecColumnMajor` — so a future real proxy is exactly the missing `A, b -> least-squares x`
+    // adapter, and its native/library exceptions are caught AT this boundary and mapped to the typed
+    // `SolverError` channel (never thrown across it).
+    //
+    // Kept as pure DATA (the `ExperimentDataProxy` convention, ExperimentDataProxy.fs:43): a record of
+    // camelCase `Result`-returning functions, so logic that holds the proxy stays referentially transparent
+    // and a test substitutes a canned in-memory stub of the SAME shape. Its one field is function-valued and
+    // so has no structural equality, so the record is `[<ReferenceEquality>]` — a host context
+    // (Optimization / Elmish) that holds one keeps its required equality, comparing the proxy by identity.
+    //
+    // DECLARED lifecycle: this is the seam ONLY — no SVD, no ALGLIB, no wiring. A later
+    // `IMPLEMENT_CONTRACT SVC_XDUO_0002` (step 004) supplies the real `createMathNetSvd ()` backed by the
+    // vendored MathNet.Numerics SVD least-squares, leaving every consumer that holds the proxy unchanged.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// A typed failure of the least-squares solve — never a throw across the proxy boundary.
+    /// `SingularDesign` carries a human-readable `reason` (an empty design, a non-finite entry, or a
+    /// native/library failure mapped onto the channel); `RankDeficient` carries the numerical `rank` the
+    /// solver reported, strictly less than the column count the caller needs, so the reconstruction is not
+    /// uniquely determined.
+    type SolverError =
+        | SingularDesign of reason : string
+        | RankDeficient of rank : int
+
+    /// The elevated result of a linear least-squares solve — never a bare `float[]`. `solution` is the
+    /// minimizing `x` (the reconstructed Mueller vec, un-vec'd by `muellerOfVecColumnMajor`); `rank` is the
+    /// numerical rank the solver reported — a first-class observability check, equal to the column count on a
+    /// full-rank solve, that a caller compares against to trust the fit; `rmse` is the root-mean-square
+    /// residual `‖A·x − b‖ / √m` over the `m` measurements.
+    type LeastSquaresSolution =
+        {
+            solution : float[]
+            rank : int
+            rmse : float
+        }
+
+    /// The Mueller least-squares SOLVE seam (the functional-proxy convention): a record of one camelCase
+    /// `Result`-returning function that resolves the over-determined design system to its minimizing solution.
+    ///
+    /// - `solveLinearLeastSquares design rhs` — solve `A·x ≈ b` in the least-squares sense, where `design` is
+    ///   the row-major `A` (each inner array one stacked `kron4` measurement row) and `rhs` is the measured
+    ///   intensities `b`; returns the `LeastSquaresSolution` (solution, numerical rank, residual RMSE), or a
+    ///   typed `SolverError` for a singular or rank-deficient design (never a throw).
+    ///
+    /// DECLARED lifecycle: the seam only — the real MathNet-SVD-backed `createMathNetSvd ()` lands in a later
+    /// `IMPLEMENT_CONTRACT SVC_XDUO_0002` (step 004) in this same module.
+    [<ReferenceEquality>]
+    type MuellerSolverProxy =
+        {
+            solveLinearLeastSquares : float[][] -> float[] -> Result<LeastSquaresSolution, SolverError>
+        }
