@@ -188,6 +188,12 @@
              attach status and the future SolverHandoffWindow. Names Library / Experiments / MeasuredData
              / ExperimentData, so it compiles LAST; nothing in the Domain depends on it. -->
         <Compile Include="ExperimentDataLoad.fs" />
+        <!-- Spec 0042 (001): the pure Mueller-reconstruction primitives — the elevated `Retardance`
+             phase-delay DU and `retarderMueller` (an ideal wave-plate's Mueller matrix, built ONLY from
+             the existing `Propagation.muellerOfRows` + `rotateMueller` seams above). Compiled LAST so it
+             can name `Propagation`, `Fields`, `Geometry` and `Experiments`; nothing in the Domain
+             depends on it. -->
+        <Compile Include="MuellerReconstruction.fs" />
     </ItemGroup>
 
     <ItemGroup>

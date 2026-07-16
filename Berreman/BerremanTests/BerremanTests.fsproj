@@ -38,6 +38,7 @@
         <Compile Include="RhoWithDispValueTests.fs" />
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
+        <Compile Include="MuellerReconstructionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -65,6 +66,10 @@
     <ItemGroup>
         <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
         <ProjectReference Include="..\Analytics\Analytics.fsproj" />
+        <!-- Spec 0042 (001): MuellerReconstructionTests.fs names the pure
+             OpticalConstructor.Domain.MuellerReconstruction module (Retardance + retarderMueller). An
+             EXPLICIT reference to the Domain project (not relying on the transitive Optimization edge). -->
+        <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
         <!-- Slice 011 (§G.11 / AC-G9, AC-G3, AC-G6): OptimizationTests.fs drives the
              full DesignParameters→MeritFunction→optimize→AlglibAdapter→OpticalSystemSolver
              path with the real solver, so it needs the OpticalConstructor.Optimization
