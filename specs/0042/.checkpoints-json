@@ -34,5 +34,9 @@
   "8": {
     "berreman_unit_tests": 142,
     "constructor_unit_tests": 693
+  },
+  "9": {
+    "berreman_unit_tests": 145,
+    "constructor_unit_tests": 693
   }
 }

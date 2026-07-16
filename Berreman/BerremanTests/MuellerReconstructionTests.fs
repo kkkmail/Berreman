@@ -557,3 +557,93 @@ type MuellerReconstructionTests() =
         Assert.True(abs (familyGain CplCpl calDay1 tEnd - 50.0) < allowedDiff, $"familyGain CplCpl (day1 end) = {familyGain CplCpl calDay1 tEnd}")
         Assert.True(abs (familyGain CplCpl calDay1 (tStart.AddHours(-1.0)) - 30.0) < allowedDiff, $"familyGain CplCpl (day1 clamp below) = {familyGain CplCpl calDay1 (tStart.AddHours(-1.0))}")
         Assert.True(abs (familyGain CplCpl calDay1 (tEnd.AddHours(1.0)) - 50.0) < allowedDiff, $"familyGain CplCpl (day1 clamp above) = {familyGain CplCpl calDay1 (tEnd.AddHours(1.0))}")
+
+    [<Fact>]
+    member _.``reconstruct recovers a seeded MuellerMatrix from a synthetic full-rank design at rank 16 (always-run)`` () =
+        // Spec 0042 (010) acceptance (always-run): a synthetic FULL-RANK design — 4 independent Stokes states ⊗
+        // 4 independent analyzer rows = 16 linearly independent designRows (column rank 16) — with the target
+        // seeded exactly as y = X·vec_F(M_seed). The unique least-squares solution un-vecs (column-major) back to
+        // the seeded MuellerMatrix, so `reconstruct` MUST recover the seed within tolerance at rank 16. The seed
+        // is ASYMMETRIC with distinct entries so a row/column-major transpose bug is observable.
+        let seed =
+            Propagation.muellerOfRows
+                [ [ 1.0;  2.0;  3.0;  4.0 ]
+                  [ 5.0;  6.0;  7.0;  8.0 ]
+                  [ 9.0; 10.0; 11.0; 12.0 ]
+                  [ 13.0; 14.0; 15.0; 16.0 ] ]
+        let vSeed = vecColumnMajor seed
+        // Four independent Stokes states and four independent analyzer rows; every (s, a) pair is one designRow,
+        // so the 16 rows span the tensor space (rank = rank{s}·rank{a} = 4·4 = 16).
+        let stokesStates =
+            [ StokesVector.create [ 1.0; 1.0; 0.0; 0.0 ]
+              StokesVector.create [ 1.0; -1.0; 0.0; 0.0 ]
+              StokesVector.create [ 1.0; 0.0; 1.0; 0.0 ]
+              StokesVector.create [ 1.0; 0.0; 0.0; 1.0 ] ]
+        let analyzerRows =
+            [ RealVector4.create [ 1.0; 1.0; 0.0; 0.0 ]
+              RealVector4.create [ 1.0; -1.0; 0.0; 0.0 ]
+              RealVector4.create [ 1.0; 0.0; 1.0; 0.0 ]
+              RealVector4.create [ 1.0; 0.0; 0.0; 1.0 ] ]
+        let design =
+            [ for s in stokesStates do
+                for a in analyzerRows -> designRow s a ]
+            |> List.toArray
+        // The measurement identity: each row's signal is designRow · vec_F(M_seed) = a·(M_seed·s) (a consistent
+        // system, so the full-rank solve recovers the seed exactly).
+        let target = design |> Array.map (fun row -> Array.map2 (*) row vSeed |> Array.sum)
+
+        match reconstruct (createMathNetSvd ()) design target with
+        | Ok recon ->
+            // The observability check §7.2 asserts: full rank 16 and a ~zero residual.
+            Assert.Equal(16, recon.rank)
+            Assert.True(recon.rmse < allowedDiff, $"rmse = {recon.rmse}")
+            assertMuellerEqual seed recon.matrix
+        | Error e -> Assert.Fail($"expected a full-rank reconstruction of the seed, got %A{e}")
+
+    [<Fact>]
+    member _.``cascadeProduct forms M_LR times M_QZ (beam hits QZ first) via the MuellerMatrix product operator (always-run)`` () =
+        // Spec 0042 (010) acceptance (always-run): cascadeProduct mLr mQz MUST equal mLr * mQz — the QZ-first
+        // cascade (light meets QZ then LR, so the combined Mueller product is M_LR · M_QZ), reusing the engine's
+        // MuellerMatrix `*` operator. Non-commuting operands (rotation vs a general matrix) make the ordering
+        // observable — a swapped product would differ.
+        let mQz =
+            Propagation.muellerOfRows
+                [ [ 1.0; 0.0; 0.0; 0.0 ]
+                  [ 0.0; 0.6; 0.8; 0.0 ]
+                  [ 0.0; -0.8; 0.6; 0.0 ]
+                  [ 0.0; 0.0; 0.0; 1.0 ] ]
+        let mLr =
+            Propagation.muellerOfRows
+                [ [ 1.0; 0.2; -0.3; 0.4 ]
+                  [ 0.5; 0.6; 0.7; -0.8 ]
+                  [ -0.9; 1.0; 0.1; 0.2 ]
+                  [ 0.3; -0.4; 0.5; 0.6 ] ]
+        assertMuellerEqual (mLr * mQz) (cascadeProduct mLr mQz)
+
+    [<Fact>]
+    member _.``buildDesign keeps only the requested kind, dropping AIR rows and the excluded contaminated point (always-run)`` () =
+        // Spec 0042 (010): buildDesign selects the science rows of the requested MatrixKind, drops AIR#0
+        // calibration rows and the one contaminated point (LP-(LR#90)-CPL-2 / description 140 / capture_index
+        // 17 — supplied here as BerremanTests data per spec §0), and assembles one designRow + one corrected
+        // signal per kept row via the injected per-row projection.
+        let excluded : ExcludedPoint list =
+            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
+        // A stub per-row projection: unit effective states (one 16-wide designRow) and the row's avgTotal as the
+        // corrected signal, so the assembled target identifies exactly which rows survived, in order.
+        let prepareRow (r : MuellerRawRow) : StokesVector * RealVector4 * float =
+            StokesVector.create [ 1.0; 0.0; 0.0; 0.0 ],
+            RealVector4.create [ 1.0; 0.0; 0.0; 0.0 ],
+            r.avgTotal
+        let t = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero)
+        let rows : MuellerRawRow list =
+            [ { experiment = "LP-(LR#90)-LP"; captureIndex = 0; capturedAt = t; description = Angle.degree 10.0; avgTotal = 1.0 }        // LR — kept
+              { experiment = "LP-(AIR#0)-LP"; captureIndex = 1; capturedAt = t; description = Angle.degree 20.0; avgTotal = 2.0 }         // AIR — dropped
+              { experiment = "LP-(QZ#0)-LP"; captureIndex = 2; capturedAt = t; description = Angle.degree 30.0; avgTotal = 3.0 }          // QZ — wrong kind, dropped
+              { experiment = "LP-(LR#90)-CPL-2"; captureIndex = 17; capturedAt = t; description = Angle.degree 140.0; avgTotal = 4.0 }    // contaminated — dropped
+              { experiment = "LP-(LR#0)-LP"; captureIndex = 3; capturedAt = t; description = Angle.degree 40.0; avgTotal = 5.0 } ]        // LR — kept
+        let (design, target) = buildDesign prepareRow excluded rows Lr
+        // Only the two LR science rows survive (avgTotal 1.0 and 5.0), in order; each contributes one 16-wide row.
+        Assert.Equal(2, design.Length)
+        Assert.Equal(2, target.Length)
+        Assert.Equal<float[]>([| 1.0; 5.0 |], target)
+        Assert.Equal(16, design.[0].Length)

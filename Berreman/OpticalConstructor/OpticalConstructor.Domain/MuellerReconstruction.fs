@@ -739,3 +739,101 @@ module MuellerReconstruction =
     /// dark-mean seam governs both readouts.
     let correctSignal (darkMean : DarkMean) (avgTotal : float) (gain : float) : float =
         (darkSubtract darkMean avgTotal) / gain
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (010, IMPLEMENT) — Part E's numeric core: the Stage-2 DESIGN assembly, the least-squares
+    // RECONSTRUCTION through the solver proxy, and the QZ-first CASCADE product, as three tiny pure functions
+    // over the step-002/007/009 primitives. `buildDesign` mirrors the reference `solve_single_object`'s row
+    // selection (matrix_fit_linear.py:169) — filter to the requested `matrix_kind`, drop AIR#0 rows and the one
+    // excluded contaminated point — and, for each kept science row, builds one `designRow s a` (the `lincoef`
+    // column of the reference glue) paired with its `signal_corrected` target. `reconstruct` solves the
+    // over-determined system `A·x ≈ b` through the injected `MuellerSolverProxy` (steps 003/004) and reshapes
+    // the solved 16-vector column-major back into a `MuellerMatrix` via `muellerOfVecColumnMajor`, carrying the
+    // solver's `rank` / `rmse`. `cascadeProduct` forms `M_LR · M_QZ` (beam meets QZ first, then LR) reusing the
+    // engine's `MuellerMatrix` `*` operator (Fields.fs:651). The composition-root wiring against the real OPM
+    // data (Stage 1 → 2 → 3 end-to-end, the §7.2 assertions) is the final slice.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// One contaminated science point to drop from every fit — the reference `EXCLUDED_POINTS` entry
+    /// (matrix_glue.py:22): the `LP-(LR#90)-CPL-2` capture at description 140° / capture_index 17 ("likely
+    /// contaminated frame"). Kept as DATA the caller (`BerremanTests`) supplies — spec §0 pins the excluded
+    /// contaminated point to `BerremanTests`, not the pure core — matched on `experiment` + `captureIndex` +
+    /// `description` (the raw `experiment` token is a primitive at the label seam; the analyzer dial is the
+    /// elevated engine `Angle`, matching `MuellerRawRow`).
+    type ExcludedPoint =
+        {
+            experiment : string
+            description : Angle
+            captureIndex : int
+        }
+
+    /// The reconstructed Mueller matrix from a least-squares solve — never a bare `float[]`. `matrix` is the
+    /// solved 16-vector un-vec'd column-major (`muellerOfVecColumnMajor`); `rank` is the numerical rank the
+    /// solver reported (16 on a full-rank reconstruction — the observability check §7.2 asserts); `rmse` is the
+    /// intensity residual RMSE the solver reported. Carries the `LeastSquaresSolution` readouts lifted into
+    /// Mueller space.
+    type ReconstructedMatrix =
+        {
+            matrix : MuellerMatrix
+            rank : int
+            rmse : float
+        }
+
+    /// Assemble the n×16 design and its corrected-signal target for one `matrix_kind` — the reference
+    /// `solve_single_object` row selection (matrix_fit_linear.py:169). A science row is kept iff its parsed
+    /// `matrixKind` equals `kind`, it is not an AIR#0 calibration row, and it is not one of the `excluded`
+    /// contaminated points (matched on experiment + capture index + analyzer dial). Each kept row is projected
+    /// through `prepareRow` to its effective source Stokes state `s`, effective analyzer row `a`, and corrected
+    /// signal (the caller — slice 011 — closes `prepareRow` over the calibrated per-family models + gain
+    /// calibration + dark mean, i.e. the reference glue `s_eff` / `a_eff` / `signal_corrected` columns); the
+    /// design row is `designRow s a` (the `lincoef = kron(s_eff, a_eff)` column), the target is the corrected
+    /// signal. Returns `(design, target)` — `design` the row-major `A` (each inner array one `designRow`),
+    /// `target` the matching `b`.
+    let buildDesign
+        (prepareRow : MuellerRawRow -> StokesVector * RealVector4 * float)
+        (excluded : ExcludedPoint list)
+        (rows : MuellerRawRow list)
+        (kind : MatrixKind)
+        : float[][] * float[] =
+        let isExcluded (r : MuellerRawRow) : bool =
+            excluded
+            |> List.exists (fun e ->
+                r.experiment = e.experiment
+                && r.captureIndex = e.captureIndex
+                && abs (r.description.value - e.description.value) < 1e-9)
+        let kept =
+            rows
+            |> List.filter (fun r ->
+                matrixKind (parseExperiment r.experiment) = kind
+                && not (r.experiment.Contains("(AIR#0)"))
+                && not (isExcluded r))
+        let prepared = kept |> List.map prepareRow
+        let design = prepared |> List.map (fun (s, a, _) -> designRow s a) |> List.toArray
+        let target = prepared |> List.map (fun (_, _, signal) -> signal) |> List.toArray
+        design, target
+
+    /// Solve the over-determined design system `A·x ≈ b` through the injected `MuellerSolverProxy` and lift the
+    /// result into Mueller space — the reference `solve_single_object` least-squares + `matrix_from_vector`
+    /// column-major reshape (matrix_fit_linear.py:178/:166). `x` is the row-major design (each inner array one
+    /// `designRow` from `buildDesign`), `y` the corrected-signal target. On success the solved 16-vector is
+    /// un-vec'd column-major via `muellerOfVecColumnMajor` into the reconstructed `MuellerMatrix`, carrying the
+    /// solver's numerical `rank` and residual `rmse`; a degenerate / rank-deficient design passes the typed
+    /// `SolverError` through unchanged — never a throw.
+    let reconstruct
+        (solver : MuellerSolverProxy)
+        (x : float[][])
+        (y : float[])
+        : Result<ReconstructedMatrix, SolverError> =
+        solver.solveLinearLeastSquares x y
+        |> Result.map (fun sol ->
+            {
+                matrix = muellerOfVecColumnMajor sol.solution
+                rank = sol.rank
+                rmse = sol.rmse
+            })
+
+    /// The QZ-first cascade Mueller matrix — the reference `M_LR @ M_QZ` product (matrix_fit_linear.py:358):
+    /// the beam meets QZ first, then LR, so the combined stack's Mueller matrix is `M_LR · M_QZ` (the analyzer
+    /// end operator left-most). Reuses the engine's `MuellerMatrix` `*` operator (Fields.fs:651) — no new 4×4
+    /// algebra. Compared against the independently-reconstructed `M_{QZ+LR}` in the §7.2 cascade-identity check.
+    let cascadeProduct (mLr : MuellerMatrix) (mQz : MuellerMatrix) : MuellerMatrix = mLr * mQz
