@@ -1,8 +1,10 @@
 namespace OpticalConstructor.Domain
 
+open System.Text.RegularExpressions
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
+open OpticalConstructor.Domain.Library                // PolarizerKind / IdealLinear (step 007 source & analyzer models)
 open OpticalConstructor.Domain.Experiments            // DataFilePath (step 025) — reused by the CSV-load seam (step 005)
 
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
@@ -297,3 +299,217 @@ module MuellerReconstruction =
         {
             tryLoadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError>
         }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (007, IMPLEMENT) — the per-row GLUE (§2.2 / Part D): the experiment-label parser, the family /
+    // matrix-kind classification, the per-family source & analyzer MODELS, and the base → effective state
+    // builders. Every function is a tiny pure function with a concrete elevated signature, mirroring the
+    // reference `matrix_glue.py` / `cpl_cpl_analyzer.py` grammar 1:1. The effective states are built ONLY from
+    // the EXISTING `Propagation` seams (`rotationMueller` at Propagation.fs:117, `analyzerMueller IdealLinear` at
+    // Propagation.fs:73, `muellerElement` at Propagation.fs:40) plus the step-001 `retarderMueller` and the
+    // step-002 `kron4` — no new 4×4 algebra is introduced. The Stage-1 AIR calibration constants that POPULATE a
+    // `SourceModel` / `AnalyzerModel` (zero dial, source/analyzer θ_rel, retardances) and the `buildDesign` /
+    // `reconstruct` assembly are later slices; this slice ships the glue functions they consume.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// The experiment family — the (source, analyzer) polarizer pair an experiment sweeps, the reference
+    /// `canonical_polarizer(source)-canonical_polarizer(analyzer)` key (matrix_glue.py:92). `Lp` is an ideal
+    /// linear polarizer, `Cpl` a circular (LP + retarder) polarizer; the four cases are the four families the
+    /// reconstruction glue knows.
+    type Family =
+        | LpLp
+        | LpCpl
+        | CplLp
+        | CplCpl
+
+    /// Which sample (or the empty AIR calibration) a measurement row constrains — the reference
+    /// `object_rotation_from_parsed` matrix-kind (matrix_glue.py:101). `Air` is a bare AIR#0 calibration row (no
+    /// sample); `Qz` / `Lr` a single object at its labelled azimuth; `QzLrProduct` the combined QZ·LR stack
+    /// (both objects at the same azimuth).
+    type MatrixKind =
+        | Air
+        | Qz
+        | Lr
+        | QzLrProduct
+
+    /// One parsed object token inside an experiment label's parenthesised list — a `NAME#angle` entry such as
+    /// `QZ#90` (parse-boundary DTO: the raw `name` token is a primitive at the parse seam, but its labelled
+    /// rotation is elevated to the engine `Angle`, since the label rotation IS used as the object frame φ
+    /// directly, spec §0).
+    type ParsedObject =
+        {
+            name : string
+            labelAngle : Angle
+        }
+
+    /// An experiment label parsed into its grammar pieces — the F# port of the reference `parse_experiment_name`
+    /// (cpl_cpl_analyzer.py:31): a source token, a parenthesised dash-joined object list, an analyzer token, and
+    /// an optional note suffix (e.g. `CPL-(QZ#90-LR#90)-CPL`). A label that does not match the grammar parses to
+    /// the empty shape (`sourceToken = None`, `analyzerToken = None`, no objects) — never a throw. The raw tokens
+    /// are primitives at the parse seam.
+    type ParsedExperiment =
+        {
+            sourceToken : string option
+            analyzerToken : string option
+            note : string
+            objects : ParsedObject list
+        }
+
+    /// The experiment-label grammar, ported verbatim from the reference `EXPERIMENT_RE` (cpl_cpl_analyzer.py:18):
+    /// `source-(inside)-analyzer` with an optional `-note` suffix.
+    let private experimentRegex : Regex =
+        Regex(@"^(?<src>[^-]+)-\((?<inside>[^)]*)\)-(?<an>[^-]+)(?:-(?<note>.*))?$")
+
+    /// One `NAME#angle` object token, ported verbatim from the reference `OBJECT_RE` (cpl_cpl_analyzer.py:19).
+    let private objectRegex : Regex =
+        Regex(@"(?<obj>[A-Z]+)#(?<angle>-?\d+)")
+
+    /// Parse an experiment label into its `ParsedExperiment` grammar pieces (the reference
+    /// `parse_experiment_name`, cpl_cpl_analyzer.py:31). The parenthesised inner list is split on `-` and each
+    /// part matched as a `NAME#angle` object; a non-matching label yields the empty parse. Total — never throws.
+    let parseExperiment (label : string) : ParsedExperiment =
+        let m = experimentRegex.Match(label)
+        if not m.Success then
+            { sourceToken = None; analyzerToken = None; note = ""; objects = [] }
+        else
+            let inside = m.Groups.["inside"].Value
+            let parts = if inside = "" then [] else inside.Split('-') |> Array.toList
+            let objects =
+                parts
+                |> List.choose (fun part ->
+                    let om = objectRegex.Match(part)
+                    if om.Success then
+                        match System.Int32.TryParse(om.Groups.["angle"].Value) with
+                        | true, deg -> Some { name = om.Groups.["obj"].Value; labelAngle = Angle.degree (float deg) }
+                        | _ -> None
+                    else
+                        None)
+            {
+                sourceToken = Some m.Groups.["src"].Value
+                analyzerToken = Some m.Groups.["an"].Value
+                note = m.Groups.["note"].Value
+                objects = objects
+            }
+
+    /// The experiment family from a parsed label — the reference `family_from_experiment` (matrix_glue.py:92): a
+    /// token is the circular family iff it contains `CPL` (the reference `canonical_polarizer`), otherwise the
+    /// linear family. Total over the four families.
+    let family (parsed : ParsedExperiment) : Family =
+        let isCpl (tokenOpt : string option) : bool =
+            match tokenOpt with
+            | Some token -> token.Contains("CPL")
+            | None -> false
+        match isCpl parsed.sourceToken, isCpl parsed.analyzerToken with
+        | false, false -> LpLp
+        | false, true -> LpCpl
+        | true, false -> CplLp
+        | true, true -> CplCpl
+
+    /// The object frame rotation φ and the effective matrix kind for a parsed label — the reference
+    /// `object_rotation_from_parsed` (matrix_glue.py:101). No objects → an AIR calibration at φ = 0; one object →
+    /// its labelled azimuth and the object's kind (QZ / LR, else AIR); two objects → the QZ·LR product at the
+    /// first object's azimuth. The label rotation is used as φ directly (spec §0).
+    let private objectRotation (parsed : ParsedExperiment) : Angle * MatrixKind =
+        match parsed.objects with
+        | [] -> Angle.zero, Air
+        | [ o ] ->
+            let kind =
+                match o.name.ToUpperInvariant() with
+                | "QZ" -> Qz
+                | "LR" -> Lr
+                | _ -> Air
+            o.labelAngle, kind
+        | first :: _ -> first.labelAngle, QzLrProduct
+
+    /// The effective matrix kind a parsed label constrains (the kind half of `objectRotation`).
+    let matrixKind (parsed : ParsedExperiment) : MatrixKind = snd (objectRotation parsed)
+
+    /// The object frame rotation φ a parsed label carries (the angle half of `objectRotation`): the label
+    /// rotation used directly as φ (spec §0), or 0 for an AIR calibration row.
+    let objectPhi (parsed : ParsedExperiment) : Angle = fst (objectRotation parsed)
+
+    /// A named two-case sign for the analyzer dial → physical-angle map — never a naked `int`. `.value` is the
+    /// multiplicative sign (`+1` / `−1`) the reference `AnalyzerModel.dial_sign` carries (matrix_glue.py:152).
+    type DialSign =
+        | DialPositive
+        | DialNegative
+
+        /// The multiplicative sign (+1 / −1) — read at the arithmetic seam.
+        member this.value : float =
+            match this with
+            | DialPositive -> 1.0
+            | DialNegative -> -1.0
+
+    /// The per-family SOURCE model — how the input Stokes state is synthesized (the reference `SourceModel`,
+    /// matrix_glue.py:128). `LpSource` is the ideal linear source `[1;1;0;0]`; `CplSource` prepends a retarder
+    /// (fast axis at `thetaRel`, phase `retardance`) to it, exactly `retarder(theta_rel, retardance) @ s_lin`.
+    type SourceModel =
+        | LpSource
+        | CplSource of thetaRel : Angle * retardance : Retardance
+
+    /// The per-family ANALYZER model — how the analyzer's Mueller row is synthesized from its dial reading (the
+    /// reference `AnalyzerModel`, matrix_glue.py:144). `kind` selects the linear (`IdealLinear`) vs circular
+    /// (LP + retarder) construction; `zeroDial` / `dialSign` map the raw dial to the physical azimuth; a circular
+    /// analyzer additionally carries its retarder's `thetaRelOpt` / `retardanceOpt`.
+    type AnalyzerModel =
+        {
+            kind : PolarizerKind
+            zeroDial : Angle
+            dialSign : DialSign
+            thetaRelOpt : Angle option
+            retardanceOpt : Retardance option
+        }
+
+    /// The base (un-rotated) source Stokes state for a source model — the reference `SourceModel.base_state`
+    /// (matrix_glue.py:134): `[1;1;0;0]` for a linear source, `retarderMueller thetaRel retardance · [1;1;0;0]`
+    /// for a circular one.
+    let sourceBaseStokes (source : SourceModel) : StokesVector =
+        let sLinear = StokesVector.create [ 1.0; 1.0; 0.0; 0.0 ]
+        match source with
+        | LpSource -> sLinear
+        | CplSource (thetaRel, retardance) -> retarderMueller thetaRel retardance * sLinear
+
+    /// The analyzer's physical azimuth for a raw dial reading — the reference `AnalyzerModel.physical_angle_deg`
+    /// (matrix_glue.py:152): `dialSign · (dial − zeroDial)`.
+    let physicalAngle (analyzer : AnalyzerModel) (dial : Angle) : Angle =
+        Angle (analyzer.dialSign.value * (dial.value - analyzer.zeroDial.value))
+
+    /// Row 0 of the analyzer's Mueller matrix at a raw dial reading — the reference `AnalyzerModel.base_row`
+    /// (matrix_glue.py:155). The physical azimuth β = `physicalAngle`; a linear analyzer is
+    /// `analyzerMueller IdealLinear β`, a circular one is `analyzerMueller IdealLinear β · retarderMueller
+    /// (β + thetaRel) retardance` (an LP behind a retarder). Row 0 is read through the `Propagation.muellerElement`
+    /// seam only.
+    let analyzerBaseRow (analyzer : AnalyzerModel) (dial : Angle) : RealVector4 =
+        let beta = physicalAngle analyzer dial
+        let linear = Propagation.analyzerMueller IdealLinear beta
+        let mm =
+            match analyzer.kind with
+            | IdealLinear -> linear
+            | IdealCircularLeft | IdealCircularRight ->
+                match analyzer.thetaRelOpt, analyzer.retardanceOpt with
+                | Some thetaRel, Some retardance -> linear * retarderMueller (beta + thetaRel) retardance
+                | _ -> linear
+        RealVector4.create
+            [ Propagation.muellerElement mm 0 0
+              Propagation.muellerElement mm 0 1
+              Propagation.muellerElement mm 0 2
+              Propagation.muellerElement mm 0 3 ]
+
+    /// The effective source Stokes state after the object frame rotation φ — the reference `s_eff = R(φ) · s_base`
+    /// (matrix_glue.py:266): `Propagation.rotationMueller φ · s`.
+    let effectiveSource (phi : Angle) (s : StokesVector) : StokesVector =
+        Propagation.rotationMueller phi * s
+
+    /// The effective analyzer row after the object frame rotation φ — the reference `a_eff = a_base · R(−φ)`
+    /// (matrix_glue.py:267): the row-vector times `Propagation.rotationMueller (−φ)`, entry `j = Σᵢ a[i]·R(−φ)[i,j]`,
+    /// read through the `Propagation.muellerElement` seam.
+    let effectiveAnalyzer (phi : Angle) (a : RealVector4) : RealVector4 =
+        let r = Propagation.rotationMueller (Angle (- phi.value))
+        RealVector4.create
+            [ for j in 0 .. 3 ->
+                [ 0 .. 3 ] |> List.sumBy (fun i -> a.[i] * Propagation.muellerElement r i j) ]
+
+    /// The design row one measurement imposes — the reference `lincoef = np.kron(s_eff, a_eff)`
+    /// (matrix_glue.py:268): the 16-element Kronecker row `kron4 s a` (entry `4·i + j = s[i]·a[j]`), the same
+    /// column-major row `vecColumnMajor` and the `MuellerSolverProxy` consume.
+    let designRow (s : StokesVector) (a : RealVector4) : float[] = kron4 s a

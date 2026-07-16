@@ -95,6 +95,22 @@ type MuellerReconstructionTests() =
         "experiment,capture_index,captured_at,description,avg_total\n"
         + "E1,not-an-int,2026-07-15T12:00:00+00:00,0,869.5\n"
 
+    // Spec 0042 (007, IMPLEMENT) — component-wise closeness helpers for the effective-state +90/−90 invariance,
+    // over the shared `allowedDiff` (no hand-rolled epsilon). Bound here, ahead of the members (FS0960: in a
+    // class type every `let` binding precedes the first member). StokesVector is read through the
+    // `Propagation.stokesComponents` seam; RealVector4 through its indexer.
+    let assertStokesClose (a : StokesVector) (b : StokesVector) =
+        let (a0, a1, a2, a3) = Propagation.stokesComponents a
+        let (b0, b1, b2, b3) = Propagation.stokesComponents b
+        Assert.True(abs (a0 - b0) < allowedDiff, $"S0 differs by {abs (a0 - b0)}")
+        Assert.True(abs (a1 - b1) < allowedDiff, $"S1 differs by {abs (a1 - b1)}")
+        Assert.True(abs (a2 - b2) < allowedDiff, $"S2 differs by {abs (a2 - b2)}")
+        Assert.True(abs (a3 - b3) < allowedDiff, $"S3 differs by {abs (a3 - b3)}")
+
+    let assertVec4Close (a : RealVector4) (b : RealVector4) =
+        for i in 0 .. 3 do
+            Assert.True(abs (a.[i] - b.[i]) < allowedDiff, $"component {i} differs by {abs (a.[i] - b.[i])}")
+
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
         // A wave plate with no phase delay is a pass-through, whatever its azimuth: R(-θ)·I·R(θ) = I.
@@ -342,3 +358,20 @@ type MuellerReconstructionTests() =
         match loadFamily (DataFilePath.create "C:/data/definitely-missing-mueller-file-0042.csv") with
         | Error _ -> ()   // a missing file is mapped to a typed MuellerDataError at the IO boundary — never a throw
         | Ok _ -> Assert.Fail("expected a typed MuellerDataError for a missing file, got Ok")
+
+    [<Fact>]
+    member _.``parseExperiment decodes CPL-(QZ#90-LR#90)-CPL and the +90 / -90 object rotation is inert (R(2 phi) invariance)`` () =
+        // Spec 0042 (007) acceptance. The label decodes to the CPL-CPL family, the QZ·LR product kind, and an
+        // object frame rotation phi = 90 deg.
+        let parsed = parseExperiment "CPL-(QZ#90-LR#90)-CPL"
+        Assert.Equal(CplCpl, family parsed)
+        Assert.Equal(QzLrProduct, matrixKind parsed)
+        Assert.True(abs ((objectPhi parsed).degrees - 90.0) < allowedDiff, $"phi = {(objectPhi parsed).degrees}")
+
+        // R(phi) depends on 2*phi, so +90 deg and -90 deg differ by a full 180 deg in 2*phi and are physically
+        // identical: the effective source Stokes state and the effective analyzer row built at +90 MUST equal
+        // those at -90 within allowedDiff. Non-symmetric base states (the 2*phi=+/-180 flip is observable).
+        let sBase = StokesVector.create [ 1.0; 0.7; -0.4; 0.2 ]
+        let aBase = RealVector4.create [ 0.5; 0.25; -0.3; 0.1 ]
+        assertStokesClose (effectiveSource (Angle.degree 90.0) sBase) (effectiveSource (Angle.degree (-90.0)) sBase)
+        assertVec4Close (effectiveAnalyzer (Angle.degree 90.0) aBase) (effectiveAnalyzer (Angle.degree (-90.0)) aBase)

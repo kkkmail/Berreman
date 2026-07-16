@@ -22,5 +22,9 @@
   "5": {
     "berreman_unit_tests": 138,
     "constructor_unit_tests": 693
+  },
+  "6": {
+    "berreman_unit_tests": 139,
+    "constructor_unit_tests": 693
   }
 }
