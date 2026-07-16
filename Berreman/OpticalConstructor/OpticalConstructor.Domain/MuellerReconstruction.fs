@@ -513,3 +513,105 @@ module MuellerReconstruction =
     /// (matrix_glue.py:268): the 16-element Kronecker row `kron4 s a` (entry `4·i + j = s[i]·a[j]`), the same
     /// column-major row `vecColumnMajor` and the `MuellerSolverProxy` consume.
     let designRow (s : StokesVector) (a : RealVector4) : float[] = kron4 s a
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (008, IMPLEMENT) — Stage-1 AIR calibration (the reference `matrix_step1_air_fit.py`) as three
+    // tiny pure functions over the AIR-series normalized traces. Only 2-column least squares + `atan2`/`arccos`
+    // — no nonlinear optimizer anywhere. The re-derived constants (NOT the report's rounded §2.2 values) are
+    // what POPULATE the Stage-2 `SourceModel` / `AnalyzerModel`: `freeCosineFit` gives an analyzer/source zero
+    // dial `z = ½·atan2(q,p)` and a fringe `visibility`; `retardanceFromVisibility` turns a visibility into a
+    // retarder phase `arccos(|vis|)`; `sourceCplFromLpFrame` is the closed form that turns the CPL-LP LP-frame
+    // fit coefficients into the source retarder's `(thetaRel, retardance)`. The 2-column solve goes THROUGH the
+    // `MuellerSolverProxy` (steps 003/004) — the same optimization seam the 16-unknown reconstruction uses — so
+    // the calibration and the reconstruction share one solver boundary.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// Wrap a degree value into `[0, 180)` — the reference `angle_mod_180` (matrix_step1_air_fit.py:24), i.e.
+    /// numpy's `angle % 180.0` (a POSITIVE modulo). F#'s `%` takes the sign of the dividend, so a negative
+    /// result is lifted by one period; a `½·atan2` zero-azimuth and a retarder fast-axis are both period-180.
+    let private wrapDeg180 (deg : float) : float =
+        let m = deg % 180.0
+        if m < 0.0 then m + 180.0 else m
+
+    /// The result of a Stage-1 2-column cosine calibration fit (the reference `fit_free_cosine`,
+    /// matrix_step1_air_fit.py:101): the analyzer/source zero azimuth `zeroDeg = ½·atan2(q, p)` in degrees,
+    /// wrapped to `[0, 180)`; the fringe `visibility = √(p² + q²)` (the retarder-phase readout via
+    /// `retardanceFromVisibility`); and the normalized-intensity residual `rmse`. These are dimensionless fit
+    /// scalars (a raw dial angle, a contrast ratio, and a residual) reported exactly as the reference emits
+    /// them — the elevated `Angle` / `Retardance` that CONSUME them are built downstream (a `zeroDial`, a
+    /// source `retardance`), keeping this record a faithful 1:1 mirror of the reference fit output.
+    type CosineFit =
+        {
+            zeroDeg : float
+            visibility : float
+            rmse : float
+        }
+
+    /// The re-derived CPL SOURCE calibration constants from the LP-frame fit (the reference
+    /// `derive_source_cpl_from_lp_frame`, matrix_step1_air_fit.py:147): the source retarder's relative fast-axis
+    /// azimuth `thetaRel` and its phase `retardance`, both elevated (never a bare degree/phase). These feed the
+    /// Stage-2 `CplSource (thetaRel, retardance)` model directly — they are the RE-derived constants, not the
+    /// report's rounded §2.2 cross-check values.
+    type SourceCplModel =
+        {
+            thetaRel : Angle
+            retardance : Retardance
+        }
+
+    /// The Stage-1 free 2-column cosine fit (the reference `fit_free_cosine`, matrix_step1_air_fit.py:101): fit
+    /// `norm − 1 ≈ p·cos2α + q·sin2α` over the AIR trace (`α` = the analyzer dial angle in degrees), SOLVED
+    /// through the injected `MuellerSolverProxy` — the same least-squares seam the 16-unknown reconstruction
+    /// uses. `design` is the two columns `[cos 2α, sin 2α]`, `rhs` is `norm − 1`; from the solved `(p, q)`:
+    ///   `visibility = √(p² + q²)`  (numpy `hypot`),
+    ///   `zeroDeg = wrap180(½·atan2(q, p)°)`,
+    ///   `rmse` = the proxy's residual RMSE. Because `rhs = norm − 1` and the fitted model is `1 + design·(p,q)`,
+    ///   the proxy residual `‖A·x − b‖/√m` is exactly the reference's `√(mean(resid²))` over `norm − fitted`.
+    /// Returns a typed `SolverError` (never a throw) when the design is degenerate — e.g. fewer than two
+    /// distinct doubled angles makes the two columns collinear (`RankDeficient`).
+    let freeCosineFit
+        (solver : MuellerSolverProxy)
+        (anglesDeg : float[])
+        (norm : float[])
+        : Result<CosineFit, SolverError> =
+        let design =
+            anglesDeg
+            |> Array.map (fun a ->
+                let twoAlpha = 2.0 * a * degree
+                [| cos twoAlpha; sin twoAlpha |])
+        let rhs = norm |> Array.map (fun n -> n - 1.0)
+        solver.solveLinearLeastSquares design rhs
+        |> Result.map (fun sol ->
+            let p = sol.solution.[0]
+            let q = sol.solution.[1]
+            {
+                zeroDeg = wrapDeg180 (0.5 * (atan2 q p) / degree)
+                visibility = sqrt (p * p + q * q)
+                rmse = sol.rmse
+            })
+
+    /// A retarder phase from a fringe visibility (the reference `retardance_from_visibility`,
+    /// matrix_step1_air_fit.py:32): `arccos(|visibility|)`, with `|visibility|` clamped to `[0, 1]` so a
+    /// visibility nudged past unity by fit noise stays real. Returned as an elevated `Retardance` (radians on
+    /// the wire; read its `.degrees` for the ≈83.67° analyzer-δ cross-check). A visibility of 1 (a perfect
+    /// linear fringe) is zero retardance; a visibility of 0 (no contrast) is a quarter-wave (90°).
+    let retardanceFromVisibility (visibility : float) : Retardance =
+        let clamped = max 0.0 (min 1.0 (abs visibility))
+        Retardance (acos clamped)
+
+    /// The closed-form CPL-source model from the CPL-LP LP-frame fit coefficients (the reference
+    /// `derive_source_cpl_from_lp_frame`, matrix_step1_air_fit.py:147). Given the LP-frame fit's `(qLp, uLp)`
+    /// (the `[cos 2(α−z_LP), sin 2(α−z_LP)]` coefficients), the source retarder's fast axis and phase are
+    ///   `2θ = atan2(1 − qLp, uLp)`,  `thetaRel = wrap180(½·2θ)`,
+    ///   `cosδ = 1 − (1 − qLp) / sin²2θ`,  `retardance = arccos(clamp₋₁₊₁ cosδ)`.
+    /// `cosδ` is clamped to `[−1, 1]` exactly as the reference; the port stays TOTAL — where the reference
+    /// RAISES on a numerically ill-conditioned `sin 2θ ≈ 0`, the F# stays inside `SourceCplModel` (the CPL-LP
+    /// AIR data has `2θ ≈ 79°`, far from the singularity, and CLAUDE.md forbids throwing across this boundary).
+    let sourceCplFromLpFrame (qLp : float) (uLp : float) : SourceCplModel =
+        let twoTheta = atan2 (1.0 - qLp) uLp
+        let sinTwoTheta = sin twoTheta
+        let cosDelta = 1.0 - (1.0 - qLp) / (sinTwoTheta * sinTwoTheta)
+        let clampedCosDelta = max (-1.0) (min 1.0 cosDelta)
+        {
+            thetaRel = Angle.degree (wrapDeg180 (0.5 * (twoTheta / degree)))
+            retardance = Retardance (acos clampedCosDelta)
+        }

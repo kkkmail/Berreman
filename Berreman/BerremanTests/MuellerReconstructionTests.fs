@@ -1,5 +1,6 @@
 namespace BerremanTests
 
+open System.IO
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
@@ -110,6 +111,68 @@ type MuellerReconstructionTests() =
     let assertVec4Close (a : RealVector4) (b : RealVector4) =
         for i in 0 .. 3 do
             Assert.True(abs (a.[i] - b.[i]) < allowedDiff, $"component {i} differs by {abs (a.[i] - b.[i])}")
+
+    // Spec 0042 (008, IMPLEMENT) — Stage-1 AIR calibration helpers. Bound here, ahead of the members (FS0960:
+    // in a class type every `let` binding precedes the first member). Radians-per-degree reached by its full
+    // module path (no extra `open` of the numeric-wrapper module, which would drag unrelated names into scope).
+    let degree = Berreman.MathNetNumericsMath.degree
+
+    /// Locate the sibling `optics-mueller` checkout's AIR data folder by walking up from the test output
+    /// directory to the first ancestor that carries `optics-mueller\data\raw\final\lp_lp.csv`, returning that
+    /// `final` directory — or `None` when no such checkout is present, so the data-dependent cross-check SKIPS
+    /// (manual §5.6 / §13 Q3: the test pulls data via a relative walk-up, never a committed copy).
+    let tryFindOpmFinalDir () : string option =
+        let rec walk (dir : DirectoryInfo) : string option =
+            if isNull dir then None
+            else
+                let candidate = Path.Combine(dir.FullName, "optics-mueller", "data", "raw", "final")
+                if File.Exists(Path.Combine(candidate, "lp_lp.csv")) then Some candidate
+                else walk dir.Parent
+        walk (DirectoryInfo(System.AppContext.BaseDirectory))
+
+    /// Reduce an experiment family's raw capture rows to its AIR#0 normalized trace — the reference
+    /// `load_air_traces` + `prepare_normalized_traces` (matrix_step1_air_fit.py:78, :85): keep only the AIR#0
+    /// rows, group by experiment; within each experiment average `avgTotal` per dial `description`, dark-subtract
+    /// (`signal = avg − darkMean`), and normalize by that experiment's own mean signal; concatenate all
+    /// experiments' points. Returns the `(dialAngleDeg[], norm[])` pair `freeCosineFit` consumes.
+    let reduceAirTraces (darkMean : float) (rows : MuellerRawRow list) : float[] * float[] =
+        let reduced =
+            rows
+            |> List.filter (fun r -> r.experiment.Contains("(AIR#0)"))
+            |> List.groupBy (fun r -> r.experiment)
+            |> List.collect (fun (_, expRows) ->
+                let byDescription =
+                    expRows
+                    |> List.groupBy (fun r -> r.description.degrees)
+                    |> List.map (fun (descDeg, g) -> descDeg, (g |> List.averageBy (fun r -> r.avgTotal)) - darkMean)
+                    |> List.sortBy fst
+                let meanSignal = byDescription |> List.averageBy snd
+                byDescription |> List.map (fun (descDeg, signal) -> descDeg, signal / meanSignal))
+        reduced |> List.map fst |> List.toArray,
+        reduced |> List.map snd |> List.toArray
+
+    /// The Stage-1 LP-frame fit coefficients `(qLp, uLp)` — the reference `fit_lp_frame_coeffs`
+    /// (matrix_step1_air_fit.py:132): the same 2-column least squares as `freeCosineFit` but with the design
+    /// phased on the source LP zero (`[cos 2(α − zeroDeg), sin 2(α − zeroDeg)]`), returning the raw coefficients
+    /// (not a zero/visibility readout) that feed `sourceCplFromLpFrame`. Solved through the real proxy exactly
+    /// as `freeCosineFit` does; a well-formed AIR trace is full column rank 2, so `Ok` is expected.
+    let lpFrameCoeffs (solver : MuellerSolverProxy) (anglesDeg : float[]) (norm : float[]) (zeroDeg : float) : float * float =
+        let design =
+            anglesDeg
+            |> Array.map (fun a ->
+                let twoAlpha = 2.0 * (a - zeroDeg) * degree
+                [| cos twoAlpha; sin twoAlpha |])
+        let rhs = norm |> Array.map (fun n -> n - 1.0)
+        match solver.solveLinearLeastSquares design rhs with
+        | Ok sol -> sol.solution.[0], sol.solution.[1]
+        | Error e -> failwith $"the LP-frame calibration least squares failed: %A{e}"
+
+    /// Unwrap a `freeCosineFit` result in the data-dependent cross-check, failing the test (never a silent
+    /// pass) if a well-formed AIR trace somehow yields a `SolverError`.
+    let unwrapFit (label : string) (result : Result<CosineFit, SolverError>) : CosineFit =
+        match result with
+        | Ok fit -> fit
+        | Error e -> failwith $"the {label} calibration cosine fit failed: %A{e}"
 
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
@@ -375,3 +438,61 @@ type MuellerReconstructionTests() =
         let aBase = RealVector4.create [ 0.5; 0.25; -0.3; 0.1 ]
         assertStokesClose (effectiveSource (Angle.degree 90.0) sBase) (effectiveSource (Angle.degree (-90.0)) sBase)
         assertVec4Close (effectiveAnalyzer (Angle.degree 90.0) aBase) (effectiveAnalyzer (Angle.degree (-90.0)) aBase)
+
+    [<Fact>]
+    member _.``freeCosineFit recovers a synthetic cosine zero and visibility within tolerance (always-run)`` () =
+        // Spec 0042 (008) acceptance (always-run): a synthetic AIR trace norm = 1 + v·cos2(α − z) is fit through
+        // the REAL solver proxy; freeCosineFit MUST recover the known zero z, the known visibility v, and a
+        // (near-)zero normalized residual — the closed-form ½·atan2(q,p) / √(p²+q²) readouts of the 2-column fit.
+        let solver = createMathNetSvd ()
+        let knownZeroDeg = 30.0
+        let knownVisibility = 0.6
+        let anglesDeg = [| for k in 0 .. 17 -> 10.0 * float k |]     // 0,10,…,170 — >2 distinct doubled angles
+        let norm = anglesDeg |> Array.map (fun a -> 1.0 + knownVisibility * cos (2.0 * (a - knownZeroDeg) * degree))
+        match freeCosineFit solver anglesDeg norm with
+        | Ok fit ->
+            Assert.True(abs (fit.zeroDeg - knownZeroDeg) < 1e-6, $"zeroDeg = {fit.zeroDeg}")
+            Assert.True(abs (fit.visibility - knownVisibility) < 1e-6, $"visibility = {fit.visibility}")
+            Assert.True(fit.rmse < 1e-6, $"rmse = {fit.rmse}")
+        | Error e -> Assert.Fail($"expected a CosineFit for the synthetic trace, got %A{e}")
+
+    [<Fact>]
+    member _.``Stage-1 re-derived calibration constants cross-check the section 2.2 rounded values (OPM AIR data present)`` () =
+        // Spec 0042 (008) acceptance (data-dependent): when the sibling OPM AIR data is present, the constants
+        // RE-derived by the three Stage-1 functions each land within a loose (~1°) band of their §2.2 cross-check
+        // (z_LP≈155.44, z_CPL≈97.00, δ_an≈83.67, θ_src≈39.31, δ_src≈82.55). When the OPM checkout is absent the
+        // fact SKIPS (xunit.v3-native dynamic skip) instead of failing — see the state-of-the-world Gotchas for
+        // why this is a plain [<Fact>] + Assert.Skip rather than the v2-only [<SkippableFact>] the slice names.
+        match tryFindOpmFinalDir () with
+        | None ->
+            Assert.Skip("OPM AIR calibration data is absent (no sibling optics-mueller checkout) — skipping the section 2.2 cross-check")
+        | Some finalDir ->
+            let solver = createMathNetSvd ()
+            let data = MuellerDataStore.createFileBacked ()
+            let load (name : string) : MuellerRawRow list =
+                match data.tryLoadFamily (DataFilePath.create (Path.Combine(finalDir, name))) with
+                | Ok rows -> rows
+                | Error e -> failwith $"could not load the OPM family '{name}': %A{e}"
+
+            // dark_mean = mean avg_total over darkness_checks.csv (the reference ≈ 869.666).
+            let darkMean = load "darkness_checks.csv" |> List.averageBy (fun r -> r.avgTotal)
+
+            // LP-LP AIR → free cosine fit → LP analyzer zero z_LP ≈ 155.44.
+            let (anglesLpLp, normLpLp) = reduceAirTraces darkMean (load "lp_lp.csv")
+            let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
+            Assert.True(abs (lpLpFit.zeroDeg - 155.44) < 1.0, $"z_LP = {lpLpFit.zeroDeg}")
+
+            // LP-CPL AIR → free cosine fit → CPL analyzer zero z_CPL ≈ 97.00; δ_an = arccos(vis) ≈ 83.67.
+            let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMean (load "lp_cpl.csv")
+            let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
+            Assert.True(abs (lpCplFit.zeroDeg - 97.00) < 1.0, $"z_CPL = {lpCplFit.zeroDeg}")
+            let deltaAnDeg = (retardanceFromVisibility lpCplFit.visibility).degrees
+            Assert.True(abs (deltaAnDeg - 83.67) < 1.0, $"δ_an = {deltaAnDeg}")
+
+            // CPL-LP AIR, fit in the source LP frame (phased on z_LP) → closed-form source: θ_src ≈ 39.31,
+            // δ_src ≈ 82.55.
+            let (anglesCplLp, normCplLp) = reduceAirTraces darkMean (load "cpl_lp.csv")
+            let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpLpFit.zeroDeg
+            let source = sourceCplFromLpFrame qLp uLp
+            Assert.True(abs (source.thetaRel.degrees - 39.31) < 1.0, $"θ_src = {source.thetaRel.degrees}")
+            Assert.True(abs (source.retardance.degrees - 82.55) < 1.0, $"δ_src = {source.retardance.degrees}")
