@@ -158,5 +158,21 @@
     "declaringProject": "OpticalConstructor.Seeding",
     "status": "active",
     "formerNames": []
+  },
+  "SVC_XDUO_0002": {
+    "name": "MuellerSolverProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
+  },
+  "STORE_XDUO_0009": {
+    "name": "MuellerDataProxy",
+    "kind": "proxy",
+    "language": "fsharp",
+    "declaringProject": "OpticalConstructor.Domain",
+    "status": "active",
+    "formerNames": []
   }
 }

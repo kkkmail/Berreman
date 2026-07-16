@@ -1,0 +1,172 @@
+# Spec 0042 — Reproduce report §7.2 (the Mueller inverse problem) as a UI-less F# test (Inverse Problem — Part 1)
+
+## 0. Binding constraints (apply to every part)
+
+- **Deliverable.** UI-less test(s) in `Berreman/BerremanTests` that reconstruct the report §7.2
+  Mueller matrices of two samples — **QZ** (quartz, near-pure optical rotator) and **LR** (Lego-red
+  transparent plastic) — from rotating-analyzer intensity data, reconstruct the combined stack, and
+  confirm the cascade identity `M_{QZ+LR} ≈ M_LR · M_QZ` (beam hits QZ first, then LR) holds within
+  experimental accuracy, matching the report's §8 Frobenius / element metrics. The report and reference
+  scripts are the operator-supplied sources under
+  `specs/0042/.manual/004-mueller-inverse-reconstruction-test.md` (§1) and the sibling `OPM` repo
+  `C:/GitHub/optics-mueller/`.
+
+- **Reproduce first, tweak never (this spec).** This spec commits ONLY to faithfully reproducing
+  §7.2 + §8. The label rotation angle is used as `φ` directly; the day-1 LR ±45° mislabel was
+  re-measured on day 2 (`cpl_cpl_day2_corrections.csv`) and `+90° ≡ −90°` is physically inert
+  (`R(φ)` depends on `2φ`), so no "data-flaw" workaround is written. Every candidate beyond §7.2/§8
+  (calibration-table asserts, per-family RMSE, Cloude realizability, Lu–Chipman decomposition, κ(W)
+  conditioning, explicit ±45/±90 handling) is documented in the test's top-of-file `///` XML block and
+  MUST NOT be implemented here.
+
+- **Port the calibration; do not hardcode its constants.** All three reference stages — AIR calibration
+  (`matrix_step1_air_fit.py`), glue (`matrix_glue.py`), linear fit (`matrix_fit_linear.py`) — are
+  ported so F# re-derives the calibration constants. The report's rounded values (z_LP≈155.44°,
+  z_CPL≈97.00°, θ_src≈39.31°, δ_src≈82.55°, δ_an≈83.67°) are asserted only as cross-checks. Only
+  *procedure-level* choices (per-family gain rules, the excluded contaminated point, the CPL-LP split
+  timestamp, dark_mean≈869.666) MAY be hardcoded, and they live in `BerremanTests`, not in the pure core.
+
+- **Many tiny pure functions.** The numeric core is decomposed into small, individually-testable pure
+  functions with concrete elevated signatures — never one monolithic function. Every physical quantity
+  is elevated (`Retardance`, `DialSign`, `MatrixKind`, …), never a bare primitive outside the IO seam.
+
+- **IO — and the numeric solve — sit behind `*Proxy` records.** Two functional proxies following the
+  repo's `[<ReferenceEquality>]` `ExperimentDataProxy` precedent (ExperimentDataProxy.fs:43) with its
+  real file-backed factory `ExperimentDataStore.createFileBacked` (ExperimentDataStore.fs:51): a **data
+  proxy** for CSV access and a **solver proxy** for the least-squares backend (the numeric solve IS the
+  external routine, so the backend is swappable without editing reconstruction logic). The pure pipeline
+  receives both proxies as parameters.
+
+- **Pure F#, linear least squares only.** The entire pipeline is linear least squares plus closed-form
+  trig; there is NO nonlinear / Levenberg–Marquardt / global optimizer anywhere in the reference, so
+  none is written here. The shipped default solver is the vendored MathNet.Numerics SVD least squares
+  (`MathNetNumerics/Numerics/LinearRegression/MultipleRegression.cs`). The ALGLIB `rmatrixsolvels`
+  alternative behind the same proxy (it would live only in
+  `OpticalConstructor.Optimization/AlglibAdapter.fs:20`, the sole ALGLIB-touching file) is a documented
+  option and MUST NOT be required for §7.2. **No Wolfram, no Python at test time.** Python MAY be run
+  once, offline, only to emit an optional committed golden file (below).
+
+- **Named plausible-expansion exclusions (do NOT add).** No nonlinear/global optimizer; no Python or
+  Wolfram interop in the shipped test path; no caching, retries, configuration knobs, versioning,
+  backwards-compatibility shims, or migration code around either proxy; no physical-realizability or
+  polar-decomposition post-processing; no second solver backend wired as a requirement. The raw CSVs
+  stay external (relative path to `OPM`) — they are NOT copied into `BerremanTests`.
+
+- **Skip, never fail, when the data is absent.** Every data-backed fact is `[<SkippableFact>]` guarded
+  (`Xunit.SkippableFact` is already referenced by `BerremanTests.fsproj`) and resolves the `OPM` data
+  folder relative to `__SOURCE_DIRECTORY__` (both repos share the `C:/GitHub` parent). Pure unit tests
+  carrying no external data always run.
+
+- **Gate.** Green `dotnet build Berreman.slnx -c Release` and green `dotnet test` in `BerremanTests`,
+  warning-clean per the repo's zero-warnings rule.
+
+---
+
+## Part A — Polarization primitives and the column-major LSQ core (CRITICAL — land first)
+
+### A.0 Problem statement
+
+The reconstruction is `vec(M) = W⁺ · I`, where each design row is the Kronecker product of the effective
+source Stokes vector and the effective analyzer row, and the solved 16-vector reshapes column-major back
+into a 4×4 Mueller matrix. The single classic footgun is the `vec` ordering: a wrong order silently
+*transposes* every reconstructed matrix and still "looks" plausible. Part A therefore lands the physics
+primitive and the column-major algebra first, pinned by round-trip and transpose-guard unit tests that
+run without any external data, so every later stage builds on a proven core.
+
+### A.1 The missing retarder primitive
+
+`Berreman/OpticalConstructor/OpticalConstructor.Domain/Propagation.fs` already carries the frame rotation
+`Propagation.rotationMueller` (Propagation.fs:117), the conjugated rotation `Propagation.rotateMueller`
+(Propagation.fs:128), the ideal-polarizer `Propagation.analyzerMueller` (Propagation.fs:73), the
+element seam `Propagation.muellerOfRows` / `muellerElement` (Propagation.fs:35 / :40), and the ordered
+product `Propagation.compoundMueller` (Propagation.fs:139). The one missing physics primitive is a
+linear retarder. It is added in a new Domain module `MuellerReconstruction` alongside these, together
+with the elevated `Retardance` DU (a phase delay δ — semantically distinct from the azimuth `Angle`,
+Geometry.fs:34).
+
+### A.2 The column-major Kronecker / vec algebra
+
+`kron4`, `vecColumnMajor` / `muellerOfVecColumnMajor`, and `frobeniusDiff` are the small pure functions
+the whole reconstruction stands on. They read and write the engine's `MuellerMatrix` (Fields.fs:598) and
+`RealVector4` (Geometry.fs:128) only through `muellerOfRows` / `muellerElement`. The exact ordering is
+normative and the steps pin it: design-row index `k = 4·i + j` carries `s_eff[i]·a_eff[j]`, and the
+solved vector maps back as `M[j, i] = β[4·i + j]` (numpy `reshape(order='F')`).
+
+---
+
+## Part B — The swappable solver seam (SVC:MuellerSolverProxy)
+
+### B.0 Problem statement
+
+Review Q7 fixes the optimization as IO: the numeric least-squares solve is an external routine, so it
+sits behind a functional proxy whose one field bakes in the backend. The pure `reconstruct` takes the
+proxy as a parameter, so the MathNet default and any future ALGLIB path are interchangeable without
+touching reconstruction logic. The proxy is declared as a `[<ReferenceEquality>]` record of
+`Result`-returning functions following `ExperimentDataProxy` (ExperimentDataProxy.fs:43); the real
+MathNet SVD factory mirrors the `createFileBacked` shape (ExperimentDataStore.fs:51). The solved result
+is elevated to carry the numerical **rank** — a first-class observability check, since the CPL
+(elliptical) families are exactly what let all three solves reach full rank 16.
+
+---
+
+## Part C — The Mueller-data seam (STORE:MuellerDataProxy)
+
+### C.0 Problem statement
+
+CSV access is the other IO boundary. The proxy contract (`MuellerDataProxy`, the elevated `MuellerRawRow`,
+the typed `MuellerDataError`) is declared in the Domain beside the pipeline, reusing
+`Experiments.DataFilePath` (Experiments.fs:142); the real file-backed factory and the pure,
+BOM-tolerant, header-aware CSV parser live in `OpticalConstructor.Storage`, reusing the FSharp.Data
+`CsvFile.Parse` precedent `SpectralImport.parseSpectrumCsv` (SpectralImport.fs:46) and the
+`ExperimentDataStore.loadThrough` try/with boundary (ExperimentDataStore.fs:34) so a .NET IO exception
+NEVER crosses into the pure Domain. A mock-driven test exercises the seam with canned rows exactly as
+`ExperimentDataProxyTests` (ExperimentDataProxyTests.fs:38); the parser test uses committed CSV *text*,
+not a file.
+
+---
+
+## Part D — Glue, calibration, and signal reduction
+
+### D.0 Problem statement
+
+Between raw rows and the design matrix sit three pure reference stages, all ported as tiny functions in
+`MuellerReconstruction`: (1) the label parser + family/kind classification + per-family source/analyzer
+models (§2.2) that build the base and effective Stokes states via `rotationMueller` and the retarder
+primitive; (2) Stage-1 AIR calibration — 2-column cosine least squares (through the solver proxy) plus
+closed-form `arccos`/`atan2` — that re-derives the constants feeding the models; and (3) Stage-3 signal
+reduction — dark subtraction and the per-family multiplicative AIR gain. The `+90° ≡ −90°` invariance
+(`R(φ)` depends on `2φ`) is asserted here as a guard. The procedure-level constants (dark_mean, the
+split timestamp, the excluded point `LP-(LR#90)-CPL-2` / description 140 / capture_index 17) are data
+passed in from the test, keeping the functions pure.
+
+---
+
+## Part E — Reconstruction and the cascade identity test
+
+### E.0 Problem statement
+
+`buildDesign` assembles the n×16 design and the corrected-signal target per `matrix_kind` (AIR rows and
+the one contaminated point excluded); `reconstruct` solves through the proxy and reshapes column-major;
+`cascadeProduct` forms `M_LR · M_QZ` with the `MuellerMatrix` `*` operator (Fields.fs:651). The final
+step wires the composition root of the deliverable in `BerremanTests`: the real
+`MuellerDataStore.createFileBacked ()` and `createMathNetSvd ()` proxies, the relative `OPM` path, the
+full Stage 1→2→3 run, and the §7.2 / §8 assertions (element match ≈2e-3 via the `assertMuellerEqual`
+loop, MuellerMatrixTests.fs:20; rank 16; `‖M_{QZ+LR} − M_LR·M_QZ‖_F ≈ 0.571`, mean|Δ|≈0.113,
+max|Δ|≈0.268, largest two element diffs at (4,2) and (2,2), 1-indexed). The test MAY additionally diff
+against an optionally-committed full-precision `reference_summary.json` produced offline once by the
+`OPM` Python; the shipped test runs pure F# and never invokes Python.
+
+---
+
+## References
+
+- Chipman, Lam & Young, *Polarized Light and Optical Systems* (CRC, 2018), Ch. 7 — measurement-matrix /
+  data-reduction least-squares Mueller estimator.
+- Goldstein, "Mueller matrix dual-rotating retarder polarimeter", *Appl. Opt.* **31**, 6676 (1992).
+- Gil, "Review on Mueller matrix algebra for the analysis of polarimetric measurements",
+  *Appl. Opt.* **55**, 5449 (2016) (arXiv:1605.04704) — Cloude coherency realizability (future candidate).
+- Lu & Chipman, "Interpretation of Mueller matrices based on polar decomposition",
+  *JOSA A* **13**, 1106 (1996) (future candidate).
+- MathNet.Numerics `MultipleRegression`
+  `https://numerics.mathdotnet.com/api/MathNet.Numerics.LinearRegression/MultipleRegression.htm`.
+- ALGLIB dense linear solvers `https://www.alglib.net/linear-solvers/dense.php`.
