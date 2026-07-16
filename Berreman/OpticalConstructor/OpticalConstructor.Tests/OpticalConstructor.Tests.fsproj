@@ -274,7 +274,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Update="FSharp.Core" Version="10.1.302" />
         <!-- Spec 0038 Part D (step 010): FsCheck for the exactly-one-bucket property —
              the version BerremanTests pins; run via Check.One inside a [<Fact>] (the
              solution's established FsCheck-under-xunit pattern). -->
@@ -283,8 +283,8 @@
              directly (UseSqlite / SqliteConnectionStringBuilder / Database.Migrate) and
              needs the native SQLite assets in the test output. Version-matched to the
              OpticalConstructor.Database project reference (net10.0). -->
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

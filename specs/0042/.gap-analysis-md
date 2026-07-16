@@ -1,0 +1,113 @@
+# Gap analysis — spec 0042
+
+> This is the "what's missing / what drifted" companion to `.summary-md` (the
+> narrative) and `.stat-md` (the numbers). It is not a substitute for either.
+
+**Scope.** Two passes. Pass 1 compares the operator's preliminary spec —
+`.manual/004-mueller-inverse-reconstruction-test.md`, named as the preliminary in
+`.history` and superseding the `002` draft (it folds in the `003-comments.txt`
+answers) — against the authored `.spec-md` / `.spec-jsonl`. Pass 2 compares the
+authored spec's commitments against what actually landed in the tree.
+
+Pass 1 is a **high-fidelity transfer**: all 26 functions named in the
+preliminary's §5.4 inventory appear in the jsonl steps, as do all four pure unit
+tests from §5.6, all four per-family gain rules from §3, and every §4 target
+number that §5.6 put in core scope. The preliminary's own §5.6 future-candidate
+list maps 1:1 onto `.spec-md` §0's named-exclusion list. The gaps below are, with
+one exception, small.
+
+---
+
+## Pass 1 — preliminary → full spec
+
+| # | origin | kind | ref | note |
+|---|---|---|---|---|
+| 1 | prelim->spec | dropped | prelim §2.2 (bullet 2 + table row `δ_an ≈ −83.67°`) | The **retardance sign convention** — source `+`, analyzer `−`, matching `matrix_glue.py::load_step1_models` — never entered the spec: `.spec-md` §0 lists the cross-check unsigned ("δ_an≈83.67°"), step 7's `AnalyzerModel` carries a bare `retardanceOpt` with no sign rule, and step 8's `retardanceFromVisibility` is positive by construction with nothing downstream negating it. |
+| 2 | prelim->spec | dropped | prelim §3 Stage 1 (4th bullet) | The **CPL-CPL consistency check** that fixes *relative* handedness is absent from step 8, which ports only LP-LP, CPL-LP and LP-CPL — and it is the mechanism the preliminary cites as the only thing constraining gap #1's sign. Not in the §0 exclusion list, so this is an unrecorded omission. |
+| 3 | prelim->spec | dropped | prelim §4 (closing line) | The qualitative **`M_QZ` ≈ pure-rotator form** assert is in neither `.spec-md` nor any step. Not covered by the deliberate Lu–Chipman exclusion (that is the polar-decomposition route; this is a direct form comparison). Minor — the preliminary hedged it ("worth asserting") and left it out of its own §5.6 core list. |
+| 4 | prelim->spec | narrowed | prelim §4 → `.spec-md` §0, step 11 | **Per-family fit RMSE** (QZ 0.056, LR 0.091, QZ+LR 0.102) is excluded and routed to the XML block. **Deliberate** — the preliminary's §5.6 already filed it as a future candidate. `rmse` is still computed and carried on `LeastSquaresSolution` / `ReconstructedMatrix`, just not asserted. |
+| 5 | prelim->spec | narrowed | prelim §3 Stage 3 item 4, §7 → `.spec-md` §0, step 3 | **Condition-number reporting** is excluded (`κ(W)`); `LeastSquaresSolution` carries `solution` / `rank` / `rmse` only. **Deliberate.** Rank 16 — the observability check — is fully preserved. |
+| 6 | prelim->spec | narrowed | prelim §5.6, §8 → `.spec-md` §0, step 11 | **Cloude realizability, Lu–Chipman decomposition, explicit ±45/±90 handling, and the §6 calibration table** are excluded and documented in the test's top-of-file XML block. **Deliberate** — this is the operator's own Q4/Q5 decision in `003-comments.txt` ("start with 7.2 matrices + 8 comparison. Document other test candidates into the XML comments") transferred correctly. |
+| 7 | prelim->spec | narrowed | prelim §3 Stage 1 → step 8 | **Stage-1 AIR preprocessing is under-specified**: the preliminary spells out group-by-`description` → average → dark-subtract → *normalize by the trace mean* → `norm`; step 8 says only "port Stage 1 … as tiny pure functions" and names the three fitting functions. How the `y` that `freeCosineFit` consumes is built is nowhere in the spec. Likely accidental. |
+| 8 | prelim->spec | narrowed | prelim §2.2 (model table) → step 7 | The **four-family component-model table** (base Stokes states, `β = ∓(desc − z)` dial signs, the `β+45°` analyzer-retarder axis, `M_retarder = R(−axis)·core·R(axis)`, "effective row = row 0") is reduced to shape-only in step 7: `SourceModel`, `AnalyzerModel`, `DialSign`, `physicalAngle` are defined but no formula and no per-family sign assignment. Mitigated — `.spec-md` §0 names the preliminary itself as the operator-supplied source, pointing an implementer back at the table. |
+| 9 | prelim->spec | added | prelim §5.1 → step 6 | **`OpticalConstructor.Storage` entered scope**: the preliminary named only Domain (and conditionally Optimization) references; step 6 adds `Storage/MuellerDataStore.fs` plus a `ProjectReference` from `BerremanTests.fsproj`. Defensible — the `ExperimentDataStore` / `SpectralImport.parseSpectrumCsv` precedents the preliminary §5.5 cites do live in Storage — but it is a project the preliminary never listed. |
+| 10 | prelim->spec | added | prelim §5.4/§5.5 → steps 3, 5 | **Extra elevation**: `LeastSquaresSolution` / `ReconstructedMatrix` records (preliminary specified `Result<float[], SolverError>`), the `DialSign` DU (preliminary had `dialSign : int`), `MuellerDataError` cases. Rule-driven by CLAUDE.md's elevate-every-primitive discipline and the preliminary's own rank-16 requirement — not creep. |
+| 11 | prelim->spec | added | steps 4, 6, 10 | **Three extra always-run tests** beyond the preliminary's four (§5.6): a real-`createMathNetSvd` small known system, a synthetic full-rank design recovering a seeded matrix, and a parser fact over committed CSV text. Cheap and in the spirit of the preliminary's §9 phasing. |
+| 12 | prelim->spec | narrowed | `.spec-md` §0 vs step 8 vs step 11 | **Internal inconsistency, inherited from the preliminary.** §0 says calibration-table asserts "MUST NOT be implemented here" and step 11 requires the XML block to list "§6 calibration table" as not-yet-asserted — yet step 8 mandates a fact cross-checking the five §2.2 constants. The preliminary is itself split (§1/§3/§9 want the cross-check; §5.6 files the §6 table as future). Resolved in the implementation by scoping (see pass 2), but the spec wording still reads as self-contradictory. |
+
+## Pass 2 — full spec → implementation
+
+Shipped surface: `OpticalConstructor.Domain/MuellerReconstruction.fs` (839 lines),
+`OpticalConstructor.Storage/MuellerDataStore.fs`, `BerremanTests/MuellerReconstructionTests.fs`
+(885 lines). All 11 slices committed; `COMPLETE`.
+
+**Every substantive spec commitment shipped.** Parts A–E are all present and
+match: `Retardance` + `retarderMueller`; `kron4` / `vecColumnMajor` /
+`muellerOfVecColumnMajor` / `frobeniusDiff`; the `[<ReferenceEquality>]`
+`MuellerSolverProxy` + `createMathNetSvd` carrying numerical `rank`; the
+`MuellerDataProxy` / `MuellerRawRow` / `MuellerDataError` contract in Domain with
+the BOM-tolerant `parseMuellerCsv` + `createFileBacked` in Storage; the label
+parser, per-family models, Stage-1 calibration and Stage-3 reduction; and
+`buildDesign` / `reconstruct` / `cascadeProduct`. The §7.2 / §8 acceptance
+numbers all match (‖Δ‖_F = 0.571418, mean|Δ| = 0.113286, max|Δ| = 0.268065; rank
+16; all five §2.2 constants within tolerance). The named plausible-expansion
+exclusions held: `alglib` / `python` / `wolfram` appear in `MuellerReconstruction.fs`
+only inside explanatory comments, never as a dependency, and the raw CSVs stayed
+external. Gaps are deviations of *mechanism*, not of substance.
+
+| # | origin | kind | ref | note |
+|---|---|---|---|---|
+| 13 | spec->impl | narrowed | `.spec-md` §0 ("Skip, never fail"), steps 8 & 11 → `MuellerReconstructionTests.fs:480,677` | The mandated **`[<SkippableFact>]` was not used**: `Xunit.SkippableFact 1.5.61` is v2-only and its attribute is undiscoverable by this project's xunit.v3 3.2.2 runner, so it contributes **zero test cases** — the mandated mechanism would have shipped silently uncounted tests. Replaced with `[<Fact>]` + xunit.v3-native `Assert.Skip`, preserving skip-when-absent semantics exactly. Verified empirically by the slice-011 worker and upheld by the code judge. Correct call; the spec's §0 wording is now wrong and should be amended. |
+| 14 | spec->impl | added | `BerremanTests.fsproj:58` | Consequence of #13: the **`Xunit.SkippableFact 1.5.61` PackageReference is now dead surface** — nothing in the repo uses the attribute. Slice 008 flagged removing it and deliberately left it to preserve a known-green restore. Worth a follow-up cleanup. |
+| 15 | spec->impl | narrowed | step 10 → `MuellerReconstruction.fs:783` | **`buildDesign`'s mandated signature was widened.** The spec writes `(rows) (kind) : float[][] * float[]`, which cannot be genuine — a raw `MuellerRawRow` yields neither a design row nor a corrected signal, and §0 pins the dark-mean / split / excluded-point constants to `BerremanTests`. Shipped with added `prepareRow` and `excluded` parameters, mirroring the reference `solve_single_object`. Recorded, not escalated, per the arc-runner's don't-ask rule. |
+| 16 | spec->impl | narrowed | step 8 | **`freeCosineFit`'s mandated signature was widened** to `Result<CosineFit, SolverError>` — the slice named a bare `CosineFit` return *and* routing through the `Result`-returning `MuellerSolverProxy`, which are mutually inconsistent. |
+| 17 | spec->impl | dropped | `.spec-md` Part E ("largest two element diffs at (4,2) and (2,2), 1-indexed") | **Not asserted as written, because the spec is factually wrong.** Δ's two largest entries are (4,4) = 0.268065 and (4,2) = 0.267826 (near-tied ≈0.268); (2,2) ≈ 0.193 is only fourth-largest. Confirmed against the reference's own `step2_linear/report.md`; the actual top-two ship as an order-independent set. Judge upheld it, noting the pair appears only in "How to implement", not in Acceptance. The spec text should be corrected. |
+| 18 | spec->impl | narrowed | `.spec-md` Part D ("ported as tiny functions in `MuellerReconstruction`") → `MuellerReconstructionTests.fs:150` | **Stage-1 trace reduction landed in the test, not the Domain**: `reduceAirTraces` (group by dial, dark-subtract, normalize by the experiment's own mean) lives in `BerremanTests`. Downstream of pass-1 gap #7 — the spec never located this step, so the worker put it with the other test-owned reduction data. |
+| 19 | spec->impl | unverified | pass-1 gaps #1 + #2 → `MuellerReconstructionTests.fs:736` | **The handedness sign is correct but unguarded.** Despite never entering the spec, the composition root does negate it (`retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg))`) — the worker recovered the convention from the reference Python, and the matching §8 numbers prove it. But *nothing pins it*: the only facts that would catch a sign flip are the two data-backed ones at lines 480 and 677, and **both `Assert.Skip` when the sibling `optics-mueller` checkout is absent**. On a machine without that checkout, a flipped handedness ships silently green. The CPL-CPL consistency check (gap #2) — the reference's own guard for exactly this — was never specified and never shipped. |
+| 20 | spec->impl | unverified | pass-1 gap #3 | The **`M_QZ` pure-rotator qualitative assert** is absent from the implementation, as it is from the spec. |
+| 21 | spec->impl | narrowed | `.spec-md` §0 / Part E ("MAY … optionally-committed `reference_summary.json`") | The optional **~1e-9 golden-file cross-check was not wired**. Explicitly a "MAY", so **not a defect** — the §4 printed matrices at the 2e-3 band were judged ample. Listed for completeness only. |
+
+**Not gaps** (recorded so a later reader does not re-litigate them): the
+`ui-smoke` / `ui-tests` gates were deliberately excluded at spec-authoring time
+(`.gate-history`) on the basis that the spec is UI-less and touches no
+`OpticalConstructor.Ui` / `.Ui.Tests` / `.App` file, with transitive compile
+breakage covered by `build`. `MuellerRawRow`'s bare primitives are the permitted
+DTO-at-the-parse-seam exception under CLAUDE.md, with the one physically
+meaningful quantity (`description`) elevated to `Angle`. Step 12's contradiction
+(pass-1 #12) was resolved in the implementation by scoping: the five §2.2
+constants *are* cross-checked (line 502), while the §6 calibration table is listed
+in the XML block as not-yet-asserted.
+
+---
+
+## Verdict
+
+**The implementation is essentially complete against intent.** Every substantive
+commitment of the authored spec shipped, all §7.2 / §8 acceptance numbers matched
+on the first attempt, and the deliberate "reproduce first, tweak never" narrowing
+was executed exactly as the operator asked in `003-comments.txt` — with the six
+excluded candidates documented in the test's top-of-file XML block as required.
+The four spec→impl deviations of mechanism (#13, #15, #16, #17) are each a case of
+a worker declining to follow an instruction that was wrong or impossible, with
+evidence, and each was upheld by the code judge. In every case the spec is what
+needs correcting, not the code.
+
+**The highest-priority gap is #19 — the unguarded handedness sign**, and it is
+the only one with real latent risk. The chain is: the preliminary's sign
+convention (#1) and its CPL-CPL consistency check (#2) both failed to enter the
+spec; the implementation nonetheless got the sign right by reading the reference;
+but the only tests that would detect a regression skip themselves on any machine
+lacking the sibling `optics-mueller` checkout. A future refactor could flip
+circular handedness and see a green suite. This is exactly the class of silent
+failure the spec's Part A worried about for `vec` ordering — and there, the answer
+was a data-free transpose-guard unit test. The same treatment is warranted here: a
+pure, always-run fact pinning the source-`+`/analyzer-`−` convention, or the
+CPL-CPL check the reference already provides.
+
+Second priority is the pair of **spec-text corrections** (#13's §0
+`[<SkippableFact>]` mandate, now known to be unusable in this repo, and #17's
+incorrect largest-diff positions), followed by the trivial **dead-reference
+cleanup** (#14). Pass-1 gaps #3 and #7/#8 are minor: the first is a hedged
+nice-to-have, and the latter two are under-specifications that the implementation
+resolved correctly anyway by going back to the operator-supplied source the spec
+points at.

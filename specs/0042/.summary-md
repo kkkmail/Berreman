@@ -1,0 +1,173 @@
+# Arc summary — spec 0042
+
+> **This is the narrative companion to the numbers, not a substitute for stats.**
+> It records the human-readable story of the run — the decisions, the surprises,
+> and the dead-ends — that the structured impl-logs and `.manifest-arc-runner.log`
+> do not spell out. The quantitative view (timings, token/cost tables, per-slice
+> counts) lives in the stats tool's `.stat-md`; read the two together. The
+> "what drifted from intent" view lives in `.gap-analysis-md`.
+>
+> A note on provenance: this summary was written from the launcher session that
+> started the arc *detached* and watched it through its artifacts — the
+> arc-runner log, the state file, the per-slice impl-logs and state-of-the-world
+> notes, the code-judge verdicts, and (for one question the impl-logs could not
+> answer) a worker console log — rather than by driving the slices directly. The
+> narrative below is reconstructed from those records.
+
+## The short version
+
+The arc ran clean. All 11 slices landed green and were committed, ending on
+`COMPLETE` with **zero real escalations** — the arc never terminated to ask the
+operator for anything. Every slice committed automatically (`manual: false`); no
+accept-current-slice overrides, no operator replies, no resolver rescues, no
+worker hang-ups. All eleven code-judge verdicts came back `done-green` on
+**cycle 1**: not a single review route-back across the whole arc. Every worker
+role (implement, implement-contract, add-contract, wire, code-judge) ran on
+`claude-opus-4-7`.
+
+Substantively, 0042 reproduced report §7.2 — the Mueller inverse problem — as a
+UI-less F# test: the column-major `vec`/Kronecker core and the missing linear-
+retarder primitive (001–002), the two functional proxies for the least-squares
+solve and CSV access (003–006), the label parser and per-family source/analyzer
+models (007), the Stage-1 AIR calibration (008), Stage-3 signal reduction (009),
+the design/reconstruct/cascade numeric core (010), and the §7.2 composition root
+against the sibling `optics-mueller` measured data (011). It landed as ~840 lines
+of new Domain surface, a Storage CSV seam, and an acceptance suite in
+`BerremanTests`.
+
+**And it worked, on the first try, every time.** No reconstructed number ever
+failed to match at any point in the arc. The §8 cascade metrics came out at
+‖Δ‖_F = **0.571418** (report ≈0.571), mean|Δ| = **0.113286** (≈0.113), and
+max|Δ| = **0.268065** (≈0.268); all three matrices landed within the mandated
+2e-3 band at rank 16, and all five §2.2 calibration constants re-derived to
+within a degree of the report. The impl-plan notes the pure-F# pipeline actually
+agrees with the Python reference to ~1e-9 — the 2e-3 band was kept only because
+the slice mandated it.
+
+## Three places the workers were right and the spec was wrong
+
+The most interesting thing about this arc is that its three sharpest moments were
+all workers declining to follow an instruction literally, each time with evidence
+and each time upheld by the judge.
+
+**`[<SkippableFact>]` does not work in this repo — and would have shipped hollow
+tests.** Spec §0 makes "skip, never fail, when the data is absent" a binding
+constraint and names `[<SkippableFact>]`, noting correctly that
+`Xunit.SkippableFact` is already referenced by `BerremanTests.fsproj`. It is —
+but that package depends on xunit **v2**, and its attribute derives from the v2
+`FactAttribute`, which this project's **xunit.v3 3.2.2** in-proc runner does not
+discover. A `[<SkippableFact>]` here contributes **zero test cases**: a silently
+uncounted test that looks green because it never ran. Slice 011's worker verified
+this empirically rather than by inference — a filtered run of the existing
+`SolverTests.basicSolverTest*` reports `Total: 2`, picking up only the two
+`[<Fact>]` siblings while the three `[<SkippableFact>]` members vanish. The
+resolution was plain `[<Fact>]` + xunit.v3-native `Assert.Skip(reason)`, which
+has identical skip-when-absent semantics and actually executes. **A future reader
+should know the `Xunit.SkippableFact 1.5.61` reference in `BerremanTests.fsproj`
+is now effectively dead surface** — slice 008 flagged removing it but left it
+alone to preserve a known-green restore.
+
+**The spec's largest-diff positions were simply wrong.** Slice 011 mandates "the
+two largest element diffs at (4,2) and (2,2), 1-indexed." The data disagrees:
+Δ's two largest entries are **(4,4) = 0.268065 and (4,2) = 0.267826** — near-tied
+at ≈0.268 — while (2,2) ≈ 0.193 is only fourth-largest. The worker confirmed this
+against the reference's own `step2_linear/report.md`, asserted the actual top-two
+as an order-independent set, and documented the discrepancy. The judge upheld it,
+noting the position pair appears only in the slice's "How to implement" prose and
+not in its Acceptance block, and that the §8 named scalars are asserted exactly as
+written.
+
+**Two mandated signatures were impossible as written.** Slice 010 specifies
+`buildDesign (rows : MuellerRawRow list) (kind : MatrixKind) : float[][] * float[]`,
+but a raw `MuellerRawRow` yields neither a design row (which needs calibrated
+effective states) nor a corrected signal (which needs gain + dark mean) — and spec
+§0 pins the dark-mean/split/excluded-point constants to `BerremanTests`, not the
+pure core. Rather than smuggle the constants into the Domain, the worker widened
+the signature with `prepareRow` and `excluded` parameters, mirroring the reference
+`solve_single_object`, which likewise consumes an already-glued frame. Slice 008's
+`freeCosineFit` had the same problem in miniature — the slice named a bare
+`CosineFit` return *and* "through the `MuellerSolverProxy`", which is
+`Result`-returning; it resolved to `Result<CosineFit, SolverError>`. Both were
+recorded rather than escalated, per the arc-runner's "don't ask the user" rule.
+
+## Two hiccups, both self-healed inside budget
+
+Only two slices needed a second attempt, and they failed in genuinely different
+ways — only one was a gate failure.
+
+- **Slice 002 — the arc's only gate failure of any kind.** Attempt 01's worker
+  exited cleanly; the **build gate** then failed on three `FS0960` errors
+  ("'let' and 'do' bindings must come before member and interface definitions").
+  `MuellerReconstructionTests` is an F# *class* type, where every `let` binding is
+  a private field that must precede the first `member` — and attempt 01 had put
+  the shared `asymmetricM` fixture down among the `[<Fact>]` members. The
+  diagnosis was careful: attempt 02 confirmed from the gate capture that
+  `MuellerReconstruction.fs` had already compiled to its DLL in that same run,
+  proving the production code was fine and only test-file ordering was broken. The
+  fix was a pure reorder. The lesson then **propagated forward as in-file
+  comments** — slices 003, 004, 005 and 007 each explicitly record placing new
+  `let`s ahead of members as "the exact trap that failed slice-002 attempt-01,"
+  and no FS0960 ever recurred.
+
+- **Slice 011 — not a gate failure, and not a code problem at all.** The
+  arc-runner logged `worker exited non-zero (exit=1) without arc-runner
+  intervention` after ~20 minutes, `hung_up=False`. The impl-log records only that
+  attempt 01 "only edited the top-of-file doc block, then exited non-zero." The
+  actual reason is infrastructure, and it exists nowhere but the worker console:
+  `API Error: Connection closed mid-response`, `terminal_reason: api_error`. The
+  transcript shows the connection dropped **mid-tool-call**, while the worker was
+  streaming the Stage-2 glue into a file write — the last delta ends mid-comment.
+  The §7.2 member was simply lost in flight. Attempt 02 rewrote it cleanly in ~25
+  minutes with all three gates green.
+
+Worth preserving: slice 011's attempt 02 **broke Invariant 6 on purpose and said
+so**. Wire workers are forbidden from running gates ("the worker acts; it runs no
+checks"), but this worker built and ran the suite once locally anyway — reasoning
+that this was a retry of a crashed attempt *and* a data-backed numeric
+composition — and reported it explicitly as de-risking, "NOT as a gate
+green-light." That disclosure is the right instinct and is worth rewarding.
+
+## Two things worth fixing outside this spec
+
+**Every task file points at a system-prompt path that does not exist.** The
+"System prompt" line in each task file names
+`C:\GitHub\AI-Strategy-Generator\<role>_worker.system-md`; the real files live
+under `.../src/ai_strategy_generator/multistep/`. Workers 002 through 011 each
+*independently* rediscovered and re-recorded this drift. It never blocked
+anything, but ten workers burned effort on the same phantom — **this is worth
+fixing at the arc-runner level**, not in any spec.
+
+**The handedness convention is correct but unguarded.** The preliminary spec was
+explicit that the analyzer retardance is stored *negative* (`δ_an ≈ −83.67°`),
+relative handedness being fixed by a CPL-CPL consistency check. Neither survived
+into the full spec. The implementation got it right anyway — the composition root
+negates it (`retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg))`) —
+because the worker recovered the convention from the reference Python, and the
+matching §8 numbers prove it. But nothing *pins* it: the only facts that would
+catch a sign flip are the two data-backed ones, and both `Assert.Skip` when the
+sibling `optics-mueller` checkout is absent. On a machine without that checkout, a
+flipped handedness would ship silently green. See `.gap-analysis-md`.
+
+## Run timing
+
+Calendar time from spec-cycle start to the final commit was about **4 hours 45
+minutes** (spec bundle created 00:35:04Z, last commit 05:20:50Z on 2026-07-16).
+Of that, the spec cycle — spec → claim-check → gates → handoff, each running once
+with no rework loop — occupied roughly the first **hour**, and the arc proper ran
+**3 hours 48 minutes**, comfortably inside the 48-hour wall-clock cap.
+
+The arc was almost perfectly compute-bound: worker time (~3h 28m, dominated by the
+implement and wire workers at roughly 8–25 minutes per spawn, with code-judge
+passes adding ~2 minutes each) plus gate execution (~20 minutes total across 34
+gate runs of build + two test gates) sum to within a handful of seconds of the
+arc's own wall clock. In other words there was essentially **no idle overhead** —
+no waiting on quota, no retry stalls, nothing but model work and gates end to end.
+Exact figures are in the stats `.stat-md`; this note deliberately does not
+reproduce them.
+
+## Real escalations
+
+**None.** The arc completed without ever escalating for operator input. The single
+build-gate failure (slice 002) and the single API-dropped worker (slice 011) were
+both absorbed by the arc's own per-slice retry budget (`max_failures=2`, neither
+exceeded), and neither is an escalation.

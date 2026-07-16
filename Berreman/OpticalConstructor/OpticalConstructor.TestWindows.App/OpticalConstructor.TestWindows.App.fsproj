@@ -37,7 +37,7 @@
          dependency graph. The audit-gated clone at Avalonia.FuncUI.Clone stays
          UNREFERENCED (constraint 5 / §A.9 / AC-A8). -->
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Update="FSharp.Core" Version="10.1.302" />
         <PackageReference Include="Avalonia" Version="12.1.0" />
         <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
         <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />

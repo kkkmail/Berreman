@@ -82,7 +82,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.301" />
+        <PackageReference Update="FSharp.Core" Version="10.1.302" />
         <PackageReference Include="Avalonia" Version="12.1.0" />
         <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
         <!-- Spec 0033 (017): the interactive chart-window host (moved here with ChartWindow.fs) — the
