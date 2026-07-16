@@ -49,6 +49,11 @@
              (spec-md §0.3c). Reads the data file text at the boundary and delegates to the step-34
              pure MeasuredData parsers; depends only on the Domain project reference. -->
         <Compile Include="ExperimentDataStore.fs" />
+        <!-- Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009): the real file-backed adapter behind the
+             step-005 MuellerDataProxy — the pure header-aware CSV parser (parseMuellerCsv) plus the
+             disk-read edge (createFileBacked). Reads the CSV text at the boundary and delegates to the
+             pure parser; depends only on the Domain project reference (Angle + MuellerReconstruction). -->
+        <Compile Include="MuellerDataStore.fs" />
         <Compile Include="Storage.fs" />
     </ItemGroup>
 

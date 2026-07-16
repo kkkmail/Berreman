@@ -76,6 +76,10 @@
              layer. This reference is the enabling edit for that file (no UI dependency,
              per R-4). -->
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
+        <!-- Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009): MuellerReconstructionTests.fs drives the
+             REAL MuellerDataStore.parseMuellerCsv / createFileBacked (OpticalConstructor.Storage). An
+             EXPLICIT reference to the Storage project (Storage flows Domain transitively). -->
+        <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
     </ItemGroup>
 
 </Project>

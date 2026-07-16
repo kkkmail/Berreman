@@ -5,6 +5,7 @@ open Berreman.Fields
 open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Experiments             // DataFilePath (step 025) — keyed by the CSV-load mock (step 005)
 open OpticalConstructor.Domain.MuellerReconstruction
+open OpticalConstructor.Storage                        // MuellerDataStore — the REAL parseMuellerCsv / createFileBacked (step 006)
 open Xunit
 open BerremanTests.MatrixComparison
 
@@ -74,6 +75,25 @@ type MuellerReconstructionTests() =
 
     let seededDataMock () : MuellerDataProxy =
         makeMockData (Map.ofList [ "C:/data/mueller-family.csv", cannedRows ])
+
+    // Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009) — a committed multi-column Mueller capture CSV
+    // fixture for the REAL MuellerDataStore.parseMuellerCsv. A UTF-8 BOM prefix (char 0xFEFF, built here rather
+    // than embedded in the source) exercises the parser's BOM-tolerance; the header carries the many real
+    // columns (iso / exposure_ns / avg_R/G/B / …) the reconstruction does not consume, so reading the five
+    // required columns BY NAME is exactly what is under test. The `captured_at` timestamps carry an explicit
+    // UTC offset — deterministic across runs, no ambient-clock or local-timezone dependence. Bound here, ahead
+    // of the members (FS0960: in a class type every `let` binding precedes the first member).
+    let muellerCsvFixture : string =
+        string (char 0xFEFF)
+        + "experiment,capture_index,captured_at,description,iso,exposure_ns,avg_R,avg_G,avg_B,avg_total\n"
+        + "CPL-(AIR#0)-CPL,0,2026-07-15T12:00:00+00:00,0,100,5000,10.0,11.0,12.0,869.5\n"
+        + "CPL-(AIR#0)-CPL,1,2026-07-15T12:05:00+00:00,45,100,5000,20.0,21.0,22.0,912.25\n"
+
+    // A malformed fixture: the `capture_index` cell is not an integer, so parseMuellerCsv must map it to a
+    // typed MalformedRow (never a throw across into the pure Domain).
+    let malformedMuellerCsv : string =
+        "experiment,capture_index,captured_at,description,avg_total\n"
+        + "E1,not-an-int,2026-07-15T12:00:00+00:00,0,869.5\n"
 
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
@@ -279,3 +299,46 @@ type MuellerReconstructionTests() =
         let same = p
         Assert.True((p = same))
         Assert.False((p = seededDataMock ()))
+
+    [<Fact>]
+    member _.``the real parseMuellerCsv parses a committed multi-column CSV fixture into MuellerRawRows (description elevated to Angle)`` () =
+        // Spec 0042 (006) acceptance: parse a committed multi-column, BOM-prefixed CSV fixture through the REAL
+        // MuellerDataStore.parseMuellerCsv (not a mock), yielding MuellerRawRow values whose `description` is
+        // elevated to the engine Angle. Reading the five required columns BY NAME ignores the unread columns.
+        match MuellerDataStore.parseMuellerCsv muellerCsvFixture with
+        | Ok rows ->
+            Assert.Equal(2, rows.Length)
+            let r0 = rows.[0]
+            Assert.Equal("CPL-(AIR#0)-CPL", r0.experiment)
+            Assert.Equal(0, r0.captureIndex)
+            Assert.Equal(System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero), r0.capturedAt)
+            // `description` elevated to Angle: read back its `degrees` view (the raw analyzer dial angle).
+            Assert.True(abs r0.description.degrees < allowedDiff, $"description = {r0.description.degrees}")
+            Assert.True(abs (r0.avgTotal - 869.5) < allowedDiff, $"avgTotal = {r0.avgTotal}")
+            let r1 = rows.[1]
+            Assert.Equal(1, r1.captureIndex)
+            Assert.True(abs (r1.description.degrees - 45.0) < allowedDiff, $"description = {r1.description.degrees}")
+            Assert.True(abs (r1.avgTotal - 912.25) < allowedDiff, $"avgTotal = {r1.avgTotal}")
+        | Error e -> Assert.Fail($"expected the parsed capture rows, got %A{e}")
+
+    [<Fact>]
+    member _.``the real parseMuellerCsv maps a malformed file to a typed MuellerDataError, never a throw`` () =
+        // Spec 0042 (006) acceptance: a malformed file (capture_index is not an integer) yields a typed
+        // MuellerDataError — no exception crosses into the pure Domain.
+        match MuellerDataStore.parseMuellerCsv malformedMuellerCsv with
+        | Error (MalformedRow reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (MalformedRow _) for a malformed file, got %A{other}")
+
+    [<Fact>]
+    member _.``createFileBacked produces a MuellerDataProxy that maps a missing file to a typed error (never a throw)`` () =
+        // Spec 0042 (006) acceptance: createFileBacked () produces a MuellerDataProxy; its tryLoadFamily reads
+        // at the IO boundary and maps a missing file to a typed MuellerDataError — never a throw.
+        let proxy = MuellerDataStore.createFileBacked ()
+
+        // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local: the
+        // compiler rejects the file if `tryLoadFamily` drifts from its declared shape.
+        let loadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadFamily
+
+        match loadFamily (DataFilePath.create "C:/data/definitely-missing-mueller-file-0042.csv") with
+        | Error _ -> ()   // a missing file is mapped to a typed MuellerDataError at the IO boundary — never a throw
+        | Ok _ -> Assert.Fail("expected a typed MuellerDataError for a missing file, got Ok")
