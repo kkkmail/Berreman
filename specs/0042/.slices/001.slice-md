@@ -1,0 +1,11 @@
+# Step 001 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: []
+```
+
+**How to implement.** Create a new module MuellerReconstruction in a new file Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerReconstruction.fs, compiled after ExperimentDataLoad.fs (the last Domain file) so it can name Propagation, Fields, Geometry and Experiments. Define the elevated single-case DU Retardance (| Retardance of double; a .value accessor, .degrees = value/degree, and static member degree) as a phase delay distinct from the azimuth Angle (Geometry.fs:34). Add retarderMueller (axis : Angle) (retardance : Retardance) : MuellerMatrix implemented as Propagation.rotateMueller axis (Propagation.muellerOfRows core) (Propagation.fs:128 and :35) with the diagonal retarder core rows [1,0,0,0],[0,1,0,0],[0,0,cos d,sin d],[0,0,-sin d,cos d]. Add the explicit ProjectReference to OpticalConstructor.Domain in Berreman/BerremanTests/BerremanTests.fsproj and a new test file MuellerReconstructionTests.fs (added to the fsproj compile list) whose unit tests reuse the assertMuellerEqual element loop (MuellerMatrixTests.fs:20) and allowedDiff (MatrixComparison.fs:13).
+
+**Acceptance.** After the change, retarderMueller with Retardance.degree 0.0 MUST equal Propagation.identityMueller and a quarter-wave retarder (d = 90 degrees) MUST produce the standard QWP Mueller form, verified by a passing unit test in BerremanTests.

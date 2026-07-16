@@ -1,0 +1,11 @@
+# Step 008 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: [4, 7]
+```
+
+**How to implement.** In MuellerReconstruction (Domain) port Stage 1 (matrix_step1_air_fit.py) as tiny pure functions over the AIR rows. freeCosineFit (anglesDeg : float[]) (norm : float[]) : CosineFit solves the 2-column least squares norm - 1 approx p*cos2a + q*sin2a through the MuellerSolverProxy, returning CosineFit = { zeroDeg : float; visibility : float; rmse : float } with zeroDeg = 0.5 * atan2(q,p). retardanceFromVisibility (vis : float) : Retardance = arccos(abs vis). sourceCplFromLpFrame (qLp : float) (uLp : float) : SourceCplModel is the closed-form derive_source_cpl_from_lp_frame returning thetaRel : Angle and retardance : Retardance. The re-derived constants (NOT the rounded report values) feed the Stage-2 models. Add a synthetic always-run fact (a known cosine zero is recovered by freeCosineFit within tolerance) and a [<SkippableFact>] that cross-checks the re-derived constants against the section 2.2 rounded values (z_LP approx 155.44, z_CPL approx 97.00, theta_src approx 39.31, delta_src approx 82.55, delta_an approx 83.67) within a loose degree-level band when the OPM AIR data is present.
+
+**Acceptance.** After the change, freeCosineFit recovers a synthetic cosine zero within tolerance (always-run), and a SkippableFact confirms each re-derived calibration constant is within a loose band of its section 2.2 cross-check (e.g. z_LP within about 1 degree of 155.44) when the OPM data is present.

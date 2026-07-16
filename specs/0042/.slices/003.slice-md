@@ -1,0 +1,16 @@
+# Step 003 — ADD_CONTRACT SVC_XDUO_0002 MuellerSolverProxy
+
+```step
+anchor: ADD_CONTRACT
+id: SVC_XDUO_0002
+name: MuellerSolverProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: []
+```
+
+**How to implement.** In MuellerReconstruction (Domain) declare the optimization seam as a functional proxy following the [<ReferenceEquality>] ExperimentDataProxy convention (ExperimentDataProxy.fs:43). Add SolverError = SingularDesign of reason : string | RankDeficient of rank : int; the elevated result LeastSquaresSolution = { solution : float[]; rank : int; rmse : float } (the numerical rank is a first-class observability check); and [<ReferenceEquality>] type MuellerSolverProxy = { solveLinearLeastSquares : float[][] -> float[] -> Result<LeastSquaresSolution, SolverError> }. In Berreman/BerremanTests/MuellerReconstructionTests.fs supply an inline mock (a stub returning a canned LeastSquaresSolution) plus a mock-driven [<Fact>] exercising the field through its exact signature, mirroring ExperimentDataProxyTests (ExperimentDataProxyTests.fs:38).
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub MuellerSolverProxy, call solveLinearLeastSquares through its exact signature returning a canned solution and a typed SolverError, and pass.

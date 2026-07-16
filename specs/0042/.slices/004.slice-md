@@ -1,0 +1,16 @@
+# Step 004 — IMPLEMENT_CONTRACT SVC_XDUO_0002 MuellerSolverProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: SVC_XDUO_0002
+name: MuellerSolverProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: [3]
+```
+
+**How to implement.** In MuellerReconstruction (Domain) add createMathNetSvd () : MuellerSolverProxy whose solveLinearLeastSquares solves the over-determined system through the vendored MathNet.Numerics SVD least squares (MathNet.Numerics.LinearRegression.MultipleRegression.Svd, or the equivalent matrix.Svd().Solve), reporting the numerical rank and the intensity RMSE; MathNet is reachable in the Domain transitively through Berreman.fsproj exactly as Propagation opens Berreman.MathNetNumericsMath (Propagation.fs:4). Map a singular or rank-deficient design to a SolverError value rather than throwing. Keep the ALGLIB alternative (rmatrixsolvels behind the same proxy, which would live only in OpticalConstructor.Optimization/AlglibAdapter.fs:20) as a documented option that MUST NOT be required for section 7.2. Add a BerremanTests fact that instantiates the REAL createMathNetSvd () (not the mock) and solves a small known full-rank system.
+
+**Acceptance.** After the step, a test instantiates the real createMathNetSvd () proxy, solves a known over-determined full-rank system, and the returned solution MUST match the known answer within tolerance with rank equal to the column count.

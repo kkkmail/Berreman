@@ -1,0 +1,16 @@
+# Step 006 — IMPLEMENT_CONTRACT STORE_XDUO_0009 MuellerDataProxy
+
+```step
+anchor: IMPLEMENT_CONTRACT
+id: STORE_XDUO_0009
+name: MuellerDataProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Storage, BerremanTests]
+depends_on: [5]
+```
+
+**How to implement.** Add a new file Berreman/OpticalConstructor/OpticalConstructor.Storage/MuellerDataStore.fs (module MuellerDataStore). Provide the PURE parser parseMuellerCsv (csvText : string) : Result<MuellerRawRow list, MuellerDataError> - header-aware, BOM-tolerant, invariant-culture - reusing FSharp.Data CsvFile.Parse exactly as SpectralImport.parseSpectrumCsv (SpectralImport.fs:46); read the experiment, capture_index, captured_at, description and avg_total columns by name, elevate description to Angle.degree, and never touch the filesystem. Provide createFileBacked () : MuellerDataProxy whose tryLoadFamily reads the file text at the IO boundary under try/with, mapping any IO exception to a typed MuellerDataError then delegating to parseMuellerCsv, following ExperimentDataStore.loadThrough and createFileBacked (ExperimentDataStore.fs:34 and :51). Add the explicit ProjectReference to OpticalConstructor.Storage in Berreman/BerremanTests/BerremanTests.fsproj, plus a fact that parses a small committed CSV-text fixture through the real parseMuellerCsv.
+
+**Acceptance.** After the step, createFileBacked () produces a MuellerDataProxy and a BerremanTests fact parses a committed multi-column CSV-text fixture through the real parseMuellerCsv, yielding MuellerRawRow values with description elevated to Angle and a typed MuellerDataError for a malformed file - no exception crosses into the pure Domain.
