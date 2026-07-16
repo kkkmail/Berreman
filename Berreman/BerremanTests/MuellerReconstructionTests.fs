@@ -3,6 +3,7 @@ namespace BerremanTests
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
+open OpticalConstructor.Domain.Experiments             // DataFilePath (step 025) — keyed by the CSV-load mock (step 005)
 open OpticalConstructor.Domain.MuellerReconstruction
 open Xunit
 open BerremanTests.MatrixComparison
@@ -49,6 +50,30 @@ type MuellerReconstructionTests() =
                     | rows when rows.Length < 16 -> Error (RankDeficient rows.Length)
                     | _ -> Ok cannedSolution
         }
+
+    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data CSV-LOAD seam. The MOCK and its
+    // canned rows are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes
+    // the first member). `makeMockData` is an inline `MuellerDataProxy` stub whose `tryLoadFamily` keys the
+    // canned `MuellerRawRow` list off `DataFilePath.value`: a known path returns its rows; an unknown path
+    // returns `Error (EmptyFile _)` — staying WITHIN the declared two-case channel, never a throw. This
+    // exercises the exact signature and the typed-error case with no real filesystem IO — the real file-backed
+    // proxy lands in a later IMPLEMENT_CONTRACT STORE_XDUO_0009. The `capturedAt` timestamps are fixed literals
+    // (deterministic across runs — no ambient clock read).
+    let cannedRows : MuellerRawRow list =
+        [ { experiment = "E1"; captureIndex = 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0; avgTotal = 0.42 }
+          { experiment = "E1"; captureIndex = 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0; avgTotal = 0.31 } ]
+
+    let makeMockData (rowsByPath : Map<string, MuellerRawRow list>) : MuellerDataProxy =
+        {
+            tryLoadFamily =
+                fun (path : DataFilePath) ->
+                    match Map.tryFind path.value rowsByPath with
+                    | Some rows -> Ok rows
+                    | None -> Error (EmptyFile $"the mock has no canned capture rows for path '{path.value}'")
+        }
+
+    let seededDataMock () : MuellerDataProxy =
+        makeMockData (Map.ofList [ "C:/data/mueller-family.csv", cannedRows ])
 
     [<Fact>]
     member _.``zero retardance is the identity Mueller matrix (arbitrary azimuth)`` () =
@@ -219,3 +244,38 @@ type MuellerReconstructionTests() =
         match proxy.solveLinearLeastSquares dependent [| 1.0; 2.0; 3.0 |] with
         | Error (RankDeficient rank) -> Assert.True(rank < 2, $"rank = {rank}")
         | other -> Assert.Fail($"expected Error (RankDeficient _), got %A{other}")
+
+    [<Fact>]
+    member _.``a mock MuellerDataProxy loads canned capture rows through its exact tryLoadFamily signature`` () =
+        // Spec 0042 (005) acceptance: build a stub MuellerDataProxy and load canned rows through the EXACT
+        // tryLoadFamily signature.
+        let proxy = seededDataMock ()
+
+        // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local:
+        // the compiler rejects the file if `tryLoadFamily` drifts from its declared shape.
+        let loadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadFamily
+
+        match loadFamily (DataFilePath.create "C:/data/mueller-family.csv") with
+        | Ok rows ->
+            Assert.Equal(2, rows.Length)
+            Assert.Equal<MuellerRawRow list>(cannedRows, rows)
+        | Error e -> Assert.Fail($"expected the canned capture rows, got %A{e}")
+
+    [<Fact>]
+    member _.``an unknown path yields a typed MuellerDataError from tryLoadFamily, never a throw`` () =
+        // Spec 0042 (005) acceptance: an unknown path returns a typed MuellerDataError (the mock has no rows
+        // for it) — never a throw.
+        let proxy = seededDataMock ()
+        match proxy.tryLoadFamily (DataFilePath.create "C:/data/nowhere.csv") with
+        | Error (EmptyFile reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (EmptyFile _) for an unknown path, got %A{other}")
+
+    [<Fact>]
+    member _.``a MuellerDataProxy compares by reference (the ReferenceEquality convention)`` () =
+        // The proxy's only field is function-valued, so it has no structural equality; the
+        // [<ReferenceEquality>] attribute makes it compare by identity, so a host context holding one stays
+        // comparable (mirrors the ExperimentDataProxy / MuellerSolverProxy convention).
+        let p = seededDataMock ()
+        let same = p
+        Assert.True((p = same))
+        Assert.False((p = seededDataMock ()))

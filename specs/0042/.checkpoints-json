@@ -14,5 +14,9 @@
   "3": {
     "berreman_unit_tests": 132,
     "constructor_unit_tests": 693
+  },
+  "4": {
+    "berreman_unit_tests": 135,
+    "constructor_unit_tests": 693
   }
 }

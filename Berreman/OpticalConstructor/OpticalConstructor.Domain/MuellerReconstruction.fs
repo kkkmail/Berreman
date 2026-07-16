@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
+open OpticalConstructor.Domain.Experiments            // DataFilePath (step 025) — reused by the CSV-load seam (step 005)
 
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
 /// linear eigen-polarization relative to the other by a phase `Retardance`; its Mueller matrix is the
@@ -233,4 +234,66 @@ module MuellerReconstruction =
                                 Ok { solution = x.ToArray(); rank = rank; rmse = rmse }
                         with
                         | e -> Error (SingularDesign $"the SVD least-squares solve failed: {e.Message}")
+        }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data CSV-LOAD seam. Declares, in
+    // the Domain, the DECLARED-lifecycle `MuellerDataProxy`: the IO boundary that turns an experiment
+    // family's elevated `DataFilePath` (Experiments.fs:142) into its parsed raw capture rows, or a typed
+    // `MuellerDataError`. It is the disk-read EDGE the least-squares reconstruction sits behind — each loaded
+    // `MuellerRawRow` carries one capture's analyzer azimuth (`description`, the engine `Angle`) and averaged
+    // intensity (`avgTotal`), the very (azimuth, intensity) pairs `kron4` / the `MuellerSolverProxy` consume —
+    // so a future real proxy is exactly the missing `path -> read CSV -> rows` adapter, and its native/parse
+    // exceptions are caught AT this boundary and mapped to the typed `MuellerDataError` channel (never thrown
+    // across it).
+    //
+    // Kept as pure DATA (the `ExperimentDataProxy` convention, ExperimentDataProxy.fs:43): a record of one
+    // camelCase `Result`-returning function, so logic that holds the proxy stays referentially transparent and
+    // a test substitutes a canned in-memory stub of the SAME shape. Its one field is function-valued and so
+    // has no structural equality, so the record is `[<ReferenceEquality>]` — a host context (Optimization /
+    // Elmish) that holds one keeps its required equality, comparing the proxy by identity.
+    //
+    // DECLARED lifecycle: this is the seam ONLY — no filesystem read, no CSV parse, no wiring. A later
+    // `IMPLEMENT_CONTRACT STORE_XDUO_0009` cycle supplies the real file-backed `create` (read the CSV text,
+    // parse each row, map any IO/parse exception to a typed error), leaving every consumer that holds the
+    // proxy unchanged. The mock that satisfies this surface (canned rows keyed by `DataFilePath.value`) lives
+    // with its test in `BerremanTests`, mirroring the `MuellerSolverProxy` mock.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// One raw capture row of a Mueller measurement family, as loaded from a CSV file — the row-level DTO AT
+    /// the load boundary (bare primitives are permitted here, the parse/storage seam). `experiment` is the
+    /// source experiment label; `captureIndex` the row's ordinal within the family; `capturedAt` the capture
+    /// timestamp; `description` the analyzer azimuth (the engine `Angle`, NOT a bare degree); `avgTotal` the
+    /// averaged total intensity for that capture. The (`description`, `avgTotal`) pair is the (azimuth,
+    /// intensity) measurement the reconstruction's `kron4` / `MuellerSolverProxy` consume.
+    type MuellerRawRow =
+        {
+            experiment : string
+            captureIndex : int
+            capturedAt : System.DateTimeOffset
+            description : Angle
+            avgTotal : float
+        }
+
+    /// A typed failure of a Mueller CSV load — never a throw across the proxy boundary. `MalformedRow` carries
+    /// a human-readable `reason` (a row that fails to parse, a bad field, or a native/IO failure mapped onto
+    /// the channel); `EmptyFile` carries a `reason` for a file that yielded no capture rows.
+    type MuellerDataError =
+        | MalformedRow of reason : string
+        | EmptyFile of reason : string
+
+    /// The Mueller measured-data CSV-LOAD seam (the functional-proxy convention): a record of one camelCase
+    /// `Result`-returning function that resolves an experiment family's `DataFilePath` to its parsed capture
+    /// rows.
+    ///
+    /// - `tryLoadFamily path` — read + parse the Mueller CSV file at `path` into its ordered `MuellerRawRow`
+    ///   list, or a typed `MuellerDataError` (a malformed row, an empty file, or — for a later real store — a
+    ///   missing file / IO failure mapped onto the channel); never a throw.
+    ///
+    /// DECLARED lifecycle: the seam only — the real disk-backed `create` lands in a later
+    /// `IMPLEMENT_CONTRACT STORE_XDUO_0009`. Reuses `Experiments.DataFilePath` (Experiments.fs:142).
+    [<ReferenceEquality>]
+    type MuellerDataProxy =
+        {
+            tryLoadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError>
         }
