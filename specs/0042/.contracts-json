@@ -1,8 +1,8 @@
 {
   "SVC_XDUO_0002": {
-    "lifecycle": "declared",
+    "lifecycle": "implemented",
     "declaringStep": 3,
-    "implementStep": null,
+    "implementStep": 4,
     "openTemporary": false,
     "consumers": [],
     "temporaries": []

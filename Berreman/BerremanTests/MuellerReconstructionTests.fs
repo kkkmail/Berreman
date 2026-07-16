@@ -173,3 +173,49 @@ type MuellerReconstructionTests() =
         let same = p
         Assert.True((p = same))
         Assert.False((p = makeMockSolver ()))
+
+    [<Fact>]
+    member _.``the real createMathNetSvd proxy solves a known over-determined full-rank system`` () =
+        // Spec 0042 (004) acceptance: instantiate the REAL createMathNetSvd () (not the mock) and solve a
+        // small known over-determined, full-column-rank, consistent system A·x = b. The returned solution
+        // MUST match the known x within tolerance, with rank equal to the column count and a ~zero residual.
+        let proxy = createMathNetSvd ()
+
+        // A is 4×2 with independent columns (full column rank 2); x = [3; -2]; b = A·x (a consistent system).
+        let design : float[][] =
+            [| [| 1.0;  0.0 |]
+               [| 0.0;  1.0 |]
+               [| 1.0;  1.0 |]
+               [| 2.0; -1.0 |] |]
+        let known : float[] = [| 3.0; -2.0 |]
+        let rhs : float[] = [| 3.0; -2.0; 1.0; 8.0 |]
+
+        match proxy.solveLinearLeastSquares design rhs with
+        | Ok sol ->
+            Assert.Equal(2, sol.solution.Length)
+            for k in 0 .. 1 do
+                Assert.True(abs (sol.solution.[k] - known.[k]) < allowedDiff, $"solution[{k}] = {sol.solution.[k]}, expected {known.[k]}")
+            // Rank equals the column count on a full-rank solve — the observability check the acceptance names.
+            Assert.Equal(2, sol.rank)
+            Assert.True(sol.rmse < allowedDiff, $"rmse = {sol.rmse}")
+        | Error e -> Assert.Fail($"expected the known least-squares solution, got %A{e}")
+
+    [<Fact>]
+    member _.``the real createMathNetSvd proxy maps degenerate designs to typed SolverErrors (never a throw)`` () =
+        // The real proxy honours the TOTAL seam: a singular / rank-deficient design returns a typed value, not
+        // an exception across the proxy boundary.
+        let proxy = createMathNetSvd ()
+
+        // An empty design → SingularDesign carrying a non-empty reason.
+        match proxy.solveLinearLeastSquares [||] [||] with
+        | Error (SingularDesign reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (SingularDesign _), got %A{other}")
+
+        // A rank-deficient design (column 2 = 2× column 1, so the numerical rank is 1 < the 2 columns).
+        let dependent : float[][] =
+            [| [| 1.0; 2.0 |]
+               [| 2.0; 4.0 |]
+               [| 3.0; 6.0 |] |]
+        match proxy.solveLinearLeastSquares dependent [| 1.0; 2.0; 3.0 |] with
+        | Error (RankDeficient rank) -> Assert.True(rank < 2, $"rank = {rank}")
+        | other -> Assert.Fail($"expected Error (RankDeficient _), got %A{other}")

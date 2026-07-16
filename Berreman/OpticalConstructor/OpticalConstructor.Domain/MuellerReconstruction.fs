@@ -162,3 +162,75 @@ module MuellerReconstruction =
         {
             solveLinearLeastSquares : float[][] -> float[] -> Result<LeastSquaresSolution, SolverError>
         }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Spec 0042 (004, IMPLEMENT_CONTRACT SVC_XDUO_0002) — the REAL least-squares solve behind the DECLARED
+    // `MuellerSolverProxy` seam above. `createMathNetSvd ()` builds a proxy whose `solveLinearLeastSquares`
+    // resolves the over-determined design system `A·x ≈ b` through the vendored MathNet.Numerics SVD
+    // least-squares (`matrix.Svd(true).Solve(b)`), reporting the numerical `rank` (the count of
+    // non-negligible singular values) and the intensity residual `rmse = ‖A·x − b‖ / √m`. MathNet is reached
+    // TRANSITIVELY through `Berreman.MathNetNumericsMath` exactly as `Propagation` opens it (Propagation.fs:4)
+    // — no direct `MathNet.Numerics` open is added to the Domain: the design `A` and rhs `b` are built through
+    // the EXISTING `RealMatrix.create` / `RealVector.create` wrappers, unwrapped to their backing
+    // `Matrix<double>` / `Vector<double>` ONLY for the `.Svd()` / `.Solve()` members the DU does not surface.
+    //
+    // The seam stays TOTAL: a degenerate or rank-deficient design is mapped to a typed `SolverError`, never a
+    // throw across the proxy — `RankDeficient rank` when the SVD reports a rank below the column count the
+    // reconstruction needs (an under-determined design lands here since `rank ≤ rows < columns`);
+    // `SingularDesign reason` for a degenerate shape (no rows, no columns, an `rhs` whose length does not
+    // match the row count, a non-finite entry) or for ANY MathNet exception caught AT this boundary
+    // (CLAUDE.md: native/library exceptions are mapped to a typed error, never handled above the seam).
+    //
+    // ALGLIB alternative (documented, NOT required for §7.2): the same seam could be backed by ALGLIB's
+    // `rmatrixsolvels`, which would live ONLY in `OpticalConstructor.Optimization/AlglibAdapter.fs:20` (the
+    // single ALGLIB-referencing file). The Mueller reconstruction (§7.2) does NOT depend on it — the vendored
+    // MathNet SVD here is the sole required backend.
+    // -----------------------------------------------------------------------------------------------------
+
+    /// The REAL `MuellerSolverProxy`, backed by the vendored MathNet.Numerics SVD least-squares (the
+    /// `IMPLEMENT_CONTRACT SVC_XDUO_0002` construction behind the DECLARED seam above). Its
+    /// `solveLinearLeastSquares design rhs` solves `A·x ≈ b` — `design` the row-major `A` (each inner array one
+    /// stacked `kron4` measurement row), `rhs` the measured intensities `b` — and returns the minimizing
+    /// `LeastSquaresSolution` (`solution`, numerical `rank`, residual `rmse = ‖A·x − b‖ / √m`), or a typed
+    /// `SolverError`:
+    ///   - `SingularDesign reason` — a degenerate design (no rows, no columns, an `rhs` whose length does not
+    ///     match the row count, or a non-finite entry), or any MathNet exception mapped onto the channel;
+    ///   - `RankDeficient rank` — the SVD's effective numerical `rank` is below the column count, so the
+    ///     reconstruction is not uniquely determined.
+    /// Never throws across the proxy boundary (the `.Svd()` / `.Solve()` block runs under `try/with`).
+    let createMathNetSvd () : MuellerSolverProxy =
+        {
+            solveLinearLeastSquares =
+                fun (design : float[][]) (rhs : float[]) ->
+                    let widths = design |> Array.map Array.length
+                    let notFinite (v : float) : bool = not (System.Double.IsFinite v)
+                    if design.Length = 0 then
+                        Error (SingularDesign "the design matrix has no rows (an empty least-squares system)")
+                    elif widths |> Array.exists (fun w -> w <> widths.[0]) then
+                        Error (SingularDesign "the design matrix is ragged (its rows are of unequal length)")
+                    elif widths.[0] = 0 then
+                        Error (SingularDesign "the design matrix has no columns (there are no unknowns to solve for)")
+                    elif rhs.Length <> design.Length then
+                        Error (SingularDesign $"the right-hand side has {rhs.Length} entries but the design has {design.Length} rows")
+                    elif (design |> Array.exists (Array.exists notFinite)) || (rhs |> Array.exists notFinite) then
+                        Error (SingularDesign "the design matrix or the right-hand side contains a non-finite entry (NaN or infinity)")
+                    else
+                        try
+                            let am = RealMatrix.create design
+                            let bv = RealVector.create rhs
+                            let (RealMatrix a) = am
+                            let (RealVector b) = bv
+                            let svd = a.Svd(true)
+                            let rank = svd.Rank
+                            let columns = a.ColumnCount
+                            if rank < columns then
+                                Error (RankDeficient rank)
+                            else
+                                let x = svd.Solve(b)
+                                let residual = (am * RealVector x) - bv
+                                let rows = a.RowCount
+                                let rmse = residual.norm / sqrt (float rows)
+                                Ok { solution = x.ToArray(); rank = rank; rmse = rmse }
+                        with
+                        | e -> Error (SingularDesign $"the SVD least-squares solve failed: {e.Message}")
+        }
