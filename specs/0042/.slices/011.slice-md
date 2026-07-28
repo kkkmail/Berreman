@@ -1,0 +1,11 @@
+# Step 011 — WIRE
+
+```step
+anchor: WIRE
+touches: [BerremanTests]
+depends_on: [4, 6, 8, 9, 10]
+```
+
+**How to implement.** In Berreman/BerremanTests/MuellerReconstructionTests.fs wire the composition root of the deliverable: instantiate the real MuellerDataStore.createFileBacked () (Storage) and createMathNetSvd () (Domain) proxies, resolve the OPM data folder relative to __SOURCE_DIRECTORY__ (both repos share the C:/GitHub parent, so ../../optics-mueller/data/raw/final), load the five science CSVs plus darkness_checks.csv and bullshit_checks.csv, run Stage 1 (calibration) then Stage 2 (glue) then Stage 3 (reduction and reconstruction) and assert the section 7.2 result. Guard every data-backed fact with [<SkippableFact>] and Skip.If so the suite SKIPS when the OPM data is absent (Xunit.SkippableFact is already referenced by BerremanTests.fsproj). Assert: M_QZ, M_LR and M_{QZ+LR} each match the section 4 printed matrices within about 2e-3 (reuse the assertMuellerEqual element loop, MuellerMatrixTests.fs:20); each solve reports rank 16; and the cascade metrics Frobenius norm of (M_{QZ+LR} - cascadeProduct M_LR M_QZ) approx 0.571, mean abs delta approx 0.113, max abs delta approx 0.268, with the two largest element diffs at (4,2) and (2,2) 1-indexed. Add a top-of-file /// XML-doc block listing the future candidates (section 6 calibration table, section 7 per-family RMSE, Cloude realizability, Lu-Chipman decomposition, condition-number reporting, plus-minus 45/90 tweaks) as NOT-yet-asserted. The test MAY additionally diff against an optionally-committed full-precision reference_summary.json at about 1e-9, produced offline once by the OPM Python; the shipped test runs pure F# and never invokes Python.
+
+**Acceptance.** After wiring, dotnet test in BerremanTests runs the reconstruction test which, when the sibling OPM data is present, reconstructs M_QZ, M_LR and M_{QZ+LR} within about 2e-3 of report section 7.2 at full rank 16 and confirms the Frobenius norm of (M_{QZ+LR} - M_LR * M_QZ) approx 0.571 (mean abs delta approx 0.113, max abs delta approx 0.268) within tolerance, and cleanly SKIPS (not fails) when the data is absent; the solution builds warning-clean.

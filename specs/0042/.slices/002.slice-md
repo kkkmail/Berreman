@@ -1,0 +1,11 @@
+# Step 002 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: [1]
+```
+
+**How to implement.** In MuellerReconstruction (Domain) add the column-major linear-algebra core as tiny pure functions with concrete elevated signatures. kron4 (s : StokesVector) (a : RealVector4) : float[] builds the 16-element design row with index order k = 4*i + j carrying s[i]*a[j]. vecColumnMajor (m : MuellerMatrix) : float[] and muellerOfVecColumnMajor (v : float[]) : MuellerMatrix map M[j,i] = v[4*i + j] (numpy reshape order F). frobeniusDiff (a : MuellerMatrix) (b : MuellerMatrix) : MatrixDiff, where MatrixDiff is a new record { frobenius : float; meanAbs : float; maxAbs : float; argMax : int * int }, loops Propagation.muellerElement (Propagation.fs:40). Read and write matrix elements only through muellerOfRows / muellerElement (Propagation.fs:35 and :40); use MuellerMatrix (Fields.fs:598), StokesVector (Fields.fs:580) and RealVector4 (Geometry.fs:128) directly. Add BerremanTests facts: the vec round-trip and the column-major transpose guard.
+
+**Acceptance.** After the change, muellerOfVecColumnMajor (vecColumnMajor m) MUST equal m for every 4x4, and for random s, a and M the dot product of kron4 s a with vecColumnMajor M MUST equal a dot (M * s) within allowedDiff (the column-major transpose guard), verified by passing unit tests.

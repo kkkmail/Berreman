@@ -1,0 +1,11 @@
+# Step 010 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: [2, 4, 7, 9]
+```
+
+**How to implement.** In MuellerReconstruction (Domain) assemble the reconstruction as tiny pure functions. buildDesign (rows : MuellerRawRow list) (kind : MatrixKind) : float[][] * float[] builds the n-by-16 design (designRow per science row) and the signal_corrected target, excluding AIR rows and the one contaminated point (LP-(LR#90)-CPL-2, description 140, capture_index 17). reconstruct (solver : MuellerSolverProxy) (x : float[][]) (y : float[]) : Result<ReconstructedMatrix, SolverError> solves through the proxy and reshapes column-major via muellerOfVecColumnMajor, carrying the MuellerMatrix, rank and rmse. cascadeProduct (mLr : MuellerMatrix) (mQz : MuellerMatrix) : MuellerMatrix = mLr * mQz (beam hits QZ first), reusing the MuellerMatrix * operator (Fields.fs:651). Add BerremanTests facts on a synthetic full-rank design.
+
+**Acceptance.** After the change, reconstruct on a synthetic full-rank design recovers the seeded MuellerMatrix within tolerance at rank 16, and cascadeProduct mLr mQz MUST equal mLr * mQz, verified by passing unit tests.

@@ -38,14 +38,15 @@
         <Compile Include="RhoWithDispValueTests.fs" />
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
+        <Compile Include="MuellerReconstructionTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.301" />
-        <PackageReference Include="FluentAssertions" Version="7.0.0" />
+        <PackageReference Update="FSharp.Core" Version="10.1.302" />
+        <PackageReference Include="FluentAssertions" Version="[7.0.0]" />
         <PackageReference Include="FsCheck" Version="3.3.3" />
         <PackageReference Include="FsCheck.Xunit" Version="3.3.3" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
@@ -65,12 +66,20 @@
     <ItemGroup>
         <ProjectReference Include="..\OpticalProperties\OpticalProperties.fsproj" />
         <ProjectReference Include="..\Analytics\Analytics.fsproj" />
+        <!-- Spec 0042 (001): MuellerReconstructionTests.fs names the pure
+             OpticalConstructor.Domain.MuellerReconstruction module (Retardance + retarderMueller). An
+             EXPLICIT reference to the Domain project (not relying on the transitive Optimization edge). -->
+        <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Domain\OpticalConstructor.Domain.fsproj" />
         <!-- Slice 011 (§G.11 / AC-G9, AC-G3, AC-G6): OptimizationTests.fs drives the
              full DesignParameters→MeritFunction→optimize→AlglibAdapter→OpticalSystemSolver
              path with the real solver, so it needs the OpticalConstructor.Optimization
              layer. This reference is the enabling edit for that file (no UI dependency,
              per R-4). -->
         <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Optimization\OpticalConstructor.Optimization.fsproj" />
+        <!-- Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009): MuellerReconstructionTests.fs drives the
+             REAL MuellerDataStore.parseMuellerCsv / createFileBacked (OpticalConstructor.Storage). An
+             EXPLICIT reference to the Storage project (Storage flows Domain transitively). -->
+        <ProjectReference Include="..\OpticalConstructor\OpticalConstructor.Storage\OpticalConstructor.Storage.fsproj" />
     </ItemGroup>
 
 </Project>

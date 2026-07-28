@@ -1,0 +1,87 @@
+{
+  "manifest": "C:\\GitHub\\Berreman\\specs\\0042\\.manifest",
+  "branch": "0042",
+  "started_utc": "2026-07-16T01:32:44Z",
+  "last_updated_utc": "2026-07-16T05:20:50Z",
+  "completed_slices": [
+    {
+      "index": 0,
+      "path": "specs\\0042\\.slices\\001.slice-md",
+      "commit": "f2172d45baa1a7e51305f1fff80ce033598335a9",
+      "manual": false,
+      "utc": "2026-07-16T01:46:34Z"
+    },
+    {
+      "index": 1,
+      "path": "specs\\0042\\.slices\\002.slice-md",
+      "commit": "c2d1471a88facabeffd5d8a18b61399cef08f357",
+      "manual": false,
+      "utc": "2026-07-16T02:03:51Z"
+    },
+    {
+      "index": 2,
+      "path": "specs\\0042\\.slices\\003.slice-md",
+      "commit": "5954ec7deb3e785bd395f95203775fcbb159d7d5",
+      "manual": false,
+      "utc": "2026-07-16T02:14:47Z"
+    },
+    {
+      "index": 3,
+      "path": "specs\\0042\\.slices\\004.slice-md",
+      "commit": "46c77b84d89cca00bf61bde576c10c5e383a4a55",
+      "manual": false,
+      "utc": "2026-07-16T02:32:08Z"
+    },
+    {
+      "index": 4,
+      "path": "specs\\0042\\.slices\\005.slice-md",
+      "commit": "50ebc8280b27fee24e25ca9f42ac1ab0d5be1ba3",
+      "manual": false,
+      "utc": "2026-07-16T02:44:10Z"
+    },
+    {
+      "index": 5,
+      "path": "specs\\0042\\.slices\\006.slice-md",
+      "commit": "3f6fc090db56c77700e194e8c0f7aeeed736608b",
+      "manual": false,
+      "utc": "2026-07-16T03:05:27Z"
+    },
+    {
+      "index": 6,
+      "path": "specs\\0042\\.slices\\007.slice-md",
+      "commit": "22f8f201527f4fa45a301199b18ba46a5dd78b1c",
+      "manual": false,
+      "utc": "2026-07-16T03:28:16Z"
+    },
+    {
+      "index": 7,
+      "path": "specs\\0042\\.slices\\008.slice-md",
+      "commit": "a2971952fb5f6f17d6a112d588727a9d35f2aab7",
+      "manual": false,
+      "utc": "2026-07-16T03:57:06Z"
+    },
+    {
+      "index": 8,
+      "path": "specs\\0042\\.slices\\009.slice-md",
+      "commit": "a4f03aaf6a792ab03eebc86640549bc63b31483c",
+      "manual": false,
+      "utc": "2026-07-16T04:13:18Z"
+    },
+    {
+      "index": 9,
+      "path": "specs\\0042\\.slices\\010.slice-md",
+      "commit": "54867dd7a6c26c619ff4eab4792edb34f7668339",
+      "manual": false,
+      "utc": "2026-07-16T04:31:44Z"
+    },
+    {
+      "index": 10,
+      "path": "specs\\0042\\.slices\\011.slice-md",
+      "commit": "c6de7a12d83e19e49c91981644ef60d5622d4fc0",
+      "manual": false,
+      "utc": "2026-07-16T05:20:50Z"
+    }
+  ],
+  "current_slice": null,
+  "remaining_slices": []
+}

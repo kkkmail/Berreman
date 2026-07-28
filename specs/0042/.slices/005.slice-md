@@ -1,0 +1,16 @@
+# Step 005 — ADD_CONTRACT STORE_XDUO_0009 MuellerDataProxy
+
+```step
+anchor: ADD_CONTRACT
+id: STORE_XDUO_0009
+name: MuellerDataProxy
+kind: proxy
+language: fsharp
+declaring_project: OpticalConstructor.Domain
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: []
+```
+
+**How to implement.** In MuellerReconstruction (Domain) declare the CSV-load seam following the same [<ReferenceEquality>] proxy convention (ExperimentDataProxy.fs:43). Add the elevated row type MuellerRawRow = { experiment : string; captureIndex : int; capturedAt : System.DateTimeOffset; description : Angle; avgTotal : float }; the typed channel MuellerDataError = MalformedRow of reason : string | EmptyFile of reason : string; and [<ReferenceEquality>] type MuellerDataProxy = { tryLoadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError> }, reusing Experiments.DataFilePath (Experiments.fs:142). Supply an in-memory mock (canned rows keyed by DataFilePath.value) plus a mock-driven [<Fact>] in BerremanTests exercising the field, exactly like ExperimentDataProxyTests (ExperimentDataProxyTests.fs:38).
+
+**Acceptance.** After the step, a mock-driven test MUST build a stub MuellerDataProxy, load canned rows through the exact tryLoadFamily signature, get a typed MuellerDataError for an unknown path (never a throw), and pass.

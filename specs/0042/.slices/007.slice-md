@@ -1,0 +1,11 @@
+# Step 007 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: [1, 2, 5]
+```
+
+**How to implement.** In MuellerReconstruction (Domain) add the per-row glue as many tiny pure functions. parseExperiment (label : string) : ParsedExperiment mirrors the reference parse_experiment_name grammar (a source token, then a parenthesised object list of NAME#angle entries joined by dashes, then an analyzer token, then an optional note suffix; e.g. CPL-(QZ#90-LR#90)-CPL). family : ParsedExperiment -> Family (LpLp | LpCpl | CplLp | CplCpl) and matrixKind : ParsedExperiment -> MatrixKind (Air | Qz | Lr | QzLrProduct). The model DUs SourceModel = LpSource | CplSource of thetaRel : Angle * retardance : Retardance and AnalyzerModel = { kind : PolarizerKind; zeroDial : Angle; dialSign : DialSign; thetaRelOpt : Angle option; retardanceOpt : Retardance option }, where DialSign = DialPositive | DialNegative is a named two-case DU with a .value : float (never a naked int). The state builders sourceBaseStokes, physicalAngle (dialSign * (dial - zeroDial)), analyzerBaseRow (row 0 of the family analyzer Mueller built from retarderMueller and Propagation.analyzerMueller IdealLinear - Propagation.fs:73), effectiveSource phi s = Propagation.rotationMueller phi * s (Propagation.fs:117), effectiveAnalyzer phi a = a . R(-phi), and designRow s a = kron4 s a. Add a +90/-90 invariance [<Fact>] in BerremanTests.
+
+**Acceptance.** After the change, parseExperiment MUST decode CPL-(QZ#90-LR#90)-CPL to CplCpl / QzLrProduct / phi = 90, and the effective source and analyzer states built at phi = +90 MUST equal those at phi = -90 within allowedDiff (the R(2 phi) invariance), verified by passing unit tests.

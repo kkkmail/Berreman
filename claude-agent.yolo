@@ -36,6 +36,10 @@
     {
       "path": "C:/Android/Sdk",
       "comment": "Android SDK — for build tooling"
+    },
+    {
+      "path": "C:/GitHub/optics-mueller",
+      "comment": "Mueller matrix measurement experiment"
     }
   ],
 

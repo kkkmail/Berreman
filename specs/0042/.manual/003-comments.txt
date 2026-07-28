@@ -1,0 +1,21 @@
+Here are the comments:
+The report explicitly talks about measurement procedures and rotation conventions. So, you MUST look this up in the report. The (+90) 
+and (–90) result in the same measurements. Some incorrectly measured during the first day data were re-measured during the second day. 
+This is mostly (+- 45) data points.
+Here are the answers:
+Q.1. Let’s go with (b) and see how this works out. 
+Q.2. Confirm to use BerremanTests. The tests are free to add references to non-test projects.
+Q.3. Yes, keep the data relative, skip the test(s) if data is unavailable. 
+Q.4. Let’s start with 7.2 matrices + 8 comparison. Document other test candidates into the XML comments at the top of the test file.
+Q.5. The (+90) and (-90) result in the same results and (+- 45) were re-measured the second day. In any case we MUST repeat the report 
+results first, then we will see how to tweak the tests.
+Q.6. If this means Angle, then use Angle. However, if Retardance means something else (and it looks like it does), then use Retardance. 
+Q.7. No, if Wolfram is NOT needed, then we do not use it. Nevertheless, abstract away the optimization into a proxy (since this IS the IO) 
+so that we could switch the optimization routines back and forth as needed.
+Q.8. The tests must run pure F# but it is fine to store and / or run some Python scripts to produce local BNM repo results before the tests. 
+If needed, then this must be done once.
+
+Write an updated version of the preliminary spec into C:\GitHub\Berreman\specs\0042\.manual\004-<description>.md. 
+
+Make no other changes.
+

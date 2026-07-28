@@ -1,0 +1,11 @@
+# Step 009 — IMPLEMENT
+
+```step
+anchor: IMPLEMENT
+touches: [OpticalConstructor.Domain, BerremanTests]
+depends_on: [7]
+```
+
+**How to implement.** In MuellerReconstruction (Domain) add the Stage-3 signal reduction as tiny pure functions. darkSubtract (darkMean : DarkMean) (avgTotal : float) : float; airIdentityPred (s : StokesVector) (a : RealVector4) : float = a dot s (the AIR identity prediction); scalarGain (signal : float[]) (model : float[]) : float = sum(signal*model)/sum(model*model); familyGain (family : Family) (cal : GainCalibration) (t : System.DateTimeOffset) : float encoding the hardcoded per-family rules (cpl_cpl_day1 time-interpolated between its two AIR blocks, cpl_cpl_day2 single, lp_lp and lp_cpl the mean of the two repeats, cpl_lp split at the first BullshitCheck timestamp); and correctSignal (darkMean) (avgTotal) (gain) : float = (avgTotal - darkMean)/gain. DarkMean is an elevated single-case DU. The procedure-level constants (dark_mean approx 869.666, the split timestamp, the excluded point) are passed in as data from the test, not embedded in the pure functions.
+
+**Acceptance.** After the change, a unit test pins scalarGain on a known signal/model pair, darkSubtract and correctSignal on known values, and familyGain selecting each per-family rule, all deterministically, and passes.

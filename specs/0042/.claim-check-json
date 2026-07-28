@@ -1,0 +1,164 @@
+{
+  "data_version": 7,
+  "spec_md_sha": "dbc11be666434dd2456b9498271524bd9c594171e581bb187038045cbfc9c04b",
+  "claims": [
+    {
+      "id": 1,
+      "phrase": "The report and reference scripts are the operator-supplied sources under `specs/0042/.manual/004-mueller-inverse-reconstruction-test.md` (§1)",
+      "spec_location": "§0 Binding constraints — Deliverable",
+      "evidence": "Phrase 'operator-supplied sources under <path>' inferred as an existing-artefact claim (not on the explicit trigger list). Glob resolved specs/0042/.manual/004-mueller-inverse-reconstruction-test.md -> file exists in-repo. The sibling OPM repo C:/GitHub/optics-mueller/ and the ported reference scripts (matrix_step1_air_fit.py, matrix_glue.py, matrix_fit_linear.py) are external to the audited repo root C:/GitHub/Berreman and out of scope for this audit.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 2,
+      "phrase": "Two functional proxies following the repo's `[<ReferenceEquality>]` `ExperimentDataProxy` precedent (ExperimentDataProxy.fs:43)",
+      "spec_location": "§0 Binding constraints — IO — and the numeric solve — sit behind *Proxy records",
+      "evidence": "Phrase 'following the repo's ... precedent' inferred as an existing-artefact claim. Read Berreman/OpticalConstructor/OpticalConstructor.Domain/ExperimentDataProxy.fs:43 -> `[<ReferenceEquality>]` attribute (line 43) sits directly above `type ExperimentDataProxy` (line 44), a record of Result-returning functions. Pointer resolves.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 3,
+      "phrase": "with its real file-backed factory `ExperimentDataStore.createFileBacked` (ExperimentDataStore.fs:51)",
+      "spec_location": "§0 Binding constraints — IO — and the numeric solve — sit behind *Proxy records",
+      "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Storage/ExperimentDataStore.fs:51 -> `let createFileBacked () : ExperimentDataProxy`. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 4,
+      "phrase": "The shipped default solver is the vendored MathNet.Numerics SVD least squares (`MathNetNumerics/Numerics/LinearRegression/MultipleRegression.cs`)",
+      "spec_location": "§0 Binding constraints — Pure F#, linear least squares only",
+      "evidence": "Glob resolved MathNetNumerics/Numerics/LinearRegression/MultipleRegression.cs -> exists. Grep -> `DirectRegressionMethod.Svd` cases and `Svd(x, y)` calls with 'least squares residuals' docs (lines 39-121). Confirmed vendored SVD least-squares source.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 5,
+      "phrase": "The ALGLIB `rmatrixsolvels` alternative behind the same proxy (it would live only in `OpticalConstructor.Optimization/AlglibAdapter.fs:20`, the sole ALGLIB-touching file)",
+      "spec_location": "§0 Binding constraints — Pure F#, linear least squares only",
+      "evidence": "Read Berreman/OpticalConstructor/OpticalConstructor.Optimization/AlglibAdapter.fs:20 -> `module AlglibAdapter =`. Grep case-sensitive `alglib\\.` over **/*.fs -> only AlglibAdapter.fs (product) and !Temp/OdeSolvers/Solver.fs (scratch, non-product per CLAUDE.md); Optimization.fs's case-insensitive hit is prose 'ALGLIB.' ending a comment sentence, not an API call. So AlglibAdapter.fs is the sole product file invoking ALGLIB. `rmatrixsolvels` appears only in spec/manual text, not yet in any source file — consistent with the spec's forward-looking 'would live'; the existing-artefact portion (the module + the sole-touching-file uniqueness) holds.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 6,
+      "phrase": "Every data-backed fact is `[<SkippableFact>]` guarded (`Xunit.SkippableFact` is already referenced by `BerremanTests.fsproj`)",
+      "spec_location": "§0 Binding constraints — Skip, never fail, when the data is absent",
+      "evidence": "Grep Berreman/BerremanTests/BerremanTests.fsproj:57 -> `<PackageReference Include=\"Xunit.SkippableFact\" Version=\"1.5.61\" />`. Confirmed already referenced.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 7,
+      "phrase": "`Berreman/OpticalConstructor/OpticalConstructor.Domain/Propagation.fs` already carries the frame rotation `Propagation.rotationMueller` (Propagation.fs:117)",
+      "spec_location": "§A.1 The missing retarder primitive",
+      "evidence": "Read Propagation.fs:117 -> `let rotationMueller (theta : Angle) : MuellerMatrix`. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 8,
+      "phrase": "the conjugated rotation `Propagation.rotateMueller` (Propagation.fs:128)",
+      "spec_location": "§A.1 The missing retarder primitive",
+      "evidence": "Read Propagation.fs:128 -> `let rotateMueller (theta : Angle) (m : MuellerMatrix) : MuellerMatrix`. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 9,
+      "phrase": "the ideal-polarizer `Propagation.analyzerMueller` (Propagation.fs:73)",
+      "spec_location": "§A.1 The missing retarder primitive",
+      "evidence": "Read Propagation.fs:73 -> `let analyzerMueller (kind : PolarizerKind) (theta : Angle) : MuellerMatrix`. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 10,
+      "phrase": "the element seam `Propagation.muellerOfRows` / `muellerElement` (Propagation.fs:35 / :40)",
+      "spec_location": "§A.1 The missing retarder primitive",
+      "evidence": "Read Propagation.fs:35 -> `let muellerOfRows (rows : float list list) : MuellerMatrix`; Propagation.fs:40 -> `let muellerElement (mm : MuellerMatrix) (i : int) (j : int) : float`. Both pointers confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 11,
+      "phrase": "and the ordered product `Propagation.compoundMueller` (Propagation.fs:139)",
+      "spec_location": "§A.1 The missing retarder primitive",
+      "evidence": "Read Propagation.fs:139 -> `let compoundMueller (components : MuellerComponent list) : MuellerMatrix`. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 12,
+      "phrase": "together with the elevated `Retardance` DU (a phase delay δ — semantically distinct from the azimuth `Angle`, Geometry.fs:34)",
+      "spec_location": "§A.1 The missing retarder primitive",
+      "evidence": "Existing-artefact portion is the azimuth `Angle` at Geometry.fs:34. Read Berreman/Berreman/Geometry.fs:34 -> `type Angle =` (single-case DU `Angle of double`, with `.value`/`.degrees`). Confirmed. (`Retardance` is the NEW DU this spec introduces, not an existing-artefact claim.)",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 13,
+      "phrase": "They read and write the engine's `MuellerMatrix` (Fields.fs:598) ... only through `muellerOfRows` / `muellerElement`",
+      "spec_location": "§A.2 The column-major Kronecker / vec algebra",
+      "evidence": "Read Berreman/Berreman/Fields.fs:598 -> `type MuellerMatrix =` (`MuellerMatrix of RealMatrix4x4`). Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 14,
+      "phrase": "and `RealVector4` (Geometry.fs:128) only through `muellerOfRows` / `muellerElement`",
+      "spec_location": "§A.2 The column-major Kronecker / vec algebra",
+      "evidence": "Read Berreman/Berreman/Geometry.fs:128 -> `type RealVector4 =` (`RealVector4 of RealVector`). Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 15,
+      "phrase": "The proxy is declared as a `[<ReferenceEquality>]` record of `Result`-returning functions following `ExperimentDataProxy` (ExperimentDataProxy.fs:43)",
+      "spec_location": "§B.0 The swappable solver seam (SVC:MuellerSolverProxy)",
+      "evidence": "Read OpticalConstructor.Domain/ExperimentDataProxy.fs:43 -> `[<ReferenceEquality>]` over `type ExperimentDataProxy`, a record of Result-returning functions (tryLoadIntensity / tryLoadEllipsometric). Confirmed (same pointer re-cited from claim 2).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 16,
+      "phrase": "the real MathNet SVD factory mirrors the `createFileBacked` shape (ExperimentDataStore.fs:51)",
+      "spec_location": "§B.0 The swappable solver seam (SVC:MuellerSolverProxy)",
+      "evidence": "Read OpticalConstructor.Storage/ExperimentDataStore.fs:51 -> `let createFileBacked () : ExperimentDataProxy`, a zero-arg factory returning a record of baked-in Result functions. Confirmed (same pointer re-cited from claim 3).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 17,
+      "phrase": "the typed `MuellerDataError`) is declared in the Domain beside the pipeline, reusing `Experiments.DataFilePath` (Experiments.fs:142)",
+      "spec_location": "§C.0 The Mueller-data seam (STORE:MuellerDataProxy)",
+      "evidence": "Read OpticalConstructor.Domain/Experiments.fs:142 -> `type DataFilePath =` (`DataFilePath of string` with `.value` + `create`). Confirmed. (`MuellerDataError`/`MuellerRawRow`/`MuellerDataProxy` are NEW types this spec introduces, not existing-artefact claims.)",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 18,
+      "phrase": "reusing the FSharp.Data `CsvFile.Parse` precedent `SpectralImport.parseSpectrumCsv` (SpectralImport.fs:46)",
+      "spec_location": "§C.0 The Mueller-data seam (STORE:MuellerDataProxy)",
+      "evidence": "Read OpticalConstructor.Storage/SpectralImport.fs:46 -> `let parseSpectrumCsv (csvText : string) : Result<(WaveLength * float) list, SpectrumImportError>`; line 48 uses `CsvFile.Parse(csvText)`. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 19,
+      "phrase": "and the `ExperimentDataStore.loadThrough` try/with boundary (ExperimentDataStore.fs:34) so a .NET IO exception NEVER crosses into the pure Domain",
+      "spec_location": "§C.0 The Mueller-data seam (STORE:MuellerDataProxy)",
+      "evidence": "Read OpticalConstructor.Storage/ExperimentDataStore.fs:34 -> `let private loadThrough`; lines 39-41 show `try Ok (File.ReadAllText path.value) with e -> Error (MalformedDataFile ...)` — the IO boundary that maps a .NET exception to a typed error. Confirmed.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 20,
+      "phrase": "A mock-driven test exercises the seam with canned rows exactly as `ExperimentDataProxyTests` (ExperimentDataProxyTests.fs:38)",
+      "spec_location": "§C.0 The Mueller-data seam (STORE:MuellerDataProxy)",
+      "evidence": "Read OpticalConstructor.Tests/ExperimentDataProxyTests.fs:38 -> `let private makeMock (intensityByPath : Map<...>) (ellipsometricByPath : Map<...>) : ExperimentDataProxy` = an inline mock proxy whose canned series are keyed by DataFilePath.value. Matches 'mock-driven test with canned rows'. Confirmed at the cited line.",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 21,
+      "phrase": "`cascadeProduct` forms `M_LR · M_QZ` with the `MuellerMatrix` `*` operator (Fields.fs:651)",
+      "spec_location": "§E.0 Reconstruction and the cascade identity test",
+      "evidence": "Read Berreman/Berreman/Fields.fs:651 -> `static member (*) (MuellerMatrix (RealMatrix4x4 (RealMatrix a)), MuellerMatrix (RealMatrix4x4 (RealMatrix b))) : MuellerMatrix` — the Mueller×Mueller product operator. Confirmed (line 645 is the Mueller×Stokes overload; the matrix×matrix operator the cascade uses is exactly at :651).",
+      "verdict": "CONFIRMED"
+    },
+    {
+      "id": 22,
+      "phrase": "element match ≈2e-3 via the `assertMuellerEqual` loop, MuellerMatrixTests.fs:20",
+      "spec_location": "§E.0 Reconstruction and the cascade identity test",
+      "evidence": "Read Berreman/BerremanTests/MuellerMatrixTests.fs:20 -> `let assertMuellerEqual (MuellerMatrix expected) (MuellerMatrix actual) =` followed by the nested i/j element-diff loop asserting `abs (expected.[i,j] - actual.[i,j]) < allowedDiff` (lines 21-24). Confirmed.",
+      "verdict": "CONFIRMED"
+    }
+  ],
+  "stub_check": {
+    "verdict": "WORKING-APP-COMMITTED",
+    "evidence": "no unmatched stub-ref anchors in .spec-md (0 stub-ref / 0 impl-ref anchors; all resolved)"
+  }
+}
