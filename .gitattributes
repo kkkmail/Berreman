@@ -32,6 +32,7 @@
 
 # --- Scripts ---
 *.sh    text eol=lf
+*.py    text eol=lf
 *.bat   text eol=crlf
 *.cmd   text eol=crlf
 *.ps1   text eol=crlf
@@ -49,6 +50,7 @@
 *.exe  binary
 *.pdb  binary
 *.snk  binary
+*.zip  binary
 
 # Mathematica notebooks: NEVER touch. Treat as pure binary so git does no
 # line-ending conversion, no diff, no merge. `!eol` clears the inert eol=lf

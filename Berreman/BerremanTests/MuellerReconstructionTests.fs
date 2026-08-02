@@ -1,24 +1,31 @@
 namespace BerremanTests
 
 open System.IO
+open System.IO.Compression                             // ZipArchive — used ONLY to build a throwaway archive for a failure-path test
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain
-open OpticalConstructor.Domain.Experiments             // DataFilePath (step 025) — keyed by the CSV-load mock (step 005)
 open OpticalConstructor.Domain.MuellerReconstruction
-open OpticalConstructor.Storage                        // MuellerDataStore — the REAL parseMuellerCsv / createFileBacked (step 006)
+open OpticalConstructor.Storage                        // MuellerDataStore — the REAL parseMuellerCsv / createArchiveBacked
 open Xunit
 open BerremanTests.MatrixComparison
 
 /// Spec 0042 — acceptance suite for the Mueller-reconstruction pipeline (`MuellerReconstruction` + the
-/// file-backed `MuellerDataStore` + the vendored-MathNet SVD solver). Most facts reuse the element-by-element
-/// Mueller compare loop from `MuellerMatrixTests.fs:20` and the shared `allowedDiff` tolerance
-/// (`MatrixComparison.fs:13`); the §7.2 data-backed matrix comparison uses the slice-mandated ~2e-3 acceptance
-/// band (a full measured-data reconstruction against the report's 6-decimal printed matrices).
+/// archive-backed `MuellerDataStore` + the vendored-MathNet SVD solver). Most facts reuse the
+/// element-by-element Mueller compare loop from `MuellerMatrixTests.fs:20` and the shared `allowedDiff`
+/// tolerance (`MatrixComparison.fs:13`).
 ///
-/// Slice 011 (WIRE) lands the §7.2 composition-root reconstruction cross-check (Stage 1 → 2 → 3 end-to-end
-/// against the sibling OPM measured data). The following report facets are deliberately NOT yet asserted here
-/// — each is a candidate for a future slice:
+/// Spec 0044 §8 retired the external data dependency and tightened the measured-data acceptance:
+///   - the measured data is COMMITTED (`Berreman/Data/MuellerMatrix/data.zip`) and reached through the
+///     re-keyed `MuellerDataProxy`, which takes a `MuellerDataSet` (an identity) rather than a
+///     `DataFilePath` (a location) — no test here names a path, an archive or an entry;
+///   - nothing walks up to, or otherwise probes for, an external checkout, and the two
+///     data-backed facts no longer skip: absent data is now a defect and fails;
+///   - the §7.2 matrices and the Stage-1 constants are asserted against the reference pipeline's own
+///     full-precision output (`reference_step*_summary.json` in that same folder) at `dataMatrixTol` /
+///     `stage1Tol`, rather than against the report's rounded printed values at ~2e-3.
+///
+/// The following report facets are deliberately NOT asserted here — each is a candidate for a future slice:
 ///   - §6 calibration table (the per-constant re-derivation table),
 ///   - §7 per-family fit RMSE (the by-family residual breakdown),
 ///   - Cloude realizability (coherency-matrix eigenvalue non-negativity),
@@ -65,29 +72,33 @@ type MuellerReconstructionTests() =
                     | _ -> Ok cannedSolution
         }
 
-    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data CSV-LOAD seam. The MOCK and its
-    // canned rows are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes
-    // the first member). `makeMockData` is an inline `MuellerDataProxy` stub whose `tryLoadFamily` keys the
-    // canned `MuellerRawRow` list off `DataFilePath.value`: a known path returns its rows; an unknown path
-    // returns `Error (EmptyFile _)` — staying WITHIN the declared two-case channel, never a throw. This
-    // exercises the exact signature and the typed-error case with no real filesystem IO — the real file-backed
-    // proxy lands in a later IMPLEMENT_CONTRACT STORE_XDUO_0009. The `capturedAt` timestamps are fixed literals
-    // (deterministic across runs — no ambient clock read).
+    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data LOAD seam, re-keyed by spec
+    // 0044 §8.3 from a LOCATION (`DataFilePath`) to an IDENTITY (`MuellerDataSet`). The MOCK and its canned
+    // rows are bound here, ahead of the members (FS0960: in a class type every `let` binding precedes the
+    // first member).
+    //
+    // `makeMockData` is an inline `MuellerDataProxy` stub whose `tryLoadDataSet` keys the canned
+    // `MuellerRawRow` list off the `MuellerDataSet` case itself: a seeded data set returns its rows; an
+    // unseeded one returns `Error (EmptyFile _)`, never a throw. Keying on the DU rather than on a path
+    // string is the whole point of the re-key — the mock, like the real store, is asked WHICH data set is
+    // wanted and is never told where anything lives. This exercises the exact signature and the typed-error
+    // case with no filesystem IO at all. The `capturedAt` timestamps are fixed literals (deterministic across
+    // runs — no ambient clock read).
     let cannedRows : MuellerRawRow list =
         [ { experiment = "E1"; captureIndex = 0; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 0, 0, System.TimeSpan.Zero); description = Angle.degree 0.0; avgTotal = 0.42 }
           { experiment = "E1"; captureIndex = 1; capturedAt = System.DateTimeOffset(2026, 7, 15, 12, 5, 0, System.TimeSpan.Zero); description = Angle.degree 45.0; avgTotal = 0.31 } ]
 
-    let makeMockData (rowsByPath : Map<string, MuellerRawRow list>) : MuellerDataProxy =
+    let makeMockData (rowsByDataSet : Map<MuellerDataSet, MuellerRawRow list>) : MuellerDataProxy =
         {
-            tryLoadFamily =
-                fun (path : DataFilePath) ->
-                    match Map.tryFind path.value rowsByPath with
+            tryLoadDataSet =
+                fun (dataSet : MuellerDataSet) ->
+                    match Map.tryFind dataSet rowsByDataSet with
                     | Some rows -> Ok rows
-                    | None -> Error (EmptyFile $"the mock has no canned capture rows for path '{path.value}'")
+                    | None -> Error (EmptyFile $"the mock has no canned capture rows for data set %A{dataSet}")
         }
 
     let seededDataMock () : MuellerDataProxy =
-        makeMockData (Map.ofList [ "C:/data/mueller-family.csv", cannedRows ])
+        makeMockData (Map.ofList [ LpLpFamily, cannedRows ])
 
     // Spec 0042 (006, IMPLEMENT_CONTRACT STORE_XDUO_0009) — a committed multi-column Mueller capture CSV
     // fixture for the REAL MuellerDataStore.parseMuellerCsv. A UTF-8 BOM prefix (char 0xFEFF, built here rather
@@ -129,18 +140,52 @@ type MuellerReconstructionTests() =
     // module path (no extra `open` of the numeric-wrapper module, which would drag unrelated names into scope).
     let degree = Berreman.MathNetNumericsMath.degree
 
-    /// Locate the sibling `optics-mueller` checkout's AIR data folder by walking up from the test output
-    /// directory to the first ancestor that carries `optics-mueller\data\raw\final\lp_lp.csv`, returning that
-    /// `final` directory — or `None` when no such checkout is present, so the data-dependent cross-check SKIPS
-    /// (manual §5.6 / §13 Q3: the test pulls data via a relative walk-up, never a committed copy).
-    let tryFindOpmFinalDir () : string option =
-        let rec walk (dir : DirectoryInfo) : string option =
-            if isNull dir then None
-            else
-                let candidate = Path.Combine(dir.FullName, "optics-mueller", "data", "raw", "final")
-                if File.Exists(Path.Combine(candidate, "lp_lp.csv")) then Some candidate
-                else walk dir.Parent
-        walk (DirectoryInfo(System.AppContext.BaseDirectory))
+    // ---------------------------------------------------------------------------------------------------
+    // Spec 0044 §8.5 / §9 — acceptance bands for the measured-data facts, against the reference pipeline's
+    // OWN full-precision output (Berreman/Data/MuellerMatrix/reference_step1_summary.json and
+    // reference_step2_linear_summary.json). These replaced the former ~1° / 2e-3 bands, which compared
+    // against the report's ROUNDED printed values and therefore could not detect numerical drift smaller
+    // than the rounding.
+    //
+    // The §9 protocol governs these two numbers: measure the actual agreement, pin ONE ORDER OF MAGNITUDE
+    // looser than observed, and record the observed figure here. They are never widened to make a failing
+    // test pass — the F# re-derives every constant independently through a different SVD implementation, so
+    // agreement worse than ~1e-6 would indicate a PROCEDURAL divergence from the reference pipeline that
+    // must be found and fixed, not absorbed.
+    //
+    // OBSERVED (measured 2026-08-02; recorded per §9, see specs/0044/.manual/006-implementation-log.md):
+    //   Stage-1 constants — dark_mean, z_LP, z_CPL and δ_an reproduce the reference BIT-EXACTLY (Δ = 0);
+    //                       θ_src is off by 7.1e-15° and δ_src by 1.4e-14°, i.e. one to two ulp.
+    //   Stage-3 matrices  — worst element deviations 4.5e-11 (M_QZ, M[2,3]), 4.9e-11 (M_LR, M[0,0]) and
+    //                       3.9e-11 (M_{QZ+LR}, M[1,3]).
+    // The matrix figures are the amplification of that ulp-level calibration difference through a
+    // 900-row × 16-column least-squares solve of condition number ≈ 10 — that is, the F# port and the Python
+    // reference agree to the last bit the calculation can carry, and differ only in floating-point summation
+    // order. For scale: the reconstructed elements are O(1) and the previous acceptance band was 2e-3, so
+    // these bands are seven to eight orders of magnitude tighter than what they replace.
+    // ---------------------------------------------------------------------------------------------------
+
+    /// Acceptance band for the Stage-1 calibration constants (degrees). Pinned per §9 at ~70× the observed
+    /// worst deviation of 1.4e-14°; the extra headroom over the bare order-of-magnitude rule absorbs
+    /// cross-CPU differences in vectorized summation, which this quantity is directly exposed to.
+    let stage1Tol = 1.0e-12
+
+    /// Acceptance band for the Stage-3 reconstructed matrix elements and the §8 cascade metrics. Pinned per
+    /// §9 at ~20× the observed worst deviation of 4.9e-11.
+    let dataMatrixTol = 1.0e-9
+
+    /// Load one measured data set through the REAL archive-backed store, failing the test on any typed error.
+    ///
+    /// Spec 0044 §8.4: the measured data is COMMITTED to the repository (`Berreman/Data/MuellerMatrix/data.zip`,
+    /// copied next to this assembly by `BerremanTests.fsproj`), so a load failure is a DEFECT, not an
+    /// environmental condition. The previous behaviour — walk up the directory tree looking for a sibling
+    /// external checkout and `Assert.Skip` when it was absent — is gone, together with every reference to
+    /// that checkout. Note what this helper does NOT mention: no path, no archive, no entry name. It names
+    /// a `MuellerDataSet` and the store resolves everything else (§8.3 / R5).
+    let loadDataSet (data : MuellerDataProxy) (dataSet : MuellerDataSet) : MuellerRawRow list =
+        match data.tryLoadDataSet dataSet with
+        | Ok rows -> rows
+        | Error e -> failwith $"could not load the measured data set %A{dataSet} from the committed archive: %A{e}"
 
     /// Reduce an experiment family's raw capture rows to its AIR#0 normalized trace — the reference
     /// `load_air_traces` + `prepare_normalized_traces` (matrix_step1_air_fit.py:78, :85): keep only the AIR#0
@@ -357,29 +402,33 @@ type MuellerReconstructionTests() =
         | other -> Assert.Fail($"expected Error (RankDeficient _), got %A{other}")
 
     [<Fact>]
-    member _.``a mock MuellerDataProxy loads canned capture rows through its exact tryLoadFamily signature`` () =
-        // Spec 0042 (005) acceptance: build a stub MuellerDataProxy and load canned rows through the EXACT
-        // tryLoadFamily signature.
+    member _.``a mock MuellerDataProxy loads canned capture rows through its exact tryLoadDataSet signature`` () =
+        // Spec 0042 (005) acceptance, re-keyed by spec 0044 §8.3: build a stub MuellerDataProxy and load
+        // canned rows through the EXACT tryLoadDataSet signature.
         let proxy = seededDataMock ()
 
         // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local:
-        // the compiler rejects the file if `tryLoadFamily` drifts from its declared shape.
-        let loadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadFamily
+        // the compiler rejects the file if `tryLoadDataSet` drifts from its declared shape. That the
+        // annotation reads `MuellerDataSet -> ...` and NOT `DataFilePath -> ...` is itself the assertion
+        // that the seam is keyed by identity rather than by location.
+        let loadDataSet : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadDataSet
 
-        match loadFamily (DataFilePath.create "C:/data/mueller-family.csv") with
+        match loadDataSet LpLpFamily with
         | Ok rows ->
             Assert.Equal(2, rows.Length)
             Assert.Equal<MuellerRawRow list>(cannedRows, rows)
         | Error e -> Assert.Fail($"expected the canned capture rows, got %A{e}")
 
     [<Fact>]
-    member _.``an unknown path yields a typed MuellerDataError from tryLoadFamily, never a throw`` () =
-        // Spec 0042 (005) acceptance: an unknown path returns a typed MuellerDataError (the mock has no rows
-        // for it) — never a throw.
+    member _.``an unseeded data set yields a typed MuellerDataError from tryLoadDataSet, never a throw`` () =
+        // Spec 0042 (005) acceptance, re-keyed by spec 0044 §8.3: a data set the mock does not carry returns
+        // a typed MuellerDataError — never a throw. `CplCplDay2` is a valid data set the mock was simply not
+        // seeded with, so this exercises the miss path without any invalid input existing at all: with the
+        // seam keyed by a DU there is no such thing as an unparseable key.
         let proxy = seededDataMock ()
-        match proxy.tryLoadFamily (DataFilePath.create "C:/data/nowhere.csv") with
+        match proxy.tryLoadDataSet CplCplDay2 with
         | Error (EmptyFile reason) -> Assert.False(System.String.IsNullOrWhiteSpace reason)
-        | other -> Assert.Fail($"expected Error (EmptyFile _) for an unknown path, got %A{other}")
+        | other -> Assert.Fail($"expected Error (EmptyFile _) for an unseeded data set, got %A{other}")
 
     [<Fact>]
     member _.``a MuellerDataProxy compares by reference (the ReferenceEquality convention)`` () =
@@ -421,18 +470,75 @@ type MuellerReconstructionTests() =
         | other -> Assert.Fail($"expected Error (MalformedRow _) for a malformed file, got %A{other}")
 
     [<Fact>]
-    member _.``createFileBacked produces a MuellerDataProxy that maps a missing file to a typed error (never a throw)`` () =
-        // Spec 0042 (006) acceptance: createFileBacked () produces a MuellerDataProxy; its tryLoadFamily reads
-        // at the IO boundary and maps a missing file to a typed MuellerDataError — never a throw.
-        let proxy = MuellerDataStore.createFileBacked ()
+    member _.``createArchiveBacked produces a MuellerDataProxy that loads every committed data set`` () =
+        // Spec 0044 (§8.3 / §8.4) acceptance: the REAL archive-backed store resolves the committed archive by
+        // itself and loads all seven data sets. Note what this test does not contain — no path, no archive
+        // name, no entry name, no environment probing. It calls a zero-argument factory and names data sets.
+        // That is the whole contract of the 0044 re-key (R5).
+        //
+        // The expected row counts are the archive's documented inventory (Berreman/Data/MuellerMatrix/README.md,
+        // matching spec 0042 §6): asserting them here means a truncated or wrong-build archive fails loudly at
+        // the load, rather than silently producing a slightly-wrong reconstruction downstream.
+        let proxy = MuellerDataStore.createArchiveBacked ()
 
-        // Pin the EXACT signature the acceptance names by binding the field to an explicitly-typed local: the
-        // compiler rejects the file if `tryLoadFamily` drifts from its declared shape.
-        let loadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadFamily
+        // Pin the EXACT signature by binding the field to an explicitly-typed local: the compiler rejects the
+        // file if `tryLoadDataSet` drifts from its declared shape.
+        let load : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError> = proxy.tryLoadDataSet
 
-        match loadFamily (DataFilePath.create "C:/data/definitely-missing-mueller-file-0042.csv") with
-        | Error _ -> ()   // a missing file is mapped to a typed MuellerDataError at the IO boundary — never a throw
-        | Ok _ -> Assert.Fail("expected a typed MuellerDataError for a missing file, got Ok")
+        let expectedRowCounts =
+            [ LpLpFamily, 209
+              LpCplFamily, 209
+              CplLpFamily, 209
+              CplCplDay1, 170
+              CplCplDay2, 57
+              DarknessChecks, 6
+              BullshitChecks, 2 ]
+
+        for (dataSet, expected) in expectedRowCounts do
+            match load dataSet with
+            | Ok rows -> Assert.Equal(expected, rows.Length)
+            | Error e -> Assert.Fail($"the committed archive must carry %A{dataSet}, got %A{e}")
+
+    [<Fact>]
+    member _.``tryLoadFromArchive maps an absent archive to a typed ArchiveUnreadable, never a throw`` () =
+        // Spec 0044 (§8.3) acceptance: the storage boundary is TOTAL. A missing container is caught at the
+        // boundary and mapped to the typed ArchiveUnreadable case carrying both the location and the
+        // underlying reason — no exception crosses into the pure Domain.
+        //
+        // This is the one place a location is named at all, and deliberately so: the failure paths must stay
+        // reachable from a test without any production caller ever knowing where the data lives, which is
+        // exactly why `tryLoadFromArchive` is public while `createArchiveBacked ()` takes no argument.
+        let absent = MuellerDataStore.MuellerArchivePath "C:/data/definitely-missing-mueller-archive-0044.zip"
+        match MuellerDataStore.tryLoadFromArchive absent LpLpFamily with
+        | Error (ArchiveUnreadable (archive, reason)) ->
+            Assert.Equal("C:/data/definitely-missing-mueller-archive-0044.zip", archive)
+            Assert.False(System.String.IsNullOrWhiteSpace reason)
+        | other -> Assert.Fail($"expected Error (ArchiveUnreadable _) for a missing archive, got %A{other}")
+
+    [<Fact>]
+    member _.``tryLoadFromArchive maps an archive without the requested entry to a typed DataSetMissing, never a throw`` () =
+        // Spec 0044 (§8.3) acceptance: the second archive failure mode is reported DISTINCTLY from the first,
+        // because the two call for different fixes — an unreadable container is a deployment problem (the
+        // Content copy did not happen), whereas a container that opens but lacks the entry is a data problem
+        // (the wrong archive was shipped). A caller that cannot tell them apart cannot act on the log line.
+        //
+        // A valid but empty archive is written to a temp file so the entry lookup genuinely misses on a
+        // genuinely-openable container; it is deleted again whatever happens.
+        let tempArchive = Path.Combine(Path.GetTempPath(), $"mueller-empty-archive-{System.Guid.NewGuid():N}.zip")
+        try
+            use (stream : FileStream) = File.Create tempArchive
+            use (zip : ZipArchive) = new ZipArchive(stream, ZipArchiveMode.Create)
+            zip.CreateEntry("unrelated.txt") |> ignore
+            zip.Dispose()
+            stream.Dispose()
+
+            match MuellerDataStore.tryLoadFromArchive (MuellerDataStore.MuellerArchivePath tempArchive) CplCplDay1 with
+            | Error (DataSetMissing (dataSet, archive)) ->
+                Assert.Equal(CplCplDay1, dataSet)
+                Assert.Equal(tempArchive, archive)
+            | other -> Assert.Fail($"expected Error (DataSetMissing _) for an archive without the entry, got %A{other}")
+        finally
+            if File.Exists tempArchive then File.Delete tempArchive
 
     [<Fact>]
     member _.``parseExperiment decodes CPL-(QZ#90-LR#90)-CPL and the +90 / -90 object rotation is inert (R(2 phi) invariance)`` () =
@@ -469,45 +575,53 @@ type MuellerReconstructionTests() =
         | Error e -> Assert.Fail($"expected a CosineFit for the synthetic trace, got %A{e}")
 
     [<Fact>]
-    member _.``Stage-1 re-derived calibration constants cross-check the section 2.2 rounded values (OPM AIR data present)`` () =
-        // Spec 0042 (008) acceptance (data-dependent): when the sibling OPM AIR data is present, the constants
-        // RE-derived by the three Stage-1 functions each land within a loose (~1°) band of their §2.2 cross-check
-        // (z_LP≈155.44, z_CPL≈97.00, δ_an≈83.67, θ_src≈39.31, δ_src≈82.55). When the OPM checkout is absent the
-        // fact SKIPS (xunit.v3-native dynamic skip) instead of failing — see the state-of-the-world Gotchas for
-        // why this is a plain [<Fact>] + Assert.Skip rather than the v2-only [<SkippableFact>] the slice names.
-        match tryFindOpmFinalDir () with
-        | None ->
-            Assert.Skip("OPM AIR calibration data is absent (no sibling optics-mueller checkout) — skipping the section 2.2 cross-check")
-        | Some finalDir ->
-            let solver = createMathNetSvd ()
-            let data = MuellerDataStore.createFileBacked ()
-            let load (name : string) : MuellerRawRow list =
-                match data.tryLoadFamily (DataFilePath.create (Path.Combine(finalDir, name))) with
-                | Ok rows -> rows
-                | Error e -> failwith $"could not load the OPM family '{name}': %A{e}"
+    member _.``Stage-1 re-derived calibration constants match the reference pipeline's full-precision values`` () =
+        // Spec 0042 (008) acceptance, upgraded by spec 0044 §8.5: the constants RE-derived by the three
+        // Stage-1 functions from the committed measured data are compared against the REFERENCE PIPELINE's
+        // own output at full precision, not against the report's 2-decimal rounded values.
+        //
+        // Provenance of the expected values: Berreman/Data/MuellerMatrix/reference_step1_summary.json, which
+        // is the Python reference implementation's own emitted summary (see that folder's README.md for the
+        // source repository, branch and commit). Transcribing the literals here rather than parsing the JSON
+        // at run time is deliberate — the test then reads NO file for its expectations, which is what keeps
+        // it free of any location knowledge (§8.5).
+        //
+        // This fact no longer skips. The data is committed to the repository, so a load failure is a defect
+        // (§8.4 / R6) and `loadDataSet` fails the test with the typed error.
+        let solver = createMathNetSvd ()
+        let data = MuellerDataStore.createArchiveBacked ()
+        let load = loadDataSet data
 
-            // dark_mean = mean avg_total over darkness_checks.csv (the reference ≈ 869.666).
-            let darkMean = load "darkness_checks.csv" |> List.averageBy (fun r -> r.avgTotal)
+        // dark_mean = mean avg_total over the darkness checks.
+        let darkMean = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal)
 
-            // LP-LP AIR → free cosine fit → LP analyzer zero z_LP ≈ 155.44.
-            let (anglesLpLp, normLpLp) = reduceAirTraces darkMean (load "lp_lp.csv")
-            let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
-            Assert.True(abs (lpLpFit.zeroDeg - 155.44) < 1.0, $"z_LP = {lpLpFit.zeroDeg}")
+        // LP-LP AIR → free cosine fit → the LP analyzer's zero dial z_LP.
+        let (anglesLpLp, normLpLp) = reduceAirTraces darkMean (load LpLpFamily)
+        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
 
-            // LP-CPL AIR → free cosine fit → CPL analyzer zero z_CPL ≈ 97.00; δ_an = arccos(vis) ≈ 83.67.
-            let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMean (load "lp_cpl.csv")
-            let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
-            Assert.True(abs (lpCplFit.zeroDeg - 97.00) < 1.0, $"z_CPL = {lpCplFit.zeroDeg}")
-            let deltaAnDeg = (retardanceFromVisibility lpCplFit.visibility).degrees
-            Assert.True(abs (deltaAnDeg - 83.67) < 1.0, $"δ_an = {deltaAnDeg}")
+        // LP-CPL AIR → free cosine fit → the CPL analyzer's zero dial z_CPL; δ_an = arccos(visibility).
+        let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMean (load LpCplFamily)
+        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
+        let deltaAnDeg = (retardanceFromVisibility lpCplFit.visibility).degrees
 
-            // CPL-LP AIR, fit in the source LP frame (phased on z_LP) → closed-form source: θ_src ≈ 39.31,
-            // δ_src ≈ 82.55.
-            let (anglesCplLp, normCplLp) = reduceAirTraces darkMean (load "cpl_lp.csv")
-            let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpLpFit.zeroDeg
-            let source = sourceCplFromLpFrame qLp uLp
-            Assert.True(abs (source.thetaRel.degrees - 39.31) < 1.0, $"θ_src = {source.thetaRel.degrees}")
-            Assert.True(abs (source.retardance.degrees - 82.55) < 1.0, $"δ_src = {source.retardance.degrees}")
+        // CPL-LP AIR, fit in the source LP frame (phased on z_LP) → the closed-form source model.
+        let (anglesCplLp, normCplLp) = reduceAirTraces darkMean (load CplLpFamily)
+        let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpLpFit.zeroDeg
+        let source = sourceCplFromLpFrame qLp uLp
+
+        // Every constant is compared in ONE assertion reporting all six deviations, so a regression message
+        // shows which constants moved and by how much rather than stopping at the first one out of band.
+        let constants =
+            [ "dark_mean", darkMean, 869.666
+              "z_LP", lpLpFit.zeroDeg, 155.44011830109392
+              "z_CPL", lpCplFit.zeroDeg, 96.99613336321012
+              "δ_an", deltaAnDeg, 83.66804489441891
+              "θ_src", source.thetaRel.degrees, 39.31100224361002
+              "δ_src", source.retardance.degrees, 82.55344158462403 ]
+        let worst = constants |> List.map (fun (_, actual, expected) -> abs (actual - expected)) |> List.max
+        Assert.True(
+            worst < stage1Tol,
+            $"""Stage-1 constants (tol {stage1Tol}): {String.concat "; " [ for (n, a, e) in constants -> $"{n} {a} vs {e} (Δ {abs (a - e)})" ]}""")
 
     [<Fact>]
     member _.``Stage-3 signal reduction pins darkSubtract, scalarGain, airIdentityPred, correctSignal and every per-family familyGain rule (always-run)`` () =
@@ -523,7 +637,7 @@ type MuellerReconstructionTests() =
         let expectedGain = (Array.map2 (*) signalGen model |> Array.sum) / (Array.map2 (*) model model |> Array.sum)
         Assert.True(abs (scalarGain signalGen model - expectedGain) < allowedDiff, $"scalarGain (general) = {scalarGain signalGen model}, expected {expectedGain}")
 
-        // darkSubtract — avg_total − dark_mean, with the ≈ 869.666 OPM dark mean passed in as data.
+        // darkSubtract — avg_total − dark_mean, with the ≈ 869.666 measured dark mean passed in as data.
         let darkMean = DarkMean 869.666
         Assert.True(abs (darkSubtract darkMean 1000.0 - (1000.0 - 869.666)) < allowedDiff, $"darkSubtract = {darkSubtract darkMean 1000.0}")
 
@@ -661,225 +775,260 @@ type MuellerReconstructionTests() =
         Assert.Equal(16, design.[0].Length)
 
     [<Fact>]
-    member _.``section 7.2 end-to-end: the OPM Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and confirms the section 8 cascade metrics (skips when the OPM data is absent)`` () =
-        // Spec 0042 (011, WIRE) acceptance — the composition-root cross-check. When the sibling optics-mueller
-        // checkout is present, wire the REAL createFileBacked () (Storage, step 006) and createMathNetSvd ()
-        // (Domain, step 004) proxies, load the five science CSVs + darkness_checks + bullshit_checks, RE-derive
-        // the Stage-1 AIR calibration constants (matrix_step1_air_fit.py), populate the Stage-2 per-family
-        // source/analyzer models (matrix_glue.py load_step1_models), reduce each science row to its corrected
-        // signal (Stage-3, matrix_fit_linear.py assign_gain_model), and reconstruct M_QZ / M_LR / M_{QZ+LR}
-        // (solve_single_object). Each must match the report section 4 printed matrices within ~2e-3 at full rank
-        // 16, and the section 8 cascade identity metrics must hold. When the checkout is absent the fact SKIPS
-        // (xunit.v3-native Assert.Skip) rather than fails — see the state-of-the-world Gotchas for why this is a
-        // plain [<Fact>] + Assert.Skip and not the v2-only [<SkippableFact>] the slice names.
-        match tryFindOpmFinalDir () with
-        | None ->
-            Assert.Skip("the sibling optics-mueller checkout is absent — skipping the section 7.2 composition-root reconstruction")
-        | Some finalDir ->
-            // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
-            let solver = createMathNetSvd ()
-            let store = MuellerDataStore.createFileBacked ()
-            let load (name : string) : MuellerRawRow list =
-                match store.tryLoadFamily (DataFilePath.create (Path.Combine(finalDir, name))) with
-                | Ok rows -> rows
-                | Error e -> failwith $"could not load the OPM family '{name}': %A{e}"
+    member _.``section 7.2 end-to-end: the Stage 1 to 2 to 3 pipeline reconstructs M_QZ, M_LR and M_{QZ+LR} at rank 16 and reproduces the reference pipeline exactly`` () =
+        // Spec 0042 (011, WIRE) acceptance — the composition-root cross-check. Wire the REAL
+        // createArchiveBacked () (Storage) and createMathNetSvd () (Domain) proxies, load the five science
+        // data sets + the darkness and bullshit checks, RE-derive the Stage-1 AIR calibration constants
+        // (matrix_step1_air_fit.py), populate the Stage-2 per-family source/analyzer models (matrix_glue.py
+        // load_step1_models), reduce each science row to its corrected signal (Stage-3, matrix_fit_linear.py
+        // assign_gain_model), and reconstruct M_QZ / M_LR / M_{QZ+LR} (solve_single_object).
+        //
+        // Spec 0044 changed two things here and nothing else about the pipeline:
+        //
+        //   §8.4 — the data is COMMITTED, so this fact no longer skips. It previously walked up the directory
+        //          tree hunting for an external sibling checkout and skipped when it was absent, which
+        //          meant the strongest test in the suite silently did nothing on a clean machine. Absence of
+        //          the data is now a defect and `loadDataSet` fails with the typed error.
+        //
+        //   §8.5 — the expected values are the REFERENCE PIPELINE's own full-precision output rather than the
+        //          report's 6-decimal printed matrices, and the band tightened from 2e-3 to `dataMatrixTol`
+        //          accordingly. At 2e-3 a refactor could introduce a real numerical error a thousand times
+        //          larger than the port's actual reproducibility and nothing would notice.
+        //          Provenance: Berreman/Data/MuellerMatrix/reference_step2_linear_summary.json (see that
+        //          folder's README.md for the source repository, branch and commit). The literals are
+        //          transcribed rather than parsed at run time, so this test reads no file for its
+        //          expectations and therefore knows nothing about where anything lives.
+        //
+        // ---- Composition root: the REAL proxies (the WIRE deliverable). ----
+        let solver = createMathNetSvd ()
+        let store = MuellerDataStore.createArchiveBacked ()
+        let load = loadDataSet store
 
-            let lpLpRows = load "lp_lp.csv"
-            let lpCplRows = load "lp_cpl.csv"
-            let cplLpRows = load "cpl_lp.csv"
-            let cplCplDay1Rows = load "cpl_cpl_day1_main.csv"
-            let cplCplDay2Rows = load "cpl_cpl_day2_corrections.csv"
+        let lpLpRows = load LpLpFamily
+        let lpCplRows = load LpCplFamily
+        let cplLpRows = load CplLpFamily
+        let cplCplDay1Rows = load CplCplDay1
+        let cplCplDay2Rows = load CplCplDay2
 
-            // ---- Stage-3 procedure constants supplied as DATA (spec section 0): dark mean + the CPL-LP split time. ----
-            let darkMeanValue = load "darkness_checks.csv" |> List.averageBy (fun r -> r.avgTotal)
-            let darkMean = DarkMean darkMeanValue
-            // The CPL-LP AIR gain splits at the FIRST BullshitCheck timestamp (matrix_fit_linear.py:82 reads the
-            // diagnostics[0] capture; the earliest bullshit_checks.csv capture is that same first check).
-            let splitTime =
-                match load "bullshit_checks.csv" with
-                | [] -> failwith "bullshit_checks.csv carried no rows"
-                | rows -> (rows |> List.minBy (fun r -> r.capturedAt)).capturedAt
+        // ---- Stage-3 procedure constants supplied as DATA (spec section 0): dark mean + the CPL-LP split time. ----
+        let darkMeanValue = load DarknessChecks |> List.averageBy (fun r -> r.avgTotal)
+        let darkMean = DarkMean darkMeanValue
+        // The CPL-LP AIR gain splits at the FIRST BullshitCheck timestamp (matrix_fit_linear.py:82 reads the
+        // diagnostics[0] capture; the earliest bullshit-check capture is that same first check).
+        let splitTime =
+            match load BullshitChecks with
+            | [] -> failwith "the bullshit-check data set carried no rows"
+            | rows -> (rows |> List.minBy (fun r -> r.capturedAt)).capturedAt
 
-            // ---- Stage 1 (calibration): RE-derive the AIR constants through the real solver (matrix_step1_air_fit.py). ----
-            let (anglesLpLp, normLpLp) = reduceAirTraces darkMeanValue lpLpRows
-            let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
-            let lpZeroDeg = lpLpFit.zeroDeg                                             // LP analyzer zero dial (z_LP)
+        // ---- Stage 1 (calibration): RE-derive the AIR constants through the real solver (matrix_step1_air_fit.py). ----
+        let (anglesLpLp, normLpLp) = reduceAirTraces darkMeanValue lpLpRows
+        let lpLpFit = unwrapFit "LP-LP" (freeCosineFit solver anglesLpLp normLpLp)
+        let lpZeroDeg = lpLpFit.zeroDeg                                             // LP analyzer zero dial (z_LP)
 
-            let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMeanValue lpCplRows
-            let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
-            let cplZeroDeg = lpCplFit.zeroDeg                                           // CPL analyzer zero dial (z_CPL)
-            let analyzerDeltaMagDeg = (retardanceFromVisibility lpCplFit.visibility).degrees   // |delta_an|
+        let (anglesLpCpl, normLpCpl) = reduceAirTraces darkMeanValue lpCplRows
+        let lpCplFit = unwrapFit "LP-CPL" (freeCosineFit solver anglesLpCpl normLpCpl)
+        let cplZeroDeg = lpCplFit.zeroDeg                                           // CPL analyzer zero dial (z_CPL)
+        let analyzerDeltaMagDeg = (retardanceFromVisibility lpCplFit.visibility).degrees   // |delta_an|
 
-            let (anglesCplLp, normCplLp) = reduceAirTraces darkMeanValue cplLpRows
-            let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpZeroDeg
-            let sourceCplModel = sourceCplFromLpFrame qLp uLp                           // { thetaRel; retardance }
+        let (anglesCplLp, normCplLp) = reduceAirTraces darkMeanValue cplLpRows
+        let (qLp, uLp) = lpFrameCoeffs solver anglesCplLp normCplLp lpZeroDeg
+        let sourceCplModel = sourceCplFromLpFrame qLp uLp                           // { thetaRel; retardance }
 
-            // ---- Stage 2 (glue): the per-family calibrated SOURCE and ANALYZER models (matrix_glue.py:182). ----
-            // Source retardance is positive, analyzer retardance negative — only the RELATIVE sign is constrained
-            // (matrix_glue.py:211); the analyzer's fixed retarder axis is +45 deg from its LP.
-            let sourceLp = LpSource
-            let sourceCpl = CplSource (sourceCplModel.thetaRel, sourceCplModel.retardance)
-            let analyzerLp : AnalyzerModel =
-                {
-                    kind = Library.IdealLinear
-                    zeroDial = Angle.degree lpZeroDeg
-                    dialSign = DialNegative
-                    thetaRelOpt = None
-                    retardanceOpt = None
-                }
-            let analyzerCpl : AnalyzerModel =
-                {
-                    kind = Library.IdealCircularLeft
-                    zeroDial = Angle.degree cplZeroDeg
-                    dialSign = DialPositive
-                    thetaRelOpt = Some (Angle.degree 45.0)
-                    retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg))
-                }
+        // ---- Stage 2 (glue): the per-family calibrated SOURCE and ANALYZER models (matrix_glue.py:182). ----
+        // Source retardance is positive, analyzer retardance negative — only the RELATIVE sign is constrained
+        // (matrix_glue.py:211); the analyzer's fixed retarder axis is +45 deg from its LP.
+        let sourceLp = LpSource
+        let sourceCpl = CplSource (sourceCplModel.thetaRel, sourceCplModel.retardance)
+        let analyzerLp : AnalyzerModel =
+            {
+                kind = Library.IdealLinear
+                zeroDial = Angle.degree lpZeroDeg
+                dialSign = DialNegative
+                thetaRelOpt = None
+                retardanceOpt = None
+            }
+        let analyzerCpl : AnalyzerModel =
+            {
+                kind = Library.IdealCircularLeft
+                zeroDial = Angle.degree cplZeroDeg
+                dialSign = DialPositive
+                thetaRelOpt = Some (Angle.degree 45.0)
+                retardanceOpt = Some (Retardance.degree (- analyzerDeltaMagDeg))
+            }
 
-            // ---- Stage 3 (reduction): the per-family AIR scalar gains (matrix_fit_linear.py assign_gain_model). ----
-            let airRowsOf (rows : MuellerRawRow list) (experiment : string) : MuellerRawRow list =
-                rows |> List.filter (fun r -> r.experiment = experiment)
-            // The AIR#0 scalar gain fitting `signal_dark_sub ~ gain * (a_eff . s_eff)` over one AIR experiment's
-            // rows (fit_air_gain + fit_scalar_gain). An AIR row carries no object (phi = 0), so its effective
-            // states equal its base states, and `airIdentityPred base base` is the per-row identity prediction.
-            let fitAirGain (source : SourceModel) (analyzer : AnalyzerModel) (rows : MuellerRawRow list) : float =
-                let sBase = sourceBaseStokes source
-                let preds =
-                    rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
-                let signals = rows |> List.map (fun r -> darkSubtract darkMean r.avgTotal) |> List.toArray
-                scalarGain signals preds
-            // The mean capture time of an AIR block (fit_air_gain's `air_rows["captured_at"].mean()`), computed
-            // relative to the first tick so the tick sum never overflows int64.
-            let meanTime (rows : MuellerRawRow list) : System.DateTimeOffset =
-                match rows with
-                | [] -> failwith "meanTime of an empty AIR block"
-                | first :: _ ->
-                    let t0 = first.capturedAt.UtcTicks
-                    let meanDelta = rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
-                    System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
+        // ---- Stage 3 (reduction): the per-family AIR scalar gains (matrix_fit_linear.py assign_gain_model). ----
+        let airRowsOf (rows : MuellerRawRow list) (experiment : string) : MuellerRawRow list =
+            rows |> List.filter (fun r -> r.experiment = experiment)
+        // The AIR#0 scalar gain fitting `signal_dark_sub ~ gain * (a_eff . s_eff)` over one AIR experiment's
+        // rows (fit_air_gain + fit_scalar_gain). An AIR row carries no object (phi = 0), so its effective
+        // states equal its base states, and `airIdentityPred base base` is the per-row identity prediction.
+        let fitAirGain (source : SourceModel) (analyzer : AnalyzerModel) (rows : MuellerRawRow list) : float =
+            let sBase = sourceBaseStokes source
+            let preds =
+                rows |> List.map (fun r -> airIdentityPred sBase (analyzerBaseRow analyzer r.description)) |> List.toArray
+            let signals = rows |> List.map (fun r -> darkSubtract darkMean r.avgTotal) |> List.toArray
+            scalarGain signals preds
+        // The mean capture time of an AIR block (fit_air_gain's `air_rows["captured_at"].mean()`), computed
+        // relative to the first tick so the tick sum never overflows int64.
+        let meanTime (rows : MuellerRawRow list) : System.DateTimeOffset =
+            match rows with
+            | [] -> failwith "meanTime of an empty AIR block"
+            | first :: _ ->
+                let t0 = first.capturedAt.UtcTicks
+                let meanDelta = rows |> List.averageBy (fun r -> float (r.capturedAt.UtcTicks - t0))
+                System.DateTimeOffset(t0 + int64 (System.Math.Round meanDelta), System.TimeSpan.Zero)
 
-            let day1Start = airRowsOf cplCplDay1Rows "CPL-(AIR#0)-CPL"
-            let day1End = airRowsOf cplCplDay1Rows "CPL-(AIR#0)-CPL-BR"
-            // The per-family AIR gain calibration bundle. LP-LP / LP-CPL take the mean of two AIR repeats; CPL-LP
-            // splits at the bullshit-check time; CPL-CPL day 2 is one AIR block (the `cplCpl` default below).
-            let calibration : GainCalibration =
-                {
-                    lpLp =
-                        {
-                            gainA = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows "LP-(AIR#0)-LP-2")
-                            gainB = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows "LP-(AIR#0)-LP-2R")
-                        }
-                    lpCpl =
-                        {
-                            gainA = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows "LP-(AIR#0)-CPL-2")
-                            gainB = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows "LP-(AIR#0)-CPL-2R")
-                        }
-                    cplLp =
-                        {
-                            gainPre = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows "CPL-(AIR#0)-LP-2")
-                            gainPost = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows "CPL-(AIR#0)-LP-2R")
-                            splitTime = splitTime
-                        }
-                    cplCpl = Day2Single (fitAirGain sourceCpl analyzerCpl (airRowsOf cplCplDay2Rows "CPL-(AIR#0)-CPL-2"))
-                }
-            // CPL-CPL day 1 is a distinct FILE with the time-INTERPOLATED rule (AIR start -> AIR end); day 2 keeps
-            // the single-block rule in `calibration` above.
-            let day1Cal =
-                { calibration with
-                    cplCpl =
-                        Day1Interp (
-                            fitAirGain sourceCpl analyzerCpl day1Start, meanTime day1Start,
-                            fitAirGain sourceCpl analyzerCpl day1End, meanTime day1End) }
+        let day1Start = airRowsOf cplCplDay1Rows "CPL-(AIR#0)-CPL"
+        let day1End = airRowsOf cplCplDay1Rows "CPL-(AIR#0)-CPL-BR"
+        // The per-family AIR gain calibration bundle. LP-LP / LP-CPL take the mean of two AIR repeats; CPL-LP
+        // splits at the bullshit-check time; CPL-CPL day 2 is one AIR block (the `cplCpl` default below).
+        let calibration : GainCalibration =
+            {
+                lpLp =
+                    {
+                        gainA = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows "LP-(AIR#0)-LP-2")
+                        gainB = fitAirGain sourceLp analyzerLp (airRowsOf lpLpRows "LP-(AIR#0)-LP-2R")
+                    }
+                lpCpl =
+                    {
+                        gainA = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows "LP-(AIR#0)-CPL-2")
+                        gainB = fitAirGain sourceLp analyzerCpl (airRowsOf lpCplRows "LP-(AIR#0)-CPL-2R")
+                    }
+                cplLp =
+                    {
+                        gainPre = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows "CPL-(AIR#0)-LP-2")
+                        gainPost = fitAirGain sourceCpl analyzerLp (airRowsOf cplLpRows "CPL-(AIR#0)-LP-2R")
+                        splitTime = splitTime
+                    }
+                cplCpl = Day2Single (fitAirGain sourceCpl analyzerCpl (airRowsOf cplCplDay2Rows "CPL-(AIR#0)-CPL-2"))
+            }
+        // CPL-CPL day 1 is a distinct FILE with the time-INTERPOLATED rule (AIR start -> AIR end); day 2 keeps
+        // the single-block rule in `calibration` above.
+        let day1Cal =
+            { calibration with
+                cplCpl =
+                    Day1Interp (
+                        fitAirGain sourceCpl analyzerCpl day1Start, meanTime day1Start,
+                        fitAirGain sourceCpl analyzerCpl day1End, meanTime day1End) }
 
-            // ---- The per-row Stage-2+3 projection each family closes over its models + gain (enrich_frame). ----
-            let prepareRow (source : SourceModel) (analyzer : AnalyzerModel) (fam : Family) (cal : GainCalibration)
-                           (r : MuellerRawRow) : StokesVector * RealVector4 * float =
-                let phi = objectPhi (parseExperiment r.experiment)
-                let sEff = effectiveSource phi (sourceBaseStokes source)
-                let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer r.description)
-                let signal = correctSignal darkMean r.avgTotal (familyGain fam cal r.capturedAt)
-                sEff, aEff, signal
+        // ---- The per-row Stage-2+3 projection each family closes over its models + gain (enrich_frame). ----
+        let prepareRow (source : SourceModel) (analyzer : AnalyzerModel) (fam : Family) (cal : GainCalibration)
+                       (r : MuellerRawRow) : StokesVector * RealVector4 * float =
+            let phi = objectPhi (parseExperiment r.experiment)
+            let sEff = effectiveSource phi (sourceBaseStokes source)
+            let aEff = effectiveAnalyzer phi (analyzerBaseRow analyzer r.description)
+            let signal = correctSignal darkMean r.avgTotal (familyGain fam cal r.capturedAt)
+            sEff, aEff, signal
 
-            // Every science file maps to exactly one family; CPL-CPL day1/day2 are distinct files with distinct
-            // gain rules (interpolated vs single block), so each carries its own calibration.
-            let families : (MuellerRawRow list * (MuellerRawRow -> StokesVector * RealVector4 * float)) list =
-                [ lpLpRows,       prepareRow sourceLp  analyzerLp  LpLp   calibration
-                  lpCplRows,      prepareRow sourceLp  analyzerCpl LpCpl  calibration
-                  cplLpRows,      prepareRow sourceCpl analyzerLp  CplLp  calibration
-                  cplCplDay1Rows, prepareRow sourceCpl analyzerCpl CplCpl day1Cal
-                  cplCplDay2Rows, prepareRow sourceCpl analyzerCpl CplCpl calibration ]
+        // Every science file maps to exactly one family; CPL-CPL day1/day2 are distinct files with distinct
+        // gain rules (interpolated vs single block), so each carries its own calibration.
+        let families : (MuellerRawRow list * (MuellerRawRow -> StokesVector * RealVector4 * float)) list =
+            [ lpLpRows,       prepareRow sourceLp  analyzerLp  LpLp   calibration
+              lpCplRows,      prepareRow sourceLp  analyzerCpl LpCpl  calibration
+              cplLpRows,      prepareRow sourceCpl analyzerLp  CplLp  calibration
+              cplCplDay1Rows, prepareRow sourceCpl analyzerCpl CplCpl day1Cal
+              cplCplDay2Rows, prepareRow sourceCpl analyzerCpl CplCpl calibration ]
 
-            // The one contaminated point excluded from every fit (matrix_glue.py EXCLUDED_POINTS[0]), supplied
-            // here as BerremanTests data (spec section 0).
-            let excluded : ExcludedPoint list =
-                [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
+        // The one contaminated point excluded from every fit (matrix_glue.py EXCLUDED_POINTS[0]), supplied
+        // here as BerremanTests data (spec section 0).
+        let excluded : ExcludedPoint list =
+            [ { experiment = "LP-(LR#90)-CPL-2"; description = Angle.degree 140.0; captureIndex = 17 } ]
 
-            // Assemble the full n*16 design + corrected-signal target for one kind across every family, then solve
-            // through the real SVD proxy (buildDesign drops AIR rows and the excluded point per file).
-            let reconstructKind (kind : MatrixKind) : ReconstructedMatrix =
-                let parts = families |> List.map (fun (rows, prep) -> buildDesign prep excluded rows kind)
-                let design = parts |> List.collect (fun (d, _) -> List.ofArray d) |> List.toArray
-                let target = parts |> List.collect (fun (_, t) -> List.ofArray t) |> List.toArray
-                match reconstruct solver design target with
-                | Ok recon -> recon
-                | Error e -> failwith $"the %A{kind} reconstruction failed: %A{e}"
+        // Assemble the full n*16 design + corrected-signal target for one kind across every family, then solve
+        // through the real SVD proxy (buildDesign drops AIR rows and the excluded point per file).
+        let reconstructKind (kind : MatrixKind) : ReconstructedMatrix =
+            let parts = families |> List.map (fun (rows, prep) -> buildDesign prep excluded rows kind)
+            let design = parts |> List.collect (fun (d, _) -> List.ofArray d) |> List.toArray
+            let target = parts |> List.collect (fun (_, t) -> List.ofArray t) |> List.toArray
+            match reconstruct solver design target with
+            | Ok recon -> recon
+            | Error e -> failwith $"the %A{kind} reconstruction failed: %A{e}"
 
-            let mQz = reconstructKind Qz
-            let mLr = reconstructKind Lr
-            let mComb = reconstructKind QzLrProduct
+        let mQz = reconstructKind Qz
+        let mLr = reconstructKind Lr
+        let mComb = reconstructKind QzLrProduct
 
-            // ---- Section 7.2 acceptance: each solve is full rank 16 and each matrix matches the section 4 printed
-            //      values within the slice-mandated ~2e-3 band. ----
-            let dataMatrixTol = 2.0e-3
-            let assertMuellerClose (MuellerMatrix expected) (MuellerMatrix actual) =
-                for i in 0 .. 3 do
-                    for j in 0 .. 3 do
-                        let dd = abs (expected.[i, j] - actual.[i, j])
-                        Assert.True(dd < dataMatrixTol, $"M[{i},{j}] differs by {dd} (tol {dataMatrixTol})")
+        // ---- Section 7.2 acceptance: each solve is full rank 16, and each reconstructed matrix reproduces
+        //      the reference pipeline's own value to `dataMatrixTol` (spec 0044 §8.5). ----
+        //
+        // The expected matrices below are `qz_matrix`, `lr_matrix` and `combined_matrix` transcribed verbatim
+        // from Berreman/Data/MuellerMatrix/reference_step2_linear_summary.json. They are the SAME numbers the
+        // report prints in §7.2, carried to full precision instead of six decimals — so this assertion is
+        // simultaneously the physics claim (the port reproduces the published result) and a characterization
+        // test (nothing in the pipeline drifts numerically without a test failing).
+        // Reports the WORST element deviation over the whole matrix rather than failing on the first element
+        // past the band. With a characterization test that is the number a reader actually needs: it is the
+        // figure the §9 protocol pins the band from, and on a regression it says how far the pipeline moved,
+        // not merely that it moved.
+        let worstElementDeviation (MuellerMatrix expected) (MuellerMatrix actual) : float * int * int =
+            [ for i in 0 .. 3 do
+                for j in 0 .. 3 -> (abs (expected.[i, j] - actual.[i, j]), i, j) ]
+            |> List.maxBy (fun (d, _, _) -> d)
 
-            let expectedQz =
-                Propagation.muellerOfRows
-                    [ [  0.941206;  0.040954; -0.025936; -0.122001 ]
-                      [  0.052535;  0.660605; -0.365986; -0.142137 ]
-                      [ -0.012985;  0.406102;  0.609444; -0.016956 ]
-                      [ -0.095719;  0.075204;  0.018469;  1.030665 ] ]
-            let expectedLr =
-                Propagation.muellerOfRows
-                    [ [  0.993180; -0.004653;  0.059685; -0.103621 ]
-                      [  0.353194;  0.147431; -0.095472; -0.656825 ]
-                      [  0.342594; -0.394650;  0.690032; -0.596893 ]
-                      [ -0.010472;  0.124735;  0.461412;  0.591049 ] ]
-            let expectedComb =
-                Propagation.muellerOfRows
-                    [ [  0.900117;  0.083101;  0.035016; -0.171257 ]
-                      [  0.341313; -0.169420; -0.157653; -0.550300 ]
-                      [  0.337763; -0.104871;  0.768131; -0.536653 ]
-                      [  0.099944;  0.045975;  0.329258;  0.316833 ] ]
+        let describeDeviation (label : string) (expected : MuellerMatrix) (actual : MuellerMatrix) : float * string =
+            let (worst, i, j) = worstElementDeviation expected actual
+            worst, $"{label} worst {worst} at M[{i},{j}]"
 
-            Assert.Equal(16, mQz.rank)
-            Assert.Equal(16, mLr.rank)
-            Assert.Equal(16, mComb.rank)
-            assertMuellerClose expectedQz mQz.matrix
-            assertMuellerClose expectedLr mLr.matrix
-            assertMuellerClose expectedComb mComb.matrix
+        let expectedQz =
+            Propagation.muellerOfRows
+                [ [  0.9412063946;  0.0409543238; -0.0259356814; -0.1220013287 ]
+                  [  0.0525351141;  0.6606049231; -0.3659862371; -0.1421373359 ]
+                  [ -0.0129854586;  0.4061015401;  0.6094438915; -0.0169558310 ]
+                  [ -0.0957187769;  0.0752040278;  0.0184691606;  1.0306648444 ] ]
+        let expectedLr =
+            Propagation.muellerOfRows
+                [ [  0.9931797644; -0.0046529422;  0.0596850441; -0.1036207527 ]
+                  [  0.3531940843;  0.1474307188; -0.0954724381; -0.6568249890 ]
+                  [  0.3425940212; -0.3946501705;  0.6900321099; -0.5968927113 ]
+                  [ -0.0104722933;  0.1247347199;  0.4614122160;  0.5910486653 ] ]
+        let expectedComb =
+            Propagation.muellerOfRows
+                [ [  0.9001173290;  0.0831007067;  0.0350162173; -0.1712567077 ]
+                  [  0.3413132788; -0.1694202380; -0.1576526274; -0.5502997288 ]
+                  [  0.3377633308; -0.1048712506;  0.7681312510; -0.5366531986 ]
+                  [  0.0999436274;  0.0459751884;  0.3292576266;  0.3168329794 ] ]
 
-            // ---- Section 8 cascade identity: M_{QZ+LR} vs the QZ-first product M_LR . M_QZ. ----
-            let cascade = cascadeProduct mLr.matrix mQz.matrix
-            let d = frobeniusDiff mComb.matrix cascade
-            Assert.True(abs (d.frobenius - 0.571418) < dataMatrixTol, $"cascade Frobenius norm = {d.frobenius}")
-            Assert.True(abs (d.meanAbs - 0.113286) < dataMatrixTol, $"cascade mean abs delta = {d.meanAbs}")
-            Assert.True(abs (d.maxAbs - 0.268065) < dataMatrixTol, $"cascade max abs delta = {d.maxAbs}")
+        Assert.Equal(16, mQz.rank)
+        Assert.Equal(16, mLr.rank)
+        Assert.Equal(16, mComb.rank)
+        // One assertion over ALL THREE matrices, reporting every matrix's worst element so a regression run
+        // shows the whole picture in a single message instead of stopping at the first element out of band.
+        let matrixDeviations =
+            [ describeDeviation "M_QZ" expectedQz mQz.matrix
+              describeDeviation "M_LR" expectedLr mLr.matrix
+              describeDeviation "M_{QZ+LR}" expectedComb mComb.matrix ]
+        let worstMatrixDeviation = matrixDeviations |> List.map fst |> List.max
+        Assert.True(
+            worstMatrixDeviation < dataMatrixTol,
+            $"""section 7.2 matrices (tol {dataMatrixTol}): {String.concat "; " (matrixDeviations |> List.map snd)}""")
 
-            // The two largest element differences both live in the 4th row (1-indexed) — at columns 4 and 2, each
-            // ~0.268 and near-tied. (The slice text names (4,2) and (2,2) 1-indexed; the real data's runner-up to
-            // (4,2) is (4,4), not (2,2): (2,2)~0.193 is only the 4th-largest. Followed the data per the base
-            // protocol's skepticism rule — see the state-of-the-world Gotchas.)
-            let topTwoDiffPositions =
-                [ for i in 0 .. 3 do
-                    for j in 0 .. 3 ->
-                        (i, j), abs (Propagation.muellerElement mComb.matrix i j - Propagation.muellerElement cascade i j) ]
-                |> List.sortByDescending snd
-                |> List.truncate 2
-                |> List.map fst
-                |> Set.ofList
-            Assert.True((topTwoDiffPositions = Set.ofList [ (3, 3); (3, 1) ]), $"the two largest abs-delta positions (0-indexed) = %A{topTwoDiffPositions}")
+        // ---- Section 8 cascade identity: M_{QZ+LR} vs the QZ-first product M_LR . M_QZ. ----
+        // Expected values transcribed from `combined_vs_product_matrix` in the same reference summary.
+        let cascade = cascadeProduct mLr.matrix mQz.matrix
+        let d = frobeniusDiff mComb.matrix cascade
+        let worstMetricDeviation =
+            [ abs (d.frobenius - 0.5714178795538456)
+              abs (d.meanAbs - 0.11328628636347338)
+              abs (d.maxAbs - 0.26806464658062423) ]
+            |> List.max
+        Assert.True(
+            worstMetricDeviation < dataMatrixTol,
+            $"cascade metrics: worst deviation {worstMetricDeviation} (frobenius = {d.frobenius}, meanAbs = {d.meanAbs}, maxAbs = {d.maxAbs}, tol {dataMatrixTol})")
+
+        // The two largest element differences both live in the 4th row (1-indexed) — at columns 4 and 2, each
+        // ~0.268 and near-tied. (The slice text names (4,2) and (2,2) 1-indexed; the real data's runner-up to
+        // (4,2) is (4,4), not (2,2): (2,2)~0.193 is only the 4th-largest. Followed the data per the base
+        // protocol's skepticism rule — see the state-of-the-world Gotchas.)
+        //
+        // Spec 0044 note: the reference pipeline's own `delta_matrix` now corroborates this independently —
+        // delta[3][3] = -0.2680646466 and delta[3][1] = -0.2678257477 are the two largest by magnitude, so
+        // the data-driven correction the 0042 implementation made was right and this assertion stands.
+        let topTwoDiffPositions =
+            [ for i in 0 .. 3 do
+                for j in 0 .. 3 ->
+                    (i, j), abs (Propagation.muellerElement mComb.matrix i j - Propagation.muellerElement cascade i j) ]
+            |> List.sortByDescending snd
+            |> List.truncate 2
+            |> List.map fst
+            |> Set.ofList
+        Assert.True((topTwoDiffPositions = Set.ofList [ (3, 3); (3, 1) ]), $"the two largest abs-delta positions (0-indexed) = %A{topTwoDiffPositions}")

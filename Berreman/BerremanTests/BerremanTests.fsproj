@@ -39,6 +39,19 @@
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
         <Compile Include="MuellerReconstructionTests.fs" />
+        <Compile Include="MuellerInverseTests.fs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Spec 0044 (§8.4): the committed measured-data archive that MuellerReconstructionTests reads
+             through MuellerDataStore.createArchiveBacked (). It is copied next to the test assembly so the
+             store can resolve it from AppContext.BaseDirectory, independent of the runner's working
+             directory. Mirrors the OpticalConstructor.Tests fixtures\* copy convention. This replaces the
+             former walk-up to an external sibling checkout: the data is now in the repository, so its
+             absence is a defect and the tests FAIL rather than skip. -->
+        <Content Include="..\Data\MuellerMatrix\data.zip" Link="Data\MuellerMatrix\data.zip">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>

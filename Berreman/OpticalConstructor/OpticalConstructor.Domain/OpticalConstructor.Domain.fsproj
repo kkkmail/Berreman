@@ -194,6 +194,13 @@
              can name `Propagation`, `Fields`, `Geometry` and `Experiments`; nothing in the Domain
              depends on it. -->
         <Compile Include="MuellerReconstruction.fs" />
+        <!-- Spec 0044: the inverse problem for a transparent, optically active, anisotropic crystal —
+             measurement configurations, tensor orientation, the analytic (closed-form) Mueller inversion,
+             parameter scaling, and the forward / nonlinear-solve seams. Compiled after
+             MuellerReconstruction.fs because it reuses that module's `Retardance`. Deliberately
+             material-agnostic: it names no crystal class and no named material, so the Domain still needs
+             no reference to the OpticalProperties project. -->
+        <Compile Include="MuellerInverse.fs" />
     </ItemGroup>
 
     <ItemGroup>
