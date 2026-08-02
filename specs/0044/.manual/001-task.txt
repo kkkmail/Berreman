@@ -1,0 +1,13 @@
+The task is to prepare a spec (prose only) to address the following. We want to emulate an inverse problem where we want to determine 
+optical properties of transparent optically active anisotropic material. The following is needed.
+1.	Perform web research to figure out what experiments are needed to determine optical properties of transparent, optically active, 
+anisotropic, homogeneous material and what method(s) should be used for the inverse problem.
+2.	Use existing in the library quartz for a single specific wavelength to generate the forward experimental test data.
+3.	Work out the inverse problem setup (similar to C:\GitHub\Berreman\Berreman\BerremanTests\MuellerReconstructionTests.fs) and 
+write test(s) that rus it. Follow the guidelines for MuellerReconstructionTests. See spec 0042 for the details.
+4.	Update MuellerReconstructionTests to pull the data from C:\GitHub\Berreman\Berreman\Data\MuellerMatrix\data.zip instead 
+of other repo. I think that this file should contain all the data needed for the test. Double check and advise if something is missing.
+
+Evaluate all of the above, then write that spec (prose only) into C:\GitHub\Berreman\specs\0044\.manual\002-<description>.md. 
+
+Make no other changes.
