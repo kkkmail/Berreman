@@ -1,0 +1,17 @@
+Here are the answers:
+Q.1. Use full C1 – C4 set.
+Q.2. The value of d is known.
+Q.3. This is a test, so we put quartz into that test.
+Q.4. Use 3.
+Q.5. Are you talking about the data for the Mueller experiment? If yes. Hide all the archive / location behind a proxy. The test does not care.
+Q.6. The test now must fail once the data is in the repo.
+Q.7. The repo C:\GitHub\optics-mueller becomes redundant and the code must no longer check it. In regards to reference_summary.json - I have 
+no idea. Work it out and write a decision.
+Q.8. Yes, copy the scripts into C:\GitHub\Berreman\Berreman\Data\MuellerMatrix\ and add a MD into that folder describing the source, branch 
+name, etc.
+Q.9. Yes, follow 0042 approach.
+
+Write an authoritative, no questions asked, no options, prose only spec into C:\GitHub\Berreman\specs\0044\.manual\004-<description>.md. 
+If you still have questions, then add them at the end of the document. Make no other changes.
+
+
