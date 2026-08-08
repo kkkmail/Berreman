@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -40,6 +40,7 @@
         <Compile Include="OptimizationTests.fs" />
         <Compile Include="MuellerReconstructionTests.fs" />
         <Compile Include="MuellerInverseTests.fs" />
+        <Compile Include="LangasiteInverseTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
