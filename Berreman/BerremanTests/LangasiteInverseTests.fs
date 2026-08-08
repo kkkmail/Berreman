@@ -290,6 +290,18 @@ type LangasiteInverseTests() =
     let rotationDegOfG11 (g11 : float) : float =
         2.0 * System.Math.PI * g11 * platesPerWave / degree
 
+    /// The CRYSTALLOGRAPHIC reading of the same gyration constant: pi * g / (n_o * lambda), in deg/mm.
+    /// This is the other side of the convention warning in the class header (the full essay is in
+    /// MuellerInverse.fs's module header): the engine reads the gyration as the bi-anisotropic Rho of
+    /// D = eps E + rho H and rotates by 2 pi g11 / lambda, while the crystallographic gyration tensor of
+    /// D = eps E + i (G x E) reads the same constant as pi g / (n_o lambda) — smaller by exactly 2 n_o.
+    /// This reading, not the engine's, is the number comparable to literature rotatory powers.
+    /// The wavelength's `meter` unit is dropped at the arithmetic seam, mirroring Dispersive.fs's own
+    /// `w.value / 1.0<meter>` idiom.
+    let crystallographicRotationDegPerMmOfG11 (g11 : float) : float =
+        let lambdaMeters = waveLength.value / 1.0<meter>
+        System.Math.PI * g11 / (lambdaMeters * langasiteOrdinaryIndex.value) / degree / 1000.0
+
     // =================================================================================================
     // SPEC §9 PROTOCOL — HARVESTED EXPECTATIONS.
     //
@@ -305,6 +317,13 @@ type LangasiteInverseTests() =
     /// 1.3e-13 (5e-9 relative): the linear closed-form estimate and the full nonlinear fit against the
     /// multiple-reflection Berreman model agree, which is itself a consistency result.
     let expectedG11 = RhoValue -2.7123780914982785e-05
+
+    /// The crystallographic reading pi * g / (n_o * lambda) of the recovered g11, in deg/mm, harvested
+    /// from the fail-first run: -4.0607055023231382 deg/mm (the engine's reading of the same constant is
+    /// -15.425846965866983 deg/mm; the ratio is exactly 2 n_o = 3.7988095805129984, as the two formulas
+    /// require). This is the literature-convention rotatory power; see
+    /// crystallographicRotationDegPerMmOfG11 and the convention warning it references.
+    let expectedCrystallographicRotationDegPerMm = -4.0607055023231382
 
     /// The acceptance band on the worst normalized-intensity residual at the solution. Observed on the
     /// fail-first run: 7.7519393316085039e-03 (see the reproduction fact for all six). Real noisy data
@@ -414,7 +433,8 @@ type LangasiteInverseTests() =
         // negative sign is physical in the engine's convention: the transmission maximum sits at
         // 136.28 deg = 90 + 46.28, and a positive g11 moves the maximum toward SMALLER analyzer angles
         // (the convention fact above), so this plate is the opposite enantiomorph's sign from positive
-        // g11.
+        // g11. The crystallographic reading of the same constant (harvested into
+        // expectedCrystallographicRotationDegPerMm above) is -4.0607055023231382 deg/mm.
         //
         // The acceptance tolerance of 5e-10 absolute is ~2e-5 relative: the fit is a deterministic
         // optimizer run against a fixed model, so the same code recovers the same value to far better
@@ -438,6 +458,16 @@ type LangasiteInverseTests() =
         Assert.True(
             abs (fittedG11 - expectedG11.value) < 5.0e-10,
             $"recovered g11 = {fittedG11:G17} (expected {expectedG11.value:G17}); rotation = {rotationDeg} deg over 3 mm = {rotationDegPerMm} deg/mm; iterations = {solution.iterations}")
+
+        // The crystallographic reading of the same recovered constant — pi * g / (n_o * lambda), the
+        // literature-convention rotatory power (see crystallographicRotationDegPerMmOfG11 and the
+        // convention warning it references). Asserted as its own plugged-in constant, harvested through
+        // the same fail-first protocol as expectedG11; the tolerance is pinned at ~2.5e-5 relative, the
+        // same looseness as the g11 band it derives from.
+        let crystallographicDegPerMm = crystallographicRotationDegPerMmOfG11 fittedG11
+        Assert.True(
+            abs (crystallographicDegPerMm - expectedCrystallographicRotationDegPerMm) < 1.0e-4,
+            $"crystallographic rotatory power pi*g11/(n_o*lambda) = {crystallographicDegPerMm:G17} deg/mm (expected {expectedCrystallographicRotationDegPerMm:G17}); engine reading = {rotationDegPerMm} deg/mm; ratio = {rotationDegPerMm / crystallographicDegPerMm} (must be 2 n_o = {2.0 * langasiteOrdinaryIndex.value})")
 
     [<Fact>]
     member _.``the recovered parameters reproduce all six measured intensities within the noise the data carries`` () =
