@@ -1,0 +1,4 @@
+Look at C:\GitHub\Berreman\Berreman\BerremanTests\MuellerInverseTests.fs. I need a description of the experiments that need to be 
+performed to replicate the results of this test (the primary test). Write me such description into 
+C:\GitHub\Berreman\specs\0044\.manual\009-<your-name>-<description>.md. The MD must contain the English version followed by identical 
+Russian version. Make no other changes.
