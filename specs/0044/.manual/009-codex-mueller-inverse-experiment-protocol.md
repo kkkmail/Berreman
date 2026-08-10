@@ -32,10 +32,10 @@ All angles of incidence in the table are external angles in air, measured from t
 
 | Set | Plate | Incidence angles | Sample azimuths | Mueller observables | Number of matrices | Experimental role |
 |---|---|---:|---:|---|---:|---|
-| C1 | z-cut, 1.0 mm | 0° | 0° | transmission | 1 | Pure optical-rotation anchor; strongly constrains `g11` in the engine convention. |
-| C2 | z-cut, 20 µm | 10°, 30°, 50°, 70° | 0°, 45° | transmission and reflection at every angle/azimuth pair | 16 | Adds Fresnel and refraction-angle information needed to constrain the absolute refractive indices; gives only limited access to `g33`. |
-| C3 | x-cut, 20 µm | 0° | 0°, 22.5°, 45°, 67.5° | transmission | 4 | Places the optic axis transverse to propagation, maximizes linear birefringence, and makes `g33` observable. |
-| C4 | x-cut, 20 µm | 15°, 45° | 0°, 45° | transmission and reflection at every angle/azimuth pair | 8 | Supplies an independent view of `g33` and additional index/angle leverage. |
+| C1 | z-cut, 1.0 mm | 0° | 0° | transmission | 1 | Determines the sign and magnitude of `g11` directly from pure optical rotation in the engine convention. |
+| C2 | z-cut, 20 µm | 10°, 30°, 50°, 70° | 0°, 45° | transmission and reflection at every angle/azimuth pair | 16 | Determines the absolute levels of `n_o` and `n_e` from their angle-dependent transmission and reflection, while adding a weaker independent constraint on `g33`. |
+| C3 | x-cut, 20 µm | 0° | 0°, 22.5°, 45°, 67.5° | transmission | 4 | Determines the birefringence `n_e - n_o`, makes `g33` directly observable, and, together with C1, separates `g33` from `g11`. |
+| C4 | x-cut, 20 µm | 15°, 45° | 0°, 45° | transmission and reflection at every angle/azimuth pair | 8 | Refines `g33`, `n_o`, and `n_e` through oblique transmission and reflection and reduces the remaining correlations among the four fitted parameters. |
 
 The complete data set therefore contains 29 matrices: 17 transmission matrices and 12 reflection matrices.
 
@@ -113,10 +113,10 @@ In the engine convention, the C1 z-cut rotation is governed by the transverse co
 
 | Набор | Пластина | Углы падения | Азимуты образца | Наблюдаемые матрицы Мюллера | Число матриц | Роль в эксперименте |
 |---|---|---:|---:|---|---:|---|
-| C1 | z-срез, 1,0 мм | 0° | 0° | пропускание | 1 | Опорное измерение чистого оптического вращения; сильно ограничивает `g11` в соглашении движка. |
-| C2 | z-срез, 20 мкм | 10°, 30°, 50°, 70° | 0°, 45° | пропускание и отражение для каждой пары угол/азимут | 16 | Добавляет информацию об амплитудах Френеля и угле преломления, необходимую для определения абсолютных показателей преломления; дает лишь ограниченный доступ к `g33`. |
-| C3 | x-срез, 20 мкм | 0° | 0°, 22,5°, 45°, 67,5° | пропускание | 4 | Делает оптическую ось поперечной направлению распространения, максимизирует линейное двупреломление и делает `g33` наблюдаемым. |
-| C4 | x-срез, 20 мкм | 15°, 45° | 0°, 45° | пропускание и отражение для каждой пары угол/азимут | 8 | Дает независимое измерение `g33` и дополнительную информацию о показателях преломления и угловой зависимости. |
+| C1 | z-срез, 1,0 мм | 0° | 0° | пропускание | 1 | Непосредственно определяет знак и величину `g11` по чистому оптическому вращению в соглашении движка. |
+| C2 | z-срез, 20 мкм | 10°, 30°, 50°, 70° | 0°, 45° | пропускание и отражение для каждой пары угол/азимут | 16 | Определяет абсолютные уровни `n_o` и `n_e` по их угловым зависимостям в пропускании и отражении и одновременно добавляет более слабое независимое ограничение для `g33`. |
+| C3 | x-срез, 20 мкм | 0° | 0°, 22,5°, 45°, 67,5° | пропускание | 4 | Определяет двупреломление `n_e - n_o`, делает `g33` непосредственно наблюдаемым и вместе с C1 разделяет вклады `g33` и `g11`. |
+| C4 | x-срез, 20 мкм | 15°, 45° | 0°, 45° | пропускание и отражение для каждой пары угол/азимут | 8 | Уточняет `g33`, `n_o` и `n_e` по наклонному пропусканию и отражению и уменьшает оставшиеся корреляции между четырьмя подгоняемыми параметрами. |
 
 Таким образом, полный набор данных содержит 29 матриц: 17 матриц пропускания и 12 матриц отражения.
 
