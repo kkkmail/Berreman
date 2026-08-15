@@ -51,9 +51,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
         <PackageReference Include="alglib.net" Version="3.19.0" />
-        <PackageReference Include="FSharp.Data" Version="8.1.14" />
+        <PackageReference Include="FSharp.Data" Version="8.2.0" />
         <!-- Slice 011 §G.8: the FitReport .binz fit-history sidecar serializer
              (`Softellect.Sys.Core.serialize … BinaryZippedFormat`, Core.fs:257). -->
         <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />

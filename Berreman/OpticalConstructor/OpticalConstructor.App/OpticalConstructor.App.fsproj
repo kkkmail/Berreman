@@ -47,14 +47,14 @@
          unreferenced until the §A.9 audit passes (AC-A8). Versions mirror
          OpticalConstructor.Ui. -->
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
-        <PackageReference Include="Avalonia" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
-        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
+        <PackageReference Include="Avalonia" Version="12.1.1" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0" />
         <!-- spec 0024 §U1.1 / R-1: the Elmish host packages so the composition root
              mounts the MVU program. Version-aligned with FuncUI 2.0.0-preview1 (Avalonia 12); MIT NuGet. -->
-        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0" />
         <PackageReference Include="Elmish" Version="5.0.2" />
         <!-- Spec 0038 Part C (step 005): appsettings.json is read/written ONLY through
              Softellect.Sys.AppSettings.AppSettingsProvider — version-matched to the

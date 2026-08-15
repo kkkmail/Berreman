@@ -274,19 +274,19 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
         <!-- Spec 0038 Part D (step 010): FsCheck for the exactly-one-bucket property —
              the version BerremanTests pins; run via Check.One inside a [<Fact>] (the
              solution's established FsCheck-under-xunit pattern). -->
-        <PackageReference Include="FsCheck" Version="3.3.3" />
+        <PackageReference Include="FsCheck" Version="3.3.4" />
         <!-- Spec 0038 Part M (step 040): the EFC-wiring proof drives the SQLite provider
              directly (UseSqlite / SqliteConnectionStringBuilder / Database.Migrate) and
              needs the native SQLite assets in the test output. Version-matched to the
              OpticalConstructor.Database project reference (net10.0). -->
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-        <PackageReference Include="xunit.v3" Version="3.2.2" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+        <PackageReference Include="xunit.v3" Version="4.0.0" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>

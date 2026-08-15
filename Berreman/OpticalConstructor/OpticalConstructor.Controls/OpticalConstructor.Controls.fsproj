@@ -82,9 +82,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
-        <PackageReference Include="Avalonia" Version="12.1.0" />
-        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
+        <PackageReference Include="Avalonia" Version="12.1.1" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0" />
         <!-- Spec 0033 (017): the interactive chart-window host (moved here with ChartWindow.fs) — the
              same version both hosts already used, so one ScottPlot resolves solution-wide. -->
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
