@@ -15,6 +15,232 @@ open OpticalConstructor.Optimization
 open Xunit
 open BerremanTests.MatrixComparison
 
+/// A dimensionless error against a KNOWN true value: `|actual − expected| / |expected|`. Elevated
+/// because every acceptance band in this file is quoted in these units and an absolute difference read
+/// as a relative one — or the reverse — would be a silently passing test rather than a compile error.
+type RelativeError =
+    | RelativeError of double
+
+    /// The error as a fraction (the arithmetic seam).
+    member this.value = let (RelativeError e) = this in e
+
+    /// The error of a recovered value against the truth it is supposed to reproduce.
+    static member between (actual : double) (expected : double) : RelativeError =
+        abs (actual - expected) / abs expected |> RelativeError
+
+/// One of the four unknowns of the inverse problem, as a first-class identity rather than as a bare
+/// index into `[| n_o; n_e; g₁₁; g₃₃ |]` plus a parallel array of names.
+///
+/// This exists because the noisy facts below build a STATISTICS TABLE over the four parameters, and a
+/// table addressed by `i` with its labels in a second array is exactly the shape that silently
+/// transposes two columns after an edit. Carrying the identity means the name, the vector position and
+/// the extractor can never fall out of step: they are three members of one case.
+type FittedParameter =
+    | OrdinaryIndex
+    | ExtraordinaryIndex
+    | TransverseGyration
+    | AxialGyration
+
+    /// The short name this parameter is reported under, matching the symbols the spec and the module
+    /// documentation use.
+    member this.name : string =
+        match this with
+        | OrdinaryIndex -> "n_o"
+        | ExtraordinaryIndex -> "n_e"
+        | TransverseGyration -> "g11"
+        | AxialGyration -> "g33"
+
+    /// This parameter's position in the fixed `[| n_o; n_e; g₁₁; g₃₃ |]` order that `toScaled` /
+    /// `ofScaled` and the Jacobian columns share.
+    member this.index : int =
+        match this with
+        | OrdinaryIndex -> 0
+        | ExtraordinaryIndex -> 1
+        | TransverseGyration -> 2
+        | AxialGyration -> 3
+
+    /// This parameter's value inside a parameter set, as the plain number the statistics are computed
+    /// over. The four parameters carry two DIFFERENT elevated types (`RefractionIndex` and `RhoValue`),
+    /// so this is the one place they can be spoken of uniformly — and it is a member ON the type, which
+    /// is exactly where a raw-primitive accessor belongs.
+    member this.valueIn (p : MaterialParameters) : double =
+        match this with
+        | OrdinaryIndex -> p.ordinaryIndex.value
+        | ExtraordinaryIndex -> p.extraordinaryIndex.value
+        | TransverseGyration -> p.g11.value
+        | AxialGyration -> p.g33.value
+
+    /// All four, in the scaled-vector order.
+    static member all : FittedParameter list =
+        [ OrdinaryIndex; ExtraordinaryIndex; TransverseGyration; AxialGyration ]
+
+/// The box the optimizer may search, as a half-width in SCALED units — so one unit is whatever
+/// `ParameterScaling.scale` says it is (here 1e-3 in refractive index and 1e-5 in gyration).
+///
+/// It is a parameter of the fit rather than a constant because the two start guesses in this file are
+/// at very different distances from the truth. A box that comfortably brackets the truth from a 0.2 %
+/// perturbed start does NOT bracket it from a blind `n = 1.5` start, and a box that silently excludes
+/// the answer produces a converged-looking fit pinned against a bound.
+type SearchBox =
+    | SearchBox of double
+
+    /// The half-width in scaled units (the arithmetic seam).
+    member this.halfWidth = let (SearchBox h) = this in h
+
+    /// The lower bound vector for the four unknowns.
+    member this.lowerBounds : float[] = Array.create 4 -this.halfWidth
+
+    /// The upper bound vector for the four unknowns.
+    member this.upperBounds : float[] = Array.create 4 this.halfWidth
+
+/// The seed that fixes ONE noisy realization of the whole experiment. Elevated so that a seed can never
+/// be passed where an iteration count, a configuration count or a parameter index is expected.
+type NoiseSeed =
+    | NoiseSeed of int
+
+    /// The seed value (the arithmetic seam, reached only where the generator is constructed).
+    member this.value = let (NoiseSeed s) = this in s
+
+/// The half-width of the uniform distribution a recorded ROTATION ANGLE's error is drawn from: the
+/// experiment logs "20 degrees", and the sample really sat somewhere in 20 ± this.
+type AngleUncertainty =
+    | AngleUncertainty of Angle
+
+    /// The uncertainty as the engine `Angle`.
+    member this.angle = let (AngleUncertainty a) = this in a
+
+    /// The uncertainty in radians (the arithmetic seam).
+    member this.value = let (AngleUncertainty a) = this in a.value
+
+    /// The uncertainty in degrees, which is how rotation-stage data sheets quote it.
+    member this.degrees = let (AngleUncertainty a) = this in a.degrees
+
+    /// Build an `AngleUncertainty` from a value given in degrees.
+    static member degree (d : double) : AngleUncertainty = Angle.degree d |> AngleUncertainty
+
+/// The half-width of the uniform distribution the DETECTOR's error on one NORMALIZED Mueller element is
+/// drawn from. Normalized elements are bounded by 1, so this is directly a fraction of full scale: 0.005
+/// means "the receiver reads each element to within half a percent of full scale".
+type ElementUncertainty =
+    | ElementUncertainty of double
+
+    /// The uncertainty in units of the normalized element (the arithmetic seam).
+    member this.value = let (ElementUncertainty u) = this in u
+
+/// One measurement-error budget — everything about the apparatus that makes the recorded data differ
+/// from what the material would produce in a perfect experiment.
+///
+/// Both fields are MAX errors, not standard deviations: each error is drawn from a uniform distribution
+/// on `[−u, +u]`, so the corresponding standard deviation is `u/√3`. Uniform rather than Gaussian is the
+/// honest choice for these two sources — a rotation stage's setting error is bounded by its mechanics
+/// and a detector's quantization/linearity error is bounded by its specification, neither has a tail.
+type NoiseParam =
+    {
+        /// Applied INDEPENDENTLY to the incidence angle and to the sample azimuth of every
+        /// configuration: both are read off rotation mounts of the same grade.
+        rotation : AngleUncertainty
+        /// Applied independently to each of the 15 normalized Mueller elements other than `m₀₀`.
+        element : ElementUncertainty
+    }
+
+    /// The budget in which nothing is uncertain — the control that turns every noisy path in this file
+    /// back into the noiseless one, so the noise machinery can be proved to be a pure overlay.
+    static member noiseless : NoiseParam =
+        {
+            rotation = AngleUncertainty.degree 0.0
+            element = ElementUncertainty 0.0
+        }
+
+/// Ambient randomness, injected as a provider record rather than reached for directly — the repository's
+/// standing rule for ambient effects, and what makes a noisy experiment a PURE FUNCTION of its seed.
+///
+/// Every draw is uniform on `[−1, +1]`, so a caller multiplies by the max error of whatever it is
+/// perturbing and never has to know what distribution it got.
+[<ReferenceEquality>]
+type UniformDeviateProvider =
+    {
+        nextDeviate : unit -> double
+    }
+
+    /// The real, seeded backend. `System.Random(seed)` is the same generator `Synthesis.fs` uses for its
+    /// reproducible annealing / GA runs; its SEEDED constructor is documented as keeping the legacy
+    /// algorithm precisely so that a seeded stream stays reproducible across runtime versions.
+    static member fromSeed (seed : NoiseSeed) : UniformDeviateProvider =
+        let rng = System.Random(seed.value)
+        { nextDeviate = fun () -> 2.0 * rng.NextDouble() - 1.0 }
+
+/// A scalar an experiment recovers. The four fitted unknowns are the obvious members; the BIREFRINGENCE
+/// is here because it is not a fit parameter and is nevertheless the quantity this data determines
+/// best. Linear retardance depends on `n_e − n_o`, not on either index alone, which is exactly why the
+/// two indices come out correlated at 0.99999 — and an ensemble that reported only the four parameters
+/// would therefore make the experiment look far worse than it is.
+type RecoveredQuantity =
+    | RecoveredParameter of FittedParameter
+    | RecoveredBirefringence
+
+    /// The name this quantity is reported under.
+    member this.name : string =
+        match this with
+        | RecoveredParameter p -> p.name
+        | RecoveredBirefringence -> "n_e - n_o"
+
+    /// This quantity's value inside a parameter set.
+    member this.valueIn (p : MaterialParameters) : double =
+        match this with
+        | RecoveredParameter f -> f.valueIn p
+        | RecoveredBirefringence -> p.extraordinaryIndex.value - p.ordinaryIndex.value
+
+    /// The four fitted unknowns followed by the birefringence.
+    static member all : RecoveredQuantity list =
+        [ for p in FittedParameter.all -> RecoveredParameter p ] @ [ RecoveredBirefringence ]
+
+/// What an ensemble of noisy experiments says about ONE recovered quantity — the answer to "and what is
+/// the error bar?", which a single noisy experiment cannot give.
+type RecoveryStatistics =
+    {
+        /// Which quantity this row is about.
+        quantity : RecoveredQuantity
+        /// The mean recovered value over the ensemble, in that parameter's own physical units (a
+        /// refractive index for two of them and a gyration component for the other two, which is why it
+        /// cannot be an elevated type here). Carried for the report, not asserted on directly.
+        mean : double
+        /// `|mean − truth| / |truth|` — what is left of the error once the ensemble has averaged, and
+        /// therefore the place a SYSTEMATIC displacement would show up. It is measured rather than
+        /// assumed to be zero: a rotation-angle error is genuinely systematic within one experiment,
+        /// because the fit assumes angles the sample was never at, and whether it also survives the
+        /// average is exactly the question. (Measured answer: it does not — see the ensemble fact.)
+        bias : RelativeError
+        /// The sample standard deviation of the recovered values over `|truth|` — the RANDOM error, and
+        /// the number an experimenter would quote as the "±" after a repeat-measurement study.
+        scatter : RelativeError
+        /// The same standard deviation in the quantity's OWN units. Carried alongside the relative one
+        /// because the two indices and their DIFFERENCE cannot be compared relatively: the difference is
+        /// 170 times smaller than either index, so dividing each by its own value flatters the indices by
+        /// exactly that factor and hides the very effect the comparison exists to show.
+        absoluteScatter : double
+        /// The worst single experiment's relative error over the ensemble.
+        worst : RelativeError
+    }
+
+    /// One line of the ensemble table.
+    member this.describe : string =
+        $"{this.quantity.name}: mean {this.mean}, bias {this.bias.value}, scatter {this.scatter.value} "
+        + $"(absolute {this.absoluteScatter}), worst {this.worst.value}"
+
+/// Everything ONE noisy experiment produced. The recovered constants are the answer; the solution and
+/// the two objects a fit-quality report needs — the scaling the vector lives in and the residual closure
+/// a Jacobian is taken of — are carried alongside so that the ensemble can ask a single experiment what
+/// uncertainty IT thinks it has, without paying for a second fit.
+[<ReferenceEquality>]
+type NoisyExperiment =
+    {
+        seed : NoiseSeed
+        recovered : MaterialParameters
+        solution : NonlinearSolution
+        scaling : ParameterScaling
+        residual : float[] -> float[]
+    }
+
 /// Spec 0044 — the inverse problem for a transparent, optically active, anisotropic, homogeneous
 /// material. Quartz at a single wavelength is used as ground truth: the forward "measured" data is
 /// generated by this repository's own Berreman solver, then the material constants are recovered from it
@@ -24,10 +250,15 @@ open BerremanTests.MatrixComparison
 /// Every fact here is self-contained. The data is generated in-test from the library, so there is no
 /// external data, no committed fixture, no skip path, and no file of any kind is read.
 ///
+/// MANUAL TASK 010 added the noisy half, at the end of the file. The measurement is no longer assumed
+/// perfect: recorded rotation angles are wrong by up to 0.2°, the receiver misreads each normalized
+/// Mueller element by up to 0.005 of full scale, and eight fixed seeds give eight complete experiments
+/// whose spread IS the uncertainty. Those facts fit from a blind `n = 1.5`, `g = 0` start, and they are
+/// what turns this suite from a measurement of the inverse MACHINERY into a measurement of the
+/// EXPERIMENT. See the commentary above `labNoise` for the error model and where its magnitudes come
+/// from.
+///
 /// Deliberately NOT asserted here — each is a candidate for a future slice:
-///   - noise robustness (σ ≈ 1e-3 on the normalized elements), at which point confidence-interval
-///     coverage becomes the right assertion and `g₁₁` should degrade markedly relative to `g₃₃`,
-///     mirroring the ±10 % the literature reports for `g₁₁`;
 ///   - multistart / global search, needed once the retardance order is unknown;
 ///   - the rotating-analyzer intensity-level variant, which would reuse spec 0042's `kron4` design-matrix
 ///     machinery end to end instead of consuming Mueller matrices directly;
@@ -289,9 +520,24 @@ type MuellerInverseTests() =
             g33 = RhoValue (quartzG33.value * 1.3)
         }
 
-    /// Run the fit for a configuration set from a given start guess.
-    let runFit (configurations : MeasurementConfiguration list) (start : MaterialParameters) =
-        let observations = observe configurations
+    /// Generous box bounds in SCALED units for a start guess that is already CLOSE to the truth: +-50 is
+    /// +-0.05 in refractive index and +-5e-4 in gyration, which brackets any physically sensible
+    /// excursion from `perturbedStart` while keeping the search out of the degenerate region around
+    /// n = 0.
+    let nearBox = SearchBox 50.0
+
+    /// THE CORE RUNNER. Recover the material parameters from a GIVEN set of observations, from a given
+    /// start guess, over a given box. Every fit in this file — noiseless or noisy — goes through this one
+    /// function, so the noisy facts differ from the noiseless one in their DATA and nothing else.
+    ///
+    /// It deliberately takes observations rather than configurations: that is the seam noise enters
+    /// through. A noisy experiment is the same fit run against data generated at slightly wrong angles
+    /// and read back by a slightly wrong detector, and nothing about the fit itself changes.
+    let fitObservations
+        (box : SearchBox)
+        (observations : MuellerObservation list)
+        (start : MaterialParameters)
+        : ParameterScaling * (float[] -> float[]) * NonlinearSolution =
         let scaling = scalingAround start
         let residual = residualFor observations scaling
         let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
@@ -299,21 +545,206 @@ type MuellerInverseTests() =
             {
                 residual = residual
                 initial = Array.zeroCreate 4
-                // Generous box bounds in SCALED units: +-50 is +-0.05 in refractive index and +-5e-4 in
-                // gyration, which brackets any physically sensible excursion while keeping the search out
-                // of the degenerate region around n = 0.
-                lowerBounds = Array.create 4 -50.0
-                upperBounds = Array.create 4 50.0
+                lowerBounds = box.lowerBounds
+                upperBounds = box.upperBounds
                 maxIterations = 400
                 epsX = 1.0e-12
             }
         match solver.solveNonlinearLeastSquares request with
-        | Ok solution -> observations, scaling, residual, solution
+        | Ok solution -> scaling, residual, solution
         | Error e -> failwith $"the inverse fit failed: %A{e}"
 
-    let parameterNames = [| "n_o"; "n_e"; "g11"; "g33" |]
+    /// Run the fit on NOISELESS data generated for a configuration set, from a given start guess.
+    let runFit (configurations : MeasurementConfiguration list) (start : MaterialParameters) =
+        let observations = observe configurations
+        let (scaling, residual, solution) = fitObservations nearBox observations start
+        observations, scaling, residual, solution
 
-    let relativeError (actual : float) (expected : float) = abs (actual - expected) / abs expected
+    let parameterNames = FittedParameter.all |> List.map (fun p -> p.name) |> Array.ofList
+
+    let relativeError (actual : float) (expected : float) : RelativeError = RelativeError.between actual expected
+
+    // =================================================================================================
+    // Manual task 010 — the MEASUREMENT-ERROR model, and the noisy experiments built on it.
+    //
+    // Everything above this line feeds the fit data the forward model produced exactly, at angles the
+    // sample was exactly at. That measures the INVERSE MACHINERY. What follows measures the EXPERIMENT:
+    // what a real, decent-but-ordinary optical bench recovers, and — the point of the exercise — with
+    // what error bar.
+    //
+    // TWO error sources are modelled, because they are the two an angle-resolved Mueller measurement
+    // actually has, and they enter the problem at completely different places:
+    //
+    //   1. ROTATION-ANGLE ERROR (an error in the INDEPENDENT variable). The log says the sample sat at
+    //      70.0 deg incidence and 45.0 deg azimuth; it really sat at 70.0 +- e and 45.0 +- e. The
+    //      forward model is therefore evaluated at the TRUE (perturbed) angles, while the observation is
+    //      filed against the NOMINAL ones — because the nominal ones are all the experimenter has. Within
+    //      one experiment this does NOT average away: every configuration's angle error is fixed for the
+    //      whole of it, so the fit minimizes a model that is wrong in a fixed way and its answer is
+    //      displaced systematically. Whether those displacements also average ACROSS experiments is a
+    //      question the ensemble answers rather than assumes, which is why it reports a bias as well as
+    //      a scatter.
+    //
+    //   2. DETECTOR ERROR (an error in the DEPENDENT variable). The receiver reads each element of the
+    //      normalized Mueller matrix a little high or a little low. This is ordinary measurement noise
+    //      and it does average away, in the usual 1/sqrt(N) manner, across the 435 residual entries.
+    //
+    // WHAT IS NOT MODELLED, and deliberately: the plate thickness and the wavelength are taken as known
+    // exactly (spec R2 fixes thickness as a known per-configuration quantity, and a stabilized HeNe line
+    // is known far better than anything else here), and the ABSOLUTE throughput is irrelevant by
+    // construction because every comparison in `MuellerInverse` is between NORMALIZED matrices — source
+    // brightness, detector gain and exposure drop out exactly. Modelling a gain error would therefore be
+    // modelling nothing.
+    //
+    // THE MAGNITUDES are for a decent but ordinary optical lab, NOT for a metrology-grade instrument,
+    // and they were taken from what the equipment actually delivers:
+    //
+    //   * ROTATION, 0.2 deg max error. A plain manual rotation mount carries a scale graduated in 2 deg
+    //     steps; a high-precision manual mount reaches 5 arcmin (0.083 deg) on its vernier; a motorized
+    //     mount such as a DC-servo rotation stage quotes ~0.1 % on-axis accuracy but +-0.3 deg of
+    //     backlash, and published polarimeter builds report stage repeatability of 0.1-0.2 deg, with
+    //     wave-plate mount friction able to spoil a setting "by a degree or more". Research
+    //     ellipsometers do reach 0.001-0.016 deg — which is exactly the high-precision regime this
+    //     exercise is deliberately NOT modelling. 0.2 deg sits where a careful worker with ordinary
+    //     mounts actually lands.
+    //
+    //   * DETECTOR, 0.005 of full scale on each normalized element. Mueller-polarimetry error analyses
+    //     put a single-shot CCD pixel at ~0.01 of maximum intensity and an AVERAGED Mueller matrix at
+    //     "the third decimal place" for the mean and "the second decimal" for the per-pixel spread;
+    //     silicon photodiode power meters are +-3-5 % on ABSOLUTE calibration (irrelevant here, see
+    //     above) but ~1 % on linearity and far better on repeatability. 0.005 is between the averaged
+    //     research figure of ~1e-3 and the single-shot figure of ~1e-2.
+    //
+    // Sources for both figures are recorded in the manual task folder alongside this work.
+    // =================================================================================================
+
+    /// The measurement-error budget of the decent-but-ordinary bench described above.
+    let labNoise : NoiseParam =
+        {
+            rotation = AngleUncertainty.degree 0.2
+            element = ElementUncertainty 0.005
+        }
+
+    /// The BLIND start guess the noisy facts fit from: `n_o = n_e = 1.5` and no optical activity at all.
+    ///
+    /// It is the honest starting point for a material whose constants are not already known — "some
+    /// ordinary transparent glass-like solid, no measured birefringence, no measured rotation" — and it
+    /// is a far harder start than `perturbedStart`: the two indices are 2.8 % and 3.3 % low, the
+    /// BIREFRINGENCE starts at exactly zero instead of 17 % wrong, and both gyration components start at
+    /// exactly zero instead of 30 % wrong.
+    ///
+    /// It is nonetheless a legitimate start rather than a lucky one, for the structural reason the
+    /// `perturbedStart` comment gives: linear retardance enters through cos and sin of
+    /// 2 pi (n_e - n_o) d / lambda, so what matters is the distance in FRINGES. The truth is 0.286 wave
+    /// for the 20 um plates, and zero birefringence is therefore just under a third of a fringe away —
+    /// inside the same basin of attraction. The control fact below asserts exactly this by recovering
+    /// every constant to machine precision from this start on noiseless data, which is what makes the
+    /// noisy ensemble's scatter attributable to the NOISE rather than to the start guess.
+    let blindStart : MaterialParameters =
+        {
+            ordinaryIndex = RefractionIndex 1.5
+            extraordinaryIndex = RefractionIndex 1.5
+            g11 = RhoValue 0.0
+            g33 = RhoValue 0.0
+        }
+
+    /// The box for the blind start. It must be wide enough to CONTAIN the truth: quartz's n_e is 51.65
+    /// scaled units from 1.5, so the +-50 box that comfortably brackets `perturbedStart` would exclude
+    /// the answer and the fit would converge against a bound. +-200 is +-0.2 in refractive index and
+    /// +-2e-3 in gyration — still physically sensible, and still far from the degenerate n = 0.
+    let wideBox = SearchBox 200.0
+
+    /// The FIXED seeds, one noisy experiment each. Nothing about the particular values matters; what
+    /// matters is that they are fixed and distinct, so the entire ensemble — every angle error and every
+    /// element error in all 8 x 29 measurements — is reproducible bit for bit from this list alone.
+    let ensembleSeeds : NoiseSeed list = [ 1; 2; 3; 4; 5; 6; 7; 8 ] |> List.map NoiseSeed
+
+    /// Where the sample REALLY was when a nominal configuration was recorded.
+    ///
+    /// Both rotations are perturbed independently. The incidence angle is shifted through the engine's
+    /// own `IncidenceAngle + Angle` operator rather than through `IncidenceAngle.create`: `create` folds
+    /// its argument into [0, 90) modulo 90 deg, so a small NEGATIVE excursion from normal incidence would
+    /// come back as ~89.8 deg rather than as a plate tilted 0.2 deg the other way. A signed excursion is
+    /// the physically correct object here, and the operator is the seam that preserves it.
+    let disturb (draws : UniformDeviateProvider) (noise : NoiseParam) (c : MeasurementConfiguration) : MeasurementConfiguration =
+        let wobble () = noise.rotation.value * draws.nextDeviate () |> Angle.radian
+        {
+            c with
+                incidenceAngle = c.incidenceAngle + wobble ()
+                azimuth = c.azimuth.angle + wobble () |> SampleAzimuth
+        }
+
+    /// What the receiver REPORTS for a matrix the sample actually produced.
+    ///
+    /// The matrix is normalized first and each of the 15 elements other than `m₀₀` is then read a little
+    /// high or a little low, independently. `m₀₀` is left at exactly 1 because it carries no information
+    /// at all once normalized — an error in it is an error in absolute throughput, which every
+    /// comparison in `MuellerInverse` divides out exactly.
+    let misread (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
+        match normalizeMueller m with
+        | Ok n ->
+            Propagation.muellerOfRows
+                [ for i in 0 .. 3 ->
+                    [ for j in 0 .. 3 ->
+                        if i = 0 && j = 0 then 1.0
+                        else Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate () ] ]
+        | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
+
+    /// ONE noisy realization of the whole experiment: for every configuration the sample truly sat at
+    /// perturbed angles, the forward model is evaluated THERE, the detector then misreads the resulting
+    /// matrix — and the observation is filed against the NOMINAL configuration, which is all the
+    /// experimenter ever knows.
+    ///
+    /// That last step is the whole point of modelling angle error at all. Filing the data against the
+    /// true angles would make the angle error invisible to the fit; filing it against the recorded ones
+    /// is what a laboratory notebook actually contains.
+    let noisyObserve (noise : NoiseParam) (seed : NoiseSeed) (configurations : MeasurementConfiguration list) : MuellerObservation list =
+        let draws = UniformDeviateProvider.fromSeed seed
+        configurations
+        |> List.map (fun nominal ->
+            match forward.muellerOf (disturb draws noise nominal) quartz with
+            | Ok m -> { configuration = nominal; measured = misread draws noise m }
+            | Error e -> failwith $"the forward model failed to generate noisy data: %A{e}")
+
+    /// Run ONE noisy experiment end to end: generate its data, fit it, and keep everything the ensemble
+    /// will want to ask it afterwards.
+    let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment =
+        let observations = noisyObserve noise seed fullConfigurations
+        let (scaling, residual, solution) = fitObservations wideBox observations blindStart
+        {
+            seed = seed
+            recovered = ofScaled scaling solution.solution
+            solution = solution
+            scaling = scaling
+            residual = residual
+        }
+
+    /// Reduce an ensemble of recovered parameter sets to one statistics row per quantity.
+    ///
+    /// The scatter is the SAMPLE standard deviation (Bessel-corrected, `n − 1`), because the ensemble is
+    /// a sample of possible experiments rather than the whole population of them — which is exactly what
+    /// an experimenter repeating a measurement has.
+    let statisticsFor (recovered : MaterialParameters list) (q : RecoveredQuantity) : RecoveryStatistics =
+        let truth = q.valueIn quartz
+        let values = recovered |> List.map q.valueIn
+        let count = List.length values
+        let mean = List.average values
+        let variance = (values |> List.sumBy (fun v -> (v - mean) ** 2.0)) / float (count - 1)
+        {
+            quantity = q
+            mean = mean
+            bias = RelativeError.between mean truth
+            scatter = sqrt variance / abs truth |> RelativeError
+            absoluteScatter = sqrt variance
+            worst = values |> List.map (fun v -> RelativeError.between v truth) |> List.max
+        }
+
+    /// The standard error of the MEAN of an `n`-experiment ensemble, `scatter / sqrt n` — the yardstick a
+    /// bias has to be measured against. A departure of the ensemble mean from the truth that is smaller
+    /// than this is not evidence of a systematic error at all; it is the random error, not yet averaged
+    /// away by a finite number of experiments.
+    let standardErrorOfMean (row : RecoveryStatistics) : RelativeError =
+        row.scatter.value / sqrt (float (List.length ensembleSeeds)) |> RelativeError
 
     // =================================================================================================
     // T1 / T2 — the forward-side pure helpers.
@@ -814,18 +1245,15 @@ type MuellerInverseTests() =
         Assert.True(solution.iterations > 0, "the fit should have taken at least one step")
 
         let errors =
-            [ "n_o", relativeError recovered.ordinaryIndex.value quartzOrdinaryIndex.value
-              "n_e", relativeError recovered.extraordinaryIndex.value quartzExtraordinaryIndex.value
-              "g11", relativeError recovered.g11.value quartzG11.value
-              "g33", relativeError recovered.g33.value quartzG33.value ]
-        let report = System.String.Join("; ", [ for (n, e) in errors -> $"{n} rel err {e}" ])
+            [ for p in FittedParameter.all -> p, relativeError (p.valueIn recovered) (p.valueIn quartz) ]
+        let report = System.String.Join("; ", [ for (p, e) in errors -> $"{p.name} rel err {e.value}" ])
 
         // Band pinned per the spec §9 protocol at ~70x the observed worst relative error of 1.4e-13
         // (recorded in the implementation log): with noiseless data generated by the very model being
         // fitted, the optimizer recovers every constant to essentially machine precision, so anything
         // looser would not be measuring the fit at all.
-        for (name, err) in errors do
-            Assert.True(err < 1.0e-11, $"{name} was not recovered: {report}")
+        for (p, err) in errors do
+            Assert.True(err.value < 1.0e-11, $"{p.name} was not recovered: {report}")
 
         // The residual at the solution must be essentially zero: the data is noiseless and was generated
         // by the very model being fitted, so anything else means the fit stopped short of the truth.
@@ -846,7 +1274,9 @@ type MuellerInverseTests() =
         let startErrors =
             [ relativeError perturbedStart.ordinaryIndex.value quartzOrdinaryIndex.value
               relativeError perturbedStart.g11.value quartzG11.value ]
-        Assert.True(List.max startErrors > 1.0e-3, "the start guess must be outside the acceptance band, or this fact proves nothing")
+        Assert.True(
+            (List.max startErrors).value > 1.0e-3,
+            "the start guess must be outside the acceptance band, or this fact proves nothing")
 
     [<Fact>]
     member _.``the full measurement set is well conditioned and every parameter is observable`` () =
@@ -987,3 +1417,354 @@ type MuellerInverseTests() =
         let restoredReport = System.String.Join("; ", [ for i in 0 .. 3 -> $"{parameterNames.[i]} |J| = {restoredNorms.[i]}" ])
         for i in 0 .. 3 do
             Assert.True(restoredNorms.[i] > 1.0e-6, $"adding the second cut must make {parameterNames.[i]} observable: {restoredReport}")
+
+    // =================================================================================================
+    // Manual task 010 — the NOISY facts. See the measurement-error commentary above `labNoise`.
+    // =================================================================================================
+
+    [<Fact>]
+    member _.``the measurement-error model is reproducible, bounded, and files data against the NOMINAL angles`` () =
+        // The guard on every noisy fact below. A noise model that silently produced nothing would make
+        // the whole ensemble pass for the wrong reason — it would just be the noiseless fit run eight
+        // times — and a noise model that was not reproducible would make a failure impossible to chase.
+        // So the generator is pinned before anything is fitted with it.
+
+        // REPRODUCIBILITY. A seed determines the stream completely, and different seeds give different
+        // streams. This is the property that makes a failing ensemble run a debuggable one.
+        let firstTen (d : UniformDeviateProvider) = [ for _ in 1 .. 10 -> d.nextDeviate () ]
+        let fromSeven = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 7))
+        let fromSevenAgain = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 7))
+        let fromEight = firstTen (UniformDeviateProvider.fromSeed (NoiseSeed 8))
+        Assert.Equal<float list>(fromSeven, fromSevenAgain)
+        Assert.NotEqual<float list>(fromSeven, fromEight)
+
+        // And the draws really are symmetric deviates on [-1, 1] rather than, say, a constant.
+        Assert.True(fromSeven |> List.forall (fun x -> abs x <= 1.0), $"a deviate left [-1, 1]: %A{fromSeven}")
+        Assert.True(fromSeven |> List.exists (fun x -> x < 0.0), $"the deviates must take both signs: %A{fromSeven}")
+        Assert.True(fromSeven |> List.exists (fun x -> x > 0.0), $"the deviates must take both signs: %A{fromSeven}")
+
+        // ROTATION ERROR — bounded by the stated budget, applied to BOTH angles, and to nothing else.
+        let nominal = configuration ZCut thinPlate 70.0 45.0 TransmittedMueller
+        let actual = disturb (UniformDeviateProvider.fromSeed (NoiseSeed 3)) labNoise nominal
+        let incidenceShift = abs (actual.incidenceAngle.value - nominal.incidenceAngle.value)
+        let azimuthShift = abs (actual.azimuth.value - nominal.azimuth.value)
+        Assert.True(incidenceShift <= labNoise.rotation.value, $"incidence moved by {incidenceShift / degree} deg, budget {labNoise.rotation.degrees} deg")
+        Assert.True(azimuthShift <= labNoise.rotation.value, $"azimuth moved by {azimuthShift / degree} deg, budget {labNoise.rotation.degrees} deg")
+        Assert.True(incidenceShift > 0.0, "the incidence angle must actually have been disturbed")
+        Assert.True(azimuthShift > 0.0, "the azimuth must actually have been disturbed")
+        // Everything the experimenter genuinely knows — the cut, the plate, the observable, the
+        // wavelength — is untouched: reconstructing the disturbed configuration from the nominal one by
+        // replacing ONLY the two angles must reproduce it exactly.
+        Assert.Equal<MeasurementConfiguration>(
+            { nominal with incidenceAngle = actual.incidenceAngle; azimuth = actual.azimuth },
+            actual)
+
+        // The trap `disturb` exists to dodge, asserted directly. `IncidenceAngle.create` folds its
+        // argument into [0, 90) MODULO 90 deg, so a 0.2 deg tilt the wrong way from normal incidence
+        // would come back as 89.8 deg — a grazing-incidence measurement standing in for a normal one,
+        // which is not a small error but a different experiment. Going through the engine's own
+        // `IncidenceAngle + Angle` operator keeps the excursion signed, and both signs must occur.
+        let normalIncidence = configuration ZCut thickPlate 0.0 0.0 TransmittedMueller
+        let excursions =
+            [ for s in 1 .. 40 ->
+                (disturb (UniformDeviateProvider.fromSeed (NoiseSeed s)) labNoise normalIncidence).incidenceAngle.value / degree ]
+        Assert.True(
+            excursions |> List.forall (fun x -> abs x <= labNoise.rotation.degrees + 1.0e-12),
+            $"a tilt about normal incidence escaped the budget: %A{excursions}")
+        Assert.True(excursions |> List.exists (fun x -> x < 0.0), $"a symmetric tilt error must land on BOTH sides of the normal: %A{excursions}")
+
+        // DETECTOR ERROR — every normalized element moved, by no more than the budget, except m00 which
+        // is left at exactly 1 because normalization has already removed everything it could carry.
+        let clean = observe c1 |> List.exactlyOne
+        match normalizeMueller clean.measured with
+        | Ok trueNormalized ->
+            let reported = misread (UniformDeviateProvider.fromSeed (NoiseSeed 5)) labNoise clean.measured
+            Assert.True(abs (Propagation.muellerElement reported 0 0 - 1.0) < 1.0e-15, "m00 must stay at exactly 1")
+            let deviations =
+                [ for i in 0 .. 3 do
+                    for j in 0 .. 3 do
+                        if not (i = 0 && j = 0) then
+                            abs (Propagation.muellerElement reported i j - Propagation.muellerElement trueNormalized i j) ]
+            Assert.True(List.max deviations <= labNoise.element.value, $"an element error escaped the budget: worst {List.max deviations}, budget {labNoise.element.value}")
+            Assert.True(List.min deviations > 0.0, "every element other than m00 must actually have been misread")
+        | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
+
+        // THE NOISELESS BUDGET IS A PURE OVERLAY: with both uncertainties at zero the noisy path returns
+        // the ground truth itself (normalized, which is what every residual compares anyway). This is
+        // what proves the noisy machinery adds noise and changes nothing else.
+        let quiet = noisyObserve NoiseParam.noiseless (NoiseSeed 1) c1 |> List.exactlyOne
+        match normalizeMueller clean.measured with
+        | Ok trueNormalized -> assertMuellerEqual trueNormalized quiet.measured
+        | Error e -> Assert.Fail($"the C1 ground-truth matrix should normalize, got %A{e}")
+
+        // A WHOLE EXPERIMENT is reproducible from its seed, differs between seeds, and is filed against
+        // the NOMINAL configurations — the last being the property that makes the angle error a real
+        // error rather than a relabelling.
+        let runA = noisyObserve labNoise (NoiseSeed 4) c3
+        let runAgain = noisyObserve labNoise (NoiseSeed 4) c3
+        let runOther = noisyObserve labNoise (NoiseSeed 9) c3
+        for (x, y) in List.zip runA runAgain do
+            assertMuellerEqual x.measured y.measured
+        let biggestGap =
+            List.zip runA runOther
+            |> List.collect (fun (x, y) ->
+                [ for i in 0 .. 3 do
+                    for j in 0 .. 3 -> abs (Propagation.muellerElement x.measured i j - Propagation.muellerElement y.measured i j) ])
+            |> List.max
+        Assert.True(biggestGap > 1.0e-4, $"two different seeds must give different data, biggest element gap = {biggestGap}")
+        Assert.Equal<MeasurementConfiguration list>(c3, runA |> List.map (fun o -> o.configuration))
+
+    [<Fact>]
+    member _.``a blind n = 1.5 start with no assumed optical activity still recovers every constant from noiseless data`` () =
+        // THE CONTROL for the noisy ensemble, and the fact that makes its numbers mean something.
+        //
+        // The ensemble below fits from `blindStart` — a guess that knows nothing about the material
+        // beyond "transparent, roughly glass-like" — so its scatter could in principle be the fault of
+        // the START rather than of the NOISE. This fact removes that possibility: run the identical fit,
+        // from the identical start, over the identical box, on data with NO noise in it at all, and
+        // every constant comes back to essentially machine precision. Whatever the ensemble's scatter
+        // is, it is therefore the measurement error and not the optimizer.
+        //
+        // It also establishes something the `perturbedStart` commentary only argues: that a start with
+        // ZERO birefringence is inside the right basin of attraction. The truth is 0.286 wave of linear
+        // retardance for the 20 um plates, so zero is under a third of a fringe away — the same
+        // half-fringe rule that forbids a 1 mm retardance-bearing plate permits this start.
+        let observations = observe fullConfigurations
+        let (scaling, _, solution) = fitObservations wideBox observations blindStart
+        let recovered = ofScaled scaling solution.solution
+
+        let finalChiSquared = solution.finalResiduals |> Array.sumBy (fun r -> r * r)
+        let errors =
+            [ for p in FittedParameter.all -> p, relativeError (p.valueIn recovered) (p.valueIn quartz) ]
+        let report =
+            System.String.Join("; ", [ for (p, e) in errors -> $"{p.name} rel err {e.value}" ])
+            + $"; chi2 {finalChiSquared}; {solution.iterations} iterations"
+        Assert.True(solution.iterations > 0, $"the fit should have taken at least one step: {report}")
+
+        // Bands pinned per the spec §9 protocol from the observed values — the SAME bands the perturbed-
+        // start fact uses, because the outcome is the same: with noiseless data generated by the very
+        // model being fitted, the optimizer walks all the way to machine precision from either start.
+        // The worst observed relative error was 3.3e-13 (g33), the rest ~5e-15, at a final chi-squared of
+        // 1.4e-22 after 19 iterations — against 13 iterations from the near start.
+        for (p, err) in errors do
+            Assert.True(err.value < 1.0e-11, $"{p.name} was not recovered from the blind start: {report}")
+
+        Assert.True(finalChiSquared < 1.0e-18, $"final chi-squared out of band: {report}")
+
+        // Guard against a vacuous pass: the blind start must be genuinely far from the answer, and far
+        // outside the acceptance band, or this fact proves nothing about the start guess.
+        let startErrors =
+            [ for p in FittedParameter.all ->
+                // g11 and g33 start at exactly zero, so a relative error against the START is the wrong
+                // question for them; the distance is measured against the TRUTH either way.
+                p, relativeError (p.valueIn blindStart) (p.valueIn quartz) ]
+        Assert.True(
+            startErrors |> List.forall (fun (_, e) -> e.value > 1.0e-2),
+            $"""the blind start must be far from the truth: {System.String.Join("; ", [ for (p, e) in startErrors -> $"{p.name} {e.value}" ])}""")
+
+    [<Fact>]
+    member _.``an ensemble of noisy experiments recovers every constant, and its scatter IS what one fit's own covariance predicts`` () =
+        // THE DELIVERABLE of manual task 010: what a decent-but-ordinary optical bench actually gets out
+        // of this experiment, and — the part a single measurement cannot answer — with what error bar.
+        //
+        // Each seed is one complete experiment: 29 configurations, each measured at angles that differ
+        // from the recorded ones by up to 0.2 deg, each read back by a detector good to 0.005 of full
+        // scale. The fit then runs from the blind n = 1.5 start against the RECORDED angles. Eight such
+        // experiments give eight independent answers, and their spread is the uncertainty.
+        //
+        // WHY BOTH A BIAS AND A SCATTER ARE REPORTED, and why they are different in kind. The detector
+        // error is ordinary noise: independent across all 435 residual entries, so it averages down
+        // within one experiment and further across the ensemble. The ROTATION error does not behave that
+        // way within one experiment — each configuration's angle error is fixed for the whole of it, so
+        // the fit is minimizing a model that is wrong in a FIXED way and its answer is displaced
+        // systematically. Only across seeds do those displacements average. Separating the two is
+        // precisely what an ensemble buys, and it is why one noisy experiment is not enough.
+        //
+        // RUNTIME, since this fact dominates the class. Eight full inverse fits from a blind start are
+        // ~45 s each, about six minutes in total. Running the seeds CONCURRENTLY was measured and is
+        // slower rather than faster — two seeds in parallel took 184 s against ~100 s serially, and eight
+        // took 504 s against the 365 s this serial version measures — so the seeds are run serially,
+        // deliberately. The forward solves allocate heavily, and extra threads buy contention rather than
+        // throughput.
+        let experiments = ensembleSeeds |> List.map (recoverFromNoisy labNoise)
+
+        for e in experiments do
+            Assert.True(e.solution.iterations > 0, $"the fit for seed {e.seed.value} never took a step")
+
+        let table = RecoveredQuantity.all |> List.map (statisticsFor (experiments |> List.map (fun e -> e.recovered)))
+        let residualLevels =
+            [ for e in experiments ->
+                let chi = e.solution.finalResiduals |> Array.sumBy (fun r -> r * r)
+                $"seed {e.seed.value}: chi2 {chi}, rms {sqrt (chi / float e.solution.finalResiduals.Length)}, {e.solution.iterations} iterations" ]
+        let report =
+            System.String.Join("; ", [ for row in table -> row.describe ])
+            + " || "
+            + System.String.Join("; ", residualLevels)
+
+        // NON-VACUITY, asserted before anything else. If the noise had failed to reach the data every
+        // seed would return the same answer, the scatter would be zero, and every band below would pass
+        // while measuring nothing at all.
+        for row in table do
+            Assert.True(
+                row.scatter.value > 0.0,
+                $"seed-to-seed scatter of {row.quantity.name} is zero — the noise never reached the fit: {report}")
+
+        // ------------------------------------------------------------------ the recovered constants
+        //
+        // Bands pinned per the spec §9 protocol from the observed ensemble (the numbers are recorded in
+        // the manual task folder). They are per-quantity because the four constants are NOT equally
+        // determined by this experiment, and a single band wide enough for g33 would say nothing at all
+        // about the two indices.
+        for row in table do
+            let (scatterBand, worstBand) =
+                match row.quantity with
+                | RecoveredParameter OrdinaryIndex
+                | RecoveredParameter ExtraordinaryIndex -> 1.5e-3, 3.0e-3
+                | RecoveredParameter TransverseGyration -> 4.0e-3, 1.0e-2
+                | RecoveredParameter AxialGyration -> 1.5e-1, 2.5e-1
+                | RecoveredBirefringence -> 1.2e-3, 2.0e-3
+            Assert.True(row.scatter.value < scatterBand, $"{row.quantity.name} scatter {row.scatter.value} exceeds {scatterBand}: {report}")
+            Assert.True(row.worst.value < worstBand, $"{row.quantity.name} worst-case {row.worst.value} exceeds {worstBand}: {report}")
+
+        // THE ERRORS ARE RANDOM, NOT SYSTEMATIC — a result rather than an assumption, and the reason the
+        // acceptance test is a band on the SCATTER rather than on any single experiment.
+        //
+        // The natural yardstick for a bias is the standard error of the ensemble MEAN, `scatter/sqrt(8)`:
+        // a departure smaller than that is the random error not yet fully averaged away, not evidence of
+        // anything systematic. Every quantity clears it comfortably, which says that even the rotation
+        // error — fixed within an experiment, and therefore genuinely systematic FOR that experiment —
+        // has no preferred direction across experiments.
+        for row in table do
+            let allowance = 3.0 * (standardErrorOfMean row).value
+            Assert.True(
+                row.bias.value < allowance,
+                $"{row.quantity.name} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}) — the error is systematic, not random: {report}")
+
+        // ------------------------------------------------------------------ what the design determines
+        //
+        // g33 IS THE POORLY-DETERMINED CONSTANT, measured rather than argued. It comes out an order of
+        // magnitude noisier than anything else here, and that is the same result the noiseless
+        // identifiability fact reports as a Jacobian column 36x weaker than g11's — seen from the other
+        // side. It is also the mirror image of the published situation: Arteaga/Canillas/Jellison quote
+        // their axial gyration component to 0.7 % and their transverse one to ~10 %, and this pipeline
+        // swaps the two roles for the reason finding F1 records (the engine's rho is the bi-anisotropic
+        // tensor, not the crystallographic gyration tensor). The ~5 % measured here is the same order as
+        // the literature's ~10 % on ITS poorly-determined component.
+        let axial = table |> List.find (fun row -> row.quantity = RecoveredParameter AxialGyration)
+        for row in table do
+            if row.quantity <> RecoveredParameter AxialGyration then
+                Assert.True(
+                    axial.scatter.value > 10.0 * row.scatter.value,
+                    $"g33 must be the poorly-determined constant, but {row.quantity.name} is no better: {report}")
+
+        // THE BIREFRINGENCE IS DETERMINED FAR BETTER THAN EITHER INDEX, which is the physical content of
+        // the 0.99999 index correlation the noiseless identifiability fact reports. Linear retardance
+        // depends on n_e - n_o through 2 pi (n_e - n_o) d / lambda, and that difference is 0.009 against
+        // absolute indices of 1.54 — so the data pins the difference far harder than the common level,
+        // and the two indices wander TOGETHER from experiment to experiment. Their scatters are
+        // consequently near-identical (4.87e-4 and 4.84e-4) while the difference's is a fifth of a
+        // millionth: quoting only the two indices would understate this experiment by a factor of 200.
+        //
+        // The comparison is in ABSOLUTE units and must be. Relatively the difference looks no better
+        // than the indices (4.0e-4 against 4.9e-4), because it is being divided by a value 170 times
+        // smaller — which is exactly the arithmetic that hides the effect.
+        let birefringence = table |> List.find (fun row -> row.quantity = RecoveredBirefringence)
+        for row in table do
+            match row.quantity with
+            | RecoveredParameter OrdinaryIndex
+            | RecoveredParameter ExtraordinaryIndex ->
+                Assert.True(
+                    birefringence.absoluteScatter < row.absoluteScatter / 50.0,
+                    $"the birefringence must be determined far better than {row.quantity.name} in ABSOLUTE terms: {report}")
+            | _ -> ()
+
+        // ------------------------------------------------------- the fit's OWN account of its error
+        //
+        // This closes finding F3 in the implementation log. F3 recorded that `FitQuality` CANNOT report
+        // an uncertainty on noiseless synthetic data: it forms Cov = reducedChiSquared * (JtJ)^-1, the
+        // reduced chi-squared there is ~1e-30, the covariance diagonal underflows, every standard error
+        // and correlation comes back a flat zero — which is why the noiseless identifiability fact above
+        // works from the Jacobian alone and says so at length.
+        //
+        // With real measurement noise present that objection disappears, and this is the one place in
+        // the repository where the claim can actually be TESTED rather than asserted: a covariance
+        // estimate is a prediction about REPEAT EXPERIMENTS, and the ensemble above is exactly a set of
+        // repeat experiments. So the first seed's own reported standard error is compared, quantity by
+        // quantity, against the spread the other seven actually produced.
+        //
+        // The report lives in the SCALED space the fit searches, so each standard error is converted back
+        // through that parameter's own scale before being compared with a relative scatter.
+        let first = List.head experiments
+        let quality = FitQuality.reportFrom first.residual first.solution.solution first.solution.finalResiduals
+
+        let predictedRelativeError (p : FittedParameter) : RelativeError =
+            // Both indices share one scale and both gyration components share the other, so a parameter's
+            // scale is simply that parameter read out of the scale parameter set.
+            quality.standardErrors.[p.index] * abs (p.valueIn first.scaling.scale) / abs (p.valueIn quartz)
+            |> RelativeError
+
+        let observedScatter (q : RecoveredQuantity) : RelativeError =
+            (table |> List.find (fun row -> row.quantity = q)).scatter
+
+        let predictions = [ for p in FittedParameter.all -> p, predictedRelativeError p ]
+        let comparison =
+            System.String.Join(
+                "; ",
+                [ for (p, predicted) in predictions ->
+                    let observed = observedScatter (RecoveredParameter p)
+                    $"{p.name}: predicted {predicted.value}, observed {observed.value}, ratio {predicted.value / observed.value}" ])
+
+        // The F3 failure mode is gone: every reported standard error is finite and strictly positive,
+        // and the reduced chi-squared is the noise level rather than a denormal.
+        for (p, predicted) in predictions do
+            Assert.True(System.Double.IsFinite predicted.value && predicted.value > 0.0, $"{p.name} has no usable standard error: {comparison}")
+        Assert.True(
+            quality.reducedChiSquared > 1.0e-12,
+            $"reduced chi-squared = {quality.reducedChiSquared}, which is the underflowing noiseless regime F3 describes")
+
+        // And it is not merely usable, it is RIGHT. Band pinned per the §9 protocol from the observed
+        // ratios (0.98, 0.98, 1.43, 0.85); a factor of two is the honest tolerance, because the
+        // ensemble's own standard deviation is itself only known to ~1/sqrt(2*(8-1)) = 27 % from eight
+        // samples.
+        for (p, predicted) in predictions do
+            let ratio = predicted.value / (observedScatter (RecoveredParameter p)).value
+            Assert.True(
+                ratio > 0.5 && ratio < 2.0,
+                $"the covariance-predicted error for {p.name} disagrees with the ensemble: {comparison}")
+
+        // WHERE THAT AGREEMENT STOPS, recorded because it is the natural next thing to try and it does
+        // not work. The birefringence is not a fit parameter, so its uncertainty would have to come from
+        // the covariance of the PAIR, var(n_e - n_o) = C11 + C00 - 2*C01. That expression is DEAD here:
+        // the two indices are correlated at 0.99999, so it is a five-digit cancellation between numbers
+        // of order 0.54 — and the (JtJ)^-1 it is formed from has already lost about that many digits at
+        // a Jacobian condition number of ~436. Measured, the combination comes out NEGATIVE, i.e. it is
+        // pure round-off, while the ensemble shows a perfectly real absolute scatter of 3.6e-6.
+        //
+        // This is the same lesson as F3 one level deeper: the covariance DIAGONAL survives once noise is
+        // present, but the near-null COMBINATION of two nearly-degenerate parameters does not. Anyone
+        // needing an error bar on a derived quantity in that direction must get it from a
+        // better-conditioned route — the ensemble itself, or an orthogonalizing decomposition of J —
+        // rather than from this matrix. Asserted so that a future fix announces itself.
+        let noIndex = (OrdinaryIndex : FittedParameter).index
+        let neIndex = (ExtraordinaryIndex : FittedParameter).index
+        let pairVariance =
+            quality.covariance.[neIndex].[neIndex] + quality.covariance.[noIndex].[noIndex]
+            - 2.0 * quality.covariance.[noIndex].[neIndex]
+        let pairPrediction =
+            sqrt (max 0.0 pairVariance) * abs (RecoveredBirefringence.valueIn first.scaling.scale)
+            / abs (RecoveredBirefringence.valueIn quartz)
+        Assert.True(
+            pairPrediction < (observedScatter RecoveredBirefringence).value / 10.0,
+            $"the pair-covariance route now predicts {pairPrediction} against an observed {(observedScatter RecoveredBirefringence).value} "
+            + $"(raw combination {pairVariance}) — the cancellation this fact records has changed, so re-measure it")
+
+        // Finally, the interval the single experiment would have QUOTED must contain the truth — the
+        // question an experimenter actually asks of a fit report.
+        let truthPoint = toScaled first.scaling quartz
+        let intervals =
+            [ for p in FittedParameter.all ->
+                let (lo, hi) = quality.confidenceIntervals.[p.index]
+                p, lo <= truthPoint.[p.index] && truthPoint.[p.index] <= hi ]
+        Assert.True(
+            intervals |> List.forall snd,
+            $"""the 95%% intervals missed {System.String.Join(", ", [ for (p, c) in intervals do if not c then p.name ])}: {comparison}""")
