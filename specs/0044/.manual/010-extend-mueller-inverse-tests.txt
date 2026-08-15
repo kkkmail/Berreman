@@ -1,0 +1,14 @@
+We are going to add some more tests to `C:\GitHub\Berreman\Berreman\BerremanTests\MuellerInverseTests.fs`. These are the noisy tests. 
+But first we need to define what do we mean under noise and how to make it repetitive. There are two types of noise in the system under 
+test. First is that the experimental rotation angles are not precise. Say the experiment records some angle as 20 degrees but in reality 
+it could be slightly more or less. We can model that by some random variable defined on [-1; 1] interval and scaled by the max error 
+value. Second the optical receiver device is imprecise and may also record more or less. We can model that the similar way. To make 
+the tests repetitive, we fix the random seed value(s). There is one or two primary tests there, which test the Full Monty – that’s, 
+that given the experiments, we recover all optical properties. So, let’s add test(s), which will use such imprecise measurements as 
+the source of input data. Look up the web for realistic rotation and measurement errors. We are deliberately NOT talking about super 
+high precision measurements but a decent but simple optical lab measurements. Use 1.5, 1.5, 0, 0 as a starting point for n_o, n_e, g_11, g_33 
+for these test(s). We also need to estimate the errors and one noisy experiment is NOT enough. Perhaps we can run it with different 
+(but fixed) random seeds, find the optical properties, then estimate the errors. It is possible that you might need to extract the core 
+runner into some parameterized function(s) to make such noisy experiments easier without copy / paste / modify a little bit coding style. 
+Make the tests fail originally, collect the actual values, and then make them pass on the second try. Make sure that all tests from 
+`C:\GitHub\Berreman\Berreman\BerremanTests\MuellerInverseTests.fs` pass after your changes.
