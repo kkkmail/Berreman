@@ -136,7 +136,7 @@ type LangasiteInverseTests() =
     /// from the four material parameters. Langasite is point group 32, like quartz, so the same
     /// `type_3_4_6_Crystal` builder applies: diagonal eps = diag(n_o^2, n_o^2, n_e^2), diagonal
     /// Rho = diag(g11, g11, g33).
-    let buildLangasite (p : MaterialParameters) : OpticalProperties =
+    let buildLangasite (p : UniaxialParameters) : OpticalProperties =
         OpticalProperties.type_3_4_6_Crystal
             (EpsValue.fromRefractionIndex p.ordinaryIndex)
             (EpsValue.fromRefractionIndex p.extraordinaryIndex)
@@ -178,7 +178,7 @@ type LangasiteInverseTests() =
         analyzer * (sample * (polarizer * Propagation.unpolarizedStokes)) |> Propagation.s0
 
     /// The model's six intensities for a material parameter set — one forward solve, six analyzer angles.
-    let modelIntensities (p : MaterialParameters) : Result<float[], ForwardModelError> =
+    let modelIntensities (p : UniaxialParameters) : Result<float[], ForwardModelError> =
         forward.muellerOf zCutConfiguration p
         |> Result.map (fun sample -> [| for a in analyzerAnglesDeg -> transmittedIntensity sample a |])
 
@@ -189,7 +189,7 @@ type LangasiteInverseTests() =
     /// The closure must be TOTAL and of fixed length, because the optimizer explores freely: a forward
     /// failure returns a large finite penalty of the correct length rather than throwing (which would
     /// abort the fit) or returning a short vector (which would silently change the problem).
-    let normalizedResidual (p : MaterialParameters) : float[] =
+    let normalizedResidual (p : UniaxialParameters) : float[] =
         match modelIntensities p with
         | Error _ -> Array.create analyzerAnglesDeg.Length 1.0e3
         | Ok model ->
@@ -230,7 +230,7 @@ type LangasiteInverseTests() =
     let g11Scale = 1.0e-5
 
     /// Material parameters for a scaled g11 coordinate: everything else fixed at the values above.
-    let parametersOfScaledG11 (x : float) : MaterialParameters =
+    let parametersOfScaledG11 (x : float) : UniaxialParameters =
         {
             ordinaryIndex = langasiteOrdinaryIndex
             extraordinaryIndex = langasiteExtraordinaryIndex
@@ -239,7 +239,7 @@ type LangasiteInverseTests() =
         }
 
     /// Material parameters for a physical g11 value (used by the convention and invisibility facts).
-    let parametersOfG11 (g11 : RhoValue) : MaterialParameters =
+    let parametersOfG11 (g11 : RhoValue) : UniaxialParameters =
         {
             ordinaryIndex = langasiteOrdinaryIndex
             extraordinaryIndex = langasiteExtraordinaryIndex
@@ -249,7 +249,7 @@ type LangasiteInverseTests() =
 
     /// The engine sample Mueller matrix for a parameter set, failing loudly on a forward error (these
     /// facts drive the model at benign parameter values, so a failure here is a defect, not data).
-    let sampleMueller (p : MaterialParameters) : MuellerMatrix =
+    let sampleMueller (p : UniaxialParameters) : MuellerMatrix =
         match forward.muellerOf zCutConfiguration p with
         | Ok m -> m
         | Error e -> failwith $"the forward model failed: %A{e}"
@@ -539,7 +539,7 @@ type LangasiteInverseTests() =
         let g11CentreForJacobian = 0.0
 
         let residual2 (v : float[]) : float[] =
-            let p : MaterialParameters =
+            let p : UniaxialParameters =
                 {
                     ordinaryIndex = RefractionIndex (indexCentre + v.[0] * indexScale)
                     extraordinaryIndex = langasiteExtraordinaryIndex

@@ -39,7 +39,12 @@
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
         <Compile Include="MuellerReconstructionTests.fs" />
+        <!-- Spec 0044 (manual task 012): the fit driver MuellerInverseTests and BiaxialInverseTests
+             share. It declares namespace-level types (RelativeError, SearchBox, InverseFit) that both
+             suites name, so it must compile before either of them. -->
+        <Compile Include="InverseFitHarness.fs" />
         <Compile Include="MuellerInverseTests.fs" />
+        <Compile Include="BiaxialInverseTests.fs" />
         <Compile Include="LangasiteInverseTests.fs" />
     </ItemGroup>
 

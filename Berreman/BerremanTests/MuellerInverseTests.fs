@@ -14,19 +14,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open Xunit
 open BerremanTests.MatrixComparison
-
-/// A dimensionless error against a KNOWN true value: `|actual − expected| / |expected|`. Elevated
-/// because every acceptance band in this file is quoted in these units and an absolute difference read
-/// as a relative one — or the reverse — would be a silently passing test rather than a compile error.
-type RelativeError =
-    | RelativeError of double
-
-    /// The error as a fraction (the arithmetic seam).
-    member this.value = let (RelativeError e) = this in e
-
-    /// The error of a recovered value against the truth it is supposed to reproduce.
-    static member between (actual : double) (expected : double) : RelativeError =
-        abs (actual - expected) / abs expected |> RelativeError
+open BerremanTests.InverseFitHarness                   // the fit driver both inverse-problem suites share
 
 /// One of the four unknowns of the inverse problem, as a first-class identity rather than as a bare
 /// index into `[| n_o; n_e; g₁₁; g₃₃ |]` plus a parallel array of names.
@@ -63,7 +51,7 @@ type FittedParameter =
     /// over. The four parameters carry two DIFFERENT elevated types (`RefractionIndex` and `RhoValue`),
     /// so this is the one place they can be spoken of uniformly — and it is a member ON the type, which
     /// is exactly where a raw-primitive accessor belongs.
-    member this.valueIn (p : MaterialParameters) : double =
+    member this.valueIn (p : UniaxialParameters) : double =
         match this with
         | OrdinaryIndex -> p.ordinaryIndex.value
         | ExtraordinaryIndex -> p.extraordinaryIndex.value
@@ -73,25 +61,6 @@ type FittedParameter =
     /// All four, in the scaled-vector order.
     static member all : FittedParameter list =
         [ OrdinaryIndex; ExtraordinaryIndex; TransverseGyration; AxialGyration ]
-
-/// The box the optimizer may search, as a half-width in SCALED units — so one unit is whatever
-/// `ParameterScaling.scale` says it is (here 1e-3 in refractive index and 1e-5 in gyration).
-///
-/// It is a parameter of the fit rather than a constant because the two start guesses in this file are
-/// at very different distances from the truth. A box that comfortably brackets the truth from a 0.2 %
-/// perturbed start does NOT bracket it from a blind `n = 1.5` start, and a box that silently excludes
-/// the answer produces a converged-looking fit pinned against a bound.
-type SearchBox =
-    | SearchBox of double
-
-    /// The half-width in scaled units (the arithmetic seam).
-    member this.halfWidth = let (SearchBox h) = this in h
-
-    /// The lower bound vector for the four unknowns.
-    member this.lowerBounds : float[] = Array.create 4 -this.halfWidth
-
-    /// The upper bound vector for the four unknowns.
-    member this.upperBounds : float[] = Array.create 4 this.halfWidth
 
 /// The seed that fixes ONE noisy realization of the whole experiment. Elevated so that a seed can never
 /// be passed where an iteration count, a configuration count or a parameter index is expected.
@@ -185,7 +154,7 @@ type RecoveredQuantity =
         | RecoveredBirefringence -> "n_e - n_o"
 
     /// This quantity's value inside a parameter set.
-    member this.valueIn (p : MaterialParameters) : double =
+    member this.valueIn (p : UniaxialParameters) : double =
         match this with
         | RecoveredParameter f -> f.valueIn p
         | RecoveredBirefringence -> p.extraordinaryIndex.value - p.ordinaryIndex.value
@@ -235,9 +204,9 @@ type RecoveryStatistics =
 type NoisyExperiment =
     {
         seed : NoiseSeed
-        recovered : MaterialParameters
+        recovered : UniaxialParameters
         solution : NonlinearSolution
-        scaling : ParameterScaling
+        scaling : ParameterScaling<UniaxialParameters>
         residual : float[] -> float[]
     }
 
@@ -263,22 +232,18 @@ type NoisyExperiment =
 ///   - the rotating-analyzer intensity-level variant, which would reuse spec 0042's `kron4` design-matrix
 ///     machinery end to end instead of consuming Mueller matrices directly;
 ///   - Lu-Chipman polar decomposition of the recovered matrices;
-///   - dispersion (this spec fixes one wavelength), biaxial or absorbing materials;
+///   - dispersion (this spec fixes one wavelength) or absorbing materials;
 ///   - fitting thickness and crystal orientation as nuisance parameters (both are known here, spec R2).
+///
+/// BIAXIAL materials are no longer on that list: manual task 012 added `BiaxialInverseTests`, which runs
+/// the same recovery on a TRICLINIC crystal with nine unknowns. The fit driver both suites use lives in
+/// `InverseFitHarness`, and the parameter-set genericity that makes one driver serve both lives in
+/// `MuellerInverse.ParameterAxis`.
 type MuellerInverseTests() =
 
     /// Radians per degree, reached by its full module path (mirrors `MuellerReconstructionTests`). Bound
     /// here, ahead of the members (FS0960: in a class type every `let` binding precedes the first member).
     let degree = Berreman.MathNetNumericsMath.degree
-
-    /// The same element-by-element Mueller compare loop `MuellerMatrixTests` and
-    /// `MuellerReconstructionTests` use, over the shared `allowedDiff` tolerance — no hand-rolled epsilon.
-    let assertMuellerEqual (expected : MuellerMatrix) (actual : MuellerMatrix) =
-        for i in 0 .. 3 do
-            for j in 0 .. 3 do
-                let e = Propagation.muellerElement expected i j
-                let a = Propagation.muellerElement actual i j
-                Assert.True(abs (e - a) < allowedDiff, $"M[{i},{j}]: expected {e}, got {a}")
 
     // =================================================================================================
     // Ground truth: quartz at 632.8 nm.
@@ -319,7 +284,7 @@ type MuellerInverseTests() =
     let quartzG33 = RhoValue -10.1e-5
 
     /// The ground-truth parameter set the forward data is generated from and the fit must recover.
-    let quartz : MaterialParameters =
+    let quartz : UniaxialParameters =
         {
             ordinaryIndex = quartzOrdinaryIndex
             extraordinaryIndex = quartzExtraordinaryIndex
@@ -335,7 +300,7 @@ type MuellerInverseTests() =
     /// It delegates entirely to the existing Active.OpticalProperties.type_3_4_6_Crystal builder, so the
     /// diagonal forms diag(n_o^2, n_o^2, n_e^2) and diag(g11, g11, g33) are the engine's own and are not
     /// re-derived here.
-    let buildUniaxialGyrotropic (p : MaterialParameters) : OpticalProperties =
+    let buildUniaxialGyrotropic (p : UniaxialParameters) : OpticalProperties =
         OpticalProperties.type_3_4_6_Crystal
             (EpsValue.fromRefractionIndex p.ordinaryIndex)
             (EpsValue.fromRefractionIndex p.extraordinaryIndex)
@@ -408,15 +373,8 @@ type MuellerInverseTests() =
     /// A 20 um plate — sub-wave linear retardance, used by every retardance-bearing configuration.
     let thinPlate = Thickness.mkm 20.0<mkm>
 
-    let configuration (cut : OpticAxisCut) (thickness : Thickness) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
-        {
-            cut = cut
-            thickness = thickness
-            incidenceAngle = Angle.degree incidenceDeg |> IncidenceAngle.create
-            azimuth = SampleAzimuth.degree azimuthDeg
-            observable = observable
-            waveLength = waveLength
-        }
+    let configuration (cut : SampleCut) (thickness : Thickness) (incidenceDeg : double) (azimuthDeg : double) (observable : Observable) : MeasurementConfiguration =
+        configurationOf cut thickness incidenceDeg azimuthDeg observable waveLength
 
     /// C1 — z-cut, normal incidence, 1.0 mm. The anchor: a pure optical rotator, and the configuration
     /// that fixes g11 almost independently of everything else — while being completely blind to g33.
@@ -450,31 +408,32 @@ type MuellerInverseTests() =
 
     let fullConfigurations = c1 @ c2 @ c3 @ c4
 
-    /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters,
-    /// failing the test on any forward-model error.
+    /// Generate the synthetic "measured" data for a configuration set from the ground-truth parameters.
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
-        configurations
-        |> List.map (fun c ->
-            match forward.muellerOf c quartz with
-            | Ok m -> { configuration = c; measured = m }
-            | Error e -> failwith $"the forward model failed to generate ground-truth data: %A{e}")
+        observeWith forward quartz configurations
 
     // =================================================================================================
     // T7 / T8 / T9 — Stage B: the nonlinear fit, its identifiability diagnostics, and the ablation.
     // =================================================================================================
 
-    /// The dimensionless fit space (spec §3.5). `centre` is the START GUESS, so the initial scaled vector
-    /// is exactly zero; `scale` sets what one unit of each coordinate means physically.
+    /// The dimensionless fit space (spec §3.5), specialized to this material. `centre` is the START
+    /// GUESS, so the initial scaled vector is exactly zero; `scale` sets what one unit of each coordinate
+    /// means physically, and `axes` is what makes the shared, material-agnostic fit driver able to read
+    /// and write a `UniaxialParameters` without knowing its field names.
     ///
-    /// The scale choice is the whole reason this type exists. ALGLIB's Levenberg-Marquardt differentiates
-    /// with a FIXED ABSOLUTE step of 1e-6, so a unit of 1e-3 in refractive index makes that step a 1e-9
-    /// perturbation of n, and a unit of 1e-5 in gyration makes it a 1e-11 perturbation of g. Both are
-    /// small enough to be genuinely linear and large enough to move the Mueller elements far above the
-    /// solver's own numerical noise. Handing the optimizer raw physical parameters instead would make the
-    /// same 1e-6 step a 1 % perturbation of g and a 6e-7 relative perturbation of n - four orders of
-    /// magnitude apart, and the former far outside the linear regime a Jacobian assumes.
-    let scalingAround (centre : MaterialParameters) : ParameterScaling =
+    /// The scale choice is the whole reason `ParameterScaling` exists. ALGLIB's Levenberg-Marquardt
+    /// differentiates with a FIXED ABSOLUTE step of 1e-6, so a unit of 1e-3 in refractive index makes
+    /// that step a 1e-9 perturbation of n, and a unit of 1e-5 in gyration makes it a 1e-11 perturbation
+    /// of g. Both are small enough to be genuinely linear and large enough to move the Mueller elements
+    /// far above the solver's own numerical noise. Handing the optimizer raw physical parameters instead
+    /// would make the same 1e-6 step a 1 % perturbation of g and a 6e-7 relative perturbation of n - four
+    /// orders of magnitude apart, and the former far outside the linear regime a Jacobian assumes.
+    ///
+    /// It deliberately shadows the harness's general `scalingAround`: this is the uniaxial specialization
+    /// of it, and every fit in this file wants exactly these axes and exactly this scale.
+    let scalingAround (centre : UniaxialParameters) : ParameterScaling<UniaxialParameters> =
         {
+            axes = UniaxialParameters.axes
             centre = centre
             scale =
                 {
@@ -484,22 +443,6 @@ type MuellerInverseTests() =
                     g33 = RhoValue 1.0e-5
                 }
         }
-
-    /// The residual closure the optimizer drives: scaled vector -> normalized Mueller element differences.
-    ///
-    /// It must be TOTAL and of fixed length, because an optimizer explores freely and will hand it
-    /// parameter values the forward model cannot solve. A forward failure therefore returns a large finite
-    /// penalty of the correct length rather than throwing or returning a short vector: the first would
-    /// abort the fit, and the second would silently change the problem being minimized.
-    let residualFor (observations : MuellerObservation list) (scaling : ParameterScaling) : float[] -> float[] =
-        let width = 15 * List.length observations
-        fun (v : float[]) ->
-            match forwardModels forward (ofScaled scaling v) observations with
-            | Error _ -> Array.create width 1.0e3
-            | Ok models ->
-                match residualVector observations models with
-                | Ok r -> r
-                | Error _ -> Array.create width 1.0e3
 
     /// The start guess shared by the fit facts: the two gyration components 30 % wrong, the two refractive
     /// indices off by +0.2 % and +0.1 %.
@@ -512,7 +455,7 @@ type MuellerInverseTests() =
     /// and sin of 2 pi (n_e - n_o) d / lambda, so a start guess more than about half a fringe away lands
     /// in a different basin of attraction. That is a property of the physics, and it is exactly why the
     /// retardance-bearing samples are 20 um (0.286 wave) rather than 1 mm (14.3 waves).
-    let perturbedStart : MaterialParameters =
+    let perturbedStart : UniaxialParameters =
         {
             ordinaryIndex = RefractionIndex (quartzOrdinaryIndex.value * 1.002)
             extraordinaryIndex = RefractionIndex (quartzExtraordinaryIndex.value * 1.001)
@@ -526,9 +469,10 @@ type MuellerInverseTests() =
     /// n = 0.
     let nearBox = SearchBox 50.0
 
-    /// THE CORE RUNNER. Recover the material parameters from a GIVEN set of observations, from a given
-    /// start guess, over a given box. Every fit in this file — noiseless or noisy — goes through this one
-    /// function, so the noisy facts differ from the noiseless one in their DATA and nothing else.
+    /// Recover the material parameters from a GIVEN set of observations, from a given start guess, over a
+    /// given box — the shared harness runner, with this material's scaling baked in. Every fit in this
+    /// file, noiseless or noisy, goes through it, so the noisy facts differ from the noiseless one in
+    /// their DATA and nothing else.
     ///
     /// It deliberately takes observations rather than configurations: that is the seam noise enters
     /// through. A noisy experiment is the same fit run against data generated at slightly wrong angles
@@ -536,26 +480,13 @@ type MuellerInverseTests() =
     let fitObservations
         (box : SearchBox)
         (observations : MuellerObservation list)
-        (start : MaterialParameters)
-        : ParameterScaling * (float[] -> float[]) * NonlinearSolution =
-        let scaling = scalingAround start
-        let residual = residualFor observations scaling
-        let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
-        let request =
-            {
-                residual = residual
-                initial = Array.zeroCreate 4
-                lowerBounds = box.lowerBounds
-                upperBounds = box.upperBounds
-                maxIterations = 400
-                epsX = 1.0e-12
-            }
-        match solver.solveNonlinearLeastSquares request with
-        | Ok solution -> scaling, residual, solution
-        | Error e -> failwith $"the inverse fit failed: %A{e}"
+        (start : UniaxialParameters)
+        : ParameterScaling<UniaxialParameters> * (float[] -> float[]) * NonlinearSolution =
+        let fit = InverseFitHarness.fitObservations forward box observations (scalingAround start)
+        fit.scaling, fit.residual, fit.solution
 
     /// Run the fit on NOISELESS data generated for a configuration set, from a given start guess.
-    let runFit (configurations : MeasurementConfiguration list) (start : MaterialParameters) =
+    let runFit (configurations : MeasurementConfiguration list) (start : UniaxialParameters) =
         let observations = observe configurations
         let (scaling, residual, solution) = fitObservations nearBox observations start
         observations, scaling, residual, solution
@@ -640,7 +571,7 @@ type MuellerInverseTests() =
     /// inside the same basin of attraction. The control fact below asserts exactly this by recovering
     /// every constant to machine precision from this start on noiseless data, which is what makes the
     /// noisy ensemble's scatter attributable to the NOISE rather than to the start guess.
-    let blindStart : MaterialParameters =
+    let blindStart : UniaxialParameters =
         {
             ordinaryIndex = RefractionIndex 1.5
             extraordinaryIndex = RefractionIndex 1.5
@@ -724,7 +655,7 @@ type MuellerInverseTests() =
     /// The scatter is the SAMPLE standard deviation (Bessel-corrected, `n − 1`), because the ensemble is
     /// a sample of possible experiments rather than the whole population of them — which is exactly what
     /// an experimenter repeating a measurement has.
-    let statisticsFor (recovered : MaterialParameters list) (q : RecoveredQuantity) : RecoveryStatistics =
+    let statisticsFor (recovered : UniaxialParameters list) (q : RecoveredQuantity) : RecoveryStatistics =
         let truth = q.valueIn quartz
         let values = recovered |> List.map q.valueIn
         let count = List.length values
@@ -839,6 +770,7 @@ type MuellerInverseTests() =
         // converges smoothly to the wrong answer. Hence: pin it.
         let scaling =
             {
+                axes = UniaxialParameters.axes
                 centre = quartz
                 scale =
                     {
@@ -854,7 +786,7 @@ type MuellerInverseTests() =
         Assert.Equal<float[]>([| 0.0; 0.0; 0.0; 0.0 |], atCentre)
 
         // ... and for an arbitrary offset.
-        let offset : MaterialParameters =
+        let offset : UniaxialParameters =
             {
                 ordinaryIndex = RefractionIndex (quartzOrdinaryIndex.value + 3.5e-3)
                 extraordinaryIndex = RefractionIndex (quartzExtraordinaryIndex.value - 1.25e-3)
@@ -1138,7 +1070,7 @@ type MuellerInverseTests() =
         let cannedModel = muellerOfBirefringence (Retardance.degree 20.0) (Retardance 0.0) (Retardance.degree 5.0)
         let cannedMeasurement = muellerOfBirefringence (Retardance.degree 20.0) (Retardance 0.0) (Retardance.degree 5.0)
 
-        let mockForward : ForwardModelProxy =
+        let mockForward : ForwardModelProxy<UniaxialParameters> =
             { muellerOf = fun _ _ -> Ok cannedModel }
 
         let mockSolver : NonlinearSolverProxy =
@@ -1183,8 +1115,8 @@ type MuellerInverseTests() =
         // Both records' only fields are function-valued, so they have no structural equality; the
         // attribute makes them compare by identity so a host context holding one stays comparable. Mirrors
         // the ExperimentDataProxy / MuellerSolverProxy / MuellerDataProxy convention.
-        let f : ForwardModelProxy = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
-        let g : ForwardModelProxy = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
+        let f : ForwardModelProxy<UniaxialParameters> = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
+        let g : ForwardModelProxy<UniaxialParameters> = { muellerOf = fun _ _ -> Ok Propagation.identityMueller }
         Assert.True((f = f))
         Assert.False((f = g))
 
@@ -1202,7 +1134,7 @@ type MuellerInverseTests() =
         // A zero refractive index is degenerate enough to break the eigen-decomposition while remaining a
         // perfectly ordinary value of the parameter type — exactly the kind of input an optimizer can
         // wander into mid-search, which is why the boundary has to be total rather than merely careful.
-        let degenerate : MaterialParameters =
+        let degenerate : UniaxialParameters =
             { quartz with ordinaryIndex = RefractionIndex 0.0; extraordinaryIndex = RefractionIndex 0.0 }
 
         match forward.muellerOf (List.exactlyOne c1) degenerate with
@@ -1304,7 +1236,7 @@ type MuellerInverseTests() =
         // scaling on the perturbed start puts the truth at a non-zero scaled point.
         let observations = observe fullConfigurations
         let scaling = scalingAround perturbedStart
-        let residual = residualFor observations scaling
+        let residual = residualFor forward observations scaling
         let truthPoint = toScaled scaling quartz
         Assert.True(truthPoint |> Array.forall (fun x -> abs x > 1.0e-6), "the Jacobian must not be evaluated at the origin of the scaled space")
 
@@ -1384,7 +1316,7 @@ type MuellerInverseTests() =
         // into a false positive.
         let scaling = scalingAround perturbedStart
         let truthPoint = toScaled scaling quartz
-        let residual = residualFor (observe c1) scaling
+        let residual = residualFor forward (observe c1) scaling
         let jacobian = FitQuality.residualJacobian residual truthPoint
         let norms = jacobianColumnNorms jacobian
         let report = System.String.Join("; ", [ for i in 0 .. 3 -> $"{parameterNames.[i]} |J| = {norms.[i]}" ])
@@ -1412,7 +1344,7 @@ type MuellerInverseTests() =
 
         // Adding C3 - the second crystal cut - restores the other three, which is precisely the design
         // claim: it is the CUT that buys observability, not more angles on the same sample.
-        let restoredResidual = residualFor (observe (c1 @ c3)) scaling
+        let restoredResidual = residualFor forward (observe (c1 @ c3)) scaling
         let restoredNorms = jacobianColumnNorms (FitQuality.residualJacobian restoredResidual truthPoint)
         let restoredReport = System.String.Join("; ", [ for i in 0 .. 3 -> $"{parameterNames.[i]} |J| = {restoredNorms.[i]}" ])
         for i in 0 .. 3 do

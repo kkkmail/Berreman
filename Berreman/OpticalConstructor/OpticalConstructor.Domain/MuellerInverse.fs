@@ -14,9 +14,15 @@ open OpticalConstructor.Domain.MuellerReconstruction   // Retardance (spec 0042)
 ///
 /// The module is deliberately MATERIAL-AGNOSTIC (spec §5.1). `OpticalConstructor.Domain` references
 /// `Berreman` and `Analytics` but not `OpticalProperties`, so nothing here names a crystal class or a
-/// named material: the forward proxy takes a caller-supplied `MaterialParameters -> OpticalProperties`
-/// builder, and the caller decides what physics that builder encodes. That keeps the module reusable for
-/// the next material and avoids a project reference that would exist only to reach a handful of constants.
+/// named material: the forward proxy takes a caller-supplied `'Parameters -> OpticalProperties` builder,
+/// and the caller decides what physics that builder encodes. That keeps the module reusable for the next
+/// material and avoids a project reference that would exist only to reach a handful of constants.
+///
+/// It is agnostic about the PARAMETER SET too, not merely about the material. Everything from the scaling
+/// down — `ParameterScaling`, `toScaled`, `ofScaled`, `ForwardModelProxy`, `forwardModels`, and every
+/// diagnostic built on the residual Jacobian — is generic in `'Parameters` and is driven by a list of
+/// `ParameterAxis` values the material supplies. A four-unknown uniaxial fit and a nine-unknown triclinic
+/// one therefore run the SAME code; only the axis list differs.
 ///
 /// The physics the design turns on. A wave only ever sees the components of the material tensors that are
 /// TRANSVERSE to its own propagation direction, so no single propagation direction can constrain the whole
@@ -59,13 +65,27 @@ module MuellerInverse =
     // Elevated inputs: what a measurement IS, and what the unknowns ARE.
     // -----------------------------------------------------------------------------------------------------
 
-    /// Where the crystal's optic axis points relative to the sample's surface normal. `ZCut` leaves the
-    /// crystal in its natural frame (optic axis along the normal); `XCut` lays the axis in the surface
-    /// plane; `TiltedCut` is the general intermediate cut. A two-case bool would have been wrong here — a
-    /// third cut is a non-breaking addition to this DU and a breaking change to a flag.
-    type OpticAxisCut =
+    /// Which crystallographic axis the sample was cut normal to — i.e. how the crystal frame is carried
+    /// into the lab frame before the sample azimuth is applied.
+    ///
+    /// `ZCut` leaves the crystal in its natural frame, so the crystal 3-axis lies along the surface
+    /// normal; `XCut` and `YCut` carry the 3-axis into the surface plane about y and about x
+    /// respectively; `TiltedCut` is the general intermediate cut about y. A two-case bool would have been
+    /// wrong here — each further cut is a non-breaking addition to this DU and a breaking change to a
+    /// flag, which is exactly what `YCut` demonstrates.
+    ///
+    /// WHY THREE PRINCIPAL CUTS AND NOT TWO. For a UNIAXIAL crystal the 1- and 2-axes are equivalent, so
+    /// `ZCut` and `XCut` exhaust the distinct principal looks and `YCut` would be a duplicate of `XCut`.
+    /// For a BIAXIAL crystal they are not: the three principal cuts put three DIFFERENT crystal axes
+    /// along the surface normal and so see three different transverse planes — (1,2), (2,3) and (1,3) —
+    /// each carrying its own pair of principal indices and its own pair of gyration diagonal components.
+    /// It takes all three to see all three of each, which `BiaxialInverseTests` asserts by ablation.
+    /// Azimuth cannot substitute, because rotating the sample about its own normal never changes WHICH
+    /// crystal axis lies along that normal.
+    type SampleCut =
         | ZCut
         | XCut
+        | YCut
         | TiltedCut of Angle
 
     /// The sample's rotation about its own surface normal. Distinct from `Angle` in a signature so that a
@@ -94,7 +114,7 @@ module MuellerInverse =
     /// appears anywhere in the record.
     type MeasurementConfiguration =
         {
-            cut : OpticAxisCut
+            cut : SampleCut
             thickness : Thickness
             incidenceAngle : IncidenceAngle
             azimuth : SampleAzimuth
@@ -102,16 +122,152 @@ module MuellerInverse =
             waveLength : WaveLength
         }
 
-    /// The unknowns of the inverse problem for a uniaxial gyrotropic crystal: the two principal refractive
-    /// indices and the two independent gyration-tensor components. Thickness and orientation are NOT here —
-    /// they are known per configuration (spec R2) and belong to `MeasurementConfiguration`.
-    type MaterialParameters =
+    /// The name a fitted parameter is reported under — elevated so that a report cannot silently pair a
+    /// name with the wrong column, and so that a name can never be passed where a reason or a description
+    /// is expected.
+    type ParameterName =
+        | ParameterName of string
+
+        /// The name as text (the reporting seam).
+        member this.value = let (ParameterName n) = this in n
+
+    /// ONE free parameter of an inverse problem: its identity, and how to read it out of and write it
+    /// back into the material's own parameter record.
+    ///
+    /// This exists so that everything downstream of the material — the scaling, the residual, the
+    /// Jacobian diagnostics, the acceptance report — is written ONCE and works for any material. A
+    /// uniaxial gyrotropic crystal has four of these and a triclinic one has nine; nothing but the axis
+    /// list changes between them.
+    ///
+    /// `read` and `write` speak plain `double` deliberately. The parameters of a single material carry
+    /// DIFFERENT elevated types (`RefractionIndex` alongside `RhoValue`), so a double is the only thing
+    /// they have in common, and this record is precisely the boundary at which the optimizer's
+    /// dimensionless vector is allowed to see them.
+    type ParameterAxis<'Parameters> =
+        {
+            name : ParameterName
+            read : 'Parameters -> double
+            write : double -> 'Parameters -> 'Parameters
+        }
+
+    /// The unknowns of the inverse problem for a UNIAXIAL gyrotropic crystal (classes 3/32/4/422/6/622):
+    /// the two principal refractive indices and the two independent gyration-tensor components. Thickness
+    /// and orientation are NOT here — they are known per configuration (spec R2) and belong to
+    /// `MeasurementConfiguration`.
+    type UniaxialParameters =
         {
             ordinaryIndex : RefractionIndex
             extraordinaryIndex : RefractionIndex
             g11 : RhoValue
             g33 : RhoValue
         }
+
+        /// The four free parameters, in the fixed `[| n_o; n_e; g₁₁; g₃₃ |]` order that every scaled
+        /// vector, Jacobian column and report in this module shares.
+        static member axes : ParameterAxis<UniaxialParameters> list =
+            [
+                {
+                    name = ParameterName "n_o"
+                    read = fun p -> p.ordinaryIndex.value
+                    write = fun v p -> { p with ordinaryIndex = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "n_e"
+                    read = fun p -> p.extraordinaryIndex.value
+                    write = fun v p -> { p with extraordinaryIndex = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "g11"
+                    read = fun p -> p.g11.value
+                    write = fun v p -> { p with g11 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g33"
+                    read = fun p -> p.g33.value
+                    write = fun v p -> { p with g33 = RhoValue v }
+                }
+            ]
+
+    /// The unknowns of the inverse problem for a TRICLINIC (class 1) gyrotropic crystal — the most
+    /// general transparent, non-magnetic, optically active crystal there is, and therefore the largest
+    /// parameter set this machinery can be asked for.
+    ///
+    /// Class 1 has no symmetry element at all beyond the identity, so nothing constrains either tensor:
+    /// ε contributes THREE independent principal refractive indices (the crystal is biaxial — every
+    /// triclinic crystal is), and the gyration tensor, being a symmetric second-rank tensor, contributes
+    /// all SIX of its independent components. Nine unknowns, against the uniaxial case's four. Every
+    /// other optically active class is a constrained special case of this one: monoclinic 2 zeroes `g₁₂`
+    /// and `g₂₃`, orthorhombic 222 zeroes all three off-diagonals, and the uniaxial classes additionally
+    /// force `g₁₁ = g₂₂` and `n₁ = n₂`.
+    ///
+    /// The index order is NOT enforced here. Crystallographic convention labels the principal indices so
+    /// that `n₁ ≤ n₂ ≤ n₃`, but an optimizer explores freely and a mid-search vector that violates it is
+    /// a perfectly ordinary point of the residual surface, not an error — the forward model is total in
+    /// all nine.
+    type TriclinicParameters =
+        {
+            index1 : RefractionIndex
+            index2 : RefractionIndex
+            index3 : RefractionIndex
+            g11 : RhoValue
+            g22 : RhoValue
+            g33 : RhoValue
+            g23 : RhoValue
+            g13 : RhoValue
+            g12 : RhoValue
+        }
+
+        /// The nine free parameters, in the fixed order every scaled vector, Jacobian column and report
+        /// for a triclinic sample shares: the three indices first, then the gyration diagonal, then the
+        /// gyration off-diagonals.
+        static member axes : ParameterAxis<TriclinicParameters> list =
+            [
+                {
+                    name = ParameterName "n1"
+                    read = fun p -> p.index1.value
+                    write = fun v p -> { p with index1 = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "n2"
+                    read = fun p -> p.index2.value
+                    write = fun v p -> { p with index2 = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "n3"
+                    read = fun p -> p.index3.value
+                    write = fun v p -> { p with index3 = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "g11"
+                    read = fun p -> p.g11.value
+                    write = fun v p -> { p with g11 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g22"
+                    read = fun p -> p.g22.value
+                    write = fun v p -> { p with g22 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g33"
+                    read = fun p -> p.g33.value
+                    write = fun v p -> { p with g33 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g23"
+                    read = fun p -> p.g23.value
+                    write = fun v p -> { p with g23 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g13"
+                    read = fun p -> p.g13.value
+                    write = fun v p -> { p with g13 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g12"
+                    read = fun p -> p.g12.value
+                    write = fun v p -> { p with g12 = RhoValue v }
+                }
+            ]
 
     /// One measurement: a configuration paired with the Mueller matrix recorded in it.
     type MuellerObservation =
@@ -147,20 +303,24 @@ module MuellerInverse =
 
     /// Orient a crystal's optical properties for a given cut and sample azimuth.
     ///
-    /// The material is built in its own crystal frame, where the optic axis is the 3-axis (that is what
-    /// makes `ε₃₃ = n_e²` and `g₃₃` the axial components). The lab frame stratifies along z, so:
-    ///   • `ZCut` needs no rotation — crystal axis and surface normal already coincide;
-    ///   • `XCut` rotates the crystal 90° about y, carrying the optic axis into the surface plane;
+    /// The material is built in its own crystal frame, where the principal axes of ε are the coordinate
+    /// axes (that is what makes `ε₃₃ = n₃²`, and for a uniaxial crystal `g₃₃` the axial component). The
+    /// lab frame stratifies along z, so:
+    ///   • `ZCut` needs no rotation — crystal 3-axis and surface normal already coincide;
+    ///   • `XCut` rotates the crystal 90° about y, carrying the 3-axis into the surface plane;
+    ///   • `YCut` rotates it 90° about x, carrying the 3-axis into the surface plane the OTHER way, so
+    ///     that a different crystal axis ends up along the normal;
     ///   • `TiltedCut a` rotates by `a` about y for the general intermediate cut.
-    /// The sample azimuth is then a rotation about the surface normal (z), applied second. Both rotations
-    /// go through the ENGINE's own `OpticalProperties.rotate` (`MaterialProperties.fs:187`), which
+    /// The sample azimuth is then a rotation about the surface normal (z), applied second. Every rotation
+    /// goes through the ENGINE's own `OpticalProperties.rotate` (`MaterialProperties.fs:187`), which
     /// conjugates every tensor consistently — ε, μ and ρ together — so no tensor algebra is re-derived
     /// here and the gyration tensor can never fall out of step with the permittivity.
-    let orientForCut (cut : OpticAxisCut) (azimuth : SampleAzimuth) (properties : OpticalProperties) : OpticalProperties =
+    let orientForCut (cut : SampleCut) (azimuth : SampleAzimuth) (properties : OpticalProperties) : OpticalProperties =
         let tilted =
             match cut with
             | ZCut -> properties
             | XCut -> properties.rotateY (Angle.degree 90.0)
+            | YCut -> properties.rotateX (Angle.degree 90.0)
             | TiltedCut a -> properties.rotateY a
         tilted.rotateZ azimuth.angle
 
@@ -431,30 +591,32 @@ module MuellerInverse =
     /// a genuinely small perturbation of all four at once.
     ///
     /// Making it a TYPE rather than a convention is deliberate: a scaled vector and a physical parameter
-    /// set are both "four numbers", and a fit that silently mixes them converges smoothly to the wrong
+    /// set are both "some numbers", and a fit that silently mixes them converges smoothly to the wrong
     /// answer instead of failing.
-    type ParameterScaling =
+    ///
+    /// It carries its material's `axes` rather than knowing any material's field names, which is what
+    /// lets one scaling type, one `toScaled`, one `ofScaled` and everything built on them serve a
+    /// four-parameter uniaxial fit and a nine-parameter triclinic one without a line of difference.
+    type ParameterScaling<'Parameters> =
         {
-            centre : MaterialParameters
-            scale : MaterialParameters
+            axes : ParameterAxis<'Parameters> list
+            centre : 'Parameters
+            scale : 'Parameters
         }
 
-    /// Convert physical parameters to the dimensionless fit vector, in the fixed order
-    /// `[| n_o; n_e; g₁₁; g₃₃ |]`.
-    let toScaled (scaling : ParameterScaling) (p : MaterialParameters) : float[] =
-        [| (p.ordinaryIndex.value - scaling.centre.ordinaryIndex.value) / scaling.scale.ordinaryIndex.value
-           (p.extraordinaryIndex.value - scaling.centre.extraordinaryIndex.value) / scaling.scale.extraordinaryIndex.value
-           (p.g11.value - scaling.centre.g11.value) / scaling.scale.g11.value
-           (p.g33.value - scaling.centre.g33.value) / scaling.scale.g33.value |]
+        /// How many free parameters the fit vector carries.
+        member this.dimension : int = List.length this.axes
+
+    /// Convert physical parameters to the dimensionless fit vector, in the material's own axis order.
+    let toScaled (scaling : ParameterScaling<'Parameters>) (p : 'Parameters) : float[] =
+        scaling.axes
+        |> List.map (fun a -> (a.read p - a.read scaling.centre) / a.read scaling.scale)
+        |> Array.ofList
 
     /// Convert the dimensionless fit vector back to physical parameters — the exact inverse of `toScaled`.
-    let ofScaled (scaling : ParameterScaling) (v : float[]) : MaterialParameters =
-        {
-            ordinaryIndex = scaling.centre.ordinaryIndex.value + v.[0] * scaling.scale.ordinaryIndex.value |> RefractionIndex
-            extraordinaryIndex = scaling.centre.extraordinaryIndex.value + v.[1] * scaling.scale.extraordinaryIndex.value |> RefractionIndex
-            g11 = scaling.centre.g11.value + v.[2] * scaling.scale.g11.value |> RhoValue
-            g33 = scaling.centre.g33.value + v.[3] * scaling.scale.g33.value |> RhoValue
-        }
+    let ofScaled (scaling : ParameterScaling<'Parameters>) (v : float[]) : 'Parameters =
+        (scaling.centre, List.indexed scaling.axes)
+        ||> List.fold (fun acc (i, a) -> a.write (a.read scaling.centre + v.[i] * a.read scaling.scale) acc)
 
     /// A typed failure of the forward model — never a throw across the proxy boundary.
     type ForwardModelError =
@@ -471,9 +633,9 @@ module MuellerInverse =
     /// is a plausible later swap that must not touch the inverse logic. Third, a mock backend lets the
     /// residual, scaling and reporting logic be exercised with zero solver calls.
     [<ReferenceEquality>]
-    type ForwardModelProxy =
+    type ForwardModelProxy<'Parameters> =
         {
-            muellerOf : MeasurementConfiguration -> MaterialParameters -> Result<MuellerMatrix, ForwardModelError>
+            muellerOf : MeasurementConfiguration -> 'Parameters -> Result<MuellerMatrix, ForwardModelError>
         }
 
     /// Build the real Berreman-backed forward proxy.
@@ -487,12 +649,12 @@ module MuellerInverse =
     /// The sample is modelled as a `Plate` substrate between vacuum half-spaces: a free-standing crystal
     /// plate in air, which is what the measurement configurations describe.
     let createBerremanForward
-        (buildProperties : MaterialParameters -> OpticalProperties)
+        (buildProperties : 'Parameters -> OpticalProperties)
         (solverParameters : SolverParameters)
-        : ForwardModelProxy =
+        : ForwardModelProxy<'Parameters> =
         {
             muellerOf =
-                fun (configuration : MeasurementConfiguration) (parameters : MaterialParameters) ->
+                fun (configuration : MeasurementConfiguration) (parameters : 'Parameters) ->
                     try
                         let oriented = orientForCut configuration.cut configuration.azimuth (buildProperties parameters)
                         let system : OpticalSystem =
@@ -513,8 +675,8 @@ module MuellerInverse =
 
     /// Predict every observation's Mueller matrix, in observation order.
     let forwardModels
-        (forward : ForwardModelProxy)
-        (parameters : MaterialParameters)
+        (forward : ForwardModelProxy<'Parameters>)
+        (parameters : 'Parameters)
         (observations : MuellerObservation list)
         : Result<MuellerMatrix list, ForwardModelError> =
         (Ok [], observations)
