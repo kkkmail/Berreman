@@ -81,9 +81,19 @@ open BerremanTests.InverseFitHarness
 /// and in `Active.Rho.type_1_Crystal`, but they are different parameterizations, and anyone quoting a
 /// gyration value out of this pipeline must know which one they have.
 ///
-/// The fit driver, the residual, the scaling and the acceptance arithmetic are all shared with
-/// `MuellerInverseTests` through `InverseFitHarness`; nothing in this file re-implements any of it. That
-/// is only possible because `MuellerInverse` is generic in its parameter set — see `ParameterAxis`.
+/// MANUAL TASK 014 added the noisy half, at the end of the file. The measurement is no longer assumed
+/// perfect: recorded rotation angles are wrong by up to 0.2°, the receiver misreads each normalized
+/// Mueller element by up to 0.005 of full scale, and eight fixed seeds give eight complete experiments
+/// whose spread IS the uncertainty. Those facts fit from a blind ISOTROPIC `n = 1.5`, `g = 0` start.
+/// Their headline is a negative one, and worth knowing before reading them: the three indices survive at
+/// 0.09 % and the three birefringences at 0.04-0.10 %, but the six gyration components come back with
+/// error bars of the same order as their own values. The cause is structural — see the commentary in
+/// that fact — and it is the price of the crystal being biaxial.
+///
+/// The fit driver, the residual, the scaling, the measurement-error model and the acceptance arithmetic
+/// are all shared with `MuellerInverseTests` through `InverseFitHarness`; nothing in this file
+/// re-implements any of it. That is only possible because `MuellerInverse` is generic in its parameter
+/// set — see `ParameterAxis`.
 type BiaxialInverseTests() =
 
     /// Radians per degree, reached by its full module path. Bound here, ahead of the members (FS0960: in
@@ -305,6 +315,86 @@ type BiaxialInverseTests() =
     let rhoImaginary (p : OpticalProperties) : float list list =
         let (Rho (ComplexMatrix3x3 (ComplexMatrix r))) = p.rho
         [ for i in 0 .. 2 -> [ for j in 0 .. 2 -> r.[i, j].Imaginary ] ]
+
+    // =================================================================================================
+    // Manual task 014 — the NOISY facts.
+    //
+    // Everything above this line feeds the fit data the forward model produced exactly, at angles the
+    // sample was exactly at. That measures the INVERSE MACHINERY on nine unknowns. What follows measures
+    // the EXPERIMENT: what a decent-but-ordinary optical bench gets out of a triclinic crystal, and with
+    // what error bar.
+    //
+    // The measurement-error model — what is perturbed, by how much, and where those magnitudes come
+    // from — lives in `InverseFitHarness` and is pinned by `MuellerInverseTests`. It describes the
+    // APPARATUS rather than the sample, so this suite measures its crystal on exactly the same bench,
+    // with exactly the same eight seeds, which is what makes the two ensembles comparable at all.
+    //
+    // THE QUESTION THIS SUITE ADDS. The uniaxial ensemble showed that four constants survive a 0.2 deg /
+    // 0.005 bench with the two refractive indices at ~0.05 % and the poorly-determined gyration component
+    // at ~4.6 %. Nine unknowns is a different proposition: there are three indices to separate rather
+    // than two, three gyration diagonal components, and three off-diagonal ones that the noiseless
+    // ablation showed are only visible at all through oblique incidence. Whether they survive real
+    // measurement error — and if so, in what order — is not something the noiseless facts can answer.
+    // =================================================================================================
+
+    /// The BLIND start guess the noisy facts fit from: an ISOTROPIC `n = 1.5` with no optical activity
+    /// at all — nine unknowns started from a guess that knows nothing about the material beyond "some
+    /// ordinary transparent glass-like solid".
+    ///
+    /// It is a far harder start than `perturbedStart`, and harder than the uniaxial suite's blind start
+    /// too. All three indices are 4.7 %, 6.3 % and 7.2 % low; ALL THREE birefringences start at exactly
+    /// zero instead of 5 % wrong; and all six gyration components start at exactly zero instead of
+    /// 25-35 % wrong. Starting isotropic also means the crystal has no preferred axes at the first step,
+    /// so the three index directions are as nearly degenerate there as they can be.
+    ///
+    /// It is nonetheless legitimate rather than lucky, for the structural reason the thickness
+    /// commentary gives: linear retardance enters through cos and sin of 2 pi dn d / lambda, so what
+    /// matters is the distance in FRINGES, and the three true birefringences are 0.173, 0.095 and 0.268
+    /// wave on a 4 um plate. Zero is under a third of a fringe from the largest of them and closer still
+    /// to the others — inside the same basin of attraction. The control fact below asserts exactly this
+    /// by recovering all nine constants to machine precision from this start on NOISELESS data, which is
+    /// what makes the noisy ensemble's scatter attributable to the noise rather than to the start.
+    let blindStart : TriclinicParameters =
+        {
+            index1 = RefractionIndex 1.5
+            index2 = RefractionIndex 1.5
+            index3 = RefractionIndex 1.5
+            g11 = RhoValue 0.0
+            g22 = RhoValue 0.0
+            g33 = RhoValue 0.0
+            g23 = RhoValue 0.0
+            g13 = RhoValue 0.0
+            g12 = RhoValue 0.0
+        }
+
+    /// The box for the blind start. It must be wide enough to CONTAIN the truth: n3 is 116.4 scaled units
+    /// from 1.5, so the +-50 box that comfortably brackets `perturbedStart` would exclude the answer and
+    /// the fit would converge against a bound. +-200 is +-0.2 in refractive index and +-2e-3 in gyration —
+    /// still physically sensible, and still far from the degenerate n = 0.
+    let wideBox = SearchBox 200.0
+
+    /// Run ONE noisy experiment end to end: generate its data on the shared bench, fit it from the blind
+    /// start, and keep everything the ensemble will want to ask it afterwards.
+    let recoverFromNoisy (noise : NoiseParam) (seed : NoiseSeed) : NoisyExperiment<TriclinicParameters> =
+        let observations = noisyObserveWith forward triclinic noise seed fullConfigurations
+        {
+            seed = seed
+            fit = fitObservations forward wideBox observations (scalingAround blindStart)
+        }
+
+    /// The quantities the ensemble reports on: the nine fitted unknowns, plus the THREE birefringences.
+    ///
+    /// The birefringences are not fit parameters and are the reason this list is not simply the axis
+    /// list. Linear retardance depends on the DIFFERENCES of the indices, not on any index alone, and
+    /// those differences are 0.015-0.042 against absolute indices of ~1.6 — so the data pins them far
+    /// harder than it pins the common level, the three indices wander together from experiment to
+    /// experiment, and an ensemble that reported only the nine parameters would understate this
+    /// experiment by roughly the ratio of those two scales.
+    let recoveredQuantities : RecoveredQuantity<TriclinicParameters> list =
+        [ for a in TriclinicParameters.axes -> RecoveredQuantity.ofAxis a ]
+        @ [ RecoveredQuantity.derived "n2 - n1" (fun p -> p.index2.value - p.index1.value)
+            RecoveredQuantity.derived "n3 - n2" (fun p -> p.index3.value - p.index2.value)
+            RecoveredQuantity.derived "n3 - n1" (fun p -> p.index3.value - p.index1.value) ]
 
     // =================================================================================================
     // The forward-side facts: the tensors, the orientation machinery, and the geometry the design rests
@@ -795,3 +885,240 @@ type BiaxialInverseTests() =
             Assert.True(
                 normOf fullNorms name > 25.0 * normOf cutsNorms name,
                 $"oblique incidence must transform {name} from noise into a measurement. {report}")
+
+    [<Fact>]
+    member _.``a blind isotropic n = 1.5 start still recovers all nine constants from noiseless data`` () =
+        // THE CONTROL for the noisy ensemble, and the fact that makes its numbers mean something.
+        //
+        // The ensemble below fits from `blindStart`, so its scatter could in principle be the fault of
+        // the START rather than of the NOISE — and with nine unknowns started from an isotropic guess
+        // that is a live worry, not a formality: at n1 = n2 = n3 the crystal has no preferred axes at
+        // all, and the three index directions are as nearly degenerate as they can be. This fact removes
+        // the possibility: run the identical fit, from the identical start, over the identical box, on
+        // data with NO noise in it, and every one of the nine constants comes back to essentially
+        // machine precision. Whatever the ensemble's scatter is, it is therefore measurement error.
+        let observations = observe fullConfigurations
+        let scaling = scalingAround blindStart
+        let fit = fitObservations forward wideBox observations scaling
+
+        let errors = recoveryErrors scaling triclinic fit.recovered
+        let report = describeErrors errors + $"; chi2 {fit.chiSquared}; {fit.solution.iterations} iterations"
+        Assert.True(fit.solution.iterations > 0, $"the fit should have taken at least one step: {report}")
+
+        // Bands pinned per the spec §9 protocol from the observed values — the SAME bands the
+        // perturbed-start fact uses, because the outcome is the same: with noiseless data generated by
+        // the very model being fitted, the optimizer walks all the way to machine precision from either
+        // start. The three indices come back at ~3e-15 and the six gyration components at 3e-13 to
+        // 1.2e-12, at a final chi-squared of 8.8e-26, after 15 iterations — against 12 from the near
+        // start. Three extra iterations is the entire price of knowing nothing about the material.
+        for (name, err) in errors do
+            Assert.True(err.value < 1.0e-10, $"{name.value} was not recovered from the blind start: {report}")
+
+        Assert.True(fit.chiSquared < 1.0e-21, $"final chi-squared out of band: {report}")
+
+        // Guard against a vacuous pass: the blind start must be genuinely far from the answer in every
+        // one of the nine coordinates.
+        let startErrors = recoveryErrors scaling triclinic blindStart
+        Assert.True(
+            startErrors |> List.forall (fun (_, e) -> e.value > 1.0e-2),
+            $"the blind start must be far from the truth: {describeErrors startErrors}")
+
+    [<Fact>]
+    member _.``an ensemble of noisy experiments recovers all nine constants, and the birefringences survive far better`` () =
+        // THE DELIVERABLE of manual task 014: what a decent-but-ordinary optical bench actually gets out
+        // of a TRICLINIC crystal — nine optical constants at once — and, the part a single measurement
+        // cannot answer, with what error bar.
+        //
+        // Each seed is one complete experiment: 40 configurations, each measured at angles that differ
+        // from the recorded ones by up to 0.2 deg, each read back by a detector good to 0.005 of full
+        // scale. The fit then runs from the blind isotropic start against the RECORDED angles. Eight such
+        // experiments give eight independent answers, and their spread is the uncertainty.
+        //
+        // WHY BOTH A BIAS AND A SCATTER ARE REPORTED, and why they differ in kind: see the commentary in
+        // `InverseFitHarness`. In short, the detector error averages away and the rotation error is fixed
+        // within one experiment and so displaces its answer systematically — whether it also averages
+        // ACROSS experiments is the question an ensemble exists to answer.
+        //
+        // RUNTIME. Eight full nine-parameter fits from a blind start dominate this class. They are run
+        // SERIALLY: the uniaxial suite measured concurrency on the same forward model and found it slower
+        // rather than faster, because the solves allocate heavily and extra threads buy contention.
+        let experiments = ensembleSeeds |> List.map (recoverFromNoisy NoiseParam.decentLab)
+
+        for e in experiments do
+            Assert.True(e.fit.solution.iterations > 0, $"the fit for seed {e.seed.value} never took a step")
+
+        let table = recoveredQuantities |> List.map (statisticsFor triclinic (experiments |> List.map (fun e -> e.fit.recovered)))
+        let residualLevels =
+            [ for e in experiments ->
+                $"seed {e.seed.value}: chi2 {e.fit.chiSquared}, rms {e.fit.rmsResidual}, {e.fit.solution.iterations} iterations" ]
+        let report =
+            System.String.Join("; ", [ for row in table -> row.describe ])
+            + " || "
+            + System.String.Join("; ", residualLevels)
+
+        // NON-VACUITY, asserted before anything else. If the noise had failed to reach the data every
+        // seed would return the same answer, the scatter would be zero, and every band below would pass
+        // while measuring nothing at all.
+        for row in table do
+            Assert.True(
+                row.scatter.value > 0.0,
+                $"seed-to-seed scatter of {row.quantity.name.value} is zero — the noise never reached the fit: {report}")
+
+        // ------------------------------------------------------- the indices and the birefringences
+        //
+        // These are the quantities a RELATIVE band means something for. Bands pinned per the spec §9
+        // protocol at ~2.5x the observed values: the three indices come out at 0.088-0.091 % and the
+        // three birefringences at 0.038-0.097 %.
+        for name in [ "n1"; "n2"; "n3" ] do
+            let row = rowFor table name
+            Assert.True(row.scatter.value < 2.5e-3, $"{name} scatter {row.scatter.value} out of band: {report}")
+            Assert.True(row.worst.value < 4.0e-3, $"{name} worst-case {row.worst.value} out of band: {report}")
+
+        for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
+            let row = rowFor table name
+            Assert.True(row.scatter.value < 2.5e-3, $"{name} scatter {row.scatter.value} out of band: {report}")
+            Assert.True(row.worst.value < 6.0e-3, $"{name} worst-case {row.worst.value} out of band: {report}")
+
+        // ------------------------------------------------------------------ the gyration tensor
+        //
+        // THE HEADLINE RESULT, and it is a negative one, stated as such: on this bench the gyration
+        // tensor of this crystal is at the EDGE OF MEASURABILITY. The relative scatters run from 21 % to
+        // 187 %, and the worst single experiment misses g23 by four times its own value. The three
+        // indices, measured in the very same experiments, come out at 0.09 %.
+        //
+        // WHAT IS ACTUALLY GOING ON is visible only in ABSOLUTE units, and it is the reason this fact
+        // bands them that way. Every one of the six components is determined to ~1.3e-5 … 3.2e-5,
+        // whatever its own value happens to be — the uncertainty is a property of the BENCH and the
+        // sample geometry, not of the component. The relative figures are then just that absolute
+        // uncertainty divided by six different numbers, and g23 looks worst only because at 1.72e-5 it
+        // is the smallest of the six.
+        //
+        // AND THE CAUSE IS THE PLATE THICKNESS, which is forced by the crystal being biaxial. Circular
+        // retardance grows as g·d, so the gyration sensitivity is proportional to thickness. The uniaxial
+        // suite gets its g11 to an ABSOLUTE 7.8e-8 on the same bench — 190 times better — because its C1
+        // configuration is a 1 mm plate that carries no linear retardance at all. A biaxial crystal has
+        // linear birefringence along every principal axis, so no such plate exists: every configuration
+        // here has to be 4 µm to stay sub-wave, 250 times thinner, and the 190-fold penalty is almost
+        // exactly that ratio. The optical activity of a biaxial crystal is hard to measure for a
+        // structural reason, not an incidental one.
+        //
+        // Bands pinned per the §9 protocol at ~2x the observed absolute scatters.
+        let gyrationNames = [ "g11"; "g22"; "g33"; "g23"; "g13"; "g12" ]
+        let gyrationScatters = [ for name in gyrationNames -> (rowFor table name).absoluteScatter ]
+        for (name, scatter) in List.zip gyrationNames gyrationScatters do
+            Assert.True(scatter < 6.0e-5, $"{name} absolute scatter {scatter} out of band: {report}")
+
+        // The uncertainty really is uniform across the six, which is the claim that "it is the bench, not
+        // the component" rests on: the widest is 2.5x the narrowest, against component VALUES that span
+        // a factor of four.
+        Assert.True(
+            List.max gyrationScatters < 4.0 * List.min gyrationScatters,
+            $"the six gyration components should carry comparable ABSOLUTE uncertainty: {report}")
+
+        // And the negative result is asserted rather than left implicit, so that a design change which
+        // fixed it would announce itself here: at least one component is quoted with an error bar of the
+        // same order as its own value.
+        Assert.True(
+            gyrationNames |> List.exists (fun name -> (rowFor table name).scatter.value > 0.5),
+            $"this bench is expected NOT to determine the gyration tensor usefully: {report}")
+
+        // THE ERRORS ARE RANDOM, NOT SYSTEMATIC — a result rather than an assumption, and the reason the
+        // acceptance test is a band on the SCATTER rather than on any single experiment. The yardstick is
+        // the standard error of the ensemble MEAN: a departure smaller than that is the random error not
+        // yet averaged away, not evidence of anything systematic.
+        for row in table do
+            let allowance = 3.0 * (standardErrorOfMean (List.length ensembleSeeds) row).value
+            Assert.True(
+                row.bias.value < allowance,
+                $"{row.quantity.name.value} bias {row.bias.value} exceeds 3 standard errors of the mean ({allowance}): {report}")
+
+        // ------------------------------------------------------------------ what the design determines
+        //
+        // THE BIREFRINGENCES SURVIVE FAR BETTER THAN THE INDICES, in ABSOLUTE terms. This is the same
+        // effect the uniaxial suite records, and for a biaxial crystal there are three of them rather
+        // than one. Linear retardance depends on the DIFFERENCES, so the data pins those far harder than
+        // the common index level and the three indices wander together from experiment to experiment.
+        //
+        // The comparison must be absolute. Relatively the differences look no better — they are being
+        // divided by values 40-100 times smaller — which is exactly the arithmetic that hides the effect.
+        // Measured: the three indices all scatter by ~1.42e-3 in absolute terms, and the three
+        // DIFFERENCES by 1.05e-5, 1.46e-5 and 1.57e-5 — 91 to 135 times better. Band pinned at 50x, the
+        // same figure the uniaxial suite uses for its single birefringence.
+        let indexRows = [ for name in [ "n1"; "n2"; "n3" ] -> rowFor table name ]
+        let worstIndexScatter = indexRows |> List.map (fun row -> row.absoluteScatter) |> List.max
+        for name in [ "n2 - n1"; "n3 - n2"; "n3 - n1" ] do
+            Assert.True(
+                (rowFor table name).absoluteScatter < worstIndexScatter / 50.0,
+                $"{name} must be determined far better than any single index in ABSOLUTE terms: {report}")
+
+        // ------------------------------------------------------- the fit's OWN account of its error
+        //
+        // The same cross-check the uniaxial suite makes, on nine parameters instead of four: a covariance
+        // estimate is a PREDICTION ABOUT REPEAT EXPERIMENTS, and this ensemble is exactly a set of repeat
+        // experiments, so the first seed's own reported standard error can be held against the spread the
+        // other seven actually produced. There are very few places where that comparison is available at
+        // all.
+        let first = List.head experiments
+        let quality = FitQuality.reportFrom first.fit.residual first.fit.solution.solution first.fit.solution.finalResiduals
+
+        let predictions = predictedRelativeErrors triclinic first.fit quality
+        let observedScatter (name : ParameterName) : RelativeError = (rowFor table name.value).scatter
+        let comparison =
+            System.String.Join(
+                "; ",
+                [ for (name, predicted) in predictions ->
+                    let observed = observedScatter name
+                    $"{name.value}: predicted {predicted.value}, observed {observed.value}, ratio {predicted.value / observed.value}" ])
+
+        // Finding F3's failure mode is gone once real noise is present: every reported standard error is
+        // finite and strictly positive, and the reduced chi-squared is the noise level rather than a
+        // denormal.
+        for (name, predicted) in predictions do
+            Assert.True(System.Double.IsFinite predicted.value && predicted.value > 0.0, $"{name.value} has no usable standard error: {comparison}")
+        Assert.True(
+            quality.reducedChiSquared > 1.0e-12,
+            $"reduced chi-squared = {quality.reducedChiSquared}, which is the underflowing noiseless regime F3 describes")
+
+        // AND IT IS RIGHT TO WITHIN A FACTOR OF ~2, ACROSS FOUR DECADES OF UNCERTAINTY. The predictions
+        // range from 5.5e-4 (the indices) to 2.0 (g23) — that is, from "one part in two thousand" to
+        // "twice the value itself" — and every one of the nine lands between 0.62x and 2.40x of what the
+        // ensemble actually produced. Band pinned per the §9 protocol at [0.3, 4.0], which keeps a
+        // factor of ~1.7 of margin at both ends.
+        //
+        // The tolerance is looser than the uniaxial suite's [0.5, 2.0], and the reason is worth
+        // recording rather than hiding. A covariance estimate is a LINEARIZATION about the solution, and
+        // it is exact only where the uncertainty is small enough for that linearization to hold. Here it
+        // holds beautifully for the indices (0.09 % errors) and progressively less well for the gyration
+        // components, whose error bars are of the same order as their own values — g12, the worst, is
+        // predicted 2.4x too pessimistically. Ratios drifting with the size of the error is exactly what
+        // a linearized estimate of a nonlinear problem should do.
+        for (name, predicted) in predictions do
+            let ratio = predicted.value / (observedScatter name).value
+            Assert.True(
+                ratio > 0.3 && ratio < 4.0,
+                $"the covariance-predicted error for {name.value} disagrees with the ensemble: {comparison}")
+
+        // A SHARPER STATEMENT that the three indices support and no single one of them could. Their
+        // ratios are 0.6182, 0.6197 and 0.6208 — identical to four parts in a thousand — so the
+        // covariance is not merely approximately right for them, it is wrong by the SAME factor for all
+        // three. That is the signature of a discrepancy in the ERROR MODEL rather than in any one
+        // parameter: the covariance treats the whole residual as random noise, and part of it is the
+        // rotation-angle error, which is fixed within an experiment and therefore inflates the real
+        // experiment-to-experiment scatter above what the residual alone predicts.
+        let indexRatios =
+            [ for (name, predicted) in predictions do
+                if List.contains name.value [ "n1"; "n2"; "n3" ] then
+                    predicted.value / (observedScatter name).value ]
+        Assert.True(
+            List.max indexRatios < 1.05 * List.min indexRatios,
+            $"the three indices must be mispredicted by the SAME factor: %A{indexRatios}; {comparison}")
+
+        // And the interval the single experiment would have QUOTED must contain the truth — the question
+        // an experimenter actually asks of a fit report — in all nine coordinates.
+        let truthPoint = toScaled first.fit.scaling triclinic
+        let intervals =
+            [ for (i, a) in List.indexed first.fit.scaling.axes ->
+                let (lo, hi) = quality.confidenceIntervals.[i]
+                a.name, lo <= truthPoint.[i] && truthPoint.[i] <= hi ]
+        let missed = System.String.Join(", ", [ for (name, covered) in intervals do if not covered then name.value ])
+        Assert.True(intervals |> List.forall snd, $"the 95%% intervals missed {missed}: {comparison}")
