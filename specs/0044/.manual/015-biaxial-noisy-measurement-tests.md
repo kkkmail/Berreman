@@ -240,7 +240,7 @@ or a change in the solver's stopping point, not to absorb run-to-run flakiness.
 | | Before | After |
 |---|---|---|
 | `BiaxialInverseTests` | 68 s, 9 tests | **997 s (16.6 min)**, 11 tests — measured |
-| `MuellerInverseTests` | ~600 s, 20 tests | unchanged — measured |
+| `MuellerInverseTests` | 20 tests | **456 s**, 20 tests — measured; content unchanged apart from the N5 correction |
 | whole `BerremanTests` assembly | 559 s, 188 tests | **~25 min**, 190 total / 0 failed / 5 skipped — inferred, not measured end to end |
 
 The assembly figure is `559 + (997 − 68)`. Only the two suites this task touched were re-run in full;
