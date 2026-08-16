@@ -276,6 +276,153 @@ module MuellerInverse =
             measured : MuellerMatrix
         }
 
+    /// The unknowns of the inverse problem for an ABSORBING, gyrotropic, TRICLINIC crystal — the most
+    /// general transparent-or-absorbing, non-magnetic, optically active crystal there is, and therefore
+    /// the largest parameter set this machinery can be asked for: FIFTEEN independent real numbers.
+    ///
+    /// THE COUNT, and why it is 15 rather than 9.
+    ///
+    ///   * ε becomes COMPLEX: `ε = ε′ + iε″`, a complex symmetric 3x3, which is 12 real numbers. The
+    ///     crystal frame is DEFINED as the one in which ε′ is diagonal, which spends three of them on
+    ///     the frame itself and leaves `n₁, n₂, n₃` — so ε′ contributes 3 and ε″ contributes all SIX of
+    ///     its independent components. That is 9 for the permittivity alone.
+    ///
+    ///   * ε″ IS NOT DIAGONAL IN THE CRYSTAL FRAME, and that is the physical content of carrying six
+    ///     components rather than three. Neumann's principle constrains ε′ and ε″ independently: in
+    ///     orthorhombic and higher symmetry both are locked to the same crystallographic axes, in
+    ///     monoclinic one axis is shared and the other two are free to rotate, and in TRICLINIC nothing
+    ///     is shared at all. A triclinic absorbing crystal therefore has NO frame that diagonalizes both
+    ///     — the observable consequence being the 'dispersion of the extinction directions' that low-
+    ///     symmetry absorbing crystals are known for. Parameterizing ε″ by its six components in the ε′
+    ///     frame captures that exactly, and does so without the gauge degeneracies and periodicity that
+    ///     three Euler angles for a second principal frame would drag in.
+    ///
+    ///   * The GYRATION tensor contributes its usual SIX components. In principle it becomes complex
+    ///     too — `g = g′ + ig″`, with `g′` driving circular birefringence and `g″` circular dichroism —
+    ///     which would make it 12 real numbers. It does NOT here, and the reason is a property of this
+    ///     engine rather than of the physics: the engine's ρ is the bi-anisotropic magnetoelectric
+    ///     tensor, its IMAGINARY part drives optical rotation at first order, and its REAL part turns
+    ///     out to have NO first-order effect at all — its influence is quadratic. At realistic gyration
+    ///     magnitudes (~1e-5) that leaves a circular dichroism of ~1e-13, i.e. nothing. Six dead
+    ///     parameters would make the fit singular, so they are not carried.
+    ///     `AbsorbingBiaxialInverseTests` measures that quadratic scaling and asserts it, rather than
+    ///     leaving it as a footnote.
+    ///
+    /// 3 + 6 + 6 = 15.
+    ///
+    /// WHAT IS NOT HERE, deliberately. The isotropic PHASE is unrecoverable from any intensity-based
+    /// polarimetry — absolute phase is lost in forming a Mueller matrix from a Jones matrix — so it is
+    /// not a parameter. The isotropic ABSORPTION is recoverable, but ONLY from absolute throughput: a
+    /// normalized Mueller matrix carries 6 of the 8 elementary effects and the two it drops are exactly
+    /// the isotropic phase and the isotropic absorption. `AbsorbingBiaxialInverseTests` asserts that
+    /// consequence in both directions rather than assuming it.
+    type AbsorbingTriclinicParameters =
+        {
+            /// The three principal refractive indices — the principal values of ε′, in the frame that
+            /// diagonalizes it, which IS the crystal frame by definition.
+            index1 : RefractionIndex
+            index2 : RefractionIndex
+            index3 : RefractionIndex
+            /// The six independent components of ε″ IN THE ε′ FRAME. Off-diagonal entries here are the
+            /// statement that absorption and refraction do not share principal axes.
+            epsIm11 : EpsValue
+            epsIm22 : EpsValue
+            epsIm33 : EpsValue
+            epsIm23 : EpsValue
+            epsIm13 : EpsValue
+            epsIm12 : EpsValue
+            /// The six independent components of the gyration tensor's REAL part — circular
+            /// birefringence, i.e. optical rotation.
+            g11 : RhoValue
+            g22 : RhoValue
+            g33 : RhoValue
+            g23 : RhoValue
+            g13 : RhoValue
+            g12 : RhoValue
+        }
+
+        /// The twenty-one free parameters, in the fixed order every scaled vector, Jacobian column and
+        /// report for an absorbing triclinic sample shares: the three indices, then ε″, then the
+        /// gyration birefringence, then the gyration dichroism.
+        static member axes : ParameterAxis<AbsorbingTriclinicParameters> list =
+            [
+                {
+                    name = ParameterName "n1"
+                    read = fun p -> p.index1.value
+                    write = fun v p -> { p with index1 = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "n2"
+                    read = fun p -> p.index2.value
+                    write = fun v p -> { p with index2 = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "n3"
+                    read = fun p -> p.index3.value
+                    write = fun v p -> { p with index3 = RefractionIndex v }
+                }
+                {
+                    name = ParameterName "e11"
+                    read = fun p -> p.epsIm11.value
+                    write = fun v p -> { p with epsIm11 = EpsValue v }
+                }
+                {
+                    name = ParameterName "e22"
+                    read = fun p -> p.epsIm22.value
+                    write = fun v p -> { p with epsIm22 = EpsValue v }
+                }
+                {
+                    name = ParameterName "e33"
+                    read = fun p -> p.epsIm33.value
+                    write = fun v p -> { p with epsIm33 = EpsValue v }
+                }
+                {
+                    name = ParameterName "e23"
+                    read = fun p -> p.epsIm23.value
+                    write = fun v p -> { p with epsIm23 = EpsValue v }
+                }
+                {
+                    name = ParameterName "e13"
+                    read = fun p -> p.epsIm13.value
+                    write = fun v p -> { p with epsIm13 = EpsValue v }
+                }
+                {
+                    name = ParameterName "e12"
+                    read = fun p -> p.epsIm12.value
+                    write = fun v p -> { p with epsIm12 = EpsValue v }
+                }
+                {
+                    name = ParameterName "g11"
+                    read = fun p -> p.g11.value
+                    write = fun v p -> { p with g11 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g22"
+                    read = fun p -> p.g22.value
+                    write = fun v p -> { p with g22 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g33"
+                    read = fun p -> p.g33.value
+                    write = fun v p -> { p with g33 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g23"
+                    read = fun p -> p.g23.value
+                    write = fun v p -> { p with g23 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g13"
+                    read = fun p -> p.g13.value
+                    write = fun v p -> { p with g13 = RhoValue v }
+                }
+                {
+                    name = ParameterName "g12"
+                    read = fun p -> p.g12.value
+                    write = fun v p -> { p with g12 = RhoValue v }
+                }
+            ]
+
     // -----------------------------------------------------------------------------------------------------
     // Forward-side helpers — pure geometry and tensor orientation.
     // -----------------------------------------------------------------------------------------------------

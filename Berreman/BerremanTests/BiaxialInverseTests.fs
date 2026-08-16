@@ -13,6 +13,7 @@ open OpticalConstructor.Domain.MuellerInverse
 open OpticalConstructor.Optimization
 open Xunit
 open BerremanTests.InverseFitHarness
+open BerremanTests.BiaxialSample            // the triclinic ground truth, shared with FeasibleBiaxialInverseTests
 
 /// Spec 0044, manual task 012 — the inverse problem for the HARDEST transparent crystal there is: a
 /// biaxial, optically active, TRICLINIC one.
@@ -101,71 +102,17 @@ type BiaxialInverseTests() =
     let degree = Berreman.MathNetNumericsMath.degree
 
     // =================================================================================================
-    // Ground truth. Spec R3 puts the material in the TEST rather than in the OpticalProperties library,
-    // which has no biaxial gyrotropic material and should not grow one for a single test.
+    // The ground truth — the LBO-anchored triclinic constants, the nine-parameter record, the tensor
+    // builder, the fit scaling and the optic-axis geometry — all live in `BiaxialSample`, because
+    // `FeasibleBiaxialInverseTests` measures the SAME crystal with a different experiment and the whole
+    // point of that comparison is that the sample is held fixed while the measurement set changes.
     // =================================================================================================
-
-    /// He-Ne. The same line `MuellerInverseTests` uses, and the line the LBO optical-rotation measurement
-    /// this material's gyration magnitudes are anchored on was made at.
-    let waveLength = WaveLength.nm 632.8<nm>
-
-    /// LBO's x-axis Sellmeier index at 0.6328 µm. The SMALLEST of the three.
-    let index1 = RefractionIndex 1.574064836
-
-    /// LBO's y-axis Sellmeier index at 0.6328 µm — the INTERMEDIATE index, and the one that decides
-    /// where the optic axes lie.
-    let index2 = RefractionIndex 1.601416913
-
-    /// LBO's z-axis Sellmeier index at 0.6328 µm. The LARGEST of the three. The birefringences are
-    /// therefore n₂ − n₁ = 0.027352, n₃ − n₂ = 0.014997 and n₃ − n₁ = 0.042349 — three different numbers,
-    /// which is what "biaxial" means and what a uniaxial crystal cannot present.
-    let index3 = RefractionIndex 1.616414016
-
-    /// The gyration component Shopa et al. measured for LBO at 633 nm, used here as the ANCHOR that sets
-    /// the scale of all six. Everything below it is synthetic (see the class header).
-    let g11 = RhoValue 4.31e-5
-
-    let g22 = RhoValue 6.90e-5
-    let g33 = RhoValue -2.85e-5
-    let g23 = RhoValue 1.72e-5
-    let g13 = RhoValue -3.64e-5
-    let g12 = RhoValue 2.46e-5
-
-    /// The nine-parameter ground truth the forward data is generated from and the fit must recover.
-    let triclinic : TriclinicParameters =
-        {
-            index1 = index1
-            index2 = index2
-            index3 = index3
-            g11 = g11
-            g22 = g22
-            g33 = g33
-            g23 = g23
-            g13 = g13
-            g12 = g12
-        }
-
-    /// Build the engine's optical properties for a triclinic (class 1) gyrotropic crystal from the nine
-    /// unknowns. This is the ONE material-specific function in the whole pipeline, and the reason
-    /// `MuellerInverse` takes it as a parameter rather than knowing it.
-    ///
-    /// It delegates entirely to the engine's own builders — `Eps.fromRefractionIndex` for the biaxial
-    /// permittivity and `Active.Rho.type_1_Crystal` for the full symmetric gyration tensor — so neither
-    /// diag(n₁², n₂², n₃²) nor the six-component ρ layout is re-derived here.
-    let buildTriclinic (p : TriclinicParameters) : OpticalProperties =
-        {
-            eps = Eps.fromRefractionIndex (p.index1, p.index2, p.index3)
-            mu = Mu.vacuum
-            rho = Rho.type_1_Crystal p.g11 p.g22 p.g33 p.g23 p.g13 p.g12
-        }
-
-    /// Spec R4, mirrored from `MuellerInverseTests`: three internal reflections, stated explicitly at the
-    /// composition root rather than inherited from `SolverParameters.defaultValue`, because
-    /// `numberOfReflections` changes the physics being modelled rather than tuning it.
-    let solverParameters : SolverParameters = { numberOfReflections = 3 }
 
     /// The real Berreman-backed forward model, wired once for the whole class.
     let forward = createBerremanForward buildTriclinic solverParameters
+
+    /// This suite's wavelength — the sample's reference line.
+    let waveLength = referenceWaveLength
 
     // =================================================================================================
     // The measurement set.
@@ -245,28 +192,6 @@ type BiaxialInverseTests() =
     let observe (configurations : MeasurementConfiguration list) : MuellerObservation list =
         observeWith forward triclinic configurations
 
-    /// The dimensionless fit space, specialized to this material. Identical in spirit and in numbers to
-    /// the uniaxial one — 1e-3 per unit of refractive index, 1e-5 per unit of gyration — because the two
-    /// materials' parameters live at the same physical scales and ALGLIB's fixed 1e-6 differentiation
-    /// step has to be a small perturbation of all nine at once.
-    let scalingAround (centre : TriclinicParameters) : ParameterScaling<TriclinicParameters> =
-        {
-            axes = TriclinicParameters.axes
-            centre = centre
-            scale =
-                {
-                    index1 = RefractionIndex 1.0e-3
-                    index2 = RefractionIndex 1.0e-3
-                    index3 = RefractionIndex 1.0e-3
-                    g11 = RhoValue 1.0e-5
-                    g22 = RhoValue 1.0e-5
-                    g33 = RhoValue 1.0e-5
-                    g23 = RhoValue 1.0e-5
-                    g13 = RhoValue 1.0e-5
-                    g12 = RhoValue 1.0e-5
-                }
-        }
-
     /// The start guess the fit facts run from: every gyration component 25-35 % wrong in ALTERNATING
     /// directions, and the three indices off by +0.2 %, +0.1 % and +0.15 %.
     ///
@@ -296,25 +221,6 @@ type BiaxialInverseTests() =
     /// degenerate region around n = 0. The truth sits within 4 scaled units of the start in every
     /// coordinate, so the box is not what is being tested.
     let box = SearchBox 50.0
-
-    /// The optic-axis half-angle of a biaxial crystal, measured from the LARGEST-index axis and lying in
-    /// the plane of the largest and smallest: tan²V = (n₂² − n₁²)/(n₃² − n₂²). Computed from the
-    /// parameters rather than hard-coded, so the geometry fact below cannot drift away from the material.
-    let opticAxisFromLargest (p : TriclinicParameters) : Angle =
-        let sq (n : RefractionIndex) = n.value * n.value
-        atan (sqrt ((sq p.index2 - sq p.index1) / (sq p.index3 - sq p.index2))) |> Angle
-
-    /// Read the diagonal of the engine's ε as three plain numbers.
-    let epsDiagonal (p : OpticalProperties) : float list =
-        let (Eps (ComplexMatrix3x3 (ComplexMatrix e))) = p.eps
-        [ e.[0, 0].Real; e.[1, 1].Real; e.[2, 2].Real ]
-
-    /// Read the whole imaginary part of the engine's ρ as a 3×3 of plain numbers — the gyration tensor as
-    /// the lab frame sees it. The FULL tensor and not just its diagonal, because a triclinic sample's
-    /// off-diagonals are exactly what a wrong rotation would scramble.
-    let rhoImaginary (p : OpticalProperties) : float list list =
-        let (Rho (ComplexMatrix3x3 (ComplexMatrix r))) = p.rho
-        [ for i in 0 .. 2 -> [ for j in 0 .. 2 -> r.[i, j].Imaginary ] ]
 
     // =================================================================================================
     // Manual task 014 — the NOISY facts.
@@ -381,20 +287,6 @@ type BiaxialInverseTests() =
             seed = seed
             fit = fitObservations forward wideBox observations (scalingAround blindStart)
         }
-
-    /// The quantities the ensemble reports on: the nine fitted unknowns, plus the THREE birefringences.
-    ///
-    /// The birefringences are not fit parameters and are the reason this list is not simply the axis
-    /// list. Linear retardance depends on the DIFFERENCES of the indices, not on any index alone, and
-    /// those differences are 0.015-0.042 against absolute indices of ~1.6 — so the data pins them far
-    /// harder than it pins the common level, the three indices wander together from experiment to
-    /// experiment, and an ensemble that reported only the nine parameters would understate this
-    /// experiment by roughly the ratio of those two scales.
-    let recoveredQuantities : RecoveredQuantity<TriclinicParameters> list =
-        [ for a in TriclinicParameters.axes -> RecoveredQuantity.ofAxis a ]
-        @ [ RecoveredQuantity.derived "n2 - n1" (fun p -> p.index2.value - p.index1.value)
-            RecoveredQuantity.derived "n3 - n2" (fun p -> p.index3.value - p.index2.value)
-            RecoveredQuantity.derived "n3 - n1" (fun p -> p.index3.value - p.index1.value) ]
 
     // =================================================================================================
     // The forward-side facts: the tensors, the orientation machinery, and the geometry the design rests

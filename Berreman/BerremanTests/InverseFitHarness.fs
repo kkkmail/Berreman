@@ -143,6 +143,24 @@ type ElementUncertainty =
     /// The uncertainty in units of the normalized element (the arithmetic seam).
     member this.value = let (ElementUncertainty u) = this in u
 
+/// The half-width of the uniform distribution the detector's error on the ABSOLUTE throughput is drawn
+/// from, as a FRACTION of the reading. It matters only for an absorbing sample, where `m₀₀` is a datum
+/// rather than a normalization constant.
+///
+/// It is a separate budget from `ElementUncertainty` because the two are different measurements on a real
+/// bench. The normalized elements are RATIOS taken within one acquisition, so source drift and detector
+/// gain cancel out of them; the absolute throughput is a ratio between two acquisitions — sample in,
+/// sample out — and carries the full stability of the source, the detector gain and the reference path.
+/// Photodiode power meters are ±3-5 % on absolute calibration and ~1 % on linearity, and a
+/// carefully-referenced transmittance lands near the 1 % end. It is therefore the LOOSER of the two
+/// budgets, which is exactly why the isotropic absorption stays the poorly-determined parameter even
+/// after absolute data is added.
+type ThroughputUncertainty =
+    | ThroughputUncertainty of double
+
+    /// The uncertainty as a fraction of the reading (the arithmetic seam).
+    member this.value = let (ThroughputUncertainty u) = this in u
+
 /// One measurement-error budget — everything about the apparatus that makes the recorded data differ
 /// from what the material would produce in a perfect experiment.
 ///
@@ -157,6 +175,9 @@ type NoiseParam =
         rotation : AngleUncertainty
         /// Applied independently to each of the 15 normalized Mueller elements other than `m₀₀`.
         element : ElementUncertainty
+        /// Applied to the ABSOLUTE throughput `m₀₀`. Ignored by every transparent path, which normalizes
+        /// `m₀₀` away; used only by `misreadAbsolute`.
+        throughput : ThroughputUncertainty
     }
 
     /// The measurement-error budget of the decent-but-ordinary bench described above. It is a property
@@ -166,6 +187,7 @@ type NoiseParam =
         {
             rotation = AngleUncertainty.degree 0.2
             element = ElementUncertainty 0.005
+            throughput = ThroughputUncertainty 0.01
         }
 
     /// The budget in which nothing is uncertain — the control that turns every noisy path back into the
@@ -174,6 +196,7 @@ type NoiseParam =
         {
             rotation = AngleUncertainty.degree 0.0
             element = ElementUncertainty 0.0
+            throughput = ThroughputUncertainty 0.0
         }
 
 /// Ambient randomness, injected as a provider record rather than reached for directly — the repository's
@@ -332,6 +355,71 @@ module InverseFitHarness =
                 | Ok r -> r
                 | Error _ -> Array.create width 1.0e3
 
+    /// The residual closure for an ABSORBING sample: the 15 normalized Mueller element differences per
+    /// observation, PLUS one log-throughput term per observation.
+    ///
+    /// WHY THE EXTRA TERM EXISTS, and why it is not optional. A general Jones matrix carries 8
+    /// independent real parameters; forming a Mueller matrix from it loses the absolute phase, leaving 7;
+    /// normalizing that Mueller matrix by `m₀₀` loses the absolute intensity, leaving 6. The one
+    /// quantity normalization discards is exactly the ISOTROPIC ABSORPTION — the part of the attenuation
+    /// that is the same for every polarization state. For a transparent sample that costs nothing,
+    /// because there is no absorption to lose and `m₀₀` carries only source brightness and detector gain.
+    /// For an ABSORBING sample it removes a real material parameter from the data, and no number of extra
+    /// geometries can put it back.
+    ///
+    /// The term is the LOG of the throughput ratio rather than its difference, because transmittance is
+    /// multiplicative and spans decades: `ln(m₀₀ model) − ln(m₀₀ measured)` is the relative error, is
+    /// dimensionless like the normalized-element residuals it sits beside, and is symmetric in over- and
+    /// under-estimation.
+    let throughputResidualFor
+        (forward : ForwardModelProxy<'Parameters>)
+        (observations : MuellerObservation list)
+        (scaling : ParameterScaling<'Parameters>)
+        : float[] -> float[] =
+        let width = 16 * List.length observations
+        let logThroughput (m : MuellerMatrix) =
+            let m00 = Propagation.muellerElement m 0 0
+            if m00 <= 0.0 || not (System.Double.IsFinite m00) then None else Some (log m00)
+        fun (v : float[]) ->
+            match forwardModels forward (ofScaled scaling v) observations with
+            | Error _ -> Array.create width 1.0e3
+            | Ok models ->
+                match residualVector observations models with
+                | Error _ -> Array.create width 1.0e3
+                | Ok normalized ->
+                    let throughput =
+                        List.zip observations models
+                        |> List.map (fun (o, model) ->
+                            match logThroughput o.measured, logThroughput model with
+                            | Some measured, Some predicted -> predicted - measured
+                            | _ -> 1.0e3)
+                        |> Array.ofList
+                    Array.append normalized throughput
+
+    /// How hard the residual pushes back along ONE DIRECTION in parameter space — `‖J·v‖` for a unit
+    /// direction `v`, computed from the residual Jacobian.
+    ///
+    /// A single Jacobian COLUMN answers "is this parameter observable?". This answers the sharper
+    /// question "is this COMBINATION of parameters observable?", which is what an identifiability claim
+    /// about a null direction needs: the isotropic part of an absorption tensor is not any one parameter,
+    /// it is the sum of three of them, and it can be invisible while every individual column is alive.
+    let directionalSensitivity (jacobian : float[][]) (direction : float[]) : double =
+        let norm = sqrt (direction |> Array.sumBy (fun x -> x * x))
+        let unit = direction |> Array.map (fun x -> x / norm)
+        jacobian
+        |> Array.sumBy (fun row -> (Array.map2 (*) row unit |> Array.sum) ** 2.0)
+        |> sqrt
+
+    /// The weight vector that picks out an equal-weighted SUM of the named parameters, in the axis order
+    /// of a given scaling. Built from the axis names rather than from indices typed at the call site.
+    let sumWeights (scaling : ParameterScaling<'Parameters>) (names : string list) : float[] =
+        let w = Array.zeroCreate scaling.dimension
+        for name in names do
+            match scaling.axes |> List.tryFindIndex (fun a -> a.name.value = name) with
+            | Some i -> w.[i] <- 1.0
+            | None -> failwith $"no fitted parameter named {name}"
+        w
+
     /// The dimensionless fit space centred on a START GUESS, so the initial scaled vector is exactly
     /// zero and `scale` sets what one unit of each coordinate means physically.
     ///
@@ -360,13 +448,11 @@ module InverseFitHarness =
     /// It deliberately takes observations rather than configurations: that is the seam noise enters
     /// through. A noisy experiment is the same fit run against data generated at slightly wrong angles
     /// and read back by a slightly wrong detector, and nothing about the fit itself changes.
-    let fitObservations
-        (forward : ForwardModelProxy<'Parameters>)
+    let fitWithResidual
         (box : SearchBox)
-        (observations : MuellerObservation list)
+        (residual : float[] -> float[])
         (scaling : ParameterScaling<'Parameters>)
         : InverseFit<'Parameters> =
-        let residual = residualFor forward observations scaling
         let solver = MuellerInverseSolver.createAlglibLevenbergMarquardt ()
         let request =
             {
@@ -386,6 +472,27 @@ module InverseFitHarness =
                 residual = residual
             }
         | Error e -> failwith $"the inverse fit failed: %A{e}"
+
+    /// The core runner for a TRANSPARENT sample: normalized Mueller elements only. Every fit in every
+    /// transparent suite goes through it, so two suites differ in their DATA and their MATERIAL and in
+    /// nothing else.
+    let fitObservations
+        (forward : ForwardModelProxy<'Parameters>)
+        (box : SearchBox)
+        (observations : MuellerObservation list)
+        (scaling : ParameterScaling<'Parameters>)
+        : InverseFit<'Parameters> =
+        fitWithResidual box (residualFor forward observations scaling) scaling
+
+    /// The core runner for an ABSORBING sample: normalized Mueller elements PLUS absolute throughput.
+    /// See `throughputResidualFor` for why the extra term is mandatory rather than optional.
+    let fitAbsorbingObservations
+        (forward : ForwardModelProxy<'Parameters>)
+        (box : SearchBox)
+        (observations : MuellerObservation list)
+        (scaling : ParameterScaling<'Parameters>)
+        : InverseFit<'Parameters> =
+        fitWithResidual box (throughputResidualFor forward observations scaling) scaling
 
     /// The relative error of every fitted parameter against the truth, paired with its name.
     let recoveryErrors
@@ -452,6 +559,45 @@ module InverseFitHarness =
                         if i = 0 && j = 0 then 1.0
                         else Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate () ] ]
         | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
+
+    /// What the receiver reports for an ABSORBING sample, where the absolute throughput is a datum
+    /// rather than a normalization constant.
+    ///
+    /// It differs from `misread` in exactly two ways, and deliberately in no others. It perturbs `m₀₀`
+    /// by its own, looser budget instead of setting it to 1; and it returns an UN-normalized matrix, so
+    /// the throughput term of the residual has something to compare against. The fifteen element errors
+    /// are drawn in the identical order `misread` draws them, so the two paths differ only where the
+    /// physics differs.
+    ///
+    /// The throughput draw is taken FIRST, before the fifteen element draws. That ordering is arbitrary
+    /// but fixed: it is what makes an absorbing noisy experiment reproducible from its seed.
+    let misreadAbsolute (draws : UniformDeviateProvider) (noise : NoiseParam) (m : MuellerMatrix) : MuellerMatrix =
+        match normalizeMueller m with
+        | Ok n ->
+            let trueThroughput = Propagation.muellerElement m 0 0
+            let reportedThroughput = trueThroughput * (1.0 + noise.throughput.value * draws.nextDeviate ())
+            Propagation.muellerOfRows
+                [ for i in 0 .. 3 ->
+                    [ for j in 0 .. 3 ->
+                        if i = 0 && j = 0 then reportedThroughput
+                        else reportedThroughput * (Propagation.muellerElement n i j + noise.element.value * draws.nextDeviate ()) ] ]
+        | Error e -> failwith $"a ground-truth matrix could not be normalized: %A{e}"
+
+    /// ONE noisy realization of a whole ABSORBING experiment. Identical in structure to
+    /// `noisyObserveWith`, but the detector keeps the absolute throughput rather than dividing it out.
+    let noisyObserveAbsoluteWith
+        (forward : ForwardModelProxy<'Parameters>)
+        (truth : 'Parameters)
+        (noise : NoiseParam)
+        (seed : NoiseSeed)
+        (configurations : MeasurementConfiguration list)
+        : MuellerObservation list =
+        let draws = UniformDeviateProvider.fromSeed seed
+        configurations
+        |> List.map (fun nominal ->
+            match forward.muellerOf (disturb draws noise nominal) truth with
+            | Ok m -> { configuration = nominal; measured = misreadAbsolute draws noise m }
+            | Error e -> failwith $"the forward model failed to generate noisy data: %A{e}")
 
     /// ONE noisy realization of a whole experiment: for every configuration the sample truly sat at
     /// perturbed angles, the forward model is evaluated THERE, the detector then misreads the resulting

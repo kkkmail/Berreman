@@ -43,8 +43,15 @@
              share. It declares namespace-level types (RelativeError, SearchBox, InverseFit) that both
              suites name, so it must compile before either of them. -->
         <Compile Include="InverseFitHarness.fs" />
+        <!-- Spec 0044 (manual task 016): the triclinic ground truth every biaxial suite shares. It must
+             compile after the harness (it names RecoveredQuantity) and before every suite that uses it. -->
+        <Compile Include="BiaxialSample.fs" />
         <Compile Include="MuellerInverseTests.fs" />
         <Compile Include="BiaxialInverseTests.fs" />
+        <Compile Include="FeasibleBiaxialInverseTests.fs" />
+        <Compile Include="AbsorbingBiaxialSample.fs" />
+        <Compile Include="AbsorbingBiaxialInverseTests.fs" />
+        <Compile Include="AbsorbingBiaxialNoisyTests.fs" />
         <Compile Include="LangasiteInverseTests.fs" />
     </ItemGroup>
 
