@@ -1336,28 +1336,35 @@ type MuellerInverseTests() =
                 ratio > 0.5 && ratio < 2.0,
                 $"the covariance-predicted error for {name.value} disagrees with the ensemble: {comparison}")
 
-        // WHERE THAT AGREEMENT STOPS, recorded because it is the natural next thing to try and it does
-        // not work. The birefringence is not a fit parameter, so its uncertainty would have to come from
-        // the covariance of the PAIR, var(n_e - n_o) = C11 + C00 - 2*C01. That expression is DEAD here:
+        // AND IT EXTENDS TO THE DERIVED QUANTITY. The birefringence is not a fit parameter, so its
+        // uncertainty has to come from the covariance of the PAIR — the quadratic form wᵀCw with
+        // w = e_ne − e_no, i.e. C00 − C01 − C10 + C11. That is a demanding thing to ask of this matrix:
         // the two indices are correlated at 0.99999, so it is a five-digit cancellation between numbers
-        // of order 0.54 — and the (JtJ)^-1 it is formed from has already lost about that many digits at
-        // a Jacobian condition number of ~436. Measured, the combination comes out NEGATIVE, i.e. it is
-        // pure round-off, while the ensemble shows a perfectly real absolute scatter of 3.6e-6.
+        // of order 0.54, and the (JtJ)^-1 it is formed from has already spent precision at a Jacobian
+        // condition number of ~436.
         //
-        // This is the same lesson as F3 one level deeper: the covariance DIAGONAL survives once noise is
-        // present, but the near-null COMBINATION of two nearly-degenerate parameters does not. Anyone
-        // needing an error bar on a derived quantity in that direction must get it from a
-        // better-conditioned route — the ensemble itself, or an orthogonalizing decomposition of J —
-        // rather than from this matrix. Asserted so that a future fix announces itself.
+        // It survives anyway. Measured: the form comes out at 1.15e-5 in scaled units, which converts to
+        // a predicted 3.75e-4 relative against the 3.99e-4 the ensemble actually produced — a ratio of
+        // 0.94, as good as any of the four diagonal predictions above.
+        //
+        // A CORRECTION, recorded because this fact previously asserted the opposite. Until manual task
+        // 014 it claimed the pair-covariance route was dead and returned zero. It did return zero, but
+        // not for the stated reason: the conversion out of the scaled space multiplied by
+        // `scale.n_e − scale.n_o`, and both indices carry the SAME scale of 1e-3, so that factor was
+        // identically zero and the prediction was zero whatever the covariance said. The scale of a
+        // DIFFERENCE of two coordinates that share a scale is that scale itself, not the difference of
+        // the scales. With the conversion right, the route works — and the "five-digit cancellation
+        // kills it" story was an artifact of the bug rather than a measurement.
         let birefringenceRow = rowFor table "n_e - n_o"
         let pairVariance = combinationVariance quality (differenceWeights first.fit.scaling "n_e" "n_o")
         let pairPrediction =
             sqrt (max 0.0 pairVariance) * abs first.fit.scaling.scale.ordinaryIndex.value
             / abs (quartz.extraordinaryIndex.value - quartz.ordinaryIndex.value)
+        let pairRatio = pairPrediction / birefringenceRow.scatter.value
         Assert.True(
-            pairPrediction < birefringenceRow.scatter.value / 10.0,
-            $"the pair-covariance route now predicts {pairPrediction} against an observed {birefringenceRow.scatter.value} "
-            + $"(raw combination {pairVariance}) — the cancellation this fact records has changed, so re-measure it")
+            pairRatio > 0.5 && pairRatio < 2.0,
+            $"the pair-covariance route predicts {pairPrediction} against an observed {birefringenceRow.scatter.value} "
+            + $"(ratio {pairRatio}, raw quadratic form {pairVariance})")
 
         // Finally, the interval the single experiment would have QUOTED must contain the truth — the
         // question an experimenter actually asks of a fit report.

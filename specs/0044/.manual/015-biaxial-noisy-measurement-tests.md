@@ -190,6 +190,30 @@ inflates the real experiment-to-experiment scatter above what the residual alone
 
 All nine 95 % confidence intervals from that single fit contain the truth.
 
+### N5 — a correction to task 010, caught by the targeted regression run
+
+Moving the noise machinery into the shared harness rewired ~15 call sites in the already-delivered
+uniaxial ensemble fact, so `MuellerInverseTests` was re-run to confirm its pinned numbers reproduced.
+One assertion failed — and the failure was correct: the **old** assertion had been wrong.
+
+`011-noisy-measurement-tests.md` finding N5 reported that the pair-covariance route for the
+birefringence was numerically dead — that `var(n_e − n_o) = C₁₁ + C₀₀ − 2C₀₁` came out negative under a
+five-digit cancellation, so a covariance could not give an error bar on a derived quantity. It did
+return zero, but not for that reason: the conversion out of the scaled space multiplied by
+`scale.n_e − scale.n_o`, and both indices carry the **same** scale of 1e-3, so that factor was
+identically zero and the prediction was zero whatever the covariance contained. The scale of a
+DIFFERENCE of two coordinates sharing a scale is that scale itself, not the difference of the scales.
+The "negative combination" was inferred from the clamped zero and never actually observed.
+
+Rewriting it as the proper quadratic form `wᵀCw` with `w = e_ne − e_no` — which also avoids assuming
+the numerically-inverted matrix is exactly symmetric — gives **3.75e-4 predicted against 3.99e-4
+observed, a ratio of 0.94**. The route works, and works as well as the diagonal predictions do. The
+uniaxial fact now asserts that agreement at the same [0.5, 2.0] band, and `011`'s N5 has been struck
+through with the correction inline.
+
+The biaxial results above are unaffected: this suite predicts uncertainties only for the nine FITTED
+parameters, each of which reads its own non-zero scale.
+
 ---
 
 ## Bands as pinned

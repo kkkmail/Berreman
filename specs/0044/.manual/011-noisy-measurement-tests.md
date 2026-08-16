@@ -203,19 +203,35 @@ Asserted at a factor of two either way, which is the honest tolerance: an eight-
 deviation is itself only known to `1/√(2·(8−1))` ≈ 27 %. All four 95 % confidence intervals from that
 single fit contain the truth. Reduced χ² at the solution: 9.82e-6 on 431 degrees of freedom.
 
-**N5 — but the agreement stops at the DERIVED quantity, and that is F3 one level deeper.** The
-birefringence is not a fit parameter, so its uncertainty would have to come from the covariance of the
-PAIR, `var(n_e − n_o) = C₁₁ + C₀₀ − 2C₀₁`. That expression is numerically DEAD here. The two indices
-are correlated at 0.99999, so it is a five-digit cancellation between numbers of order 0.54, and the
-`(JᵀJ)⁻¹` it is formed from has already lost about that many digits at a Jacobian condition number of
-~436. Measured, the combination comes out **negative** — pure round-off — while the ensemble shows a
-perfectly real absolute scatter of 3.61e-6.
+**N5 — ~~but the agreement stops at the DERIVED quantity~~ — WITHDRAWN, see the correction below.**
 
-So: with noise present the covariance DIAGONAL survives (N4), but the near-null COMBINATION of two
-nearly-degenerate parameters does not. An error bar on a derived quantity in that direction has to come
-from a better-conditioned route — the ensemble itself, or an orthogonalizing decomposition of `J` —
-rather than from this matrix. The test asserts the failure (predicted < observed/10) so that a future
-fix announces itself instead of passing silently.
+> **CORRECTION (manual task 014).** This section originally reported that the pair-covariance route for
+> the birefringence was numerically dead: that `var(n_e − n_o) = C₁₁ + C₀₀ − 2C₀₁` came out negative
+> because of a five-digit cancellation, and that the covariance therefore could not give an error bar on
+> a derived quantity. **That was wrong, and the cause was a bug in this repository's test rather than a
+> property of the covariance.**
+>
+> The prediction did come out as zero, but not for the stated reason. The conversion out of the scaled
+> space multiplied `sqrt(variance)` by `scale.n_e − scale.n_o` — and both indices carry the SAME scale of
+> 1e-3, so that factor was identically zero and the prediction was zero whatever the covariance
+> contained. The scale of a DIFFERENCE of two coordinates that share a scale is that scale itself, not
+> the difference of the scales. The reported "negative combination" was inferred from the clamped zero,
+> never observed.
+>
+> With the conversion corrected and the quadratic form written properly as `wᵀCw` with `w = e_ne − e_no`
+> (i.e. `C₀₀ − C₀₁ − C₁₀ + C₁₁`, which does not assume the numerically-inverted matrix is exactly
+> symmetric), the route **works**:
+>
+> | | predicted | observed ensemble scatter | ratio |
+> |---|---|---|---|
+> | `n_e − n_o` | 3.75e-4 | 3.99e-4 | **0.94** |
+>
+> — as good as any of the four diagonal predictions in N4, and this despite the cancellation being every
+> bit as severe as described. The fact now asserts the agreement at the same [0.5, 2.0] band the fitted
+> parameters use.
+>
+> The regression was caught by re-running `MuellerInverseTests` after task 014 moved the noise machinery
+> into the shared harness, which is precisely what that targeted run existed to check.
 
 ---
 
