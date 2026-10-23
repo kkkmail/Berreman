@@ -1,0 +1,7 @@
+We continue adding tests similar to C:\GitHub\Berreman\Berreman\BerremanTests\MuellerInverseTests.fs. This test class is getting heavy, 
+so let’s add another similar test class. I want to test how the inverse problem can recover optical parameters for more complex system: 
+a biaxial optically active transparent crystal. Find some good examples on the web. We want the most complex possible variant with as 
+many optical parameters as possible (the biaxial crystal carries 3 refraction indices and symmetry group determines the max non zero 
+gyration tensor parameters). We want the main non-noise test from MuellerInverseTests done for such biaxial crystal. If anything from 
+MuellerInverseTests could be reused, then extract / generalize into some module(s) first. Add supporting tests as necessary. Add the 
+description similar to 011-noisy-measurement-tests.md  but for this task into 013-<description>.md. Run the new test(s).

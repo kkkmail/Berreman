@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -39,15 +39,41 @@
         <Compile Include="MuWithDispValueTests.fs" />
         <Compile Include="OptimizationTests.fs" />
         <Compile Include="MuellerReconstructionTests.fs" />
+        <!-- Spec 0044 (manual task 012): the fit driver MuellerInverseTests and BiaxialInverseTests
+             share. It declares namespace-level types (RelativeError, SearchBox, InverseFit) that both
+             suites name, so it must compile before either of them. -->
+        <Compile Include="InverseFitHarness.fs" />
+        <!-- Spec 0044 (manual task 016): the triclinic ground truth every biaxial suite shares. It must
+             compile after the harness (it names RecoveredQuantity) and before every suite that uses it. -->
+        <Compile Include="BiaxialSample.fs" />
+        <Compile Include="MuellerInverseTests.fs" />
+        <Compile Include="BiaxialInverseTests.fs" />
+        <Compile Include="FeasibleBiaxialInverseTests.fs" />
+        <Compile Include="AbsorbingBiaxialSample.fs" />
+        <Compile Include="AbsorbingBiaxialInverseTests.fs" />
+        <Compile Include="AbsorbingBiaxialNoisyTests.fs" />
+        <Compile Include="LangasiteInverseTests.fs" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
+        <!-- Spec 0044 (§8.4): the committed measured-data archive that MuellerReconstructionTests reads
+             through MuellerDataStore.createArchiveBacked (). It is copied next to the test assembly so the
+             store can resolve it from AppContext.BaseDirectory, independent of the runner's working
+             directory. Mirrors the OpticalConstructor.Tests fixtures\* copy convention. This replaces the
+             former walk-up to an external sibling checkout: the data is now in the repository, so its
+             absence is a defect and the tests FAIL rather than skip. -->
+        <Content Include="..\Data\MuellerMatrix\data.zip" Link="Data\MuellerMatrix\data.zip">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
         <PackageReference Include="FluentAssertions" Version="[7.0.0]" />
-        <PackageReference Include="FsCheck" Version="3.3.3" />
-        <PackageReference Include="FsCheck.Xunit" Version="3.3.3" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+        <PackageReference Include="FsCheck" Version="3.3.4" />
+        <PackageReference Include="FsCheck.Xunit" Version="3.3.4" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
@@ -56,7 +82,7 @@
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
         <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
-        <PackageReference Include="xunit.v3" Version="3.2.2" />
+        <PackageReference Include="xunit.v3" Version="4.0.0" />
     </ItemGroup>
 
     <ItemGroup>

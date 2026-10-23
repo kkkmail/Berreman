@@ -55,12 +55,12 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
-        <PackageReference Include="Avalonia" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
-        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0-preview1" />
-        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0-preview1" />
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
+        <PackageReference Include="Avalonia" Version="12.1.1" />
+        <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0" />
+        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0" />
         <PackageReference Include="Elmish" Version="5.0.2" />
         <!-- ScottPlot.Avalonia moved with the chart window to OpticalConstructor.Controls (spec 0033,
              017); its compile/runtime assets flow here transitively through the Controls reference. -->

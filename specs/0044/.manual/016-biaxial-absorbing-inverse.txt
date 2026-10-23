@@ -1,0 +1,19 @@
+You have three tasks with each producing a new test class and a new report. Do not touch already existing test classes unless you need 
+to extract some common parts. The tests are getting heavy, so run ONLY the new tests in each task. DO NOT run existing tests even if you 
+need to extract some common parts because the run time is getting prohibitive. This is F# - if it compiles after the refactoring, then it works.
+
+First, we need to determine if there are “better” but realistic experiments that we should use for biaxial, gyrotropic, transparent 
+crystal (we use the same crystal as in the already existing test). Using 4-micron plate is great theoretically but is likely impossible 
+from experimental point of view. Perform web research to find out which experiments might help us and which plates are experimentally feasible to use, then build the tests for this new setup. The updated experiments and plates go into new test file, followed by a report into the next NNN. As usual, extract common parts when needed. Do not copy / paste / modify a little.
+
+Then, let’s continue the complexity elevation. Repeat the C:\GitHub\Berreman\specs\0044\.manual\012-biaxial-inverse.txt exercise (with 
+new test class, of course) but for biaxial, gyrotropic, absorbing crystal. Note that the biaxial absorbing crystal does not necessarily 
+has its real and complex parts of eps diagonal in the same coordinate system. You may be unable to find exact optical data for such a thing, 
+so, as with the biaxal, gyrotropic, transparent crystal, come up with some reasonable test data beyond what you can find as known data. 
+The test is about the inverse math, not about exact physics. It is also possible that we need more and / or some different measurements. 
+Run the web search to see if that is the case and adjust the experiment set if needed. Write the report once the main (no-noise) test passes 
+into the next NNN.
+
+Then repeat 014-biaxial-inverse-noisy-tests.txt for that absorbing crystal and write another report into the next NNN.
+So, at the end of this work you should have 3 new test classes and 3 new reports plus possibly some tweaks to the harness so that not 
+to copy / paste code.

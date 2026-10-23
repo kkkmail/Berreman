@@ -236,10 +236,10 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-        <PackageReference Include="xunit.v3" Version="3.2.2" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+        <PackageReference Include="xunit.v3" Version="4.0.0" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
@@ -252,8 +252,8 @@
              lives ONLY here, never in the pure OpticalConstructor.Tests project. The
              .XUnit helper is intentionally omitted: it binds to xUnit v2, while this
              project stays on xunit.v3 (see TestApp.fs). Versions track Avalonia 11.3.4. -->
-        <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+        <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     </ItemGroup>
 
     <ItemGroup>

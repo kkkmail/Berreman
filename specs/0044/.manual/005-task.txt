@@ -1,0 +1,3 @@
+Implement the spec: C:\GitHub\Berreman\specs\0044\.manual\004-active-anisotropic-inverse-problem.md. Keep an implementation log as you go 
+in C:\GitHub\Berreman\specs\0044\.manual\006-<description>.md so that if you crash then we will know where to restart. 
+Make sure to add extensive comments to test setups.

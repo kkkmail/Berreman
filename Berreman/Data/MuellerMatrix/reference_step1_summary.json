@@ -1,0 +1,81 @@
+{
+  "dark_mean_avg_total": 869.666,
+  "lp_lp_anchor": {
+    "p_cos2": 0.540025163656964,
+    "q_sin2": -0.6238567980235371,
+    "visibility": 0.8251208892173989,
+    "zero_angle_deg": 155.44011830109392,
+    "rmse_norm": 0.11344320779651192,
+    "repeat_zero_angle_deg": [
+      155.6659211479144,
+      155.21589137935618
+    ],
+    "repeat_visibility": [
+      0.8222568838161857,
+      0.8280357996418821
+    ],
+    "repeat_zero_spread_deg": 0.45002976855820975
+  },
+  "cpl_source_from_cpl_lp": {
+    "strict_45_model": {
+      "visibility": 0.16347706670709006,
+      "rmse_norm": 0.13116194304186765,
+      "lp_zero_angle_deg": 155.44011830109392,
+      "retardance_raw_deg": 80.59122440479206,
+      "retardance_lp_reference_deg": 78.57266516089584
+    },
+    "source_theta_relaxed_model": {
+      "q_lp": 0.16347706670709003,
+      "u_lp": 0.16833830754598045,
+      "visibility": 0.2346540797143733,
+      "rmse_norm": 0.05508686239744981,
+      "theta_rel_deg": 39.31100224361002,
+      "retardance_deg": 82.55344158462403,
+      "repeat_zero_angle_deg": [
+        176.81097432822133,
+        179.8284959507983
+      ],
+      "repeat_visibility": [
+        0.22874675639187436,
+        0.241212550729918
+      ],
+      "repeat_zero_spread_deg": 3.0175216225769645,
+      "phase_shift_vs_lp_anchor_deg": 22.91967413218447
+    }
+  },
+  "cpl_analyzer_from_lp_cpl": {
+    "p_cos2": -0.1070162037353296,
+    "q_sin2": -0.0266667948629839,
+    "visibility": 0.11028864769406703,
+    "zero_angle_deg": 96.99613336321012,
+    "rmse_norm": 0.030821783034664332,
+    "retardance_raw_deg": 83.66804489441891,
+    "retardance_lp_reference_deg": 82.31864919911926,
+    "repeat_zero_angle_deg": [
+      98.68012271610225,
+      94.96782683525348
+    ],
+    "repeat_visibility": [
+      0.1207549746830179,
+      0.10028212967885539
+    ],
+    "repeat_zero_spread_deg": 3.712295880848771
+  },
+  "cpl_cpl_check": {
+    "best_fit": {
+      "source_theta_rel_deg": 39.31100224361002,
+      "source_delta_deg": 82.55344158462403,
+      "analyzer_delta_deg": -83.66804489441891,
+      "relative_handedness": "opposite",
+      "rmse_norm": 0.014598242832026922,
+      "predicted_range": 0.025544567641456628
+    },
+    "relative_sign_only": true,
+    "note": "Flipping both retardance signs together gives the same CPL-CPL prediction; only the relative sign is constrained."
+  },
+  "files_written": [
+    "air_step1_overview.png",
+    "report.md",
+    "summary.json"
+  ]
+}

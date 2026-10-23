@@ -72,11 +72,11 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.302" />
+        <PackageReference Update="FSharp.Core" Version="10.1.400" />
         <PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
-        <PackageReference Include="FSharp.Data" Version="8.1.14" />
-        <PackageReference Include="JsonSchema.Net" Version="9.2.2" />
-        <PackageReference Include="ClosedXML" Version="0.105.0" />
+        <PackageReference Include="FSharp.Data" Version="8.2.0" />
+        <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+        <PackageReference Include="ClosedXML" Version="0.105.1" />
         <!-- The report HTML reuses the engine's own HTML-builder library (the same
              Giraffe.ViewEngine Charting.fs uses via Plotly.NET), not a second builder
              (§I.8). Plotly.NET pins the StrongName repackage; match it here. -->

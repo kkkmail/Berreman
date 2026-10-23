@@ -1,0 +1,3 @@
+Add biaxial noisy tests similar to the ones describe here: C:\GitHub\Berreman\specs\0044\.manual\010-extend-mueller-inverse-tests.txt and 
+as recommended at the end of C:\GitHub\Berreman\specs\0044\.manual\013-biaxial-triclinic-inverse.md. Add the description into 
+C:\GitHub\Berreman\specs\0044\.manual\015-<description>.md once the tests pass with all the relevant details and data.

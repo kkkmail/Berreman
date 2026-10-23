@@ -5,7 +5,6 @@ open Berreman.MathNetNumericsMath
 open Berreman.Geometry
 open Berreman.Fields
 open OpticalConstructor.Domain.Library                // PolarizerKind / IdealLinear (step 007 source & analyzer models)
-open OpticalConstructor.Domain.Experiments            // DataFilePath (step 025) — reused by the CSV-load seam (step 005)
 
 /// Spec 0042 (001) — the pure Mueller-reconstruction primitives. A *retarder* (wave plate) delays one
 /// linear eigen-polarization relative to the other by a phase `Retardance`; its Mueller matrix is the
@@ -239,15 +238,22 @@ module MuellerReconstruction =
         }
 
     // -----------------------------------------------------------------------------------------------------
-    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data CSV-LOAD seam. Declares, in
-    // the Domain, the DECLARED-lifecycle `MuellerDataProxy`: the IO boundary that turns an experiment
-    // family's elevated `DataFilePath` (Experiments.fs:142) into its parsed raw capture rows, or a typed
-    // `MuellerDataError`. It is the disk-read EDGE the least-squares reconstruction sits behind — each loaded
-    // `MuellerRawRow` carries one capture's analyzer azimuth (`description`, the engine `Angle`) and averaged
-    // intensity (`avgTotal`), the very (azimuth, intensity) pairs `kron4` / the `MuellerSolverProxy` consume —
-    // so a future real proxy is exactly the missing `path -> read CSV -> rows` adapter, and its native/parse
+    // Spec 0042 (005, ADD_CONTRACT STORE_XDUO_0009) — the Mueller measured-data LOAD seam. Declares, in the
+    // Domain, the `MuellerDataProxy`: the IO boundary that turns a `MuellerDataSet` — the IDENTITY of one
+    // measurement data set — into its parsed raw capture rows, or a typed `MuellerDataError`. It is the EDGE
+    // the least-squares reconstruction sits behind: each loaded `MuellerRawRow` carries one capture's analyzer
+    // azimuth (`description`, the engine `Angle`) and averaged intensity (`avgTotal`), the very
+    // (azimuth, intensity) pairs `kron4` / the `MuellerSolverProxy` consume. A real proxy's native/parse
     // exceptions are caught AT this boundary and mapped to the typed `MuellerDataError` channel (never thrown
     // across it).
+    //
+    // Spec 0044 (§8.3) RE-KEYED this seam from a LOCATION to an IDENTITY. It previously took an
+    // `Experiments.DataFilePath`, which forced every caller to know where the data physically lived — a file
+    // path, and (once the data moved into a committed archive) an entry name inside that archive. The key is
+    // now the `MuellerDataSet` DU below: pure identity, carrying NO path, NO entry name and NO archive
+    // knowledge. Everything about storage — the archive, its location on disk, and the data-set → entry
+    // mapping — lives behind the Storage-side factory, so a consumer (notably the test suite) states WHICH
+    // data set it wants and nothing at all about WHERE it is.
     //
     // Kept as pure DATA (the `ExperimentDataProxy` convention, ExperimentDataProxy.fs:43): a record of one
     // camelCase `Result`-returning function, so logic that holds the proxy stays referentially transparent and
@@ -255,11 +261,9 @@ module MuellerReconstruction =
     // has no structural equality, so the record is `[<ReferenceEquality>]` — a host context (Optimization /
     // Elmish) that holds one keeps its required equality, comparing the proxy by identity.
     //
-    // DECLARED lifecycle: this is the seam ONLY — no filesystem read, no CSV parse, no wiring. A later
-    // `IMPLEMENT_CONTRACT STORE_XDUO_0009` cycle supplies the real file-backed `create` (read the CSV text,
-    // parse each row, map any IO/parse exception to a typed error), leaving every consumer that holds the
-    // proxy unchanged. The mock that satisfies this surface (canned rows keyed by `DataFilePath.value`) lives
-    // with its test in `BerremanTests`, mirroring the `MuellerSolverProxy` mock.
+    // The real archive-backed construction is `MuellerDataStore.createArchiveBacked` (Storage); the mock that
+    // satisfies this surface (canned rows keyed by `MuellerDataSet`) lives with its test in `BerremanTests`,
+    // mirroring the `MuellerSolverProxy` mock.
     // -----------------------------------------------------------------------------------------------------
 
     /// One raw capture row of a Mueller measurement family, as loaded from a CSV file — the row-level DTO AT
@@ -277,27 +281,53 @@ module MuellerReconstruction =
             avgTotal : float
         }
 
-    /// A typed failure of a Mueller CSV load — never a throw across the proxy boundary. `MalformedRow` carries
-    /// a human-readable `reason` (a row that fails to parse, a bad field, or a native/IO failure mapped onto
-    /// the channel); `EmptyFile` carries a `reason` for a file that yielded no capture rows.
+    /// WHICH measured Mueller data set a load is asking for — the seam's key (spec 0044 §8.3). This is pure
+    /// IDENTITY: it names a data set by what it CONTAINS, never by where it is stored. There is deliberately
+    /// no file path, no archive name and no entry name here or on any member — resolving a case to physical
+    /// storage is the Storage-side factory's job alone (`MuellerDataStore.createArchiveBacked`), which is what
+    /// lets a consumer ask for `LpLpFamily` without knowing that an archive exists at all.
+    ///
+    /// The five science sets are the experiment sweeps; `DarknessChecks` supplies the dark level subtracted
+    /// from every capture, and `BullshitChecks` the diagnostic captures whose earliest timestamp is the
+    /// CPL-LP gain split time. Note this is NOT the `Family` DU below: `Family` names a (source, analyzer)
+    /// polarizer PAIR, whereas a `MuellerDataSet` names one recorded body of captures — CPL-CPL was recorded
+    /// across two days and is therefore one `Family` but two data sets, each with its own gain rule.
+    type MuellerDataSet =
+        | LpLpFamily
+        | LpCplFamily
+        | CplLpFamily
+        | CplCplDay1
+        | CplCplDay2
+        | DarknessChecks
+        | BullshitChecks
+
+    /// A typed failure of a Mueller data-set load — never a throw across the proxy boundary. `MalformedRow`
+    /// carries a human-readable `reason` (a row that fails to parse, or a bad field); `EmptyFile` carries a
+    /// `reason` for a source that yielded no capture rows. The two archive cases (spec 0044 §8.3) name the
+    /// two distinct, separately actionable storage failures — a container that cannot be opened at all versus
+    /// a container that opens but does not hold the requested data set — each carrying enough payload to
+    /// diagnose it from a log line alone. `archive` is a bare string because it IS the storage location: a
+    /// primitive at the IO boundary, which is the one place the elevation rule admits them.
     type MuellerDataError =
         | MalformedRow of reason : string
         | EmptyFile of reason : string
+        | ArchiveUnreadable of archive : string * reason : string
+        | DataSetMissing of dataSet : MuellerDataSet * archive : string
 
-    /// The Mueller measured-data CSV-LOAD seam (the functional-proxy convention): a record of one camelCase
-    /// `Result`-returning function that resolves an experiment family's `DataFilePath` to its parsed capture
-    /// rows.
+    /// The Mueller measured-data LOAD seam (the functional-proxy convention): a record of one camelCase
+    /// `Result`-returning function that resolves a `MuellerDataSet` to its parsed capture rows.
     ///
-    /// - `tryLoadFamily path` — read + parse the Mueller CSV file at `path` into its ordered `MuellerRawRow`
-    ///   list, or a typed `MuellerDataError` (a malformed row, an empty file, or — for a later real store — a
-    ///   missing file / IO failure mapped onto the channel); never a throw.
+    /// - `tryLoadDataSet dataSet` — read + parse the named data set into its ordered `MuellerRawRow` list, or
+    ///   a typed `MuellerDataError` (a malformed row, an empty source, an unreadable archive, or a data set
+    ///   the archive does not carry); never a throw.
     ///
-    /// DECLARED lifecycle: the seam only — the real disk-backed `create` lands in a later
-    /// `IMPLEMENT_CONTRACT STORE_XDUO_0009`. Reuses `Experiments.DataFilePath` (Experiments.fs:142).
+    /// The caller states only WHICH data set it wants. Where that data physically lives, and how it is
+    /// packaged, is entirely the factory's business (spec 0044 §8.3) — which is why this signature mentions
+    /// no path type at all.
     [<ReferenceEquality>]
     type MuellerDataProxy =
         {
-            tryLoadFamily : DataFilePath -> Result<MuellerRawRow list, MuellerDataError>
+            tryLoadDataSet : MuellerDataSet -> Result<MuellerRawRow list, MuellerDataError>
         }
 
     // -----------------------------------------------------------------------------------------------------
@@ -632,7 +662,7 @@ module MuellerReconstruction =
     /// The mean dark-frame (`darkness_checks.csv`) averaged intensity — the CCD/read-noise floor subtracted
     /// from every science row before fitting (the reference `dark_mean`, matrix_fit_linear.py:75). Elevated to
     /// its own single-case DU so a raw intensity floor is never confused with a corrected `signal`: `.value` is
-    /// the mean count (read only at the arithmetic seam). On the OPM data it is ≈ 869.666.
+    /// the mean count (read only at the arithmetic seam). On the measured data it is ≈ 869.666.
     type DarkMean =
         | DarkMean of double
 
@@ -750,7 +780,7 @@ module MuellerReconstruction =
     // over-determined system `A·x ≈ b` through the injected `MuellerSolverProxy` (steps 003/004) and reshapes
     // the solved 16-vector column-major back into a `MuellerMatrix` via `muellerOfVecColumnMajor`, carrying the
     // solver's `rank` / `rmse`. `cascadeProduct` forms `M_LR · M_QZ` (beam meets QZ first, then LR) reusing the
-    // engine's `MuellerMatrix` `*` operator (Fields.fs:651). The composition-root wiring against the real OPM
+    // engine's `MuellerMatrix` `*` operator (Fields.fs:651). The composition-root wiring against the real measured
     // data (Stage 1 → 2 → 3 end-to-end, the §7.2 assertions) is the final slice.
     // -----------------------------------------------------------------------------------------------------
 
