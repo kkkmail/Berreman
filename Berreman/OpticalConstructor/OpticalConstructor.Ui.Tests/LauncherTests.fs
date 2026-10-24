@@ -124,6 +124,31 @@ module LauncherTests =
                     Assert.Equal(label, string button.Content)
                 | None -> Assert.Fail($"launcher button '%s{id}' was not found"))
 
+    [<Fact>]
+    let ``the launcher footer shows the app version from BuildInfo, below the buttons`` () =
+        withLauncher (fun launcher ->
+            let footer =
+                launcher.GetVisualDescendants()
+                |> Seq.tryPick (function :? TextBlock as t when matchesId LauncherIds.versionText t -> Some t | _ -> None)
+            match footer with
+            | Some text ->
+                Assert.Equal($"Version {Berreman.BuildInfo.version.value}", text.Text)
+                Assert.Equal(LauncherIds.versionText, AutomationProperties.GetAutomationId text)
+                Assert.True(text.IsEffectivelyVisible, "the version footer must be visible")
+                // It sits at the bottom of the form: below every surface button.
+                let footerTop = text.TranslatePoint(Point(0.0, 0.0), launcher) |> Option.ofNullable
+                for button in buttons launcher do
+                    let buttonBottom = button.TranslatePoint(Point(0.0, button.Bounds.Height), launcher) |> Option.ofNullable
+                    match footerTop, buttonBottom with
+                    | Some (f : Point), Some (b : Point) -> Assert.True(f.Y >= b.Y, $"the footer (y = {f.Y}) must sit below '{button.Name}' (bottom y = {b.Y})")
+                    | _ -> Assert.Fail("the footer and the buttons must have on-screen positions")
+            | None -> Assert.Fail($"the launcher footer '%s{LauncherIds.versionText}' was not found"))
+
+    [<Fact>]
+    let ``the app version is the FSharp.Core prefix plus the build number`` () =
+        Assert.Equal($"{Berreman.BuildInfo.VersionPrefix}.{Berreman.BuildInfo.BuildNumber}", Berreman.BuildInfo.version.value)
+        Assert.Matches(@"^\d+\.\d+\.\d+\.\d+$", Berreman.BuildInfo.version.value)
+
     // ---------------------- behaviour (gate `ui-smoke`) ----------------------
     // Click each launcher button headlessly and observe the surface it opens via
     // `Window.WindowOpenedEvent` (the WireUiCompositionTests seam).

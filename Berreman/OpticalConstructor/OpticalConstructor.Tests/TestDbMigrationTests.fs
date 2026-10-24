@@ -50,7 +50,12 @@ module TestDbMigrationTests =
 
     /// The single read seam for the provider choice, going through the step-5 ConfigKey.
     let private readProviderChoice (provider : AppSettings.AppSettingsProvider) : DatabaseProvider =
-        let raw = provider.getStringOrDefault (AppSettings.ConfigKey OpticalConstructor.App.ConfigKey.databaseProvider) ""
+        // STL 10.1.402.x reads every type through a parse door (`tryGet`); a missing key reads as "",
+        // which DatabaseProvider.tryCreate refuses below.
+        let raw =
+            match provider.tryGet (AppSettings.ConfigKey OpticalConstructor.App.ConfigKey.databaseProvider) (fun (v : AppSettings.ConfigValue) -> Ok v.value : Result<string, string>) with
+            | Ok (Some s) -> s
+            | Ok None | Error _ -> ""
         match DatabaseProvider.tryCreate raw with
         | Ok p -> p
         | Error e -> failwith $"Bad DatabaseProvider in appsettings: %A{e}."
@@ -61,7 +66,7 @@ module TestDbMigrationTests =
     let private sqliteConnectionString (provider : AppSettings.AppSettingsProvider) (dbPath : string) : string =
         let baseConn =
             match provider.tryGetConnectionString (AppSettings.ConfigKey OpticalConstructor.App.ConfigKey.sqliteConnectionString) with
-            | Ok (Some s) -> s
+            | Ok (Some s) -> s.value
             | Ok None -> failwith "SQLite connection string missing from appsettings."
             | Error e -> failwith $"Could not read the SQLite connection string: %A{e}."
 

@@ -4,15 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>Softellect.Berreman.OpticalConstructor.Domain</AssemblyName>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <IsPackable>false</IsPackable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -126,6 +118,11 @@
              descriptor binding reuses the step-020 `VersionRef` (`Lifecycle.fs`, above); nothing between
              `ElementId.fs` and here references `Experiments`, so the module name is unchanged. -->
         <Compile Include="Experiments.fs" />
+        <!-- Spec 0046: the Main-scene BEAM TREE — which beam each element sits on (main / the reflected
+             ray of a partially-reflecting element), the layout walk over RayModel.crossElement, the
+             drawn ray segments, the light paths, and what the detectors let an experiment capture.
+             After Experiments.fs (MeasurementMode) and before Scene.fs (which persists BeamHost). -->
+        <Compile Include="BeamLayout.fs" />
         <!-- Spec 0038 Part H (step 021): the versioned in-memory MATERIAL store behind the
              registered MaterialProxy write-seam (STORE_XDUO_0001). The MaterialProxy record
              stays re-typed in place in MaterialLibrary.fs; its createInMemory augmentation
@@ -201,10 +198,6 @@
              material-agnostic: it names no crystal class and no named material, so the Domain still needs
              no reference to the OpticalProperties project. -->
         <Compile Include="MuellerInverse.fs" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
     </ItemGroup>
 
     <ItemGroup>

@@ -64,12 +64,15 @@ module Scene =
     /// binding, so the snapshot captures the id, the CatalogueKind, the placement, and the valueId
     /// binding through ONE reused domain type rather than duplicating derivable fields. Mirrors the
     /// live Main-scene `TestElement` (`TableAndElementRotationView`, Ui) over Domain types — the
-    /// Domain cannot reference the Ui, so the snapshot re-declares the same shape here.
+    /// Domain cannot reference the Ui, so the snapshot re-declares the same shape here. Spec 0046:
+    /// `beam` is the beam the element sits on (the main beam, or the reflected ray of a partially-
+    /// reflecting element, by that element's id), so a saved scene keeps its reflected-ray attachments.
     type SceneElement =
         {
             id : Library.ElementId
             placement : Placement.ElementPlacement
             zoom : float
+            beam : BeamLayout.BeamHost
         }
 
     /// The constructor scene captured as pure DATA (the seam a future storage cycle serializes):

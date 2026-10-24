@@ -1,0 +1,63 @@
+<Project>
+
+  <!--
+    Spec 0046 - this file lives at the REPOSITORY ROOT (it used to be Berreman/Directory.Build.props), so
+    it governs the vendored MathNetNumerics/ projects too: they sit beside Berreman/, which the old
+    location never reached. Directory.Build.targets beside it holds the central package versions.
+  -->
+
+  <!--
+    Berreman.slnx declares x64 as its only solution platform. When a build or test is invoked WITHOUT an
+    explicit platform (notably the "dotnet test (no-build) -c Release" unit-tests gate, which otherwise
+    defaults to AnyCPU and looks in bin\Release\ while the slnx build emits to bin\x64\Release\), default
+    the platform to x64 so output paths resolve to the same tree the solution build produces. A
+    Directory.Build.props is imported before the SDK's AnyCPU default, so this only fills an empty
+    platform and never overrides an explicit one.
+  -->
+  <PropertyGroup>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+  </PropertyGroup>
+
+  <!--
+    Spec 0046 (the STL operator ruling 2026-09-13): Release is the only configuration. The SDK's Debug
+    default is how a bare `dotnet build`, or a ProjectReference built outside the solution, drifts into a
+    partial Debug build; <Configurations> is the list an IDE offers. Directory.Build.targets fails any
+    request for another configuration before it can build anything.
+  -->
+  <PropertyGroup>
+    <Configurations>Release</Configurations>
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+  </PropertyGroup>
+
+  <!--
+    Spec 0046 - every assembly carries the ONE app version, `<FSharp.Core major.minor.patch>.<build>`
+    (the STL slow-ring scheme, one ring for the whole app). It is read from the PowerShell mirror that
+    Berreman/PreBuild/IncrementBuildNumber.fsx rewrites on every bump; Berreman/Berreman/BuildInfo.fs holds
+    the same pair for F# code. The vendored MathNetNumerics/ projects keep MathNet's own version identity.
+  -->
+  <PropertyGroup>
+    <BerremanVersionMirror>$(MSBuildThisFileDirectory)Berreman\Berreman\BuildInfo.ps1</BerremanVersionMirror>
+    <BerremanAppVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(BerremanVersionMirror)')), '\d+(\.\d+){3}').Value)</BerremanAppVersion>
+    <Version Condition="!$(MSBuildProjectDirectory.Contains('\MathNetNumerics\'))">$(BerremanAppVersion)</Version>
+  </PropertyGroup>
+
+  <!--
+    Spec 0046 (the STL operator ruling 2026-09-13) - the ONE FSharp.Core pin: we bump it, never the
+    installed SDK. No project carries its own `PackageReference Update="FSharp.Core"` any more.
+  -->
+  <PropertyGroup>
+    <FSharpCoreImplicitPackageVersion>10.1.402</FSharpCoreImplicitPackageVersion>
+  </PropertyGroup>
+
+  <!--
+    Spec 0046 - xunit.v3 4.x marks every test project a Microsoft Testing Platform application, and the
+    .NET 10 SDK then refuses the VSTest path `dotnet test` takes ("Testing with VSTest target is no longer
+    supported by Microsoft.Testing.Platform on .NET 10 SDK and later"). The gates run `dotnet test` and
+    read VSTest's "Passed: N" summary, so the test projects stay on VSTest (xunit.runner.visualstudio).
+    Set here, before xunit's own props, which only fill the property when it is empty.
+  -->
+  <PropertyGroup>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+  </PropertyGroup>
+
+</Project>

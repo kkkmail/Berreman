@@ -151,9 +151,10 @@ module TableAndElementRotationTests =
         let (n1, _, _) = orientedBasis (drawnPlacement m 1)
         Assert.True(abs (n1.x - incoming.x) < 1.0e-6 && abs (n1.y - incoming.y) < 1.0e-6 && abs (n1.z - incoming.z) < 1.0e-6,
                     $"the detector faces the reflected beam (n1 = {n1.x}, {n1.y}, {n1.z})")
-        // A mirror is NOT auto-oriented (its orientation defines the reflection); the source neither.
-        Assert.False(autoOrientsToBeam FlatMirror)
+        // Spec 0046: every element but the SOURCE (the ray root) is oriented on its beam — mirrors too,
+        // so the face a ray reflects off is always the drawn one.
         Assert.False(autoOrientsToBeam LightSource)
+        Assert.True(autoOrientsToBeam FlatMirror && autoOrientsToBeam CurvedMirror)
         Assert.True(autoOrientsToBeam Detector && autoOrientsToBeam LinearPolarizer)
 
     [<Fact>]

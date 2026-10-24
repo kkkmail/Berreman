@@ -9,5 +9,5 @@ pass_when:
 runtime_estimate_seconds: 120
 tags: [build]
 applies_to:
-  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Berreman/Directory.Build.props"]
+  - paths: ["Berreman/**/*.fs", "Berreman/**/*.fsproj", "Berreman/**/*.slnx", "Directory.Build.props", "Directory.Build.targets", "Berreman/Berreman/BuildInfo.ps1", "Berreman/PreBuild/**"]
 qualifier: build

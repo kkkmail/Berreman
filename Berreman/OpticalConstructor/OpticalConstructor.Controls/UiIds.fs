@@ -132,6 +132,10 @@ module UiIds =
         let variable (code : string) : string = "ExperimentVariable_" + code
         /// A measurement-choice selector, by its code ("t" / "r" / "both").
         let measurement (code : string) : string = "ExperimentMeasurement_" + code
+        /// Spec 0046: the hint shown instead of the capture choices while no detector captures the chosen
+        /// element's light.
+        [<Literal>]
+        let noCapture = "ExperimentNoCapture"
         /// The range inputs.
         [<Literal>]
         let rangeMin = "ExperimentRangeMin"
@@ -381,11 +385,32 @@ module UiIds =
         let reset = "TeResetButton"
         [<Literal>]
         let readout = "TeReadout"
+        /// Spec 0046: the Main view's page-level scroll viewer (a tall bay never pushes content out of reach).
+        [<Literal>]
+        let scrollViewer = "TableElementScrollViewer"
         /// Spec 0038 (031): the out-of-band dispersion warning badge on scene element index `i` — an
         /// indexed id so a headless test addresses the per-element badge.
         [<Literal>]
         let badgePrefix = "OutOfBandBadge_"
         let outOfBandBadge (i : int) : string = $"%s{badgePrefix}%d{i}"
+
+    /// Spec 0046: the Main canvas's right-click ELEMENT MENU — switch the element's reflected /
+    /// transmitted rays, choose the beam it sits on, remove it. Intent-named, so they survive restyling.
+    module ElementMenu =
+        [<Literal>]
+        let menu = "ElementMenu"
+        [<Literal>]
+        let toggleReflected = "ElementMenuToggleReflected"
+        [<Literal>]
+        let toggleTransmitted = "ElementMenuToggleTransmitted"
+        [<Literal>]
+        let placeOnMainBeam = "ElementMenuPlaceOnMainBeam"
+        /// "Place on the reflected ray of" the element with this id (prefixed so it cannot collide).
+        let placeOnReflectedOf (elementId : string) : string = "ElementMenuPlaceOnReflectedOf_" + elementId
+        [<Literal>]
+        let remove = "ElementMenuRemove"
+        [<Literal>]
+        let close = "ElementMenuClose"
 
     /// The Sample editor (`SampleEditorView`).
     module SampleEditor =

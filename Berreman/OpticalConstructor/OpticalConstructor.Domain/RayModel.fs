@@ -89,17 +89,6 @@ module RayModel =
         member r.pointAt (distance : float<meter>) : Vector3 =
             add r.origin (scale (distance / 1.0<meter>) r.direction.normalized)
 
-    /// The in-plane angle of a direction within the table plane (about the table
-    /// normal). Used to re-base the rest-frame face normal onto the actual incident
-    /// ray (A.4.3 — R2 is measured FROM the incident ray, not a fixed table axis).
-    let private inPlaneAngle (v : Vector3) : Angle = Angle.radian (atan2 v.y v.x)
-
-    /// Rotate `v` about the table normal (+Z) by `a` — an in-plane steer (A.4.2).
-    let private rotateAboutTableNormal (a : Angle) (v : Vector3) : Vector3 =
-        let c = cos a.value
-        let s = sin a.value
-        Vector3.create (v.x * c - v.y * s) (v.x * s + v.y * c) v.z
-
     /// The two orthonormal vectors spanning the cross-section perpendicular to
     /// `direction` (B.1.1). `inPlane` is perpendicular to the direction within the
     /// table plane; `outOfPlane` completes the right-handed frame (the table normal
@@ -220,16 +209,27 @@ module RayModel =
         let d = dir.normalized
         Angle.radian (atan2 d.y d.x), Angle.radian (asin (max -1.0 (min 1.0 d.z)))
 
+    /// The placement an element takes ON its beam (A.4.3 — R2 / R3 are measured FROM the incident ray,
+    /// not from a fixed table axis): its dialled R2 / R3 added to the incoming beam's own absolute
+    /// orientation (`beamOrientation`), so at dialled 0 it faces the beam and a dialled value tilts it
+    /// relative to the beam. Spec 0046: this ONE orientation is both what is DRAWN and the face the ray
+    /// crosses (`faceNormal` / `crossElement`), for every element kind — so the ray can never meet a
+    /// surface other than the drawn one.
+    let orientedToBeam (incoming : Vector3) (p : ElementPlacement) : ElementPlacement =
+        let beamR2, beamR3 = beamOrientation incoming
+        { p with r2 = beamR2 + p.r2; r3 = beamR3 + p.r3 }
+
     // --- Schematic Snell tracing (B.6) ---------------------------------------
 
     /// The element's face normal (N1) in the world frame, given the actual incident
-    /// ray direction (A.4.3 / B.6.1). Reuses `Placement.r1Axis` (which folds in R2
-    /// and R3 about the fixed +X rest central ray) and re-bases it onto the incident
-    /// ray by rotating about the table normal — so an element whose incident ray
-    /// makes angle φ and whose own tilt is R2 has a face normal at φ + R2, exactly
-    /// the additive `tableFrameOrientation` law (A.4.3). R3 tips it out of plane.
+    /// ray direction (A.4.3 / B.6.1): the primary normal of the element oriented on
+    /// its beam (`orientedToBeam`). For an in-plane incident ray at angle φ this is
+    /// `Placement.r1Axis` re-based by φ about the table normal — an element whose own
+    /// tilt is R2 has a face normal at φ + R2, exactly the additive
+    /// `tableFrameOrientation` law (A.4.3); R3 tips it out of plane, and an incident
+    /// ray that is itself out of plane tips it by its own elevation too.
     let faceNormal (incoming : Vector3) (p : ElementPlacement) : Vector3 =
-        rotateAboutTableNormal (inPlaneAngle incoming) (r1Axis p)
+        r1Axis (orientedToBeam incoming p)
 
     /// Reflect a unit direction off a surface with unit `surfaceNormal` (B.3.2 — a
     /// mirror's reflected ray R): `d_out = d − 2 (d·n) n`. Tilting the surface by R2
@@ -255,21 +255,62 @@ module RayModel =
         if k < 0.0 then None
         else Some ((add (scale eta d) (scale (eta * cosi - sqrt k) n)).normalized)
 
+    /// How a ray crosses an element (spec 0046) — the ONE crossing law every element kind obeys, for
+    /// the drawing and the snapping alike. The element is a slab between two parallel faces
+    /// perpendicular to its face normal, `2 × halfDepth` apart, centred on `centre`; the incoming ray
+    /// passes through `centre`'s line. The ray meets the FRONT face at `entry`; the reflected ray
+    /// leaves `entry` along `reflected`; the transmitted ray refracts INSIDE along `inside` (Snell,
+    /// n = 1.0 → 1.5), meets the BACK face at `exit`, and refracts back out along `transmitted`, which
+    /// is PARALLEL to the incoming ray (laterally shifted by the tilt) — three segments, the first and
+    /// the last parallel. A zero half-depth (or a grazing ray) collapses `entry` and `exit` onto
+    /// `centre`: the thin element of the snap tests.
+    type ElementCrossing =
+        {
+            entry : Vector3
+            inside : Vector3
+            exit : Vector3
+            transmitted : Vector3
+            reflected : Vector3
+        }
+
+    /// The `|cos|` below which a ray is treated as grazing the faces: its entry point would run off to
+    /// infinity, so the element is crossed as a thin one instead.
+    let private grazingCosine : float = 1.0e-6
+
+    /// Cross an element whose face normal is `normal` (either orientation), centred at `centre`, with
+    /// faces `halfDepth` either side of it, by a ray travelling `incoming` through `centre` (spec 0046).
+    let crossElement (centre : Vector3) (incoming : Vector3) (normal : Vector3) (halfDepth : float<meter>) : ElementCrossing =
+        let d = incoming.normalized
+        let n0 = normal.normalized
+        // Orient the normal along the propagation, so `cosI` is the incidence cosine and the front face
+        // is the one at −halfDepth.
+        let n = if d.dot n0 < 0.0 then scale (-1.0) n0 else n0
+        let cosI = d.dot n
+        let inside =
+            match refract refractiveIndexOutside refractiveIndexInside d n with
+            | Some t -> t
+            | None -> d
+        let h = halfDepth / 1.0<meter>
+        let entry, exit =
+            if h <= 0.0 || cosI < grazingCosine then centre, centre
+            else
+                let entry = sub centre (scale (h / cosI) d)
+                let cosT = max grazingCosine (inside.dot n)
+                entry, add entry (scale (2.0 * h / cosT) inside)
+        { entry = entry; inside = inside; exit = exit; transmitted = d; reflected = reflect d n }
+
     /// The OUTGOING tracked-ray direction past an element on `branch`, given the
-    /// `incoming` ray direction (B.3.2 / B.6.1). The reflected branch reflects off
-    /// the element's face; the transmitted branch refracts through it with the
-    /// schematic n = 1.0 / 1.5. At normal incidence both return the incoming
-    /// direction (a square element does not steer a normal beam); a tilt (R2 ≠ 0 /
-    /// R3 ≠ 0) genuinely changes the reflected direction and may change the
-    /// transmitted one.
+    /// `incoming` ray direction (B.3.2 / B.6.1, spec 0046 `crossElement`). The
+    /// reflected branch reflects off the element's face; the transmitted branch
+    /// leaves PARALLEL to the incoming ray — it refracts on the way in and back on
+    /// the way out of a parallel-faced element, so only the segment INSIDE the
+    /// element is bent (`ElementCrossing.inside`). A tilt (R2 ≠ 0 / R3 ≠ 0)
+    /// therefore steers the reflected beam and never the transmitted one.
     let outgoingDirection (branch : BeamTree.BeamBranch) (incoming : Vector3) (p : ElementPlacement) : Vector3 =
-        let n = faceNormal incoming p
+        let crossing = crossElement (Vector3.create 0.0 0.0 0.0) incoming (faceNormal incoming p) 0.0<meter>
         match branch with
-        | BeamTree.Reflected -> reflect incoming n
-        | BeamTree.Transmitted ->
-            match refract refractiveIndexOutside refractiveIndexInside incoming n with
-            | Some d -> d
-            | None -> incoming.normalized
+        | BeamTree.Reflected -> crossing.reflected
+        | BeamTree.Transmitted -> crossing.transmitted
 
     // --- Default light-source / detector placement (B.4) ---------------------
 

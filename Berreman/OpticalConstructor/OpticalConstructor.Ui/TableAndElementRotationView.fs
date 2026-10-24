@@ -78,6 +78,18 @@ type TestElement =
         id : Library.ElementId
         placement : ElementPlacement
         zoom : float
+        /// Spec 0046: the beam the element sits on — the main beam, or the reflected ray of a
+        /// partially-reflecting element (by that element's id). The element menu moves it.
+        beam : BeamLayout.BeamHost
+    }
+
+/// Spec 0046: the open right-click ELEMENT MENU — the element it serves (by its serializable id, so a
+/// later selection change cannot retarget it) and the canvas point it opened at. A model-driven overlay
+/// rather than an Avalonia `ContextMenu`, so it is deterministic and provable headless.
+type ElementMenu =
+    {
+        target : Library.ElementId
+        at : ScreenPoint
     }
 
 /// What the rotation gestures currently target.
@@ -321,6 +333,9 @@ type Model =
         /// Spec 0038 Part L (037): the typed per-experiment measured-data status, keyed by the
         /// experiment id's value — set when a file is attached (load + validate through the proxy).
         experimentDataStatus : Map<int, ExperimentFileStatus>
+        /// Spec 0046: the open right-click element menu (ray toggles, which beam the element sits on,
+        /// remove), if any. Closed by any left click, a selection change, or its own Close verb.
+        elementMenu : ElementMenu option
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -353,7 +368,7 @@ let defaultElementZoom : float = 5.0
 let private freshId () : Library.ElementId = Library.elementId (System.Guid.NewGuid().ToString())
 
 let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
-    { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
+    { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
 
 /// The default in-memory material / sample stores for the parameterless test scenes
 /// (`init` / `initMain`) — the SAME composition the App performs (spec 0033 steps 005/006): the
@@ -441,6 +456,7 @@ let initWith
         savedCollections = []
         collectionStatus = None
         experimentDataStatus = Map.empty
+        elementMenu = None
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -460,8 +476,8 @@ let init () : Model =
 /// edges), with DETERMINISTIC ids so wiring / experiment tests can name them. The forward Main scene uses
 /// exactly this; the inverse scene splices an unbound sample between them (`initInverse`).
 let private mainSeedElements : TestElement list =
-    [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
-      { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
+    [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+      { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
 
 let initMainWith
     (library : Library.LibraryProxy)
@@ -510,9 +526,9 @@ let initInverse
         categories
         experimentData
         experimentCollections
-        [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom }
-          { id = Library.elementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
-          { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom } ]
+        [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+          { id = Library.elementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+          { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
         mainPalette
         with snapChain = true; constructorMode = InverseConstructor }
 
@@ -538,7 +554,7 @@ let captureScene (model : Model) : Scene.SceneSnapshot =
     {
         Scene.SceneSnapshot.elements =
             model.elements
-            |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = e.zoom })
+            |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
         view = model.view
         snap = Scene.SnapMode.create model.snapChain
     }
@@ -553,11 +569,12 @@ let restoreScene (snapshot : Scene.SceneSnapshot) (model : Model) : Model =
     { model with
         elements =
             snapshot.elements
-            |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom })
+            |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
         view = snapshot.view
         snapChain = snapshot.snap.value
         selection = TableSelected
-        drag = NotPressed }
+        drag = NotPressed
+        elementMenu = None }
 
 type Msg =
     | RotateR1By of float
@@ -669,6 +686,16 @@ type Msg =
     /// LIBRARY (samples workbench) BAY and its `Smp…` verb vocabulary left the ribbon with this
     /// step; the window carries the verbs now.
     | OpenLibraryWindow
+    /// Spec 0046 — the right-click ELEMENT MENU. A right click on the canvas selects the element under
+    /// the point and opens its menu there (a right click off every element just closes it).
+    | OpenElementMenuAt of ScreenPoint
+    | CloseElementMenu
+    /// Spec 0046: switch the element's reflected / transmitted ray on or off (the `Emission` smart
+    /// setters — both-off stays unrepresentable; mirrors and a reflect-only bound sample are fixed).
+    | ToggleElementRay of Library.ElementId * BeamTree.BeamBranch
+    /// Spec 0046: move the element onto a beam — the main beam, or the reflected ray of a
+    /// partially-reflecting element (a loop-forming or unavailable target is refused).
+    | PlaceOnBeam of Library.ElementId * BeamLayout.BeamHost
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -762,13 +789,15 @@ let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : Model) : Model
 /// The element's along-beam parameter (its x), in metres.
 let elementX (e : TestElement) : float = e.placement.placementPoint.x / 1.0<meter>
 
-/// The Main-screen snap (task — the Main window "follows the same approach" as the snap-to-reflected test):
-/// the source is the ray root and every downstream element SNAPS onto the (possibly reflected) beam. The
-/// non-source elements are ordered along the beam (by x); consecutive x-distances are the gaps; each
-/// element's branch is DERIVED (`RayModel.primaryBranch` — a flat mirror REFLECTS, a polarizer / sample /
-/// lens TRANSMITS). Returns each element's drawn table-frame position BY INDEX and the beam polyline
-/// (source → each node in beam order). For the free-placement test scene (`snapChain = false`) it is just
-/// each element at its own placement point, so selection / drawing are unchanged there.
+/// The Main-screen snap (spec 0046 — the beam TREE): the source is the ray root and every other element
+/// SNAPS onto the beam it sits on (`TestElement.beam`) — the main beam, or the reflected ray of a
+/// partially-reflecting element — through the pure `BeamLayout.layout`. On each beam the elements are
+/// ordered by x and consecutive x-distances are the gaps; each element's branch is DERIVED
+/// (`RayModel.primaryBranch` — a flat mirror REFLECTS, a polarizer / sample / lens TRANSMITS) and every
+/// element is crossed by the ONE `RayModel.crossElement` law at its drawn depth. Returns each element's
+/// drawn table-frame position BY INDEX and the drawn ray segments. For the free-placement test scene
+/// (`snapChain = false`) it is just each element at its own placement point, so selection / drawing are
+/// unchanged there.
 /// One element's Main-screen draw info: its snapped table-frame centre and the beam direction ARRIVING at
 /// it (the source — the ray root — has no incoming).
 type MainNode =
@@ -777,29 +806,25 @@ type MainNode =
         incoming : Vector3 option
     }
 
-let mainSnap (m : Model) : Map<int, MainNode> * Vector3 list =
+/// The element's DRAWN half-depth along its face normal — its box depth times its draw zoom, halved —
+/// where the ray meets its faces (spec 0046), so the drawn ray crosses the drawn element.
+let drawnHalfDepth (e : TestElement) : float<meter> = e.zoom * e.placement.box.b / 2.0
+
+/// The scene as the pure beam layout reads it (spec 0046): every element with its beam host and drawn
+/// half-depth, the source first.
+let layoutElements (m : Model) : BeamLayout.LayoutElement list =
+    m.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; halfDepth = drawnHalfDepth e })
+
+/// The laid-out Main scene (spec 0046) — `BeamLayout.layout` over `layoutElements`.
+let sceneLayout (m : Model) : BeamLayout.SceneLayout = BeamLayout.layout (layoutElements m)
+
+let mainSnap (m : Model) : Map<int, MainNode> * BeamLayout.RaySegment list =
     let freePos (e : TestElement) : Vector3 = Vector3.create (elementX e) (e.placement.placementPoint.y / 1.0<meter>) 0.0
     if not m.snapChain then
         (m.elements |> List.mapi (fun i e -> i, { position = freePos e; incoming = None }) |> Map.ofList), []
     else
-        match m.elements with
-        | [] -> Map.empty, []
-        | source :: rest ->
-            let sourceV = RayModel.pointToVector3 source.placement.placementPoint
-            let ordered = rest |> List.mapi (fun j e -> j + 1, e) |> List.sortBy (fun (_, e) -> elementX e)
-            let _, specsRev =
-                ordered
-                |> List.fold (fun (prev, acc) (i, e) ->
-                    let s = elementX e
-                    let gap = (max 0.0 (s - prev)) * 1.0<meter>
-                    let spec : RayModel.RaySegmentSpec = { placement = e.placement; gap = gap; branch = RayModel.primaryBranch e.placement }
-                    (s, (i, spec) :: acc)) (elementX source, [])
-            let specs = List.rev specsRev
-            let snaps = RayModel.snapChain sourceV (r1Axis source.placement) (specs |> List.map snd)
-            let downstream = List.map2 (fun (i, _) (s : RayModel.SnappedElement) -> i, { position = s.position; incoming = Some s.incoming }) specs snaps
-            let nodes = (0, { position = sourceV; incoming = None }) :: downstream |> Map.ofList
-            let beamPath = sourceV :: (snaps |> List.map (fun s -> s.position))
-            nodes, beamPath
+        let laid = sceneLayout m
+        (laid.elements |> List.mapi (fun i p -> i, { position = p.centre; incoming = p.incoming }) |> Map.ofList), laid.segments
 
 /// Each element's drawn table-frame position by index (the Main scene snaps; the test scene is free).
 let snappedCentres (m : Model) : Map<int, Vector3> = fst (mainSnap m) |> Map.map (fun _ n -> n.position)
@@ -920,7 +945,7 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Mod
     let placement =
         { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
         |> withBoundSampleEmission m
-    let e = { id = freshId (); placement = placement; zoom = defaultElementZoom }
+    let e = { id = freshId (); placement = placement; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
     let elements' = m.elements @ [ e ]
     { cancelActiveSelect m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
 
@@ -931,8 +956,18 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Mod
 let private removeSelected (m : Model) : Model =
     match m.selection with
     | ElementSelected i when i >= 0 && i < List.length m.elements ->
-        let elements' = m.elements |> List.mapi (fun j e -> j, e) |> List.filter (fun (j, _) -> j <> i) |> List.map snd
-        { cancelActiveSelect m with elements = elements'; selection = NothingSelected }
+        let removed = (List.item i m.elements).id
+        // Spec 0046: the elements sitting on the removed element's reflected ray move to the main beam
+        // (the ray they sat on is gone), and its open element menu closes.
+        let elements' =
+            m.elements
+            |> List.mapi (fun j e -> j, e)
+            |> List.filter (fun (j, _) -> j <> i)
+            |> List.map (fun (_, e) ->
+                match e.beam with
+                | BeamLayout.OnReflectedBeamOf host when host = removed -> { e with beam = BeamLayout.OnMainBeam }
+                | BeamLayout.OnReflectedBeamOf _ | BeamLayout.OnMainBeam -> e)
+        { cancelActiveSelect m with elements = elements'; selection = NothingSelected; elementMenu = None }
     | _ -> m
 
 // ---------------------------------------------------------------------------
@@ -961,6 +996,54 @@ let private resetSelectedPosition (m : Model) : Model =
     match m.selection with
     | ElementSelected i -> setElementX i 0.0 m
     | TableSelected | NothingSelected -> m
+
+// ---------------------------------------------------------------------------
+// Spec 0046 — the element menu's verbs: switch an element's reflected / transmitted rays and move it
+// between beams. The rules themselves are the pure `BeamLayout` ones; these only apply them to the model.
+// ---------------------------------------------------------------------------
+
+/// What an element's binding lets its rays be (spec 0046): a bound sample's geometry-constrained
+/// `supportedEmission` (`Library.placementEmissionForEntry`), `EmitBoth` for anything else.
+let supportedEmissionOf (m : Model) (p : ElementPlacement) : Emission =
+    match p.valueId with
+    | Some id ->
+        match m.library.tryGetEntry id with
+        | Ok (Some entry) -> Library.placementEmissionForEntry EmitBoth entry
+        | Ok None | Error _ -> EmitBoth
+    | None -> EmitBoth
+
+/// Switch element `id`'s reflected or transmitted ray. The elements sitting on a reflected ray that is
+/// switched off KEEP their host and fall back to the main beam while it is off (`BeamLayout.effectiveHosts`),
+/// so switching it back on restores them.
+let private toggleElementRay (id : Library.ElementId) (branch : BeamTree.BeamBranch) (m : Model) : Model =
+    match m.elements |> List.tryFindIndex (fun e -> e.id = id) with
+    | Some i -> mapElement i (fun e -> { e with placement = BeamLayout.toggleRay branch (supportedEmissionOf m e.placement) e.placement }) m
+    | None -> m
+
+/// How far along a reflected ray an element lands when it is moved onto it from behind its new host.
+let sideBeamGap : float = 0.3
+
+/// Move element `id` onto `host` (spec 0046). The root (the source) never moves; a reflected ray is
+/// accepted only when `BeamLayout.attachableHosts` offers it (it exists and would not loop). An element
+/// moved onto a reflected ray from at or behind its host's along-beam position lands `sideBeamGap` along
+/// that ray, so it does not collapse onto the host.
+let private placeOnBeam (id : Library.ElementId) (host : BeamLayout.BeamHost) (m : Model) : Model =
+    match m.elements |> List.tryFindIndex (fun e -> e.id = id) with
+    | Some i when i > 0 ->
+        match host with
+        | BeamLayout.OnMainBeam -> mapElement i (fun e -> { e with beam = BeamLayout.OnMainBeam }) m
+        | BeamLayout.OnReflectedBeamOf hostId ->
+            match List.contains hostId (BeamLayout.attachableHosts (layoutElements m) id), m.elements |> List.tryFind (fun e -> e.id = hostId) with
+            | true, Some hostElement ->
+                let half = plateHalfLength m
+                let hostX = elementX hostElement
+                mapElement i (fun e ->
+                    let x = if elementX e > hostX then elementX e else min half (hostX + sideBeamGap)
+                    { e with
+                        beam = host
+                        placement = { e.placement with placementPoint = { e.placement.placementPoint with x = x * 1.0<meter> } } }) m
+            | _ -> m
+    | Some _ | None -> m
 
 /// Spec 0027 (026) Part 3: the side-effecting "open the pop-out chart window" action, injected as a forward
 /// reference so `update` can invoke it before `experimentResult` (and the `ChartWindow` host) are defined
@@ -997,6 +1080,48 @@ let private toMeasurementChoice (m : Experiments.MeasurementMode) : ExperimentCo
     | Experiments.CaptureTransmitted -> ExperimentControls.CaptureT
     | Experiments.CaptureReflected -> ExperimentControls.CaptureR
     | Experiments.CaptureBoth -> ExperimentControls.CaptureBoth
+
+/// Spec 0046 (task 5): the capture modes the scene's DETECTORS allow for an experiment varying `varied`.
+/// T / R are the branches of the MEASURED element — the bound sample the runs re-solve (else the varied
+/// element itself) — on the light paths to the detectors that also see the varied element: a detector
+/// behind it on its transmitted beam offers T, one on its reflected ray offers R, both offer T, R and
+/// Both, none offers nothing. With no bound sample a run is a pure pass-through with nothing to reflect,
+/// so only T can be offered. Public so the rule is provable without a window.
+let availableCaptures (model : Model) (varied : Library.ElementId) : Experiments.MeasurementMode list =
+    let sampleId =
+        model.elements
+        |> List.tryPick (fun e ->
+            match e.placement.valueId with
+            | Some id ->
+                match model.library.tryGetEntry id with
+                | Ok (Some (Library.SampleItem _)) -> Some e.id
+                | Ok (Some _) | Ok None | Error _ -> None
+            | None -> None)
+    let detectors =
+        model.elements
+        |> List.choose (fun e ->
+            match e.placement.catalogueKind with
+            | Detector -> Some e.id
+            | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror -> None)
+    let measured = sampleId |> Option.defaultValue varied
+    let branches = BeamLayout.detectedBranches (sceneLayout model) detectors varied measured
+    match sampleId with
+    | Some _ -> BeamLayout.capturesFor branches
+    | None ->
+        branches
+        |> List.filter (fun b ->
+            match b with
+            | BeamTree.Transmitted -> true
+            | BeamTree.Reflected -> false)
+        |> BeamLayout.capturesFor
+
+/// Spec 0046 (task 5): the capture the DRAFT actually runs with — its requested capture coerced to what
+/// the detectors allow (`BeamLayout.effectiveCapture`), or `None` while no detector captures anything.
+let draftCapture (model : Model) : Experiments.MeasurementMode option =
+    let draft = model.experimentCollection.draft
+    match draft.elementId with
+    | Some id -> BeamLayout.effectiveCapture (availableCaptures model id) draft.measurement
+    | None -> None
 
 /// Spec 0027 (028): the human label of a present element ("<kind> #<n>", 1-based, in scene order), captured
 /// onto an experiment so its collection row survives the element's removal.
@@ -1156,12 +1281,15 @@ let rec update (msg : Msg) (model : Model) : Model =
         | Some _ | None -> model
     | ExpChooseElement idStr ->
         // Choosing the element to vary sets the draft element AND, from the element's kind, the allowed
-        // variables (data via `variablesFor`, never hard-coded here) and the default capture (from its
-        // emission — a mirror ⇒ R, everything else both).
+        // variables (data via `variablesFor`, never hard-coded here) and the default capture. Spec 0046:
+        // the default is the best capture the scene's DETECTORS allow (Both when they see both branches,
+        // else the one they see); with no capturing detector it falls back to the element's emission.
         match model.elements |> List.tryFind (fun e -> e.id.value = idStr) with
         | Some e ->
             let allowed = Experiments.variablesFor e.placement.catalogueKind
-            let defaultMeasurement = Experiments.MeasurementMode.ofEmission e.placement.emission
+            let defaultMeasurement =
+                BeamLayout.effectiveCapture (availableCaptures model e.id) Experiments.CaptureBoth
+                |> Option.defaultValue (Experiments.MeasurementMode.ofEmission e.placement.emission)
             let label = experimentElementLabel model e.id
             { model with experimentCollection = Experiments.chooseElement e.id label allowed defaultMeasurement model.experimentCollection }
         | None -> model
@@ -1172,7 +1300,13 @@ let rec update (msg : Msg) (model : Model) : Model =
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n model.experimentCollection }
     | ExpCommit ->
         // Spec 0038 Part I (step 025): capture the live scene as the experiment's ordered setup and commit.
-        { model with experimentCollection = Experiments.commit (buildExperimentSetup model) model.experimentCollection }
+        // Spec 0046: the experiment records the capture the detectors allow (the draft's request coerced);
+        // with no capturing detector there is nothing to record and the commit is refused.
+        match draftCapture model with
+        | Some capture ->
+            let collection = Experiments.chooseMeasurement capture model.experimentCollection
+            { model with experimentCollection = Experiments.commit (buildExperimentSetup model) collection }
+        | None -> model
     | ExpNew -> { model with experimentCollection = Experiments.newDraft model.experimentCollection }
     | ExpEdit idStr ->
         match System.Int32.TryParse idStr with
@@ -1277,6 +1411,19 @@ let rec update (msg : Msg) (model : Model) : Model =
         // query/selection/confirm state lives in the window's own model now).
         model.launchers.openLibraryWindow model.library model.samples model.materials model.categories
         model
+    | OpenElementMenuAt pt ->
+        // Spec 0046: a right click selects the element under the point (the same nearest-within-radius
+        // rule as a left click) and opens its menu there; off every element it only closes the menu.
+        match selectionAt pt model with
+        | ElementSelected i ->
+            let opened = { target = (List.item i model.elements).id; at = pt }
+            let selection = ElementSelected i
+            if selection = model.selection then { model with elementMenu = Some opened; drag = NotPressed }
+            else { cancelActiveSelect model with selection = selection; elementMenu = Some opened; drag = NotPressed; pendingEntry = None; selectStatus = None }
+        | TableSelected | NothingSelected -> { model with elementMenu = None; drag = NotPressed }
+    | CloseElementMenu -> { model with elementMenu = None }
+    | ToggleElementRay (id, branch) -> toggleElementRay id branch model
+    | PlaceOnBeam (id, host) -> placeOnBeam id host model
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -1292,11 +1439,12 @@ let rec update (msg : Msg) (model : Model) : Model =
         // Spec 0027 (026): a changed selection clears any pending (unconfirmed) Library bind, so a stale
         // pending choice never carries across elements. Spec 0038 (016): the same change also
         // CANCELS AND CLOSES the open Select-state window (the staleness rule extends the
-        // pending-bind-clears precedent) and clears the staleness status line.
+        // pending-bind-clears precedent) and clears the staleness status line. Spec 0046: any left
+        // click or pan on the table closes an open element menu.
         if selection = model.selection then
-            { model with selection = selection; drag = NotPressed }
+            { model with selection = selection; drag = NotPressed; elementMenu = None }
         else
-            { cancelActiveSelect model with selection = selection; drag = NotPressed; pendingEntry = None; selectStatus = None }
+            { cancelActiveSelect model with selection = selection; drag = NotPressed; pendingEntry = None; selectStatus = None; elementMenu = None }
     | Wheel (mods, notches) ->
         match wheelAction mods with
         | RotateSel1 -> rotateSelected 1 (wheelStepDegrees * float notches) model
@@ -1580,33 +1728,32 @@ let private mainTableViews (model : Model) : IView list =
     let edges =
         TableView.plateEdges
         |> List.map (fun (a, b) -> line { sx = corners.[a].sx; sy = corners.[a].sy } { sx = corners.[b].sx; sy = corners.[b].sy } edgeColor (if tableSel then 2.0 else 1.0))
+    // Spec 0046: the ray as the beam layout drew it — free-space runs face to face, and the refracted run
+    // INSIDE each transmitting element (between the faces the element is drawn with), so a tilted element
+    // shows the three segments: in, through (bent), and out parallel to the incoming ray.
     let beam =
         snd (mainSnap model)
-        |> List.map (projectPt model.view)
-        |> List.pairwise
-        |> List.map (fun (a, b) -> line a b rayColor 2.0)
+        |> List.map (fun s -> line (projectPt model.view s.start) (projectPt model.view s.finish) rayColor 2.0)
     (face :: edges) @ beam
 
-/// Whether an element AUTO-ORIENTS to the beam it sits on. A transmissive element faces its incoming beam
-/// (so it stays perpendicular to the beam after a reflection); the SOURCE emits along its own aim and a
-/// MIRROR's orientation DEFINES its reflection, so those keep their own (dialled) orientation.
+/// Whether an element AUTO-ORIENTS to the beam it sits on. Spec 0046: every element except the SOURCE (the
+/// ray root, which emits along its own aim) — mirrors included — has its R2 / R3 measured FROM its incoming
+/// beam (A.4.3), and that one orientation is both what is drawn and the face the ray crosses
+/// (`RayModel.orientedToBeam`), so a ray never reflects or refracts off a surface other than the drawn one.
 let autoOrientsToBeam (kind : CatalogueKind) : bool =
     match kind with
-    | LightSource | FlatMirror | CurvedMirror -> false
-    | LinearPolarizer | CircularPolarizer | Sample | Lens | Detector -> true
+    | LightSource -> false
+    | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector -> true
 
-/// The placement each Main element is DRAWN with: its snapped centre, plus — for a transmissive downstream
-/// element — auto-orientation to face the beam (the beam's absolute R2/R3 from `RayModel.beamOrientation`
-/// plus the element's own dialled R2/R3, exactly as the snap-to-reflected test). The source / mirrors keep
-/// their own orientation.
+/// The placement each Main element is DRAWN with: its snapped centre, oriented on its beam
+/// (`RayModel.orientedToBeam` — the beam's absolute R2/R3 plus the element's own dialled R2/R3, exactly the
+/// orientation the beam layout crosses it at). The source keeps its own orientation.
 let drawnPlacement (m : Model) (i : int) : ElementPlacement =
     let e = List.item i m.elements
     let node = (fst (mainSnap m)).[i]
     let centred = { e.placement with placementPoint = { x = node.position.x * 1.0<meter>; y = node.position.y * 1.0<meter> } }
     match node.incoming with
-    | Some dir when autoOrientsToBeam e.placement.catalogueKind ->
-        let beamR2, beamR3 = RayModel.beamOrientation dir
-        { centred with r2 = beamR2 + e.placement.r2; r3 = beamR3 + e.placement.r3 }
+    | Some dir when autoOrientsToBeam e.placement.catalogueKind -> RayModel.orientedToBeam dir centred
     | _ -> centred
 
 /// The elements drawn through the chosen renderer at their snapped, auto-oriented placements (zoom is the
@@ -2215,9 +2362,10 @@ let experimentChartVisible (model : Model) : bool =
 let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
     if not (experimentChartVisible model) then ExperimentChart.empty
     else
+        // Spec 0046: the draft runs with the capture the detectors allow; with none there is no chart.
         let draft = model.experimentCollection.draft
-        match draft.elementId, draft.variable with
-        | Some chosen, Some variable -> chartForParams model chosen variable draft.measurement draft.range draft.elementLabel
+        match draft.elementId, draft.variable, draftCapture model with
+        | Some chosen, Some variable, Some capture -> chartForParams model chosen variable capture draft.range draft.elementLabel
         | _ -> ExperimentChart.empty
 
 /// The chart of a specific COLLECTED experiment — the per-row "View" action. Spec 0038 Part I (step 025):
@@ -2266,7 +2414,8 @@ let private experimentPsiDelta (model : Model) : (float * float) option =
             | resolved ->
                 let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
                 let svIn = runInputStokes model
-                let branch = branchesFor draft.measurement |> List.head |> fst
+                let capture = draftCapture model |> Option.defaultValue draft.measurement
+                let branch = branchesFor capture |> List.head |> fst
                 let mm = rotateSampleMueller model sampleOpt branch |> Option.defaultValue Propagation.identityMueller
                 let pd = Propagation.ellipsometerReadout (mm * svIn)
                 Some (pd.psi.degrees, pd.delta.degrees)
@@ -2289,17 +2438,25 @@ let experimentState (model : Model) : ExperimentControls.State =
             | Some e -> Experiments.variablesFor e.placement.catalogueKind |> List.map toVariableChoice
             | None -> []
         | None -> []
+    // Spec 0046 (task 5): the bay offers ONLY the captures the scene's detectors allow, and shows the one
+    // the draft actually runs with; with none, Add is disabled.
+    let captures =
+        match draft.elementId with
+        | Some id -> availableCaptures model id
+        | None -> []
+    let capture = draftCapture model
     {
         candidates = sweepCandidates model
         chosenId = draft.elementId |> Option.map (fun id -> id.value)
         variableChoices = variableChoices
         chosenVariable = draft.variable |> Option.map toVariableChoice
-        measurement = toMeasurementChoice draft.measurement
+        measurement = toMeasurementChoice (capture |> Option.defaultValue draft.measurement)
+        measurementChoices = captures |> List.map toMeasurementChoice
         rangeMin = draft.range.min
         rangeMax = draft.range.max
         rangePoints = draft.range.points
         rangeUnitLabel = (match draft.variable with Some v -> v.unitLabel | None -> "°")
-        canAdd = Experiments.canCommit col
+        canAdd = Experiments.canCommit col && (match capture with Some _ -> true | None -> false)
         isEditing = (match draft.editingId with Some _ -> true | None -> false)
         collection =
             col.experiments
@@ -2928,6 +3085,129 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
             @ selectStatusRow model)
     ] :> IView
 
+// ---------------------------------------------------------------------------
+// Spec 0046 — the right-click ELEMENT MENU, drawn as a model-driven overlay above the table canvas (a
+// sibling of the table surface, so its rows receive their own clicks): the element's reflected /
+// transmitted ray switches, the beam it sits on (the main beam or the reflected ray of a partially-
+// reflecting element), Remove, and Close. Every row carries an intent-named AutomationId
+// (`UiIds.ElementMenu`), and every verb is a plain `Msg`, so the behaviour is provable through `update`.
+// ---------------------------------------------------------------------------
+
+let private elementMenuWidth : float = 250.0
+let private elementMenuRowHeight : float = 26.0
+
+/// One clickable element-menu row (greyed and inert when disabled), keyed and AutomationId'd by `autoId`.
+let private elementMenuItem (autoId : string) (label : string) (enabled : bool) (onClick : unit -> unit) : IView =
+    Border.create [
+        workbenchAutomationId autoId
+        Border.isEnabled enabled
+        Border.opacity (if enabled then 1.0 else 0.45)
+        Border.background (brush (color 255 255 255))
+        Border.padding (Thickness(10.0, 4.0))
+        Border.child (TextBlock.create [ TextBlock.text label ])
+        Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label, enabled)))
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey autoId
+    :> IView
+
+/// A non-clickable element-menu line — a section heading, or a greyed explanatory note.
+let private elementMenuNote (text : string) (heading : bool) : IView =
+    TextBlock.create [
+        TextBlock.text text
+        TextBlock.textWrapping TextWrapping.Wrap
+        TextBlock.margin (Thickness(10.0, 4.0, 10.0, 2.0))
+        TextBlock.fontWeight (if heading then FontWeight.SemiBold else FontWeight.Normal)
+        TextBlock.foreground (brush (if heading then color 40 40 40 else color 110 110 110))
+    ] :> IView
+
+/// The element menu's rows for the element it serves: its title, the ray switches (a source / detector
+/// only explains why it has none; a mirror or reflect-only sample shows them fixed, with the reason), the
+/// beam it sits on (never for the source — the ray root), Remove, Close. Public so the row set is provable
+/// headless without a window.
+let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu) : IView list =
+    match model.elements |> List.tryFindIndex (fun e -> e.id = menu.target) with
+    | None -> []
+    | Some i ->
+        let e = List.item i model.elements
+        let p = e.placement
+        let nameOf (j : int) : string = $"%s{kindName (List.item j model.elements).placement.catalogueKind} #%d{j + 1}"
+        let check (on : bool) : string = if on then "☑" else "☐"
+        let radio (on : bool) : string = if on then "●" else "○"
+        let control = BeamLayout.rayControlOf (supportedEmissionOf model p) p
+        let switchable =
+            match control with
+            | BeamLayout.RaysSwitchable -> true
+            | BeamLayout.RaysFixed _ -> false
+        let fixedNote =
+            match control with
+            | BeamLayout.RaysFixed reason -> [ elementMenuNote $"(%s{reason})" false ]
+            | BeamLayout.RaysSwitchable -> []
+        let groups = RayModel.outgoingGroups p
+        let rayRows =
+            match p.catalogueKind with
+            | LightSource | Detector -> fixedNote
+            | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
+                [ elementMenuNote "Rays" true
+                  elementMenuItem UiIds.ElementMenu.toggleReflected $"%s{check (List.contains RayModel.Reflected groups)} Reflected ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.Reflected)))
+                  elementMenuItem UiIds.ElementMenu.toggleTransmitted $"%s{check (List.contains RayModel.Transmitted groups)} Transmitted ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.Transmitted))) ]
+                @ fixedNote
+        let beamRows =
+            match i with
+            | 0 -> []
+            | _ ->
+                let current = (List.item i (sceneLayout model).elements).beam
+                let reflectedRows =
+                    BeamLayout.attachableHosts (layoutElements model) e.id
+                    |> List.choose (fun hostId ->
+                        model.elements
+                        |> List.tryFindIndex (fun x -> x.id = hostId)
+                        |> Option.map (fun j ->
+                            let host = BeamLayout.OnReflectedBeamOf hostId
+                            elementMenuItem (UiIds.ElementMenu.placeOnReflectedOf hostId.value) $"%s{radio (current = host)} Reflected ray of %s{nameOf j}" true (fun () -> dispatch (PlaceOnBeam (e.id, host)))))
+                [ elementMenuNote "Sits on" true
+                  elementMenuItem UiIds.ElementMenu.placeOnMainBeam $"%s{radio (current = BeamLayout.OnMainBeam)} Main beam" true (fun () -> dispatch (PlaceOnBeam (e.id, BeamLayout.OnMainBeam))) ]
+                @ reflectedRows
+        [ elementMenuNote (nameOf i) true ]
+        @ rayRows
+        @ beamRows
+        @ [ elementMenuItem UiIds.ElementMenu.remove "Remove element" true (fun () -> dispatch RemoveSelected)
+            elementMenuItem UiIds.ElementMenu.close "Close" true (fun () -> dispatch CloseElementMenu) ]
+
+/// The element-menu overlay layer — a background-less canvas the size of the table canvas (so clicks
+/// off the menu fall through to the table), holding the open menu at its click point, kept on the canvas.
+let private elementMenuOverlay (model : Model) (dispatch : Msg -> unit) : IView =
+    let menuViews : IView list =
+        match model.elementMenu with
+        | None -> []
+        | Some menu ->
+            match elementMenuRows model dispatch menu with
+            | [] -> []
+            | rows ->
+                let estimatedHeight = elementMenuRowHeight * float (List.length rows) + 12.0
+                let left = max 0.0 (min (canvasWidth - elementMenuWidth) (menu.at.sx + 6.0))
+                let top = max 0.0 (min (canvasHeight - estimatedHeight) (menu.at.sy + 6.0))
+                [ Border.create [
+                      workbenchAutomationId UiIds.ElementMenu.menu
+                      Canvas.left left
+                      Canvas.top top
+                      Border.width elementMenuWidth
+                      Border.background (brush (color 255 255 255))
+                      Border.borderBrush (brush (color 120 120 120))
+                      Border.borderThickness 1.0
+                      Border.cornerRadius (CornerRadius 3.0)
+                      Border.padding (Thickness(0.0, 4.0))
+                      Border.child (StackPanel.create [ StackPanel.orientation Orientation.Vertical; StackPanel.children rows ])
+                  ]
+                  |> Avalonia.FuncUI.DSL.View.withKey UiIds.ElementMenu.menu
+                  :> IView ]
+    Canvas.create [
+        Canvas.width canvasWidth
+        Canvas.height canvasHeight
+        Canvas.horizontalAlignment HorizontalAlignment.Left
+        Canvas.verticalAlignment VerticalAlignment.Top
+        Canvas.children menuViews
+    ] :> IView
+
 let private mainTableCanvas (model : Model) : IView =
     Canvas.create [
         Canvas.name UiIds.TableAndElementRotation.canvas
@@ -2951,16 +3231,31 @@ let mainView (model : Model) (dispatch : Msg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint UiIds.TableAndElementRotation.canvas e
     // The shared table surface + its pointer / wheel gestures. A thunk, so it is only built for a table bay:
     // a full-surface bay never realizes the canvas and must not wire the table gestures.
+    // Spec 0046: a RIGHT click opens the element menu on release (its press starts no drag); the menu
+    // overlay sits above the surface as a sibling, so its rows get their own clicks.
     let tableSurface () : IView =
-        Border.create [
-            Border.background (brush (color 250 250 250))
-            Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
-            Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-            Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
-            Border.onPointerWheelChanged (fun e ->
-                e.Handled <- true
-                dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
-            Border.child (mainTableCanvas model)
+        Panel.create [
+            Panel.children [
+                Border.create [
+                    Border.background (brush (color 250 250 250))
+                    Border.onPointerPressed (fun e ->
+                        e.Handled <- true
+                        match e.GetCurrentPoint(null).Properties.IsRightButtonPressed with
+                        | true -> ()
+                        | false -> dispatch (PointerDown (toScreen e)))
+                    Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
+                    Border.onPointerReleased (fun e ->
+                        e.Handled <- true
+                        match e.InitialPressMouseButton with
+                        | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
+                        | _ -> dispatch (PointerUp (toScreen e)))
+                    Border.onPointerWheelChanged (fun e ->
+                        e.Handled <- true
+                        dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
+                    Border.child (mainTableCanvas model)
+                ]
+                elementMenuOverlay model dispatch
+            ]
         ] :> IView
     let bays = mainBays model dispatch
     // The area BELOW the ribbon strip: a full-surface bay fills it with the bay's OWN content (no table
@@ -2982,9 +3277,21 @@ let mainView (model : Model) (dispatch : Msg -> unit) : IView =
                 surface :> IView
             | Ribbon.InRibbonPane -> tableSurface ()
         | None -> tableSurface ()
-    DockPanel.create [
-        DockPanel.children [
-            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
-            belowStrip
-        ]
+    // Spec 0046: the whole surface scrolls — a tall bay (the Experiments editor + collection + chart +
+    // builder) pushes the table below the window's bottom edge, and nothing may become unreachable. The
+    // table surface keeps its own wheel (zoom / rotate), so the page scrolls by the scroll bar or a wheel
+    // over the ribbon. VERTICAL only: a horizontally scrollable viewer measures its content at infinite
+    // width, which lays the wrapping tab strip out on one unbounded row and pushes the right-docked
+    // Materials… / Library… buttons off-screen; disabled, the content is measured at the window's width.
+    ScrollViewer.create [
+        ScrollViewer.name UiIds.TableAndElementRotation.scrollViewer
+        ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+        ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+        ScrollViewer.content (
+            DockPanel.create [
+                DockPanel.children [
+                    Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
+                    belowStrip
+                ]
+            ])
     ] :> IView

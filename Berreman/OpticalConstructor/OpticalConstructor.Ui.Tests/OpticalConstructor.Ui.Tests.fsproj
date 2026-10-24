@@ -5,14 +5,6 @@
         <Platforms>x64</Platforms>
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -61,6 +53,9 @@
         <Compile Include="ElementRotationTests.fs" />
         <!-- Spec 0027 task 006 #3: the combined table + element rotation test window. -->
         <Compile Include="TableAndElementRotationTests.fs" />
+        <!-- Spec 0046: the right-click element menu, reflected rays and the beam tree they drive, the
+             detector-driven experiment captures, three-segment rendering, and the scrolling Main view. -->
+        <Compile Include="ElementMenuTests.fs" />
         <!-- Spec 0027 task 009: the shared rotation-controls bar's modifier-driven highlight
              (pure armed-axis map + a headless key-press render proof). -->
         <Compile Include="RotationControlsTests.fs" />
@@ -236,14 +231,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-        <PackageReference Include="xunit.v3" Version="4.0.0" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="xunit.v3" />
+        <PackageReference Include="xunit.runner.visualstudio">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="coverlet.collector" Version="10.0.1">
+        <PackageReference Include="coverlet.collector">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
@@ -252,8 +246,8 @@
              lives ONLY here, never in the pure OpticalConstructor.Tests project. The
              .XUnit helper is intentionally omitted: it binds to xUnit v2, while this
              project stays on xunit.v3 (see TestApp.fs). Versions track Avalonia 11.3.4. -->
-        <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+        <PackageReference Include="Avalonia.Headless" />
+        <PackageReference Include="Avalonia.Themes.Fluent" />
     </ItemGroup>
 
     <ItemGroup>

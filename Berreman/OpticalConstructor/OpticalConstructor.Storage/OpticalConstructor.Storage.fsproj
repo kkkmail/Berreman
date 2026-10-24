@@ -4,15 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>Softellect.Berreman.OpticalConstructor.Storage</AssemblyName>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <IsPackable>false</IsPackable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -72,16 +64,15 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-        <PackageReference Include="FSharp.SystemTextJson" Version="1.4.36" />
-        <PackageReference Include="FSharp.Data" Version="8.2.0" />
-        <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
-        <PackageReference Include="ClosedXML" Version="0.105.1" />
+        <PackageReference Include="FSharp.SystemTextJson" />
+        <PackageReference Include="FSharp.Data" />
+        <PackageReference Include="JsonSchema.Net" />
+        <PackageReference Include="ClosedXML" />
         <!-- The report HTML reuses the engine's own HTML-builder library (the same
              Giraffe.ViewEngine Charting.fs uses via Plotly.NET), not a second builder
              (§I.8). Plotly.NET pins the StrongName repackage; match it here. -->
-        <PackageReference Include="Giraffe.ViewEngine.StrongName" Version="2.0.0-alpha1" />
-        <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />
+        <PackageReference Include="Giraffe.ViewEngine.StrongName" />
+        <PackageReference Include="Softellect.Sys" />
     </ItemGroup>
 
     <ItemGroup>

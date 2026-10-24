@@ -40,7 +40,7 @@ module Sidecar =
     let writeSidecar<'T> (path : string) (value : 'T) : Result<unit, StorageError> =
         try
             let bytes = serialize BinaryZippedFormat value
-            File.WriteAllBytes(path, bytes)
+            File.WriteAllBytes(path, bytes.value)
             Ok()
         with e -> Error(BinzError e)
 
@@ -53,5 +53,5 @@ module Sidecar =
         else
             try
                 let bytes = File.ReadAllBytes path
-                Ok(deserialize BinaryZippedFormat bytes : 'T)
+                Ok(deserialize BinaryZippedFormat (SerializedData bytes) : 'T)
             with e -> Error(BinzError e)

@@ -49,6 +49,59 @@ dotnet test Berreman/OpticalConstructor/OpticalConstructor.Ui.Tests/OpticalConst
 Test stack: **xUnit v3**, **FsCheck** (property-based), **FluentAssertions**,
 and **Avalonia.Headless** for UI tests. Run the relevant tests after every
 change; if your local build/tests are green, the matching gate is green too.
+`BerremanTests` takes ~13 minutes (the inverse-fit tests); the two constructor
+suites take under a minute.
+
+**Release only.** There is no Debug configuration: the root
+`Directory.Build.props` defaults `Configuration` to Release and the root
+`Directory.Build.targets` fails any other configuration (`RELEASEONLY`). Never
+add a `Debug|x64` property group back.
+
+**Central package versions** (the STL pattern). Every third-party package
+version lives ONCE, as a `PackageVersion` item in the root
+`Directory.Build.targets`; projects write `<PackageReference Include="X" />`
+with no version. FSharp.Core is pinned once by `FSharpCoreImplicitPackageVersion`
+in the root `Directory.Build.props` — no project pins it. Versions follow STL's
+list (`C:\GitHub\Softellect\Directory.Build.targets`) wherever STL uses the
+package.
+
+**STL packages restore from BOTH feeds.** The root `nuget.config` maps
+`Softellect.*` to the local `../Packages` feed (`C:\GitHub\Packages`, which STL's
+slow-ring build publishes into) AND to nuget.org; everything else comes from
+nuget.org. Softellect.Sys is pinned to STL's current slow ring (the version in
+STL's `Sys/BuildInfo.ps1`, local-feed only until STL uploads it). Moving that pin
+means building STL's slow ring at its CURRENT version — **never bump STL's
+version ring from this repository** unless the operator explicitly says "bump".
+
+**`dotnet test` runs on VSTest.** xUnit v3 4.x marks test projects as Microsoft
+Testing Platform apps, which the .NET 10 SDK refuses on the VSTest path; the root
+`Directory.Build.props` sets `IsTestingPlatformApplication=false` so `dotnet test`
+works and prints the `Passed: N` summary the gates read. Do not remove it.
+
+---
+
+## Versioning
+
+One version for the whole app, STL's slow-ring scheme:
+`<FSharp.Core major.minor.patch>.<build>`, e.g. `10.1.402.7`. Every assembly and
+package carries it (vendored MathNet keeps its own); the Launcher shows it in its
+footer.
+
+- `Berreman/Berreman/BuildInfo.fs` — `BuildNumber` / `VersionPrefix` literals and
+  `BuildInfo.version`, the ONE place F# code reads the version from.
+- `Berreman/Berreman/BuildInfo.ps1` — the mirror the root `Directory.Build.props`
+  reads into `$(Version)`.
+- `Berreman/PreBuild/IncrementBuildNumber.fsx` — the bump: increments the
+  counter, re-derives the prefix from the FSharp.Core pin, rewrites both files.
+
+The bump is skipped while `Berreman/Berreman/.version-update-lock` exists, so
+**deleting the lock is how a bump is requested**; the script re-creates it.
+Take the bump before building (MSBuild reads `$(Version)` at evaluation time):
+
+```bash
+rm Berreman/Berreman/.version-update-lock
+dotnet fsi Berreman/PreBuild/IncrementBuildNumber.fsx
+```
 
 **A green build is non-negotiable:** core projects compile with
 `--warnaserror+:25` (uninstantiated-generic warnings are errors).
@@ -74,7 +127,7 @@ Berreman/                              # solution root (Berreman.slnx, x64)
   OpticalProperties/  ...OpticalProperties          # material definitions (standard / active / dispersive)
   Analytics/       ...Analytics                      # Plotly.NET charting, ranged variables, Examples/*.fsx
   BerremanTests/                                     # solver unit tests (xUnit v3 + FsCheck)
-  BerremanRunner/  / BerremanModelGenerator/         # console apps
+  BerremanRunner/  / BerremanModelGenerator/         # stale console apps kept on disk, NOT in Berreman.slnx
   OpticalConstructor/
     OpticalConstructor.Domain         # pure domain (units, rays, placement, materials, project model)
     OpticalConstructor.Optimization   # fitting / inverse design (Alglib adapter, merit functions)
@@ -266,10 +319,19 @@ This is a spec-driven, gated repository.
   is `false`. After editing, verify you did not introduce CRLF churn
   (`git diff --numstat` vs `--ignore-cr-at-eol`) and convert back to LF if it
   appears.
-- **x64 only.** The solution declares x64 as its single platform;
+- **x64 only.** The solution declares x64 as its single platform; the root
   `Directory.Build.props` defaults `Platform` to x64 so `dotnet test --no-build`
   resolves the same `bin\x64\Release\` tree the build produces. Do not add
   `AnyCPU`.
+- **`Directory.Build.props` / `.targets` live at the repository root**, not in
+  `Berreman/`, so they also govern the vendored `MathNetNumerics/` projects. Never
+  add a nested `Directory.Build.props` — MSBuild imports only the nearest one.
+- **One ray law for every element.** The Main scene's beam tree (main beam,
+  reflected side beams, the drawn segments, the light paths the experiment
+  captures are derived from) is `OpticalConstructor.Domain/BeamLayout.fs`; every
+  element is crossed by `RayModel.crossElement` (front face → Snell inside → exits
+  parallel; reflections leave the front face) at its DRAWN orientation and depth.
+  Never special-case an element kind in the drawing or the snapping.
 - **Never touch `*.nb` files.** Mathematica notebooks are treated as pure binary
   (no EOL, no diff, no merge). Leave them alone.
 - **Vendored MathNet.Numerics** is built from source under `MathNetNumerics/`;

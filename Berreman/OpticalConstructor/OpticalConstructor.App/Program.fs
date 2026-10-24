@@ -75,6 +75,9 @@ module LauncherIds =
     let openMaterialsButton = "OpenMaterialsButton"
     [<Literal>]
     let openLibraryButton = "OpenLibraryButton"
+    /// Spec 0046: the footer line showing the app version (`Berreman.BuildInfo.version`).
+    [<Literal>]
+    let versionText = "LauncherVersionText"
 
 /// Spec 0038 step 045: the shared body of the two constructor windows. The forward Main scene and
 /// the inverse scene are the SAME dynamic "Lego constructor" (`mainView` over
@@ -183,13 +186,30 @@ type LauncherWindow(context : AppContext) as this =
         let libraryButton =
             surfaceButton LauncherIds.openLibraryButton "Library" (fun () ->
                 launchers.openLibraryWindow context.library context.samples context.materials context.categories)
+        // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
+        // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
+        let versionText = $"Version {Berreman.BuildInfo.version.value}"
+        let version =
+            TextBlock(
+                Name = LauncherIds.versionText,
+                Text = versionText,
+                FontSize = 11.0,
+                Opacity = 0.7,
+                HorizontalAlignment = Layout.HorizontalAlignment.Right,
+                Margin = Thickness(20.0, 0.0, 20.0, 10.0))
+        AutomationProperties.SetAutomationId(version, LauncherIds.versionText)
+        AutomationProperties.SetName(version, versionText)
+        DockPanel.SetDock(version, Dock.Bottom)
         let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
         panel.Children.Add title
         panel.Children.Add mainButton
         panel.Children.Add inverseButton
         panel.Children.Add materialsButton
         panel.Children.Add libraryButton
-        this.Content <- panel
+        let form = DockPanel()
+        form.Children.Add version
+        form.Children.Add panel
+        this.Content <- form
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).

@@ -75,11 +75,20 @@ module PlacedSampleEmissionTests =
         Assert.Equal(CaptureReflected, chosen.experimentCollection.draft.measurement)
 
     [<Fact>]
-    let ``a placed Plate sample supporting both defaults to EmitBoth and its experiment to CaptureBoth`` () =
+    let ``a placed Plate sample supporting both defaults to EmitBoth and its experiment to what the detectors capture`` () =
         let m = initMain () |> update (AddElement Sample) |> bind 2 plateId
         Assert.Equal<Emission>(EmitBoth, emissionOf 2 m)
+        // Spec 0046: the capture follows the DETECTORS — the seeded detector sits on the plate's
+        // transmitted beam only, so T is the default ...
         let chosen = m |> update (ExpChooseElement (idOf 2 m))
-        Assert.Equal(CaptureBoth, chosen.experimentCollection.draft.measurement)
+        Assert.Equal(CaptureTransmitted, chosen.experimentCollection.draft.measurement)
+        // ... and with a second detector on the plate's REFLECTED ray, both branches are captured.
+        let withReflectedDetector =
+            m
+            |> update (AddElement Detector)
+            |> (fun m' -> m' |> update (PlaceOnBeam ((List.item 3 m'.elements).id, BeamLayout.OnReflectedBeamOf (List.item 2 m'.elements).id)))
+        let chosenBoth = withReflectedDetector |> update (ExpChooseElement (idOf 2 withReflectedDetector))
+        Assert.Equal(CaptureBoth, chosenBoth.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``binding a placed sample from a ThinFilm to a Plate re-seeds the placed emission`` () =

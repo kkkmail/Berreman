@@ -124,10 +124,12 @@ module ExperimentControlsTests =
         let filmChosen = film |> update (ExpChooseElement (idOf 2 film))
         Assert.Equal(Experiments.CaptureReflected, filmChosen.experimentCollection.draft.measurement)
 
+        // Spec 0046: a Plate EMITS both, but what an experiment captures follows the DETECTORS — the
+        // seeded detector sits on the plate's transmitted beam only ⇒ CaptureTransmitted.
         let plate = initMain () |> update (AddElement Sample) |> bind 2 glassPlate1mmId
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 plate).placement.emission)
         let plateChosen = plate |> update (ExpChooseElement (idOf 2 plate))
-        Assert.Equal(Experiments.CaptureBoth, plateChosen.experimentCollection.draft.measurement)
+        Assert.Equal(Experiments.CaptureTransmitted, plateChosen.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``the measurement and range round-trip through the model`` () =
@@ -241,9 +243,13 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``capturing BOTH branches yields two series (T and R)`` () =
-        // A bound sample, VaryR2, capture Both ⇒ a transmitted AND a reflected intensity series.
+        // A bound Plate sample with a detector on its transmitted beam (the seeded one) AND one on its
+        // reflected ray (spec 0046: Both is offered only then), VaryR2, capture Both ⇒ a transmitted AND
+        // a reflected intensity series.
         let m =
-            initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id
+            initMain () |> update (AddElement Sample) |> bind 2 glassPlate1mmId
+            |> update (AddElement Detector)
+            |> (fun m -> m |> update (PlaceOnBeam ((elem 3 m).id, BeamLayout.OnReflectedBeamOf (elem 2 m).id)))
             |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
             |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)

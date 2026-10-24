@@ -107,6 +107,10 @@ module ExperimentControls =
             chosenVariable : VariableChoice option
             /// The chosen capture mode (transmitted / reflected / both).
             measurement : MeasurementChoice
+            /// Spec 0046: the capture modes the scene's detectors allow for the chosen element (host-
+            /// supplied: a transmitted detector offers T, a reflected one R, both offer T / R / Both). Only
+            /// these are shown; empty while no detector captures the element's light.
+            measurementChoices : MeasurementChoice list
             /// The variation range (in the variable's display unit) and its point count.
             rangeMin : float
             rangeMax : float
@@ -143,6 +147,7 @@ module ExperimentControls =
             variableChoices = []
             chosenVariable = None
             measurement = CaptureT
+            measurementChoices = []
             rangeMin = 0.0
             rangeMax = 360.0
             rangePoints = 73
@@ -227,10 +232,6 @@ module ExperimentControls =
             // chosen flag flips so a reused box can't keep a stale handler.
             Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (chosen, visible)))
         ] :> IView
-
-    /// An always-visible clickable option box (measurements — a fixed set, so a stable `Name` is safe).
-    let private optionBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-        optionBoxV id label chosen enabled true onClick
 
     /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
     /// control onto a different item's slot when an item is removed, so the box carries a reuse-safe
@@ -496,18 +497,39 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    /// The capture-mode selection row (step 3a: T / R / both).
+    /// The capture-mode selection row (step 3a: T / R / both). Spec 0046: only the captures the scene's
+    /// detectors allow are shown (`measurementChoices`) — every box stays at its stable slot and only its
+    /// visibility flips (the `variableRow` discipline); with none, a hint says why. Before an element is
+    /// chosen there is nothing to capture yet, so the row stays as it was (all three, inert).
     let private measurementRow (state : State) (handlers : Handlers) : IView =
+        let elementChosen = match state.chosenId with Some _ -> true | None -> false
+        let offered (m : MeasurementChoice) : bool = not elementChosen || List.contains m state.measurementChoices
+        let noneOffered = elementChosen && List.isEmpty state.measurementChoices
         let one (m : MeasurementChoice) : IView =
-            optionBox
+            optionBoxV
                 (UiIds.Experiment.measurement (measurementCode m))
                 (measurementLabel m)
                 (state.measurement = m)
-                state.enabled
+                (state.enabled && offered m)
+                (offered m)
                 (fun () -> handlers.chooseMeasurement m)
-        WrapPanel.create [
-            WrapPanel.orientation Orientation.Horizontal
-            WrapPanel.children [ one CaptureT; one CaptureR; one CaptureBoth ]
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.children [
+                TextBlock.create [
+                    TextBlock.name UiIds.Experiment.noCapture
+                    TextBlock.text "(no detector captures this element's light — put a detector on its transmitted beam or on its reflected ray: right-click an element for its rays)"
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.maxWidth 420.0
+                    TextBlock.foreground (brush (color 120 120 120))
+                    TextBlock.isVisible noneOffered
+                ]
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.isVisible (not noneOffered)
+                    WrapPanel.children [ one CaptureT; one CaptureR; one CaptureBoth ]
+                ]
+            ]
         ] :> IView
 
     /// Parse a plain decimal (invariant culture).

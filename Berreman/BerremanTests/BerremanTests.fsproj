@@ -5,14 +5,6 @@
         <Platforms>x64</Platforms>
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -68,25 +60,24 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-        <PackageReference Include="FluentAssertions" Version="[7.0.0]" />
-        <PackageReference Include="FsCheck" Version="3.3.4" />
-        <PackageReference Include="FsCheck.Xunit" Version="3.3.4" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+        <PackageReference Include="FluentAssertions" />
+        <PackageReference Include="FsCheck" />
+        <PackageReference Include="FsCheck.Xunit" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="xunit.runner.visualstudio">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="coverlet.collector" Version="10.0.1">
+        <PackageReference Include="coverlet.collector">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
-        <PackageReference Include="xunit.v3" Version="4.0.0" />
+        <PackageReference Include="Xunit.SkippableFact" />
+        <PackageReference Include="xunit.v3" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />
+        <PackageReference Include="Softellect.Sys" />
     </ItemGroup>
 
     <ItemGroup>
