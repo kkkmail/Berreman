@@ -13,10 +13,11 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// follows through `MeasurementMode.ofEmission`. This module covers both the pure Domain rule
 /// (`Library.placementEmissionForEntry`) and the end-to-end Ui MVU drive (place a Sample, bind it,
 /// choose it to vary) so the placed element AND its experiment default land on the right values —
-/// a ThinFilm defaults to reflected-only / `CaptureReflected`, a Plate to both / `CaptureBoth`.
+/// a Mirror (spec 0046: the only reflect-only geometry) defaults to reflected-only / `CaptureReflected`,
+/// a ThinFilm or a Plate to both.
 module PlacedSampleEmissionTests =
 
-    // ---- the seeded library the Main scene binds against (a ThinFilm + a Plate seed) ----
+    // ---- the seeded library the Main scene binds against (a Mirror, a ThinFilm and a Plate seed) ----
 
     let private lib : LibraryProxy = Library.createInMemory ()
 
@@ -26,7 +27,9 @@ module PlacedSampleEmissionTests =
         | Ok (Some e) -> e
         | other -> failwith $"seed entry '%s{id}' unexpectedly not resolvable: %A{other}"
 
-    /// A seeded ThinFilm sample (`supportedEmission = EmitReflectedOnly`, step 009).
+    /// The seeded MIRROR sample (`supportedEmission = EmitReflectedOnly`; spec 0046 — the EUV multilayer).
+    let private mirrorId : string = (SampleItem SeedSamples.euvMoSi).entryId
+    /// A seeded ThinFilm sample — spec 0046: a thin film reflects AND transmits (`EmitBoth`).
     let private thinFilmId : string = (SampleItem SeedSamples.glassFilm600).entryId
     /// A seeded Plate sample supporting BOTH branches (`supportedEmission = EmitBoth`).
     let private plateId : string = (SampleItem SeedSamples.glassPlate1mm).entryId
@@ -36,9 +39,10 @@ module PlacedSampleEmissionTests =
     // ============================ pure Domain: placementEmissionForEntry ============================
 
     [<Fact>]
-    let ``a bound ThinFilm sample bounds the placement to its reflected-only supportedEmission`` () =
+    let ``a bound Mirror sample bounds the placement to its reflected-only supportedEmission; a ThinFilm to both`` () =
         // The fallback (the generic per-kind default) is IGNORED for a sample — its geometry wins.
-        Assert.Equal<Emission>(EmitReflectedOnly, placementEmissionForEntry EmitBoth (entry thinFilmId))
+        Assert.Equal<Emission>(EmitReflectedOnly, placementEmissionForEntry EmitBoth (entry mirrorId))
+        Assert.Equal<Emission>(EmitBoth, placementEmissionForEntry EmitReflectedOnly (entry thinFilmId))
 
     [<Fact>]
     let ``a bound Plate sample supporting both bounds the placement to EmitBoth`` () =
@@ -53,7 +57,7 @@ module PlacedSampleEmissionTests =
     [<Fact>]
     let ``the experiment default measurement follows the bound sample's emission`` () =
         // The composed rule the host relies on: MeasurementMode.ofEmission over the placement emission.
-        Assert.Equal(CaptureReflected, MeasurementMode.ofEmission (placementEmissionForEntry EmitBoth (entry thinFilmId)))
+        Assert.Equal(CaptureReflected, MeasurementMode.ofEmission (placementEmissionForEntry EmitBoth (entry mirrorId)))
         Assert.Equal(CaptureBoth, MeasurementMode.ofEmission (placementEmissionForEntry EmitReflectedOnly (entry plateId)))
 
     // ============================ end-to-end Ui MVU drive ============================
@@ -67,9 +71,10 @@ module PlacedSampleEmissionTests =
     let private idOf (i : int) (m : Model) : string = (List.item i m.elements).id.value
 
     [<Fact>]
-    let ``a placed ThinFilm sample defaults to reflected-only and its experiment to CaptureReflected`` () =
-        // A sample is placed UNBOUND (the inverse hook) then bound; the bind seeds the emission.
-        let m = initMain () |> update (AddElement Sample) |> bind 2 thinFilmId
+    let ``a placed Mirror sample defaults to reflected-only and its experiment to CaptureReflected`` () =
+        // A sample is placed UNBOUND (the inverse hook) then bound; the bind seeds the emission. A
+        // reflect-only sample continues the main beam on its reflected ray, so the seeded detector sees R.
+        let m = initMain () |> update (AddElement Sample) |> bind 2 mirrorId
         Assert.Equal<Emission>(EmitReflectedOnly, emissionOf 2 m)
         let chosen = m |> update (ExpChooseElement (idOf 2 m))
         Assert.Equal(CaptureReflected, chosen.experimentCollection.draft.measurement)
@@ -91,10 +96,10 @@ module PlacedSampleEmissionTests =
         Assert.Equal(CaptureBoth, chosenBoth.experimentCollection.draft.measurement)
 
     [<Fact>]
-    let ``binding a placed sample from a ThinFilm to a Plate re-seeds the placed emission`` () =
+    let ``binding a placed sample from a Mirror to a Plate re-seeds the placed emission`` () =
         // The single seed point runs on every bind, so re-binding a placed sample tracks the new
         // geometry rather than leaving the first bind's emission stale.
-        let m = initMain () |> update (AddElement Sample) |> bind 2 thinFilmId
+        let m = initMain () |> update (AddElement Sample) |> bind 2 mirrorId
         Assert.Equal<Emission>(EmitReflectedOnly, emissionOf 2 m)
         let rebound = m |> bind 2 plateId
         Assert.Equal<Emission>(EmitBoth, emissionOf 2 rebound)

@@ -126,10 +126,10 @@ type Model =
         description : string
         substrate : SubstrateKind
         /// The ray groups this sample can emit, geometry-constrained (spec 0040 Part D.2 step 010):
-        /// a `ThinFilm` is pinned to `EmitReflectedOnly` (R fixed on, unclearable); a `Plate` is
-        /// constrainable to R-only or T-only through the R/T checkboxes. Every write routes through
-        /// `constrainEmission m.substrate`, so the "both off" state stays unrepresentable and a thin
-        /// film can never clear its reflected branch.
+        /// a `Mirror` is pinned to `EmitReflectedOnly` (R fixed on, unclearable); a `ThinFilm` or a `Plate`
+        /// is constrainable to R-only or T-only through the R/T checkboxes (spec 0046). Every write routes through
+        /// `constrainEmission m.substrate`, so the "both off" state stays unrepresentable and a mirror
+        /// can never clear its reflected branch.
         supportedEmission : Placement.Emission
         editor : SampleStackEditState
         materials : MaterialEntry list
@@ -159,7 +159,7 @@ type Msg =
     /// Spec 0040 (D.2 step 010): the R / T emission checkboxes. Each carries the box's NEW
     /// checked state; the update arm routes it through `Emission.withReflected` /
     /// `withTransmitted` then re-imposes the geometry constraint, so "both off" is impossible
-    /// and a `ThinFilm` stays `EmitReflectedOnly` even if a message reaches it.
+    /// and a `Mirror` stays `EmitReflectedOnly` even if a message reaches it.
     | SetReflectedEmission of bool
     | SetTransmittedEmission of bool
     | ChooseMaterial of MaterialId
@@ -304,11 +304,13 @@ let substrateCode (kind : SubstrateKind) : string =
     match kind with
     | ThinFilm -> "ThinFilm"
     | Plate -> "Plate"
+    | Mirror -> "Mirror"
 
 let private substrateLabel (kind : SubstrateKind) : string =
     match kind with
     | ThinFilm -> "Thin film"
     | Plate -> "Plate"
+    | Mirror -> "Mirror"
 
 let private orientationDegrees (o : CrystalOrientation) : float * float * float =
     match o with
@@ -399,7 +401,7 @@ let toSample (id : SampleId) (m : Model) : Sample =
         description = m.description
         // The user's edited emission (spec 0040 Part D.2 step 010): the R/T checkboxes drive
         // `m.supportedEmission`, already kept inside the geometry constraint by every update arm
-        // (a ThinFilm stays EmitReflectedOnly; a Plate keeps its R-only / T-only / both choice).
+        // (a Mirror stays EmitReflectedOnly; a ThinFilm / Plate keeps its R-only / T-only / both choice).
         supportedEmission = m.supportedEmission
     }
 
@@ -436,12 +438,17 @@ let update (msg : Msg) (m : Model) : Model =
     | SetDescription s -> { m with description = s }
     | SetSubstrate kind ->
         // Re-impose the new geometry's emission constraint (spec 0040 Part D.2 step 010): flipping
-        // to ThinFilm re-pins R-only, so the R-fixed-on invariant stays true and the model stays
-        // consistent with what `toSample` persists.
-        { m with substrate = kind; supportedEmission = constrainEmission kind m.supportedEmission }
+        // to Mirror re-pins R-only, so the R-fixed-on invariant stays true and the model stays
+        // consistent with what `toSample` persists. Spec 0046: leaving Mirror restores the new
+        // geometry's default (R + T) rather than keeping the R-only a mirror forced.
+        let emission =
+            match m.substrate, kind with
+            | Mirror, (ThinFilm | Plate) -> defaultSupportedEmission kind
+            | _ -> constrainEmission kind m.supportedEmission
+        { m with substrate = kind; supportedEmission = emission }
     | SetReflectedEmission on ->
         // Turn the reflected group on/off (spec 0040 Part D.2 step 010): the smart setter forbids
-        // the both-off state, and `constrainEmission` re-pins a ThinFilm to EmitReflectedOnly.
+        // the both-off state, and `constrainEmission` re-pins a Mirror to EmitReflectedOnly.
         { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withReflected on m.supportedEmission) }
     | SetTransmittedEmission on ->
         { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withTransmitted on m.supportedEmission) }
@@ -730,7 +737,7 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
         StackPanel.spacing 6.0
         StackPanel.children (
             labelBlock "Geometry:"
-            :: ([ ThinFilm; Plate ]
+            :: ([ ThinFilm; Plate; Mirror ]
                 |> List.map (fun kind ->
                     clickBox (UiIds.SampleEditor.substrateOption (substrateCode kind)) (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
     ] :> IView
@@ -738,7 +745,7 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// One emission group checkbox (spec 0040 Part D.2 step 010). `isChecked` is bound ONE-WAY from
 /// the model; the dispatch rides `Button.onClick`, which fires only on USER activation (pointer /
 /// keyboard), never on the render's programmatic `IsChecked` set — so there is no FuncUI feedback
-/// loop. A disabled box (the ThinFilm R box) dispatches nothing.
+/// loop. A disabled box (the Mirror R box) dispatches nothing.
 let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enabled : bool) (toMsg : bool -> Msg) (dispatch : Msg -> unit) : IView =
     CheckBox.create [
         automationId autoId
@@ -752,18 +759,18 @@ let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enab
         CheckBox.onClick ((fun _ -> dispatch (toMsg (not isOn))), SubPatchOptions.OnChangeOf (box (autoId, isOn, enabled)))
     ] :> IView
 
-/// The supported-emission facet (spec 0040 Part D.2 step 010): the ray groups this sample emits.
-/// A `Plate` exposes BOTH the R and T checkboxes so the user constrains emission to R-only or
-/// T-only (the `Emission` smart setters keep "both off" unrepresentable); a `ThinFilm` shows R
-/// fixed on + disabled and renders NO T box (the step-9 invariant — a thin film is observable in
-/// reflection off its stack alone).
+/// The supported-emission facet (spec 0040 Part D.2 step 010; spec 0046): the ray groups this sample
+/// emits. A `ThinFilm` or a `Plate` exposes BOTH the R and T checkboxes so the user constrains emission
+/// to R-only or T-only (the `Emission` smart setters keep "both off" unrepresentable); a `Mirror` shows R
+/// fixed on + disabled and renders NO T box (a mirror is observed in reflection alone).
 let private emissionRow (m : Model) (dispatch : Msg -> unit) : IView =
     let reflectedOn = m.supportedEmission.emitsReflected
     let transmittedOn = m.supportedEmission.emitsTransmitted
     let reflectedEnabled =
         match m.substrate with
+        | ThinFilm
         | Plate -> true
-        | ThinFilm -> false
+        | Mirror -> false
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 10.0
@@ -773,8 +780,9 @@ let private emissionRow (m : Model) (dispatch : Msg -> unit) : IView =
                 emissionCheck UiIds.SampleEditor.emitReflectedCheck "Reflected (R)" reflectedOn reflectedEnabled SetReflectedEmission dispatch
             ]
             @ (match m.substrate with
+               | ThinFilm
                | Plate -> [ emissionCheck UiIds.SampleEditor.emitTransmittedCheck "Transmitted (T)" transmittedOn true SetTransmittedEmission dispatch ]
-               | ThinFilm -> []))
+               | Mirror -> []))
     ] :> IView
 
 // -- the stack table -------------------------------------------------------------------------

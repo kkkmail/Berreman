@@ -59,7 +59,9 @@ module SceneRoundTripTests =
         { initMain () with
             elements = [ sourceEl; polarizerEl; detectorEl ]
             view = dialledView
-            snapChain = true }
+            snapChain = true
+            // Spec 0046: the non-default rotation pivot, so the round-trip proves it survives too.
+            rotationPivot = BeamLayout.PivotAtIncidentFace }
 
     [<Fact>]
     let ``createInMemory round-trips capture-save-load-restore reproducing ids, kinds, placements, bindings, and view state`` () =
@@ -111,6 +113,7 @@ module SceneRoundTripTests =
         // ... and the table view state + snap flag.
         Assert.Equal<Table.TableViewState>(dialledView, restored.view)
         Assert.True(restored.snapChain)
+        Assert.Equal(BeamLayout.PivotAtIncidentFace, restored.rotationPivot)
 
     [<Fact>]
     let ``saveScene overwrites a scene stored under the same name (upsert)`` () =

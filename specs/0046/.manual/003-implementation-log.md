@@ -174,6 +174,32 @@ Fixes:
   (normal colour ≠ ray colour; Hide / ShowNormals in both renderers); `ElementMenuTests` +1 (the Main view
   draws one N1 marker — the selected element's). Constructor 709, ui-smoke 197, ui-tests 506.
 
+## Rotation pivot, R / T defaults, detector placement (operator, same day)
+
+- **Global rotation pivot** (`BeamLayout.RotationPivot`: `PivotAtCentre` default | `PivotAtIncidentFace`),
+  a checkbox in the Rotation bay (`RotateAboutIncidentFaceCheck`), held in `Model.rotationPivot` and
+  `Scene.SceneSnapshot.pivot`. About the incident face, an element's beam point is the middle of its
+  incident face (its centre sits half a depth behind it), so the incident ray always enters there; inside
+  it bends by Snell and leaves the back face off its middle at non-normal incidence. Mirrors reflect at the
+  beam point at every tilt. `RayModel.crossElementThrough` generalises the crossing to any line point
+  (`crossElement` = through the centre). The source keeps rotating about its centre (it has no incident
+  face). Render: `008-pivot-incident-face.png`.
+- **R / T defaults.** New sample geometry `Mirror` — the ONLY one pinned to locked R-only; a `ThinFilm` now
+  reflects AND transmits (default `EmitBoth`, constrainable) like a `Plate`; the seeded EUV Mo/Si multilayer
+  is the one `Mirror` seed. The sample editor offers Thin film / Plate / Mirror (R fixed + no T box only for
+  a Mirror; leaving Mirror restores R + T). Lenses carry T only, structurally (`defaultEmission`,
+  `outgoingGroups`, `sideBeamOf`, `rayControlOf`), as mirrors carry R only.
+- **Detectors.** A detector now TERMINATES its beam wherever it sits: elements further along are laid out
+  but `Unlit` (no ray drawn to them, no captures). `SceneLayout.rays` lists the lit rays in walk order
+  (main beam first) with how each ends; an added detector goes to the END of the first ray no detector
+  terminates (`BeamLayout.firstFreeRay`, `rayEndX`), else onto the main beam at the usual position, where it
+  terminates the beam. Renders: `009-added-detector-free-ray.png`, `010-added-detector-no-free-ray.png`.
+- Tests updated to the new rules (Mirror is the reflect-only geometry; lens T-only) and added: pivot entry
+  point / exit off the back-face middle / mirror reflection point, detector termination and captures,
+  free-ray order, detector placement, the pivot checkbox, the pivot surviving a scene round-trip.
+  Constructor 714, ui-smoke 198, ui-tests 509; full no-incremental build 0 errors, only vendored SYSLIB0051.
+  BerremanTests was stopped by the operator and not re-run.
+
 ## Findings
 
 - F1: `dotnet test` broken on the .NET 10 SDK since the xunit.v3 4.0.0 bump (see item 1).

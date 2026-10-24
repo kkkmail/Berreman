@@ -336,6 +336,9 @@ type Model =
         /// Spec 0046: the open right-click element menu (ray toggles, which beam the element sits on,
         /// remove), if any. Closed by any left click, a selection change, or its own Close verb.
         elementMenu : ElementMenu option
+        /// Spec 0046: the GLOBAL rotation pivot — every element rotates about its centre (the default),
+        /// or about the middle of its incident face, so the incident ray always meets it at that point.
+        rotationPivot : BeamLayout.RotationPivot
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -457,6 +460,7 @@ let initWith
         collectionStatus = None
         experimentDataStatus = Map.empty
         elementMenu = None
+        rotationPivot = BeamLayout.PivotAtCentre
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -557,6 +561,7 @@ let captureScene (model : Model) : Scene.SceneSnapshot =
             |> List.map (fun e -> { Scene.SceneElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
         view = model.view
         snap = Scene.SnapMode.create model.snapChain
+        pivot = model.rotationPivot
     }
 
 /// The inverse of `captureScene` — apply a saved `Scene.SceneSnapshot` back onto a live model,
@@ -572,6 +577,7 @@ let restoreScene (snapshot : Scene.SceneSnapshot) (model : Model) : Model =
             |> List.map (fun e -> { TestElement.id = e.id; placement = e.placement; zoom = e.zoom; beam = e.beam })
         view = snapshot.view
         snapChain = snapshot.snap.value
+        rotationPivot = snapshot.pivot
         selection = TableSelected
         drag = NotPressed
         elementMenu = None }
@@ -696,6 +702,9 @@ type Msg =
     /// Spec 0046: move the element onto a beam — the main beam, or the reflected ray of a
     /// partially-reflecting element (a loop-forming or unavailable target is refused).
     | PlaceOnBeam of Library.ElementId * BeamLayout.BeamHost
+    /// Spec 0046: the GLOBAL rotation pivot (the Rotation bay's checkbox) — about each element's centre, or
+    /// about the middle of its incident face.
+    | SetRotationPivot of BeamLayout.RotationPivot
 
 // ---------------------------------------------------------------------------
 // Constants.
@@ -811,8 +820,9 @@ type MainNode =
 let layoutElements (m : Model) : BeamLayout.LayoutElement list =
     m.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; zoom = e.zoom })
 
-/// The laid-out Main scene (spec 0046) — `BeamLayout.layout` over `layoutElements`.
-let sceneLayout (m : Model) : BeamLayout.SceneLayout = BeamLayout.layout (layoutElements m)
+/// The laid-out Main scene (spec 0046) — `BeamLayout.layoutWith` the global rotation pivot over
+/// `layoutElements`.
+let sceneLayout (m : Model) : BeamLayout.SceneLayout = BeamLayout.layoutWith m.rotationPivot (layoutElements m)
 
 let mainSnap (m : Model) : Map<int, MainNode> * BeamLayout.RaySegment list =
     let freePos (e : TestElement) : Vector3 = Vector3.create (elementX e) (e.placement.placementPoint.y / 1.0<meter>) 0.0
@@ -911,8 +921,8 @@ let private cancelActiveSelect (m : Model) : Model =
     | None -> m
 
 /// Spec 0040 Part D.3: a placed sample's emission is bounded by the SAMPLE it is bound to, not the
-/// generic per-kind `defaultEmission` — a bound `ThinFilm` sample reflects only, a bound `Plate`
-/// emits both (or the R/T-only it was constrained to). Resolve the placement's `valueId` through the
+/// generic per-kind `defaultEmission` — a bound `Mirror` sample reflects only, a bound `ThinFilm` /
+/// `Plate` emits both (or the R/T-only it was constrained to). Resolve the placement's `valueId` through the
 /// Library proxy and, when it binds a sample entry, seed the emission from that sample's
 /// geometry-constrained `supportedEmission` (`Library.placementEmissionForEntry`); a placement bound
 /// to a non-sample entry, an unknown id, or nothing keeps the emission its kind already gave it. This
@@ -926,6 +936,30 @@ let private withBoundSampleEmission (m : Model) (p : ElementPlacement) : Element
         | Ok None | Error _ -> p
     | None -> p
 
+/// The plate half-length — the clamp for along-beam motion, in metres.
+let plateHalfLength (m : Model) : float = (m.table.length / 2.0) / 1.0<meter>
+
+/// How far along a ray an element lands past the element it follows — moved onto a reflected ray from
+/// behind its new host, or added at the end of a ray (spec 0046).
+let sideBeamGap : float = 0.3
+
+/// The along-beam position just past the LAST element on `ray` (spec 0046): `sideBeamGap` beyond the
+/// furthest element that actually sits on it (else beyond the element the ray leaves — the source for
+/// the main beam, the host for a reflected ray), clamped to the plate.
+let rayEndX (m : Model) (ray : BeamLayout.BeamHost) : float =
+    let start =
+        match ray with
+        | BeamLayout.OnMainBeam -> m.elements |> List.tryHead
+        | BeamLayout.OnReflectedBeamOf hostId -> m.elements |> List.tryFind (fun e -> e.id = hostId)
+        |> Option.map elementX
+        |> Option.defaultValue 0.0
+    let last =
+        List.zip m.elements (sceneLayout m).elements
+        |> List.indexed
+        |> List.choose (fun (i, (e, placed)) -> if i > 0 && placed.beam = ray then Some (elementX e) else None)
+        |> List.fold max start
+    min (plateHalfLength m) (last + sideBeamGap)
+
 /// Append a catalogue element to the scene and select it. New elements are spread along the beam so
 /// they do not land exactly on top of one another; the user then rotates / configures the selection.
 /// Selecting the new element IS a table-selection change, so an open Select session cancels (016).
@@ -937,11 +971,23 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Mod
         m.elements
         |> List.filter (fun e -> e.placement.catalogueKind <> LightSource && e.placement.catalogueKind <> Detector)
         |> List.length
-    let x = -0.3 + 0.2 * float middleCount
+    let defaultX = -0.3 + 0.2 * float middleCount
+    // Spec 0046: a DETECTOR goes to the END of the first lit ray that no detector terminates yet (the
+    // main beam, then the reflected rays in the order the light reaches their hosts); only when every
+    // ray already ends on a detector does it go to the main beam, where it terminates the beam at its
+    // position (a detector behind it then receives nothing).
+    let host, x =
+        match kind with
+        | Detector ->
+            match BeamLayout.firstFreeRay (sceneLayout m) with
+            | Some ray -> ray, rayEndX m ray
+            | None -> BeamLayout.OnMainBeam, defaultX
+        | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
+            BeamLayout.OnMainBeam, defaultX
     let placement =
         { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
         |> withBoundSampleEmission m
-    let e = { id = freshId (); placement = placement; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+    let e = { id = freshId (); placement = placement; zoom = defaultElementZoom; beam = host }
     let elements' = m.elements @ [ e ]
     { cancelActiveSelect m with elements = elements'; selection = ElementSelected (List.length elements' - 1) }
 
@@ -969,9 +1015,6 @@ let private removeSelected (m : Model) : Model =
 // ---------------------------------------------------------------------------
 // Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate.
 // ---------------------------------------------------------------------------
-
-/// The plate half-length — the clamp for along-beam motion, in metres.
-let plateHalfLength (m : Model) : float = (m.table.length / 2.0) / 1.0<meter>
 
 let private setElementX (i : int) (x : float) (m : Model) : Model =
     let half = plateHalfLength m
@@ -1015,9 +1058,6 @@ let private toggleElementRay (id : Library.ElementId) (branch : BeamTree.BeamBra
     match m.elements |> List.tryFindIndex (fun e -> e.id = id) with
     | Some i -> mapElement i (fun e -> { e with placement = BeamLayout.toggleRay branch (supportedEmissionOf m e.placement) e.placement }) m
     | None -> m
-
-/// How far along a reflected ray an element lands when it is moved onto it from behind its new host.
-let sideBeamGap : float = 0.3
 
 /// Move element `id` onto `host` (spec 0046). The root (the source) never moves; a reflected ray is
 /// accepted only when `BeamLayout.attachableHosts` offers it (it exists and would not loop). An element
@@ -1257,7 +1297,7 @@ let rec update (msg : Msg) (model : Model) : Model =
         match m.elements |> List.tryFindIndex (fun e -> e.id = elementId) with
         | Some i ->
             // Spec 0040 Part D.3: a bound sample seeds the placed element's emission from its
-            // geometry-constrained `supportedEmission` (a ThinFilm ⇒ reflected-only); a non-sample
+            // geometry-constrained `supportedEmission` (a Mirror ⇒ reflected-only); a non-sample
             // bind keeps the kind default (`withBoundSampleEmission`).
             mapElement i (fun e -> { e with placement = withBoundSampleEmission m { e.placement with valueId = Some entryId } })
                 { m with pendingEntry = None; selectStatus = None }
@@ -1420,6 +1460,7 @@ let rec update (msg : Msg) (model : Model) : Model =
     | CloseElementMenu -> { model with elementMenu = None }
     | ToggleElementRay (id, branch) -> toggleElementRay id branch model
     | PlaceOnBeam (id, host) -> placeOnBeam id host model
+    | SetRotationPivot pivot -> { model with rotationPivot = pivot }
     | PointerDown pt -> { model with drag = Pressed pt }
     | PointerMove pt ->
         match model.drag with
@@ -3038,12 +3079,37 @@ let private experimentsBayContent (model : Model) (dispatch : Msg -> unit) : IVi
         ]
     ] :> IView
 
+/// Spec 0046: the GLOBAL rotation-pivot option — checked, every element rotates about the middle of its
+/// incident face (the incident ray then always meets it there); unchecked, about its centre (as before).
+/// `isChecked` is bound one way and the dispatch rides `onClick`, which fires only on user activation
+/// (the `SampleEditorView.emissionCheck` precedent — no FuncUI feedback loop).
+let private pivotCheckBox (model : Model) (dispatch : Msg -> unit) : IView =
+    let isOn =
+        match model.rotationPivot with
+        | BeamLayout.PivotAtIncidentFace -> true
+        | BeamLayout.PivotAtCentre -> false
+    CheckBox.create [
+        AttrBuilder<CheckBox>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, UiIds.TableAndElementRotation.pivotAtIncidentFace, ValueNone)
+        CheckBox.isChecked isOn
+        CheckBox.content "Rotate elements about the middle of their incident face"
+        CheckBox.margin (Thickness(8.0, 0.0, 0.0, 0.0))
+        CheckBox.onClick ((fun _ -> dispatch (SetRotationPivot (if isOn then BeamLayout.PivotAtCentre else BeamLayout.PivotAtIncidentFace))), SubPatchOptions.OnChangeOf (box isOn))
+    ] :> IView
+
+/// The Rotation bay: the shared rotation-controls bar plus the global rotation-pivot option.
+let private rotationBayContent (model : Model) (dispatch : Msg -> unit) : IView =
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.spacing 4.0
+        StackPanel.children [ RotationControls.view (rotationState model) (rotationHandlers dispatch); pivotCheckBox model dispatch ]
+    ] :> IView
+
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
 /// or removing a Bay here is the ONLY change needed to add / remove a large control from the Main screen.
 /// (Spec 0038 step 015: no FULL-SURFACE bay remains — the samples workbench that used the mode is the
 /// Library WINDOW now; the mode itself stays in the generic Ribbon control.)
 let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
-    [ { name = BayNames.rotation; content = RotationControls.view (rotationState model) (rotationHandlers dispatch); mode = Ribbon.InRibbonPane }
+    [ { name = BayNames.rotation; content = rotationBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }

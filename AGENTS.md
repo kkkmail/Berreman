@@ -335,7 +335,11 @@ This is a spec-driven, gated repository.
   (nothing on it, or no detector at its end) stops at the first drawn element
   box it meets. Nothing else may be drawn in the ray colour: the N1 normal marker
   has its own (`ElementRenderer.normalAxisColor`), and the Main view shows the
-  orientation markers on the selected element only.
+  orientation markers on the selected element only. A detector terminates its
+  beam wherever it sits; elements rotate about their centre or, with the global
+  `RotationPivot` option, about the middle of their incident face.
+- **Locked R-only belongs to mirrors alone** (flat / curved mirror kinds and the
+  `Mirror` sample geometry); lenses are T-only; everything else carries R and T.
 - **Never touch `*.nb` files.** Mathematica notebooks are treated as pure binary
   (no EOL, no diff, no merge). Leave them alone.
 - **Vendored MathNet.Numerics** is built from source under `MathNetNumerics/`;

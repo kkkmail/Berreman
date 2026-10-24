@@ -174,8 +174,11 @@ module RayModel =
         match p.catalogueKind with
         | Detector -> []
         | FlatMirror | CurvedMirror -> [ Reflected ]
+        // Spec 0046 (operator): a lens carries the transmitted branch only — structurally, as a mirror
+        // carries the reflected one, whatever its per-element emission says.
+        | Lens -> [ Transmitted ]
         | LightSource | LinearPolarizer | CircularPolarizer
-        | Sample | Lens -> emittedGroups p.emission
+        | Sample -> emittedGroups p.emission
 
     /// The engine beam-tree branch a drawn outgoing group corresponds to (B.7.1):
     /// `Reflected` → `BeamTree.Reflected`, `Transmitted` → `BeamTree.Transmitted`.
@@ -277,14 +280,20 @@ module RayModel =
     /// infinity, so the element is crossed as a thin one instead.
     let private grazingCosine : float = 1.0e-6
 
-    /// Cross an element whose face normal is `normal` (either orientation), centred at `centre`, with
-    /// faces `halfDepth` either side of it, by a ray travelling `incoming` through `centre` (spec 0046).
-    let crossElement (centre : Vector3) (incoming : Vector3) (normal : Vector3) (halfDepth : float<meter>) : ElementCrossing =
-        let d = incoming.normalized
+    /// The face normal oriented ALONG the propagation `d` (so `d · n` is the incidence cosine and the
+    /// front face is the one at −halfDepth from the centre).
+    let private alongPropagation (d : Vector3) (normal : Vector3) : Vector3 =
         let n0 = normal.normalized
-        // Orient the normal along the propagation, so `cosI` is the incidence cosine and the front face
-        // is the one at −halfDepth.
-        let n = if d.dot n0 < 0.0 then scale (-1.0) n0 else n0
+        if d.dot n0 < 0.0 then scale (-1.0) n0 else n0
+
+    /// Cross an element whose face normal is `normal` (either orientation), centred at `centre`, with
+    /// faces `halfDepth` either side of it, by a ray travelling `incoming` along the line through
+    /// `linePoint` (spec 0046). The entry is where that line meets the FRONT face plane — anywhere on it,
+    /// so the same law serves an element pivoting about its centre (the line through the centre) and one
+    /// pivoting about the middle of its incident face (the line through that point: the entry IS it).
+    let crossElementThrough (linePoint : Vector3) (centre : Vector3) (incoming : Vector3) (normal : Vector3) (halfDepth : float<meter>) : ElementCrossing =
+        let d = incoming.normalized
+        let n = alongPropagation d normal
         let cosI = d.dot n
         let inside =
             match refract refractiveIndexOutside refractiveIndexInside d n with
@@ -292,12 +301,24 @@ module RayModel =
             | None -> d
         let h = halfDepth / 1.0<meter>
         let entry, exit =
-            if h <= 0.0 || cosI < grazingCosine then centre, centre
+            if h <= 0.0 || cosI < grazingCosine then linePoint, linePoint
             else
-                let entry = sub centre (scale (h / cosI) d)
+                let frontFaceCentre = sub centre (scale h n)
+                let entry = add linePoint (scale ((sub frontFaceCentre linePoint).dot n / cosI) d)
                 let cosT = max grazingCosine (inside.dot n)
                 entry, add entry (scale (2.0 * h / cosT) inside)
         { entry = entry; inside = inside; exit = exit; transmitted = d; reflected = reflect d n }
+
+    /// Cross an element by a ray travelling `incoming` through its `centre` (spec 0046) — the element
+    /// pivots about its centre.
+    let crossElement (centre : Vector3) (incoming : Vector3) (normal : Vector3) (halfDepth : float<meter>) : ElementCrossing =
+        crossElementThrough centre centre incoming normal halfDepth
+
+    /// The centre of an element whose INCIDENT face is centred at `frontFaceCentre` (spec 0046 — the
+    /// pivot-at-incident-face option): half its depth further along its face normal, on the side the
+    /// light travels to.
+    let centreBehindIncidentFace (frontFaceCentre : Vector3) (incoming : Vector3) (normal : Vector3) (halfDepth : float<meter>) : Vector3 =
+        add frontFaceCentre (scale (halfDepth / 1.0<meter>) (alongPropagation incoming.normalized normal))
 
     /// The OUTGOING tracked-ray direction past an element on `branch`, given the
     /// `incoming` ray direction (B.3.2 / B.6.1, spec 0046 `crossElement`). The

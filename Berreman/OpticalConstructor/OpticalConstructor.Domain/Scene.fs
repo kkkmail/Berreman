@@ -86,6 +86,9 @@ module Scene =
             elements : SceneElement list
             view : Table.TableViewState
             snap : SnapMode
+            /// Spec 0046: the global rotation pivot — elements rotate about their centre, or about the
+            /// middle of their incident face. It moves elements and rays, so a saved scene keeps it.
+            pivot : BeamLayout.RotationPivot
         }
 
     /// The scene persistence seam (the functional-proxy convention, `Library.LibraryProxy`): a

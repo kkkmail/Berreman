@@ -44,6 +44,7 @@ module SceneProxyTests =
             elements = [ source; detector ]
             view = Table.defaultView
             snap = snap
+            pivot = BeamLayout.PivotAtIncidentFace
         }
 
     /// The MOCK: an inline stub `SceneProxy` over a fixed map (a `ref` so `saveScene` genuinely

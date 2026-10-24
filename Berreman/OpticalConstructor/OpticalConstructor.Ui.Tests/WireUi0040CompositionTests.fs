@@ -339,19 +339,19 @@ module WireUi0040CompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``composition acceptance (013): a ThinFilm Sample editor over the app scope pins R on and shows no T control`` () =
+    let ``composition acceptance (013): a Mirror Sample editor over the app scope pins R on and shows no T control`` () =
         HeadlessSession.run (fun () ->
             let ctx = AppContext.create WorkbenchSettings.defaults
-            // A seeded ThinFilm sample (glassFilm600) opened over the app scope — R fixed on, no T
-            // (the step-9/10 invariant): a ThinFilm sits on a semi-infinite substrate, reflected-only.
+            // The seeded MIRROR sample (the EUV Mo/Si multilayer) opened over the app scope — R fixed on, no
+            // T (spec 0046: a mirror is the only geometry observed in reflection alone).
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.glassFilm600)
+                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.euvMoSi)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a ThinFilm")
+            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a Mirror")
             let rBox = checkBox window UiIds.SampleEditor.emitReflectedCheck
-            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the ThinFilm R checkbox is fixed on")
-            Assert.False(rBox.IsEnabled, "the ThinFilm R checkbox is disabled (fixed)")
-            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a ThinFilm shows no T control")
+            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the Mirror R checkbox is fixed on")
+            Assert.False(rBox.IsEnabled, "the Mirror R checkbox is disabled (fixed)")
+            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a Mirror shows no T control")
             window.Close())

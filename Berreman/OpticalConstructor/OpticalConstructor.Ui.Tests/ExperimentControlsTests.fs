@@ -35,11 +35,12 @@ module ExperimentControlsTests =
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
     let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
 
-    /// A seeded ThinFilm sample (`supportedEmission = EmitReflectedOnly`) and a seeded Plate sample
-    /// supporting BOTH branches (`supportedEmission = EmitBoth`) — the two geometries spec 0040 D.3
-    /// bounds a placed sample's emission by.
+    /// A seeded ThinFilm and a seeded Plate sample — both supporting BOTH branches (spec 0046) — and the
+    /// seeded MIRROR (the EUV multilayer, `EmitReflectedOnly`): the geometries spec 0040 D.3 bounds a
+    /// placed sample's emission by.
     let private glassFilm600Id : string = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId
     let private glassPlate1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+    let private euvMirrorId : string = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId
 
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : Model) : string = (elem i m).id.value
@@ -117,12 +118,14 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``acceptance (012): a placed sample's emission and experiment default derive from its supportedEmission`` () =
         // Spec 0040 Part D.3: a placed sample is bounded by the SAMPLE it is bound to, not the generic
-        // defaultEmission (EmitBoth for every non-mirror). A ThinFilm reflects only ⇒ CaptureReflected;
-        // a Plate supporting both ⇒ EmitBoth ⇒ CaptureBoth.
+        // defaultEmission. Spec 0046: a MIRROR reflects only ⇒ the beam continues reflected and the seeded
+        // detector captures R; a ThinFilm reflects AND transmits (EmitBoth).
+        let mirror = initMain () |> update (AddElement Sample) |> bind 2 euvMirrorId
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 mirror).placement.emission)
+        let mirrorChosen = mirror |> update (ExpChooseElement (idOf 2 mirror))
+        Assert.Equal(Experiments.CaptureReflected, mirrorChosen.experimentCollection.draft.measurement)
         let film = initMain () |> update (AddElement Sample) |> bind 2 glassFilm600Id
-        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 film).placement.emission)
-        let filmChosen = film |> update (ExpChooseElement (idOf 2 film))
-        Assert.Equal(Experiments.CaptureReflected, filmChosen.experimentCollection.draft.measurement)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 film).placement.emission)
 
         // Spec 0046: a Plate EMITS both, but what an experiment captures follows the DETECTORS — the
         // seeded detector sits on the plate's transmitted beam only ⇒ CaptureTransmitted.

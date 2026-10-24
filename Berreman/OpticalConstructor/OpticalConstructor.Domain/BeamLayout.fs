@@ -33,11 +33,11 @@ module BeamLayout =
 
     let sideBeamOf (p : ElementPlacement) : SideBeam =
         match p.catalogueKind with
-        | LinearPolarizer | CircularPolarizer | Sample | Lens ->
+        | LinearPolarizer | CircularPolarizer | Sample ->
             match p.emission with
             | EmitBoth -> OpensReflectedBeam
             | EmitReflectedOnly | EmitTransmittedOnly -> NoSideBeam
-        | LightSource | FlatMirror | CurvedMirror | Detector -> NoSideBeam
+        | LightSource | FlatMirror | CurvedMirror | Lens | Detector -> NoSideBeam
 
     /// Whether the element menu may switch an element's reflected / transmitted rays, and why not when
     /// it may not. `supported` is what the element's binding allows — a bound sample's geometry-constrained
@@ -51,7 +51,8 @@ module BeamLayout =
         | LightSource -> RaysFixed "a light source emits along its own aim"
         | Detector -> RaysFixed "a detector terminates the beam it receives"
         | FlatMirror | CurvedMirror -> RaysFixed "a full mirror always reflects"
-        | LinearPolarizer | CircularPolarizer | Lens | Sample ->
+        | Lens -> RaysFixed "a lens always transmits"
+        | LinearPolarizer | CircularPolarizer | Sample ->
             match supported with
             | EmitBoth -> RaysSwitchable
             | EmitReflectedOnly -> RaysFixed "the bound sample is observable in reflection only"
@@ -94,9 +95,15 @@ module BeamLayout =
             branch : BeamTree.BeamBranch
         }
 
+    /// Whether light reaches an element (spec 0046): a detector TERMINATES its beam, so an element further
+    /// along that beam — and everything on its reflected rays — is laid out but receives no light.
+    type Illumination =
+        | Lit
+        | Unlit
+
     /// One element as laid out: its drawn centre, the beam direction arriving at it (`None` for the
     /// root), the beam it actually sits on (its host, or the main beam when that host's reflected ray
-    /// does not exist), and the path the light took from the root to reach it.
+    /// does not exist), the path the light took from the root to reach it, and whether light reaches it.
     type PlacedElement =
         {
             id : Library.ElementId
@@ -104,7 +111,30 @@ module BeamLayout =
             incoming : Vector3 option
             beam : BeamHost
             path : PathStep list
+            light : Illumination
         }
+
+    /// How a lit ray ends: on a detector, or open (nothing terminates it — free for a detector).
+    type RayEnd =
+        | EndsAtDetector
+        | EndsOpen
+
+    /// One ray that carries light — the main beam, or the reflected ray of a partially-reflecting element
+    /// light reaches — and how it ends.
+    type LitRay =
+        {
+            host : BeamHost
+            ends : RayEnd
+        }
+
+    /// Which point an element rotates about on its beam (spec 0046, a global option). About its CENTRE
+    /// (the default), the incident ray meets its front face further from the face's middle the more the
+    /// element is tilted. About the middle of its INCIDENT face, the incident ray always meets the element
+    /// at that same point — essential for stacks such as EUV mirrors — and the transmitted ray, bent by
+    /// Snell's law inside, leaves the back face off its middle whenever the incidence is not normal.
+    type RotationPivot =
+        | PivotAtCentre
+        | PivotAtIncidentFace
 
     /// Where a drawn ray segment runs: through free space, or inside an element between its faces.
     type SegmentKind =
@@ -119,11 +149,13 @@ module BeamLayout =
             kind : SegmentKind
         }
 
-    /// The laid-out scene: every element in INPUT order, and every drawn ray segment.
+    /// The laid-out scene: every element in INPUT order, every drawn ray segment, and every lit ray in
+    /// walk order (the main beam first, then each reflected ray in the order the light reaches its host).
     type SceneLayout =
         {
             elements : PlacedElement list
             segments : RaySegment list
+            rays : LitRay list
         }
 
     let private add (a : Vector3) (b : Vector3) : Vector3 = Vector3.create (a.x + b.x) (a.y + b.y) (a.z + b.z)
@@ -213,46 +245,78 @@ module BeamLayout =
         | Some (tNear, _) when tNear > 1.0e-9 -> Some tNear
         | Some _ | None -> None
 
-    /// Lay the scene out (spec 0046). Walks the main beam from the root, crossing every element by
-    /// `RayModel.crossElement` at its DRAWN orientation (`RayModel.orientedToBeam`) and depth, recursing
-    /// into each reflected side beam, and emits the drawn segments: free-space runs face to face, the
-    /// refracted run INSIDE each transmitting element, and — past the last element of a beam that no
-    /// detector terminates, or along a reflected ray with nothing on it — an OPEN run, which stops at the
-    /// first drawn element box it meets (so a back-reflection ends on the element it travels back to and
-    /// never runs behind the source) and is at most `openBeamLength` long.
-    let layout (elements : LayoutElement list) : SceneLayout =
+    /// The walk's accumulated output: the placed elements by input index, the pending segments (newest
+    /// first) and the lit rays (newest first).
+    type private WalkState =
+        {
+            placed : Map<int, PlacedElement>
+            segments : PendingSegment list
+            rays : LitRay list
+        }
+
+    /// Lay the scene out (spec 0046) with every element rotating about `pivot`. Walks the main beam from
+    /// the root, crossing every element by `RayModel.crossElementThrough` at its DRAWN orientation
+    /// (`RayModel.orientedToBeam`) and depth, recursing into each reflected side beam, and emits the drawn
+    /// segments: free-space runs face to face, the refracted run INSIDE each transmitting element, and —
+    /// past the last element of a beam no detector terminates, or along a reflected ray with nothing on
+    /// it — an OPEN run, which stops at the first drawn element box it meets (so a back-reflection ends on
+    /// the element it travels back to and never runs behind the source) and is at most `openBeamLength`.
+    /// The beam point an element is snapped to is its CENTRE (`PivotAtCentre`) or the middle of its
+    /// INCIDENT face (`PivotAtIncidentFace` — the incident ray then always enters there). A detector
+    /// TERMINATES its beam: elements further along it are laid out on the straight continuation (so they
+    /// do not jump) but are `Unlit`, and no ray is drawn to them or along their reflected rays.
+    let layoutWith (pivot : RotationPivot) (elements : LayoutElement list) : SceneLayout =
         match elements with
-        | [] -> { elements = []; segments = [] }
+        | [] -> { elements = []; segments = []; rays = [] }
         | root :: rest ->
             let hosts = effectiveHosts elements
             let hostOf (e : LayoutElement) : BeamHost = Map.tryFind e.id hosts |> Option.defaultValue OnMainBeam
             let indexed = rest |> List.mapi (fun i e -> i + 1, e)
             let membersOf (host : BeamHost) : (int * LayoutElement) list =
                 indexed |> List.filter (fun (_, e) -> hostOf e = host) |> List.sortBy (fun (_, e) -> along e.placement)
+            let litRay (host : BeamHost) (members : (int * LayoutElement) list) : LitRay =
+                let ends =
+                    match members |> List.exists (fun (_, e) -> e.placement.catalogueKind = Detector) with
+                    | true -> EndsAtDetector
+                    | false -> EndsOpen
+                { host = host; ends = ends }
 
             /// Walk one beam. `draw` is where the drawn ray currently is, `reference` the point the next gap
             /// is measured from, `dir` the beam direction, `prevX` the along-beam coordinate and `emitter`
-            /// the index of the element the beam left, `path` the steps that led onto this beam.
+            /// the index of the element the beam left, `path` the steps that led onto this beam, `light`
+            /// whether light still travels along it.
             let rec walk
-                (draw : Vector3) (reference : Vector3) (dir : Vector3) (prevX : float) (emitter : int) (path : PathStep list)
+                (draw : Vector3) (reference : Vector3) (dir : Vector3) (prevX : float) (emitter : int) (path : PathStep list) (light : Illumination)
                 (members : (int * LayoutElement) list)
-                (placed : Map<int, PlacedElement>) (segments : PendingSegment list)
-                : Map<int, PlacedElement> * PendingSegment list =
+                (state : WalkState)
+                : WalkState =
+                // Segments are drawn only while light travels this beam.
+                let drawn (pieces : PendingSegment list) : PendingSegment list =
+                    match light with
+                    | Lit -> pieces
+                    | Unlit -> []
                 match members with
-                | [] -> placed, OpenRay (draw, dir, emitter) :: segments
+                | [] -> { state with segments = drawn [ OpenRay (draw, dir, emitter) ] @ state.segments }
                 | (index, e) :: later ->
                     let x = along e.placement
-                    let centre = add reference (scale (max 0.0 (x - prevX)) dir)
+                    let beamPoint = add reference (scale (max 0.0 (x - prevX)) dir)
                     let normal = r1Axis (RayModel.orientedToBeam dir e.placement)
-                    let crossing = RayModel.crossElement centre dir normal (halfDepthOf e)
-                    let approach = ClosedRun { start = draw; finish = crossing.entry; kind = InFreeSpace }
-                    let here = { id = e.id; centre = centre; incoming = Some dir; beam = hostOf e; path = path }
-                    let placed' = Map.add index here placed
-                    match e.placement.catalogueKind, later with
-                    | Detector, [] ->
-                        // A detector at the end of its beam terminates it: nothing is drawn past its face.
-                        placed', approach :: segments
-                    | _ ->
+                    let halfDepth = halfDepthOf e
+                    let centre, crossing =
+                        match pivot with
+                        | PivotAtCentre -> beamPoint, RayModel.crossElement beamPoint dir normal halfDepth
+                        | PivotAtIncidentFace ->
+                            let c = RayModel.centreBehindIncidentFace beamPoint dir normal halfDepth
+                            c, RayModel.crossElementThrough beamPoint c dir normal halfDepth
+                    let approach = drawn [ ClosedRun { start = draw; finish = crossing.entry; kind = InFreeSpace } ]
+                    let here = { id = e.id; centre = centre; incoming = Some dir; beam = hostOf e; path = path; light = light }
+                    let state' = { state with placed = Map.add index here state.placed; segments = approach @ state.segments }
+                    match e.placement.catalogueKind with
+                    | Detector ->
+                        // A detector terminates its beam: anything further along it is laid out on the straight
+                        // continuation but receives no light.
+                        walk crossing.exit (abreast beamPoint crossing.exit crossing.transmitted) crossing.transmitted x index path Unlit later state'
+                    | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
                         let branch = RayModel.primaryBranch e.placement
                         let onward = path @ [ { element = e.id; branch = branch } ]
                         let draw', reference', dir', insideRun =
@@ -261,44 +325,52 @@ module BeamLayout =
                                 let inside =
                                     if crossing.entry = crossing.exit then []
                                     else [ ClosedRun { start = crossing.entry; finish = crossing.exit; kind = InsideElement } ]
-                                crossing.exit, abreast centre crossing.exit crossing.transmitted, crossing.transmitted, inside
+                                crossing.exit, abreast beamPoint crossing.exit crossing.transmitted, crossing.transmitted, inside
                             | BeamTree.Reflected ->
-                                crossing.entry, abreast centre crossing.entry crossing.reflected, crossing.reflected, []
-                        let placedSide, segmentsSide =
+                                crossing.entry, abreast beamPoint crossing.entry crossing.reflected, crossing.reflected, []
+                        let state'' = { state' with segments = drawn insideRun @ state'.segments }
+                        let afterSide =
                             match sideBeamOf e.placement with
                             | OpensReflectedBeam ->
+                                let sideMembers = membersOf (OnReflectedBeamOf e.id)
+                                let rays =
+                                    match light with
+                                    | Lit -> litRay (OnReflectedBeamOf e.id) sideMembers :: state''.rays
+                                    | Unlit -> state''.rays
                                 walk
                                     crossing.entry
-                                    (abreast centre crossing.entry crossing.reflected)
+                                    (abreast beamPoint crossing.entry crossing.reflected)
                                     crossing.reflected
                                     x
                                     index
                                     (path @ [ { element = e.id; branch = BeamTree.Reflected } ])
-                                    (membersOf (OnReflectedBeamOf e.id))
-                                    placed'
-                                    (insideRun @ approach :: segments)
-                            | NoSideBeam -> placed', insideRun @ approach :: segments
-                        walk draw' reference' dir' x index onward later placedSide segmentsSide
+                                    light
+                                    sideMembers
+                                    { state'' with rays = rays }
+                            | NoSideBeam -> state''
+                        walk draw' reference' dir' x index onward light later afterSide
 
             let rootCentre = RayModel.pointToVector3 root.placement.placementPoint
             let rootDir = (r1Axis root.placement).normalized
             let rootFace = add rootCentre (scale (halfDepthOf root / 1.0<meter>) rootDir)
-            let rootPlaced = { id = root.id; centre = rootCentre; incoming = None; beam = OnMainBeam; path = [] }
-            let placed, pending =
-                walk rootFace rootCentre rootDir (along root.placement) 0 [ { element = root.id; branch = BeamTree.Transmitted } ] (membersOf OnMainBeam) (Map.ofList [ 0, rootPlaced ]) []
+            let rootPlaced = { id = root.id; centre = rootCentre; incoming = None; beam = OnMainBeam; path = []; light = Lit }
+            let mainMembers = membersOf OnMainBeam
+            let final =
+                walk rootFace rootCentre rootDir (along root.placement) 0 [ { element = root.id; branch = BeamTree.Transmitted } ] Lit mainMembers
+                    { placed = Map.ofList [ 0, rootPlaced ]; segments = []; rays = [ litRay OnMainBeam mainMembers ] }
 
             // Every placed element's DRAWN box (oriented on its beam, the root by its own aim), by index.
             let boxes : (int * DrawnBox) list =
                 elements
                 |> List.mapi (fun i e -> i, e)
                 |> List.choose (fun (i, e) ->
-                    Map.tryFind i placed
+                    Map.tryFind i final.placed
                     |> Option.map (fun p ->
-                        let drawn =
+                        let drawnPlacement =
                             match p.incoming with
                             | Some d -> RayModel.orientedToBeam d e.placement
                             | None -> e.placement
-                        let (n1, n2, n3) = orientedBasis drawn
+                        let (n1, n2, n3) = orientedBasis drawnPlacement
                         let half (extent : float<meter>) : float = e.zoom * extent / 2.0 / 1.0<meter>
                         i, { centre = p.centre; axes = [ n1, half e.placement.box.b; n2, half e.placement.box.a1; n3, half e.placement.box.a2 ] }))
             let close (pendingSegment : PendingSegment) : RaySegment =
@@ -311,9 +383,26 @@ module BeamLayout =
                         |> List.fold min (openBeamLength / 1.0<meter>)
                     { start = origin; finish = add origin (scale reach direction.normalized); kind = InFreeSpace }
             {
-                elements = elements |> List.mapi (fun i e -> Map.tryFind i placed |> Option.defaultValue { id = e.id; centre = RayModel.pointToVector3 e.placement.placementPoint; incoming = None; beam = OnMainBeam; path = [] })
-                segments = pending |> List.rev |> List.map close
+                elements =
+                    elements
+                    |> List.mapi (fun i e ->
+                        Map.tryFind i final.placed
+                        |> Option.defaultValue { id = e.id; centre = RayModel.pointToVector3 e.placement.placementPoint; incoming = None; beam = OnMainBeam; path = []; light = Unlit })
+                segments = final.segments |> List.rev |> List.map close
+                rays = List.rev final.rays
             }
+
+    /// Lay the scene out with every element rotating about its centre (the default `RotationPivot`).
+    let layout (elements : LayoutElement list) : SceneLayout = layoutWith PivotAtCentre elements
+
+    /// The first lit ray that no detector terminates, in walk order (spec 0046) — where a newly added
+    /// detector goes; `None` when every lit ray already ends on a detector.
+    let firstFreeRay (scene : SceneLayout) : BeamHost option =
+        scene.rays
+        |> List.tryPick (fun r ->
+            match r.ends with
+            | EndsOpen -> Some r.host
+            | EndsAtDetector -> None)
 
     /// Every element hosted — directly or through other side beams — on the reflected rays of `id`,
     /// i.e. the elements that move with it. Moving an element onto a beam inside this set would loop.
@@ -350,7 +439,8 @@ module BeamLayout =
     // --- What the experiments can capture (spec 0046 task 5) -----------------
 
     /// The branches through which the light reaching any of `detectors` left the `measured` element,
-    /// counting only detectors that also see the `varied` element (the variation must reach them).
+    /// counting only LIT detectors (one behind another detector receives nothing) that also see the
+    /// `varied` element (the variation must reach them).
     /// `T` for a detector behind it on its transmitted beam, `R` for one on its reflected beam.
     let detectedBranches
         (scene : SceneLayout)
@@ -359,7 +449,11 @@ module BeamLayout =
         (measured : Library.ElementId)
         : BeamTree.BeamBranch list =
         scene.elements
-        |> List.filter (fun p -> List.contains p.id detectors)
+        |> List.filter (fun p ->
+            List.contains p.id detectors
+            && (match p.light with
+                | Lit -> true
+                | Unlit -> false))
         |> List.choose (fun p ->
             let sees (id : Library.ElementId) = p.path |> List.exists (fun s -> s.element = id)
             match sees varied with

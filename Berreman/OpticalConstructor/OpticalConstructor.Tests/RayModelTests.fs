@@ -90,13 +90,20 @@ module RayModelTests =
         Assert.Equal(1, List.length mirrorTransmittedGroups)            // exactly one group ...
         Assert.Equal(Reflected, List.head mirrorTransmittedGroups)      // ... and it is the RRG
         Assert.DoesNotContain(Transmitted, mirrorTransmittedGroups)
-        // A non-mirror element emitting both draws both groups.
+        // A non-mirror element emitting both (a polarizer) draws both groups.
+        let polarizer = ElementPlacement.create LinearPolarizer TablePoint.origin
+        let polarizerGroups = outgoingGroups polarizer
+        Assert.Contains(Reflected, polarizerGroups)
+        Assert.Contains(Transmitted, polarizerGroups)
+        // Spec 0046 (operator): a LENS carries the transmitted group only — structurally, the mirror
+        // rule's counterpart: even forced to EmitBoth it draws the TRG alone.
         let lens = ElementPlacement.create Lens TablePoint.origin
-        let lensGroups = outgoingGroups lens
-        Assert.Contains(Reflected, lensGroups)
-        Assert.Contains(Transmitted, lensGroups)
+        Assert.Equal(EmitTransmittedOnly, lens.emission)
+        let lensBoth = { lens with emission = EmitBoth }
+        let lensGroups = outgoingGroups lensBoth
+        Assert.Equal<RayGroupKind list>([ Transmitted ], lensGroups)
         // Every drawn outgoing group corresponds to an engine branch (B.7.1) ...
-        for g in mirrorGroups @ mirrorBothGroups @ mirrorTransmittedGroups @ lensGroups do
+        for g in mirrorGroups @ mirrorBothGroups @ mirrorTransmittedGroups @ polarizerGroups @ lensGroups do
             match toBeamBranch g with
             | Some _ -> ()
             | None -> failwith $"outgoing group {g} has no engine branch"

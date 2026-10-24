@@ -105,12 +105,12 @@ module ElementMenuTests =
 
     [<Fact>]
     let ``the source never moves and a loop-forming move is refused`` () =
-        let m = plateWithReflectedDetector () |> update (AddElement Lens)
-        let lensId = (elem 4 m).id
+        let m = plateWithReflectedDetector () |> update (AddElement LinearPolarizer)
+        let polarizerId = (elem 4 m).id
         let sampleId = (elem 2 m).id
-        let lensOnSample = m |> update (PlaceOnBeam (lensId, BeamLayout.OnReflectedBeamOf sampleId))
-        // The sample may not move onto the ray of the lens sitting on its own ray.
-        Assert.Equal<Model>(lensOnSample, lensOnSample |> update (PlaceOnBeam (sampleId, BeamLayout.OnReflectedBeamOf lensId)))
+        let polarizerOnSample = m |> update (PlaceOnBeam (polarizerId, BeamLayout.OnReflectedBeamOf sampleId))
+        // The sample may not move onto the ray of the polarizer sitting on its own ray (it would loop).
+        Assert.Equal<Model>(polarizerOnSample, polarizerOnSample |> update (PlaceOnBeam (sampleId, BeamLayout.OnReflectedBeamOf polarizerId)))
         Assert.Equal<Model>(m, m |> update (PlaceOnBeam ((elem 0 m).id, BeamLayout.OnReflectedBeamOf sampleId)))
 
     [<Fact>]
@@ -123,6 +123,50 @@ module ElementMenuTests =
             let rows = elementMenuRows opened ignore menu
             Assert.True(List.length rows >= 6, $"rows = {List.length rows}")
         | None -> Assert.Fail("the menu must open on the reflected detector")
+
+    // ------------------------------ adding a detector (spec 0046) ------------------------------
+
+    [<Fact>]
+    let ``an added detector goes to the END of the first free ray — the plate's reflected ray, not the main beam`` () =
+        let m = plateScene () |> update (AddElement Detector)
+        let added = elem 3 m
+        Assert.Equal(BeamLayout.OnReflectedBeamOf (elem 2 m).id, added.beam)
+        Assert.True(abs (elementX added - (elementX (elem 2 m) + sideBeamGap)) < tol, "it lands a gap along the reflected ray")
+        // Both detectors are lit, so the plate's experiment captures T, R and Both.
+        let sampleId = (elem 2 m).id
+        Assert.Equal<Experiments.MeasurementMode list>(
+            [ Experiments.CaptureTransmitted; Experiments.CaptureReflected; Experiments.CaptureBoth ], availableCaptures m sampleId)
+
+    [<Fact>]
+    let ``with no free ray an added detector goes onto the main beam and terminates it there`` () =
+        // The plate's reflected ray switched off: the main beam (already ending on a detector) is the only ray.
+        let rOff = plateScene () |> fun m -> m |> update (ToggleElementRay ((elem 2 m).id, BeamTree.Reflected))
+        let m = rOff |> update (AddElement Detector)
+        Assert.Equal(BeamLayout.OnMainBeam, (elem 3 m).beam)
+        let laid = sceneLayout m
+        // The new detector sits before the seeded one, so it terminates the main beam: the seeded detector
+        // receives no light, and the beam is drawn no further than the new detector's face.
+        Assert.Equal(BeamLayout.Lit, (List.item 3 laid.elements).light)
+        Assert.Equal(BeamLayout.Unlit, (List.item 1 laid.elements).light)
+        let newFace = (snappedCentres m).[3].x - (elem 3 m).zoom * float (elem 3 m).placement.box.b / 2.0
+        for s in laid.segments do
+            Assert.True(max s.start.x s.finish.x <= newFace + tol, $"a ray reaches x = {max s.start.x s.finish.x}, past the new detector")
+
+    // ------------------------------ the rotation pivot (spec 0046) ------------------------------
+
+    [<Fact>]
+    let ``the pivot option moves the incident ray's entry to the middle of the incident face`` () =
+        let m = plateScene ()
+        Assert.Equal(BeamLayout.PivotAtCentre, m.rotationPivot)
+        let faced = m |> update (SetRotationPivot BeamLayout.PivotAtIncidentFace)
+        Assert.Equal(BeamLayout.PivotAtIncidentFace, faced.rotationPivot)
+        // The sample's incident ray (the free-space run arriving at it) ends exactly at its beam point —
+        // the middle of its incident face — and the sample's drawn centre moves behind it.
+        let beamPoint = Vector3.create (elementX (elem 2 m)) 0.0 0.0
+        let arriving = (sceneLayout faced).segments |> List.filter (fun s -> abs (s.finish.x - beamPoint.x) < tol && abs s.finish.y < tol)
+        Assert.NotEmpty(arriving)
+        Assert.True((snappedCentres faced).[2].x > beamPoint.x, "about its incident face, the sample's centre sits behind the beam point")
+        Assert.Equal(BeamLayout.PivotAtCentre, (faced |> update (SetRotationPivot BeamLayout.PivotAtCentre)).rotationPivot)
 
     // ------------------------------ captures follow the detectors ------------------------------
 
@@ -246,6 +290,26 @@ module ElementMenuTests =
                 | Some close -> click window MouseButton.Left (centreOf window close)
                 | None -> Assert.Fail("the menu must offer Close")
                 Assert.False(isShown window UiIds.ElementMenu.menu, "Close must dismiss the menu")
+            finally
+                window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
+    let ``the Rotation bay's checkbox switches every element to rotate about its incident face`` () =
+        HeadlessSession.run (fun () ->
+            let window = mount (plateScene ())
+            try
+                let checkBox () : CheckBox option =
+                    window.GetVisualDescendants()
+                    |> Seq.tryPick (function :? CheckBox as c when matchesId UiIds.TableAndElementRotation.pivotAtIncidentFace c -> Some c | _ -> None)
+                match checkBox () with
+                | Some box ->
+                    Assert.False(box.IsChecked.GetValueOrDefault true, "unchecked by default: elements rotate about their centre")
+                    click window MouseButton.Left (centreOf window box)
+                    match checkBox () with
+                    | Some ticked -> Assert.True(ticked.IsChecked.GetValueOrDefault false, "the click switches to the incident-face pivot")
+                    | None -> Assert.Fail("the pivot checkbox must stay in the Rotation bay")
+                | None -> Assert.Fail("the Rotation bay must offer the pivot checkbox")
             finally
                 window.Close())
 

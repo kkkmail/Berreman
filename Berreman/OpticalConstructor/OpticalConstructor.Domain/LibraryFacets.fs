@@ -503,7 +503,8 @@ module LibraryFacets =
                     | SampleItem sample ->
                         match sample.substrate with
                         | Plate -> ApplicableAttribute
-                        | ThinFilm -> InapplicableAttribute
+                        | ThinFilm
+                        | Mirror -> InapplicableAttribute
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute
             extract =
                 fun entry ->

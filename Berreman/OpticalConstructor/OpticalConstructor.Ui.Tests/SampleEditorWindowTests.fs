@@ -224,6 +224,10 @@ module SampleEditorWindowTests =
     let private threeFilmPlate () : Sample =
         { threeFilmSample () with substrate = Plate; supportedEmission = defaultSupportedEmission Plate }
 
+    /// The same stack as a MIRROR — spec 0046: the only geometry pinned to reflected-only.
+    let private threeFilmMirror () : Sample =
+        { threeFilmSample () with substrate = Mirror; supportedEmission = defaultSupportedEmission Mirror }
+
     let private newModel () : Model =
         let _, context = recordingContext ()
         // The Add-open shape (spec 0038 step 008): the id is minted AT WINDOW OPEN.
@@ -578,25 +582,33 @@ module SampleEditorWindowTests =
         Assert.False(lastCleared.supportedEmission.emitsTransmitted)
 
     [<Fact>]
-    let ``a ThinFilm editor pins R on under any emission message and a geometry flip re-imposes it`` () =
+    let ``a Mirror editor pins R on under any emission message and a geometry flip re-imposes it`` () =
         let _, context = recordingContext ()
-        // A ThinFilm is EmitReflectedOnly at open — R on, T off (the step-9 invariant).
-        let m = init context builtInEntries (EditSample (threeFilmSample ()))
+        // Spec 0046: a Mirror is EmitReflectedOnly at open — R on, T off.
+        let m = init context builtInEntries (EditSample (threeFilmMirror ()))
         Assert.True(m.supportedEmission.emitsReflected)
         Assert.False(m.supportedEmission.emitsTransmitted)
-        // A stray T-on or R-off message cannot escape the ThinFilm constraint.
+        // A stray T-on or R-off message cannot escape the Mirror constraint.
         let tryGainT = update (SetTransmittedEmission true) m
         Assert.True(tryGainT.supportedEmission.emitsReflected)
-        Assert.False(tryGainT.supportedEmission.emitsTransmitted, "a ThinFilm can never gain a transmitted branch")
+        Assert.False(tryGainT.supportedEmission.emitsTransmitted, "a Mirror can never gain a transmitted branch")
         let tryClearR = update (SetReflectedEmission false) m
-        Assert.True(tryClearR.supportedEmission.emitsReflected, "a ThinFilm's reflected branch is unclearable")
-        // A Plate constrained to T-only, then flipped to ThinFilm, re-pins R-only.
+        Assert.True(tryClearR.supportedEmission.emitsReflected, "a Mirror's reflected branch is unclearable")
+        // A Plate constrained to T-only, then flipped to Mirror, re-pins R-only ...
         let plate = init context builtInEntries (EditSample (threeFilmPlate ()))
         let tOnly = update (SetReflectedEmission false) plate
         Assert.True(tOnly.supportedEmission.emitsTransmitted && not tOnly.supportedEmission.emitsReflected, "the Plate is T-only")
-        let flipped = update (SetSubstrate ThinFilm) tOnly
-        Assert.True(flipped.supportedEmission.emitsReflected, "flipping to ThinFilm re-pins the reflected branch on")
-        Assert.False(flipped.supportedEmission.emitsTransmitted, "flipping to ThinFilm clears the transmitted branch")
+        let flipped = update (SetSubstrate Mirror) tOnly
+        Assert.True(flipped.supportedEmission.emitsReflected, "flipping to Mirror re-pins the reflected branch on")
+        Assert.False(flipped.supportedEmission.emitsTransmitted, "flipping to Mirror clears the transmitted branch")
+        // ... and leaving Mirror for a ThinFilm restores both branches (a thin film reflects AND transmits).
+        let film = update (SetSubstrate ThinFilm) flipped
+        Assert.True(film.supportedEmission.emitsReflected && film.supportedEmission.emitsTransmitted, "a ThinFilm emits both")
+        // A ThinFilm is constrainable like a Plate.
+        let thin = init context builtInEntries (EditSample (threeFilmSample ()))
+        Assert.True(thin.supportedEmission.emitsReflected && thin.supportedEmission.emitsTransmitted, "a ThinFilm opens emitting both")
+        let thinTOnly = update (SetReflectedEmission false) thin
+        Assert.True(thinTOnly.supportedEmission.emitsTransmitted && not thinTOnly.supportedEmission.emitsReflected, "a ThinFilm can be T-only")
 
     [<Fact>]
     let ``toSample carries the edited supported emission and init seeds it from the sample`` () =
@@ -606,10 +618,10 @@ module SampleEditorWindowTests =
         let tOnly = update (SetReflectedEmission false) m
         let saved = toSample (newSampleId ()) tOnly
         Assert.True(saved.supportedEmission.emitsTransmitted && not saved.supportedEmission.emitsReflected, "toSample carries the T-only choice")
-        // A ThinFilm always saves EmitReflectedOnly, whatever messages arrived.
-        let thin = init context builtInEntries (EditSample (threeFilmSample ())) |> update (SetTransmittedEmission true)
-        let savedThin = toSample (newSampleId ()) thin
-        Assert.True(savedThin.supportedEmission.emitsReflected && not savedThin.supportedEmission.emitsTransmitted, "a ThinFilm saves reflected-only")
+        // A Mirror always saves EmitReflectedOnly, whatever messages arrived (spec 0046).
+        let mirror = init context builtInEntries (EditSample (threeFilmMirror ())) |> update (SetTransmittedEmission true)
+        let savedMirror = toSample (newSampleId ()) mirror
+        Assert.True(savedMirror.supportedEmission.emitsReflected && not savedMirror.supportedEmission.emitsTransmitted, "a Mirror saves reflected-only")
 
     // ============================ headless semantic-tree proofs ============================
 
@@ -953,18 +965,25 @@ module SampleEditorWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``acceptance (010): a ThinFilm editor shows the R emission checkbox fixed on and disabled, with no T control`` () =
+    let ``acceptance (010): a Mirror editor shows the R emission checkbox fixed on and disabled, with no T control`` () =
         HeadlessSession.run (fun () ->
             let materials, samples, categories = freshProxies ()
-            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            let window = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmMirror ()))
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a ThinFilm")
+            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a Mirror")
             let rBox = checkBox window UiIds.SampleEditor.emitReflectedCheck
-            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the ThinFilm R checkbox is fixed on")
-            Assert.False(rBox.IsEnabled, "the ThinFilm R checkbox is disabled (fixed)")
-            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a ThinFilm shows no T control")
-            window.Close())
+            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the Mirror R checkbox is fixed on")
+            Assert.False(rBox.IsEnabled, "the Mirror R checkbox is disabled (fixed)")
+            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a Mirror shows no T control")
+            window.Close()
+            // Spec 0046: a ThinFilm offers BOTH boxes, enabled.
+            let thinWindow = SampleEditorWindow(materials, samples, categories, EditSample (threeFilmSample ()))
+            thinWindow.Show()
+            Dispatcher.UIThread.RunJobs()
+            Assert.True((checkBox thinWindow UiIds.SampleEditor.emitReflectedCheck).IsEnabled, "a ThinFilm's R box is switchable")
+            Assert.True(isPresent thinWindow UiIds.SampleEditor.emitTransmittedCheck, "a ThinFilm shows the T control")
+            thinWindow.Close())
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

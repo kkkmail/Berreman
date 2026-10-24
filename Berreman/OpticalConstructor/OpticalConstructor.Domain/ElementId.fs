@@ -71,15 +71,17 @@ module Library =
         static member firstOf (sampleId : SampleId) : SampleVersionId =
             { sampleId = sampleId; version = VersionNumber.first }
 
-    /// Whether a sample's geometry is a thin film (0+ layers on a semi-infinite substrate — reflectance
-    /// only) or a thick plate (0+ layers on a specified substrate plate — reflectance and/or
-    /// transmittance). A DU, not a bool/enum, so the sample editor can add geometries case-by-case
+    /// Whether a sample's geometry is a thin film (0+ layers on a semi-infinite substrate), a thick plate
+    /// (0+ layers on a specified substrate plate), or a MIRROR (a reflective stack — spec 0046: the ONLY
+    /// geometry observed in reflection alone; a thin film and a plate both reflect AND transmit). A DU,
+    /// not a bool/enum, so the sample editor can add geometries case-by-case
     /// (compiler-guided). The former `Wedge` case was removed (spec 0038 comment 007): a thin film
     /// already covers the semi-infinite case it duplicated. (This is the display/search geometry facet,
     /// distinct from the engine `Berreman.Media.Substrate` whose `Wedge` case is unaffected.)
     type SubstrateKind =
         | ThinFilm
         | Plate
+        | Mirror
 
     /// How a layer's crystal tensors are oriented relative to the lab frame (spec 0033 step 020):
     /// `PrimaryAxes` keeps the material's own principal axes (the identity — tensors exactly as
@@ -187,41 +189,42 @@ module Library =
             description : string
             /// The ray groups this sample can emit, geometry-constrained (spec 0040 Part D.2 / operator
             /// 010/Q3 Part D.2). Reuses the shared `Emission` DU (`Placement.fs`), so the "both groups
-            /// off" state stays unrepresentable. The invariant is DATA: a `ThinFilm` (semi-infinite on
-            /// both sides — observable in reflection off its stack ALONE) is pinned to
-            /// `EmitReflectedOnly` and can never clear its R branch; a `Plate` (a finite two-surface
-            /// slab that reflects AND transmits) defaults to `EmitBoth` and is constrainable to R-only
-            /// or T-only through `Emission`'s smart setters. Defaulted by `defaultSupportedEmission` and
+            /// off" state stays unrepresentable. The invariant is DATA (spec 0046): a `Mirror` is pinned to
+            /// `EmitReflectedOnly` and can never clear its R branch; a `ThinFilm` and a `Plate` both reflect
+            /// AND transmit, default to `EmitBoth`, and are constrainable to R-only or T-only through
+            /// `Emission`'s smart setters. Defaulted by `defaultSupportedEmission` and
             /// mutated by `withSupportedEmission`, both of which route through `constrainEmission`.
             supportedEmission : Emission
         }
 
-    /// The geometry-constrained DEFAULT supported emission of a sample (spec 0040 Part D.2 / operator
-    /// 010/Q3): a `ThinFilm` sits between semi-infinite half-spaces and is observable in reflection off
-    /// its stack ALONE, so it supports `EmitReflectedOnly`; a `Plate` is a finite slab that both
-    /// reflects and transmits, so it defaults to `EmitBoth`. Pure — the seeds and the sample editor
-    /// derive the field from the geometry rather than restating an `Emission` literal per site.
+    /// The geometry-constrained DEFAULT supported emission of a sample (spec 0040 Part D.2; spec 0046 —
+    /// operator: locked R-only belongs to MIRRORS alone): a `Mirror` is observed in reflection only, so
+    /// it supports `EmitReflectedOnly`; a `ThinFilm` (light also enters its semi-infinite substrate) and
+    /// a `Plate` both reflect and transmit, so they default to `EmitBoth`. Pure — the seeds and the
+    /// sample editor derive the field from the geometry rather than restating an `Emission` literal.
     let defaultSupportedEmission (kind : SubstrateKind) : Emission =
         match kind with
-        | ThinFilm -> EmitReflectedOnly
+        | Mirror -> EmitReflectedOnly
+        | ThinFilm
         | Plate -> EmitBoth
 
-    /// Force a candidate supported emission back inside its geometry's constraint (spec 0040 Part D.2).
-    /// Under `ThinFilm` the reflected-only rule is ABSOLUTE: any candidate collapses to
-    /// `EmitReflectedOnly`, so a thin film can never clear its R branch (nor gain a transmitted branch
-    /// its physics does not support). Under `Plate` the candidate passes through untouched, so the
-    /// existing `Emission.withReflected` / `Emission.withTransmitted` setters constrain a plate to
-    /// R-only or T-only freely. This is the single enforcement point every emission change routes
-    /// through (`withSupportedEmission`).
+    /// Force a candidate supported emission back inside its geometry's constraint (spec 0040 Part D.2,
+    /// spec 0046). Under `Mirror` the reflected-only rule is ABSOLUTE: any candidate collapses to
+    /// `EmitReflectedOnly`, so a mirror can never clear its R branch (nor gain a transmitted branch).
+    /// Under `ThinFilm` and `Plate` the candidate passes through untouched, so the existing
+    /// `Emission.withReflected` / `Emission.withTransmitted` setters constrain them to R-only or T-only
+    /// freely. This is the single enforcement point every emission change routes through
+    /// (`withSupportedEmission`).
     let constrainEmission (kind : SubstrateKind) (candidate : Emission) : Emission =
         match kind with
-        | ThinFilm -> EmitReflectedOnly
+        | Mirror -> EmitReflectedOnly
+        | ThinFilm
         | Plate -> candidate
 
     /// Set a sample's `supportedEmission`, re-imposing its geometry constraint (spec 0040 Part D.2):
-    /// the candidate is routed through `constrainEmission s.substrate`, so a `ThinFilm` sample stays
-    /// `EmitReflectedOnly` no matter what is offered (unclearable) and a `Plate` takes the candidate as
-    /// given. The single write path that keeps the field's invariant intact.
+    /// the candidate is routed through `constrainEmission s.substrate`, so a `Mirror` sample stays
+    /// `EmitReflectedOnly` no matter what is offered (unclearable) and a `ThinFilm` / `Plate` takes the
+    /// candidate as given. The single write path that keeps the field's invariant intact.
     let withSupportedEmission (candidate : Emission) (s : Sample) : Sample =
         { s with supportedEmission = constrainEmission s.substrate candidate }
 
@@ -387,7 +390,7 @@ module Library =
 
     /// Spec 0040 Part D.3: the placement emission a table element takes when bound to a library ENTRY.
     /// A bound SAMPLE bounds the placed element by its geometry-constrained `supportedEmission` (a
-    /// `ThinFilm` reflects only, a `Plate` emits both by default, or the R/T-only it was constrained
+    /// `Mirror` reflects only, a `ThinFilm` / `Plate` emits both by default, or the R/T-only it was constrained
     /// to) rather than the generic per-kind `Placement.defaultEmission` (which hands every non-mirror
     /// element `EmitBoth`). A source / detector / polarizer carries no such geometry constraint, so a
     /// placement bound to one keeps the `fallback` emission its catalogue kind already gave it. Pure —
@@ -662,9 +665,9 @@ module Library =
                         substrate = None
                         lower = None
                     }
-                substrate = ThinFilm
+                substrate = Mirror
                 description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
-                supportedEmission = defaultSupportedEmission ThinFilm
+                supportedEmission = defaultSupportedEmission Mirror
             }
 
         let uniaxial : Sample =

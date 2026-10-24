@@ -388,6 +388,10 @@ module UiIds =
         /// Spec 0046: the Main view's page-level scroll viewer (a tall bay never pushes content out of reach).
         [<Literal>]
         let scrollViewer = "TableElementScrollViewer"
+        /// Spec 0046: the Rotation bay's global option — rotate every element about the middle of its incident
+        /// face (checked) instead of its centre.
+        [<Literal>]
+        let pivotAtIncidentFace = "RotateAboutIncidentFaceCheck"
         /// Spec 0038 (031): the out-of-band dispersion warning badge on scene element index `i` — an
         /// indexed id so a headless test addresses the per-element badge.
         [<Literal>]
@@ -485,7 +489,7 @@ module UiIds =
         [<Literal>]
         let statusText = "SampleEditorStatus"
         // The supported-emission R / T checkboxes (spec 0040 Part D.2 step 010): a Plate exposes
-        // both; a ThinFilm shows R fixed on + disabled and renders no T box.
+        // both, as does a ThinFilm; a Mirror (spec 0046) shows R fixed on + disabled and renders no T box.
         [<Literal>]
         let emitReflectedCheck = "SampleEmitReflectedCheck"
         [<Literal>]
