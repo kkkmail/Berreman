@@ -29,7 +29,7 @@ module BeamLayoutTests =
             id = Library.elementId id
             placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }
             host = OnMainBeam
-            halfDepth = 0.025<meter>
+            zoom = 5.0
         }
 
     let private tilted (r2 : float) (e : LayoutElement) : LayoutElement =
@@ -167,6 +167,61 @@ module BeamLayoutTests =
         let stubs = scene.segments |> List.filter (fun s -> s.kind = InFreeSpace && close (sub s.finish s.start).norm (openBeamLength / 1.0<meter>))
         Assert.Single(stubs) |> ignore
         Assert.False(areParallel (dirOf (List.head stubs)) centralRayDirection, "the stub is the reflected ray")
+
+    /// The operator's 004 scene (.manual/004): source, LP (-0.3), a sample (-0.1) tilted by -50°, a second
+    /// LP (0.1), detector (1.0) — both LPs at normal incidence emit BOTH branches, so each back-reflects.
+    let private operatorScene () : LayoutElement list =
+        [ el "src" LightSource -1.0; el "lp1" LinearPolarizer -0.3; tilted -50.0 (el "s" Sample -0.1); el "lp2" LinearPolarizer 0.1; el "det" Detector 1.0 ]
+
+    /// The free-space segments starting exactly at `start`.
+    let private openFrom (start : Vector3) (scene : SceneLayout) : RaySegment list =
+        scene.segments |> List.filter (fun s -> s.kind = InFreeSpace && close (sub s.start start).norm 0.0)
+
+    [<Fact>]
+    let ``a back-reflection stops on the element it travels back to, never running through it`` () =
+        let elements = operatorScene ()
+        let scene = layout elements
+        let entryOf (id : string) : Vector3 =
+            let p = placedOf id scene
+            let e = elements |> List.find (fun x -> x.id = Library.elementId id)
+            match p.incoming with
+            | Some d -> (RayModel.crossElement p.centre d (RayModel.faceNormal d e.placement) (halfDepthOf e)).entry
+            | None -> p.centre
+        let sampleExit =
+            let p = placedOf "s" scene
+            match p.incoming with
+            | Some d -> (RayModel.crossElement p.centre d (RayModel.faceNormal d (tilted -50.0 (el "s" Sample -0.1)).placement) 0.025<meter>).exit
+            | None -> p.centre
+        // LP2 reflects straight back: its open ray ends ON the sample's back face — at the sample's exit point —
+        // so it lies exactly on the outgoing ray and never shows past the sample (the operator's 004 stray).
+        let backFromLp2 = openFrom (entryOf "lp2") scene |> List.filter (fun s -> (dirOf s).x < 0.0)
+        match backFromLp2 with
+        | [ s ] -> Assert.True(close (sub s.finish sampleExit).norm 0.0, $"LP2's back-reflection must end at the sample's exit, ended at ({s.finish.x}, {s.finish.y})")
+        | other -> Assert.Fail($"expected one back-reflection from LP2, got %d{List.length other}")
+        // LP1 reflects straight back to the SOURCE: its open ray ends on the source's front face.
+        let sourceFace = -1.0 + 5.0 * 0.08 / 2.0
+        match openFrom (entryOf "lp1") scene |> List.filter (fun s -> (dirOf s).x < 0.0) with
+        | [ s ] -> Assert.True(close s.finish.x sourceFace, $"LP1's back-reflection must end on the source's face, ended at x = {s.finish.x}")
+        | other -> Assert.Fail($"expected one back-reflection from LP1, got %d{List.length other}")
+
+    [<Fact>]
+    let ``no ray starts before the source's face or ends past the detector's face`` () =
+        let scene = layout (operatorScene ())
+        let sourceFace = -1.0 + 5.0 * 0.08 / 2.0
+        let detectorFace = 1.0 - 5.0 * 0.01 / 2.0
+        for s in scene.segments do
+            for p in [ s.start; s.finish ] do
+                Assert.True(p.x >= sourceFace - tol, $"a ray reaches x = {p.x}, behind the source's face")
+                Assert.True(p.x <= detectorFace + tol, $"a ray reaches x = {p.x}, past the detector's face")
+
+    [<Fact>]
+    let ``an open ray with nothing in its way is drawn at its full open length`` () =
+        // The sample's reflected ray (R2 = -50°) climbs away from every element.
+        let scene = layout (operatorScene ())
+        let up = scene.segments |> List.filter (fun s -> s.kind = InFreeSpace && (dirOf s).y > 0.5)
+        match up with
+        | [ s ] -> Assert.True(close (sub s.finish s.start).norm (openBeamLength / 1.0<meter>))
+        | other -> Assert.Fail($"expected the sample's one reflected ray, got %d{List.length other}")
 
     [<Fact>]
     let ``a host whose reflected ray is gone, an unknown host, or a hosting loop falls back to the main beam`` () =

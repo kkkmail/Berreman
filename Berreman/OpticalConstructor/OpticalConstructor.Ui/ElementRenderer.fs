@@ -3,7 +3,9 @@
 /// through ONE source — a change here shows up everywhere. The renderer is selected by the serializable
 /// `RendererControls.RendererKind` DU and tuned by its `State` (rail count, cap circles / radials, the
 /// three transparency knobs); `rendererOf` recovers the actual draw function from the DU case. The yellow
-/// (N2) and blue (N1) normals are always drawn and never transparency-controlled.
+/// (N2) and teal (N1) normals are never transparency-controlled. Spec 0046: they never share the RAY colour, and a
+/// host may hide them per element (`NormalMarkers` — the Main scene shows them on the selected element only),
+/// so a normal lying on the beam never reads as the ray running on past an element.
 module OpticalConstructor.Ui.ElementRenderer
 
 open Avalonia
@@ -42,7 +44,15 @@ type Drawable =
         zoom : float
         opticalSign : int
         bindingState : BindingState
+        normals : NormalMarkers
     }
+
+/// Whether an element's N1 / N2 orientation markers are drawn (spec 0046). The test scenes show them on every
+/// element; the Main scene only on the SELECTED one — on an element at normal incidence N1 lies on the beam and
+/// runs 1.8 × its face half-size past its centre, across the next element's faces, where it read as the ray.
+and NormalMarkers =
+    | ShowNormals
+    | HideNormals
 
 /// The 2-D placement point as a 3-D table-frame centre (z = 0): the centre for an element that sits ON the
 /// table plane (the renderer test, and any non-snapped element).
@@ -77,7 +87,11 @@ let private plateColor = color 205 205 205
 let private edgeColor = color 50 50 50
 let private selectedStroke = color 0 60 160
 let private elementColor = color 60 60 60
-let private n1Color = color 30 90 200
+/// The N1 (face-normal) indicator. Spec 0046: deliberately NOT the ray colour — at normal incidence N1 lies
+/// ON the beam, and drawn in the ray's blue it read as the ray running on past the element's faces (and on
+/// past a detector).
+let normalAxisColor : Color = color 0 150 120
+let private n1Color = normalAxisColor
 let private n2Color = color 210 120 0
 let private codeColor = color 20 20 30
 // The roll-SEAM rail: one rail painted a distinct red, always visible, so the spin about R1 is readable.
@@ -136,15 +150,18 @@ let private kindColor (k : CatalogueKind) : Color =
 let private offset (centre : Vector3) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (a : float) (b : float) (cc : float) : Vector3 =
     v3 (centre.x + a * n1.x + b * n2.x + cc * n3.x) (centre.y + a * n1.y + b * n2.y + cc * n3.y) (centre.z + a * n1.z + b * n2.z + cc * n3.z)
 
-/// BOTH oriented normals — N1 (blue, beam axis) and N2 (yellow, roll) — always shown, never transparent.
+/// BOTH oriented normals — N1 (teal, beam axis) and N2 (yellow, roll) — always shown, never transparent.
 let private normalsViews (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
-    let (n1, n2, _) = orientedBasis e.placement
-    let c = e.centre
-    let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
-    let centre = project c
-    let along (n : Vector3) (len : float) = project (v3 (c.x + len * n.x) (c.y + len * n.y) (c.z + len * n.z))
-    [ line centre (along n1 (1.8 * half)) n1Color (if selected then 3.0 else 2.0)
-      line centre (along n2 (-(1.3 * half))) n2Color (if selected then 3.0 else 2.0) ]
+    match e.normals with
+    | HideNormals -> []
+    | ShowNormals ->
+        let (n1, n2, _) = orientedBasis e.placement
+        let c = e.centre
+        let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
+        let centre = project c
+        let along (n : Vector3) (len : float) = project (v3 (c.x + len * n.x) (c.y + len * n.y) (c.z + len * n.z))
+        [ line centre (along n1 (1.8 * half)) n1Color (if selected then 3.0 else 2.0)
+          line centre (along n2 (-(1.3 * half))) n2Color (if selected then 3.0 else 2.0) ]
 
 let private capPts (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : Vector3) (n3 : Vector3) (centre : Vector3) (d : float) (r : float) : Point list =
     [ for k in 0 .. 23 ->
@@ -186,7 +203,7 @@ let private capSurface (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : V
     @ [ for k in 1 .. circles -> innerCircle k ]
     @ [ for i in 0 .. radials - 1 -> meridian (2.0 * System.Math.PI * float i / float radials) ]
 
-/// A flat element as a 3-D CYLINDER (axis = blue N1): two FLAT caps joined by the side rails.
+/// A flat element as a 3-D CYLINDER (axis = teal N1): two FLAT caps joined by the side rails.
 let private cylinderViews (cfg : RendererControls.State) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
     let (n1, n2, n3) = orientedBasis e.placement
     let c = e.centre

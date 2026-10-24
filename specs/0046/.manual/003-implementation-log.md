@@ -143,6 +143,37 @@ project files, incl. vendored MathNet).
   then deleted (18 packages in `C:\GitHub\Packages`, 18 `.nupkg` + 18 `.nuspec` in STL's bin/obj). STL is
   at 10.1.402.120, clean. Rule (CLAUDE.md): never bump STL's ring from this repository unasked.
 
+## Rays past the faces (operator `.manual/004` error, `005` expected)
+
+Reproduced by rendering the REAL `mainView` headlessly with Skia to PNG (a scratch renderer outside the
+repo: `AppBuilder.Configure<App>().UseSkia().UseHeadless(UseHeadlessDrawing = false)`, then
+`CaptureRenderedFrame`). The operator's scene: source, LP (-0.3), sample (-0.1) at R2 = -50°, LP (0.1),
+detector. Neither stray line in 004 was a ray:
+
+- **The "ray 1 runs past the sample" piece was the first LP's N1 normal marker** — drawn from its centre for
+  1.8 × its face half-size (0.225 m) in exactly the ray's blue (30, 90, 200); at normal incidence it lies on
+  the beam and crossed the sample's face. The detector's marker likewise ran on past the detector.
+- **The "ray 3 starts far too early" piece was the second LP's open reflected ray** — at normal incidence it
+  goes straight back, and was drawn a fixed 0.5 m, through the sample; the first LP's ran back into the
+  source box.
+
+Fixes:
+
+- `BeamLayout.layout`: an OPEN ray (a reflected ray with nothing on it, a beam with no detector at its end)
+  stops at the first DRAWN element box it meets (slab test against every other element's oriented box) and
+  is at most `openBeamLength`. A back-reflection now ends on the element it travels back to (the second LP's
+  at the sample's exit point, the first LP's on the source's face). `LayoutElement` carries the draw `zoom`
+  (the whole drawn box), not just a half-depth.
+- `ElementRenderer`: the N1 marker has its own colour (`normalAxisColor`, teal) — no marking shares the ray
+  colour — and `Drawable.normals` (`ShowNormals | HideNormals`) lets a host hide them; the Main view shows
+  them on the SELECTED element only (the test windows keep them on every element).
+- Rendered result: `006-rotated-sample-fixed.png` (the 004 view) and `007-full-table-fixed.png` (the whole
+  table — the beam starts on the source's face and ends on the detector's face).
+- Tests: `BeamLayoutTests` +3 (back-reflections stop on the element they meet, nothing behind the source /
+  past the detector, an unobstructed open ray keeps its full length); `ElementRendererBindingTests` +2
+  (normal colour ≠ ray colour; Hide / ShowNormals in both renderers); `ElementMenuTests` +1 (the Main view
+  draws one N1 marker — the selected element's). Constructor 709, ui-smoke 197, ui-tests 506.
+
 ## Findings
 
 - F1: `dotnet test` broken on the .NET 10 SDK since the xunit.v3 4.0.0 bump (see item 1).

@@ -806,14 +806,10 @@ type MainNode =
         incoming : Vector3 option
     }
 
-/// The element's DRAWN half-depth along its face normal — its box depth times its draw zoom, halved —
-/// where the ray meets its faces (spec 0046), so the drawn ray crosses the drawn element.
-let drawnHalfDepth (e : TestElement) : float<meter> = e.zoom * e.placement.box.b / 2.0
-
-/// The scene as the pure beam layout reads it (spec 0046): every element with its beam host and drawn
-/// half-depth, the source first.
+/// The scene as the pure beam layout reads it (spec 0046): every element with its beam host and draw zoom
+/// (the ray meets, and an open ray stops at, the DRAWN box), the source first.
 let layoutElements (m : Model) : BeamLayout.LayoutElement list =
-    m.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; halfDepth = drawnHalfDepth e })
+    m.elements |> List.map (fun e -> { BeamLayout.LayoutElement.id = e.id; placement = e.placement; host = e.beam; zoom = e.zoom })
 
 /// The laid-out Main scene (spec 0046) — `BeamLayout.layout` over `layoutElements`.
 let sceneLayout (m : Model) : BeamLayout.SceneLayout = BeamLayout.layout (layoutElements m)
@@ -1491,11 +1487,12 @@ let private plateColor = color 205 205 205
 let private plateSelectedColor = color 150 185 235
 let private edgeColor = color 50 50 50
 let private selectedStroke = color 0 60 160
-let private rayColor = color 30 90 200
+/// The ray colour. Spec 0046: no element marking shares it (`ElementRenderer.normalAxisColor`).
+let rayColor : Color = color 30 90 200
 let private sourceColor = color 70 70 70
 let private detectorColor = color 20 20 20
 let private elementColor = color 60 60 60
-let private n1Color = color 30 90 200
+let private n1Color = ElementRenderer.normalAxisColor
 let private n2Color = color 210 120 0
 
 let private toPoint (sp : ScreenPoint) : Point = Point(sp.sx, sp.sy)
@@ -1767,9 +1764,13 @@ let private mainElementViews (model : Model) : IView list =
         // The CENTRE is the full 3-D snapped position (so an element snapped out of the table plane after an
         // R3-tilted mirror is drawn off the plane); `drawnPlacement` carries the orientation. The binding
         // state is derived from that placement's `valueId`, so an unbound element draws dashed-and-ghosted.
+        // Spec 0046: the orientation markers only on the SELECTED element — an unselected element's N1 lies on
+        // the beam at normal incidence and ran across the next element's faces, where it read as the ray.
         let placement = drawnPlacement model i
-        renderer.draw project (model.selection = ElementSelected i)
-            { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind; bindingState = ElementRenderer.bindingStateOf placement })
+        let selected = (model.selection = ElementSelected i)
+        let normals = if selected then ElementRenderer.ShowNormals else ElementRenderer.HideNormals
+        renderer.draw project selected
+            { placement = placement; centre = nodes.[i].position; zoom = e.zoom; opticalSign = Catalogue.opticalSign e.placement.catalogueKind; bindingState = ElementRenderer.bindingStateOf placement; normals = normals })
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is

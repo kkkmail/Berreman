@@ -251,6 +251,27 @@ module ElementMenuTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``the Main view draws the orientation markers on the selected element only`` () =
+        HeadlessSession.run (fun () ->
+            let normalLines (window : Window) : int =
+                window.GetVisualDescendants()
+                |> Seq.filter (function
+                    | :? Avalonia.Controls.Shapes.Line as l ->
+                        match l.Stroke with
+                        | :? Avalonia.Media.ISolidColorBrush as b -> b.Color = OpticalConstructor.Ui.ElementRenderer.normalAxisColor
+                        | _ -> false
+                    | _ -> false)
+                |> Seq.length
+            // Five elements on the beam, the sample selected: ONE N1 marker (the sample's) — the polarizers' and
+            // the source's / detector's N1 markers, lying on the beam, are not drawn (operator .manual/004-005).
+            let withSampleSelected = plateScene () |> update (AddElement LinearPolarizer) |> fun m -> { m with selection = ElementSelected 2 }
+            for model, expected in [ withSampleSelected, 1; { withSampleSelected with selection = TableSelected }, 0 ] do
+                let window = mount model
+                try Assert.Equal(expected, normalLines window)
+                finally window.Close())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``the Main view scrolls, and the Experiments bay shows only the captures the detectors allow`` () =
         HeadlessSession.run (fun () ->
             let model0 =
