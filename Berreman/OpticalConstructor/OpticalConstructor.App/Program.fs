@@ -113,6 +113,7 @@ type MainConstructorWindow(context : AppContext) as this =
         ConstructorScene.mount this (fun () ->
             { TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories with
                 sources = context.sources
+                experimentExport = context.experimentExport
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 
@@ -130,6 +131,7 @@ type InverseConstructorWindow(context : AppContext) as this =
         ConstructorScene.mount this (fun () ->
             { TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories with
                 sources = context.sources
+                experimentExport = context.experimentExport
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 

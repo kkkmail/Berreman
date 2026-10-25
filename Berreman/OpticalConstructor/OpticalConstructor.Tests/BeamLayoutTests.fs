@@ -179,7 +179,14 @@ module BeamLayoutTests =
 
     [<Fact>]
     let ``a back-reflection stops on the element it travels back to, never running through it`` () =
-        let elements = operatorScene ()
+        // Spec 0046: a polarizer transmits only, so the operator's two LPs are played by samples at normal
+        // incidence (same drawn box) — each reflects straight back.
+        let elements =
+            operatorScene ()
+            |> List.map (fun e ->
+                match e.placement.catalogueKind with
+                | LinearPolarizer -> { e with placement = ElementPlacement.create Sample e.placement.placementPoint }
+                | LightSource | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector -> e)
         let scene = layout elements
         let entryOf (id : string) : Vector3 =
             let p = placedOf id scene
@@ -338,28 +345,30 @@ module BeamLayoutTests =
               onReflectedOf "pol2" (el "det" Detector 0.6)
               el "lens" Lens 0.5 ]
         let ids (xs : Library.ElementId list) : string list = xs |> List.map (fun i -> i.value)
-        // The source never moves; the mirror and the lens (spec 0046: T only) open no side beam; the sample
-        // cannot host itself, and it cannot move onto the reflected ray of the polarizer on its own ray.
+        // The source never moves; the mirror, the lens and both polarizers (spec 0046: T only) open no side
+        // beam; the sample cannot host itself, so it has nowhere to move but the main beam.
         Assert.Empty(attachableHosts elements (Library.elementId "src"))
-        Assert.Equal<string list>([ "pol"; "s"; "pol2" ], ids (attachableHosts elements (Library.elementId "det")))
-        Assert.Equal<string list>([ "pol" ], ids (attachableHosts elements (Library.elementId "s")))
+        Assert.Equal<string list>([ "s" ], ids (attachableHosts elements (Library.elementId "det")))
+        Assert.Empty(attachableHosts elements (Library.elementId "s"))
         Assert.Equal<Set<Library.ElementId>>(set [ Library.elementId "pol2"; Library.elementId "det" ], hostedUnder elements (Library.elementId "s"))
         Assert.Equal(OpensReflectedBeam, sideBeamOf (el "s" Sample 0.0).placement)
         Assert.Equal(NoSideBeam, sideBeamOf (el "m" FlatMirror 0.0).placement)
         Assert.Equal(NoSideBeam, sideBeamOf (el "src" LightSource 0.0).placement)
         Assert.Equal(NoSideBeam, sideBeamOf { (el "lens" Lens 0.0).placement with emission = EmitBoth })
+        Assert.Equal(NoSideBeam, sideBeamOf { (el "pol" LinearPolarizer 0.0).placement with emission = EmitBoth })
+        Assert.Equal(NoSideBeam, sideBeamOf { (el "cp" CircularPolarizer 0.0).placement with emission = EmitBoth })
 
     // --- the element-menu ray switches -----------------------------------------------------------
 
     [<Fact>]
     let ``the ray switches keep both-off unrepresentable and leave mirrors, sources, detectors and reflect-only samples fixed`` () =
-        let pol = (el "pol" LinearPolarizer 0.0).placement
-        let rOff = toggleRay BeamTree.Reflected EmitBoth pol
+        let both = (el "s" Sample 0.0).placement
+        let rOff = toggleRay BeamTree.Reflected EmitBoth both
         Assert.Equal(EmitTransmittedOnly, rOff.emission)
         // Switching off the LAST ray turns the other one back on.
         Assert.Equal(EmitReflectedOnly, (toggleRay BeamTree.Transmitted EmitBoth rOff).emission)
         Assert.Equal(EmitBoth, (toggleRay BeamTree.Reflected EmitBoth rOff).emission)
-        for kind in [ FlatMirror; CurvedMirror; Lens; LightSource; Detector ] do
+        for kind in [ FlatMirror; CurvedMirror; Lens; LinearPolarizer; CircularPolarizer; LightSource; Detector ] do
             let p = (el "x" kind 0.0).placement
             Assert.Equal(p, toggleRay BeamTree.Reflected EmitBoth p)
             match rayControlOf EmitBoth p with

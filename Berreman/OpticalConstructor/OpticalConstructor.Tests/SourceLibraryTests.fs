@@ -18,7 +18,7 @@ module SourceLibraryTests =
     let private nm (w : WaveLength) : float = w.value / nmToMeter / 1.0<nm>
 
     let private userSource (id : string) (name : string) (wavelengthNm : float) : SourcePreset =
-        { id = id; name = name; waveLength = WaveLength.nm (wavelengthNm * 1.0<nm>); protection = UserManaged }
+        { id = id; name = name; waveLength = WaveLength.nm (wavelengthNm * 1.0<nm>); tuning = FixedLine; protection = UserManaged }
 
     let private sourceIds (entries : LibraryEntry list) : string list =
         entries

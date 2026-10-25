@@ -209,6 +209,7 @@ module LibraryWindowTests =
         let context : SelectionContext<LibraryEntry> =
             {
                 kindConstraint = KindConstraint kind
+                currentEntryIdOpt = None
                 target = target
                 onSelected = fun entry -> events.Add ("selected:" + entry.entryId)
                 onCancelled = fun () -> events.Add "cancelled"
@@ -1238,6 +1239,7 @@ module LibraryWindowTests =
             let selectCtx : SelectionContext<LibraryEntry> =
                 {
                     kindConstraint = KindConstraint Detector
+                    currentEntryIdOpt = None
                     target = TableElementTarget (elementId "det")
                     onSelected = fun entry -> dispatch (Scene.BindValueIdTo (elementId "det", entry.entryId))
                     onCancelled = fun () -> cancels.Add "cancelled"
@@ -1294,6 +1296,7 @@ module LibraryWindowTests =
             let selectCtx : SelectionContext<LibraryEntry> =
                 {
                     kindConstraint = KindConstraint Detector
+                    currentEntryIdOpt = None
                     target = TableElementTarget (elementId "det")
                     onSelected = fun entry -> dispatch (Scene.BindValueIdTo (elementId "det", entry.entryId))
                     onCancelled = fun () -> ()

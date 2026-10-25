@@ -279,6 +279,56 @@ Fixes:
   detector on a reflected ray included) is drawn exactly 0.4 m further along; Reset carries it back.
   Constructor 722, ui-smoke 203, ui-tests 731. BerremanTests not run (operator stop).
 
+## Element info, polarizers T-only, Library preselect, tunable sources, detector-decided captures, FSX acceptance (operator, same day)
+
+1. **What an element is.** `elementInfo` (kind #n, the bound entry's name and full description, or
+   "Unbound"): an invisible hover disc over each element on the table carries it as a tooltip
+   (`ElementHover_<id>`), and the element menu shows it under its title (`ElementMenuInfo`).
+2. **Menu width.** The element menu sizes to its text between 260 and 460 px and every line wraps.
+3. **Polarizers transmit only — locked** (`defaultEmission`, `outgoingGroups`, `sideBeamOf`,
+   `rayControlOf`); tests that leaned on a reflecting polarizer now use a sample.
+4. **The Library shows the chosen entry.** `SelectionContext.currentEntryIdOpt`: Choose… (Selector or menu)
+   passes the element's binding; the Library window opens (or is re-targeted) with that entry selected,
+   highlighted, and the entries group expanded.
+5. **Tunable sources.** `SourcePreset.tuning = FixedLine | TunableBetween (min, max)`; `waveLength` is the
+   line or the tunable setting. Seeds: xenon lamp + monochromator 190–1000 nm, Ti:sapphire 700–1000 nm,
+   supercontinuum 450–2400 nm, EUV beamline 5–20 nm. Only a tunable source varies its wavelength (a fixed
+   line or an unbound source varies nothing); the sweep defaults to and stays within its limits; while
+   something else varies, the bay shows the source wavelength — editable within the limits for a tunable
+   source (`Experiment.sourceWaveLengthOpt`), read only for a fixed line. The source editor gained
+   Fixed line / Tunable with the limits.
+6–7. **The detector decides what is captured.** Each capture branch is read by the detector on it
+   (`captureDetectors`, `detectorKindOf`): an intensity detector gives "Intensity", an ellipsometer "Ψ" and
+   "Δ"; the bay's offers say so ("Reflected (R) — Ψ, Δ (ellipsometer)"), and step 3 (and the range) appear
+   only once something to vary is chosen.
+   **The run was rebuilt on the light's real path** (`ExperimentRun`, `chartForRun`): previously the FIRST
+   polarizer in the scene served as both input polarizer and analyzer, wavelength / R1 runs solved the
+   sample at normal incidence whatever its tilt, and one detector kind applied to every branch. Now the
+   detector's own path is walked: polarizers before the sample prepare the input, the sample is solved at
+   its drawn incidence and spin, polarizers after it analyze.
+8. **FSX acceptance** (`FsxAcceptanceTests`, 14 tests): Glass (film, plate; vs incidence), Glass_Dispersive
+   (film, plate; vs λ at 79°), LangasiteOnSilicon (normal, 79°; vs λ), MultilayerThinFilm (vs incidence,
+   vs λ), MultilayerThinFilm_02 (vs incidence, vs λ), MultilayerThinFilm_EUV and _EUV__002 (vs incidence
+   at 10 nm, vs λ 5–20 nm). Each stores the script's materials / sample / source in the app's stores,
+   builds the table and the experiment through the app's messages, mounts the Main workbench headless and
+   clicks Export data (the new `ExperimentExportProxy`; in-memory store in tests, CSV into
+   Documents/Optical Constructor/Exports in the app), and compares T and R with the script's
+   `Variables.calculate` — all within 1e-6. Excluded: Wedge*, Work_01, References (loader), TestChart,
+   TotalRefl_Glass (incident medium glass), ActiveCrystal (varies a material constant),
+   ActiveCrystalComparison (plots the transmitted polarization azimuth / ellipticity, which no detector
+   reads).
+   **Two real bugs found by these tests:**
+   - the constructor's T was wrong for any exit medium other than vacuum: the engine's Mueller matrices are
+     built from |E|², its T is the energy flux — the run now corrects the transmitted matrix with the
+     engine's own s/p flux-to-amplitude ratios (exact for s / p input, also in absorbing silicon at 79°);
+   - **every wavelength sweep in the Analytics scripts was wrong**: `Variables.getWaveLengthValue` wrapped
+     the range value (metres) as nanometres, so each point was solved at ~10⁻⁷ nm while the x axis showed
+     the right nm. Fixed in `Analytics/Variables.fs`. The one solver test sweeping wavelength
+     (`OptimizationTests`, total internal reflection, R = 1 at any λ) is unaffected; BerremanTests not run
+     (operator stop).
+- Tests: constructor 727, ui-smoke 206, ui-tests 757 in all (the UI suite now takes ~5 minutes with the
+  acceptance tests); full no-incremental build 0 errors, only vendored SYSLIB0051.
+
 ## Findings
 
 - F1: `dotnet test` broken on the .NET 10 SDK since the xunit.v3 4.0.0 bump (see item 1).

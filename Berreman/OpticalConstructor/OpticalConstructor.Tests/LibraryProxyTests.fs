@@ -90,7 +90,7 @@ module LibraryProxyTests =
         let lp = PolarizerItem { id = "x"; name = "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
         let cpL = PolarizerItem { id = "y"; name = "cpL"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = UserManaged }
         let cpR = PolarizerItem { id = "z"; name = "cpR"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = UserManaged }
-        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; protection = UserManaged }
+        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
         let det = DetectorItem { id = "d"; name = "d"; kind = Intensity; protection = UserManaged }
         let smp =
             SampleItem
@@ -135,7 +135,7 @@ module LibraryProxyTests =
         Assert.Contains("Ψ", det.fullDescription)
         let lp = PolarizerItem { id = "x"; name = "lp"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = UserManaged }
         Assert.Contains("linear", lp.fullDescription)
-        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; protection = UserManaged }
+        let src = SourceItem { id = "s"; name = "s"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Contains("500", src.fullDescription)
 
     [<Fact>]

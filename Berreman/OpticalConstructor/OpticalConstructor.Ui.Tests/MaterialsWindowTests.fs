@@ -203,6 +203,7 @@ module MaterialsWindowTests =
         let context : SelectionContext<MaterialEntry> =
             {
                 kindConstraint = KindConstraint kind
+                currentEntryIdOpt = None
                 target = target
                 onSelected = fun entry -> events.Add ("selected:" + string entry.id.value)
                 onCancelled = fun () -> events.Add "cancelled"
@@ -1114,6 +1115,7 @@ module MaterialsWindowTests =
             let selectCtx : SelectionContext<MaterialEntry> =
                 {
                     kindConstraint = KindConstraint Sample
+                    currentEntryIdOpt = None
                     target = SampleLayerTarget (AtSingleLayer 0)
                     onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
                     onCancelled = fun () -> cancels.Add "cancelled"
@@ -1187,6 +1189,7 @@ module MaterialsWindowTests =
             let selectCtx : SelectionContext<MaterialEntry> =
                 {
                     kindConstraint = KindConstraint Sample
+                    currentEntryIdOpt = None
                     target = SampleLayerTarget (AtSingleLayer 0)
                     onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
                     onCancelled = fun () -> ()

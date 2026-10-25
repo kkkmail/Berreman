@@ -84,6 +84,7 @@ module WireUiFinalCompositionTests =
     let private selectContext (kind : Placement.CatalogueKind) : SelectionContext<'entry> =
         {
             kindConstraint = KindConstraint kind
+            currentEntryIdOpt = None
             target = TableElementTarget (Library.elementId "wire-sweep")
             onSelected = ignore
             onCancelled = ignore

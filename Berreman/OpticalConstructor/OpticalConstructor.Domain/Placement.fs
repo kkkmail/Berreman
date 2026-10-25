@@ -196,13 +196,14 @@ module Placement =
 
     /// The default emission for a catalogue role (A.7.2). A mirror suppresses
     /// transmission (consistent with `BeamNode.attach`, `BeamTree.fs:74` — a
-    /// mirror carries the reflected branch only); spec 0046 (operator): a lens
-    /// carries the transmitted branch only; every other element emits both.
+    /// mirror carries the reflected branch only); spec 0046 (operator): a lens and
+    /// every polarizer carry the transmitted branch only (a splitting polarizer is a
+    /// future kind); every other element emits both.
     let defaultEmission (kind : CatalogueKind) : Emission =
         match kind with
         | FlatMirror | CurvedMirror -> EmitReflectedOnly
-        | Lens -> EmitTransmittedOnly
-        | LightSource | LinearPolarizer | CircularPolarizer | Sample | Detector -> EmitBoth
+        | Lens | LinearPolarizer | CircularPolarizer -> EmitTransmittedOnly
+        | LightSource | Sample | Detector -> EmitBoth
 
     /// The immutable per-element placement record (A.1 / R-1). Holds the box
     /// centre, the three rotation angles (engine `Angle`), the three independent

@@ -238,14 +238,30 @@ module Library =
         | ProtectedBuiltIn
         | UserManaged
 
-    /// A monochromatic source preset — defines λ (spec Q3: source = wavelength).
+    /// How a light source's wavelength may be set (spec 0046): a FIXED line, or TUNABLE anywhere between
+    /// two limits (a monochromator, a tunable laser, a synchrotron beamline). An experiment may vary only a
+    /// tunable source's wavelength, and only within its limits.
+    type SourceTuning =
+        | FixedLine
+        | TunableBetween of minimum : WaveLength * maximum : WaveLength
+
+    /// A monochromatic source preset — defines λ (spec Q3: source = wavelength). `waveLength` is the line
+    /// of a fixed source, or the setting a tunable source runs at unless an experiment says otherwise.
     type SourcePreset =
         {
             id : string
             name : string
             waveLength : WaveLength
+            tuning : SourceTuning
             protection : EntryProtection
         }
+
+        /// The tunable limits in nm, or `None` for a fixed line (spec 0046).
+        member this.tunableRangeNm : (float * float) option =
+            let toNm (w : WaveLength) : float = w.value / nmToMeter / oneNanometer
+            match this.tuning with
+            | FixedLine -> None
+            | TunableBetween (minimum, maximum) -> Some (toNm minimum, toNm maximum)
 
     /// The detector type fixes the measurement (spec §4): Intensity records S0; Ellipsometer records
     /// Ψ/Δ. A DU, not an enum, so non-ideal/compound detectors are a non-breaking addition later.
@@ -361,7 +377,9 @@ module Library =
             | SampleItem s -> s.description
             | SourceItem s ->
                 let wNm = s.waveLength.value / nmToMeter / oneNanometer
-                $"Monochromatic light source at %g{wNm} nm."
+                match s.tunableRangeNm with
+                | Some (lo, hi) -> $"Tunable monochromatic light source, %g{lo}–%g{hi} nm (set to %g{wNm} nm unless an experiment varies or sets it)."
+                | None -> $"Monochromatic light source at %g{wNm} nm (a fixed line)."
             | DetectorItem d ->
                 match d.kind with
                 | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
@@ -766,7 +784,16 @@ module Library =
     module SeedSources =
 
         let private source (id : string) (name : string) (waveLength : WaveLength) : SourcePreset =
-            { id = id; name = name; waveLength = waveLength; protection = ProtectedBuiltIn }
+            { id = id; name = name; waveLength = waveLength; tuning = FixedLine; protection = ProtectedBuiltIn }
+
+        let private tunable (id : string) (name : string) (minNm : float) (maxNm : float) (settingNm : float) : SourcePreset =
+            {
+                id = id
+                name = name
+                waveLength = WaveLength.nm (settingNm * 1.0<nm>)
+                tuning = TunableBetween (WaveLength.nm (minNm * 1.0<nm>), WaveLength.nm (maxNm * 1.0<nm>))
+                protection = ProtectedBuiltIn
+            }
 
         /// The reference source every scene defaulted to before spec 0046.
         let reference600 : SourcePreset = source "src-600" "Monochromatic 600 nm" (WaveLength.nm 600.0<nm>)
@@ -805,8 +832,18 @@ module Library =
                 source "src-beuv-6p7" "BEUV 6.7 nm (beyond EUV)" (WaveLength.nm 6.7<nm>)
             ]
 
+        /// Tunable sources (spec 0046): an experiment varies their wavelength within their limits, or sets
+        /// it there when it varies something else.
+        let tunables : SourcePreset list =
+            [
+                tunable "src-xe-mono" "Xenon lamp + monochromator, 190–1000 nm" 190.0 1000.0 600.0
+                tunable "src-tisa-tunable" "Ti:sapphire laser, tunable 700–1000 nm" 700.0 1000.0 800.0
+                tunable "src-supercontinuum" "Supercontinuum source, 450–2400 nm" 450.0 2400.0 600.0
+                tunable "src-euv-beamline" "EUV beamline (synchrotron), 5–20 nm" 5.0 20.0 13.5
+            ]
+
         /// Every seeded source, in Library display order.
-        let all : SourcePreset list = reference600 :: lasers @ lithography
+        let all : SourcePreset list = reference600 :: lasers @ lithography @ tunables
 
     /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
@@ -881,6 +918,7 @@ module Library =
                                       Leaf (TreeLabel "600 nm", SeedSources.reference600.id)
                                       Group (TreeLabel "Lasers", SeedSources.lasers |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
                                       Group (TreeLabel "Lithography (UV / EUV)", SeedSources.lithography |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
+                                      Group (TreeLabel "Tunable", SeedSources.tunables |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
                                   ])
                              Group
                                  (TreeLabel "Detectors",
@@ -1004,11 +1042,23 @@ module Library =
     /// name, a blank id, or a wavelength that is not a positive finite length is `InvalidSource`; a
     /// `ProtectedBuiltIn` source is refused (only user-managed sources are stored here).
     let validateSource (s : SourcePreset) : Result<unit, SourceError> =
-        let metres = s.waveLength.value / 1.0<meter>
+        let positive (w : WaveLength) : bool =
+            let metres = w.value / 1.0<meter>
+            not (Double.IsNaN metres || Double.IsInfinity metres) && metres > 0.0
+        let tuningProblem =
+            match s.tuning with
+            | FixedLine -> None
+            | TunableBetween (minimum, maximum) ->
+                if not (positive minimum && positive maximum) then Some "needs positive tunable limits"
+                elif minimum.value >= maximum.value then Some "needs a lower tunable limit below the upper one"
+                elif s.waveLength.value < minimum.value || s.waveLength.value > maximum.value then Some "must be set within its tunable limits"
+                else None
         if String.IsNullOrWhiteSpace s.id then Error (InvalidSource "a source needs an id")
         elif String.IsNullOrWhiteSpace s.name then Error (InvalidSource $"source '%s{s.id}' has a blank name")
-        elif Double.IsNaN metres || Double.IsInfinity metres || metres <= 0.0 then
+        elif not (positive s.waveLength) then
             Error (InvalidSource $"source '%s{s.name}' needs a positive wavelength")
+        elif Option.isSome tuningProblem then
+            Error (InvalidSource $"source '%s{s.name}' %s{tuningProblem |> Option.defaultValue String.Empty}")
         else
             match s.protection with
             | ProtectedBuiltIn -> Error (ProtectedSourceRefused $"source '%s{s.name}' is a protected built-in — it is not stored with the user sources")

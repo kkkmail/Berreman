@@ -95,7 +95,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``editing a user source replaces it; Cancel closes a pristine editor and confirms a dirty one`` () =
         let sources = SourceProxy.createInMemory ()
-        let original : SourcePreset = { id = "src-u"; name = "Line A"; waveLength = WaveLength.nm 500.0<nm>; protection = UserManaged }
+        let original : SourcePreset = { id = "src-u"; name = "Line A"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Equal(Ok (), sources.saveSource original)
         let calls, context = editorContext sources
         let m0 = SE.init context (SE.EditSource original)
@@ -151,7 +151,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``a user source joins the Library, offers Edit, and is removed through the confirm gate`` () =
         let sources = SourceProxy.createInMemory ()
-        let mine : SourcePreset = { id = "src-mine"; name = "My line"; waveLength = WaveLength.nm 450.0<nm>; protection = UserManaged }
+        let mine : SourcePreset = { id = "src-mine"; name = "My line"; waveLength = WaveLength.nm 450.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Equal(Ok (), sources.saveSource mine)
         let calls, context = libraryContext sources
         let m0 = LW.init context Browse
@@ -201,7 +201,7 @@ module LightSourceEditorTests =
     let ``a user source and a seeded lithography source bind to the table's source and resolve`` () =
         HeadlessSession.run (fun () ->
             let m0 = { Scene.initMain () with selection = Scene.ElementSelected 0 }
-            let mine : SourcePreset = { id = "src-mine"; name = "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; protection = UserManaged }
+            let mine : SourcePreset = { id = "src-mine"; name = "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; tuning = FixedLine; protection = UserManaged }
             Assert.Equal(Ok (), m0.sources.saveSource mine)
             let sourceId = (List.item 0 m0.elements).id
             let boundMine = Scene.update (Scene.BindValueIdTo (sourceId, "src-mine")) m0

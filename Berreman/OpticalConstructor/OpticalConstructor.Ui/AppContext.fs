@@ -56,6 +56,9 @@ type AppContext =
         /// `experimentCollections` was before its builder wired in; a future disk-backed `create`
         /// swaps in with no change to any consumer.
         scenes : Scene.SceneProxy
+        /// Spec 0046: the experiment-data export seam — the CSV adapter writing each exported run into the
+        /// user's `Documents/Optical Constructor/Exports` folder (nothing touches the disk until an export).
+        experimentExport : ExperimentExport.ExperimentExportProxy
         /// The step-005 typed appsettings.json values (`AppConfig.loadWorkbenchSettings`
         /// elevates them once at the composition root); later Part C/E/F steps read the
         /// window-policy / quick-pick / tree / bucketing fields from HERE, never from
@@ -103,5 +106,10 @@ type AppContext =
             // session starts with no saved scenes, §0.2), the last of the STORE_XDUO_000x proxies to
             // be composed at the root (step 047 "every proxy built once at the root").
             scenes = Scene.SceneProxy.createInMemory ()
+            experimentExport =
+                let documents = System.Environment.GetFolderPath System.Environment.SpecialFolder.MyDocuments
+                OpticalConstructor.Storage.ExperimentExportFile.createCsvFolder
+                    (System.IO.Path.Combine(documents, "Optical Constructor", "Exports"))
+                    (fun () -> System.DateTime.Now)
             settings = settings
         }

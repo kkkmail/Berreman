@@ -90,11 +90,16 @@ module RayModelTests =
         Assert.Equal(1, List.length mirrorTransmittedGroups)            // exactly one group ...
         Assert.Equal(Reflected, List.head mirrorTransmittedGroups)      // ... and it is the RRG
         Assert.DoesNotContain(Transmitted, mirrorTransmittedGroups)
-        // A non-mirror element emitting both (a polarizer) draws both groups.
-        let polarizer = ElementPlacement.create LinearPolarizer TablePoint.origin
-        let polarizerGroups = outgoingGroups polarizer
+        // A non-mirror element emitting both (a sample) draws both groups.
+        let sample = ElementPlacement.create Sample TablePoint.origin
+        let polarizerGroups = outgoingGroups sample
         Assert.Contains(Reflected, polarizerGroups)
         Assert.Contains(Transmitted, polarizerGroups)
+        // Spec 0046 (operator): every POLARIZER carries the transmitted group only — structurally, like a
+        // lens: even forced to EmitBoth it draws the TRG alone.
+        let polarizer = ElementPlacement.create LinearPolarizer TablePoint.origin
+        Assert.Equal(EmitTransmittedOnly, polarizer.emission)
+        Assert.Equal<RayGroupKind list>([ Transmitted ], outgoingGroups { polarizer with emission = EmitBoth })
         // Spec 0046 (operator): a LENS carries the transmitted group only — structurally, the mirror
         // rule's counterpart: even forced to EmitBoth it draws the TRG alone.
         let lens = ElementPlacement.create Lens TablePoint.origin

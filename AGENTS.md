@@ -339,7 +339,20 @@ This is a spec-driven, gated repository.
   beam wherever it sits; elements rotate about their centre or, with the global
   `RotationPivot` option, about the middle of their incident face.
 - **Locked R-only belongs to mirrors alone** (flat / curved mirror kinds and the
-  `Mirror` sample geometry); lenses are T-only; everything else carries R and T.
+  `Mirror` sample geometry); lenses AND polarizers are T-only (locked — a splitting polarizer
+  would be a new kind); a source emits; samples carry R and T.
+- **An experiment runs on the light's real path** (`ExperimentRun` + `chartForRun`): for each
+  captured branch the DETECTOR on it decides the quantity (intensity → S₀, ellipsometer → Ψ, Δ);
+  polarizers before the sample prepare the input (the first sets a unit-intensity state), the
+  sample acts at its drawn incidence and spin (its R1), polarizers after it analyze. The sample's
+  transmitted Mueller matrix is FLUX-normalized (`Propagation.sampleMuellerSpun`) — the engine's
+  Mueller matrices are |E|²-based, its T is flux. Only a TUNABLE source (`SourceTuning`) can have
+  its wavelength varied, within its limits, or set per experiment (`sourceWaveLengthOpt`).
+- **The constructor is checked against the Analytics example scripts** (`FsxAcceptanceTests`,
+  trait `fsx-acceptance`, ~1.5 min): each drives the headless app to build the script's table,
+  exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.
+  `Variables.getWaveLengthValue` used to wrap metres as nm (every script wavelength sweep ran at
+  ~10⁻⁷ nm) — fixed in spec 0046; keep it in the range's own unit.
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
   the beam root is its 3-D centre, so moving it carries the whole beam — an x move included: the

@@ -35,6 +35,8 @@
         <Compile Include="RecentFiles.fs" />
         <Compile Include="History.fs" />
         <Compile Include="Export.fs" />
+        <!-- Spec 0046: the file-backed experiment-data export proxy (CSV). -->
+        <Compile Include="ExperimentExportFile.fs" />
         <Compile Include="Report.fs" />
         <!-- Spec 0038 Part I (036, IMPLEMENT_CONTRACT STORE_XDUO_0006): the real file-backed adapter
              behind the step-035 ExperimentDataProxy — the ONLY new real IO this spec permits

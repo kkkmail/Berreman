@@ -24,20 +24,21 @@ module BeamLayout =
         | OnMainBeam
         | OnReflectedBeamOf of Library.ElementId
 
-    /// Whether an element opens a reflected SIDE beam that other elements can sit on: a polarizer, lens
-    /// or sample emitting BOTH branches does (its transmitted branch continues the beam it sits on); a
-    /// mirror's reflected branch IS the beam it continues, and a source / detector reflects nothing.
+    /// Whether an element opens a reflected SIDE beam that other elements can sit on: a sample emitting
+    /// BOTH branches does (its transmitted branch continues the beam it sits on); a mirror's reflected
+    /// branch IS the beam it continues; a polarizer and a lens only transmit (spec 0046), and a source /
+    /// detector reflects nothing.
     type SideBeam =
         | OpensReflectedBeam
         | NoSideBeam
 
     let sideBeamOf (p : ElementPlacement) : SideBeam =
         match p.catalogueKind with
-        | LinearPolarizer | CircularPolarizer | Sample ->
+        | Sample ->
             match p.emission with
             | EmitBoth -> OpensReflectedBeam
             | EmitReflectedOnly | EmitTransmittedOnly -> NoSideBeam
-        | LightSource | FlatMirror | CurvedMirror | Lens | Detector -> NoSideBeam
+        | LightSource | LinearPolarizer | CircularPolarizer | FlatMirror | CurvedMirror | Lens | Detector -> NoSideBeam
 
     /// Whether the element menu may switch an element's reflected / transmitted rays, and why not when
     /// it may not. `supported` is what the element's binding allows — a bound sample's geometry-constrained
@@ -52,7 +53,8 @@ module BeamLayout =
         | Detector -> RaysFixed "a detector terminates the beam it receives"
         | FlatMirror | CurvedMirror -> RaysFixed "a full mirror always reflects"
         | Lens -> RaysFixed "a lens always transmits"
-        | LinearPolarizer | CircularPolarizer | Sample ->
+        | LinearPolarizer | CircularPolarizer -> RaysFixed "a polarizer always transmits"
+        | Sample ->
             match supported with
             | EmitBoth -> RaysSwitchable
             | EmitReflectedOnly -> RaysFixed "the bound sample is observable in reflection only"

@@ -122,9 +122,15 @@ module Variables =
         member this.plotPoints = [| for i in 0..this.length -> this.plotValue i |]
 
 
+    /// The wavelength at point `i` of a wavelength range, in the start value's own unit. `value i` is in
+    /// METRES (the range is evaluated on `WaveLength.value`), so it is converted back before it is wrapped —
+    /// wrapping the metre figure as nm (as this did before spec 0046) silently solved every wavelength sweep
+    /// at ~10⁻⁷ nm while the x axis still read the right nm.
     let getWaveLengthValue (v : Range<WaveLength>) i =
-        let create = v.startValue.create
-        ((WaveLengthRange v).value i) * 1.0 |> create
+        let metres = ((WaveLengthRange v).value i) * 1.0<meter>
+        match v.startValue with
+        | Nm _ -> WaveLength.nm (metres / nmToMeter)
+        | Mkm _ -> WaveLength.mkm (metres / mkmToMeter)
 
 
     let waveLengthPlotMinValue (v : Range<WaveLength>) =

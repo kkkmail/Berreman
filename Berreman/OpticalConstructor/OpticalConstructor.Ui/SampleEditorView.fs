@@ -799,6 +799,7 @@ let private chooseMaterialForLayer (m : Model) (dispatch : Msg -> unit) (positio
             // The sample-layer pick's fixed kind (the step-016 banner names it); the material
             // corpus satisfies it structurally, so it narrows nothing in the Materials window.
             kindConstraint = KindConstraint Placement.CatalogueKind.Sample
+            currentEntryIdOpt = None
             target = SampleLayerTarget position
             onSelected =
                 fun (entry : MaterialEntry) ->
@@ -847,6 +848,7 @@ let private chooseMaterialForSubstrate (m : Model) (dispatch : Msg -> unit) (own
             // The sample substrate pick's fixed kind (the step-016 banner names it); the material
             // corpus satisfies it structurally, so it narrows nothing in the Materials window.
             kindConstraint = KindConstraint Placement.CatalogueKind.Sample
+            currentEntryIdOpt = None
             target = SampleSubstrateTarget
             onSelected =
                 fun (entry : MaterialEntry) ->

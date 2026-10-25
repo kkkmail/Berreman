@@ -57,6 +57,9 @@
              the rotating-analyzer intensity curve (the Malus proof), and the ellipsometer Ψ/Δ readout.
              Depends on the engine Fields/Media/Solvers + the Library domain. -->
         <Compile Include="Propagation.fs" />
+        <!-- Spec 0046: what a detector reads along its light path, and the experiment-data export proxy. -->
+        <Compile Include="ExperimentRun.fs" />
+        <Compile Include="ExperimentExport.fs" />
         <!-- Spec 0033 (021): the pure, Avalonia-free SAMPLE-stack edit model over
              SampleStructure (state + selection, one message DU, typed repeat-count
              errors). Mirrors Ui's StackEditor message discipline at the material-id

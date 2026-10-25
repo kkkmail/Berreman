@@ -69,14 +69,18 @@ module ElementMenuTests =
         Assert.Equal(None, (opened |> update CloseElementMenu).elementMenu)
 
     [<Fact>]
-    let ``the menu switches a polarizer's reflected ray off and on, and a full mirror's rays stay fixed`` () =
-        let m = initMain () |> update (AddElement LinearPolarizer) |> update (AddElement FlatMirror)
-        let pol = (elem 2 m).id
-        let rOff = m |> update (ToggleElementRay (pol, BeamTree.Reflected))
+    let ``the menu switches a sample's reflected ray off and on; a polarizer's and a full mirror's rays stay fixed`` () =
+        let m = initMain () |> update (AddElement Sample) |> update (AddElement FlatMirror) |> update (AddElement LinearPolarizer)
+        let sample = (elem 2 m).id
+        let rOff = m |> update (ToggleElementRay (sample, BeamTree.Reflected))
         Assert.Equal(EmitTransmittedOnly, (elem 2 rOff).placement.emission)
-        Assert.Equal(EmitBoth, (elem 2 (rOff |> update (ToggleElementRay (pol, BeamTree.Reflected)))).placement.emission)
+        Assert.Equal(EmitBoth, (elem 2 (rOff |> update (ToggleElementRay (sample, BeamTree.Reflected)))).placement.emission)
         let mirror = (elem 3 m).id
         Assert.Equal((elem 3 m).placement, (elem 3 (m |> update (ToggleElementRay (mirror, BeamTree.Transmitted)))).placement)
+        // Spec 0046: a polarizer transmits only — locked.
+        let pol = (elem 4 m).id
+        Assert.Equal(EmitTransmittedOnly, (elem 4 m).placement.emission)
+        Assert.Equal((elem 4 m).placement, (elem 4 (m |> update (ToggleElementRay (pol, BeamTree.Transmitted)))).placement)
 
     [<Fact>]
     let ``an element moved onto a sample's reflected ray snaps onto it — off the straight beam`` () =
@@ -176,7 +180,9 @@ module ElementMenuTests =
         let m = plateScene () |> (fun m -> m |> update (ExpChooseElement (elem 2 m).id.value)) |> update (ExpChooseVariable ExperimentControls.VaryR2)
         Assert.Equal<Experiments.MeasurementMode list>([ Experiments.CaptureTransmitted ], availableCaptures m (elem 2 m).id)
         let st = experimentState m
-        Assert.Equal<ExperimentControls.MeasurementChoice list>([ ExperimentControls.CaptureT ], st.measurementChoices)
+        Assert.Equal<ExperimentControls.MeasurementChoice list>([ ExperimentControls.CaptureT ], st.measurementOffers |> List.map (fun o -> o.choice))
+        // Spec 0046: the offer says what its detector reads.
+        Assert.Equal("Transmitted (T) — intensity", (List.head st.measurementOffers).label)
         // Even an explicit Both request runs (and records) T alone.
         let both = m |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)
         Assert.Equal<string list>([ "Intensity" ], (experimentResult both).series |> List.map (fun s -> s.name))
@@ -201,7 +207,7 @@ module ElementMenuTests =
         let noDetector = { m with elements = m.elements |> List.filter (fun e -> e.placement.catalogueKind <> Detector) }
         let chosen = noDetector |> update (ExpChooseElement (elem 1 noDetector).id.value)
         let st = experimentState chosen
-        Assert.Empty(st.measurementChoices)
+        Assert.Empty(st.measurementOffers)
         Assert.False(st.canAdd, "nothing captures the element's light, so the experiment cannot be added")
         Assert.Empty((chosen |> update ExpCommit).experimentCollection.experiments)
 
@@ -268,7 +274,7 @@ module ElementMenuTests =
     [<Trait("Category", "ui-smoke")>]
     let ``right-clicking an element on the real Main view opens its menu, whose rows switch the ray`` () =
         HeadlessSession.run (fun () ->
-            let model0 = initMain () |> update (AddElement LinearPolarizer)
+            let model0 = initMain () |> update (AddElement Sample)
             let window = mount model0
             try
                 match tryFind window UiIds.TableAndElementRotation.canvas with

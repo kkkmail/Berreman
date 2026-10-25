@@ -174,10 +174,10 @@ module RayModel =
         match p.catalogueKind with
         | Detector -> []
         | FlatMirror | CurvedMirror -> [ Reflected ]
-        // Spec 0046 (operator): a lens carries the transmitted branch only — structurally, as a mirror
-        // carries the reflected one, whatever its per-element emission says.
-        | Lens -> [ Transmitted ]
-        | LightSource | LinearPolarizer | CircularPolarizer
+        // Spec 0046 (operator): a lens and every polarizer carry the transmitted branch only —
+        // structurally, as a mirror carries the reflected one, whatever the per-element emission says.
+        | Lens | LinearPolarizer | CircularPolarizer -> [ Transmitted ]
+        | LightSource
         | Sample -> emittedGroups p.emission
 
     /// The engine beam-tree branch a drawn outgoing group corresponds to (B.7.1):

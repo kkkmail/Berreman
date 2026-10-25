@@ -75,6 +75,21 @@ module ExperimentControls =
         | CaptureR -> "Reflected (R)"
         | CaptureBoth -> "Both (T + R)"
 
+    /// Spec 0046: one capture the scene's detectors offer — the branch choice and what its detector reads
+    /// there (e.g. "Transmitted (T) — intensity", "Reflected (R) — Ψ, Δ (ellipsometer)").
+    type MeasurementOffer =
+        {
+            choice : MeasurementChoice
+            label : string
+        }
+
+    /// Spec 0046: the source wavelength the run uses, shown below the range while the wavelength is NOT the
+    /// varied quantity: a fixed line (read only), or a tunable source's setting (editable within its limits).
+    type SourceWaveLengthState =
+        | NoSourceWaveLength
+        | FixedSourceWaveLength of nm : float
+        | TunableSourceWaveLength of nm : float * minNm : float * maxNm : float
+
     /// One drawn chart series: a display name (legend) and its (x, y) points in axis-display units.
     type ChartSeries =
         {
@@ -107,10 +122,12 @@ module ExperimentControls =
             chosenVariable : VariableChoice option
             /// The chosen capture mode (transmitted / reflected / both).
             measurement : MeasurementChoice
-            /// Spec 0046: the capture modes the scene's detectors allow for the chosen element (host-
-            /// supplied: a transmitted detector offers T, a reflected one R, both offer T / R / Both). Only
-            /// these are shown; empty while no detector captures the element's light.
-            measurementChoices : MeasurementChoice list
+            /// Spec 0046: the captures the scene's detectors offer for the chosen element, each labelled by
+            /// what its detector reads (host-supplied: a transmitted detector offers T, a reflected one R,
+            /// both offer T / R / Both). Only these are shown; empty while no detector sees the element.
+            measurementOffers : MeasurementOffer list
+            /// Spec 0046: the source wavelength the run uses while the wavelength is not varied.
+            sourceWaveLength : SourceWaveLengthState
             /// The variation range (in the variable's display unit) and its point count.
             rangeMin : float
             rangeMax : float
@@ -147,7 +164,8 @@ module ExperimentControls =
             variableChoices = []
             chosenVariable = None
             measurement = CaptureT
-            measurementChoices = []
+            measurementOffers = []
+            sourceWaveLength = NoSourceWaveLength
             rangeMin = 0.0
             rangeMax = 360.0
             rangePoints = 73
@@ -177,6 +195,8 @@ module ExperimentControls =
             setRangeMin : float -> unit
             setRangeMax : float -> unit
             setRangePoints : int -> unit
+            /// Spec 0046: set a tunable source's wavelength (nm) for the run.
+            setSourceWaveLength : float -> unit
             /// Confirm the draft: Add a new experiment, or Update the one being edited.
             addOrUpdate : unit -> unit
             /// Start a brand-new experiment (clears the editor).
@@ -497,24 +517,27 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    /// The capture-mode selection row (step 3a: T / R / both). Spec 0046: only the captures the scene's
-    /// detectors allow are shown (`measurementChoices`) — every box stays at its stable slot and only its
-    /// visibility flips (the `variableRow` discipline); with none, a hint says why. Before an element is
-    /// chosen there is nothing to capture yet, so the row stays as it was (all three, inert).
+    /// The capture selection row (step 3). Spec 0046: the DETECTORS decide what is captured — only the
+    /// captures they offer are shown, each labelled by what its detector reads (`measurementOffers`); every
+    /// box stays at its stable slot and only its visibility flips (the `variableRow` discipline); with none,
+    /// a hint says why. The whole row appears only once something to vary is chosen.
     let private measurementRow (state : State) (handlers : Handlers) : IView =
-        let elementChosen = match state.chosenId with Some _ -> true | None -> false
-        let offered (m : MeasurementChoice) : bool = not elementChosen || List.contains m state.measurementChoices
-        let noneOffered = elementChosen && List.isEmpty state.measurementChoices
+        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
+        let offerOf (m : MeasurementChoice) : MeasurementOffer option = state.measurementOffers |> List.tryFind (fun o -> o.choice = m)
+        let noneOffered = List.isEmpty state.measurementOffers
         let one (m : MeasurementChoice) : IView =
+            let offer = offerOf m
+            let offered = Option.isSome offer
             optionBoxV
                 (UiIds.Experiment.measurement (measurementCode m))
-                (measurementLabel m)
+                (offer |> Option.map (fun o -> o.label) |> Option.defaultValue (measurementLabel m))
                 (state.measurement = m)
-                (state.enabled && offered m)
-                (offered m)
+                (state.enabled && offered)
+                offered
                 (fun () -> handlers.chooseMeasurement m)
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
+            StackPanel.isVisible hasVariable
             StackPanel.children [
                 TextBlock.create [
                     TextBlock.name UiIds.Experiment.noCapture
@@ -580,6 +603,34 @@ module ExperimentControls =
                 numberField UiIds.Experiment.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
             ]
         ] :> IView
+
+    /// Spec 0046: the source-wavelength row — always present (stable slots), shown while the run's source
+    /// wavelength is not the varied quantity: a fixed line read only, a tunable source's setting editable
+    /// (the host clamps it to the source's limits).
+    let private sourceWaveLengthRow (state : State) (handlers : Handlers) : IView =
+        let shown, editable, valueText, note =
+            match state.sourceWaveLength with
+            | NoSourceWaveLength -> false, false, "", ""
+            | FixedSourceWaveLength nm -> true, false, $"%g{nm}", "nm (a fixed line)"
+            | TunableSourceWaveLength (nm, lo, hi) -> true, true, $"%g{nm}", $"nm (tunable %g{lo} … %g{hi} nm)"
+        let commit (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter handlers.setSourceWaveLength
+            | _ -> ()
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 6.0
+            StackPanel.isVisible shown
+            StackPanel.children [
+                TextBlock.create [ TextBlock.text "Source wavelength:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.Experiment.sourceWaveLength valueText (state.enabled && editable) commit
+                TextBlock.create [ TextBlock.name UiIds.Experiment.sourceWaveLengthNote; TextBlock.text note; TextBlock.verticalAlignment VerticalAlignment.Center ]
+            ]
+        ] :> IView
+
+    /// A step heading shown only once something to vary is chosen (stable slot, visibility toggled).
+    let private stepHeading (text : string) (visible : bool) : IView =
+        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0)); TextBlock.isVisible visible ] :> IView
 
     // -- A plain action button (Add / Update / New). Regenerable (the Add label swaps to "Update
     // experiment" in place), so it carries a reuse-safe AutomationId, never a write-once `Name`. --
@@ -677,6 +728,7 @@ module ExperimentControls =
         let readoutText =
             if state.readout = "" then "Experiment: (choose an element, a variable to vary, and click Add)"
             else state.readout
+        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
@@ -687,10 +739,11 @@ module ExperimentControls =
                     elementRow state handlers
                     heading "2. Vary:"
                     variableRow state handlers
-                    heading "3. Capture:"
+                    stepHeading "3. Capture (the detectors decide what):" hasVariable
                     measurementRow state handlers
+                    stepHeading "4. Range:" hasVariable
                 ]
-                @ [ rangeRow state handlers ]
+                @ [ rangeRow state handlers; sourceWaveLengthRow state handlers ]
                 @ [ actionRow state handlers ]
                 @ collectionBlock state handlers
                 @ resultBlock state handlers)

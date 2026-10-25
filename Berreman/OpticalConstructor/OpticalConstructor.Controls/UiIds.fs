@@ -173,6 +173,16 @@ module UiIds =
         /// element's light.
         [<Literal>]
         let noCapture = "ExperimentNoCapture"
+        /// Spec 0046: the source-wavelength field (a tunable source's setting while something else varies).
+        [<Literal>]
+        let sourceWaveLength = "ExperimentSourceWaveLength"
+        [<Literal>]
+        let sourceWaveLengthNote = "ExperimentSourceWaveLengthNote"
+        /// Spec 0046: Export data (the draft's computed run through the export seam) and its status line.
+        [<Literal>]
+        let exportButton = "ExperimentExportButton"
+        [<Literal>]
+        let exportStatus = "ExperimentExportStatus"
         /// The range inputs.
         [<Literal>]
         let rangeMin = "ExperimentRangeMin"
@@ -404,6 +414,9 @@ module UiIds =
     module TableAndElementRotation =
         [<Literal>]
         let canvas = "TableElementCanvas"
+        /// Spec 0046: an element's invisible hover target on the table (it carries the "what is it"
+        /// tooltip), by the element's id.
+        let elementHover (elementId : string) : string = "ElementHover_" + elementId
         [<Literal>]
         let rotateR1Minus = "TeRotateR1MinusButton"
         [<Literal>]
@@ -451,6 +464,9 @@ module UiIds =
         /// Spec 0046: the menu's Choose… — the Selector bay's Choose… verb for the element the menu serves.
         [<Literal>]
         let choose = "ElementMenuChoose"
+        /// Spec 0046: the menu's "what is it" lines — the bound entry's name and description.
+        [<Literal>]
+        let info = "ElementMenuInfo"
         [<Literal>]
         let remove = "ElementMenuRemove"
         [<Literal>]
@@ -468,6 +484,15 @@ module UiIds =
         let unitButton (code : string) : string = "SourceWaveLengthUnit_" + code
         [<Literal>]
         let waveLengthReadout = "SourceWaveLengthReadout"
+        /// Spec 0046: the fixed-line / tunable choice and a tunable source's limits.
+        [<Literal>]
+        let tuningFixed = "SourceTuningFixed"
+        [<Literal>]
+        let tuningTunable = "SourceTuningTunable"
+        [<Literal>]
+        let minimumBox = "SourceTunableMinimumBox"
+        [<Literal>]
+        let maximumBox = "SourceTunableMaximumBox"
         [<Literal>]
         let statusText = "SourceEditorStatus"
         [<Literal>]

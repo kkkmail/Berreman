@@ -31,6 +31,10 @@ module ExperimentControlsTests =
     let private bind (i : int) (entryId : string) (m : Model) : Model =
         { m with selection = ElementSelected i } |> update (BindValueId entryId)
 
+    /// Spec 0046: the Main scene with its source bound to a TUNABLE source (xenon lamp + monochromator,
+    /// 190–1000 nm) — only a tunable source's wavelength can be varied.
+    let private withTunableSource () : Model = bind 0 "src-xe-mono" (initMain ())
+
     /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
     let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
@@ -92,9 +96,20 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``choosing the source constrains the variable to wavelength (data-driven)`` () =
-        let m = initMain () |> update (ExpChooseElement "src")
+        let m = withTunableSource () |> update (ExpChooseElement "src")
         Assert.Equal(Some (Library.elementId "src"), m.experimentCollection.draft.elementId)
         Assert.Equal(Some Experiments.VaryWaveLength, m.experimentCollection.draft.variable)
+        // Spec 0046: the sweep spans the tunable source's limits (190–1000 nm) and stays inside them.
+        Assert.True(abs (m.experimentCollection.draft.range.min - 190.0) < 1e-9)
+        Assert.True(abs (m.experimentCollection.draft.range.max - 1000.0) < 1e-9)
+        Assert.True(abs ((update (ExpSetRangeMin 50.0) m).experimentCollection.draft.range.min - 190.0) < 1e-9)
+
+    [<Fact>]
+    let ``a fixed-line or unbound source varies nothing — its wavelength cannot be changed`` () =
+        for m in [ initMain (); bind 0 "src-hene-633" (initMain ()) ] do
+            let chosen = m |> update (ExpChooseElement "src")
+            Assert.Equal(None, chosen.experimentCollection.draft.variable)
+            Assert.Empty((experimentState chosen).variableChoices)
 
     [<Fact>]
     let ``choosing a sample allows R1 and R2 and can then switch variable`` () =
@@ -153,7 +168,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``Add appends to the collection and re-Add does not duplicate`` () =
-        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let m = withTunableSource () |> update (ExpChooseElement "src") |> update ExpCommit
         Assert.Equal(1, List.length m.experimentCollection.experiments)
         let m2 = m |> update ExpCommit
         Assert.Equal(1, List.length m2.experimentCollection.experiments)
@@ -161,7 +176,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``New then Add appends a distinct second experiment`` () =
         let m =
-            initMain ()
+            withTunableSource ()
             |> update (ExpChooseElement "src") |> update ExpCommit
             |> update ExpNew
             |> update (ExpChooseElement "det")           // detector has nothing to vary → cannot commit
@@ -176,7 +191,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``Edit loads an experiment and Remove deletes it`` () =
-        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let m = withTunableSource () |> update (ExpChooseElement "src") |> update ExpCommit
         let exp = List.head m.experimentCollection.experiments
         let idStr = string exp.id.value
         let mEdit = m |> update (ExpEdit idStr)
@@ -186,7 +201,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``the bay state exposes the collection rows and the editing highlight`` () =
-        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let m = withTunableSource () |> update (ExpChooseElement "src") |> update ExpCommit
         let st = experimentState m
         Assert.Single(st.collection) |> ignore
         let row = List.head st.collection
@@ -782,7 +797,7 @@ module ExperimentControlsTests =
             let handlers : ExperimentControls.Handlers =
                 {
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
-                    setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore
+                    setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                     addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
                     viewExperiment = ignore
                     openChartWindow = fun () -> opened <- opened + 1

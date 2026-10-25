@@ -195,6 +195,10 @@
         <Compile Include="LibraryWindowTests.fs" />
         <!-- Spec 0046: the Library's light-source editor, its Library verbs, and a source bound on the table. -->
         <Compile Include="LightSourceEditorTests.fs" />
+        <!-- Spec 0046: the constructor's numbers against the Analytics example scripts (driven headless). -->
+        <Compile Include="FsxAcceptanceTests.fs" />
+        <!-- Spec 0046: element info, Library preselect, tunable sources, detector-decided captures, export. -->
+        <Compile Include="WorkbenchInfoAndCaptureTests.fs" />
         <!-- Spec 0038 Part L (step 037): the inverse constructor state (initInverse — unbound sample,
              chart gated on a hint) and the experiment-collection builder (name / save / list / load
              through the ExperimentCollectionProxy; per-experiment data-file attach that loads +

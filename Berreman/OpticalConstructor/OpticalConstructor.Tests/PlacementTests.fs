@@ -202,7 +202,7 @@ module PlacementTests =
         Assert.True(bp.r3Locked)
         Assert.False(bp.r2Locked)
         Assert.Equal(CircularPolarizer, bp.catalogueKind)
-        Assert.Equal(EmitBoth, bp.emission)
+        Assert.Equal(EmitTransmittedOnly, bp.emission)   // spec 0046: a polarizer transmits only
         Assert.Equal(Millimeter, bp.displayUnit)
         Assert.True(Option.isNone bp.valueId)
         // The box normals (the rest-pose basis) round-trip too.

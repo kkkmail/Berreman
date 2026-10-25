@@ -251,7 +251,8 @@ type Model =
         lastError : LibraryWindowError option
     }
 
-let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : Model =
+/// The window's model as it opens, before a Select session's current entry is shown (`init`).
+let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : Model =
     {
         context = context
         mode = mode
@@ -620,6 +621,23 @@ let entryIdOfNodeCode (code : string) : string option =
 let versionRow (version : VersionNumber) : string = "LibraryVersionRow_" + string version.value
 let entryNode (entryId : string) : string = UiIds.FacetedTree.treeNode (entryNodeCode entryId)
 
+/// Spec 0046: a Select session opens with the entry its target is bound to now shown as CHOSEN — selected,
+/// highlighted, and the entries group expanded so its row is visible. Nothing to show (no binding, or one
+/// outside the session's kind) leaves the model as it is.
+let private showCurrentEntry (m : Model) : Model =
+    match m.mode with
+    | Select session ->
+        match session.currentEntryIdOpt with
+        | Some id when constrainedEntries m |> List.exists (fun e -> e.entryId = id) ->
+            let expanded = if m.expandedNodes.isExpanded "entries" then m.expandedNodes else m.expandedNodes.toggle "entries"
+            { m with selectedEntryId = Some id; selectedNodeCode = entryNodeCode id; expandedNodes = expanded }
+        | Some _ | None -> m
+    | Browse -> m
+
+/// The window's model as it opens — in a Select session, with the target's current entry shown as chosen.
+let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : Model =
+    showCurrentEntry (initModel context mode)
+
 // ---------------------------------------------------------------------------
 // Pure update.
 // ---------------------------------------------------------------------------
@@ -804,7 +822,7 @@ let update (msg : Msg) (m : Model) : Model =
         (match m.mode with
          | Select superseded -> superseded.onCancelled ()
          | Browse -> ())
-        { disarmed m with mode = Select context; selectedEntryId = None; selectedNodeCode = "" }
+        showCurrentEntry { disarmed m with mode = Select context; selectedEntryId = None; selectedNodeCode = "" }
     | SelectDismissed ->
         // The host window closed (title-bar X, or a staleness Close() from the requesting
         // surface): a STILL-PENDING session cancels exactly once — Select/Close already

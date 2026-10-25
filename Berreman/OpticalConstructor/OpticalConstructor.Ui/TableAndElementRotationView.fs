@@ -344,6 +344,11 @@ type Model =
         /// Spec 0046: the GLOBAL rotation pivot — every element rotates about its centre (the default),
         /// or about the middle of its incident face, so the incident ray always meets it at that point.
         rotationPivot : BeamLayout.RotationPivot
+        /// Spec 0046: the experiment-data EXPORT seam — the Experiments bay's Export data hands the draft's
+        /// computed run to it. Defaulted to an in-memory store; the composition root threads the CSV one.
+        experimentExport : ExperimentExport.ExperimentExportProxy
+        /// Spec 0046: the last export's status line.
+        exportStatus : string option
     }
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
@@ -474,6 +479,8 @@ let initWith
         experimentDataStatus = Map.empty
         elementMenu = None
         rotationPivot = BeamLayout.PivotAtCentre
+        experimentExport = (ExperimentExport.createInMemory ()).proxy
+        exportStatus = None
     }
 
 /// The STATIC test scene (Spec 0027, task 006 #3): a live table plus three fixed optical elements on
@@ -683,6 +690,10 @@ type Msg =
     | ExpSetRangeMin of float
     | ExpSetRangeMax of float
     | ExpSetRangePoints of int
+    /// Spec 0046: set a TUNABLE source's wavelength (nm) for the draft run (clamped to its limits).
+    | ExpSetSourceWaveLength of float
+    /// Spec 0046: export the draft's computed run through the `experimentExport` seam.
+    | ExportExperimentData
     | ExpCommit
     | ExpNew
     | ExpEdit of string
@@ -1224,6 +1235,25 @@ let private placeOnBeam (id : Library.ElementId) (host : BeamLayout.BeamHost) (m
 /// headless test host (which never dispatches `OpenExperimentChartWindow`) the default no-op is harmless.
 let mutable private openChartWindowHook : Model -> unit = fun _ -> ()
 
+/// Spec 0046: the draft's computed run, as a forward reference (`experimentResult` is defined after `update`);
+/// assigned right after it. The default empty chart is what an unassigned hook yields.
+let mutable private draftChartHook : Model -> ExperimentChart.ExperimentChart = fun _ -> ExperimentChart.empty
+
+/// Spec 0046: export the draft's computed run through the `experimentExport` seam and report the outcome.
+let private exportDraftRun (model : Model) : Model =
+    let chart = draftChartHook model
+    let run : ExperimentExport.ExportedRun =
+        {
+            title = chart.title
+            xLabel = chart.xLabel
+            yLabel = chart.yLabel
+            description = chart.description
+            series = chart.series |> List.map (fun series -> { ExperimentExport.ExportedSeries.name = series.name; points = series.points })
+        }
+    match model.experimentExport.exportRun run with
+    | Ok () -> { model with exportStatus = Some $"Exported %d{List.length run.series} series (%s{run.title})." }
+    | Error e -> { model with exportStatus = Some $"Nothing exported — %s{e.reason}" }
+
 /// Spec 0027 (030 follow-up): the side-effecting "open the chart window for a COLLECTED experiment (by id)"
 /// action — the per-row "View" button and a row double-click both invoke it. Same forward-reference seam.
 let mutable private viewExperimentHook : Model -> string -> unit = fun _ _ -> ()
@@ -1253,6 +1283,92 @@ let private toMeasurementChoice (m : Experiments.MeasurementMode) : ExperimentCo
     | Experiments.CaptureTransmitted -> ExperimentControls.CaptureT
     | Experiments.CaptureReflected -> ExperimentControls.CaptureR
     | Experiments.CaptureBoth -> ExperimentControls.CaptureBoth
+
+/// The scene's light source entry (spec 0046): the first light-source element bound to a source entry.
+let boundSourceOf (model : Model) : Library.SourcePreset option =
+    model.elements
+    |> List.tryPick (fun e ->
+        match e.placement.catalogueKind, e.placement.valueId with
+        | LightSource, Some id ->
+            match model.library.tryGetEntry id with
+            | Ok (Some (Library.SourceItem source)) -> Some source
+            | Ok (Some _) | Ok None | Error _ -> None
+        | (LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
+
+let private toNm (w : WaveLength) : float = w.value / nmToMeter / oneNanometer
+let private ofNm (nm : float) : WaveLength = WaveLength.nm (nm * 1.0<nm>)
+
+/// The wavelength a run uses when it does not vary it (spec 0046): a TUNABLE source's setting for the run
+/// (`requested`, clamped to its limits) or else its own setting; a fixed line's wavelength; 600 nm with no
+/// bound source (an absent source is defaulted, never synthesized).
+let operatingWaveLength (model : Model) (requested : WaveLength option) : WaveLength =
+    match boundSourceOf model with
+    | Some source ->
+        match source.tuning, requested with
+        | Library.TunableBetween (lo, hi), Some w -> ofNm (clamp (toNm lo) (toNm hi) (toNm w))
+        | Library.TunableBetween _, None
+        | Library.FixedLine, _ -> source.waveLength
+    | None -> WaveLength.nm 600.0<nm>
+
+/// What element `e` lets an experiment vary (spec 0046): its kind's variables — except a light source, whose
+/// wavelength varies only when the bound source is TUNABLE (a fixed line, or no bound source, varies nothing).
+let variablesOfElement (model : Model) (e : TestElement) : Experiments.VariableParameter list =
+    match e.placement.catalogueKind with
+    | LightSource ->
+        match boundSourceOf model |> Option.map (fun source -> source.tuning) with
+        | Some (Library.TunableBetween _) -> [ Experiments.VaryWaveLength ]
+        | Some Library.FixedLine | None -> []
+    | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector ->
+        Experiments.variablesFor e.placement.catalogueKind
+
+/// A wavelength sweep's range for the scene's source (spec 0046): a tunable source's limits; else the generic
+/// default.
+let private wavelengthRangeFor (model : Model) : Experiments.VariableRange =
+    match boundSourceOf model |> Option.bind (fun source -> source.tunableRangeNm) with
+    | Some (lo, hi) -> { Experiments.VariableRange.forVariable Experiments.VaryWaveLength with min = lo; max = hi }
+    | None -> Experiments.VariableRange.forVariable Experiments.VaryWaveLength
+
+/// Keep a wavelength sweep inside a tunable source's limits (spec 0046); any other range as it is.
+let private clampSweep (model : Model) (range : Experiments.VariableRange) : Experiments.VariableRange =
+    match model.experimentCollection.draft.variable, boundSourceOf model |> Option.bind (fun source -> source.tunableRangeNm) with
+    | Some Experiments.VaryWaveLength, Some (lo, hi) -> { range with min = clamp lo hi range.min; max = clamp lo hi range.max }
+    | _ -> range
+
+/// The element an experiment MEASURES (spec 0046 task 5): the first element bound to a SAMPLE (the one the
+/// runs re-solve), else the varied element itself.
+let private measuredElementOf (model : Model) (varied : Library.ElementId) : Library.ElementId =
+    model.elements
+    |> List.tryPick (fun e ->
+        match e.placement.valueId with
+        | Some id ->
+            match model.library.tryGetEntry id with
+            | Ok (Some (Library.SampleItem _)) -> Some e.id
+            | Ok (Some _) | Ok None | Error _ -> None
+        | None -> None)
+    |> Option.defaultValue varied
+
+/// The lit detectors that see the varied element (spec 0046), in walk order — each with the branch by which
+/// the light reaching it left the MEASURED element (`measuredElementOf`) and its index in the scene. The
+/// detector on a branch decides what that branch's capture reads.
+let captureDetectors (model : Model) (varied : Library.ElementId) : (BeamTree.BeamBranch * int) list =
+    let measured = measuredElementOf model varied
+    (sceneLayout model).elements
+    |> List.indexed
+    |> List.choose (fun (j, placed) ->
+        match (List.item j model.elements).placement.catalogueKind, placed.light with
+        | Detector, BeamLayout.Lit when placed.path |> List.exists (fun step -> step.element = varied) ->
+            placed.path |> List.tryFind (fun step -> step.element = measured) |> Option.map (fun step -> step.branch, j)
+        | _ -> None)
+
+/// What a detector element reads (spec 0046): its bound detector entry's kind — an unbound detector reads
+/// intensity.
+let detectorKindOf (model : Model) (j : int) : Library.DetectorKind =
+    match (List.item j model.elements).placement.valueId with
+    | Some id ->
+        match model.library.tryGetEntry id with
+        | Ok (Some (Library.DetectorItem d)) -> d.kind
+        | Ok (Some _) | Ok None | Error _ -> Library.Intensity
+    | None -> Library.Intensity
 
 /// Spec 0046 (task 5): the capture modes the scene's DETECTORS allow for an experiment varying `varied`.
 /// T / R are the branches of the MEASURED element — the bound sample the runs re-solve (else the varied
@@ -1468,19 +1584,42 @@ let rec update (msg : Msg) (model : Model) : Model =
         // variables (data via `variablesFor`, never hard-coded here) and the default capture. Spec 0046:
         // the default is the best capture the scene's DETECTORS allow (Both when they see both branches,
         // else the one they see); with no capturing detector it falls back to the element's emission.
+        // Spec 0046: what the element may vary comes from the element AND its binding (a fixed-line source
+        // varies nothing); a wavelength sweep spans the tunable source's limits.
         match model.elements |> List.tryFind (fun e -> e.id.value = idStr) with
         | Some e ->
-            let allowed = Experiments.variablesFor e.placement.catalogueKind
+            let allowed = variablesOfElement model e
             let defaultMeasurement =
                 BeamLayout.effectiveCapture (availableCaptures model e.id) Experiments.CaptureBoth
                 |> Option.defaultValue (Experiments.MeasurementMode.ofEmission e.placement.emission)
             let label = experimentElementLabel model e.id
-            { model with experimentCollection = Experiments.chooseElement e.id label allowed defaultMeasurement model.experimentCollection }
+            let chosen = Experiments.chooseElement e.id label allowed defaultMeasurement model.experimentCollection
+            let ranged =
+                match chosen.draft.variable with
+                | Some Experiments.VaryWaveLength -> Experiments.setRange (wavelengthRangeFor model) chosen
+                | Some Experiments.VaryR1 | Some Experiments.VaryR2 | None -> chosen
+            { model with experimentCollection = ranged }
         | None -> model
-    | ExpChooseVariable v -> { model with experimentCollection = Experiments.chooseVariable (ofVariableChoice v) model.experimentCollection }
+    | ExpChooseVariable v ->
+        let chosen = Experiments.chooseVariable (ofVariableChoice v) model.experimentCollection
+        let ranged =
+            match chosen.draft.variable with
+            | Some Experiments.VaryWaveLength -> Experiments.setRange (wavelengthRangeFor model) chosen
+            | Some Experiments.VaryR1 | Some Experiments.VaryR2 | None -> chosen
+        { model with experimentCollection = ranged }
     | ExpChooseMeasurement m -> { model with experimentCollection = Experiments.chooseMeasurement (ofMeasurementChoice m) model.experimentCollection }
-    | ExpSetRangeMin v -> { model with experimentCollection = Experiments.setRangeMin v model.experimentCollection }
-    | ExpSetRangeMax v -> { model with experimentCollection = Experiments.setRangeMax v model.experimentCollection }
+    | ExpSetRangeMin v ->
+        let set = Experiments.setRangeMin v model.experimentCollection
+        { model with experimentCollection = Experiments.setRange (clampSweep model set.draft.range) set }
+    | ExpSetRangeMax v ->
+        let set = Experiments.setRangeMax v model.experimentCollection
+        { model with experimentCollection = Experiments.setRange (clampSweep model set.draft.range) set }
+    | ExpSetSourceWaveLength nm ->
+        // Spec 0046: only a TUNABLE source takes a setting, and only within its limits.
+        match boundSourceOf model |> Option.bind (fun source -> source.tunableRangeNm) with
+        | Some (lo, hi) -> { model with experimentCollection = Experiments.setSourceWaveLength (Some (ofNm (clamp lo hi nm))) model.experimentCollection }
+        | None -> model
+    | ExportExperimentData -> exportDraftRun model
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n model.experimentCollection }
     | ExpCommit ->
         // Spec 0038 Part I (step 025): capture the live scene as the experiment's ordered setup and commit.
@@ -2188,15 +2327,22 @@ let private boundEntry (model : Model) (e : TestElement) : Library.LibraryEntry 
         | Ok None | Error _ -> None
     | None -> None
 
+/// What element `i` is (spec 0046): its kind and scene number, then the Library entry it is bound to with
+/// that entry's full description — or that it is still unbound. The table's hover tooltip and the element
+/// menu's header show exactly this. Public so it is provable without a window.
+let elementInfo (model : Model) (i : int) : string * string =
+    let e = List.item i model.elements
+    let heading = $"%s{Catalogue.kindName e.placement.catalogueKind} #%d{i + 1}"
+    let detail =
+        match boundEntry model e with
+        | Some entry -> $"%s{entry.displayName} — %s{entry.fullDescription}"
+        | None -> "Unbound — right-click it and Choose… what it is."
+    heading, detail
+
 /// The source wavelength from the first light-source element bound to a source preset (else 600 nm — an
 /// absent / unbound source is not synthesized, just defaulted; spec R1).
 let private runWaveLength (model : Model) : WaveLength =
-    model.elements
-    |> List.tryPick (fun e ->
-        match boundEntry model e with
-        | Some (Library.SourceItem s) -> Some s.waveLength
-        | _ -> None)
-    |> Option.defaultValue (WaveLength.nm 600.0<nm>)
+    operatingWaveLength model model.experimentCollection.draft.sourceWaveLengthOpt
 
 /// The input Stokes vector from the FIRST polarizer element bound to a polarizer preset (its R1 is the
 /// polarizer's orientation), synthesized through the behaviour seam (spec 0038 Part F —
@@ -2355,36 +2501,9 @@ let runAnalyzerKind (model : Model) (varied : Library.ElementId option) : Analyz
     | None, Some k -> ResolvedAnalyzer k
     | None, None -> NoAnalyzerPresent
 
-/// Whether the scene's detector (the first detector element bound to a detector preset) is an ellipsometer.
-let private runDetectorKind (model : Model) : Library.DetectorKind =
-    model.elements
-    |> List.tryPick (fun e ->
-        match boundEntry model e with
-        | Some (Library.DetectorItem d) -> Some d.kind
-        | _ -> None)
-    |> Option.defaultValue Library.Intensity
-
-/// The FIRST sample element bound to a sample preset (the sample the R2 / λ sweeps re-solve), if any. No
-/// sample present ⇒ `None` (an R2 / λ sweep has nothing to re-solve, so the chart is empty; spec R1).
-let private runSampleOpt (model : Model) : Library.Sample option =
-    model.elements
-    |> List.tryPick (fun e ->
-        match boundEntry model e with
-        | Some (Library.SampleItem s) -> Some s
-        | _ -> None)
-
 /// The material library the host resolves sample structures against (the composition root's single
 /// library instance, spec 0033 step 001).
 let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.standard
-
-/// The bound sample resolved against the material library — resolved ONCE per run (spec 0033 step 001).
-/// `None` = no sample bound; `Some (Error _)` = the sample references an unknown material id, which the
-/// chart surfaces as its message (a typed error, never a fallback).
-let private runResolvedSampleOpt (model : Model) : Result<Propagation.ResolvedSample, MaterialLibrary.MaterialError> option =
-    // Resolution flows through the LIVE versioned material store's by-version resolve (spec 0038
-    // step 022): each layer's pinned `MaterialVersionId` resolves to the exact version it was built
-    // against, so a later mint never rewrites a bound sample's physics.
-    runSampleOpt model |> Option.map (Propagation.resolveSampleMaterials model.materials)
 
 /// The human-readable message a failed sample-material resolution surfaces on the chart. Every error
 /// case carries a diagnostic `reason` (spec 0033 steps 002/003); only `UnknownMaterialId` can actually
@@ -2399,70 +2518,230 @@ let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
     | MaterialLibrary.InvalidMaterial reason ->
         $"Cannot run: material library error (%s{reason})."
 
-/// The analyzer (its polarizer kind + orientation R1) for the sweeps: the FIRST polarizer element bound to
-/// a `ComputedIdeal` polarizer preset, with its live R1 as the orientation. `None` when no analyzer is
-/// present (the sweep then reads the raw sample output, spec R1). The kind-typed sweep builders drive
-/// this, so a `ConstantMueller` polarizer is skipped like a non-polarizer (see `idealKindOf`).
-let private runAnalyzerOpt (model : Model) : (Library.PolarizerKind * Angle) option =
-    model.elements
-    |> List.tryPick (fun e ->
-        match boundEntry model e with
-        | Some (Library.PolarizerItem p) -> idealKindOf p |> Option.map (fun k -> k, e.placement.r1)
-        | _ -> None)
-
 /// A `ChartSeries` from named (x, y) points.
 let private series (name : string) (points : (float * float) list) : ExperimentChart.ChartSeries =
     { name = name; points = points }
 
-/// The Propagation branches an experiment captures, each with a short tag for its series name (spec 028).
-let private branchesFor (m : Experiments.MeasurementMode) : (Propagation.Branch * string) list =
+/// The scene branches an experiment captures, each with a short tag for its series name (spec 028).
+let private branchesFor (m : Experiments.MeasurementMode) : (BeamTree.BeamBranch * string) list =
     match m with
-    | Experiments.CaptureTransmitted -> [ Propagation.BranchTransmitted, "T" ]
-    | Experiments.CaptureReflected -> [ Propagation.BranchReflected, "R" ]
-    | Experiments.CaptureBoth -> [ Propagation.BranchTransmitted, "T"; Propagation.BranchReflected, "R" ]
+    | Experiments.CaptureTransmitted -> [ BeamTree.Transmitted, "T" ]
+    | Experiments.CaptureReflected -> [ BeamTree.Reflected, "R" ]
+    | Experiments.CaptureBoth -> [ BeamTree.Transmitted, "T"; BeamTree.Reflected, "R" ]
 
 /// A series display name: the base name, suffixed with the branch tag only when capturing BOTH branches.
 let private seriesName (m : Experiments.MeasurementMode) (branchTag : string) (baseName : string) : string =
     match m with
     | Experiments.CaptureBoth -> $"%s{baseName} (%s{branchTag})"
-    | _ -> baseName
+    | Experiments.CaptureTransmitted | Experiments.CaptureReflected -> baseName
 
-/// The sample's Mueller matrix for a branch, for the VaryR1 rotate (spec 028): the bound RESOLVED sample
-/// re-solved at the run wavelength / normal incidence on that branch, or — with NO sample — the identity
-/// MM for the transmitted branch (a transparent pass-through; the Malus law then holds exactly) and
-/// `None` for the reflected branch (there is nothing to reflect).
-let private rotateSampleMueller (model : Model) (sampleOpt : Propagation.ResolvedSample option) (branch : Propagation.Branch) : MuellerMatrix option =
-    let w = runWaveLength model
-    match sampleOpt with
-    | Some s -> Some (Propagation.sampleMueller branch s w IncidenceAngle.normal)
-    | None ->
-        match branch with
-        | Propagation.BranchTransmitted -> Some Propagation.identityMueller
-        | Propagation.BranchReflected -> None
+/// What a detector kind reads, as prose (spec 0046 — the detector decides what is captured).
+let private readsText (kind : Library.DetectorKind) : string =
+    match kind with
+    | Library.Intensity -> "intensity"
+    | Library.Ellipsometer -> "Ψ, Δ (ellipsometer)"
 
-/// A prose description of the run: which source / sample / detector are bound, the varied element, the
-/// capture mode, and what is varied.
-let private describeRun (model : Model) (label : string) (captureText : string) (varyText : string) : string =
-    let wNm = (runWaveLength model).value / nmToMeter / oneNanometer
-    let sampleText =
-        match runSampleOpt model with
-        | Some s -> s.name
-        | None -> "no sample (identity pass-through)"
-    let detectorText =
-        match runDetectorKind model with
-        | Library.Ellipsometer -> "ellipsometer (Ψ/Δ)"
-        | Library.Intensity -> "intensity detector (S₀)"
-    $"Source %.0f{wNm} nm → %s{sampleText} → %s{detectorText}; varied element: %s{label}; capture %s{captureText}. Varying %s{varyText}."
+/// Spec 0046: a capture's label in the Experiments bay — the branch and what the detector on it reads.
+let captureLabel (model : Model) (varied : Library.ElementId) (capture : Experiments.MeasurementMode) : string =
+    let detectors = captureDetectors model varied
+    let readsOn (branch : BeamTree.BeamBranch) : string =
+        detectors
+        |> List.tryFind (fun (b, _) -> b = branch)
+        |> Option.map (fun (_, j) -> readsText (detectorKindOf model j))
+        |> Option.defaultValue "no detector"
+    match capture with
+    | Experiments.CaptureTransmitted -> $"Transmitted (T) — %s{readsOn BeamTree.Transmitted}"
+    | Experiments.CaptureReflected -> $"Reflected (R) — %s{readsOn BeamTree.Reflected}"
+    | Experiments.CaptureBoth -> $"Both — T: %s{readsOn BeamTree.Transmitted}; R: %s{readsOn BeamTree.Reflected}"
 
-/// The end-to-end experiment result as a renderer-neutral `ExperimentChart` (spec 028), computed from the
-/// current DRAFT: VaryR1 ⇒ the rotating-analyzer intensity curve over the chosen R1 range (or a single-point
-/// Ψ/Δ for an ellipsometer); VaryR2 ⇒ value-vs-incidence with the sample re-solved at each angle; VaryWave-
-/// Length ⇒ value-vs-λ. The CAPTURE mode (T / R / both) selects the sample branch — "both" yields one series
-/// per branch — and an ellipsometer detector yields Ψ/Δ series. Empty when the draft is incomplete, its
-/// element is gone, or an R2 / λ vary has no bound sample. Public so the host's branches are unit-testable.
-/// The chart for an EXPLICIT experiment configuration (element id + variable + capture + range + label),
-/// used by both the live draft preview (`experimentResult`) and the per-experiment "View" action
-/// (`chartForExperiment`). Empty when the element is no longer present.
+/// The incidence angle (degrees) the beam meets a placed element at: the angle between its DRAWN face normal
+/// and the arriving beam (spec 0046 — its R2 for an in-plane tilt), kept computable (below 90°).
+let private incidenceDegreesOf (placed : BeamLayout.PlacedElement) (placement : ElementPlacement) : float =
+    match placed.incoming with
+    | Some d ->
+        let n = r1Axis (RayModel.orientedToBeam d placement)
+        let c = min 1.0 (abs (n.normalized.dot d.normalized))
+        min Propagation.r2SweepMaxDegrees (acos c * 180.0 / System.Math.PI)
+    | None -> 0.0
+
+/// One step of a detector's light path as a run builds it (spec 0046): the same for the whole sweep, or
+/// rebuilt for each swept value (so a sample is re-solved only when something it depends on varies).
+type private StepBuilder =
+    | FixedStep of ExperimentRun.RunStep
+    | SweptStep of (float -> ExperimentRun.RunStep)
+
+/// The end-to-end run behind an experiment's chart (spec 0046 — rebuilt on the light's ACTUAL path). For each
+/// captured branch, the detector on that branch (`captureDetectors`) decides what is read: an intensity
+/// detector S₀, an ellipsometer Ψ and Δ. The light reaching it is walked from the source along its path:
+/// polarizers before the sample prepare the input (the first sets a unit-intensity state), the sample acts
+/// through the engine's Mueller matrix for the branch the path leaves it by — at its real incidence (the
+/// angle its drawn face makes with the beam) and spin (its R1) — and polarizers after it analyze. The varied
+/// element's parameter is swept: a polarizer's R1, a sample's R1 (spin) or R2 (incidence), or a tunable
+/// source's wavelength; everything else runs at the source's wavelength (`operatingWaveLength`). Empty when
+/// the element is gone, nothing is bound to the varied element, or no detector sees it.
+let chartForRun
+    (model : Model)
+    (chosen : Library.ElementId)
+    (variable : Experiments.VariableParameter)
+    (measurement : Experiments.MeasurementMode)
+    (range : Experiments.VariableRange)
+    (label : string)
+    (sourceWaveLengthOpt : WaveLength option) : ExperimentChart.ExperimentChart =
+    match model.elements |> List.tryFindIndex (fun e -> e.id = chosen) with
+    | None -> ExperimentChart.empty
+    | Some variedIndex ->
+    let variedElement = List.item variedIndex model.elements
+    let layout = sceneLayout model
+    let w0 = operatingWaveLength model sourceWaveLengthOpt
+    let n = max 2 range.points
+    let lo, hi =
+        match variable with
+        | Experiments.VaryR2 -> max 0.0 (min range.min range.max), min Propagation.r2SweepMaxDegrees (max range.min range.max)
+        | Experiments.VaryR1 | Experiments.VaryWaveLength -> range.min, range.max
+    let xs = [ for k in 0 .. n - 1 -> lo + (hi - lo) * float k / float (n - 1) ]
+    let wAt (x : float) : WaveLength =
+        match variable with
+        | Experiments.VaryWaveLength -> ofNm x
+        | Experiments.VaryR1 | Experiments.VaryR2 -> w0
+    let indexOf (id : Library.ElementId) : int option = model.elements |> List.tryFindIndex (fun e -> e.id = id)
+    let boundOf (e : TestElement) : Library.LibraryEntry option =
+        match e.placement.valueId with
+        | Some id ->
+            match model.library.tryGetEntry id with
+            | Ok entry -> entry
+            | Error _ -> None
+        | None -> None
+    // One path step → its builder (or nothing: the source, a mirror, a lens, an unbound element).
+    let builderFor (step : BeamLayout.PathStep) : Result<StepBuilder option, string> =
+        match indexOf step.element with
+        | None -> Ok None
+        | Some j ->
+            let e = List.item j model.elements
+            let isVaried = (e.id = chosen)
+            match e.placement.catalogueKind, boundOf e with
+            | (LinearPolarizer | CircularPolarizer), Some (Library.PolarizerItem p) ->
+                match variable with
+                | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> ExperimentRun.PolarizerStep (p.behavior, Angle.degree x))))
+                | Experiments.VaryR1 | Experiments.VaryR2 | Experiments.VaryWaveLength -> Ok (Some (FixedStep (ExperimentRun.PolarizerStep (p.behavior, e.placement.r1))))
+            | Sample, Some (Library.SampleItem sample) ->
+                match Propagation.resolveSampleMaterials model.materials sample with
+                | Error err -> Error (materialErrorText err)
+                | Ok resolved ->
+                    let branch =
+                        match step.branch with
+                        | BeamTree.Transmitted -> Propagation.BranchTransmitted
+                        | BeamTree.Reflected -> Propagation.BranchReflected
+                    let incidence0 = incidenceDegreesOf (List.item j layout.elements) e.placement
+                    let solve (w : WaveLength) (incidence : float) (spin : Angle) : ExperimentRun.RunStep =
+                        ExperimentRun.SampleStep (Propagation.sampleMuellerSpun branch resolved w (IncidenceAngle.create (Angle.degree incidence)) spin)
+                    match variable with
+                    | Experiments.VaryWaveLength -> Ok (Some (SweptStep (fun x -> solve (ofNm x) incidence0 e.placement.r1)))
+                    | Experiments.VaryR2 when isVaried -> Ok (Some (SweptStep (fun x -> solve w0 x e.placement.r1)))
+                    | Experiments.VaryR1 when isVaried -> Ok (Some (SweptStep (fun x -> solve w0 incidence0 (Angle.degree x))))
+                    | Experiments.VaryR1 | Experiments.VaryR2 -> Ok (Some (FixedStep (solve w0 incidence0 e.placement.r1)))
+            | _ -> Ok None
+    let buildersFor (path : BeamLayout.PathStep list) : Result<StepBuilder list, string> =
+        path
+        |> List.fold (fun acc step ->
+            match acc, builderFor step with
+            | Ok built, Ok (Some b) -> Ok (built @ [ b ])
+            | Ok built, Ok None -> Ok built
+            | Error e, _ | _, Error e -> Error e) (Ok [])
+    let stepsAt (builders : StepBuilder list) (x : float) : ExperimentRun.RunStep list =
+        builders
+        |> List.map (fun b ->
+            match b with
+            | FixedStep step -> step
+            | SweptStep f -> f x)
+    let variedIsBound = Option.isSome (boundOf variedElement)
+    let detectors = captureDetectors model chosen
+    let captured =
+        branchesFor measurement
+        |> List.choose (fun (branch, tag) ->
+            detectors |> List.tryFind (fun (b, _) -> b = branch) |> Option.map (fun (_, j) -> tag, j))
+    let xLabel =
+        match variable with
+        | Experiments.VaryR1 -> "Rotation R1 (°)"
+        | Experiments.VaryR2 -> "Incidence angle R2 (°)"
+        | Experiments.VaryWaveLength -> "Wavelength (nm)"
+    let kinds = captured |> List.map (fun (_, j) -> detectorKindOf model j) |> List.distinct
+    let yLabel =
+        match kinds with
+        | [ Library.Ellipsometer ] -> "Ψ, Δ (°)"
+        | [ Library.Intensity ] | [] -> "Intensity (S₀)"
+        | _ -> "Intensity (S₀); Ψ, Δ (°)"
+    let quantity =
+        match kinds with
+        | [ Library.Ellipsometer ] -> "Ellipsometric Ψ/Δ"
+        | _ -> "Intensity"
+    let title =
+        match variable, variedElement.placement.catalogueKind, kinds with
+        | Experiments.VaryR1, (LinearPolarizer | CircularPolarizer), [ Library.Intensity ] -> "Rotating analyzer (Malus)"
+        | Experiments.VaryR1, _, _ -> $"%s{quantity} vs rotation R1"
+        | Experiments.VaryR2, _, _ -> $"%s{quantity} vs incidence"
+        | Experiments.VaryWaveLength, _, _ -> $"%s{quantity} vs wavelength"
+    let varyText =
+        match variable with
+        | Experiments.VaryR1 -> $"the rotation R1 over %g{lo}…%g{hi}°"
+        | Experiments.VaryR2 -> $"the incidence angle R2 over %g{lo}…%g{hi}°"
+        | Experiments.VaryWaveLength -> $"the wavelength over %g{lo}…%g{hi} nm"
+    let description =
+        let sourceText =
+            match variable with
+            | Experiments.VaryWaveLength -> "Source swept"
+            | Experiments.VaryR1 | Experiments.VaryR2 -> $"Source %g{toNm w0} nm"
+        let detectorText =
+            captured
+            |> List.map (fun (tag, j) -> $"%s{tag}: %s{readsText (detectorKindOf model j)}")
+            |> String.concat ", "
+        $"%s{sourceText}; varied element: %s{label}; capture %s{measurement.label} (%s{detectorText}). Varying %s{varyText}."
+    // The rotate-R1 intensity run needs polarized light: with no polarizer on the path there is nothing a
+    // rotation could change — the typed status, never a synthesized curve (spec 0038 step 018).
+    let noPolarizerOnPath =
+        captured
+        |> List.forall (fun (_, j) ->
+            (List.item j layout.elements).path
+            |> List.forall (fun step ->
+                match indexOf step.element |> Option.map (fun k -> boundOf (List.item k model.elements)) with
+                | Some (Some (Library.PolarizerItem _)) -> false
+                | _ -> true))
+    match variable, kinds, captured with
+    | _, _, [] -> ExperimentChart.empty
+    | Experiments.VaryR1, [ Library.Intensity ], _ when noPolarizerOnPath ->
+        { ExperimentChart.empty with title = noAnalyzerTitle; description = noAnalyzerStatus }
+    | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> ExperimentChart.empty
+    | _ ->
+        let built =
+            captured
+            |> List.map (fun (tag, j) -> tag, j, buildersFor (List.item j layout.elements).path)
+        match built |> List.tryPick (fun (_, _, b) -> match b with Error e -> Some e | Ok _ -> None) with
+        | Some reason -> { ExperimentChart.empty with title = "Sample materials failed to resolve"; description = reason }
+        | None ->
+            let seriesList =
+                built
+                |> List.collect (fun (tag, j, b) ->
+                    let builders = match b with Ok bs -> bs | Error _ -> []
+                    let readings = xs |> List.map (fun x -> x, ExperimentRun.read (detectorKindOf model j) (stepsAt builders x))
+                    match detectorKindOf model j with
+                    | Library.Intensity ->
+                        [ series (seriesName measurement tag "Intensity")
+                              (readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.IntensityReading i -> i | ExperimentRun.EllipsometricReading _ -> nan))) ]
+                    | Library.Ellipsometer ->
+                        let pd (pick : Propagation.PsiDelta -> Angle) =
+                            readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.EllipsometricReading v -> (pick v).degrees | ExperimentRun.IntensityReading _ -> nan))
+                        [ series (seriesName measurement tag "Ψ") (pd (fun v -> v.psi))
+                          series (seriesName measurement tag "Δ") (pd (fun v -> v.delta)) ])
+            {
+                series = seriesList
+                xLabel = xLabel
+                yLabel = yLabel
+                title = title
+                description = description
+                angular = (match variable with Experiments.VaryR1 | Experiments.VaryR2 -> true | Experiments.VaryWaveLength -> false)
+            }
+
+/// The chart for an EXPLICIT experiment configuration at the source's own wavelength setting (`chartForRun`
+/// with no per-run setting).
 let chartForParams
     (model : Model)
     (chosen : Library.ElementId)
@@ -2470,130 +2749,7 @@ let chartForParams
     (measurement : Experiments.MeasurementMode)
     (range : Experiments.VariableRange)
     (label : string) : ExperimentChart.ExperimentChart =
-    if not (model.elements |> List.exists (fun e -> e.id = chosen)) then ExperimentChart.empty
-    else
-    // Resolve the bound sample's materials ONCE per run (spec 0033 step 001); an unknown material id is
-    // a typed error the chart surfaces as its message — no series are computed from a fallback.
-    match runResolvedSampleOpt model with
-    | Some (Error err) ->
-        { ExperimentChart.empty with title = "Sample materials failed to resolve"; description = materialErrorText err }
-    | resolved ->
-        let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
-        let svIn = runInputStokes model
-        let w = runWaveLength model
-        let detector = runDetectorKind model
-        let captureText = measurement.label
-        let n = max 2 range.points
-        match variable with
-        | Experiments.VaryR1 ->
-            let varyText = $"the rotation R1 over %g{range.min}…%g{range.max}°"
-            match detector with
-            | Library.Ellipsometer ->
-                {
-                    series = []
-                    xLabel = ""
-                    yLabel = ""
-                    title = "Ellipsometer readout"
-                    description = describeRun model label captureText (varyText + " (single-point Ψ/Δ — use an R2 / λ vary for a curve)")
-                    angular = true
-                }
-            | Library.Intensity ->
-                // Spec 0038 (018): the analyzer is READ from the bound polarizer entry; a scene
-                // with none reports the typed 'no analyzer present' status — the old silent
-                // IdealLinear fallback is retired, so no series are synthesized from a fallback.
-                match runAnalyzerKind model (Some chosen) with
-                | NoAnalyzerPresent ->
-                    { ExperimentChart.empty with title = noAnalyzerTitle; description = noAnalyzerStatus }
-                | ResolvedAnalyzer analyzerKind ->
-                    let seriesList =
-                        branchesFor measurement
-                        |> List.choose (fun (branch, tag) ->
-                            rotateSampleMueller model sampleOpt branch
-                            |> Option.map (fun mm ->
-                                let curve = Propagation.rotatingAnalyzerCurveRange svIn mm analyzerKind range.min range.max n
-                                series (seriesName measurement tag "Intensity") curve.points))
-                    {
-                        series = seriesList
-                        xLabel = "Rotation R1 (°)"
-                        yLabel = "Intensity (S₀)"
-                        title = "Rotating analyzer (Malus)"
-                        description = describeRun model label captureText varyText
-                        angular = true
-                    }
-        | Experiments.VaryR2 ->
-            match sampleOpt with
-            | Some sample ->
-                // The engine cannot solve exactly 90° incidence, so the top is clamped below it (drawn to 90).
-                let lo = max 0.0 (min range.min range.max)
-                let hi = min Propagation.r2SweepMaxDegrees (max range.min range.max)
-                let varyText = $"the incidence angle R2 over %g{range.min}…%g{range.max}° (%g{hi}° computed, drawn to 90°)"
-                match detector with
-                | Library.Ellipsometer ->
-                    let seriesList =
-                        branchesFor measurement
-                        |> List.collect (fun (branch, tag) ->
-                            let psi, delta = Propagation.r2SweepPsiDelta branch svIn sample w lo hi n
-                            [ series (seriesName measurement tag "Ψ") psi; series (seriesName measurement tag "Δ") delta ])
-                    {
-                        series = seriesList
-                        xLabel = "Incidence angle R2 (°)"
-                        yLabel = "Ψ, Δ (°)"
-                        title = "Ellipsometric Ψ/Δ vs incidence"
-                        description = describeRun model label captureText varyText
-                        angular = true
-                    }
-                | Library.Intensity ->
-                    let seriesList =
-                        branchesFor measurement
-                        |> List.map (fun (branch, tag) ->
-                            let curve = Propagation.r2SweepCurve branch svIn sample w (runAnalyzerOpt model) lo hi n
-                            series (seriesName measurement tag "Intensity") curve)
-                    {
-                        series = seriesList
-                        xLabel = "Incidence angle R2 (°)"
-                        yLabel = "Intensity (S₀)"
-                        title = "Intensity vs incidence"
-                        description = describeRun model label captureText varyText
-                        angular = true
-                    }
-            | None -> ExperimentChart.empty
-        | Experiments.VaryWaveLength ->
-            match sampleOpt with
-            | Some sample ->
-                let lo = min range.min range.max
-                let hi = max range.min range.max
-                let inc = IncidenceAngle.normal
-                let varyText = $"the wavelength over %g{lo}…%g{hi} nm"
-                match detector with
-                | Library.Ellipsometer ->
-                    let seriesList =
-                        branchesFor measurement
-                        |> List.collect (fun (branch, tag) ->
-                            let psi, delta = Propagation.waveLengthSweepPsiDelta branch svIn sample inc lo hi n
-                            [ series (seriesName measurement tag "Ψ") psi; series (seriesName measurement tag "Δ") delta ])
-                    {
-                        series = seriesList
-                        xLabel = "Wavelength (nm)"
-                        yLabel = "Ψ, Δ (°)"
-                        title = "Ellipsometric Ψ/Δ vs wavelength"
-                        description = describeRun model label captureText varyText
-                        angular = false
-                    }
-                | Library.Intensity ->
-                    let seriesList =
-                        branchesFor measurement
-                        |> List.map (fun (branch, tag) ->
-                            let curve = Propagation.waveLengthSweepIntensity branch svIn sample inc (runAnalyzerOpt model) lo hi n
-                            series (seriesName measurement tag "Intensity") curve)
-                    {
-                        series = seriesList
-                        xLabel = "Wavelength (nm)"
-                        yLabel = "Intensity (S₀)"
-                        title = "Intensity vs wavelength"
-                        description = describeRun model label captureText varyText
-                        angular = false
-                    }
-            | None -> ExperimentChart.empty
+    chartForRun model chosen variable measurement range label None
 
 /// Spec 0038 Part L (037): whether the forward experiment chart surface is present. The FORWARD
 /// constructor always shows it (an unbound sample there yields an empty chart, as before). The
@@ -2609,16 +2765,16 @@ let experimentChartVisible (model : Model) : bool =
             e.placement.catalogueKind = Sample &&
             (match e.placement.valueId with Some _ -> true | None -> false))
 
-/// The live DRAFT's chart (the inline bay preview + the draft "Open chart" action). Public so the host's
-/// branches are unit-testable without a window. Spec 0038 Part L (037): EMPTY when the inverse chart
-/// surface is gated off (inverse mode, no hint sample) — the surface is absent until a hint is bound.
+/// The live DRAFT's chart (the inline bay preview, the draft "Open chart" action and Export data). Public so
+/// the host's branches are unit-testable without a window. Spec 0038 Part L (037): EMPTY when the inverse
+/// chart surface is gated off (inverse mode, no hint sample) — the surface is absent until a hint is bound.
 let experimentResult (model : Model) : ExperimentChart.ExperimentChart =
     if not (experimentChartVisible model) then ExperimentChart.empty
     else
         // Spec 0046: the draft runs with the capture the detectors allow; with none there is no chart.
         let draft = model.experimentCollection.draft
         match draft.elementId, draft.variable, draftCapture model with
-        | Some chosen, Some variable, Some capture -> chartForParams model chosen variable capture draft.range draft.elementLabel
+        | Some chosen, Some variable, Some capture -> chartForRun model chosen variable capture draft.range draft.elementLabel draft.sourceWaveLengthOpt
         | _ -> ExperimentChart.empty
 
 /// The chart of a specific COLLECTED experiment — the per-row "View" action. Spec 0038 Part I (step 025):
@@ -2628,12 +2784,15 @@ let chartForExperiment (model : Model) (exp : Experiments.Experiment) : Experime
     if not (experimentChartVisible model) then ExperimentChart.empty
     else
         match exp.varied with
-        | Some v -> chartForParams model v.elementId v.variable exp.measurement exp.range exp.variedLabel
+        | Some v -> chartForRun model v.elementId v.variable exp.measurement exp.range exp.variedLabel exp.sourceWaveLengthOpt
         | None -> ExperimentChart.empty
 
 // Spec 0027: wire the forward-referenced hooks (defined once `chartForParams` exists) so a double-click /
 // "Open chart" / per-row "View" opens the pop-out ScottPlot `ChartWindow` for the relevant chart (guarded
-// behind a non-empty chart; never reached under the headless `ui-smoke` gate's frame render).
+// behind a non-empty chart; never reached under the headless `ui-smoke` gate's frame render). Spec 0046: the
+// export hook reads the same draft run.
+draftChartHook <- experimentResult
+
 openChartWindowHook <-
     fun model ->
         let chart = experimentResult model
@@ -2650,31 +2809,6 @@ viewExperimentHook <-
             | None -> ()
         | _ -> ()
 
-/// The single-point Ψ/Δ readout for the VaryR1 + ellipsometer case (the inline bay shows it as text). Kept
-/// separate from `experimentResult` (which carries no Ψ/Δ for that case — there is no curve) so the bay can
-/// still show the numeric reading. `None` for an intensity detector or any vary that produces series.
-let private experimentPsiDelta (model : Model) : (float * float) option =
-    if not (experimentChartVisible model) then None
-    else
-    let draft = model.experimentCollection.draft
-    match draft.elementId, draft.variable with
-    | Some chosen, Some Experiments.VaryR1 when model.elements |> List.exists (fun e -> e.id = chosen) ->
-        match runDetectorKind model with
-        | Library.Ellipsometer ->
-            // A failed material resolution yields no readout — the chart already carries the message.
-            match runResolvedSampleOpt model with
-            | Some (Error _) -> None
-            | resolved ->
-                let sampleOpt = match resolved with Some (Ok s) -> Some s | _ -> None
-                let svIn = runInputStokes model
-                let capture = draftCapture model |> Option.defaultValue draft.measurement
-                let branch = branchesFor capture |> List.head |> fst
-                let mm = rotateSampleMueller model sampleOpt branch |> Option.defaultValue Propagation.identityMueller
-                let pd = Propagation.ellipsometerReadout (mm * svIn)
-                Some (pd.psi.degrees, pd.delta.degrees)
-        | Library.Intensity -> None
-    | _ -> None
-
 /// The Experiments bay state for the current scene (spec 028): the present elements as candidates, the
 /// element-constrained variable choices, the current draft (chosen element / variable / capture / range),
 /// whether it can be committed and whether it is editing, the collection of added experiments, and the
@@ -2688,7 +2822,7 @@ let experimentState (model : Model) : ExperimentControls.State =
         match draft.elementId with
         | Some id ->
             match model.elements |> List.tryFind (fun e -> e.id = id) with
-            | Some e -> Experiments.variablesFor e.placement.catalogueKind |> List.map toVariableChoice
+            | Some e -> variablesOfElement model e |> List.map toVariableChoice
             | None -> []
         | None -> []
     // Spec 0046 (task 5): the bay offers ONLY the captures the scene's detectors allow, and shows the one
@@ -2704,7 +2838,18 @@ let experimentState (model : Model) : ExperimentControls.State =
         variableChoices = variableChoices
         chosenVariable = draft.variable |> Option.map toVariableChoice
         measurement = toMeasurementChoice (capture |> Option.defaultValue draft.measurement)
-        measurementChoices = captures |> List.map toMeasurementChoice
+        measurementOffers =
+            match draft.elementId with
+            | Some id -> captures |> List.map (fun c -> { ExperimentControls.MeasurementOffer.choice = toMeasurementChoice c; label = captureLabel model id c })
+            | None -> []
+        sourceWaveLength =
+            match draft.variable, boundSourceOf model with
+            | Some Experiments.VaryWaveLength, _ | None, _ | Some _, None -> ExperimentControls.NoSourceWaveLength
+            | Some _, Some source ->
+                let nm = toNm (operatingWaveLength model draft.sourceWaveLengthOpt)
+                match source.tunableRangeNm with
+                | Some (lo, hi) -> ExperimentControls.TunableSourceWaveLength (nm, lo, hi)
+                | None -> ExperimentControls.FixedSourceWaveLength nm
         rangeMin = draft.range.min
         rangeMax = draft.range.max
         rangePoints = draft.range.points
@@ -2721,7 +2866,7 @@ let experimentState (model : Model) : ExperimentControls.State =
         xLabel = chart.xLabel
         yLabel = chart.yLabel
         description = chart.description
-        psiDelta = experimentPsiDelta model
+        psiDelta = None
     }
 
 let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Handlers =
@@ -2732,6 +2877,7 @@ let private experimentHandlers (dispatch : Msg -> unit) : ExperimentControls.Han
         setRangeMin = fun v -> dispatch (ExpSetRangeMin v)
         setRangeMax = fun v -> dispatch (ExpSetRangeMax v)
         setRangePoints = fun n -> dispatch (ExpSetRangePoints n)
+        setSourceWaveLength = fun nm -> dispatch (ExpSetSourceWaveLength nm)
         addOrUpdate = fun () -> dispatch ExpCommit
         newExperiment = fun () -> dispatch ExpNew
         editExperiment = fun idStr -> dispatch (ExpEdit idStr)
@@ -2986,6 +3132,8 @@ let private chooseFromLibrary (model : Model) (dispatch : Msg -> unit) (element 
     let selectCtx : WindowMode.SelectionContext<Library.LibraryEntry> =
         {
             kindConstraint = WindowMode.KindConstraint element.placement.catalogueKind
+            // Spec 0046: the Library opens with the element's current binding shown as chosen.
+            currentEntryIdOpt = element.placement.valueId
             target = WindowMode.TableElementTarget element.id
             onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
@@ -3281,11 +3429,26 @@ let private collectionBuilderView (model : Model) (dispatch : Msg -> unit) : IVi
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment
 /// editor + chart, then the Ui-layer collection builder stacked below it.
 let private experimentsBayContent (model : Model) (dispatch : Msg -> unit) : IView =
+    // Spec 0046: Export data — the draft's computed run through the export seam, with its status line.
+    let exportRow =
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 8.0
+            StackPanel.children [
+                workbenchButton UiIds.Experiment.exportButton "Export data" (fun () -> dispatch ExportExperimentData)
+                TextBlock.create [
+                    TextBlock.name UiIds.Experiment.exportStatus
+                    TextBlock.verticalAlignment VerticalAlignment.Center
+                    TextBlock.text (model.exportStatus |> Option.defaultValue "")
+                ]
+            ]
+        ] :> IView
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0
         StackPanel.children [
             ExperimentControls.view (experimentState model) (experimentHandlers dispatch)
+            exportRow
             collectionBuilderView model dispatch
         ]
     ] :> IView
@@ -3372,7 +3535,10 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : Model) (dispatch : 
 // (`UiIds.ElementMenu`), and every verb is a plain `Msg`, so the behaviour is provable through `update`.
 // ---------------------------------------------------------------------------
 
-let private elementMenuWidth : float = 250.0
+/// Spec 0046: the menu grows with its text up to `elementMenuMaxWidth` (then the lines wrap), never below
+/// `elementMenuMinWidth`.
+let private elementMenuMinWidth : float = 260.0
+let private elementMenuMaxWidth : float = 460.0
 let private elementMenuRowHeight : float = 26.0
 
 /// One clickable element-menu row (greyed and inert when disabled), keyed and AutomationId'd by `autoId`.
@@ -3383,7 +3549,7 @@ let private elementMenuItem (autoId : string) (label : string) (enabled : bool) 
         Border.opacity (if enabled then 1.0 else 0.45)
         Border.background (brush (color 255 255 255))
         Border.padding (Thickness(10.0, 4.0))
-        Border.child (TextBlock.create [ TextBlock.text label ])
+        Border.child (TextBlock.create [ TextBlock.text label; TextBlock.textWrapping TextWrapping.Wrap ])
         Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (autoId, label, enabled)))
     ]
     |> Avalonia.FuncUI.DSL.View.withKey autoId
@@ -3472,7 +3638,18 @@ let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu
                 [ elementMenuNote "Sits on" true
                   elementMenuItem UiIds.ElementMenu.placeOnMainBeam $"%s{radio (current = BeamLayout.OnMainBeam)} Main beam" true (fun () -> dispatch (PlaceOnBeam (e.id, BeamLayout.OnMainBeam))) ]
                 @ reflectedRows
+        // Spec 0046: what the element is — the bound entry's name and description — under its title.
+        let _, detail = elementInfo model i
+        let info =
+            TextBlock.create [
+                AttrBuilder<TextBlock>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, UiIds.ElementMenu.info, ValueNone)
+                TextBlock.text detail
+                TextBlock.textWrapping TextWrapping.Wrap
+                TextBlock.margin (Thickness(10.0, 0.0, 10.0, 4.0))
+                TextBlock.foreground (brush (color 70 70 70))
+            ] :> IView
         [ elementMenuNote (nameOf i) true
+          info
           elementMenuChooseItem model dispatch e ]
         @ rayRows
         @ beamRows
@@ -3490,13 +3667,14 @@ let private elementMenuOverlay (model : Model) (dispatch : Msg -> unit) : IView 
             | [] -> []
             | rows ->
                 let estimatedHeight = elementMenuRowHeight * float (List.length rows) + 12.0
-                let left = max 0.0 (min (canvasWidth - elementMenuWidth) (menu.at.sx + 6.0))
+                let left = max 0.0 (min (canvasWidth - elementMenuMaxWidth) (menu.at.sx + 6.0))
                 let top = max 0.0 (min (canvasHeight - estimatedHeight) (menu.at.sy + 6.0))
                 [ Border.create [
                       workbenchAutomationId UiIds.ElementMenu.menu
                       Canvas.left left
                       Canvas.top top
-                      Border.width elementMenuWidth
+                      Border.minWidth elementMenuMinWidth
+                      Border.maxWidth elementMenuMaxWidth
                       Border.background (brush (color 255 255 255))
                       Border.borderBrush (brush (color 120 120 120))
                       Border.borderThickness 1.0
@@ -3514,6 +3692,34 @@ let private elementMenuOverlay (model : Model) (dispatch : Msg -> unit) : IView 
         Canvas.children menuViews
     ] :> IView
 
+/// The radius of an element's hover target on the table, in pixels.
+let private elementHoverRadiusPx : float = 22.0
+
+/// Spec 0046: one invisible (transparent, hit-testable) disc over each element's drawn centre carrying the
+/// "what is it" tooltip (`elementInfo`). The discs only receive the hover — every press / release still
+/// bubbles to the table surface, which selects and pans exactly as before.
+let private elementHoverTargets (model : Model) : IView list =
+    let centres = snappedCentres model
+    model.elements
+    |> List.mapi (fun i e ->
+        match Map.tryFind i centres with
+        | Some centre ->
+            let c = projectPt model.view centre
+            let heading, detail = elementInfo model i
+            [ Ellipse.create [
+                  AttrBuilder<Ellipse>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, UiIds.TableAndElementRotation.elementHover e.id.value, ValueNone)
+                  AttrBuilder<Ellipse>.CreateProperty<obj>(ToolTip.TipProperty, box $"%s{heading}\n%s{detail}", ValueNone)
+                  Ellipse.left (c.sx - elementHoverRadiusPx)
+                  Ellipse.top (c.sy - elementHoverRadiusPx)
+                  Ellipse.width (2.0 * elementHoverRadiusPx)
+                  Ellipse.height (2.0 * elementHoverRadiusPx)
+                  Ellipse.fill Brushes.Transparent
+              ]
+              |> Avalonia.FuncUI.DSL.View.withKey (UiIds.TableAndElementRotation.elementHover e.id.value)
+              :> IView ]
+        | None -> [])
+    |> List.concat
+
 let private mainTableCanvas (model : Model) : IView =
     Canvas.create [
         Canvas.name UiIds.TableAndElementRotation.canvas
@@ -3522,8 +3728,9 @@ let private mainTableCanvas (model : Model) : IView =
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
         // Spec 0038 (031): the out-of-band dispersion badges overlay the drawn elements — appended
-        // last so they sit on top of the schematic; an in-band scene contributes none.
-        Canvas.children (mainTableViews model @ mainElementViews model @ outOfBandBadges model)
+        // last so they sit on top of the schematic; an in-band scene contributes none. Spec 0046: the
+        // invisible hover targets (the "what is it" tooltips) go on top of everything.
+        Canvas.children (mainTableViews model @ mainElementViews model @ outOfBandBadges model @ elementHoverTargets model)
     ] :> IView
 
 /// The Main screen view: the ribbon of large controls on top, and BELOW the ribbon strip either the

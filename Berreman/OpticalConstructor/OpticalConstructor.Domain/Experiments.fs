@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Domain
 
 open Berreman.Geometry                              // Angle (the placement/orientation summary)
+open Berreman.Fields                                // WaveLength (a tunable source's set wavelength, spec 0046)
 open OpticalConstructor.Domain.Placement           // CatalogueKind / Emission / ElementPlacement / TablePoint
 open OpticalConstructor.Domain.Library              // ElementId / DetectorKind / SampleVersionId / SampleId
 open OpticalConstructor.Domain.Lifecycle           // VersionRef / VersionsInUse (step 020)
@@ -217,6 +218,9 @@ module Experiments =
             measurement : MeasurementMode
             range : VariableRange
             dataFileOpt : DataFilePath option
+            /// Spec 0046: the wavelength a TUNABLE source is set to while the experiment varies something
+            /// else; `None` = the source's own setting (always the case for a fixed line).
+            sourceWaveLengthOpt : WaveLength option
         }
 
         /// The descriptor of the varied element within the setup (`None` for a dark line, or if the
@@ -276,6 +280,8 @@ module Experiments =
             measurement : MeasurementMode
             range : VariableRange
             editingId : ExperimentId option
+            /// Spec 0046: the wavelength a tunable source is set to for this run (see `Experiment`).
+            sourceWaveLengthOpt : WaveLength option
         }
 
         static member empty : ExperimentDraft =
@@ -286,6 +292,7 @@ module Experiments =
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
                 editingId = None
+                sourceWaveLengthOpt = None
             }
 
     /// The editable collection of experiments plus the id counter and the live draft (spec 028). Pure —
@@ -350,6 +357,16 @@ module Experiments =
     let setRangePoints (n : int) (c : ExperimentCollection) : ExperimentCollection =
         { c with draft = { c.draft with range = { c.draft.range with points = max 2 n } } }
 
+    /// Set (or clear, with `None`) the wavelength a tunable source runs at for the draft (spec 0046). The
+    /// host clamps it to the source's limits.
+    let setSourceWaveLength (w : WaveLength option) (c : ExperimentCollection) : ExperimentCollection =
+        { c with draft = { c.draft with sourceWaveLengthOpt = w } }
+
+    /// Set the whole variation range at once (spec 0046 — the host clamps a wavelength sweep to a tunable
+    /// source's limits).
+    let setRange (range : VariableRange) (c : ExperimentCollection) : ExperimentCollection =
+        { c with draft = { c.draft with range = range } }
+
     /// Confirm the draft (spec 028 step 3 / spec 0038 Part I), capturing the ordered `setup` the bay built
     /// from the live scene (kind + placement/orientation summary + versioned binding per element, the
     /// detector included). The varied element (`draft.elementId` + `draft.variable`) is identified within
@@ -373,7 +390,8 @@ module Experiments =
                             setup = setup
                             varied = variedOpt
                             measurement = c.draft.measurement
-                            range = c.draft.range }
+                            range = c.draft.range
+                            sourceWaveLengthOpt = c.draft.sourceWaveLengthOpt }
                     else e)
             { c with experiments = experiments }
         | None ->
@@ -387,6 +405,7 @@ module Experiments =
                         measurement = c.draft.measurement
                         range = c.draft.range
                         dataFileOpt = None
+                        sourceWaveLengthOpt = c.draft.sourceWaveLengthOpt
                     }
                 { c with
                     experiments = c.experiments @ [ exp ]
@@ -418,6 +437,7 @@ module Experiments =
                         measurement = e.measurement
                         range = e.range
                         editingId = Some e.id
+                        sourceWaveLengthOpt = e.sourceWaveLengthOpt
                     } }
         | None -> c
 
@@ -455,6 +475,7 @@ module Experiments =
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
                 dataFileOpt = None
+                sourceWaveLengthOpt = None
             }
         ]
 
