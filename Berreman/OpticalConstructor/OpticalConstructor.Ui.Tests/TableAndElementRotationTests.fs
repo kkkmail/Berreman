@@ -160,7 +160,7 @@ module TableAndElementRotationTests =
     [<Fact>]
     let ``the ribbon offers every large control as a Bay; selecting one is pure state`` () =
         let m = initMain ()
-        Assert.Equal(BayNames.rotation, m.ribbon)                      // Rotation shown first
+        Assert.Equal(BayNames.rotation, m.ribbon)                      // Rotation open at start (Add is the first tab — spec 0046)
         let bays = mainBays m ignore
         Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
         Assert.Equal(BayNames.render, (update (SelectBay BayNames.render) m).ribbon)

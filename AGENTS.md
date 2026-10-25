@@ -340,6 +340,20 @@ This is a spec-driven, gated repository.
   `RotationPivot` option, about the middle of their incident face.
 - **Locked R-only belongs to mirrors alone** (flat / curved mirror kinds and the
   `Mirror` sample geometry); lenses are T-only; everything else carries R and T.
+- **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
+  `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
+  the beam root is its 3-D centre, so moving it carries the whole beam. Every other element is
+  held to its RAY — one rule, the table plays no part: a ray starts at the element it leaves (the
+  source, or the host of a reflected ray) and ends at its first detector, or 1 m along
+  (`openRayEndX`) with none; a detector moves anywhere past the start, which extends the ray
+  (`raySpan` / `alongBeamRange`). The Main Rotation bay uses `RotationControls.wrappingView`; the
+  rotation test windows keep the single-row `view`, because their headless tests click fixed
+  window coordinates.
+- **The Main scene's Library is LIVE** (`Library.liveLibrary`: the seeded presets over the samples
+  and user-sources stores, composed in `AppContext.create`), so a sample or source created in the
+  Library window binds AND resolves on the table. User light sources live in `SourceProxy`
+  (edited by `LightSourceEditorView` / `LightSourceEditorWindow`); the seeded lasers and UV / EUV
+  lithography sources (`SeedSources`) are protected presets. A source is its wavelength.
 - **Never touch `*.nb` files.** Mathematica notebooks are treated as pure binary
   (no EOL, no diff, no merge). Leave them alone.
 - **Vendored MathNet.Numerics** is built from source under `MathNetNumerics/`;

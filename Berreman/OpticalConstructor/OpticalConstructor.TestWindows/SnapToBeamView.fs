@@ -52,7 +52,7 @@ let init () : Model =
     {
         table = Table.defaultTable
         view = Table.defaultView
-        source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r3Locked = false }
+        source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = false; r2Locked = false; r3Locked = false }
         downstream =
             [ LinearPolarizer, 0.6<meter>
               Sample, 0.6<meter>
@@ -211,6 +211,7 @@ let private readoutText (m : Model) : string =
 let private rotationState (model : Model) : RotationControls.State =
     {
         r1 = model.source.r1.degrees; r2 = model.source.r2.degrees; r3 = model.source.r3.degrees
+        r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
         r3Locked = model.sourceR3Locked; enabled = true; confirm = model.rotationConfirm
     }
 
@@ -218,7 +219,7 @@ let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handler
     {
         rotate = fun axis d -> dispatch (RotateSourceAxisBy ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), d))
         setAngle = fun axis v -> dispatch (SetSourceAxis ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), v))
-        toggleR3Lock = fun () -> dispatch ToggleSourceR3Lock
+        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleSourceR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
         confirm = fun () -> dispatch RotConfirm

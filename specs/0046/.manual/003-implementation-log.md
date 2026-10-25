@@ -200,6 +200,72 @@ Fixes:
   Constructor 714, ui-smoke 198, ui-tests 509; full no-incremental build 0 errors, only vendored SYSLIB0051.
   BerremanTests was stopped by the operator and not re-run.
 
+## Free light source, uncapped detectors, Add first, menu Choose… (operator, same day)
+
+- **Light source.** It was already selectable by a click (now proven by a test); what it lacked was a way
+  to place it. `Placement` gains `TableAxis` (x / y / z), `MoveLock` / `MoveLocks`, `Mobility`
+  (`MovesFreely` for the light source only, `MovesAlongBeam` for everything snapped to a beam) and two
+  placement fields, `height` (table z) and `moveLocks`; `ElementPlacement.create LightSource` locks every
+  move AND every rotation (R1 / R2 / R3). The lock-respecting `withPositionOn` mirrors `withR1..3`. The beam
+  root is the source's 3-D centre (`centreOf`), so raising, shifting or steering the source carries the whole
+  beam and every snapped element with it. Both placement schemas (project, groups) carry the new fields.
+- **Move bay.** The source selected → the new `TablePositionControls` bar: X / Y / Z rows, each with − / +,
+  a metres field and Lock / Unlock, plus Reset position (back to the default source point, height 0 —
+  bypassing the locks like the rotations' Reset). X / Y stay on the plate, Z is not capped. Any other
+  element → the along-beam bar as before. Each bar is keyed, so switching the selection recreates it.
+- **Rotation bay.** `RotationControls` offers R1 / R2 Lock / Unlock toggles (`AxisLockOffer`) next to their
+  axis; elements offer them, the table does not. The slots are always present (hidden when not offered) so
+  FuncUI never patches a named field into another axis' slot. The Main screen uses the new
+  `wrappingView` (units wrap between axes; the Main window is 820 px wide); the rotation test windows keep
+  the single-row `view`, whose layout their coordinate-based headless tests pin.
+- **Detectors.** Uncapped along their ray (`alongBeamRange` → `UnboundedRange`); every other element still
+  stops at ±half the plate. Reset puts a detector 1 m along (the default detector point's x). The
+  along-beam readout states the range ("uncapped" or the bounds).
+- **Ribbon.** Add is the first bay; Rotation stays the bay open at start.
+- **Element menu.** A Choose… row under the title runs the Selector bay's Choose… (`chooseFromLibrary`) for
+  the element the menu serves, after closing the menu.
+- Renders (real Main window size): `011-source-locked-rotation.png`, `012-source-moved-beam-follows.png`,
+  `013-detector-uncapped.png`, `014-source-menu-choose.png`.
+- Tests: new `SourceAndDetectorMoveTests` (11), two `PlacementTests`, one `LibraryWindowTests` acceptance
+  (right-click the source → Choose… → bind `src-600`); bay-order assertions moved to Add first.
+  Constructor 716, ui-smoke 201, ui-tests 719 in all; full no-incremental build 0 errors, only vendored
+  SYSLIB0051. BerremanTests not run (operator stop).
+
+## Source editor, seeded sources, elements held to the ray (operator, same day)
+
+- **Elements are held to their ray — one rule, the table plays no part** (operator clarification). A ray
+  starts at the element it leaves (the source for the main beam, the host for a reflected ray) and ends
+  at its first detector, or 1 m along (`openRayEndX`, the default detector point) when it has none. Every
+  non-detector element slides within that span (`raySpan`); a detector slides anywhere past the start,
+  which extends the ray (`RayPositionControls.AtLeast`, readout "from … m, uncapped"). Adding an element,
+  moving it onto a reflected ray and Reset all respect the span; an added detector lands at the open
+  ray's end (1 m) or just past the last element on it. The plate clamps are gone, including the source's
+  x / y limit from the previous round — the source now moves freely in all three directions.
+- **Seeded sources** (`Library.SeedSources`, protected presets beside the 600 nm reference): lasers — HeNe
+  632.8 / 543.5, Ar-ion 488 / 514.5, HeCd 441.6 / 325, GaN diode 405, ruby 694.3, Ti:sapphire 800,
+  Nd:YAG 1064 and its harmonics 532 / 355 / 266, erbium fibre 1550, CO₂ 10.6 µm; lithography — mercury g /
+  h / i lines 435.8 / 404.7 / 365, KrF 248.4, ArF 193.4, F₂ 157.6, EUV 13.5 (Sn plasma), BEUV 6.7. The
+  seeded tree groups them under Sources → Lasers / Lithography (UV / EUV).
+- **Source editor.** User light sources live in the new `Library.SourceProxy` (in-memory, unversioned —
+  an experiment binds a source by entry id; validation refuses a blank name, a non-positive wavelength
+  and a protected source). `LightSourceEditorView` / `LightSourceEditorWindow` (the Sample editor's
+  sibling) edit the name and the wavelength, typed in nm / µm / Å / eV / cm⁻¹ through the `Units` seam
+  (a unit switch never moves the value), with the Sample editor's Save / Cancel and dirty exit gate. The
+  Library window gains Add source, Edit for a user source, and confirm-gated Remove for a user source;
+  the seeded sources keep no Edit and refuse Remove. Window key `SourceEditorKey`.
+- **The Main scene's Library is live** (`Library.liveLibrary`, composed in `AppContext.create` and the
+  test defaults): the seeded presets over the samples and user-sources stores. This also closes a gap
+  found on the way: a sample created in the Library window could be chosen for a table element but never
+  resolved there (the workbench read only the fixed seeded Library), so it showed as unbound.
+- Threading: `AppContext.sources`; the workbench `Model.sources` (defaulted, threaded by record update like
+  `experimentData`); `LibraryWindow` and `EditorLaunchers` take the store.
+- Renders: `015-source-editor.png`, `016-library-sources.png`, `017-element-held-to-ray.png`.
+- Tests: new `SourceLibraryTests` (6) and `LightSourceEditorTests` (9); ray-rule tests in
+  `SourceAndDetectorMoveTests`; the Library-window corpus counts now derive from `seedEntries`, and its
+  click helper scrolls a row into view first (the longer tree put rows below the window). Constructor
+  722, ui-smoke 203, ui-tests 730 in all; full no-incremental build 0 errors, only vendored SYSLIB0051.
+  BerremanTests not run (operator stop).
+
 ## Findings
 
 - F1: `dotnet test` broken on the .NET 10 SDK since the xunit.v3 4.0.0 bump (see item 1).

@@ -133,9 +133,11 @@ module PolarizerBehaviorTests =
         Assert.NotEmpty presets
         Assert.All(presets, fun e -> Assert.Equal<EntryProtection>(ProtectedBuiltIn, e.protection))
         Assert.All(samples, fun e -> Assert.Equal<EntryProtection>(UserManaged, e.protection))
-        // The six protected built-ins are exactly the seeded presets the spec names (F.0).
+        // The protected built-ins are exactly the seeded presets the spec names (F.0) plus, since spec
+        // 0046, every seeded light source (the lasers and the UV / EUV lithography sources).
         Assert.Equal<string list>(
-            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp"; "src-600" ],
+            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.all |> List.map (fun s -> s.id))
+            |> List.sort,
             presets |> List.map (fun e -> e.entryId) |> List.sort)
 
     [<Fact>]

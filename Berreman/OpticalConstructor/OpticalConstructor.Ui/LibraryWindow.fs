@@ -14,8 +14,9 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// Spec 0038 Part F (step 015) — the Library window (UICOMP_XDUO_0010): a FuncUI `HostWindow`
 /// mounting the pure `LibraryWindowView` MVU loop — the step-012 `FacetedTreeControls` over the
 /// step-011 library facet catalogue (seeded default representation "By kind"), a view panel,
-/// and the Add sample / Make multilayer / Edit / Remove verbs — over the injected read-only
-/// `LibraryProxy` (the preset entries) and the app-scope samples + materials stores. The
+/// and the Add sample / Make multilayer / Add source / Edit / Remove verbs — over the injected
+/// `LibraryProxy` (the preset entries) and the app-scope samples, user-sources (spec 0046) and
+/// materials stores. The
 /// composition root: the context's launcher opens the Sample editor through the step-008
 /// SVC_XDUO_0001 `WindowLauncher` under `SampleEditorKey` (an Add-minted or edited entity id),
 /// Browse-mode over the ONE host-layer `WindowRegistry`, so an editor opened from THIS window
@@ -30,7 +31,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 /// `categories` store threads through to the Sample editor, whose per-layer Choose material…
 /// verb composes the Materials window (its category facet reads the LIVE store) in Select
 /// state.
-type LibraryWindow(library : LibraryProxy, samples : SampleProxy, materials : MaterialProxy, categories : CategoryProxy, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
+type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : SourceProxy, materials : MaterialProxy, categories : CategoryProxy, ?mode : LibraryWindowMode<LibraryEntry>, ?treeAutoBuildThreshold : TreeAutoBuildThreshold, ?thicknessBucketCap : ThicknessBucketCap) as this =
     inherit HostWindow()
 
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
@@ -72,6 +73,16 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, materials : Ma
                             | SampleEditorView.NewSeededMultilayer mintedId -> WindowLauncher.SampleEditorKey mintedId
                             | SampleEditorView.EditSample sample -> WindowLauncher.SampleEditorKey sample.id
                         openBrowse key (fun () -> SampleEditorWindow(materials, samples, categories, intent) :> Window)
+                // Spec 0046: the light-source editor, keyed by the source's entry id (a new source's id
+                // was minted by the Add source dispatch), Browse-mode over the same registry.
+                sources = sources
+                openSourceEditor =
+                    fun intent ->
+                        let key =
+                            match intent with
+                            | LightSourceEditorView.NewSource mintedId -> WindowLauncher.SourceEditorKey mintedId
+                            | LightSourceEditorView.EditSource source -> WindowLauncher.SourceEditorKey source.id
+                        openBrowse key (fun () -> LightSourceEditorWindow(sources, intent) :> Window)
                 requestClose = this.Close
             }
         Program.mkProgram

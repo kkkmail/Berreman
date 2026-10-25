@@ -149,6 +149,38 @@ module Placement =
 
         static member origin : TablePoint = { x = 0.0<meter>; y = 0.0<meter> }
 
+    /// A table-frame direction an element can be moved along (spec 0046): x along the
+    /// table's length (the central ray at rest), y across it, z up out of the table plane.
+    type TableAxis =
+        | TableX
+        | TableY
+        | TableZ
+
+    /// Whether an element may be moved along one table axis (spec 0046).
+    type MoveLock =
+        | MoveLocked
+        | MoveFree
+
+    /// The per-axis move locks of a placement (spec 0046), one per `TableAxis`.
+    type MoveLocks =
+        {
+            xLock : MoveLock
+            yLock : MoveLock
+            zLock : MoveLock
+        }
+
+    /// How an element moves on the table (spec 0046): the light source — the ray root —
+    /// moves freely in all three table directions; every other element is snapped to its
+    /// beam and moves only ALONG it.
+    type Mobility =
+        | MovesFreely
+        | MovesAlongBeam
+
+    let mobilityOf (kind : CatalogueKind) : Mobility =
+        match kind with
+        | LightSource -> MovesFreely
+        | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector -> MovesAlongBeam
+
     /// The standard `A_O x A_O x B_O` box shared by every optical element and the
     /// detector (A.3.4), with rest-pose normals.
     let private restBox (a1 : float<meter>) (a2 : float<meter>) (b : float<meter>) : BoundingBox =
@@ -176,10 +208,16 @@ module Placement =
     /// centre, the three rotation angles (engine `Angle`), the three independent
     /// lock flags, the catalogue-kind tag, the value-id slot, the bounding box,
     /// the emission metadata, and the preferred display unit (display metadata
-    /// only, mirroring `BeamNode.defaultUnit`).
+    /// only, mirroring `BeamNode.defaultUnit`). Spec 0046: plus the centre's height
+    /// above the table plane and the per-axis move locks — only an element that
+    /// `MovesFreely` (the light source) is placed by them; every other element's
+    /// position comes from the beam it is snapped to.
     type ElementPlacement =
         {
             placementPoint : TablePoint
+            /// The box centre's height above the table plane (table-frame z).
+            height : float<meter>
+            moveLocks : MoveLocks
             r1 : Angle
             r2 : Angle
             r3 : Angle
@@ -197,14 +235,24 @@ module Placement =
         /// and R1/R2 are unlocked (R3 must be deliberately unlocked before it can
         /// change); `valueId` is unbound (`None`); the box and emission default by
         /// role; the display unit defaults to millimeters (a bench-scale length).
+        /// Spec 0046: the LIGHT SOURCE starts with every move AND every rotation
+        /// locked — it is the one element placed freely, so nothing shifts the whole
+        /// beam by accident; it sits in the table plane (height 0).
         static member create (kind : CatalogueKind) (point : TablePoint) : ElementPlacement =
+            let sourceLocked =
+                match mobilityOf kind with
+                | MovesFreely -> true
+                | MovesAlongBeam -> false
+            let moveLock = if sourceLocked then MoveLocked else MoveFree
             {
                 placementPoint = point
+                height = 0.0<meter>
+                moveLocks = { xLock = moveLock; yLock = moveLock; zLock = moveLock }
                 r1 = Angle.zero
                 r2 = Angle.zero
                 r3 = Angle.zero
-                r1Locked = false
-                r2Locked = false
+                r1Locked = sourceLocked
+                r2Locked = sourceLocked
                 r3Locked = true
                 catalogueKind = kind
                 valueId = None
@@ -234,6 +282,43 @@ module Placement =
 
     /// Lock / unlock R3 (A.4.5).
     let setR3Locked (locked : bool) (p : ElementPlacement) : ElementPlacement = { p with r3Locked = locked }
+
+    /// The move lock of one table axis (spec 0046).
+    let moveLockOf (axis : TableAxis) (p : ElementPlacement) : MoveLock =
+        match axis with
+        | TableX -> p.moveLocks.xLock
+        | TableY -> p.moveLocks.yLock
+        | TableZ -> p.moveLocks.zLock
+
+    /// Lock / unlock moving along one table axis (spec 0046).
+    let withMoveLock (axis : TableAxis) (lock : MoveLock) (p : ElementPlacement) : ElementPlacement =
+        match axis with
+        | TableX -> { p with moveLocks = { p.moveLocks with xLock = lock } }
+        | TableY -> { p with moveLocks = { p.moveLocks with yLock = lock } }
+        | TableZ -> { p with moveLocks = { p.moveLocks with zLock = lock } }
+
+    /// The placement's position along one table axis, in metres (spec 0046).
+    let positionOn (axis : TableAxis) (p : ElementPlacement) : float<meter> =
+        match axis with
+        | TableX -> p.placementPoint.x
+        | TableY -> p.placementPoint.y
+        | TableZ -> p.height
+
+    /// Lock-respecting position setter (spec 0046, the A.4.5 rule for moves): a locked
+    /// axis ignores the change request.
+    let withPositionOn (axis : TableAxis) (v : float<meter>) (p : ElementPlacement) : ElementPlacement =
+        match moveLockOf axis p with
+        | MoveLocked -> p
+        | MoveFree ->
+            match axis with
+            | TableX -> { p with placementPoint = { p.placementPoint with x = v } }
+            | TableY -> { p with placementPoint = { p.placementPoint with y = v } }
+            | TableZ -> { p with height = v }
+
+    /// The box centre as a table-frame 3-vector in metres: the placement point lifted to
+    /// its height (spec 0046).
+    let centreOf (p : ElementPlacement) : Vector3 =
+        Vector3.create (p.placementPoint.x / 1.0<meter>) (p.placementPoint.y / 1.0<meter>) (p.height / 1.0<meter>)
 
     /// Rotate `v` about the unit-normalized `axis` by `angle` (Rodrigues' rotation
     /// formula). Reuses the engine `Angle` for the radian value (R-9). Used to

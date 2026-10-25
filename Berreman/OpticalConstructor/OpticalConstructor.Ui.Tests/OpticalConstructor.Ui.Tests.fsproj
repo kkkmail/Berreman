@@ -56,6 +56,9 @@
         <!-- Spec 0046: the right-click element menu, reflected rays and the beam tree they drive, the
              detector-driven experiment captures, three-segment rendering, and the scrolling Main view. -->
         <Compile Include="ElementMenuTests.fs" />
+        <!-- Spec 0046: the freely placed, lock-by-default light source, uncapped detectors, and the
+             Move / Rotation bays that drive them. -->
+        <Compile Include="SourceAndDetectorMoveTests.fs" />
         <!-- Spec 0027 task 009: the shared rotation-controls bar's modifier-driven highlight
              (pure armed-axis map + a headless key-press render proof). -->
         <Compile Include="RotationControlsTests.fs" />
@@ -190,6 +193,8 @@
              real Sample editor, and removing a protected entry surfaces the typed refusal and
              changes nothing. -->
         <Compile Include="LibraryWindowTests.fs" />
+        <!-- Spec 0046: the Library's light-source editor, its Library verbs, and a source bound on the table. -->
+        <Compile Include="LightSourceEditorTests.fs" />
         <!-- Spec 0038 Part L (step 037): the inverse constructor state (initInverse — unbound sample,
              chart gated on a hint) and the experiment-collection builder (name / save / list / load
              through the ExperimentCollectionProxy; per-experiment data-file attach that loads +

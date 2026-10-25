@@ -46,7 +46,7 @@ module WireUiFinalCompositionTests =
         | MaterialsWindowKey ->
             MaterialsWindow(ctx.materials, ctx.categories) :> Window |> Ok
         | LibraryWindowKey ->
-            LibraryWindow(ctx.library, ctx.samples, ctx.materials, ctx.categories) :> Window |> Ok
+            LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories) :> Window |> Ok
         | SolverHandoffWindowKey ->
             SolverHandoffWindow(ctx.library, ctx.experimentData, handoffSnapshot) :> Window |> Ok
         | CategoryEditorKey ->
@@ -55,6 +55,8 @@ module WireUiFinalCompositionTests =
             MaterialEditorWindow(ctx.materials, MaterialEditorView.NewMaterial mintedId, categories = ctx.categories) :> Window |> Ok
         | SampleEditorKey mintedId ->
             SampleEditorWindow(ctx.materials, ctx.samples, ctx.categories, SampleEditorView.NewBlankSample mintedId) :> Window |> Ok
+        | SourceEditorKey mintedId ->
+            LightSourceEditorWindow(ctx.sources, LightSourceEditorView.NewSource mintedId) :> Window |> Ok
 
     /// Show a window, pump one frame, assert it rendered, then close and pump the close (the `Closed`
     /// hooks) — the "renders one frame without throwing" probe. Flexible over the concrete window type.
@@ -129,6 +131,7 @@ module WireUiFinalCompositionTests =
               LibraryWindowKey
               MaterialEditorKey (MaterialLibrary.newMaterialId ())
               SampleEditorKey (Library.newSampleId ())
+              SourceEditorKey (Library.newSourceId ())
               CategoryEditorKey
               SolverHandoffWindowKey ]
             |> List.iter (openThroughLauncher ctx))
@@ -144,4 +147,4 @@ module WireUiFinalCompositionTests =
             let materialSelect : SelectionContext<MaterialLibrary.MaterialEntry> = selectContext Placement.Sample
             showAssertClose (MaterialsWindow(ctx.materials, ctx.categories, mode = Select materialSelect))
             let librarySelect : SelectionContext<Library.LibraryEntry> = selectContext Placement.Sample
-            showAssertClose (LibraryWindow(ctx.library, ctx.samples, ctx.materials, ctx.categories, mode = Select librarySelect)))
+            showAssertClose (LibraryWindow(ctx.library, ctx.samples, ctx.sources, ctx.materials, ctx.categories, mode = Select librarySelect)))

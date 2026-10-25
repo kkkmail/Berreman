@@ -56,6 +56,8 @@ open OpticalConstructor.Controls
 type LibraryRemoveGate =
     | NoPendingRemove
     | PendingRemove of SampleId
+    /// Spec 0046: a USER light source's remove awaits confirmation (carrying its entry id).
+    | PendingSourceRemove of sourceEntryId : string
 
 /// Which lifecycle transition a confirm gate targets (spec 0038 step 023): a named DU — never a
 /// bare string — so the confirm prose and the proxy call both read from ONE value. `Supersede` and
@@ -112,6 +114,8 @@ type LibraryWindowError =
     /// The samples store refused the confirmed remove — the typed `SampleError` carries its
     /// own reason.
     | SampleRemoveRefused of SampleError
+    /// Spec 0046: the user-sources store refused the confirmed remove.
+    | SourceRemoveRefused of SourceError
     /// The samples store refused a confirmed lifecycle verb (spec 0038 step 023 — e.g. the sample
     /// vanished behind the window's back) — the typed `SampleError` carries its own reason.
     | SampleLifecycleRefused of SampleError
@@ -180,6 +184,12 @@ type LibraryWindowContext =
         /// Open the Sample editor by intent: `NewBlankSample` / `NewSeededMultilayer` (the Add /
         /// Make-multilayer verbs mint the id AT dispatch — spec 0038 step 008) or `EditSample`.
         openSampleEditor : SampleEditorView.SampleEditorIntent -> unit
+        /// Spec 0046: the app-scope USER-SOURCES write store — its sources join the corpus, and the
+        /// Remove verb deletes from it.
+        sources : SourceProxy
+        /// Spec 0046: open the light-source editor by intent: `NewSource` (the Add source verb mints
+        /// the entry id AT dispatch) or `EditSource` (a user source).
+        openSourceEditor : LightSourceEditorView.SourceEditorIntent -> unit
         /// Close THIS window (the host passes `this.Close`; tests substitute a recording stub —
         /// the `SampleEditorContext` precedent). The Select-state verbs reach it: 'Select'
         /// closes after `onSelected`, 'Close' after `onCancelled` (spec 0038 step 016).
@@ -286,6 +296,8 @@ type Msg =
     /// The verbs, rewired from the retired Library bay (spec 0038 step 015).
     | AddSample
     | MakeMultilayer
+    /// Spec 0046: open the light-source editor on a NEW user source.
+    | AddSource
     | EditSelected
     | RequestRemoveSelected
     | ConfirmRemove
@@ -346,8 +358,13 @@ let liveEntries (context : LibraryWindowContext) (scope : InactiveVisibility) : 
             match entry with
             | SampleItem _ -> false
             | SourceItem _ | DetectorItem _ | PolarizerItem _ -> true)
-        |> List.distinctBy (fun entry -> entry.entryId)
-    samples @ presets
+    // Spec 0046: the user light sources (the source editor's store) follow the presets; the
+    // `distinctBy` keeps one copy when the injected Library is the live one that already lists them.
+    let userSources =
+        match context.sources.listSources () with
+        | Ok stored -> stored |> List.map SourceItem
+        | Error _ -> []
+    samples @ (presets @ userSources |> List.distinctBy (fun entry -> entry.entryId))
 
 /// The corpus one projection pass works over: the live entries — in Select state pre-narrowed
 /// to the session's kind constraint (spec 0038 step 016). The constraint is applied at THIS
@@ -423,6 +440,16 @@ let editableSample (m : Model) : Sample option =
     match selectedEntry m with
     | Some (SampleItem sample) -> Some sample
     | Some (SourceItem _ | DetectorItem _ | PolarizerItem _) | None -> None
+
+/// Spec 0046: the selected entry as an editable USER light source — the Edit verb's other target. A
+/// protected seeded source has no editor (its Edit is absent, like any preset's).
+let editableSource (m : Model) : SourcePreset option =
+    match selectedEntry m with
+    | Some (SourceItem source) ->
+        match source.protection with
+        | UserManaged -> Some source
+        | ProtectedBuiltIn -> None
+    | Some (SampleItem _ | DetectorItem _ | PolarizerItem _) | None -> None
 
 // ---------------------------------------------------------------------------
 // Lifecycle (spec 0038 step 023): only SAMPLES version and retire (presets are
@@ -652,13 +679,20 @@ let update (msg : Msg) (m : Model) : Model =
         // pre-seeded with a foldable starter period — still minted at open, just not blank.
         m.context.openSampleEditor (SampleEditorView.NewSeededMultilayer (newSampleId ()))
         disarmed m
+    | AddSource ->
+        // Spec 0046: the source's entry id is minted HERE, at the window-open dispatch (the Add
+        // sample precedent), so the launcher keys the new editor by the id its Save stores under.
+        m.context.openSourceEditor (LightSourceEditorView.NewSource (newSourceId ()))
+        disarmed m
     | EditSelected ->
-        // Edit opens the Sample editor on the selected SAMPLE, resolved through the live corpus
-        // at dispatch time; a vanished or preset selection reaches no launcher (the verb is
-        // simply absent for it — removed, not greyed).
-        (match editableSample m with
-         | Some sample -> m.context.openSampleEditor (SampleEditorView.EditSample sample)
-         | None -> ())
+        // Edit opens the Sample editor on the selected SAMPLE, or (spec 0046) the source editor on a
+        // selected USER source, resolved through the live corpus at dispatch time; a vanished or
+        // preset selection reaches no launcher (the verb is simply absent for it — removed, not
+        // greyed).
+        (match editableSample m, editableSource m with
+         | Some sample, _ -> m.context.openSampleEditor (SampleEditorView.EditSample sample)
+         | None, Some source -> m.context.openSourceEditor (LightSourceEditorView.EditSource source)
+         | None, None -> ())
         disarmed m
     | RequestRemoveSelected ->
         match selectedEntry m with
@@ -674,9 +708,10 @@ let update (msg : Msg) (m : Model) : Model =
             | UserManaged ->
                 match entry with
                 | SampleItem sample -> { m with removeGate = PendingRemove sample.id; lastError = None }
-                | SourceItem _ | DetectorItem _ | PolarizerItem _ ->
-                    // Unreachable over today's corpus (every non-sample seed is protected) —
-                    // total handling, never a throw.
+                | SourceItem source -> { m with removeGate = PendingSourceRemove source.id; lastError = None }
+                | DetectorItem _ | PolarizerItem _ ->
+                    // Unreachable over today's corpus (every detector / polarizer seed is
+                    // protected) — total handling, never a throw.
                     { m with
                         removeGate = NoPendingRemove
                         lastError = Some (PresetNotRemovable $"'%s{entry.displayName}' has no removal store — preset entries cannot be removed here.") }
@@ -694,6 +729,15 @@ let update (msg : Msg) (m : Model) : Model =
                 // The store refused (a typed SampleError) — surface the reason inline and leave
                 // the store, selection and list untouched.
                 { m with removeGate = NoPendingRemove; lastError = Some (SampleRemoveRefused err) }
+        | PendingSourceRemove id ->
+            match m.context.sources.removeSource id with
+            | Ok () ->
+                { m with
+                    removeGate = NoPendingRemove
+                    lastError = None
+                    selectedEntryId = (if m.selectedEntryId = Some id then None else m.selectedEntryId)
+                    selectedNodeCode = (if m.selectedEntryId = Some id then "" else m.selectedNodeCode) }
+            | Error err -> { m with removeGate = NoPendingRemove; lastError = Some (SourceRemoveRefused err) }
         | NoPendingRemove -> m
     | CancelRemove ->
         // Cancel only ever disarms — it never dismisses the inline message (the next query /
@@ -1146,8 +1190,9 @@ let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) 
     | MarkActiveAction -> verbButton UiIds.LibraryWindow.markActiveButton "Mark active" (fun () -> dispatch RequestMarkActive)
     | SupersedeAction -> verbButton UiIds.LibraryWindow.supersedeButton "Supersede…" (fun () -> dispatch RequestSupersede)
 
-/// The verbs row: Add sample and Make multilayer always; Edit only for a SAMPLE selection (a
-/// preset has no editor — the verb is removed, not greyed); Remove while an entry is selected
+/// The verbs row: Add sample, Make multilayer and (spec 0046) Add source always; Edit only for a
+/// SAMPLE or USER-SOURCE selection (a preset has no editor — the verb is removed, not greyed); Remove
+/// while an entry is selected
 /// (a protected entry's Remove REFUSES with the typed reason instead of arming the gate); the
 /// lifecycle verbs from `offeredLifecycleActions` (only for a UserManaged sample — a protected
 /// preset exposes NONE, spec 0038 step 023).
@@ -1158,10 +1203,11 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
             [
                 verbButton UiIds.LibraryWindow.addSampleButton "Add sample" (fun () -> dispatch AddSample)
                 verbButton UiIds.LibraryWindow.makeMultilayerButton "Make multilayer" (fun () -> dispatch MakeMultilayer)
+                verbButton UiIds.LibraryWindow.addSourceButton "Add source" (fun () -> dispatch AddSource)
             ]
-            @ (match editableSample m with
-               | Some _ -> [ verbButton UiIds.LibraryWindow.editButton "Edit" (fun () -> dispatch EditSelected) ]
-               | None -> [])
+            @ (match editableSample m, editableSource m with
+               | Some _, _ | None, Some _ -> [ verbButton UiIds.LibraryWindow.editButton "Edit" (fun () -> dispatch EditSelected) ]
+               | None, None -> [])
             @ (match selectedEntry m with
                | Some _ -> [ verbButton UiIds.LibraryWindow.removeButton "Remove" (fun () -> dispatch RequestRemoveSelected) ]
                | None -> [])
@@ -1184,18 +1230,25 @@ let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
 
 /// The inline remove confirmation — present only while a sample remove is armed.
 let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
-    match m.removeGate with
-    | NoPendingRemove -> []
-    | PendingRemove id ->
-        let name =
+    let prompt =
+        match m.removeGate with
+        | NoPendingRemove -> None
+        | PendingRemove id ->
             match m.context.samples.tryGetSample id with
-            | Ok (Some sample) -> sample.name
-            | Ok None | Error _ -> string id.value
+            | Ok (Some sample) -> Some $"Remove sample '%s{sample.name}'?"
+            | Ok None | Error _ -> Some $"Remove sample '%s{string id.value}'?"
+        | PendingSourceRemove id ->
+            match m.context.sources.tryGetSource id with
+            | Ok (Some source) -> Some $"Remove source '%s{source.name}'?"
+            | Ok None | Error _ -> Some $"Remove source '%s{id}'?"
+    match prompt with
+    | None -> []
+    | Some text ->
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
               WrapPanel.children [
                   TextBlock.create [
-                      TextBlock.text $"Remove sample '%s{name}'?"
+                      TextBlock.text text
                       TextBlock.verticalAlignment VerticalAlignment.Center
                       TextBlock.margin (Thickness(0.0, 0.0, 8.0, 4.0))
                   ]
@@ -1250,6 +1303,7 @@ let private messageRow (m : Model) : IView list =
                 | DuplicateSampleId reason
                 | SampleVersionInUse reason
                 | InvalidSample reason -> reason
+            | SourceRemoveRefused sourceError -> sourceError.reason
         [ TextBlock.create [
               automationId<TextBlock> UiIds.LibraryWindow.message
               TextBlock.foreground (brush messageColor)

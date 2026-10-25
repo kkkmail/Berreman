@@ -168,12 +168,13 @@ module MainSceneMsgTests =
         Assert.True(close (elementX (elem 2 m)) -0.1, $"expected -0.1, got {elementX (elem 2 m)}")
 
     [<Fact>]
-    let ``SlideSelectedBy clamps at both plate edges and stays clamped`` () =
+    let ``SlideSelectedBy clamps at both ends of the ray and stays clamped`` () =
+        // Spec 0046: the main beam runs from the source (x = -1) to the detector (x = +1).
         let m = withSample ()
         let atPlus = m |> update (SlideSelectedBy 10.0) |> update (SlideSelectedBy 10.0)
-        Assert.True(close (elementX (elem 2 atPlus)) 1.0, "clamped at +half the plate")
+        Assert.True(close (elementX (elem 2 atPlus)) 1.0, "clamped at the detector")
         let atMinus = atPlus |> update (SlideSelectedBy -10.0)
-        Assert.True(close (elementX (elem 2 atMinus)) -1.0, "one big negative slide runs to -half")
+        Assert.True(close (elementX (elem 2 atMinus)) -1.0, "one big negative slide runs to the source")
 
     [<Fact>]
     let ``sliding moves the element only along the beam`` () =
@@ -194,8 +195,8 @@ module MainSceneMsgTests =
         Assert.Equal<Model>(m, update ResetSelectedPosition m)
 
     [<Fact>]
-    let ``the along-beam clamp is half the plate length`` () =
-        Assert.True(close (plateHalfLength (initMain ())) 1.0, "the default 2 m table clamps sliding to ±1 m")
+    let ``a ray with no detector ends 1 m along`` () =
+        Assert.True(close openRayEndX 1.0, "spec 0046: an open ray ends at the default detector point")
 
     // ============================= the Render bay =============================
 

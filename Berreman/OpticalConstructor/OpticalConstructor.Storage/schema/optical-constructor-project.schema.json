@@ -256,12 +256,29 @@
       "enum": ["EmitReflectedOnly", "EmitTransmittedOnly", "EmitBoth"],
       "description": "Per-element ray-group emission metadata (Spec 0026 Part A, A.7). The three states make the 'both groups suppressed' state unrepresentable. A fieldless DU serialized as a bare string."
     },
+    "moveLock": {
+      "type": "string",
+      "enum": ["MoveLocked", "MoveFree"],
+      "description": "Whether an element may be moved along one table axis (spec 0046). A fieldless DU serialized as a bare string."
+    },
+    "moveLocks": {
+      "type": "object",
+      "description": "The per-axis move locks of a placement (spec 0046): table x, y and z. Only the light source is placed by them; it starts with all three locked.",
+      "required": ["xLock", "yLock", "zLock"],
+      "properties": {
+        "xLock": { "$ref": "#/$defs/moveLock" },
+        "yLock": { "$ref": "#/$defs/moveLock" },
+        "zLock": { "$ref": "#/$defs/moveLock" }
+      }
+    },
     "elementPlacement": {
       "type": "object",
       "description": "One on-table element's placement (Spec 0026 Part A, R-1). The three rotation angles r1/r2/r3 are the engine Angle single-case union serialized as bare radian numbers; the three lock flags are booleans; valueId is the optional element value id (None serializes as null). Added as a sibling of the permissive constructorElement anchor (A.8.1) without renaming any reserved $def.",
-      "required": ["placementPoint", "r1", "r2", "r3", "r1Locked", "r2Locked", "r3Locked", "catalogueKind", "box", "emission", "displayUnit"],
+      "required": ["placementPoint", "height", "moveLocks", "r1", "r2", "r3", "r1Locked", "r2Locked", "r3Locked", "catalogueKind", "box", "emission", "displayUnit"],
       "properties": {
         "placementPoint": { "$ref": "#/$defs/tablePoint" },
+        "height": { "type": "number" },
+        "moveLocks": { "$ref": "#/$defs/moveLocks" },
         "r1": { "type": "number" },
         "r2": { "type": "number" },
         "r3": { "type": "number" },

@@ -48,6 +48,30 @@ module PlacementTests =
         Assert.False(p.r1Locked)
         Assert.False(p.r2Locked)
 
+    [<Fact>]
+    let ``spec 0046 the light source alone moves freely and starts with every move and rotation locked`` () =
+        let source = ElementPlacement.create LightSource TablePoint.origin
+        Assert.Equal(MovesFreely, mobilityOf LightSource)
+        Assert.True(source.r1Locked && source.r2Locked && source.r3Locked)
+        Assert.Equal<MoveLocks>({ xLock = MoveLocked; yLock = MoveLocked; zLock = MoveLocked }, source.moveLocks)
+        Assert.Equal(0.0<meter>, source.height)
+        for kind in [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ] do
+            let p = ElementPlacement.create kind TablePoint.origin
+            Assert.Equal(MovesAlongBeam, mobilityOf kind)
+            Assert.Equal<MoveLocks>({ xLock = MoveFree; yLock = MoveFree; zLock = MoveFree }, p.moveLocks)
+
+    [<Fact>]
+    let ``spec 0046 a locked move axis ignores a change request and an unlocked one applies it`` () =
+        let p = ElementPlacement.create LightSource { x = -1.0<meter>; y = 0.0<meter> }
+        Assert.Equal<ElementPlacement>(p, withPositionOn TableZ 0.2<meter> p)
+        let raised = p |> withMoveLock TableZ MoveFree |> withPositionOn TableZ 0.2<meter>
+        Assert.Equal(0.2<meter>, positionOn TableZ raised)
+        let c = centreOf raised
+        Assert.True(close c.x -1.0 && close c.y 0.0 && close c.z 0.2, $"centre = ({c.x}, {c.y}, {c.z})")
+        let shifted = raised |> withMoveLock TableY MoveFree |> withPositionOn TableY 0.3<meter>
+        Assert.Equal(0.3<meter>, shifted.placementPoint.y)
+        Assert.Equal(MoveLocked, moveLockOf TableX shifted)
+
     // --- A.4.5: per-axis lock respected ------------------------------------
 
     [<Fact>]

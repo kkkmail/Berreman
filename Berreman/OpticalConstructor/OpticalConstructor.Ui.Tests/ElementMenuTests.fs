@@ -131,7 +131,8 @@ module ElementMenuTests =
         let m = plateScene () |> update (AddElement Detector)
         let added = elem 3 m
         Assert.Equal(BeamLayout.OnReflectedBeamOf (elem 2 m).id, added.beam)
-        Assert.True(abs (elementX added - (elementX (elem 2 m) + sideBeamGap)) < tol, "it lands a gap along the reflected ray")
+        // Spec 0046: at the end of the open ray — 1 m along (the reflected ray carries nothing yet).
+        Assert.True(abs (elementX added - openRayEndX) < tol, $"it lands where the open ray ends (x = {elementX added})")
         // Both detectors are lit, so the plate's experiment captures T, R and Both.
         let sampleId = (elem 2 m).id
         Assert.Equal<Experiments.MeasurementMode list>(

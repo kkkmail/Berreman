@@ -112,6 +112,7 @@ type MainConstructorWindow(context : AppContext) as this =
         this.Title <- "Optical Constructor — Main"
         ConstructorScene.mount this (fun () ->
             { TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories with
+                sources = context.sources
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 
@@ -128,6 +129,7 @@ type InverseConstructorWindow(context : AppContext) as this =
         this.Title <- "Optical Constructor — Inverse"
         ConstructorScene.mount this (fun () ->
             { TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories with
+                sources = context.sources
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 
@@ -185,7 +187,7 @@ type LauncherWindow(context : AppContext) as this =
                 launchers.openMaterialsWindow context.materials context.categories)
         let libraryButton =
             surfaceButton LauncherIds.openLibraryButton "Library" (fun () ->
-                launchers.openLibraryWindow context.library context.samples context.materials context.categories)
+                launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
         // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
         // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
         let versionText = $"Version {Berreman.BuildInfo.version.value}"

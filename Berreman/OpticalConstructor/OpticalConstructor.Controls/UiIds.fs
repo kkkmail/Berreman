@@ -39,6 +39,11 @@ module UiIds =
         let r3Field = "RotationR3Field"
         [<Literal>]
         let lockR3 = "RotationLockR3Button"
+        /// Spec 0046: the R1 / R2 lock toggles (offered for elements; the light source starts locked).
+        [<Literal>]
+        let lockR1 = "RotationLockR1Button"
+        [<Literal>]
+        let lockR2 = "RotationLockR2Button"
         // The two reset buttons keep these stable ids in BOTH modes: "Reset"/"Reset All" when idle,
         // and the confirmation "Yes"/"No" when a reset is armed (the label/action changes, not the id).
         [<Literal>]
@@ -65,6 +70,38 @@ module UiIds =
         let reset = "RayPositionResetButton"
         [<Literal>]
         let readout = "RayPositionReadout"
+
+    /// Spec 0046: the free table-position bar (`TablePositionControls`) — the light source's x / y / z,
+    /// each with − / + steps, a metres field and a Lock / Unlock toggle, plus one Reset.
+    module TablePosition =
+        [<Literal>]
+        let xMinus = "TablePositionXMinusButton"
+        [<Literal>]
+        let xPlus = "TablePositionXPlusButton"
+        [<Literal>]
+        let xField = "TablePositionXField"
+        [<Literal>]
+        let xLock = "TablePositionXLockButton"
+        [<Literal>]
+        let yMinus = "TablePositionYMinusButton"
+        [<Literal>]
+        let yPlus = "TablePositionYPlusButton"
+        [<Literal>]
+        let yField = "TablePositionYField"
+        [<Literal>]
+        let yLock = "TablePositionYLockButton"
+        [<Literal>]
+        let zMinus = "TablePositionZMinusButton"
+        [<Literal>]
+        let zPlus = "TablePositionZPlusButton"
+        [<Literal>]
+        let zField = "TablePositionZField"
+        [<Literal>]
+        let zLock = "TablePositionZLockButton"
+        [<Literal>]
+        let reset = "TablePositionResetButton"
+        [<Literal>]
+        let readout = "TablePositionReadout"
 
     /// The renderer "large control" (`RendererControls`).
     module Renderer =
@@ -411,10 +448,38 @@ module UiIds =
         let placeOnMainBeam = "ElementMenuPlaceOnMainBeam"
         /// "Place on the reflected ray of" the element with this id (prefixed so it cannot collide).
         let placeOnReflectedOf (elementId : string) : string = "ElementMenuPlaceOnReflectedOf_" + elementId
+        /// Spec 0046: the menu's Choose… — the Selector bay's Choose… verb for the element the menu serves.
+        [<Literal>]
+        let choose = "ElementMenuChoose"
         [<Literal>]
         let remove = "ElementMenuRemove"
         [<Literal>]
         let close = "ElementMenuClose"
+
+    /// Spec 0046: the Library's light-source editor (`LightSourceEditorView`).
+    module SourceEditor =
+        [<Literal>]
+        let window = "SourceEditorWindow"
+        [<Literal>]
+        let nameBox = "SourceNameBox"
+        [<Literal>]
+        let waveLengthBox = "SourceWaveLengthBox"
+        /// One wavelength-unit choice box, by the unit's short code (prefixed so it cannot collide).
+        let unitButton (code : string) : string = "SourceWaveLengthUnit_" + code
+        [<Literal>]
+        let waveLengthReadout = "SourceWaveLengthReadout"
+        [<Literal>]
+        let statusText = "SourceEditorStatus"
+        [<Literal>]
+        let saveButton = "SourceSaveButton"
+        [<Literal>]
+        let cancelButton = "SourceCancelButton"
+        [<Literal>]
+        let exitConfirm = "SourceExitConfirm"
+        [<Literal>]
+        let discardButton = "SourceDiscardButton"
+        [<Literal>]
+        let keepEditingButton = "SourceKeepEditingButton"
 
     /// The Sample editor (`SampleEditorView`).
     module SampleEditor =
@@ -684,6 +749,9 @@ module UiIds =
         let addSampleButton = "LibraryAddSampleButton"
         [<Literal>]
         let makeMultilayerButton = "LibraryMakeMultilayerButton"
+        /// Spec 0046: open the source editor on a NEW user light source.
+        [<Literal>]
+        let addSourceButton = "LibraryAddSourceButton"
         [<Literal>]
         let editButton = "LibraryEditButton"
         [<Literal>]

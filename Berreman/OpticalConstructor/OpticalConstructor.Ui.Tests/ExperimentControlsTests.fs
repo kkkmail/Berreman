@@ -79,9 +79,9 @@ module ExperimentControlsTests =
     let ``the ribbon offers every bay including Experiments and Details`` () =
         // Spec 0038 (013): the Materials bay left the ribbon (the Materials WINDOW carries that
         // workbench now); spec 0038 (015): the Library (samples) workbench bay left the same
-        // way (the Library WINDOW), so seven in-pane bays remain, Details last.
+        // way (the Library WINDOW), so seven in-pane bays remain, Details last. Spec 0046: Add first.
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector
+            [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector
               BayNames.experiments; BayNames.details ],
             BayNames.all)
         let m = initMain ()

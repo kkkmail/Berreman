@@ -126,7 +126,7 @@ type EditorLaunchers =
         /// this seam. The Sample-editor launcher the retired Library bay carried here
         /// (`openSampleEditor`) moved INTO that window's own composition (`LibraryWindow`),
         /// the step-013 Materials precedent.
-        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
+        openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
         /// Spec 0038 (017): open the SAME single-instance Library window in SELECT state over
         /// the session context (the Selector bay's Choose… verb). A missing window opens fresh
         /// in Select mode; a LIVE one is RE-TARGETED at the new context (a second Choose…
@@ -135,7 +135,7 @@ type EditorLaunchers =
         /// the opened session's cancel-and-close handle — the `SelectSession` staleness lever —
         /// or None when the open failed (the typed error is dropped at this unit seam: a failed
         /// open leaves no window, exactly the user-visible outcome).
-        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
+        openLibrarySelectWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> WorkbenchSettings.SelectWindowModality -> Window -> WindowMode.SelectionContext<Library.LibraryEntry> -> (unit -> unit) option
     }
 
     /// The real launchers — spec 0038 step 008: every verb-opened window goes THROUGH the
@@ -163,10 +163,10 @@ type EditorLaunchers =
                 fun materials categories ->
                     openBrowse WindowLauncher.MaterialsWindowKey (fun () -> MaterialsWindow(materials, categories) :> Window)
             openLibraryWindow =
-                fun library samples materials categories ->
-                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, materials, categories) :> Window)
+                fun library samples sources materials categories ->
+                    openBrowse WindowLauncher.LibraryWindowKey (fun () -> LibraryWindow(library, samples, sources, materials, categories) :> Window)
             openLibrarySelectWindow =
-                fun library samples materials categories modality requestingWindow selectCtx ->
+                fun library samples sources materials categories modality requestingWindow selectCtx ->
                     // Spec 0038 (017): the Select-state open — the SAME registry key as the
                     // Browse opens above, so Choose… and the Library… strip button meet in one
                     // open-or-activate space. A LIVE window is re-pointed through the step-016
@@ -179,7 +179,7 @@ type EditorLaunchers =
                         | _ -> ()
                     let launcher =
                         WindowLauncher.WindowLauncher.create
-                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, materials, categories, mode = WindowMode.Select selectCtx) :> Window |> Ok)
+                            (fun (_ : WindowLauncher.WindowKey) -> LibraryWindow(library, samples, sources, materials, categories, mode = WindowMode.Select selectCtx) :> Window |> Ok)
                             modality
                             (WindowLauncher.SelectOpen (requestingWindow, retargetWindow))
                     match launcher.openOrActivate WindowLauncher.LibraryWindowKey with
@@ -293,6 +293,11 @@ type Model =
         /// step 015: the strip button's Library window (and the Sample editors it opens)
         /// operates over THIS store — the samples workbench bay it replaced is gone.
         samples : Library.SampleProxy
+        /// Spec 0046: the injected USER light-source WRITE seam behind the Library window's source
+        /// editor. Defaulted to a fresh in-memory store; the composition root threads the app-scope one
+        /// by record update (the `experimentData` precedent) — and composes `library` LIVE over it
+        /// (`Library.liveLibrary`), so a user source binds and resolves on the table.
+        sources : Library.SourceProxy
         /// Spec 0035 (009): the injected category WRITE seam (STORE_XDUO_0003) behind the material
         /// editor's create picker and — spec 0038 step 013 — the Materials window's category facet
         /// and its "Categories…" verb.
@@ -362,7 +367,8 @@ module BayNames =
     // samples/library workbench the single-instance Library WINDOW (UICOMP_XDUO_0010), each
     // opened by its right-aligned tab-strip-row button. No full-surface bay remains; every bay
     // keeps the shared table canvas below the strip.
-    let all = [ rotation; move; add; render; selector; experiments; details ]
+    /// Spec 0046: Add comes first — a scene is built before it is turned or moved.
+    let all = [ add; rotation; move; render; selector; experiments; details ]
 
 let defaultElementZoom : float = 5.0
 
@@ -395,6 +401,12 @@ module private DefaultStores =
         let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
         materials, samples, categories
+
+    /// Spec 0046: the user-sources store and the LIVE Library over it and `samples` — the same
+    /// composition `AppContext.create` performs.
+    let liveLibraryOver (samples : SampleProxy) : LibraryProxy * SourceProxy =
+        let sources = SourceProxy.createInMemory ()
+        liveLibrary (createInMemory ()) samples sources, sources
 
 /// Spec 0038 Part L (037): the default experiment-data + experiment-collection proxies for the
 /// parameterless test scenes (`init` / `initMain` / the default `initInverse` caller). The
@@ -448,6 +460,7 @@ let initWith
         selectStatus = None
         materials = materials
         samples = samples
+        sources = Library.SourceProxy.createInMemory ()
         categories = categories
         launchers = EditorLaunchers.defaults
         quickPickThreshold = QuickPickThreshold.defaultValue
@@ -468,8 +481,10 @@ let initWith
 /// The proxies default to the in-memory mocks/stores (the test scene never shows the ribbon bays).
 let init () : Model =
     let materials, samples, categories = DefaultStores.create ()
+    let library, sources = DefaultStores.liveLibraryOver samples
     let experimentData, experimentCollections = defaultExperimentProxies ()
-    initWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories experimentData experimentCollections [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] []
+    { initWith library (Experiments.createInMemory ()) materials samples categories experimentData experimentCollections [ mkElement -0.5 LinearPolarizer; mkElement 0.0 Sample; mkElement 0.5 FlatMirror ] [] with
+        sources = sources }
 
 /// The DYNAMIC Main scene: the same table/view/selection/rotation logic, seeded with a light source and
 /// a detector at the ends of the beam, plus the catalogue palette the user can add elements from (the
@@ -540,7 +555,8 @@ let initInverse
 /// root injects its own proxies via `initMainWith`).
 let initMain () : Model =
     let materials, samples, categories = DefaultStores.create ()
-    initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+    let library, sources = DefaultStores.liveLibraryOver samples
+    { initMainWith library (Experiments.createInMemory ()) materials samples categories with sources = sources }
 
 // ---------------------------------------------------------------------------
 // Scene capture / restore (spec 0038 step 027, IMPLEMENT_CONTRACT STORE_XDUO_0004).
@@ -588,6 +604,10 @@ type Msg =
     | RotateR3By of float
     /// Lock / unlock the selection's R3 (the table's, or the selected element's).
     | ToggleR3Lock
+    /// Spec 0046: lock / unlock the selected ELEMENT's R1 / R2 (the table has no R1 / R2 lock). The light
+    /// source starts with all three rotations locked.
+    | ToggleR1Lock
+    | ToggleR2Lock
     /// Rotation-controls bar (task 008): set the selection's axis to an exact angle, and the
     /// confirmation-gated Reset (selection's rotations) / Reset All (every object's rotations).
     | RotSetAxis of RotationControls.Axis * float
@@ -609,10 +629,17 @@ type Msg =
     /// CPL / CPR pair shares the UNCHANGED CircularPolarizer kind and differs only here.
     | AddElementBoundTo of CatalogueKind * string option
     | RemoveSelected
-    /// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate.
+    /// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate
+    /// (spec 0046: a detector is not clamped).
     | SlideSelectedBy of float
     | SlideSelectedTo of float
     | ResetSelectedPosition
+    /// Spec 0046: move the selected element along a TABLE axis — the light source in x, y and z (the one
+    /// element placed freely); any other element only along its beam (x). Lock-respecting.
+    | MoveSelectedBy of TableAxis * float
+    | MoveSelectedTo of TableAxis * float
+    /// Spec 0046: lock / unlock the selected light source's move along a table axis (all start locked).
+    | ToggleMoveLock of TableAxis
     /// Main-screen RENDER bay (task 018): tune how the elements are drawn.
     | RenderSwap
     | RenderSetRailsIndex of int
@@ -825,7 +852,7 @@ let layoutElements (m : Model) : BeamLayout.LayoutElement list =
 let sceneLayout (m : Model) : BeamLayout.SceneLayout = BeamLayout.layoutWith m.rotationPivot (layoutElements m)
 
 let mainSnap (m : Model) : Map<int, MainNode> * BeamLayout.RaySegment list =
-    let freePos (e : TestElement) : Vector3 = Vector3.create (elementX e) (e.placement.placementPoint.y / 1.0<meter>) 0.0
+    let freePos (e : TestElement) : Vector3 = centreOf e.placement
     if not m.snapChain then
         (m.elements |> List.mapi (fun i e -> i, { position = freePos e; incoming = None }) |> Map.ofList), []
     else
@@ -936,29 +963,49 @@ let private withBoundSampleEmission (m : Model) (p : ElementPlacement) : Element
         | Ok None | Error _ -> p
     | None -> p
 
-/// The plate half-length — the clamp for along-beam motion, in metres.
-let plateHalfLength (m : Model) : float = (m.table.length / 2.0) / 1.0<meter>
+/// Where a ray with no detector on it ends, along the beam (spec 0046): 1 m — the default detector point.
+let openRayEndX : float = RayModel.defaultDetectorPoint.x / 1.0<meter>
 
 /// How far along a ray an element lands past the element it follows — moved onto a reflected ray from
 /// behind its new host, or added at the end of a ray (spec 0046).
 let sideBeamGap : float = 0.3
 
-/// The along-beam position just past the LAST element on `ray` (spec 0046): `sideBeamGap` beyond the
-/// furthest element that actually sits on it (else beyond the element the ray leaves — the source for
-/// the main beam, the host for a reflected ray), clamped to the plate.
+/// Where `ray` starts, along the beam (spec 0046): at the element it leaves — the source for the main
+/// beam, the host for a reflected ray.
+let rayStartX (m : Model) (ray : BeamLayout.BeamHost) : float =
+    match ray with
+    | BeamLayout.OnMainBeam -> m.elements |> List.tryHead
+    | BeamLayout.OnReflectedBeamOf hostId -> m.elements |> List.tryFind (fun e -> e.id = hostId)
+    |> Option.map elementX
+    |> Option.defaultValue 0.0
+
+/// The span of `ray` an element other than element `except` is held to (spec 0046 — one rule, the table
+/// plays no part): from the ray's start to its FIRST detector (other than `except`), or to 1 m along
+/// (`openRayEndX`) when no detector sits on it — never ending before it starts.
+let raySpan (m : Model) (ray : BeamLayout.BeamHost) (except : int option) : float * float =
+    let start = rayStartX m ray
+    let detectors =
+        List.zip m.elements (sceneLayout m).elements
+        |> List.indexed
+        |> List.choose (fun (j, (e, placed)) ->
+            match e.placement.catalogueKind with
+            | Detector when j > 0 && Some j <> except && placed.beam = ray -> Some (elementX e)
+            | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector -> None)
+    let finish =
+        match detectors with
+        | [] -> openRayEndX
+        | xs -> List.min xs
+    start, max start finish
+
+/// Where a detector added to `ray` lands (spec 0046): at the end of the open ray (1 m along), or just past
+/// the last element on it when that lies further.
 let rayEndX (m : Model) (ray : BeamLayout.BeamHost) : float =
-    let start =
-        match ray with
-        | BeamLayout.OnMainBeam -> m.elements |> List.tryHead
-        | BeamLayout.OnReflectedBeamOf hostId -> m.elements |> List.tryFind (fun e -> e.id = hostId)
-        |> Option.map elementX
-        |> Option.defaultValue 0.0
     let last =
         List.zip m.elements (sceneLayout m).elements
         |> List.indexed
         |> List.choose (fun (i, (e, placed)) -> if i > 0 && placed.beam = ray then Some (elementX e) else None)
-        |> List.fold max start
-    min (plateHalfLength m) (last + sideBeamGap)
+        |> List.fold max (rayStartX m ray)
+    max openRayEndX (last + sideBeamGap)
 
 /// Append a catalogue element to the scene and select it. New elements are spread along the beam so
 /// they do not land exactly on top of one another; the user then rotates / configures the selection.
@@ -983,7 +1030,9 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Mod
             | Some ray -> ray, rayEndX m ray
             | None -> BeamLayout.OnMainBeam, defaultX
         | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
-            BeamLayout.OnMainBeam, defaultX
+            // Held to the main beam's span (spec 0046), like any slide along it.
+            let start, finish = raySpan m BeamLayout.OnMainBeam None
+            BeamLayout.OnMainBeam, clamp start finish defaultX
     let placement =
         { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
         |> withBoundSampleEmission m
@@ -1013,28 +1062,83 @@ let private removeSelected (m : Model) : Model =
     | _ -> m
 
 // ---------------------------------------------------------------------------
-// Main-screen MOVE bay: slide the selected element along the beam (its x), clamped to the plate.
+// Main-screen MOVE bay (spec 0046 — one rule, the table plays no part): an element slides along its RAY,
+// which starts at the element it leaves and ends at its first detector (1 m along with none); a detector
+// slides anywhere past the start, extending its ray; the light source — the one element placed freely —
+// moves in x, y and z.
 // ---------------------------------------------------------------------------
 
-let private setElementX (i : int) (x : float) (m : Model) : Model =
-    let half = plateHalfLength m
-    let x' = max (-half) (min half x)
-    mapElement i (fun e -> { e with placement = { e.placement with placementPoint = { e.placement.placementPoint with x = x' * 1.0<meter> } } }) m
+/// How far element `i` may slide along its ray (spec 0046): a DETECTOR anywhere from the ray's start on
+/// (moving it extends the ray), every other element within `raySpan`. The light source is placed freely.
+let alongBeamRange (m : Model) (i : int) : RayPositionControls.PositionRange =
+    match List.tryItem i m.elements, List.tryItem i (sceneLayout m).elements with
+    | Some e, Some placed when i > 0 ->
+        match e.placement.catalogueKind with
+        | Detector -> RayPositionControls.AtLeast (rayStartX m placed.beam)
+        | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
+            RayPositionControls.BoundedRange (raySpan m placed.beam (Some i))
+    | Some _, Some _ | Some _, None | None, _ -> RayPositionControls.UnboundedRange
 
-let private slideSelectedBy (dx : float) (m : Model) : Model =
+let private clampTo (range : RayPositionControls.PositionRange) (v : float) : float =
+    match range with
+    | RayPositionControls.BoundedRange (lo, hi) -> clamp lo hi v
+    | RayPositionControls.AtLeast lo -> max lo v
+    | RayPositionControls.UnboundedRange -> v
+
+/// Move the selected element to `v` metres along a table axis (spec 0046), lock-respecting: the light
+/// source along any axis, freely; any other element only along its beam (x), within `alongBeamRange` —
+/// its y and z come from the beam it is snapped to.
+let private moveSelectedTo (axis : TableAxis) (v : float) (m : Model) : Model =
     match m.selection with
-    | ElementSelected i -> setElementX i (elementX (List.item i m.elements) + dx) m
-    | TableSelected | NothingSelected -> m
+    | ElementSelected i when i >= 0 && i < List.length m.elements ->
+        let kind = (List.item i m.elements).placement.catalogueKind
+        let moveTo (range : RayPositionControls.PositionRange) : Model =
+            mapElement i (fun e -> { e with placement = withPositionOn axis (clampTo range v * 1.0<meter>) e.placement }) m
+        match mobilityOf kind, axis with
+        | MovesFreely, _ -> moveTo RayPositionControls.UnboundedRange
+        | MovesAlongBeam, TableX -> moveTo (alongBeamRange m i)
+        | MovesAlongBeam, (TableY | TableZ) -> m
+    | ElementSelected _ | TableSelected | NothingSelected -> m
 
-let private slideSelectedTo (x : float) (m : Model) : Model =
+let private moveSelectedBy (axis : TableAxis) (d : float) (m : Model) : Model =
     match m.selection with
-    | ElementSelected i -> setElementX i x m
-    | TableSelected | NothingSelected -> m
+    | ElementSelected i when i >= 0 && i < List.length m.elements ->
+        moveSelectedTo axis (positionOn axis (List.item i m.elements).placement / 1.0<meter> + d) m
+    | ElementSelected _ | TableSelected | NothingSelected -> m
 
+/// Lock / unlock the selected light source's move along a table axis (spec 0046); inert for an element
+/// snapped to its beam.
+let private toggleMoveLock (axis : TableAxis) (m : Model) : Model =
+    match m.selection with
+    | ElementSelected i when i >= 0 && i < List.length m.elements ->
+        match mobilityOf (List.item i m.elements).placement.catalogueKind with
+        | MovesFreely ->
+            mapElement i (fun e ->
+                let lock =
+                    match moveLockOf axis e.placement with
+                    | MoveLocked -> MoveFree
+                    | MoveFree -> MoveLocked
+                { e with placement = withMoveLock axis lock e.placement }) m
+        | MovesAlongBeam -> m
+    | ElementSelected _ | TableSelected | NothingSelected -> m
+
+/// Reset the selected element's position (spec 0046), bypassing the move locks like the rotations' Reset:
+/// the light source back to its default point in the table plane, a detector to 1 m along (the default
+/// detector point), anything else to x = 0 — each still held to its ray (`alongBeamRange`).
 let private resetSelectedPosition (m : Model) : Model =
     match m.selection with
-    | ElementSelected i -> setElementX i 0.0 m
-    | TableSelected | NothingSelected -> m
+    | ElementSelected i when i >= 0 && i < List.length m.elements ->
+        let range = alongBeamRange m i
+        mapElement i (fun e ->
+            let p = e.placement
+            let alongTo (x : float) : ElementPlacement = { p with placementPoint = { p.placementPoint with x = clampTo range x * 1.0<meter> } }
+            let home =
+                match p.catalogueKind with
+                | LightSource -> { p with placementPoint = RayModel.defaultSourcePoint; height = 0.0<meter> }
+                | Detector -> alongTo openRayEndX
+                | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror -> alongTo 0.0
+            { e with placement = home }) m
+    | ElementSelected _ | TableSelected | NothingSelected -> m
 
 // ---------------------------------------------------------------------------
 // Spec 0046 — the element menu's verbs: switch an element's reflected / transmitted rays and move it
@@ -1071,13 +1175,16 @@ let private placeOnBeam (id : Library.ElementId) (host : BeamLayout.BeamHost) (m
         | BeamLayout.OnReflectedBeamOf hostId ->
             match List.contains hostId (BeamLayout.attachableHosts (layoutElements m) id), m.elements |> List.tryFind (fun e -> e.id = hostId) with
             | true, Some hostElement ->
-                let half = plateHalfLength m
                 let hostX = elementX hostElement
-                mapElement i (fun e ->
-                    let x = if elementX e > hostX then elementX e else min half (hostX + sideBeamGap)
-                    { e with
-                        beam = host
-                        placement = { e.placement with placementPoint = { e.placement.placementPoint with x = x * 1.0<meter> } } }) m
+                let onRay =
+                    mapElement i (fun e ->
+                        let x = if elementX e > hostX then elementX e else hostX + sideBeamGap
+                        { e with
+                            beam = host
+                            placement = { e.placement with placementPoint = { e.placement.placementPoint with x = x * 1.0<meter> } } }) m
+                // Held to the span of the ray it now sits on (spec 0046).
+                let range = alongBeamRange onRay i
+                mapElement i (fun e -> { e with placement = { e.placement with placementPoint = { e.placement.placementPoint with x = clampTo range (elementX e) * 1.0<meter> } } }) onRay
             | _ -> m
     | Some _ | None -> m
 
@@ -1231,6 +1338,14 @@ let rec update (msg : Msg) (model : Model) : Model =
         | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
         | ElementSelected i -> mapElement i (fun e -> { e with placement = setR3Locked (not e.placement.r3Locked) e.placement }) model
         | NothingSelected -> model
+    | ToggleR1Lock ->
+        match model.selection with
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR1Locked (not e.placement.r1Locked) e.placement }) model
+        | TableSelected | NothingSelected -> model
+    | ToggleR2Lock ->
+        match model.selection with
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR2Locked (not e.placement.r2Locked) e.placement }) model
+        | TableSelected | NothingSelected -> model
     | RotSetAxis (axis, v) -> setSelectedAxis axis v model
     | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
     | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
@@ -1248,9 +1363,12 @@ let rec update (msg : Msg) (model : Model) : Model =
         update (AddElementBoundTo (kind, defaultSeedEntry kind)) model
     | AddElementBoundTo (kind, prebind) -> addElement kind prebind model
     | RemoveSelected -> removeSelected model
-    | SlideSelectedBy dx -> slideSelectedBy dx model
-    | SlideSelectedTo x -> slideSelectedTo x model
+    | SlideSelectedBy dx -> moveSelectedBy TableX dx model
+    | SlideSelectedTo x -> moveSelectedTo TableX x model
     | ResetSelectedPosition -> resetSelectedPosition model
+    | MoveSelectedBy (axis, d) -> moveSelectedBy axis d model
+    | MoveSelectedTo (axis, v) -> moveSelectedTo axis v model
+    | ToggleMoveLock axis -> toggleMoveLock axis model
     | RenderSwap -> { model with render = RendererControls.swap model.render }
     | RenderSetRailsIndex i -> { model with render = RendererControls.withRailsIndex i model.render }
     | RenderSetCircles n -> { model with render = RendererControls.withCircles n model.render }
@@ -1445,7 +1563,7 @@ let rec update (msg : Msg) (model : Model) : Model =
         // `LibraryWindowKey`, so a second click ACTIVATES the live window. No model change: the
         // window runs its own MVU loop over the same stores (the retired samples-workbench bay's
         // query/selection/confirm state lives in the window's own model now).
-        model.launchers.openLibraryWindow model.library model.samples model.materials model.categories
+        model.launchers.openLibraryWindow model.library model.samples model.sources model.materials model.categories
         model
     | OpenElementMenuAt pt ->
         // Spec 0046: a right click selects the element under the point (the same nearest-within-radius
@@ -1599,22 +1717,29 @@ let private elementViews (model : Model) : IView list =
 /// The shared rotation-controls bar's state for whatever is selected (the table, or an element).
 /// When nothing is selected the bar is disabled — there is nothing to rotate (task 008).
 let private rotationState (model : Model) : RotationControls.State =
+    // Spec 0046: an element offers R1 / R2 lock toggles too (the light source starts with all three
+    // locked); the table locks R3 alone.
+    let offer (locked : bool) : RotationControls.AxisLockOffer =
+        RotationControls.Lockable (if locked then RotationControls.AxisLocked else RotationControls.AxisFree)
     match model.selection with
     | TableSelected ->
         { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+          r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
           r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
     | ElementSelected i ->
         let p = (List.item i model.elements).placement
         { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+          r1Lock = offer p.r1Locked; r2Lock = offer p.r2Locked
           r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
     | NothingSelected ->
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
+          r3Locked = false; enabled = false; confirm = model.rotationConfirm }
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
         rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
         setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
-        toggleR3Lock = fun () -> dispatch ToggleR3Lock
+        toggleLock = fun axis -> dispatch (match axis with RotationControls.R1 -> ToggleR1Lock | RotationControls.R2 -> ToggleR2Lock | RotationControls.R3 -> ToggleR3Lock)
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
         confirm = fun () -> dispatch RotConfirm
@@ -1641,7 +1766,14 @@ let private readoutText (model : Model) : string =
                 | Ok (Some entry) -> entry.displayName
                 | Ok None | Error _ -> "unbound"
             | None -> "unbound"
-        $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(if p.r3Locked then "R3 locked" else "R3 free")})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
+        // Spec 0046: name every locked rotation axis (the light source starts with all three locked).
+        let lockText =
+            match [ if p.r1Locked then "R1"
+                    if p.r2Locked then "R2"
+                    if p.r3Locked then "R3" ] with
+            | [] -> "rotations free"
+            | locked -> (String.concat " " locked) + " locked"
+        $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{lockText})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
     | NothingSelected -> "Selected: none   (click the table or an element to select it)"
 
 /// Spec 0038 (018): one add-palette BUTTON — its stable code (the `PaletteAdd_<code>` automation-id
@@ -1815,12 +1947,13 @@ let private mainElementViews (model : Model) : IView list =
     |> List.concat
 
 /// The MOVE bay state/handlers: slide the selected element along the beam (disabled unless an element is
-/// selected). The clamp (±half the plate) is the host's.
+/// selected). The clamp is the host's: ±half the plate, none for a detector (spec 0046).
 let private moveState (model : Model) : RayPositionControls.State =
-    let half = plateHalfLength model
     match model.selection with
-    | ElementSelected i -> { position = elementX (List.item i model.elements); minPosition = -half; maxPosition = half; enabled = true }
-    | TableSelected | NothingSelected -> { position = 0.0; minPosition = -half; maxPosition = half; enabled = false }
+    | ElementSelected i ->
+        let e = List.item i model.elements
+        { position = elementX e; range = alongBeamRange model i; enabled = true }
+    | TableSelected | NothingSelected -> { position = 0.0; range = RayPositionControls.UnboundedRange; enabled = false }
 
 let private moveHandlers (dispatch : Msg -> unit) : RayPositionControls.Handlers =
     {
@@ -1828,6 +1961,54 @@ let private moveHandlers (dispatch : Msg -> unit) : RayPositionControls.Handlers
         setPosition = fun x -> dispatch (SlideSelectedTo x)
         reset = fun () -> dispatch ResetSelectedPosition
     }
+
+/// Spec 0046: the Controls-layer ⇄ domain mirror of the table axes (the bar is domain-free).
+let private ofPositionAxis (axis : TablePositionControls.Axis) : TableAxis =
+    match axis with
+    | TablePositionControls.AxisX -> TableX
+    | TablePositionControls.AxisY -> TableY
+    | TablePositionControls.AxisZ -> TableZ
+
+/// Spec 0046: the free table-position bar's state for the selected light source — its x / y / height and
+/// the three move locks.
+let private sourcePositionState (p : ElementPlacement) : TablePositionControls.State =
+    let axisState (axis : TableAxis) : TablePositionControls.AxisState =
+        { position = positionOn axis p / 1.0<meter>
+          lock =
+            match moveLockOf axis p with
+            | MoveLocked -> TablePositionControls.AxisLocked
+            | MoveFree -> TablePositionControls.AxisFree }
+    { x = axisState TableX; y = axisState TableY; z = axisState TableZ; enabled = true }
+
+let private sourcePositionHandlers (dispatch : Msg -> unit) : TablePositionControls.Handlers =
+    {
+        moveBy = fun axis d -> dispatch (MoveSelectedBy (ofPositionAxis axis, d))
+        setPosition = fun axis v -> dispatch (MoveSelectedTo (ofPositionAxis axis, v))
+        toggleLock = fun axis -> dispatch (ToggleMoveLock (ofPositionAxis axis))
+        reset = fun () -> dispatch ResetSelectedPosition
+    }
+
+/// The Move bay (spec 0046): the light source — placed freely — gets the x / y / z bar with its move locks;
+/// every other element (snapped to its beam) the along-beam bar. Each is KEYED, so switching the selection
+/// between them recreates the bar rather than patching one's named fields into the other's.
+let private moveBayContent (model : Model) (dispatch : Msg -> unit) : IView =
+    let freeSource =
+        match model.selection with
+        | ElementSelected i when i >= 0 && i < List.length model.elements ->
+            let p = (List.item i model.elements).placement
+            match mobilityOf p.catalogueKind with
+            | MovesFreely -> Some p
+            | MovesAlongBeam -> None
+        | ElementSelected _ | TableSelected | NothingSelected -> None
+    match freeSource with
+    | Some p ->
+        Border.create [ Border.child (TablePositionControls.view (sourcePositionState p) (sourcePositionHandlers dispatch)) ]
+        |> Avalonia.FuncUI.DSL.View.withKey "MoveBayFree"
+        :> IView
+    | None ->
+        Border.create [ Border.child (RayPositionControls.view (moveState model) (moveHandlers dispatch)) ]
+        |> Avalonia.FuncUI.DSL.View.withKey "MoveBayAlongBeam"
+        :> IView
 
 let private renderHandlers (dispatch : Msg -> unit) : RendererControls.Handlers =
     {
@@ -2779,7 +2960,7 @@ let private chooseFromLibrary (model : Model) (dispatch : Msg -> unit) (element 
             onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
         }
-    match model.launchers.openLibrarySelectWindow model.library model.samples model.materials model.categories model.selectWindowModality owner selectCtx with
+    match model.launchers.openLibrarySelectWindow model.library model.samples model.sources model.materials model.categories model.selectWindowModality owner selectCtx with
     | Some cancelAndClose ->
         let session : SelectSession = { target = element.id; cancelAndClose = cancelAndClose }
         sessionRef.Value <- Some session
@@ -3096,12 +3277,13 @@ let private pivotCheckBox (model : Model) (dispatch : Msg -> unit) : IView =
         CheckBox.onClick ((fun _ -> dispatch (SetRotationPivot (if isOn then BeamLayout.PivotAtCentre else BeamLayout.PivotAtIncidentFace))), SubPatchOptions.OnChangeOf (box isOn))
     ] :> IView
 
-/// The Rotation bay: the shared rotation-controls bar plus the global rotation-pivot option.
+/// The Rotation bay: the shared rotation-controls bar (wrapping — an element's three lock toggles outgrow the
+/// window, spec 0046) plus the global rotation-pivot option.
 let private rotationBayContent (model : Model) (dispatch : Msg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 4.0
-        StackPanel.children [ RotationControls.view (rotationState model) (rotationHandlers dispatch); pivotCheckBox model dispatch ]
+        StackPanel.children [ RotationControls.wrappingView (rotationState model) (rotationHandlers dispatch); pivotCheckBox model dispatch ]
     ] :> IView
 
 /// The Main-screen ribbon Bays — every large control, each bound to the current model / dispatch. Adding
@@ -3109,9 +3291,9 @@ let private rotationBayContent (model : Model) (dispatch : Msg -> unit) : IView 
 /// (Spec 0038 step 015: no FULL-SURFACE bay remains — the samples workbench that used the mode is the
 /// Library WINDOW now; the mode itself stays in the generic Ribbon control.)
 let mainBays (model : Model) (dispatch : Msg -> unit) : Ribbon.Bay list =
-    [ { name = BayNames.rotation; content = rotationBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.move; content = RayPositionControls.view (moveState model) (moveHandlers dispatch); mode = Ribbon.InRibbonPane }
-      { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
+    [ { name = BayNames.add; content = ElementPaletteControls.view (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
+      { name = BayNames.rotation; content = rotationBayContent model dispatch; mode = Ribbon.InRibbonPane }
+      { name = BayNames.move; content = moveBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.render; content = RendererControls.view model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
       { name = BayNames.selector; content = selectorBayContent model dispatch; mode = Ribbon.InRibbonPane }
       { name = BayNames.experiments; content = experimentsBayContent model dispatch; mode = Ribbon.InRibbonPane }
@@ -3177,6 +3359,32 @@ let private elementMenuItem (autoId : string) (label : string) (enabled : bool) 
     |> Avalonia.FuncUI.DSL.View.withKey autoId
     :> IView
 
+/// Spec 0046: the menu's Choose… row — the Selector bay's Choose… verb (`chooseFromLibrary`) for the
+/// element the menu serves, which then closes the menu. Like the Selector's button, the owner window for a
+/// modal Select open is resolved from the click's own visual tree, and the subscription re-patches on the
+/// element's id (the closure's only render-varying capture).
+let private elementMenuChooseItem (model : Model) (dispatch : Msg -> unit) (element : TestElement) : IView =
+    Border.create [
+        workbenchAutomationId UiIds.ElementMenu.choose
+        Border.background (brush (color 255 255 255))
+        Border.padding (Thickness(10.0, 4.0))
+        Border.child (TextBlock.create [ TextBlock.text "Choose…" ])
+        Border.onPointerPressed ((fun e ->
+            e.Handled <- true
+            // Resolve the owner BEFORE closing the menu: closing re-renders it out of the visual tree.
+            let ownerOpt =
+                match e.Source with
+                | :? Visual as source ->
+                    match TopLevel.GetTopLevel source with
+                    | :? Window as owner -> Some owner
+                    | _ -> None
+                | _ -> None
+            dispatch CloseElementMenu
+            ownerOpt |> Option.iter (chooseFromLibrary model dispatch element)), SubPatchOptions.OnChangeOf element.id.value)
+    ]
+    |> Avalonia.FuncUI.DSL.View.withKey UiIds.ElementMenu.choose
+    :> IView
+
 /// A non-clickable element-menu line — a section heading, or a greyed explanatory note.
 let private elementMenuNote (text : string) (heading : bool) : IView =
     TextBlock.create [
@@ -3187,10 +3395,10 @@ let private elementMenuNote (text : string) (heading : bool) : IView =
         TextBlock.foreground (brush (if heading then color 40 40 40 else color 110 110 110))
     ] :> IView
 
-/// The element menu's rows for the element it serves: its title, the ray switches (a source / detector
-/// only explains why it has none; a mirror or reflect-only sample shows them fixed, with the reason), the
-/// beam it sits on (never for the source — the ray root), Remove, Close. Public so the row set is provable
-/// headless without a window.
+/// The element menu's rows for the element it serves: its title, Choose… (spec 0046 — the Selector bay's
+/// Choose…), the ray switches (a source / detector only explains why it has none; a mirror or reflect-only
+/// sample shows them fixed, with the reason), the beam it sits on (never for the source — the ray root),
+/// Remove, Close. Public so the row set is provable headless without a window.
 let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu) : IView list =
     match model.elements |> List.tryFindIndex (fun e -> e.id = menu.target) with
     | None -> []
@@ -3234,7 +3442,8 @@ let elementMenuRows (model : Model) (dispatch : Msg -> unit) (menu : ElementMenu
                 [ elementMenuNote "Sits on" true
                   elementMenuItem UiIds.ElementMenu.placeOnMainBeam $"%s{radio (current = BeamLayout.OnMainBeam)} Main beam" true (fun () -> dispatch (PlaceOnBeam (e.id, BeamLayout.OnMainBeam))) ]
                 @ reflectedRows
-        [ elementMenuNote (nameOf i) true ]
+        [ elementMenuNote (nameOf i) true
+          elementMenuChooseItem model dispatch e ]
         @ rayRows
         @ beamRows
         @ [ elementMenuItem UiIds.ElementMenu.remove "Remove element" true (fun () -> dispatch RemoveSelected)

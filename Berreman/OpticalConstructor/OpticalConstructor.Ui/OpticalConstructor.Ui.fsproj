@@ -90,6 +90,10 @@
              MaterialsWindow in Select state, so the window host compiles AFTER it (the pure
              SampleEditorView stays earlier, beside the other editor views). -->
         <Compile Include="SampleEditorWindow.fs" />
+        <!-- Spec 0046: the Library's light-source editor (view + window) — before the Library window,
+             whose Add source / Edit verbs open it under SourceEditorKey. -->
+        <Compile Include="LightSourceEditorView.fs" />
+        <Compile Include="LightSourceEditorWindow.fs" />
         <!-- Spec 0038 Part F (step 015, UICOMP_XDUO_0010): the single-instance Library window —
              the step-012 FacetedTreeControls over the step-011 library facet catalogue (default
              representation "By kind"), a view panel, and the Add sample / Make multilayer /

@@ -510,6 +510,43 @@ module Library =
             removeSample : SampleId -> Result<unit, SampleError>
         }
 
+    /// The user-sources write-seam error channel (spec 0046; errors as values, each case carrying a
+    /// diagnostic `reason`): an unknown id on remove, a malformed source, and an attempt to store a
+    /// protected built-in (the seeded presets live in the read-only `LibraryProxy`, never here).
+    type SourceError =
+        | UnknownSourceId of reason : string
+        | InvalidSource of reason : string
+        | ProtectedSourceRefused of reason : string
+
+        member this.reason : string =
+            match this with
+            | UnknownSourceId reason
+            | InvalidSource reason
+            | ProtectedSourceRefused reason -> reason
+
+    /// The mutating USER-SOURCES write-seam (spec 0046 — the Library's source editor): the
+    /// functional-proxy convention, a record of camelCase `Result`-returning functions a test
+    /// substitutes with stubs of the SAME shape (reference-compared, so a model holding one keeps
+    /// its equality). It holds only `UserManaged` sources; the seeded protected presets stay in the
+    /// read-only `LibraryProxy`. Unversioned: an experiment binds a source by its entry id.
+    ///
+    /// - `listSources` — every user source, in creation order;
+    /// - `tryGetSource id` — the user source with this entry id, if any;
+    /// - `saveSource source` — insert a new source or replace the one with the same id (validated);
+    /// - `removeSource id` — delete a user source; an unknown id is `UnknownSourceId`.
+    [<ReferenceEquality>]
+    type SourceProxy =
+        {
+            listSources : unit -> Result<SourcePreset list, SourceError>
+            tryGetSource : string -> Result<SourcePreset option, SourceError>
+            saveSource : SourcePreset -> Result<unit, SourceError>
+            removeSource : string -> Result<unit, SourceError>
+        }
+
+    /// Mint the entry id of a NEW user source (spec 0046) — at the editor's window open, like a new
+    /// sample's `SampleId`, so the launcher keys the editor by the id Save persists under.
+    let newSourceId () : string = $"src-%s{Guid.NewGuid().ToString()}"
+
     /// A single-layer thin-film structure between vacuum (the common seed shape). The layer pins
     /// version one of the material (spec 0038 step 022 — the seeds carry version-pinned references).
     let private filmStructure (materialId : MaterialId) (thickness : Thickness) : SampleStructure =
@@ -722,9 +759,58 @@ module Library =
                 multilayerQw; euvMoSi; uniaxial; biaxial; activeCrystal; langasiteSilicon
             ]
 
+    /// The seeded light sources (spec 0046): the 600 nm reference source, well-known lasers, and the
+    /// UV / EUV lithography sources — every one a PROTECTED monochromatic preset (a source is its
+    /// wavelength, spec Q3). Commonly quoted line wavelengths; the excimer and mercury lines are the
+    /// ones the lithography steppers are named after.
+    module SeedSources =
+
+        let private source (id : string) (name : string) (waveLength : WaveLength) : SourcePreset =
+            { id = id; name = name; waveLength = waveLength; protection = ProtectedBuiltIn }
+
+        /// The reference source every scene defaulted to before spec 0046.
+        let reference600 : SourcePreset = source "src-600" "Monochromatic 600 nm" (WaveLength.nm 600.0<nm>)
+
+        /// Well-known lasers, by gain medium (the harmonics of Nd:YAG included).
+        let lasers : SourcePreset list =
+            [
+                source "src-hene-633" "HeNe laser 632.8 nm" (WaveLength.nm 632.8<nm>)
+                source "src-hene-543" "HeNe laser 543.5 nm (green)" (WaveLength.nm 543.5<nm>)
+                source "src-ar-488" "Argon-ion laser 488 nm" (WaveLength.nm 488.0<nm>)
+                source "src-ar-515" "Argon-ion laser 514.5 nm" (WaveLength.nm 514.5<nm>)
+                source "src-hecd-442" "HeCd laser 441.6 nm" (WaveLength.nm 441.6<nm>)
+                source "src-hecd-325" "HeCd laser 325 nm (UV)" (WaveLength.nm 325.0<nm>)
+                source "src-diode-405" "GaN diode laser 405 nm" (WaveLength.nm 405.0<nm>)
+                source "src-ruby-694" "Ruby laser 694.3 nm" (WaveLength.nm 694.3<nm>)
+                source "src-tisa-800" "Ti:sapphire laser 800 nm" (WaveLength.nm 800.0<nm>)
+                source "src-ndyag-1064" "Nd:YAG laser 1064 nm" (WaveLength.nm 1064.0<nm>)
+                source "src-ndyag-532" "Nd:YAG ×2 532 nm" (WaveLength.nm 532.0<nm>)
+                source "src-ndyag-355" "Nd:YAG ×3 355 nm (UV)" (WaveLength.nm 355.0<nm>)
+                source "src-ndyag-266" "Nd:YAG ×4 266 nm (DUV)" (WaveLength.nm 266.0<nm>)
+                source "src-er-1550" "Erbium fibre laser 1550 nm" (WaveLength.nm 1550.0<nm>)
+                source "src-co2-10600" "CO₂ laser 10.6 µm" (WaveLength.nm 10600.0<nm>)
+            ]
+
+        /// The UV / EUV lithography sources: the mercury-lamp lines, the DUV excimer lasers, and the
+        /// tin-plasma EUV source with its beyond-EUV successor.
+        let lithography : SourcePreset list =
+            [
+                source "src-hg-g-436" "Mercury g-line 435.8 nm" (WaveLength.nm 435.8<nm>)
+                source "src-hg-h-405" "Mercury h-line 404.7 nm" (WaveLength.nm 404.7<nm>)
+                source "src-hg-i-365" "Mercury i-line 365 nm" (WaveLength.nm 365.0<nm>)
+                source "src-krf-248" "KrF excimer 248 nm (DUV)" (WaveLength.nm 248.4<nm>)
+                source "src-arf-193" "ArF excimer 193 nm (DUV, dry / immersion)" (WaveLength.nm 193.4<nm>)
+                source "src-f2-157" "F₂ excimer 157 nm (VUV)" (WaveLength.nm 157.6<nm>)
+                source "src-euv-13p5" "EUV 13.5 nm (Sn plasma)" (WaveLength.nm 13.5<nm>)
+                source "src-beuv-6p7" "BEUV 6.7 nm (beyond EUV)" (WaveLength.nm 6.7<nm>)
+            ]
+
+        /// Every seeded source, in Library display order.
+        let all : SourcePreset list = reference600 :: lasers @ lithography
+
     /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
-    /// LP + two ideal CP, and one monochromatic source. Every sample's stack is DATA (spec 0033
+    /// LP + two ideal CP, and the seeded sources (`SeedSources`). Every sample's stack is DATA (spec 0033
     /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
     /// the samples are the named `SeedSamples` values (spec 0033 step 002). The six presets are
     /// ordinary PROTECTED entries (spec 0038 Part F — `ProtectedBuiltIn`); the seeded samples stay
@@ -738,8 +824,9 @@ module Library =
             PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
             PolarizerItem { id = "pol-cp-left"; name = "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
             PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
-            SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm>; protection = ProtectedBuiltIn }
         ]
+        // Spec 0046: the seeded sources — the 600 nm reference, the lasers, the lithography sources.
+        @ (SeedSources.all |> List.map SourceItem)
 
     /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
     /// (spec 0033 step 002 — the id literal lives only in `SeedSamples`), carrying its Guid-string
@@ -788,7 +875,13 @@ module Library =
                                                sampleLeaf "Langasite on silicon" SeedSamples.langasiteSilicon
                                            ])
                                   ])
-                             Group (TreeLabel "Sources", [ Leaf (TreeLabel "600 nm", "src-600") ])
+                             Group
+                                 (TreeLabel "Sources",
+                                  [
+                                      Leaf (TreeLabel "600 nm", SeedSources.reference600.id)
+                                      Group (TreeLabel "Lasers", SeedSources.lasers |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
+                                      Group (TreeLabel "Lithography (UV / EUV)", SeedSources.lithography |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
+                                  ])
                              Group
                                  (TreeLabel "Detectors",
                                   [
@@ -906,3 +999,91 @@ module Library =
         match samples.listSamples ActiveOnly with
         | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)
         | Error _ -> []
+
+    /// The write-seam validation the user-sources store's `saveSource` runs (spec 0046): a blank
+    /// name, a blank id, or a wavelength that is not a positive finite length is `InvalidSource`; a
+    /// `ProtectedBuiltIn` source is refused (only user-managed sources are stored here).
+    let validateSource (s : SourcePreset) : Result<unit, SourceError> =
+        let metres = s.waveLength.value / 1.0<meter>
+        if String.IsNullOrWhiteSpace s.id then Error (InvalidSource "a source needs an id")
+        elif String.IsNullOrWhiteSpace s.name then Error (InvalidSource $"source '%s{s.id}' has a blank name")
+        elif Double.IsNaN metres || Double.IsInfinity metres || metres <= 0.0 then
+            Error (InvalidSource $"source '%s{s.name}' needs a positive wavelength")
+        else
+            match s.protection with
+            | ProtectedBuiltIn -> Error (ProtectedSourceRefused $"source '%s{s.name}' is a protected built-in — it is not stored with the user sources")
+            | UserManaged -> Ok ()
+
+    type SourceProxy with
+
+        /// The in-memory user-sources store (spec 0046): empty at start (§0.2 — nothing is persisted
+        /// across app runs), `saveSource` inserts or replaces by id, `removeSource` deletes. Mutation
+        /// stays INSIDE the closure (the IO boundary), so logic holding the proxy stays pure.
+        static member createInMemory () : SourceProxy =
+            let store = ref ([] : SourcePreset list)
+            {
+                listSources = fun () -> Ok store.Value
+                tryGetSource = fun id -> Ok (store.Value |> List.tryFind (fun s -> s.id = id))
+                saveSource =
+                    fun source ->
+                        validateSource source
+                        |> Result.map (fun () ->
+                            match store.Value |> List.exists (fun s -> s.id = source.id) with
+                            | true -> store.Value <- store.Value |> List.map (fun s -> if s.id = source.id then source else s)
+                            | false -> store.Value <- store.Value @ [ source ])
+                removeSource =
+                    fun id ->
+                        match store.Value |> List.exists (fun s -> s.id = id) with
+                        | true ->
+                            store.Value <- store.Value |> List.filter (fun s -> s.id <> id)
+                            Ok ()
+                        | false -> Error (UnknownSourceId $"unknown source id '%s{id}'")
+            }
+
+    /// The LIVE Library (spec 0046): the read-only seeded `presets` composed with the app-scope
+    /// SAMPLES and USER-SOURCES stores, so an entry created in the Library window (a sample through
+    /// the Sample editor, a source through the source editor) is offered for its kind AND resolves
+    /// once a table element is bound to it. Samples come from the live store (the latest ACTIVE
+    /// versions are offered; `tryGetEntry` resolves any latest version, so a bound retired sample
+    /// still resolves), user sources follow the seeded ones, the other presets are the seeds'.
+    /// `libraryTrees` stays the seeded grouping. A proxy listing error passes through as
+    /// `LibraryUnavailable`.
+    let liveLibrary (presets : LibraryProxy) (samples : SampleProxy) (sources : SourceProxy) : LibraryProxy =
+        let liveSamples () : LibraryEntry list =
+            match samples.listSamples ActiveOnly with
+            | Ok all -> all |> List.map SampleItem
+            | Error _ -> []
+        let userSources () : LibraryEntry list =
+            match sources.listSources () with
+            | Ok all -> all |> List.map SourceItem
+            | Error _ -> []
+        let isSample (e : LibraryEntry) : bool =
+            match e with
+            | SampleItem _ -> true
+            | SourceItem _ | DetectorItem _ | PolarizerItem _ -> false
+        {
+            entriesForKind =
+                fun kind ->
+                    presets.entriesForKind kind
+                    |> Result.map (fun seeded ->
+                        let ofKind (entries : LibraryEntry list) = entries |> List.filter (fun e -> e.forKinds |> List.contains kind)
+                        ofKind (liveSamples ()) @ (seeded |> List.filter (isSample >> not)) @ ofKind (userSources ())
+                        |> List.distinctBy (fun e -> e.entryId))
+            libraryTrees = presets.libraryTrees
+            tryGetEntry =
+                fun id ->
+                    let userSource =
+                        match sources.tryGetSource id with
+                        | Ok found -> found |> Option.map SourceItem
+                        | Error _ -> None
+                    let liveSample =
+                        match Guid.TryParse id with
+                        | true, guid ->
+                            match samples.tryGetSample (SampleId guid) with
+                            | Ok found -> found |> Option.map SampleItem
+                            | Error _ -> None
+                        | false, _ -> None
+                    match userSource, liveSample with
+                    | Some entry, _ | None, Some entry -> Ok (Some entry)
+                    | None, None -> presets.tryGetEntry id
+        }

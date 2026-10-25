@@ -24,7 +24,9 @@ open OpticalConstructor.Domain.WorkbenchSettings
 [<ReferenceEquality>]
 type AppContext =
     {
-        /// The read-only catalogue seam behind the Selector bay (spec 0027).
+        /// The catalogue seam behind the Selector bay (spec 0027) — spec 0046: the LIVE Library
+        /// (`Library.liveLibrary` — the seeded presets over the samples and user-sources stores), so
+        /// an entry created in the Library window binds and resolves on the table.
         library : Library.LibraryProxy
         /// The read-only experiment-template seam behind the Experiments bay.
         experiments : Experiments.ExperimentProxy
@@ -33,6 +35,8 @@ type AppContext =
         materials : MaterialLibrary.MaterialProxy
         /// The samples WRITE store (STORE_XDUO_0002).
         samples : Library.SampleProxy
+        /// Spec 0046: the USER light-source WRITE store behind the Library window's source editor.
+        sources : Library.SourceProxy
         /// The category WRITE store (STORE_XDUO_0003) — its remove-block consults
         /// the LIVE `materials` store above through `materialsReferencingCategory`.
         categories : MaterialLibrary.CategoryProxy
@@ -81,11 +85,13 @@ type AppContext =
         let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialLibrary.MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = MaterialLibrary.CategoryProxy.createInMemory (MaterialLibrary.materialsReferencingCategory materials)
+        let sources = Library.SourceProxy.createInMemory ()
         {
-            library = Library.createInMemory ()
+            library = Library.liveLibrary (Library.createInMemory ()) samples sources
             experiments = Experiments.createInMemory ()
             materials = materials
             samples = samples
+            sources = sources
             categories = categories
             // Spec 0038 Part L (037): the measured-data load seam is the real file-backed adapter
             // (step 036 — read a picked file's text and hand it to the step-34 parsers, the one

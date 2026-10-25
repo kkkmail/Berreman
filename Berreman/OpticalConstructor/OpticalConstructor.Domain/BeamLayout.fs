@@ -350,7 +350,8 @@ module BeamLayout =
                             | NoSideBeam -> state''
                         walk draw' reference' dir' x index onward light later afterSide
 
-            let rootCentre = RayModel.pointToVector3 root.placement.placementPoint
+            // The root is placed freely in 3-D (spec 0046): the beam leaves it at its height.
+            let rootCentre = centreOf root.placement
             let rootDir = (r1Axis root.placement).normalized
             let rootFace = add rootCentre (scale (halfDepthOf root / 1.0<meter>) rootDir)
             let rootPlaced = { id = root.id; centre = rootCentre; incoming = None; beam = OnMainBeam; path = []; light = Lit }
@@ -387,7 +388,7 @@ module BeamLayout =
                     elements
                     |> List.mapi (fun i e ->
                         Map.tryFind i final.placed
-                        |> Option.defaultValue { id = e.id; centre = RayModel.pointToVector3 e.placement.placementPoint; incoming = None; beam = OnMainBeam; path = []; light = Unlit })
+                        |> Option.defaultValue { id = e.id; centre = centreOf e.placement; incoming = None; beam = OnMainBeam; path = []; light = Unlit })
                 segments = final.segments |> List.rev |> List.map close
                 rays = List.rev final.rays
             }

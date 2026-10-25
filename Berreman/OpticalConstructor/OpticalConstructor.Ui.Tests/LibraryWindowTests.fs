@@ -73,6 +73,10 @@ module LibraryWindowTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
+            // Scroll the box into view first — a long tree (spec 0046 seeded two dozen sources) puts
+            // later rows below the window's visible area, where a click at their centre lands nowhere.
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
@@ -144,6 +148,9 @@ module LibraryWindowTests =
 
     // The FacetedTreeControls idle / chosen row fills (kept private there; mirrored for the proof).
     let private idleFill = Color.FromRgb(232uy, 232uy, 232uy)
+    /// The seeded corpus size — every seeded entry (spec 0046 added the laser and lithography sources),
+    /// derived rather than restated so a new seed never silently breaks the counts.
+    let private seededCorpus : int = List.length seedEntries
     let private chosenFill = Color.FromRgb(150uy, 185uy, 235uy)
 
     /// Fresh, isolated in-memory stores per test — the SAME composition the App performs (the
@@ -171,6 +178,15 @@ module LibraryWindowTests =
                             | SampleEditorView.NewBlankSample mintedId -> $"sample-add:{mintedId.value}"
                             | SampleEditorView.NewSeededMultilayer mintedId -> $"sample-multilayer:{mintedId.value}"
                             | SampleEditorView.EditSample s -> "sample-edit:" + s.name)
+                // Spec 0046: a fresh user-sources store (reachable as `context.sources`) and a recording
+                // source-editor launcher.
+                sources = SourceProxy.createInMemory ()
+                openSourceEditor =
+                    fun intent ->
+                        calls.Add(
+                            match intent with
+                            | LightSourceEditorView.NewSource mintedId -> "source-add:" + mintedId
+                            | LightSourceEditorView.EditSource s -> "source-edit:" + s.name)
                 requestClose = fun () -> calls.Add "close-requested"
             }
         calls, context
@@ -242,14 +258,14 @@ module LibraryWindowTests =
         let _, m = freshModel ()
         let state = LW.facetedState m
         // 11 seeded samples + 2 detectors + 3 polarizers + 1 source.
-        Assert.Equal(17, state.resultCount)
+        Assert.Equal(seededCorpus, state.resultCount)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, state.materialization)
         Assert.Empty(state.breadcrumbs)
         Assert.Equal("", state.filterDraft)
         let entries = List.head state.tree
         Assert.Equal("entries", entries.code)
-        Assert.Equal(Some 17, entries.countOpt)
-        Assert.Equal(17, List.length entries.children)
+        Assert.Equal(Some seededCorpus, entries.countOpt)
+        Assert.Equal(seededCorpus, List.length entries.children)
         for leaf in entries.children do
             Assert.StartsWith("entry:", leaf.code)
         // Samples AND presets both lead as leaves.
@@ -269,13 +285,13 @@ module LibraryWindowTests =
             kindNode.children |> List.map (fun b -> b.label, b.countOpt)
         // Every kind, with its count, in the engine's structural branch order.
         Assert.Equal<(string * int option) list>(
-            [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some 1 ],
+            [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some (List.length SeedSources.all) ],
             branches)
         // The kind facet is offered FIRST (the by-kind representation's head) with count-previews.
         let kindOffer = state.offers |> List.head
         Assert.Equal(entryKindFacetKey.value, kindOffer.code)
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", 1 ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.all ],
             kindOffer.values |> List.map (fun v -> v.code, v.previewCount))
 
     [<Fact>]
@@ -289,10 +305,10 @@ module LibraryWindowTests =
         let caseInsensitive (a : string) (b : string) : int =
             System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
         let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
-        // Level 1a — the entry leaves (17 seeded entries, NOT in alphabetical corpus order).
+        // Level 1a — the entry leaves (every seeded entry, NOT in alphabetical corpus order).
         let entries = List.head state.tree
         let leafLabels = entries.children |> List.map (fun n -> n.label)
-        Assert.Equal(17, List.length leafLabels)
+        Assert.Equal(seededCorpus, List.length leafLabels)
         Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
         // Level 1b — the top-level facet groups (Kind no longer leads by representation order).
         let facetLabels = state.tree |> List.tail |> List.map (fun n -> n.label)
@@ -383,7 +399,7 @@ module LibraryWindowTests =
         for node in opened.tree do
             Assert.Equal(FacetedTreeControls.CollapsedNode, node.expansion)
         // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
-        Assert.Equal(17, List.length (entriesOf m).children)
+        Assert.Equal(seededCorpus, List.length (entriesOf m).children)
         // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
         let expanded = LW.update (LW.ToggleNode "entries") m
         Assert.True(expanded.expandedNodes.isExpanded "entries")
@@ -419,7 +435,7 @@ module LibraryWindowTests =
         Assert.DoesNotContain("src-600", filteredEntryIds narrowed)
         Assert.Equal("glass", (LW.facetedState narrowed).filterDraft)
         let restored = LW.update (LW.CommitTextFilter "") narrowed
-        Assert.Equal(17, List.length (LW.filteredEntries restored))
+        Assert.Equal(seededCorpus, List.length (LW.filteredEntries restored))
 
     [<Fact>]
     let ``applying the kind facet narrows the corpus and takes a removable breadcrumb chip with its after-count`` () =
@@ -433,7 +449,7 @@ module LibraryWindowTests =
         Assert.Equal("Kind: Polarizer", (List.head chips).label)
         Assert.Equal(3, (List.head chips).afterCount)
         let removed = LW.update (LW.RemoveFacet entryKindFacetKey) constrained
-        Assert.Equal(17, List.length (LW.filteredEntries removed))
+        Assert.Equal(seededCorpus, List.length (LW.filteredEntries removed))
         Assert.Empty((LW.facetedState removed).breadcrumbs)
 
     [<Fact>]
@@ -546,13 +562,13 @@ module LibraryWindowTests =
     [<Fact>]
     let ``the projection re-queries the LIVE samples store — a store write shows in the next pass`` () =
         let samples, m = freshModelWithStores ()
-        Assert.Equal(17, (LW.facetedState m).resultCount)
+        Assert.Equal(seededCorpus, (LW.facetedState m).resultCount)
         // Remove a sample directly through the SHARED store (another window's write): the very
         // next projection of the UNCHANGED model no longer lists it.
         match samples.removeSample SeedSamples.glassFilm200.id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
-        Assert.Equal(16, (LW.facetedState m).resultCount)
+        Assert.Equal(seededCorpus - 1, (LW.facetedState m).resultCount)
         Assert.DoesNotContain(string SeedSamples.glassFilm200.id.value, filteredEntryIds m)
 
     // ============================ pure: verbs + confirm gate ============================
@@ -601,7 +617,7 @@ module LibraryWindowTests =
         | other -> Assert.Fail($"expected ProtectedEntryRefused, got %A{other}")
         Assert.Equal(LW.NoPendingRemove, refused.removeGate)
         // Nothing changed: the corpus, the stores, the selection.
-        Assert.Equal(17, (LW.facetedState refused).resultCount)
+        Assert.Equal(seededCorpus, (LW.facetedState refused).resultCount)
         Assert.Contains("src-600", filteredEntryIds refused)
         match samples.listSamples ActiveOnly with
         | Ok all -> Assert.Equal(11, List.length all)
@@ -620,7 +636,7 @@ module LibraryWindowTests =
         Assert.Equal(LW.PendingRemove SeedSamples.glassFilm600.id, armed.removeGate)
         let cancelled = LW.update LW.CancelRemove armed
         Assert.Equal(LW.NoPendingRemove, cancelled.removeGate)
-        Assert.Equal(17, List.length (LW.filteredEntries cancelled))
+        Assert.Equal(seededCorpus, List.length (LW.filteredEntries cancelled))
 
     [<Fact>]
     let ``a confirmed sample remove drops the entry from the projection and the shared store in the same pass`` () =
@@ -656,7 +672,7 @@ module LibraryWindowTests =
         | Some (LW.SampleRemoveRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
         | other -> Assert.Fail($"expected SampleRemoveRefused UnknownSampleId, got %A{other}")
         Assert.Equal(LW.NoPendingRemove, refused.removeGate)
-        Assert.Equal(16, (LW.facetedState refused).resultCount)
+        Assert.Equal(seededCorpus - 1, (LW.facetedState refused).resultCount)
 
     [<Fact>]
     let ``a query or selection change disarms a pending remove and clears the refusal`` () =
@@ -726,7 +742,7 @@ module LibraryWindowTests =
         let gated = LW.facetedState m
         Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
         Assert.Empty(gated.tree)
-        Assert.Equal(17, gated.resultCount)
+        Assert.Equal(seededCorpus, gated.resultCount)
         Assert.NotEmpty(gated.offers)
         let shown = LW.facetedState (LW.update LW.RequestTreeBuild m)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, shown.materialization)
@@ -749,7 +765,7 @@ module LibraryWindowTests =
 
     let private mountLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : LibraryWindow =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        let window = LibraryWindow(library, samples, materials, categories)
+        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand the entries group so the leaf-
@@ -802,7 +818,7 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
             let window = mountLibraryWindow library samples materials
-            Assert.Equal("17 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal($"%d{seededCorpus} results", textOf window UiIds.FacetedTree.resultCount)
             // Sample and preset leaves both render (entries is auto-expanded by the mount helper).
             Assert.True(isPresent window (LW.entryNode glassFilm600EntryId))
             Assert.True(isPresent window (LW.entryNode "src-600"))
@@ -812,7 +828,7 @@ module LibraryWindowTests =
             // facet to reveal its branches.
             expandEntries window
             expandNode window ("facet:" + entryKindFacetKey.value)
-            for kind, count in [ "Sample", 11; "Source", 1; "Detector", 2; "Polarizer", 3 ] do
+            for kind, count in [ "Sample", 11; "Source", List.length SeedSources.all; "Detector", 2; "Polarizer", 3 ] do
                 let branchId = UiIds.FacetedTree.treeNode ("branch:" + entryKindFacetKey.value + ":" + kind)
                 Assert.True(isPresent window branchId, $"the by-kind tree must list the %s{kind} branch")
                 Assert.Equal($"%s{kind} (%d{count})", textOf window branchId)
@@ -978,7 +994,7 @@ module LibraryWindowTests =
                     | _ -> false)
                 |> Seq.length
             Assert.Equal(0, treeRowCount ())
-            Assert.Equal("17 results", textOf window UiIds.FacetedTree.resultCount)
+            Assert.Equal($"%d{seededCorpus} results", textOf window UiIds.FacetedTree.resultCount)
             clickOn window UiIds.FacetedTree.showTreeButton
             Assert.True(treeRowCount () > 0, "the explicit build must materialize the tree")
             // The materialized tree opens collapsed (spec 0040 step 002) — expand entries to reach
@@ -1066,7 +1082,7 @@ module LibraryWindowTests =
         Assert.Equal<LibraryEntry option>(None, LW.selectedEntry stray)
         // Browse mode is byte-for-byte the ordinary window corpus.
         let _, browse = freshModel ()
-        Assert.Equal(17, List.length (LW.filteredEntries browse))
+        Assert.Equal(seededCorpus, List.length (LW.filteredEntries browse))
 
     [<Fact>]
     let ``ConfirmSelect returns the HIGHLIGHTED entry through onSelected and closes — no highlight is inert`` () =
@@ -1136,7 +1152,7 @@ module LibraryWindowTests =
 
     let private mountSelectLibraryWindow (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) (selectCtx : SelectionContext<LibraryEntry>) : LibraryWindow =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        let window = LibraryWindow(library, samples, materials, categories, mode = Select selectCtx)
+        let window = LibraryWindow(library, samples, SourceProxy.createInMemory (), materials, categories, mode = Select selectCtx)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         // The tree opens collapsed (spec 0040 step 002); expand entries so the Select proofs reach
@@ -1415,6 +1431,49 @@ module LibraryWindowTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
+    let ``spec 0046: the element menu's Choose… specifies the LIGHT SOURCE through the same Select window as the Selector's`` () =
+        HeadlessSession.run (fun () ->
+            let model0 = freshMainModel ()
+            let mainWindow, dispatch, getModel = mountMainExposed model0
+            // A right click on the source selects it and opens its menu, which offers Choose….
+            let sourcePoint = TableView.project Scene.pixelsPerMeter Scene.center model0.view ((Scene.snappedCentres model0).[0])
+            dispatch (Scene.OpenElementMenuAt sourcePoint)
+            Dispatcher.UIThread.RunJobs()
+            Assert.Equal(Scene.ElementSelected 0, (getModel ()).selection)
+            Assert.Equal(None, ((getModel ()).elements |> List.item 0).placement.valueId)
+            let opened = ResizeArray<Window>()
+            use _sub =
+                Window.WindowOpenedEvent.Raised
+                |> Observable.subscribe (fun (struct (sender, _args)) ->
+                    match sender with
+                    | :? Window as w -> opened.Add w
+                    | _ -> ())
+            clickOn mainWindow UiIds.ElementMenu.choose
+            Dispatcher.UIThread.RunJobs()
+            // The menu closed and the Selector's Choose… flow ran: ONE Select-state Library window,
+            // constrained to light sources, holding the session for the source.
+            Assert.Equal(None, (getModel ()).elementMenu)
+            Assert.Equal(1, opened.Count)
+            let selectWindow = opened.[0]
+            Assert.True(matchesId UiIds.LibraryWindow.window selectWindow, "the menu's Choose… must open the Library window")
+            Assert.Contains("Light source", textOf selectWindow UiIds.LibraryWindow.selectConstraint)
+            (match (getModel ()).activeSelect with
+             | Some session -> Assert.Equal<ElementId>(elementId "src", session.target)
+             | None -> Assert.Fail "the menu's Choose… must register the Select session handle")
+            expandEntries selectWindow
+            Assert.True(isPresent selectWindow (LW.entryNode "src-600"))
+            Assert.False(isPresent selectWindow (LW.entryNode "det-intensity"), "an out-of-kind entry must not be offered")
+            clickOn selectWindow (LW.entryNode "src-600")
+            clickOn selectWindow UiIds.LibraryWindow.selectButton
+            Dispatcher.UIThread.RunJobs()
+            Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
+            Assert.Equal(Some "src-600", ((getModel ()).elements |> List.item 0).placement.valueId)
+            Assert.Contains("bound: Monochromatic 600 nm", textOf mainWindow UiIds.TableAndElementRotation.readout)
+            mainWindow.Close()
+            Dispatcher.UIThread.RunJobs())
+
+    [<Fact>]
+    [<Trait("Category", "ui-smoke")>]
     let ``acceptance (017): a second Choose… RE-TARGETS the live Select window and the handle survives reference-keyed`` () =
         HeadlessSession.run (fun () ->
             let mainWindow, _, getModel = mountMainExposed (detectorSelectorModel ())
@@ -1510,9 +1569,9 @@ module LibraryWindowTests =
             |> LW.update LW.RequestMarkInactive
             |> LW.update LW.ConfirmLifecycle
         Assert.Equal(LW.NoPendingLifecycle, retired.lifecycleGate)
-        // Default scope EXCLUDES the retired sample (17 → 16); the badge count is 1.
+        // Default scope EXCLUDES the retired sample (one fewer); the badge count is 1.
         Assert.DoesNotContain(glassFilm600EntryId, filteredEntryIds retired)
-        Assert.Equal(16, (LW.facetedState retired).resultCount)
+        Assert.Equal(seededCorpus - 1, (LW.facetedState retired).resultCount)
         Assert.Equal(1, LW.inactiveCount retired)
         // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
         match samples.resolveVersion { sampleId = SeedSamples.glassFilm600.id; version = VersionNumber.first } with
@@ -1522,7 +1581,7 @@ module LibraryWindowTests =
         let shown = LW.update LW.ToggleShowInactive retired
         Assert.Equal(IncludeInactive, shown.showInactive)
         Assert.Contains(glassFilm600EntryId, filteredEntryIds shown)
-        Assert.Equal(17, (LW.facetedState shown).resultCount)
+        Assert.Equal(seededCorpus, (LW.facetedState shown).resultCount)
         let leaf =
             (LW.facetedState shown).tree
             |> List.head

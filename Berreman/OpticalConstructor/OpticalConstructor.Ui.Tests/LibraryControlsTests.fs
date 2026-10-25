@@ -107,8 +107,9 @@ module LibraryControlsTests =
         Assert.Equal("Selector", BayNames.selector)
         Assert.Contains(BayNames.selector, BayNames.all)
         Assert.DoesNotContain("Library", BayNames.all)
+        // Spec 0046: Add comes first.
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector ],
+            [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector ],
             BayNames.all |> List.truncate 5)
         let m = initMain ()
         let bays = mainBays m ignore

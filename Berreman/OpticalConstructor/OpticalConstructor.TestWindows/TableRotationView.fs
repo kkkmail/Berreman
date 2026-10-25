@@ -290,6 +290,8 @@ let private rotationState (model : Model) : RotationControls.State =
         r1 = model.view.r1.degrees
         r2 = model.view.r2.degrees
         r3 = model.view.r3.degrees
+        r1Lock = RotationControls.NotLockable
+        r2Lock = RotationControls.NotLockable
         r3Locked = model.r3Locked
         enabled = (model.selection = TableSelected)
         confirm = model.rotationConfirm
@@ -299,7 +301,7 @@ let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handler
     {
         rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
         setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
-        toggleR3Lock = fun () -> dispatch ToggleR3Lock
+        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
         confirm = fun () -> dispatch RotConfirm

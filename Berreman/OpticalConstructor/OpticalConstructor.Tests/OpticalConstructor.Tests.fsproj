@@ -134,6 +134,8 @@
              ORDERED ConstantMueller compound product, EntryProtection over the seeds, and the
              polarizer-category facet. -->
         <Compile Include="PolarizerBehaviorTests.fs" />
+        <!-- Spec 0046: the seeded light sources, the user-sources store, and the live Library. -->
+        <Compile Include="SourceLibraryTests.fs" />
         <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
              version-creation rule (decideVersioning) enumerated over the used/unused ×
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
