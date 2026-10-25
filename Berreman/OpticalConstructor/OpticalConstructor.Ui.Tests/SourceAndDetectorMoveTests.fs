@@ -96,6 +96,34 @@ module SourceAndDetectorMoveTests =
         Assert.True(close (elementX (elem 2 (update (MoveSelectedBy (TableX, 0.2)) s))) -0.1)
 
     [<Fact>]
+    let ``moving the light source on x carries the ray and every element with it, like y and z`` () =
+        // source (-1) → sample (-0.3) → detector (+1), plus a detector on the sample's reflected ray.
+        let plateId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+        let scene =
+            initMain ()
+            |> update (AddElement Sample)
+            |> fun m -> update (BindValueIdTo ((elem 2 m).id, plateId)) m
+            |> update (RotSetAxis (RotationControls.R2, 30.0))
+            |> update (AddElement Detector)
+        let before = snappedCentres scene
+        let gaps (m : Model) : float list = m.elements |> List.map (fun e -> elementX e - elementX (elem 0 m))
+        let source = { scene with selection = ElementSelected 0 } |> update (ToggleMoveLock TableX)
+        let movedX = update (MoveSelectedBy (TableX, 0.4)) source
+        // Every along-beam gap is kept, so every element is drawn exactly 0.4 m further along x.
+        Assert.Equal<float list>(gaps scene, gaps movedX)
+        let after = snappedCentres movedX
+        for i in 0 .. List.length scene.elements - 1 do
+            Assert.True(abs ((after.[i]).x - (before.[i]).x - 0.4) < 1.0e-9 && abs ((after.[i]).y - (before.[i]).y) < 1.0e-9,
+                        $"element %d{i} moved by (%g{(after.[i]).x - (before.[i]).x}, %g{(after.[i]).y - (before.[i]).y})")
+        // The open-ray end and a Reset follow the source too; resetting the source carries the ray back.
+        Assert.True(close (openRayEndX movedX) 1.4)
+        let back = update ResetSelectedPosition movedX
+        Assert.Equal<float list>(gaps scene, gaps back)
+        Assert.True(close (elementX (elem 0 back)) -1.0 && close (elementX (elem 1 back)) 1.0)
+        // A locked x moves nothing at all.
+        Assert.Equal<Model>(scene, { (update (MoveSelectedBy (TableX, 0.4)) { scene with selection = ElementSelected 0 }) with selection = scene.selection })
+
+    [<Fact>]
     let ``the beam follows the light source: raised, every element and ray segment rides at its height`` () =
         let m = sourceSelected () |> update (ToggleMoveLock TableZ) |> update (MoveSelectedTo (TableZ, 0.12)) |> update (AddElement Sample)
         let centres = snappedCentres m
@@ -153,12 +181,12 @@ module SourceAndDetectorMoveTests =
         let s' = { detectorOut with selection = ElementSelected 2 }
         Assert.Equal(RayPositionControls.BoundedRange (-1.0, 5.0), alongBeamRange s' 2)
         Assert.True(close (elementX (elem 2 (update (SlideSelectedTo 4.0) s'))) 4.0)
-        // The same rule follows a moved source (it is the start of the ray, the table plays no part).
+        // A moved source carries its ray: the span moves with it, its length unchanged.
         let shifted =
             { s with selection = ElementSelected 0 }
             |> unlockAllMoves
             |> update (MoveSelectedTo (TableX, -3.0))
-        Assert.Equal(RayPositionControls.BoundedRange (-3.0, 1.0), alongBeamRange shifted 2)
+        Assert.Equal(RayPositionControls.BoundedRange (-3.0, -1.0), alongBeamRange shifted 2)
 
     [<Fact>]
     let ``with no detector on it a ray ends 1 m along; a reflected ray starts at its host`` () =
@@ -167,7 +195,7 @@ module SourceAndDetectorMoveTests =
             { initMain () with selection = ElementSelected 1 }
             |> update RemoveSelected
             |> update (AddElement Sample)
-        Assert.Equal(RayPositionControls.BoundedRange (-1.0, openRayEndX), alongBeamRange open' 1)
+        Assert.Equal(RayPositionControls.BoundedRange (-1.0, openRayEndX open'), alongBeamRange open' 1)
         // A sample bound to a glass plate (emits R and T) opens a reflected ray; a lens moved onto it is
         // held between the plate and 1 m.
         let plateId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
@@ -179,7 +207,7 @@ module SourceAndDetectorMoveTests =
             |> update (AddElement Lens)
         let onReflected = update (PlaceOnBeam ((elem 3 scene).id, BeamLayout.OnReflectedBeamOf (elem 2 scene).id)) scene
         let hostX = elementX (elem 2 onReflected)
-        Assert.Equal(RayPositionControls.BoundedRange (hostX, openRayEndX), alongBeamRange onReflected 3)
+        Assert.Equal(RayPositionControls.BoundedRange (hostX, openRayEndX onReflected), alongBeamRange onReflected 3)
         Assert.True(close (elementX (elem 3 onReflected)) (elementX (elem 3 scene)), "already past its host, it keeps its place")
 
     // ------------------------------ the bays (headless) ------------------------------

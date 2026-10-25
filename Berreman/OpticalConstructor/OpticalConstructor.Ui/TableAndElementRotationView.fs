@@ -963,8 +963,17 @@ let private withBoundSampleEmission (m : Model) (p : ElementPlacement) : Element
         | Ok None | Error _ -> p
     | None -> p
 
-/// Where a ray with no detector on it ends, along the beam (spec 0046): 1 m — the default detector point.
-let openRayEndX : float = RayModel.defaultDetectorPoint.x / 1.0<meter>
+/// A position of the DEFAULT scene's beam, read against where the ray root (the source) now is (spec 0046):
+/// the ray moves rigidly with the source, so `defaultX` — an along-beam coordinate measured with the source
+/// at its default point — is carried by however far the source has since moved along x.
+let alongFromSource (m : Model) (defaultX : float) : float =
+    let defaultSourceX = RayModel.defaultSourcePoint.x / 1.0<meter>
+    let sourceX = m.elements |> List.tryHead |> Option.map elementX |> Option.defaultValue defaultSourceX
+    sourceX + (defaultX - defaultSourceX)
+
+/// Where a ray with no detector on it ends, along the beam (spec 0046): 1 m in the default scene (the
+/// default detector point, 2 m past the source) — carried with the source, like the whole ray.
+let openRayEndX (m : Model) : float = alongFromSource m (RayModel.defaultDetectorPoint.x / 1.0<meter>)
 
 /// How far along a ray an element lands past the element it follows — moved onto a reflected ray from
 /// behind its new host, or added at the end of a ray (spec 0046).
@@ -993,7 +1002,7 @@ let raySpan (m : Model) (ray : BeamLayout.BeamHost) (except : int option) : floa
             | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector -> None)
     let finish =
         match detectors with
-        | [] -> openRayEndX
+        | [] -> openRayEndX m
         | xs -> List.min xs
     start, max start finish
 
@@ -1005,7 +1014,7 @@ let rayEndX (m : Model) (ray : BeamLayout.BeamHost) : float =
         |> List.indexed
         |> List.choose (fun (i, (e, placed)) -> if i > 0 && placed.beam = ray then Some (elementX e) else None)
         |> List.fold max (rayStartX m ray)
-    max openRayEndX (last + sideBeamGap)
+    max (openRayEndX m) (last + sideBeamGap)
 
 /// Append a catalogue element to the scene and select it. New elements are spread along the beam so
 /// they do not land exactly on top of one another; the user then rotates / configures the selection.
@@ -1018,7 +1027,8 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Mod
         m.elements
         |> List.filter (fun e -> e.placement.catalogueKind <> LightSource && e.placement.catalogueKind <> Detector)
         |> List.length
-    let defaultX = -0.3 + 0.2 * float middleCount
+    // Spread along the beam from the default scene's -0.3 m, carried with the source (spec 0046).
+    let defaultX = alongFromSource m (-0.3 + 0.2 * float middleCount)
     // Spec 0046: a DETECTOR goes to the END of the first lit ray that no detector terminates yet (the
     // main beam, then the reflected rays in the order the light reaches their hosts); only when every
     // ray already ends on a detector does it go to the main beam, where it terminates the beam at its
@@ -1088,6 +1098,22 @@ let private clampTo (range : RayPositionControls.PositionRange) (v : float) : fl
 /// Move the selected element to `v` metres along a table axis (spec 0046), lock-respecting: the light
 /// source along any axis, freely; any other element only along its beam (x), within `alongBeamRange` —
 /// its y and z come from the beam it is snapped to.
+/// Carry the whole ray along x after the ray root (element 0, the source) moved there (spec 0046): every
+/// other element's along-beam x shifts by the root's own shift `before` → `after`, so every gap is kept
+/// and an x move of the source moves the ray and all its elements with it — exactly as its y / z moves
+/// and its rotations do (those reach the elements through the beam itself).
+let private carryRayWithRoot (before : Model) (after : Model) : Model =
+    match before.elements, after.elements with
+    | root :: _, root' :: _ ->
+        let dx = elementX root' - elementX root
+        { after with
+            elements =
+                after.elements
+                |> List.mapi (fun j e ->
+                    if j = 0 then e
+                    else { e with placement = { e.placement with placementPoint = { e.placement.placementPoint with x = e.placement.placementPoint.x + dx * 1.0<meter> } } }) }
+    | _ -> after
+
 let private moveSelectedTo (axis : TableAxis) (v : float) (m : Model) : Model =
     match m.selection with
     | ElementSelected i when i >= 0 && i < List.length m.elements ->
@@ -1095,6 +1121,7 @@ let private moveSelectedTo (axis : TableAxis) (v : float) (m : Model) : Model =
         let moveTo (range : RayPositionControls.PositionRange) : Model =
             mapElement i (fun e -> { e with placement = withPositionOn axis (clampTo range v * 1.0<meter>) e.placement }) m
         match mobilityOf kind, axis with
+        | MovesFreely, TableX when i = 0 -> carryRayWithRoot m (moveTo RayPositionControls.UnboundedRange)
         | MovesFreely, _ -> moveTo RayPositionControls.UnboundedRange
         | MovesAlongBeam, TableX -> moveTo (alongBeamRange m i)
         | MovesAlongBeam, (TableY | TableZ) -> m
@@ -1123,21 +1150,24 @@ let private toggleMoveLock (axis : TableAxis) (m : Model) : Model =
     | ElementSelected _ | TableSelected | NothingSelected -> m
 
 /// Reset the selected element's position (spec 0046), bypassing the move locks like the rotations' Reset:
-/// the light source back to its default point in the table plane, a detector to 1 m along (the default
-/// detector point), anything else to x = 0 — each still held to its ray (`alongBeamRange`).
+/// the light source back to its default point in the table plane, carrying the ray with it; a detector to
+/// 1 m along and anything else to 0 m — both the default scene's positions, read against the source
+/// (`alongFromSource`) and held to the element's ray (`alongBeamRange`).
 let private resetSelectedPosition (m : Model) : Model =
     match m.selection with
     | ElementSelected i when i >= 0 && i < List.length m.elements ->
         let range = alongBeamRange m i
-        mapElement i (fun e ->
-            let p = e.placement
-            let alongTo (x : float) : ElementPlacement = { p with placementPoint = { p.placementPoint with x = clampTo range x * 1.0<meter> } }
-            let home =
-                match p.catalogueKind with
-                | LightSource -> { p with placementPoint = RayModel.defaultSourcePoint; height = 0.0<meter> }
-                | Detector -> alongTo openRayEndX
-                | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror -> alongTo 0.0
-            { e with placement = home }) m
+        let reset =
+            mapElement i (fun e ->
+                let p = e.placement
+                let alongTo (x : float) : ElementPlacement = { p with placementPoint = { p.placementPoint with x = clampTo range x * 1.0<meter> } }
+                let home =
+                    match p.catalogueKind with
+                    | LightSource -> { p with placementPoint = RayModel.defaultSourcePoint; height = 0.0<meter> }
+                    | Detector -> alongTo (openRayEndX m)
+                    | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror -> alongTo (alongFromSource m 0.0)
+                { e with placement = home }) m
+        if i = 0 then carryRayWithRoot m reset else reset
     | ElementSelected _ | TableSelected | NothingSelected -> m
 
 // ---------------------------------------------------------------------------

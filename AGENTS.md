@@ -342,7 +342,10 @@ This is a spec-driven, gated repository.
   `Mirror` sample geometry); lenses are T-only; everything else carries R and T.
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
-  the beam root is its 3-D centre, so moving it carries the whole beam. Every other element is
+  the beam root is its 3-D centre, so moving it carries the whole beam — an x move included: the
+  elements' along-beam x is measured from the source, so its x moves (and its Reset) shift every
+  element by the same amount (`carryRayWithRoot`), and the default positions (the 1 m open end,
+  Reset points, new elements) are read against it (`alongFromSource`). Every other element is
   held to its RAY — one rule, the table plays no part: a ray starts at the element it leaves (the
   source, or the host of a reflected ray) and ends at its first detector, or 1 m along
   (`openRayEndX`) with none; a detector moves anywhere past the start, which extends the ray

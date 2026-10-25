@@ -266,6 +266,19 @@ Fixes:
   722, ui-smoke 203, ui-tests 730 in all; full no-incremental build 0 errors, only vendored SYSLIB0051.
   BerremanTests not run (operator stop).
 
+## Moving the source on x carries the ray (operator, same day)
+
+- An element's along-beam x is measured from the source (the beam lays each element at its x minus
+  the previous one's, starting from the source's x), so moving the source on x used to stretch or cut
+  the ray. Now an x move of the source — and its Reset — shifts every other element by the same amount
+  (`carryRayWithRoot`), exactly as its y / z moves and rotations already carried them through the beam.
+  The default scene's positions are read against the source (`alongFromSource`): the open-ray end (1 m
+  in the default scene, i.e. 2 m past the source), a detector's Reset point, the others' Reset point,
+  and where new elements land. A locked x moves nothing.
+- Test: `SourceAndDetectorMoveTests` — after a 0.4 m x move every gap is kept and every element (a
+  detector on a reflected ray included) is drawn exactly 0.4 m further along; Reset carries it back.
+  Constructor 722, ui-smoke 203, ui-tests 731. BerremanTests not run (operator stop).
+
 ## Findings
 
 - F1: `dotnet test` broken on the .NET 10 SDK since the xunit.v3 4.0.0 bump (see item 1).

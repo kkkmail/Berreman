@@ -196,7 +196,7 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``a ray with no detector ends 1 m along`` () =
-        Assert.True(close openRayEndX 1.0, "spec 0046: an open ray ends at the default detector point")
+        Assert.True(close (openRayEndX (initMain ())) 1.0, "spec 0046: an open ray ends at the default detector point")
 
     // ============================= the Render bay =============================
 
