@@ -160,7 +160,7 @@ module TableAndElementRotationTests =
     [<Fact>]
     let ``the ribbon offers every large control as a Bay; selecting one is pure state`` () =
         let m = initMain ()
-        Assert.Equal(BayNames.rotation, m.ribbon)                      // Rotation open at start (Add is the first tab — spec 0046)
+        Assert.Equal(BayNames.add, m.ribbon)                           // the first tab, Add, is open at start (spec 0046)
         let bays = mainBays m ignore
         Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
         Assert.Equal(BayNames.render, (update (SelectBay BayNames.render) m).ribbon)
@@ -196,10 +196,13 @@ module TableAndElementRotationTests =
                 window.Close()
                 ns
             // Every bay has a (visible) ribbon tab.
-            let rotationView = visibleNames (initMain ())
+            // Main opens on Add (spec 0046): the palette shows, the rotation buttons do not.
+            let addView = visibleNames (initMain ())
+            Assert.DoesNotContain(UiIds.Rotation.r2Plus, addView)
+            let rotationView = visibleNames (update (SelectBay BayNames.rotation) (initMain ()))
             for bay in BayNames.all do
                 Assert.Contains(UiIds.Ribbon.tab bay, rotationView)
-            // The default (Rotation) bay shows the rotation buttons; the Move bay's controls are hidden.
+            // The Rotate bay shows the rotation buttons; the Move bay's controls are hidden.
             Assert.Contains(UiIds.Rotation.r2Plus, rotationView)
             Assert.DoesNotContain(UiIds.RayPosition.minus, rotationView)
             // Selecting the Render bay reveals the renderer sliders (and hides the rotation buttons).

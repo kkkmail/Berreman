@@ -208,8 +208,9 @@ module ExperimentControls =
             /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
             /// per-row "View" button and a double-click on the row both call this — the same testable action.
             viewExperiment : string -> unit
-            /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart
-            /// or the "Open chart" button).
+            /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart).
+            /// Spec 0046: the separate "Open chart window" button is gone — a collected experiment's "View"
+            /// is the explicit way to open its chart.
             openChartWindow : unit -> unit
         }
 
@@ -424,23 +425,6 @@ module ExperimentControls =
             match state.series with
             | [] -> []
             | _ ->
-                // An explicit, always-reliable way to open the pop-out interactive window — the earlier
-                // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
-                let openButton =
-                    Border.create [
-                        automationId UiIds.Experiment.openChart
-                        Border.isEnabled state.enabled
-                        Border.background (brush chosenBackground)
-                        Border.borderBrush (brush idleBorder)
-                        Border.borderThickness 1.0
-                        Border.cornerRadius (CornerRadius 3.0)
-                        Border.padding (Thickness(12.0, 5.0))
-                        Border.margin (Thickness(0.0, 2.0, 0.0, 4.0))
-                        Border.horizontalAlignment HorizontalAlignment.Left
-                        Border.child (TextBlock.create [ TextBlock.text "Open chart window ↗" ])
-                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
-                    ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.openChart
                 let chartBox =
                     Border.create [
                         Border.borderBrush (brush idleBorder)
@@ -450,7 +434,7 @@ module ExperimentControls =
                         Border.height chartHeight
                         Border.horizontalAlignment HorizontalAlignment.Left
                         Border.child (chartCanvas state)
-                        // Double-click ALSO opens the pop-out window — via Avalonia's built-in DoubleTapped
+                        // A double-click opens the draft's pop-out window — via Avalonia's built-in DoubleTapped
                         // gesture (more reliable than a hand-rolled PointerPressed ClickCount check).
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
                     ]
@@ -464,7 +448,7 @@ module ExperimentControls =
                         TextBlock.maxWidth 360.0
                     ]
                     |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.description
-                [ openButton :> IView; chartBox :> IView; descriptionText :> IView ]
+                [ chartBox :> IView; descriptionText :> IView ]
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).

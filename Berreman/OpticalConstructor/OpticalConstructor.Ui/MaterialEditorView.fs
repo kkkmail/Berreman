@@ -1103,33 +1103,51 @@ let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
 
 /// The two-pane split: the identity / ladder pane (left) and the tabbed preview (right), a vertical
 /// GridSplitter between them, each pane with a sensible minimum width so neither collapses.
+let private leftPaneMinWidth : float = 520.0
+let private splitterWidth : float = 6.0
+let private rightPaneMinWidth : float = 380.0
+/// The narrowest split that gives BOTH panes their minimum under the 3* : 2* column ratio.
+let private twoPaneMinWidth : float = splitterWidth + 5.0 * max (leftPaneMinWidth / 3.0) (rightPaneMinWidth / 2.0)
+
+/// Spec 0046: the two panes keep their minimum widths, so a window narrower than both scrolls
+/// horizontally (`MinWidthPanel`) instead of clipping the editor; vertically the panes fill the window
+/// (the left pane scrolls its own content).
 let private twoPane (leftPane : IView) (rightPane : IView) : IView =
-    Grid.create [
-        Grid.columnDefinitions "3*,Auto,2*"
-        Grid.children [
-            Border.create [ Border.column 0; Border.minWidth 520.0; Border.child leftPane ]
-            GridSplitter.create [
-                automationId<GridSplitter> UiIds.MaterialEditor.splitter
-                GridSplitter.column 1
-                GridSplitter.width 6.0
-                GridSplitter.resizeDirection GridResizeDirection.Columns
-                GridSplitter.background (brush idleBorder)
-            ]
-            Border.create [ Border.column 2; Border.minWidth 380.0; Border.child rightPane ]
-        ]
+    ScrollViewer.create [
+        ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+        ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+        ScrollViewer.content (
+            MinWidthPanel.create [
+                MinWidthPanel.minContentWidth twoPaneMinWidth
+                MinWidthPanel.child (
+                    Grid.create [
+                        Grid.columnDefinitions "3*,Auto,2*"
+                        Grid.children [
+                            Border.create [ Border.column 0; Border.minWidth leftPaneMinWidth; Border.child leftPane ]
+                            GridSplitter.create [
+                                automationId<GridSplitter> UiIds.MaterialEditor.splitter
+                                GridSplitter.column 1
+                                GridSplitter.width splitterWidth
+                                GridSplitter.resizeDirection GridResizeDirection.Columns
+                                GridSplitter.background (brush idleBorder)
+                            ]
+                            Border.create [ Border.column 2; Border.minWidth rightPaneMinWidth; Border.child rightPane ]
+                        ]
+                    ])
+            ])
     ] :> IView
 
 // -- readouts / actions ------------------------------------------------------------------------
 
+/// Spec 0046: the summary WRAPS beside its docked label (a horizontal stack ran it off the pane's edge).
 let private summaryRow (m : Model) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Horizontal
-        StackPanel.spacing 6.0
-        StackPanel.children [
-            labelBlock "Derived model:"
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [ Border.dock Dock.Left; Border.margin (thickOf 0.0 0.0 6.0 0.0); Border.child (labelBlock "Derived model:") ]
             TextBlock.create [
                 TextBlock.name UiIds.MaterialEditor.summaryText
                 TextBlock.text (complexitySummary m)
+                TextBlock.textWrapping TextWrapping.Wrap
                 TextBlock.verticalAlignment VerticalAlignment.Center
             ] :> IView
         ]

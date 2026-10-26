@@ -199,6 +199,8 @@
         <Compile Include="FsxAcceptanceTests.fs" />
         <!-- Spec 0046: element info, Library preselect, tunable sources, detector-decided captures, export. -->
         <Compile Include="WorkbenchInfoAndCaptureTests.fs" />
+        <!-- Spec 0046: every window's scroll extent holds all of its content (nothing unreachable). -->
+        <Compile Include="ScrollExtentTests.fs" />
         <!-- Spec 0038 Part L (step 037): the inverse constructor state (initInverse — unbound sample,
              chart gated on a hint) and the experiment-collection builder (name / save / list / load
              through the ExperimentCollectionProxy; per-experiment data-file attach that loads +

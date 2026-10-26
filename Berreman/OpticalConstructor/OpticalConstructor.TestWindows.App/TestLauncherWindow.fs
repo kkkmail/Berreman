@@ -25,6 +25,8 @@ type TestLauncherWindow() as this =
         this.Title <- "Optical Constructor — Test Launcher"
         this.Width <- 380.0
         this.Height <- 480.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         this.CanResize <- false
         let title =
             TextBlock(

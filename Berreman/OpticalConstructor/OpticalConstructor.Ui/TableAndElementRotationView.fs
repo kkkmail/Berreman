@@ -128,7 +128,7 @@ type EditorLaunchers =
         /// the step-013 Materials precedent.
         openLibraryWindow : Library.LibraryProxy -> Library.SampleProxy -> Library.SourceProxy -> MaterialLibrary.MaterialProxy -> MaterialLibrary.CategoryProxy -> unit
         /// Spec 0038 (017): open the SAME single-instance Library window in SELECT state over
-        /// the session context (the Selector bay's Choose… verb). A missing window opens fresh
+        /// the session context (the Select bay's Choose… verb). A missing window opens fresh
         /// in Select mode; a LIVE one is RE-TARGETED at the new context (a second Choose…
         /// re-points the instance — the step-016 `RetargetedWindow` semantics). The step-005
         /// modality switch decides ShowDialog-vs-Show against the REQUESTING window. Returns
@@ -261,7 +261,7 @@ type Model =
         /// windows (free placement, unchanged). Set by `initMain`.
         snapChain : bool
         /// Spec 0027 (024): the injected mock Library IO seam (the functional-proxy convention). Used by
-        /// the Main-screen Selector bay to constrain the choosable entries by the selected element's kind
+        /// the Main-screen Select bay to constrain the choosable entries by the selected element's kind
         /// and to resolve the bound entry name. Defaulted to the in-memory mock for the test scenes.
         library : Library.LibraryProxy
         /// Spec 0027 (024) Phase 2: the injected mock Experiments IO seam (the functional-proxy
@@ -304,7 +304,7 @@ type Model =
         categories : MaterialLibrary.CategoryProxy
         /// Spec 0033 (024): the window launcher seam behind the workbench strip buttons.
         launchers : EditorLaunchers
-        /// Spec 0038 (017): the step-005 quick-pick cutoff — the Selector bay's inline strip
+        /// Spec 0038 (017): the step-005 quick-pick cutoff — the Select bay's inline strip
         /// renders only while the kind-constrained entry count is BELOW this; at or above it
         /// the bay offers Choose… alone. Defaulted here; the composition root threads the
         /// appsettings value by record update (step 47 owns the composition acceptance).
@@ -353,15 +353,16 @@ type Model =
 
 /// The Main-screen ribbon Bay names (the "large controls" the ribbon shows MS-Word-style).
 module BayNames =
-    let rotation = "Rotation"
+    /// Spec 0046 (operator): the verb "Rotate" (was "Rotation").
+    let rotation = "Rotate"
     let move = "Move"
     let add = "Add"
     let render = "Render"
-    /// Spec 0027 (024): the Selector bay (labelled "Library" until spec 0033 step 014) — pick the
-    /// choosable spec for the selected element. The kind-constrained, confirm-gated binding through
-    /// `LibraryControls` and the read-only `LibraryProxy` is unchanged; only the label moved, freeing
-    /// the word Library for the samples workbench.
-    let selector = "Selector"
+    /// Spec 0027 (024): the Select bay (labelled "Library" until spec 0033 step 014, "Selector" until spec
+    /// 0046) — pick the choosable spec for the selected element. The kind-constrained, confirm-gated
+    /// binding through `LibraryControls` and the read-only `LibraryProxy` is unchanged; only the label
+    /// moved, freeing the word Library for the samples workbench.
+    let selector = "Select"
     /// Spec 0027 (024) Phase 2: the Experiments bay — pick which element's R1 sweeps a full circle.
     let experiments = "Experiments"
     /// Spec 0027 (026): the Details bay — the selected element's bound Library entry (what it is, its full
@@ -455,7 +456,8 @@ let initWith
         rotationConfirm = RotationControls.NoConfirm
         palette = palette
         render = RendererControls.defaultState
-        ribbon = BayNames.rotation
+        // Spec 0046 (operator): the window opens on its FIRST bay, Add.
+        ribbon = BayNames.add
         snapChain = false
         library = library
         experiments = experiments
@@ -1532,7 +1534,7 @@ let rec update (msg : Msg) (model : Model) : Model =
         | ElementSelected _ | TableSelected | NothingSelected -> model
     | RequestBindValueId entryId ->
         // Spec 0027 (026): select the entry as PENDING (its full description is shown) without binding yet —
-        // inert unless an element is selected (the Selector bay is only enabled for an element).
+        // inert unless an element is selected (the Select bay is only enabled for an element).
         match model.selection with
         | ElementSelected _ -> { model with pendingEntry = Some entryId }
         | TableSelected | NothingSelected -> model
@@ -2217,7 +2219,7 @@ let rec private flattenNode (allowed : Set<string>) (boundId : string option) (d
         if List.isEmpty childRows then []
         else { label = label.value; depth = depth; entryId = ""; isBound = false } :: childRows
 
-/// The Selector bay state for the current selection: an `ElementSelected` shows the kind-constrained
+/// The Select bay state for the current selection: an `ElementSelected` shows the kind-constrained
 /// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
 let private libraryState (model : Model) : LibraryControls.State =
     match model.selection with
@@ -2264,7 +2266,7 @@ let private libraryHandlers (dispatch : Msg -> unit) : LibraryControls.Handlers 
         cancelEntry = fun () -> dispatch CancelBindValueId
     }
 
-/// Spec 0038 (017): what the Selector bay offers for the CURRENT selection — the inline
+/// Spec 0038 (017): what the Select bay offers for the CURRENT selection — the inline
 /// quick-pick strip beside the Choose… verb (the kind-constrained entry count sits BELOW the
 /// step-005 threshold), the Choose… verb alone (at or above it — the full Select-state Library
 /// window is the picking surface there), or nothing bindable (table / nothing selected — the
@@ -2472,7 +2474,7 @@ let noAnalyzerTitle = "No analyzer present"
 
 [<Literal>]
 let noAnalyzerStatus =
-    "Cannot run the rotating-analyzer experiment: no element in the scene is bound to a polarizer entry. Add a polarizer (LP / CPL / CPR) or bind one through the Selector bay."
+    "Cannot run the rotating-analyzer experiment: no element in the scene is bound to a polarizer entry. Add a polarizer (LP / CPL / CPR) or bind one through the Select bay."
 
 /// The analyzer's polarizer kind for the rotate-R1 experiment: the VARIED element if it is bound to a
 /// polarizer preset, else the last polarizer bound in the scene, else the typed `NoAnalyzerPresent`
@@ -3025,7 +3027,7 @@ let private detailsState (model : Model) : LayerBandsControls.State =
             | Some entry ->
                 ({ title = $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.State)
             | None ->
-                ({ title = "No Library entry bound — pick one in the Selector bay to see its details."; bands = [] } : LayerBandsControls.State)
+                ({ title = "No Library entry bound — pick one in the Select bay to see its details."; bands = [] } : LayerBandsControls.State)
         // Spec 0038 (031): surface the SAME out-of-band warning text the badge tooltip shows, so the
         // Details bay states the offending material(s) and both ranges in prose besides the schematic cue.
         match outOfBandWarningFor model e with
@@ -3060,11 +3062,11 @@ module WorkbenchIds =
     /// return whose element has vanished reports here (a no-op plus a status line).
     [<Literal>]
     let selectStatus = "WorkbenchSelectStatus"
-    /// Spec 0038 (017): the Selector bay's Choose… verb — opens the single-instance Library
+    /// Spec 0038 (017): the Select bay's Choose… verb — opens the single-instance Library
     /// window in Select state constrained to the selected element's kind.
     [<Literal>]
     let chooseButton = "SelectorChooseButton"
-    /// Spec 0038 (017): the Selector bay's inline quick-pick strip (the kind-constrained rows
+    /// Spec 0038 (017): the Select bay's inline quick-pick strip (the kind-constrained rows
     /// + confirm panel) — rendered only below the step-005 QuickPickThreshold.
     [<Literal>]
     let quickPickStrip = "SelectorQuickPickStrip"
@@ -3112,7 +3114,7 @@ let private workbenchButton (autoId : string) (label : string) (onClick : unit -
     ] :> IView
 
 // ---------------------------------------------------------------------------
-// Spec 0038 (017) — the Selector bay's Choose… / quick-pick flow. Choose… opens (or re-targets)
+// Spec 0038 (017) — the Select bay's Choose… / quick-pick flow. Choose… opens (or re-targets)
 // the single-instance Library window in SELECT state constrained to the selected element's
 // kind, through the launcher seam; the inline quick-pick strip (today's kind-constrained rows
 // + confirm panel via LibraryControls) renders only below the step-005 QuickPickThreshold.
@@ -3173,7 +3175,7 @@ let private selectorChooseButton (model : Model) (dispatch : Msg -> unit) (eleme
     |> Avalonia.FuncUI.DSL.View.withKey WorkbenchIds.chooseButton
     :> IView
 
-/// The Selector bay content (spec 0038 step 017). No element selected → today's disabled
+/// The Select bay content (spec 0038 step 017). No element selected → today's disabled
 /// prompt (the empty LibraryControls bay). An element selected → the Choose… verb, and BELOW
 /// the threshold also the inline quick-pick strip — the unchanged LibraryControls surface
 /// (kind label, bound readout, kind-constrained rows, confirm panel) wrapped in a keyed,
@@ -3360,7 +3362,8 @@ let private dataFileRow (model : Model) (dispatch : Msg -> unit) (experiment : E
     |> Avalonia.FuncUI.DSL.View.withKey ("DataFileRow_" + idStr)
     :> IView
 
-/// The experiment-collection builder (name / save / list / load + per-experiment data-file attach).
+/// The experiment-collection builder (name / save / list / load + — in the INVERSE constructor only —
+/// per-experiment data-file attach).
 /// A pure projection of the model plus the dispatch seam — no window needed, so a headless test
 /// drives the collection round-trip and the attach status through `update` alone.
 let private collectionBuilderView (model : Model) (dispatch : Msg -> unit) : IView =
@@ -3401,15 +3404,21 @@ let private collectionBuilderView (model : Model) (dispatch : Msg -> unit) : IVi
                   WrapPanel.orientation Orientation.Horizontal
                   WrapPanel.children (names |> List.map (fun n -> workbenchButton (CollectionIds.savedCollection n.value) n.value (fun () -> dispatch (CollectionLoad n.value))))
               ] :> IView ]
-    let dataFileRows : IView list =
-        match model.experimentCollection.experiments with
-        | [] -> [ TextBlock.create [ TextBlock.text "(add experiments above, then attach one data file to each)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView ]
-        | experiments ->
-            [ StackPanel.create [
-                  StackPanel.name CollectionIds.dataFiles
-                  StackPanel.orientation Orientation.Vertical
-                  StackPanel.children (experiments |> List.map (dataFileRow model dispatch))
-              ] :> IView ]
+    // Spec 0046: measured-data files belong to the INVERSE problem alone — the forward (Main) constructor
+    // shows no "Data files" section at all.
+    let dataFileSection : IView list =
+        match model.constructorMode with
+        | ForwardConstructor -> []
+        | InverseConstructor ->
+            sectionHeading "Data files:"
+            :: (match model.experimentCollection.experiments with
+                | [] -> [ TextBlock.create [ TextBlock.text "(add experiments above, then attach one data file to each)"; TextBlock.foreground (brush (color 120 120 120)) ] :> IView ]
+                | experiments ->
+                    [ StackPanel.create [
+                          StackPanel.name CollectionIds.dataFiles
+                          StackPanel.orientation Orientation.Vertical
+                          StackPanel.children (experiments |> List.map (dataFileRow model dispatch))
+                      ] :> IView ])
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -3422,8 +3431,7 @@ let private collectionBuilderView (model : Model) (dispatch : Msg -> unit) : IVi
               ] :> IView ]
             @ statusRow
             @ savedRow
-            @ [ sectionHeading "Data files:" ]
-            @ dataFileRows)
+            @ dataFileSection)
     ] :> IView
 
 /// The Experiments bay content (spec 0038 Part L, 037): the (untouched) Controls-layer experiment
@@ -3555,8 +3563,8 @@ let private elementMenuItem (autoId : string) (label : string) (enabled : bool) 
     |> Avalonia.FuncUI.DSL.View.withKey autoId
     :> IView
 
-/// Spec 0046: the menu's Choose… row — the Selector bay's Choose… verb (`chooseFromLibrary`) for the
-/// element the menu serves, which then closes the menu. Like the Selector's button, the owner window for a
+/// Spec 0046: the menu's Choose… row — the Select bay's Choose… verb (`chooseFromLibrary`) for the
+/// element the menu serves, which then closes the menu. Like the Select bay's button, the owner window for a
 /// modal Select open is resolved from the click's own visual tree, and the subscription re-patches on the
 /// element's id (the closure's only render-varying capture).
 let private elementMenuChooseItem (model : Model) (dispatch : Msg -> unit) (element : TestElement) : IView =
@@ -3591,7 +3599,7 @@ let private elementMenuNote (text : string) (heading : bool) : IView =
         TextBlock.foreground (brush (if heading then color 40 40 40 else color 110 110 110))
     ] :> IView
 
-/// The element menu's rows for the element it serves: its title, Choose… (spec 0046 — the Selector bay's
+/// The element menu's rows for the element it serves: its title, Choose… (spec 0046 — the Select bay's
 /// Choose…), the ray switches (a source / detector only explains why it has none; a mirror or reflect-only
 /// sample shows them fixed, with the reason), the beam it sits on (never for the source — the ray root),
 /// Remove, Close. Public so the row set is provable headless without a window.
@@ -3720,6 +3728,67 @@ let private elementHoverTargets (model : Model) : IView list =
         | None -> [])
     |> List.concat
 
+/// Spec 0046: where a mouse-wheel notch over the Main table goes — the table's own gesture (zoom, or with a
+/// modifier rotate / zoom an element), or the scrolling page around it.
+type WheelTarget =
+    | WheelToTable
+    | WheelToPage
+
+/// The page's vertical scroll situation as seen from the table (device-independent pixels): the table's
+/// top / bottom edge relative to the viewport's top, the viewport's height, and the page's scroll offset
+/// and its largest value.
+type PageScroll =
+    {
+        tableTop : float
+        tableBottom : float
+        viewportHeight : float
+        offset : float
+        maxOffset : float
+    }
+
+/// Spec 0046: a PLAIN wheel over the table scrolls the page while the table is not fully in view and the
+/// page can still scroll that way (wheel down = page down), so scrolling down always brings the whole table
+/// into view; once it is in view (or the page cannot scroll further) the wheel zooms the table as before.
+/// A wheel with any modifier is always the table's (rotate / zoom an element). No page — the table's.
+let wheelTarget (mods : Set<WheelModifier>) (page : PageScroll option) (deltaY : float) : WheelTarget =
+    match page with
+    | None -> WheelToTable
+    | Some _ when not (Set.isEmpty mods) -> WheelToTable
+    | Some p ->
+        let tableInView = p.tableTop >= -0.5 && p.tableBottom <= p.viewportHeight + 0.5
+        let canScroll = if deltaY < 0.0 then p.offset < p.maxOffset - 0.5 else p.offset > 0.5
+        if (not tableInView) && canScroll then WheelToPage else WheelToTable
+
+/// The live `PageScroll` for a wheel event raised inside the Main table (IO edge: reads the realized
+/// page ScrollViewer and the table canvas's position in it); `None` outside a page viewer.
+let private pageScrollOf (source : obj) : PageScroll option =
+    match source with
+    | :? Visual as v ->
+        let viewerOpt =
+            Avalonia.VisualTree.VisualExtensions.GetVisualAncestors v
+            |> Seq.tryPick (function
+                | :? ScrollViewer as s when s.Name = UiIds.TableAndElementRotation.scrollViewer -> Some s
+                | _ -> None)
+        match viewerOpt with
+        | Some viewer ->
+            Avalonia.VisualTree.VisualExtensions.GetVisualDescendants viewer
+            |> Seq.tryPick (function
+                | :? Canvas as c when c.Name = UiIds.TableAndElementRotation.canvas -> Some c
+                | _ -> None)
+            |> Option.bind (fun canvas ->
+                canvas.TranslatePoint(Point(0.0, 0.0), viewer)
+                |> Option.ofNullable
+                |> Option.map (fun top ->
+                    {
+                        tableTop = top.Y
+                        tableBottom = top.Y + canvas.Bounds.Height
+                        viewportHeight = viewer.Viewport.Height
+                        offset = viewer.Offset.Y
+                        maxOffset = max 0.0 (viewer.Extent.Height - viewer.Viewport.Height)
+                    }))
+        | None -> None
+    | _ -> None
+
 let private mainTableCanvas (model : Model) : IView =
     Canvas.create [
         Canvas.name UiIds.TableAndElementRotation.canvas
@@ -3762,9 +3831,16 @@ let mainView (model : Model) (dispatch : Msg -> unit) : IView =
                         match e.InitialPressMouseButton with
                         | MouseButton.Right -> dispatch (OpenElementMenuAt (toScreen e))
                         | _ -> dispatch (PointerUp (toScreen e)))
+                    // Spec 0046: a plain wheel scrolls the PAGE until the table is fully in view (left
+                    // unhandled, it bubbles to the page's ScrollViewer); then — and always with a modifier —
+                    // it is the table's gesture.
                     Border.onPointerWheelChanged (fun e ->
-                        e.Handled <- true
-                        dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
+                        let mods = wheelModifiers e.KeyModifiers
+                        match wheelTarget mods (pageScrollOf e.Source) e.Delta.Y with
+                        | WheelToPage -> ()
+                        | WheelToTable ->
+                            e.Handled <- true
+                            dispatch (Wheel (mods, (if e.Delta.Y >= 0.0 then 1 else -1))))
                     Border.child (mainTableCanvas model)
                 ]
                 elementMenuOverlay model dispatch
@@ -3790,21 +3866,26 @@ let mainView (model : Model) (dispatch : Msg -> unit) : IView =
                 surface :> IView
             | Ribbon.InRibbonPane -> tableSurface ()
         | None -> tableSurface ()
-    // Spec 0046: the whole surface scrolls — a tall bay (the Experiments editor + collection + chart +
-    // builder) pushes the table below the window's bottom edge, and nothing may become unreachable. The
-    // table surface keeps its own wheel (zoom / rotate), so the page scrolls by the scroll bar or a wheel
-    // over the ribbon. VERTICAL only: a horizontally scrollable viewer measures its content at infinite
-    // width, which lays the wrapping tab strip out on one unbounded row and pushes the right-docked
-    // Materials… / Library… buttons off-screen; disabled, the content is measured at the window's width.
+    // Spec 0046: the whole surface scrolls, both ways — a tall bay (the Experiments editor + chart +
+    // builder) pushes the table below the window's bottom edge, and a window narrower than the table cuts
+    // its right side; nothing may become unreachable. The `MinWidthPanel` lays the page out at the
+    // window's width (so the tab strip still wraps there and the right-docked Materials… / Library…
+    // buttons stay on its right edge) but never narrower than the table, and its height is the content's
+    // height at that width, so the extent is exactly bars + table. A plain wheel over the table scrolls
+    // the page until the table is fully in view (`wheelTarget`), then zooms it.
     ScrollViewer.create [
         ScrollViewer.name UiIds.TableAndElementRotation.scrollViewer
-        ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+        ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.content (
-            DockPanel.create [
-                DockPanel.children [
-                    Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
-                    belowStrip
-                ]
+            MinWidthPanel.create [
+                MinWidthPanel.minContentWidth canvasWidth
+                MinWidthPanel.child (
+                    DockPanel.create [
+                        DockPanel.children [
+                            Border.create [ Border.dock Dock.Top; Border.child (mainControlBar bays model dispatch) ]
+                            belowStrip
+                        ]
+                    ])
             ])
     ] :> IView

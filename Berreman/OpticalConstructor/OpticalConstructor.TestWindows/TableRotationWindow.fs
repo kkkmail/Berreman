@@ -15,6 +15,7 @@ type TableRotationWindow() as this =
         this.Title <- "Test — Optical Table Rotations"
         this.Width <- TableRotationView.canvasWidth
         this.Height <- TableRotationView.canvasHeight + 72.0
+        OpticalConstructor.Controls.WindowFit.keepOnScreen this
         Program.mkSimple TableRotationView.init TableRotationView.update TableRotationView.view
         |> Program.withHost this
         |> Program.run

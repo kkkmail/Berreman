@@ -202,9 +202,6 @@ module UiIds =
         let removeButton (id : string) : string = "ExperimentRemove_" + id
         /// A row's "View" action — open the pop-out chart window for that experiment.
         let viewButton (id : string) : string = "ExperimentView_" + id
-        /// The explicit "open the pop-out chart window" action (also opened by double-clicking the chart).
-        [<Literal>]
-        let openChart = "ExperimentOpenChart"
         /// The inline result polyline (the first series — the intensity / Ψ curve).
         [<Literal>]
         let chart = "ExperimentChart"
@@ -461,7 +458,7 @@ module UiIds =
         let placeOnMainBeam = "ElementMenuPlaceOnMainBeam"
         /// "Place on the reflected ray of" the element with this id (prefixed so it cannot collide).
         let placeOnReflectedOf (elementId : string) : string = "ElementMenuPlaceOnReflectedOf_" + elementId
-        /// Spec 0046: the menu's Choose… — the Selector bay's Choose… verb for the element the menu serves.
+        /// Spec 0046: the menu's Choose… — the Select bay's Choose… verb for the element the menu serves.
         [<Literal>]
         let choose = "ElementMenuChoose"
         /// Spec 0046: the menu's "what is it" lines — the bound entry's name and description.

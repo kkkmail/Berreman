@@ -788,19 +788,16 @@ module ExperimentControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Open chart button triggers openChartWindow`` () =
-        // Regression: the pop-out window opened only on a hand-rolled double-click that could miss. There is
-        // now an explicit, always-present button (plus a proper DoubleTapped gesture). This proves a click on
-        // the button fires the `openChartWindow` handler that the host maps to opening the ChartWindow.
+    let ``there is no separate Open chart window button; a collected experiment's View opens its chart`` () =
+        // Spec 0046 (operator): "Open chart window" duplicated a collected experiment's "View" — removed. The
+        // draft's inline chart still opens its pop-out on a double-click (`openChartWindow`).
         HeadlessSession.run (fun () ->
-            let mutable opened = 0
             let handlers : ExperimentControls.Handlers =
                 {
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
                     setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                     addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
-                    viewExperiment = ignore
-                    openChartWindow = fun () -> opened <- opened + 1
+                    viewExperiment = ignore; openChartWindow = ignore
                 }
             let state =
                 { ExperimentControls.empty with
@@ -811,13 +808,6 @@ module ExperimentControlsTests =
             window.Content <- Component(fun _ -> ExperimentControls.view state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId UiIds.Experiment.openChart b -> Some b | _ -> None) with
-            | Some b ->
-                match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
-                | p when p.HasValue ->
-                    window.MouseDown(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
-                    window.MouseUp(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
-                | _ -> Assert.Fail("the Open chart button is off-screen")
-            | None -> Assert.Fail("the Open chart button was not rendered")
-            Assert.True(opened >= 1, "clicking Open chart did not trigger openChartWindow")
+            let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
+            Assert.DoesNotContain(texts, fun t -> t.StartsWith "Open chart")
             window.Close())

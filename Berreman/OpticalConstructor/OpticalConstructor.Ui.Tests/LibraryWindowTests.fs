@@ -1317,7 +1317,7 @@ module LibraryWindowTests =
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())
 
-    // ============== step 017 — the Selector bay's Choose…/quick-pick flow (headless) ==============
+    // ============== step 017 — the Select bay's Choose…/quick-pick flow (headless) ==============
 
     /// Mount the Main workbench through a re-rendering FuncUI Component that EXPOSES the latest
     /// model (the LibraryControlsTests drive pattern): the step-017 acceptance compares the
@@ -1341,7 +1341,7 @@ module LibraryWindowTests =
         window, (fun msg -> dispatchRef.Value msg), (fun () -> latest.Value)
 
     /// The Main scene over fresh stores with the detector element selected (2 detector entries
-    /// < the default threshold 5 — the under-threshold fixture) and the Selector bay shown.
+    /// < the default threshold 5 — the under-threshold fixture) and the Select bay shown.
     let private detectorSelectorModel () : Scene.Model =
         { freshMainModel () with selection = Scene.ElementSelected 1; ribbon = Scene.BayNames.selector }
 

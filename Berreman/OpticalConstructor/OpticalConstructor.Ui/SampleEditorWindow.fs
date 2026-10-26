@@ -48,6 +48,8 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
         AutomationProperties.SetAutomationId(this, UiIds.SampleEditor.window)
         this.Width <- 1080.0
         this.Height <- 900.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         let entries =
             match materials.listMaterials ActiveOnly with
             | Ok list -> list

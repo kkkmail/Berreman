@@ -285,7 +285,8 @@ module SourceAndDetectorMoveTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Rotation bay offers the R1 / R2 locks for an element, not for the table, and survives switching`` () =
         HeadlessSession.run (fun () ->
-            let window, dispatch, getModel = mount (sourceSelected ())
+            // Main opens on Add (spec 0046) — open the Rotate bay.
+            let window, dispatch, getModel = mount { sourceSelected () with ribbon = BayNames.rotation }
             let elementIds = visibleIds window
             Assert.Contains(UiIds.Rotation.lockR1, elementIds)
             Assert.Contains(UiIds.Rotation.lockR2, elementIds)

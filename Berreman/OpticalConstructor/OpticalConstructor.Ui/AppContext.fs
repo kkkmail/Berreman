@@ -24,7 +24,7 @@ open OpticalConstructor.Domain.WorkbenchSettings
 [<ReferenceEquality>]
 type AppContext =
     {
-        /// The catalogue seam behind the Selector bay (spec 0027) — spec 0046: the LIVE Library
+        /// The catalogue seam behind the Select bay (spec 0027) — spec 0046: the LIVE Library
         /// (`Library.liveLibrary` — the seeded presets over the samples and user-sources stores), so
         /// an entry created in the Library window binds and resolves on the table.
         library : Library.LibraryProxy

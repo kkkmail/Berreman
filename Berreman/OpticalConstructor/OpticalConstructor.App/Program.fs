@@ -92,6 +92,9 @@ module private ConstructorScene =
     let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.Model) : unit =
         window.Width <- TableAndElementRotationView.canvasWidth
         window.Height <- TableAndElementRotationView.canvasHeight + 210.0
+        // Spec 0046: never larger than the screen it opens on — on a laptop the design height can exceed
+        // the working area, which put the bottom of the scrolling page (the table) off-screen.
+        OpticalConstructor.Controls.WindowFit.keepOnScreen window
         Program.mkSimple seed TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost window
         |> Program.run
@@ -157,6 +160,7 @@ type LauncherWindow(context : AppContext) as this =
         this.Width <- 380.0
         this.Height <- 300.0
         this.CanResize <- false
+        OpticalConstructor.Controls.WindowFit.keepOnScreen this
         let title =
             TextBlock(
                 Text = "Optical Constructor",

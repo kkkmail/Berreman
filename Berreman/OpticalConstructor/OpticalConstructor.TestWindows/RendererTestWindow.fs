@@ -15,6 +15,7 @@ type RendererTestWindow() as this =
         this.Width <- RendererTestView.canvasWidth
         // Three rows of controls now (swap+rails, cap circles/radials, the three transparency knobs).
         this.Height <- RendererTestView.canvasHeight + 150.0
+        OpticalConstructor.Controls.WindowFit.keepOnScreen this
         Program.mkSimple RendererTestView.init RendererTestView.update RendererTestView.view
         |> Program.withHost this
         |> Program.run

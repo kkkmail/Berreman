@@ -716,15 +716,14 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
+/// Spec 0046: the description box FILLS the row beside its docked label (a fixed 620 px box ran off the
+/// edge of a window narrower than the label plus the box).
 let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
-    StackPanel.create [
-        StackPanel.orientation Orientation.Horizontal
-        StackPanel.spacing 6.0
-        StackPanel.children [
-            labelBlock "Description:"
+    DockPanel.create [
+        DockPanel.children [
+            Border.create [ Border.dock Dock.Left; Border.margin (thickOf 0.0 0.0 6.0 0.0); Border.child (labelBlock "Description:") ]
             TextBox.create [
                 TextBox.name UiIds.SampleEditor.descriptionBox
-                TextBox.width 620.0
                 TextBox.text m.description
                 TextBox.onTextChanged (SetDescription >> dispatch)
             ] :> IView
@@ -1291,7 +1290,10 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
                     DockPanel.create [
                         DockPanel.children [
                             Border.create [ Border.dock Dock.Top; Border.child (filmsCountRow m) ]
+                            // Spec 0046: the layer table's rows are fixed-width cells, so in a narrow window
+                            // the table scrolls sideways too instead of clipping its right-hand columns.
                             ScrollViewer.create [
+                                ScrollViewer.horizontalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
                                 ScrollViewer.content (
                                     StackPanel.create [
                                         StackPanel.name UiIds.SampleEditor.stackTable

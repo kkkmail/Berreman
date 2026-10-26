@@ -353,6 +353,17 @@ This is a spec-driven, gated repository.
   exports the run through `ExperimentExportProxy`, and compares it with `Variables.calculate`.
   `Variables.getWaveLengthValue` used to wrap metres as nm (every script wavelength sweep ran at
   ~10⁻⁷ nm) — fixed in spec 0046; keep it in the range's own unit.
+- **Every window fits its screen and scrolls — nothing is ever clipped out of reach.** Each window's
+  constructor calls `WindowFit.keepOnScreen` (shrinks it to its screen's working area on open);
+  `MinWidthPanel` lays content out at the window's width but never below a minimum and scrolls sideways
+  below it (Main's page, the Material editor). `ScrollExtentTests` is the law (800 × 600 and 1000 × 540:
+  every control of every window can be scrolled fully on screen) — add a new window to it. Never put a
+  WrapPanel (or a wrapping TextBlock) inside a horizontal StackPanel: it gets an unbounded width and never
+  wraps — dock the label in a DockPanel instead. A plain wheel over the Main table scrolls the page until
+  the table is fully in view, then zooms it (`wheelTarget`); with a modifier it is always the table's.
+- **Main ribbon:** Add (opens first) · Rotate · Move · Render · Select · Experiments · Details. The
+  Experiments bay's "Data files" section (Attach data file…) is the Inverse constructor's alone; a
+  collected experiment's View opens its chart (there is no separate Open chart button).
 - **Only the light source is placed freely.** It moves in table x / y / z (`Placement.height`,
   `moveLocks`, `Mobility.MovesFreely`), unbounded, and starts with every move and rotation locked;
   the beam root is its 3-D centre, so moving it carries the whole beam — an x move included: the
@@ -362,7 +373,7 @@ This is a spec-driven, gated repository.
   held to its RAY — one rule, the table plays no part: a ray starts at the element it leaves (the
   source, or the host of a reflected ray) and ends at its first detector, or 1 m along
   (`openRayEndX`) with none; a detector moves anywhere past the start, which extends the ray
-  (`raySpan` / `alongBeamRange`). The Main Rotation bay uses `RotationControls.wrappingView`; the
+  (`raySpan` / `alongBeamRange`). The Main Rotate bay uses `RotationControls.wrappingView`; the
   rotation test windows keep the single-row `view`, because their headless tests click fixed
   window coordinates.
 - **The Main scene's Library is LIVE** (`Library.liveLibrary`: the seeded presets over the samples

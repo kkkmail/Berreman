@@ -12,7 +12,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Placement
 open OpticalConstructor.Ui.TableAndElementRotationView
 
-/// Spec 0027 (024) Phase 1 — the Selector bay (labelled "Library" until spec 0033 step 014): the pure
+/// Spec 0027 (024) Phase 1 — the Select bay (labelled "Library" until spec 0033 step 014): the pure
 /// control contract, the host's kind-constrained `libraryState` flattening, the `BindValueId` MVU
 /// binding, and one headless render proof that the bay lists its entries and a click binds the selected
 /// element's `valueId`. The control stays `LibraryControls` — only the bay label changed.
@@ -47,7 +47,7 @@ module LibraryControlsTests =
 
     // ============================ host libraryState (pure) ============================
 
-    /// Build the model with a single Sample element selected (so the Selector bay shows samples).
+    /// Build the model with a single Sample element selected (so the Select bay shows samples).
     let private withSampleSelected () : Model =
         initMain () |> update (AddElement Sample)   // appends a Sample at index 2, selects it
 
@@ -61,7 +61,7 @@ module LibraryControlsTests =
     let ``libraryState for a selected Sample lists ONLY sample leaf rows, kind-labelled Sample`` () =
         let m = withSampleSelected ()
         let bays = mainBays m ignore
-        // The Selector bay exists and is offered.
+        // The Select bay exists and is offered.
         Assert.Contains(BayNames.selector, bays |> List.map (fun b -> b.name))
         // Its rows: every selectable leaf is a Sample entry id; the kind label is "Sample".
         // (Re-derive the bay state the same way the host does — through the live model.)
@@ -97,14 +97,16 @@ module LibraryControlsTests =
         Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
 
     [<Fact>]
-    let ``the ribbon offers the Selector bay; the Library workbench left for its window`` () =
-        // The Selector bay is present, in order, after Render (the Experiments bay was added in Phase 2,
+    let ``the ribbon offers the Select bay; the Library workbench left for its window`` () =
+        // The Select bay is present, in order, after Render (the Experiments bay was added in Phase 2,
         // so `BayNames.all` is now longer than the original five; assert membership + the prefix order
         // rather than an exact five-element list). Spec 0033 step 014 renamed the bay label from
         // "Library" to "Selector" (same behaviour); spec 0033 step 024 reused the freed label for the
         // SAMPLES WORKBENCH bay — which spec 0038 step 015 moved into the single-instance Library
         // WINDOW, so no "Library" bay is offered any more (the Selector alone keeps binding duty).
-        Assert.Equal("Selector", BayNames.selector)
+        // Spec 0046 (operator): the label is the verb "Select" (was "Selector"); likewise "Rotate".
+        Assert.Equal("Select", BayNames.selector)
+        Assert.Equal("Rotate", BayNames.rotation)
         Assert.Contains(BayNames.selector, BayNames.all)
         Assert.DoesNotContain("Library", BayNames.all)
         // Spec 0046: Add comes first.
@@ -164,9 +166,9 @@ module LibraryControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Selector bay shows the pending description, then a Confirm click binds the valueId`` () =
+    let ``the Select bay shows the pending description, then a Confirm click binds the valueId`` () =
         HeadlessSession.run (fun () ->
-            // A Sample is selected, an entry is already PENDING (selected-not-confirmed), the Selector bay is
+            // A Sample is selected, an entry is already PENDING (selected-not-confirmed), the Select bay is
             // shown — so the confirm panel (the entry's full description + Confirm / Cancel) renders up front.
             let mutable model =
                 withSampleSelected ()
@@ -201,7 +203,7 @@ module LibraryControlsTests =
                 window.GetVisualDescendants()
                 |> Seq.tryPick (function :? Border as b when Avalonia.Automation.AutomationProperties.GetAutomationId(b) = UiIds.Library.confirm && b.IsEffectivelyVisible -> Some b | _ -> None)
             match findConfirm () with
-            | None -> Assert.Fail("the Confirm button was not visible in the Selector bay")
+            | None -> Assert.Fail("the Confirm button was not visible in the Select bay")
             | Some b ->
                 let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
                 if c.HasValue then
@@ -281,7 +283,7 @@ module LibraryControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Selector bay survives select, bind, and kind-change re-renders`` () =
+    let ``the Select bay survives select, bind, and kind-change re-renders`` () =
         // The acceptance drive over the LIVE main view: select an entry (pending), bind it (Confirm),
         // then change the selected element's KIND twice — rows collapse for a polarizer and rebuild for
         // a fresh sample — with every step re-rendering through the FuncUI patch path.

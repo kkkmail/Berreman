@@ -25,6 +25,8 @@ type SolverHandoffWindow(library : Library.LibraryProxy, experimentData : Experi
         AutomationProperties.SetAutomationId(this, UiIds.Handoff.window)
         this.Width <- 920.0
         this.Height <- 760.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         let context : SolverHandoffView.SolverHandoffContext =
             {
                 library = library

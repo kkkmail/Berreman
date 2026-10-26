@@ -28,6 +28,8 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
         AutomationProperties.SetAutomationId(this, UiIds.SourceEditor.window)
         this.Width <- 620.0
         this.Height <- 280.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         let context : LightSourceEditorView.SourceEditorContext =
             {
                 sources = sources

@@ -549,7 +549,7 @@ module MainSceneMsgTests =
         Assert.Equal<Model>(viaTargeted, update (BindValueId "lens-a") pending)
 
     [<Fact>]
-    let ``the Selector bay offers the quick-pick strip only BELOW the step-005 threshold`` () =
+    let ``the Select bay offers the quick-pick strip only BELOW the step-005 threshold`` () =
         // The seeded detector kind has 2 entries < the default threshold 5 → the inline strip.
         let detSelected = { initMain () with selection = ElementSelected 1 }
         Assert.Equal<SelectorOffer>(QuickPickAndChoose, selectorOffer detSelected)

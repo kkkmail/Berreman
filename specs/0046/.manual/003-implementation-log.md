@@ -329,6 +329,39 @@ Fixes:
 - Tests: constructor 727, ui-smoke 206, ui-tests 757 in all (the UI suite now takes ~5 minutes with the
   acceptance tests); full no-incremental build 0 errors, only vendored SYSLIB0051.
 
+## Open chart window removed, scroll law for every window, data files inverse-only, Add first, Rotate / Select (operator, same day)
+
+1. **Open chart window removed** — it duplicated a collected experiment's View. The draft's inline chart
+   still opens its pop-out on a double-click (`openChartWindow`); `UiIds.Experiment.openChart` is gone.
+2. **The scroll arithmetic, every window.** Headless, Main's page extent already summed correctly
+   (bars 458 + table 560 = 1018). What failed on a real screen:
+   - the windows OPENED taller than a laptop's working area (Main 820 × 770 client + title bar; Sample editor
+     900, Material editor 1000, Library / Materials 800 high), so the bottom of the scrolled page sat below
+     the screen edge — `WindowFit.keepOnScreen` now fits every window (product and test windows) to its
+     screen's working area when it opens (pure `fitWithin`, headless no-op on the 1920 × 1280 test screen);
+   - a plain wheel over the table zoomed it, so wheel-scrolling the page stopped as soon as the table slid
+     under the pointer — now the page scrolls first until the table is fully in view (`wheelTarget`; any
+     modifier, incl. Ctrl, is always the table's);
+   - horizontally, content was clipped: Main's page had horizontal scrolling disabled (820 px table),
+     the Library / Materials facet rows put a WrapPanel inside a horizontal StackPanel (unbounded width, so
+     it never wrapped), the Material editor's panes needed 956 px (3* : 2* columns with minimums 520 / 380),
+     plus single-line rows in the Move / Render bays, the Material editor summary, the Sample editor's
+     description box and layer table, and the chart window's toolbar / format panel.
+   New `MinWidthPanel` (Controls/WindowLayout.fs): lays its child out at the arranged width but never below
+   a minimum, reports that minimum inside a horizontal scroller, and its height is the child's height at the
+   arranged width — Main's page and the Material editor use it. `ScrollExtentTests` is the law: at 800 × 600
+   and 1000 × 540 every control of every window (Main with each bay and a filled Experiments bay, Inverse,
+   Library, Materials, Material / Sample / Category / Source editors, Chart, Solver handoff) can be scrolled
+   so both of its corners are on screen. (At 640 × 480 the Library / Materials trees and the Sample editor's
+   layer table run out of room — below any fitted laptop window.)
+3. **Data files only in the Inverse constructor.** The Experiments bay's "Data files:" section (Attach data
+   file…, file name, status) renders for `InverseConstructor` alone.
+4. **Main opens on Add** (the first bay); **"Rotation" → "Rotate"**. 5. **"Selector" → "Select"**.
+- Tests: constructor 727; UI 767 (ui-smoke 208) — +10 `ScrollExtentTests`, the Open-chart test replaced,
+  three tests that assumed the Rotation bay opens first now open Rotate, and ten click helpers now
+  `BringIntoView` before clicking (the wrapped facet rows push the Library / Materials tree below its
+  scroller's visible area). Full build 0 errors, 0 warnings.
+
 ## Findings
 
 - F1: `dotnet test` broken on the .NET 10 SDK since the xunit.v3 4.0.0 bump (see item 1).

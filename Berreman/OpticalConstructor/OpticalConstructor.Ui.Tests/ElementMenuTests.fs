@@ -304,7 +304,7 @@ module ElementMenuTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the Rotation bay's checkbox switches every element to rotate about its incident face`` () =
         HeadlessSession.run (fun () ->
-            let window = mount (plateScene ())
+            let window = mount { plateScene () with ribbon = BayNames.rotation }
             try
                 let checkBox () : CheckBox option =
                     window.GetVisualDescendants()

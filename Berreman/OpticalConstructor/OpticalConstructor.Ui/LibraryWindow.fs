@@ -45,6 +45,8 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
         AutomationProperties.SetAutomationId(this, UiIds.LibraryWindow.window)
         this.Width <- 1150.0
         this.Height <- 800.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         // Browse-mode opens always `Show` — the Select-state modality switch is never consulted
         // on this path (the step-008 `EditorLaunchers.defaults` precedent), so the baked
         // `defaultValue` is inert here; the step-017 Selector flow composes `SelectOpen`

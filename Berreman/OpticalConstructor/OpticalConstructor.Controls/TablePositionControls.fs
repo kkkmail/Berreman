@@ -131,15 +131,17 @@ module TablePositionControls =
 
     /// The bar — a PURE projection of `state` / `handlers`, so it always reflects the host's CURRENT
     /// selection and locks.
+    /// Spec 0046: a DockPanel (the axis rows docked left, the Reset + readout column filling the rest) so
+    /// the readout WRAPS in a narrow window instead of running off its right edge.
     let view (state : State) (handlers : Handlers) : IView =
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 16.0
-            StackPanel.margin (Thickness 8.0)
-            StackPanel.isEnabled state.enabled
-            StackPanel.opacity (if state.enabled then 1.0 else 0.5)
-            StackPanel.children [
+        DockPanel.create [
+            DockPanel.margin (Thickness 8.0)
+            DockPanel.isEnabled state.enabled
+            DockPanel.opacity (if state.enabled then 1.0 else 0.5)
+            DockPanel.children [
                 StackPanel.create [
+                    StackPanel.dock Dock.Left
+                    StackPanel.margin (Thickness(0.0, 0.0, 16.0, 0.0))
                     StackPanel.orientation Orientation.Vertical
                     StackPanel.spacing 4.0
                     StackPanel.children [
@@ -157,7 +159,7 @@ module TablePositionControls =
                             Border.horizontalAlignment HorizontalAlignment.Left
                             Border.child (clickBox UiIds.TablePosition.reset "Reset position" state.enabled (fun _ -> handlers.reset ()))
                         ]
-                        TextBlock.create [ TextBlock.name UiIds.TablePosition.readout; TextBlock.text (readoutText state) ]
+                        TextBlock.create [ TextBlock.name UiIds.TablePosition.readout; TextBlock.textWrapping TextWrapping.Wrap; TextBlock.text (readoutText state) ]
                     ]
                 ]
             ]
