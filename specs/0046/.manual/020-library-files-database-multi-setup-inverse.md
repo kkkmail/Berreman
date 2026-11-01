@@ -2,56 +2,64 @@
 
 Research and proposal only. No code was changed.
 
-**Revision 2 (2026-11-01, after the operator's comments).** This revision changes the architecture:
+**Revision 3 (2026-11-01, the operator's second round of comments)** — every change below is a decision now (§4):
 
-- **The database must not be overstuffed.** It holds **slow data only**, i.e. the library.
-- **An experiment kit is not slow data.** The kit — its items, setups, experiments, studies, fit results and the measured data FILES — lives as plain files in an **experiment-kit folder** that the user chooses or creates.
-- **The app keeps a history of kit folders:** 100 by default (configurable), starrable, sorted by the last open date.
-- **Sending a kit means sending its folder.** The separate bundle format from `018` is no longer needed.
+- **The direct and the inverse problem work the same way: both work inside an experiment-kit folder.** There is no scratch scene and no `.ocproj`.
+- **File names carry no useless part.** The kit's own file is `.kit-json`, not `kit.kit-json`, and every other name follows one rule (§A).
+- **No legacy, no migration.** There are no schema up-converters and no database migrations, and superseded code is deleted rather than kept beside the new code (§R).
+- **Agreed:** the extensions; starred kits always on top, sorted by last open date; the names `Experiment` (one run) and `Study` (the combined inverse problem).
+- **Two acceptance tests** close slice 8 (§Q):
+  - one replicates optics-mueller;
+  - one replicates the most complex existing inverse test, `AbsorbingBiaxialNoisyTests` (several samples, noisy measurements).
+
+  Both REUSE the existing code — nothing is copied — and no new inverse test is written.
+- **The relevant parts of `018` are now part of the plan:** identity, immutability, provenance, the import decisions, online material sources, and the Measurement Planner (§B–§D, §H, §M).
+
+**Revision 2:**
+- the database holds slow data only (the library);
+- experiment kits are folders of plain files with a history of recent kit folders;
+- sending a kit means sending its folder.
 
 Inputs:
 - `019-handover.md`, `002-plan.md`, `018-sharing-libraries-inverse-planner.md`;
-- the constructor code at `c0bfb48`;
-- the Mueller experiment in `C:\GitHub\optics-mueller` (`AGENTS.md`, `notes/*`, `analysis/matrix_solution/*`);
+- the constructor and test code at `c0bfb48`;
+- the Mueller experiment in `C:\GitHub\optics-mueller`;
 - specs 0038 (§13–16), 0042 and 0044;
 - a web survey (sources at the end).
 
-## Short answers to the questions asked
+## Short answers
 
 - **Two homes for data.**
   - **Slow data** (changes rarely, shared by every kit): the library, in a local SQLite database.
   - **Fast data** (one experimental campaign): an experiment-kit folder of plain files.
-- **The library leaves the code** and becomes JSON files, typed by extension in the STL/ASG convention (`.material-json`, `.sample-json`, `.source-json`, `.polarizer-json`, `.detector-json`, `.category-json`, plus one `catalogue.manifest-json` per catalogue folder).
-  - It is imported at **every** start; a manifest-hash comparison makes that cheap.
-  - An import never edits a built-in in place (a change mints a new version), and it never touches user entries.
-- **The database:** SQLite through EF Core, which the repo already pins and has proven (`OpticalConstructor.Database`). It holds only:
-  - library entries (materials, categories, samples, sources, polarizer / detector / item-model presets) with their version history;
+- **The library leaves the code** and becomes JSON files, typed by extension (`.material-json`, `.sample-json`, `.source-json`, `.polarizer-json`, `.detector-json`, `.item-model-json`, `.category-json`; one `.catalogue-json` per catalogue folder).
+  - It is imported at every start; a manifest-hash comparison makes that cheap.
+  - A changed built-in mints a new version; user entries are never touched.
+  - The code seeds are exported once and then deleted.
+- **The database:** SQLite through EF Core, holding only:
+  - library entries with their versions;
+  - categories;
   - the catalogue-import log.
 
-  Nothing per-experiment goes there: no kits, setups, experiments, data, fit results or recent-folder lists.
-- **Experiment kits are folders.** The user starts a kit by choosing or creating a folder. The folder holds:
-  - the kit's physical items, its setups, experiments and studies, and its fit runs, one file each;
-  - the raw measured data files, exactly as the lab produced them;
-  - a snapshot of every library version the kit uses.
-
-  It is therefore self-contained: copy it, zip it, or put it under git.
-- **Kit-folder history:** the most recent 100 folders by default (`appsettings.json`), starrable and sorted by last open date. It lives in the existing per-user preferences file, not in the database.
-- **Locations:**
-  - **Database:** `%LOCALAPPDATA%\Softellect\Berreman\OpticalConstructor\library.db`, local and never synced. On Windows 11, OneDrive Known Folder Move often syncs Documents, and SQLite over sync or network file systems is a known corruption path.
-  - **Preferences:** the existing `%APPDATA%\Softellect\Berreman\OpticalConstructor\`.
-  - **Kit folders:** anywhere the user picks, suggested under `Documents\Optical Constructor\Kits\`. Because they are plain files written atomically, OneDrive and git are fine for them.
+  It is created from the model, with no migrations.
+- **Every constructor session is in a kit folder.** Main (direct) and Inverse both start at the kit start screen. A kit holds:
+  - its items, setups and experiments (with or without data);
+  - its studies and fit runs;
+  - the raw data files;
+  - a snapshot of every library version it uses.
+- **The kit-folder history:** 100 folders by default (`KitHistoryLimit`). Starred kits always sit on top, and each group is sorted by last open date. The history lives in the per-user preferences, not in the database.
 - **Exchange:**
-  - **a kit** = its folder ("Send kit…" zips it into one file);
-  - **one library entry** = its `-json` file;
-  - **a curated library** = a catalogue folder.
+  - a kit = its folder (or one zip of it);
+  - a library entry = its `-json` file;
+  - a curated library = a catalogue folder.
 
-  The receiving app checks the kit's library snapshot against its own database (the `018` decision table) and never overwrites anything silently.
+  A received kit's library snapshot is checked against the local database, and nothing is overwritten silently.
 - **The inverse problem:**
-  - the kit holds the **items** — the physical pieces (LP1, CPL1, QZ, …), each with its OWN parameters, known or unknown;
+  - **items** are the physical pieces, each with its OWN parameters, known or unknown;
   - **setups** place items in slots on the beam, two or more samples allowed;
   - a **study** fits many experiments together.
 
-  An unknown such as the retardance of CPL1 belongs to the ITEM, so every experiment that uses that item shares it automatically. That one rule is what makes "swap the pieces, attach a file to each run, fit everything together" work.
+  An unknown belongs to its item, or to its material when several samples share it, so every experiment that uses that item or material shares it automatically.
 
 ---
 
@@ -59,550 +67,613 @@ Inputs:
 
 - **Nothing persists.**
   - Every store is in memory, and every start re-seeds (`Berreman/OpticalConstructor/OpticalConstructor.Ui/AppContext.fs:69`).
-  - `.ocproj` exists (`OpticalConstructor.Storage/ProjectFile.fs`) but no window saves or opens it.
-  - `Scene.SceneProxy` and `ExperimentCollectionProxy` are in-memory seams that wait for a disk `create`.
+  - `.ocproj` (`OpticalConstructor.Storage/ProjectFile.fs`) is never saved or opened by any window.
+  - `Scene.SceneProxy` and `ExperimentCollectionProxy` are in-memory seams.
   - The EF Core project holds one `Test` table that nothing references.
-  - `OpticalConstructor.Seeding` pushes the code seeds through `SeedingProxy` into in-memory stores only.
-  - The only things on disk are the recent-files list (`OpticalConstructor.Storage/RecentFiles.fs`: `%APPDATA%\Softellect\Berreman\OpticalConstructor\recent.json`, capped at 16) and the user-environment preferences (`lastFolders` per picker).
+  - `OpticalConstructor.Seeding` pushes the code seeds into in-memory stores.
+  - On disk there are only `recent.json` (`OpticalConstructor.Storage/RecentFiles.fs`, `%APPDATA%\Softellect\Berreman\OpticalConstructor\`, capped at 16) and the user-environment preferences.
 - **The library is code.**
-  - `MaterialLibrary.builtInEntries`, `Library.SeedSamples`, `SeedSources`, the polarizer and detector presets in `Library.seedEntries` (`OpticalConstructor.Domain/ElementId.fs:856`), and `standardCategories`.
-  - Their GUIDs are frozen as future foreign keys, which is good and must survive the move to files.
-  - Material physics is already data (`MaterialComplexity`), with one exception: **tabulated imports are closures** (`complexity = None`, `OpticalConstructor.Storage/MaterialImport.fs:97`), so they cannot be stored as they are.
-- **An Experiment** (`OpticalConstructor.Domain/Experiments.fs:213`) is one frozen snapshot of the table:
+  - `MaterialLibrary.builtInEntries`, `Library.SeedSamples`, `SeedSources`, the presets in `Library.seedEntries` (`OpticalConstructor.Domain/ElementId.fs:856`), and `standardCategories`, all with frozen GUIDs.
+  - Material physics is data (`MaterialComplexity`), with one exception: **tabulated imports are closures** (`complexity = None`, `OpticalConstructor.Storage/MaterialImport.fs:97`).
+- **An Experiment** (`OpticalConstructor.Domain/Experiments.fs:213`) is a frozen table snapshot:
   - one varied element with one variable over one range;
   - one capture mode;
-  - **one** data file, stored as a path that breaks on another machine.
-- **Table elements are "kind + library entry".**
-  - The table has no notion of *this particular* CPL1, so two LPs of the same preset are indistinguishable.
-  - Polarizers are ideal or constant-Mueller presets (`ElementId.fs:304`). Nothing parameterised exists, such as an LP + retarder with unknown δ and axis.
-- **One sample per run.**
-  - The measured element is "the first element bound to a sample" (`OpticalConstructor.Ui/TableAndElementRotationView.fs:1339`).
-  - The run law lets the first polarizer set a unit-intensity state (`OpticalConstructor.Domain/ExperimentRun.fs:36`), so neither the source's own polarization nor an absolute scale can enter a fit.
-- **There is no inverse solve in the UI.** The Inverse constructor ends at the stub `SolverHandoffView` ("the actual inverse solver runs separately").
-- **The Mueller pipeline exists, but outside the model.**
-  - `MuellerReconstruction` (spec 0042) reproduces the optics-mueller fit: families, dial signs, CPL model, dark and gain blocks, a 16-parameter linear least-squares fit.
-  - It does so by **regex over experiment names** (`MuellerReconstruction.fs:400`, `CPL-(QZ#45-LR#45)-CPL`) and a hard-coded `MuellerDataSet` DU over a zip shipped next to the executable.
-  - `MuellerInverse` (spec 0044) is the multi-cut joint fit of material constants.
+  - ONE data file, stored as a machine-specific path.
+- **Table elements are "kind + library entry"**, so two LPs of one preset are indistinguishable.
+  - Polarizers are ideal or constant-Mueller (`ElementId.fs:304`); nothing is parameterised.
+  - One sample per run: `measuredElementOf` takes the first bound sample (`OpticalConstructor.Ui/TableAndElementRotationView.fs:1339`).
+  - The first polarizer sets a unit-intensity state (`OpticalConstructor.Domain/ExperimentRun.fs:36`).
+- **There is no inverse solve in the UI.** The Inverse flow ends at the stub `SolverHandoffView`.
+- **The working inverse code is all outside the constructor:**
+  - `MuellerReconstruction` (spec 0042) reproduces the optics-mueller fit, through a regex over run names (`MuellerReconstruction.fs:400`) and the hard-coded `MuellerDataSet` DU over `Berreman/Data/MuellerMatrix/data.zip`;
+  - `MuellerInverse` (spec 0044) is the multi-cut material fit;
+  - the noise model, the fit wrappers and the ensemble statistics live in the TEST project (`BerremanTests/InverseFitHarness.fs`).
 
-  Neither is reachable from the constructor. The features below generalise what both hard-code.
-- **The data-file schemas are too narrow for real data.**
-  - Intensity is strict `X,Y`.
-  - Ellipsometric files must be `wavelength_nm,psi_deg,delta_deg`.
-  - A real lab file is one CSV with many runs keyed by a column (`experiment`), a raw dial reading (`description`), a timestamp (`captured_at`) and several signal columns (`avg_R`, `avg_total`).
+  The constructor reaches none of it.
+- **The data-file schemas are too narrow:** strict `X,Y` and `wavelength_nm,psi_deg,delta_deg`. Real lab files are one CSV with many runs keyed by a column, raw dial readings, timestamps and several signal columns.
 
-## 1. The reference case — the optics-mueller experiment, as the model must see it
+## 1. The two reference cases
+
+### 1a. optics-mueller (real data)
 
 - **Items:**
-  - a red laser (the source; nearly linear, intensity drifts);
-  - lens and diaphragm (passive, ignored by the optics);
-  - LP1 (source) and LP2 (analyzer);
-  - CPL1 (source, LP → λ/4) and CPL2 (analyzer, λ/4 → LP). Each is "LP + retarder" with unknown retardance δ (fitted ≈ 80–84°, not 90°) and, for CPL1, an unknown retarder-axis offset (fitted 39.3° instead of 45°);
-  - two objects: QZ (quartz) and LR (red Lego glass), each an unknown 4×4 Mueller matrix;
-  - the phone (an intensity detector with a dark offset and a gain that jumps between session blocks).
+  - a laser (nearly linear, intensity drifts); lens and diaphragm (passive);
+  - LP1 / LP2;
+  - CPL1 / CPL2 (LP + retarder, δ ≈ 80–84° unknown, CPL1 axis offset unknown — fitted 39.3° instead of 45°);
+  - QZ and LR (unknown 4×4 Mueller matrices);
+  - the phone (dark offset, gain that jumps between session blocks).
 - **Setups:**
-  - source slot ∈ {LP1, CPL1} × analyzer slot ∈ {LP2, CPL2}, giving four families;
-  - object slot 1 / slot 2 ∈ {empty (AIR), QZ, LR, QZ then LR};
-  - object rotation φ ∈ {0, +45, +90}.
-- **One experiment** is one analyzer-dial sweep, 0…360° every 20°, sometimes with a repeated first point. It records the raw dial reading, and the dial-to-physical mapping (zero, sign) differs between LP and CPL.
-- **Diagnostics:**
-  - Darkness (dark level);
-  - AIR repeats (`-BR`, `-2R`) as drift checks;
-  - "BullshitCheck" (laser off and on), whose timestamp splits a gain block;
-  - lamp tests, ignored.
-- **Corrections after the fact:**
-  - LR was labelled +45/+90 but physically sat at −45/−90 — the setup is fixed, the data is not;
-  - one contaminated frame is excluded with a reason;
-  - the gain rules differ per family.
-- **Unknowns:**
-  - CPL1 (2), CPL2 (1–2), the LP2 and CPL2 dial zeros;
-  - M_QZ (16) and M_LR (16);
-  - about five per-block gains and one dark level.
-- **Fit:** two-stage in the repo (AIR calibrates the pieces, then a linear fit per object), then a check that the product M_LR · M_QZ predicts the combined runs.
-- **The repository already is, in effect, an experiment-kit folder:** raw data under `data/`, notes, analysis outputs and photos. The kit-folder design below lets that folder open as a kit by adding the kit's own files next to the lab's files, without moving anything.
-- **What the app must therefore do:**
-  - hold the items;
-  - build about 40 setups by swapping pieces;
-  - attach four CSVs that each feed many experiments;
-  - tag diagnostics;
-  - declare unknowns on items, sessions and objects;
-  - fit jointly or in stages;
-  - publish calibrated item values for the next study.
+  - source {LP1, CPL1} × analyzer {LP2, CPL2};
+  - object slots 1 / 2 ∈ {AIR, QZ, LR, QZ then LR};
+  - φ ∈ {0, +45, +90}.
+- **One experiment** = an analyzer-dial sweep, 0…360° every 20°, recorded as raw dial readings. The dial zero and sign differ between LP and CPL.
+- **Diagnostics:** Darkness, AIR repeats (`-BR`, `-2R`), BullshitCheck (a laser restart that splits a gain block), and lamp tests (ignored).
+- **Corrections:** LR was labelled +45/+90 but physically sat at −45/−90 (fix the setup, not the data); one excluded frame; per-family gain rules.
+- **Unknowns:** CPL1 (2), CPL2 (1–2), the dial zeros, M_QZ (16), M_LR (16), about five gains, one dark level.
+- **Fit:** staged (AIR calibration, then the linear object fit), then the product check M_LR · M_QZ.
+- **The repository is, in effect, already a kit folder:** adding `.kit-json` makes it one, and nothing moves.
+
+### 1b. The most complex existing inverse test — `AbsorbingBiaxialNoisyTests` (synthetic, noisy)
+
+- **Unknowns (15):** an absorbing, gyrotropic, triclinic crystal — n₁, n₂, n₃, six ε″ components, six gyration components.
+- **Samples:** five 100 µm plates of ONE crystal:
+  - the two optic-axis cuts (`opticAxisCut`, `otherOpticAxisCut`);
+  - the Z, X and Y cuts.
+- **Measurements:** 44 configurations (sets `a1`, `a2`, `a3` in `BerremanTests/AbsorbingBiaxialSample.fs`), each a measured Mueller matrix in transmission or reflection — normalized elements plus the absolute throughput.
+- **Noise (`NoiseParam.decentLab`):** angles ±0.2°, elements ±0.005, throughput ±1 %. Five fixed seeds; the fit starts from `perturbedStart` inside `searchBox`.
+- **Runtime:** about 946 s.
+- **Why it is the right second test:** several samples share one material — the multi-cut, `MaterialScope` case — the measurements are noisy, and the fit is the largest the code has (15 unknowns).
+- Recorded interpretation: "uses two samples" is read as "more than one sample". This test has five plates, starting with the two optic-axis cuts. If the quartz ensemble in `MuellerInverseTests` (two cuts) was meant, §Q applies unchanged.
 
 ## 2. Best practice and similar software (web survey, short)
 
 - **Global or co-refinement with shared parameters** is the standard answer to "combine experiments":
-  - *Origin and GraphPad Prism*: a shared parameter gets one value fitted from all data sets, which also changes the reported errors.
-  - *refnx*: `GlobalObjective` over per-data-set objectives. Sharing works by REUSING the same parameter object across models; that is the "parameter belongs to the item" rule.
-  - *SasView*: simultaneous fit with constraints that link models; per-data-set weights since v6.
-  - *Woollam*: multi-sample analysis reduces parameter correlation, and CompleteEASE has explicit parameter coupling.
-- **Polarimeter calibration with imperfect, unknown elements.**
-  - The Eigenvalue Calibration Method (Compain, Poirier & Drévillon 1999) finds the generator and analyzer matrices (W, A; 32 coefficients) from three or four reference samples (air, polarizers, a retarder). It assumes nothing about the elements except completeness and needs no precise alignment.
-  - Dual-rotating-retarder calibration (Goldstein & Chipman; Chenault et al.) fits retardance and orientation errors, because errors under 1° give over 10 % matrix error.
-  - Hence: "calibration experiments" are a first-class role, and item parameters are fit targets.
-- **Physical realizability** of a fitted Mueller matrix (the cone of Mueller matrices, coherency eigenvalues ≥ 0) is a standard post-fit check.
-- **Library versus project data (Zemax OpticStudio).**
-  - Catalogues are plain-text AGF files in a user data folder (`Documents\Zemax\Glasscat`, path settable).
-  - Since 21.3 it also has **project directories**: a per-lens-file location for catalogues, so a project carries what it needs.
-  - Its own guidance warns that putting the shared data folder on a network or cloud drive breaks offline use.
-  - This is the same split as here: slow shared library in one place, a self-contained project folder per piece of work.
+  - *Origin and GraphPad Prism*: one value per shared parameter, fitted from all data sets;
+  - *refnx*: `GlobalObjective`, sharing by REUSING the same parameter object — the "parameter belongs to the item" rule;
+  - *SasView*: constraints that link models, plus weights;
+  - *Woollam*: multi-sample analysis reduces correlation; CompleteEASE has parameter coupling.
+- **Polarimeter calibration with imperfect elements.**
+  - The Eigenvalue Calibration Method (Compain, Poirier & Drévillon 1999) finds W and A from three or four reference samples, with no assumptions beyond completeness and no precise alignment.
+  - Dual-rotating-retarder calibration (Goldstein & Chipman; Chenault et al.) fits retardance and orientation errors (under 1° of error gives over 10 % matrix error).
+  - Hence: calibration experiments are a role, and item parameters are fit targets.
+- **Physical realizability** of a fitted Mueller matrix (coherency eigenvalues ≥ 0) is a standard post-fit check.
+- **Library versus project (Zemax OpticStudio):**
+  - a shared catalogue folder (AGF files, path settable);
+  - per-project directories since 21.3;
+  - a warning against network or cloud drives for the shared data folder.
+
+  This is the same split as here.
 - **SQLite as a document format.**
-  - SQLite's own case for using a database file as the application file format: atomic, queryable, one file.
-  - The same project's network caveats: file locking misbehaves on network and sync file systems; WAL needs shared memory.
-  - Forum reports (Tropy, RootsMagic, Sonarr) show real corruption from OneDrive-synced databases.
-  - Conclusion: a LOCAL SQLite database fits the slow library. A folder of plain files fits work that is sent, synced or versioned.
+  - SQLite's own case for single-file documents.
+  - Its network caveats (locking misbehaves on network and sync file systems).
+  - Forum reports of OneDrive-synced databases corrupting.
+  - Conclusion: a LOCAL SQLite file fits the slow library; plain-file folders fit work that is sent, synced or versioned.
 
 ---
 
 ## 3. Feature list
 
-### A. The library as external files (update without recompiling)
+### A. Names — one rule, applied everywhere
 
-- **One entry per file**, in a folder tree per catalogue. It diffs, reviews and merges in git, and a single entry can be emailed or dropped in.
-- **Typed library extensions (the STL/ASG `-json` convention):**
-  - `.material-json`, `.sample-json`, `.source-json`, `.polarizer-json`, `.detector-json`;
-  - `.item-model-json` (the parameterised piece models of §F);
-  - `.category-json`;
-  - `catalogue.manifest-json` (name, catalogue id, catalogue version, list of entry hashes).
+- **The rule** (no useless name part):
+  1. A file that exists **once per folder** is named by its extension alone: `.kit-json`, `.catalogue-json`.
+  2. A file that exists **many times** is named by its own identity (label, name, id + version, timestamp) plus its kind extension.
+  3. **No folder or name part repeats** what the extension already says. Subfolders exist only for a distinct PURPOSE (`library/` = copies of slow data, `data/` = raw lab files, `.oc/` = app cache), never to group one kind.
+- **Library extensions (agreed):** `.material-json`, `.sample-json`, `.source-json`, `.polarizer-json`, `.detector-json`, `.item-model-json`, `.category-json`; the catalogue manifest is `.catalogue-json`.
+- **Kit extensions (agreed):** `.kit-json` (the kit itself), `.item-json`, `.setup-json`, `.experiment-json`, `.study-json`, `.fitrun-json`.
+- **Catalogue folder layout:**
 
-  Content is plain JSON; the extension names the schema. The kit-folder file kinds are separate (§C).
+  ```
+  <catalogue>/
+    .catalogue-json                          name, catalogue id, version, entry hashes
+    Silicon.material-json
+    Langasite (La3Ga5SiO14).material-json
+    Transparent glass (n = 1.52).material-json
+    …
+  ```
+
+  - The file name is the entry's name, made filesystem-safe; uniqueness per kind within a catalogue is checked on export.
+  - Identity is the GUID INSIDE the file, never the file name (`018` §1).
+  - There are no category folders: the category lives in the file, and a folder would only repeat it, or contradict it.
+- **Kit folder layout:**
+
+  ```
+  <kit>/
+    .kit-json                                the kit: id, name, author, notes, naming template, import profiles, sendExclude
+    LP1.item-json  CPL1.item-json  QZ.item-json  Phone.item-json  …
+    CPL-(QZ#45-LR#45)-CPL.setup-json  …
+    CPL-(QZ#45-LR#45)-CPL.experiment-json  …
+    QZ-LR.study-json
+    QZ-LR@20261101T120000Z.fitrun-json  …
+    library/<id>@v<n>.<kind>-json            snapshot of every library version the kit uses
+    data/…                                   raw lab files (default home for attachments), never modified
+    .oc/                                     app-owned cache and lock; safe to delete; never sent
+  ```
+
+  Names that come from the naming template keep the lab's characters. Only characters Windows forbids (`: * ? " < > |`) are replaced.
+- **Code names drop the parts their scope already supplies:**
+  - module `Kit` with `Item`, `ItemId`, `ItemLabel`, `Parameter`, `ParameterState`; the library type `ItemModel`;
+  - `KitFolder` (the folder path type);
+  - proxies `KitProxy`, `KitHistoryProxy`, `KitArchiveProxy`, `CatalogueProxy`, `MaterialSourceProxy`;
+  - `KitContext`; the setting `KitHistoryLimit`;
+  - messages `CreateKit`, `OpenKit`, `OpenKitZip`, `StarKit`, `UnstarKit`, `ForgetKit`, `SendKit`;
+  - UI labels "New kit…", "Open kit…", "Open kit from zip…", "Send kit…".
+
+  The UI calls the concept "experiment kit"; the code says `Kit`, because there is no other kind of kit.
+- **Database file:** `library.db`.
+
+### B. The library as external files (update without recompiling)
+
+- **One entry per file;** it diffs, reviews and merges in git, and a single entry can be emailed or dropped in.
 - **Every entry file carries:**
   - `schema` (kind + schema version), `id` (the frozen GUID), `version`;
   - `name`, `category` / facets, `description`;
-  - `payload` (the elevated domain value, e.g. `MaterialComplexity`);
-  - `provenance` (built-in / user / imported-from-kit / pulled-from-source, with citation and licence — `018` §2);
+  - `payload` (the elevated domain value);
+  - `provenance` — built-in / user / imported-from-kit / pulled-from-source with source, record, source version, **licence and citation** (`018` §1–2);
   - `contentHash` (SHA-256 over canonical JSON: sorted keys, invariant-culture numbers).
-- **JSON Schema per kind**, validated on load. The storage layer already uses System.Text.Json + FSharp.SystemTextJson + JsonSchema.Net for `.ocproj`, so reuse that stack.
-- **Schema evolution:**
-  - each kind has pure up-converters vN → vN+1;
-  - a file newer than the app is rejected with a typed `UnsupportedSchemaVersion` error, never a crash.
 
-  The same rule holds for kit-folder files.
-- **Physics must be pure data before it can leave the code.**
-  - Add a **tabulated** `EpsWithDispValue` case (λ, n, k arrays + interpolation rule) so refractiveindex.info tabulated imports become storable and versionable instead of closure-backed `complexity = None`.
-  - Any entry that cannot serialise is a test failure.
+  **Identity is GUID + version + hash, never the name** (`018` §1).
+- **JSON Schema per kind,** validated on load. The System.Text.Json + FSharp.SystemTextJson + JsonSchema.Net stack in `ProjectJson` is REUSED. The `.ocproj` aggregate itself goes (§R).
+- **No up-converters.** A file whose schema version differs from the app's is rejected with a typed `UnsupportedSchemaVersion` error, never a crash. The same holds for kit files.
+- **Physics must be pure data.** A **tabulated** `EpsWithDispValue` case (λ, n, k arrays + interpolation rule) replaces the closure-backed tabulated imports. Any entry that cannot serialise is a test failure.
 - **Shipped catalogue:**
-  - `<install>\Catalogue\Builtin\…` is read-only, copied by the build from a repo folder (e.g. `Berreman/OpticalConstructor/Catalogue/`).
-  - The code seeds are exported ONCE to these files by a throw-away tool, keeping GUIDs and values byte-for-byte. Then the Domain seed values are **deleted** so there is one source of truth.
-  - Tests load the same files (a fixture reads the repo catalogue folder).
-- **Import on every start (cheap):**
-  - compare each catalogue's manifest hash with the one recorded in the database;
-  - import only when it changed;
-  - log the decisions.
-- **Per-entry import decision** (one rule for catalogues AND for library snapshots inside received kits; the `018` table):
+  - `<install>\Catalogue\Builtin\`, read-only, copied by the build from `Berreman/OpticalConstructor/Catalogue/Builtin/`;
+  - the code seeds are exported ONCE by a throw-away tool (GUIDs and values byte-for-byte), then the Domain seed values are **deleted**;
+  - tests load the same files.
+- **Licence attribution:** CC-BY entries show their attribution in the Library and Materials windows and in the Details view, and kits carry it in their snapshots (`018` §2).
+- **Import on every start:** compare each catalogue's `.catalogue-json` hash with the one recorded in the database, and import only on change.
+- **Per-entry import decision** (one table for catalogues, kit snapshots and single dropped files; `018` §1):
 
   | Incoming | Action |
   |---|---|
   | New id | Add |
-  | Same id, same hash | Skip |
-  | Same id, new hash | Mint the next version of that entry; for a protected built-in, the new version becomes the latest built-in |
-  | Entry removed from the catalogue | Mark `InactiveEntry` (still resolvable) |
+  | Same id, same hash | Reuse |
+  | Same id, version not held locally | Add that version; the local "latest" moves only for a protected built-in from a catalogue |
+  | Same id and version, different hash | A divergence; import as a flagged fork with a new id |
+  | Different id, same name | Side by side ("Si — from A"), with an explicit "use my Si instead" re-binding and a diff preview |
+  | Entry removed from its catalogue | Mark `InactiveEntry` (still resolvable) |
 
-  Never delete, never touch user entries. Kits pinned to an old version keep it.
-- **Extra catalogue sources:**
-  - "Add catalogue folder…" registers a read-only folder: a lab share, OneDrive, or a git checkout;
-  - this is the shared-folder library from `018`;
-  - JSON on a synced folder is safe because the app only reads it.
-- **Export:**
-  - any entry → its `-json` file;
-  - a selection or a whole category → a catalogue folder with a manifest.
+  The decisions show as one dialog with a row per entry, and nothing is overwritten silently.
+- **Extra catalogue folders** (the `018` shared-folder library): read-only folders on a share, OneDrive or a git checkout.
+  - Permissions are the folder's own.
+  - Versions are immutable files, so the only possible conflict is two people adding the same name, which is harmless because the ids differ.
+- **Export:** any entry → its `-json` file; a selection or a category → a catalogue folder. Exporting **pins** the exported versions (§C).
+- **`SeedingProxy` / `seedAll` become `CatalogueImport`:** the same seam shape, fed from parsed files; the step-042 in-memory proof stays as the test double.
 
-  This is how a curated user library becomes a shipped one.
-- **`SeedingProxy` / `seedAll` become `CatalogueImport`:** the same seam shape, fed from parsed files instead of Domain values. The existing step-042 in-memory proof stays as the test double.
+### C. The library database — slow data ONLY (SQLite, no migrations)
 
-### B. The library database — slow data ONLY (SQLite via EF Core)
-
-- **What it holds:**
-  - library entries of every kind, with their immutable version history, lifecycle and protection;
-  - categories;
-  - the catalogue-import log (catalogue id, manifest hash, time, decisions).
-
-  Item models (§F) are library entries too: "LP + retarder" is a reusable TYPE; the physical CPL1 is not.
-- **What it never holds** — anything that belongs to one experimental campaign or changes per session:
+- **What it holds:** library entries of every kind (materials, samples, sources, polarizers, detectors, item models) with immutable version history, lifecycle and protection; categories; the catalogue-import log; pulled-source records (§D).
+- **What it never holds:**
   - kit items, setups, experiments, studies, fit runs;
   - measured data;
-  - the kit-folder history and other preferences.
+  - the kit history and other preferences.
 
-  The rule for future additions: if it would travel with a kit, it goes in the kit folder; if every kit shares it and it changes rarely, it may go in the database.
-- **Hybrid shape:**
-  - relational columns for what is queried or constrained: id, version, kind, name, lifecycle, protection, facet keys, foreign keys (sample version → material version);
-  - the elevated domain value as a schema-versioned JSON payload column, using the same canonical serializer as §A.
+  The rule for additions: if it would travel with a kit, it goes in the kit; if every kit shares it and it changes rarely, it may go in the database.
+- **Hybrid shape:** relational columns for what is queried or constrained (id, version, kind, name, lifecycle, protection, facet keys, sample-version → material-version keys), plus the canonical JSON payload. The library file, the database payload and a kit's snapshot of an entry are byte-identical, and the hash proves it.
+- **Versions are immutable;** "edit latest" follows `Lifecycle.decideVersioning`.
+- **`Pinned` replaces `VersionsInUse`.**
+  - A version becomes `Pinned` — a one-way flag — when a kit first references it, or when it is exported (`018`: immutable once saved or exported).
+  - A pinned version never mutates; an edit mints the next version.
+  - The kit's snapshot hash is the second safeguard.
+- **No migrations.**
+  - The database is created from the model (`EnsureCreated`) and stamped with its schema version.
+  - A mismatch is a typed `LibrarySchemaMismatch` error, and the remedy is to recreate the database from the catalogues.
+  - User entries survive only through "Export my library" first. That is acceptable while there is no release; migrations arrive with the first release that has users.
+- **The library proxies keep their shapes and gain a SQLite `create`:** `MaterialProxy`, `CategoryProxy`, `SampleProxy`, `SourceProxy`, the `LibraryProxy` live view, and the preset and item-model stores.
+- **Contract tests:** each library proxy's suite runs against the in-memory store AND SQLite `:memory:`.
+- **Settings:**
+  - the connection string comes from `appsettings.json` (the elevated `ConnectionString` in `AppConfig.fs`);
+  - WAL mode (the file is local only);
+  - one writer;
+  - "Back up library now…" (`VACUUM INTO`) and "Restore library…".
 
-  The library file, the database payload and the kit's snapshot of an entry are byte-identical, and the hash proves it.
-- **Versions are immutable rows**; "edit latest" follows the existing `Lifecycle.decideVersioning` rule.
-- **"In use" without seeing the kits.** Experiments now live in folders the database cannot enumerate, so `VersionsInUse` cannot be a query over experiments. Instead:
-  - the first time a kit pins a library version (binds it in a setup, or snapshots it), the database marks that version **`Pinned`**;
-  - this is a one-way flag (never cleared) and a tiny slow-data write;
-  - a pinned version is immutable, so editing it mints the next version.
-  - The kit's own snapshot (§C) is the second safeguard: a hash mismatch between snapshot and database is reported, never resolved silently.
-- **The library proxies keep their shapes and gain a SQLite-backed `create`:** `MaterialProxy`, `CategoryProxy`, `SampleProxy`, `SourceProxy`, the `LibraryProxy` live view, and the preset / item-model stores. `SceneProxy` and `ExperimentCollectionProxy` do NOT move to the database; their disk form is the kit folder (§C).
-- **Contract tests:** one suite per library proxy runs against BOTH the in-memory store and SQLite in `:memory:` mode.
-- **Migrations:**
-  - EF Core migrations replace the `Test` table;
-  - migrations apply at start, after an automatic backup (`VACUUM INTO` a dated copy, the last N kept);
-  - a database with a newer schema than the app opens read-only with a typed error.
-- **Settings and safety:**
-  - the connection string comes from `appsettings.json` (the elevated `ConnectionString` already exists in `AppConfig.fs`);
-  - WAL journal mode, since the file is local only;
-  - one writer (the app);
-  - a menu item "Back up library now…" and "Restore library from backup…".
+### D. Online material sources (from `018` §2) — slow data
 
-### C. The experiment-kit folder — fast data as plain files
+- **`MaterialSourceProxy`** (search, fetch) with adapters, in this order:
+  1. **refractiveindex.info** (CC0): an offline snapshot of the GitHub database plus an optional "Update snapshot". The existing YAML importer (`MaterialImport`) is REUSED as the record parser.
+  2. **PTB OCDB** (CC BY 4.0): EUV / VUV n, k **with uncertainties**.
+  3. **A Henke-based compound calculator** (CXRO f₁, f₂ + formula + density) for EUV and X-ray. Check its redistribution terms before shipping the tables.
+- **A pulled record becomes a user material version** in the database, with provenance: source, record path, snapshot date or commit, licence, citation.
+- **Updating a source** mints a NEW version when the record changed and never mutates one.
+- **Uncertainties travel with the material** (PTB's σ) and become priors in studies and inputs to the Planner (§L, §M).
+- **User-supplied glass catalogues** (Schott / Ohara / Hoya / CDGM AGF): import only, never bundle.
+- **Materials Project** dielectric tensors are a prior (a starting guess) only, never reference data.
+- **Paywalled sources** stay manual paste.
+- **Known gaps:**
+  - no free gyration or magneto-optic data (user-entered from papers);
+  - how refractiveindex.info encodes uniaxial and biaxial crystals must be checked on the first real import.
 
-- **A kit is a folder.**
-  - It is recognised by `kit.kit-json` at its root. The manifest holds the kit id (GUID), name, schema version, the app version that last wrote it, created and modified times, notes, the naming template (§G), the import profiles (§H) and the send-exclusion globs.
-  - Everything else in the folder is either a kit file the app owns or a user file the app only reads.
-- **Layout** (one entity per file, LF, pretty-printed, stable key order, so the folder diffs in git):
+### E. The experiment-kit folder — fast data as plain files
 
-  ```
-  <kit folder>/
-    kit.kit-json                                   manifest
-    items/<label>.item-json                        one physical piece each (§F)
-    setups/<name>.setup-json                       slot assignments (§G)
-    experiments/<name>.experiment-json             one recorded run each (§H)
-    studies/<name>.study-json                      unknowns, scopes, links, fit settings (§I)
-    studies/<name>/runs/<utc-stamp>.fitrun-json    every fit: inputs, parameter vector, results
-    library/<kind>/<id>@v<n>.<kind>-json           snapshot of every library version the kit uses
-    data/…                                         raw measured files, any layout, never modified
-    .oc/                                           app-owned cache and lock, safe to delete, never sent
-  ```
-
-  `data/` is only the default for new attachments. Any file under the kit root may be referenced, so an existing lab folder (e.g. the optics-mueller repo with its `data/raw/*.csv`) becomes a kit by adding `kit.kit-json` and the app's subfolders, moving nothing.
-- **References inside a kit are relative paths** (forward slashes) plus the SHA-256 recorded when the file was attached.
-  - On open, and before each fit, changed or missing data files are flagged ("data changed since attach / since the last fit run"), never ignored.
+- **A kit is a folder** recognised by its `.kit-json` (§A layout).
+  - The kit file holds the kit id (GUID), name, author, created and modified times, notes, the naming template (§J), the import profiles (§K) and the `sendExclude` globs.
+  - Every other file is either a kit file the app owns or a lab file the app only reads.
+- **The direct and the inverse problem use the SAME kit.**
+  - Forward experiments are experiments without data.
+  - Inverse studies add data and unknowns.
+  - One kit may hold both, so a user can design a run forward, then attach its measured file to the same experiment.
+- **References inside a kit are relative paths** (forward slashes) plus the SHA-256 recorded at attach time.
+  - A changed or missing data file is flagged on open and before each fit ("data changed since attach / since the last fit run").
   - Absolute paths are never stored.
-- **Attaching a file from outside the kit copies it into `data/`** (keeping its name, suffixing on collision), so the folder stays self-contained.
-- **Raw data is read-only for the app.** Exclusions, corrections and mappings are recorded in the experiment file, never in the data file.
-- **Library closure snapshot.**
-  - Every library version the kit references (samples, materials, item models, sources, detectors, polarizers) is copied into `library/` when first referenced.
-  - Snapshots of `ProtectedBuiltIn` entries are included as well, because the receiver may run another catalogue version.
-  - The kit therefore opens on any machine, even one whose database lacks those entries.
-- **Resolution on open** (the `018` decision table, per snapshot entry):
+- **Attaching a file from outside the kit copies it into `data/`,** keeping its name and suffixing on collision.
+- **Lab files are read-only for the app.** Exclusions, corrections and mappings live in the experiment file.
+- **Library closure snapshot (`018` §1, the Zemax `.zar` / KiCad lesson: always embed).**
+  - Every library version the kit references is copied into `library/` when first referenced, built-ins included, because the receiver may run another catalogue version.
+  - So the kit opens on any machine.
+- **Resolution on open** (the §B decision table, applied to the snapshot):
+  - same id, version and hash → the database entry;
+  - missing locally → the snapshot read-only, with "Add to my library";
+  - divergence → reported; the kit keeps its snapshot;
+  - name-only collision → side by side, with the explicit re-binding.
 
-  | Snapshot vs local database | Action |
-  |---|---|
-  | Same id, version and hash | Use the database entry |
-  | Missing locally | Use the snapshot read-only; offer "Add to my library" |
-  | Same id and version, different hash | Report a divergence; the kit keeps its snapshot |
-  | Different id, same name | Side by side, no merging |
+  One dialog shows all rows; nothing changes in the database unconfirmed.
+- **Writes are atomic** (write `*.tmp`, then replace).
+- **Fit runs are append-only** and store the full parameter vector they used and produced.
+- **Concurrency:**
+  - one window per kit;
+  - a `.oc/lock` (machine, user, process, time) warns across processes and machines, with an "open read-only" choice;
+  - on activation, files changed outside the app (another editor, git, a sync) are offered for reload.
+- **Large lab files** (e.g. 24 MB DNG images) may stay in the kit. The app reads only what experiments reference, and "Send kit…" honours `sendExclude` (e.g. `**/*.dng`).
+- **Review round-trip (`018` §1):** notes on experiments, studies and fit runs live in their files, so a reviewer's comments come back in the returned folder or zip; a git-managed kit gets the full history.
 
-  The import dialog lists every row, and nothing changes in the database without the user's confirmation.
-- **Writes are atomic** (write `*.tmp`, then replace), so a crash never leaves half a file, and sync clients only ever see whole files.
-- **Fit runs are append-only.** Each one stores the full parameter vector it used and produced, so an old result stays reproducible after items are recalibrated.
-- **Concurrency.**
-  - Inside the app, a kit folder opens in one window at a time.
-  - Across processes and machines, a `.oc/lock` file (machine, user, process, time) warns when the same kit is already open, with an "open read-only" choice.
-  - On window activation the app re-checks the files' timestamps and hashes and offers to reload changes made outside it (another editor, a git pull, a sync).
-- **Large raw files.** The lab may keep raw images in the kit (optics-mueller: about 24 MB per DNG). The app reads only what experiments reference, and `kit.kit-json` carries `sendExclude` globs (e.g. `**/*.dng`) that "Send kit…" honours.
-- **`.ocproj` is superseded.** The kit folder is the project for experiment work. The never-wired single-file `.ocproj` is retired, or kept only as a "Save scratch scene" format — see §4.
+### F. Starting work — the kit start screen and history
 
-### D. Starting work — the kit-folder history
-
-- **The start screen** opens from the Launcher's **Inverse** button, and from **Main → Open kit**. It offers:
-  - **New kit…**: choose or create a folder. An empty folder is initialised; a folder that already has files keeps them, and `kit.kit-json` and the app's subfolders are added.
-  - **Open kit folder…**: a folder picker; a folder without `kit.kit-json` offers "Make this a kit".
+- **Both Launcher buttons, Main and Inverse, open the start screen.**
+  - Choosing a kit opens the constructor in that mode.
+  - Inside a kit the mode can be switched.
+  - The Materials and Library windows work on the library database and need no kit.
+- **Start-screen actions:**
+  - **New kit…**: choose or create a folder. An empty folder is initialised; a folder that already has files keeps them, and `.kit-json` plus the app's subfolders are added.
+  - **Open kit…**: a folder without `.kit-json` offers "Make this a kit".
   - **Open kit from zip…**: choose a target folder, extract, open.
   - **The history list.**
-- **The history:**
-  - up to **100** folders by default, configurable as `ExperimentKitHistoryLimit` in `appsettings.json`;
-  - each row shows the kit name, folder path, last-opened date and a **star**;
-  - sorted by last-opened date, newest first;
-  - **starred kits are pinned in a section at the top** (also sorted by last-opened date) and are never evicted by the cap — the oldest UNSTARRED entry goes first;
-  - a filter box (name / path);
-  - a folder that no longer exists shows greyed, with **Locate…** and **Remove from history**.
+- **History (decided):**
+  - up to `KitHistoryLimit` = 100 folders (`appsettings.json`);
+  - **starred kits always at the top**, sorted by last open date; then the rest, sorted the same way;
+  - the cap evicts the oldest UNSTARRED entry and never a starred one;
+  - each row shows the name, folder, last-open date and the star;
+  - a filter box;
+  - a missing folder shows greyed, with **Locate…** / **Remove from history**.
 - **Storage:**
-  - the history lives in the per-user preferences, NOT the database;
-  - it extends the existing recent store (`RecentFiles.fs`, `%APPDATA%\Softellect\Berreman\OpticalConstructor\`), whose single-store consolidation spec 0038 §16.3 already asked for;
-  - entry: folder, kit id, name cache, last opened, starred (a two-case DU `Starred | NotStarred`, never a bool);
-  - pure list logic (`bump`, `star`, `unstar`, `forget`, `evict`) with a clock provider, unit-tested without IO.
-- **The forward constructor** can still run without a kit (a scratch scene, as today). **Save as kit…** turns the current scene and its experiments into a new kit folder.
+  - the history lives in the per-user preferences (`%APPDATA%\Softellect\Berreman\OpticalConstructor\`), replacing the 16-entry `recent.json` list (the one recent store spec 0038 §16.3 asked for);
+  - entry: folder, kit id, name cache, last opened, `Starred | NotStarred`;
+  - the existing pure MRU logic (`RecentFiles.bump`) is REUSED and extended with `star`, `unstar`, `forget` and `evict` over a clock provider.
 
-### E. Locations (summary)
+### G. Locations
 
-- **Library database:** `%LOCALAPPDATA%\Softellect\Berreman\OpticalConstructor\library.db`, with backups in `Backups\` beside it. Local and machine-specific; never on OneDrive or a share.
-- **Preferences** (kit-folder history, picker last-folders, window state): the existing `%APPDATA%\Softellect\Berreman\OpticalConstructor\`.
-- **Kit folders:** anywhere the user chooses; the suggested parent is `Documents\Optical Constructor\Kits\`. Plain files and atomic writes make OneDrive, a share or git workable. Do not open the same kit on two machines at the same time; the lock file warns.
-- **Exports and catalogue exports:** `Documents\Optical Constructor\Exports\` (already used by `ExperimentExportFile`) and `…\Catalogues\`.
-- **Shipped catalogue:** `<install>\Catalogue\`, read-only.
-- **Every location is overridable** in `appsettings.json`; a Launcher "Data locations" panel shows each path with an "Open folder" button.
-- Note on `CLAUDE.md`: its "never `%LOCALAPPDATA%`" rule covers arc-runner WORKER output, not the product's data. This feature does not conflict with it.
+- **Library database:** `%LOCALAPPDATA%\Softellect\Berreman\OpticalConstructor\library.db`, with `Backups\` beside it. Local; never on OneDrive or a share.
+- **Preferences:** `%APPDATA%\Softellect\Berreman\OpticalConstructor\`.
+- **Kit folders:** anywhere; the suggested parent is `Documents\Optical Constructor\Kits\`. Plain files plus atomic writes make OneDrive, a share or git workable; the lock warns against opening one kit on two machines at once.
+- **Exports:** `Documents\Optical Constructor\Exports\` (already used by `ExperimentExportFile`) and `…\Catalogues\`.
+- **Shipped catalogue:** `<install>\Catalogue\`.
+- **Every path is overridable** in `appsettings.json`; a Launcher "Data locations" panel shows them, each with "Open folder".
+- `CLAUDE.md`'s "never `%LOCALAPPDATA%`" rule covers arc-runner WORKER output, not product data.
 
-### F. Exchange
+### H. Exchange
 
-- **A kit:** copy the folder.
-  - **Send kit…** writes one `<kit name>.zip` of the folder, excluding `.oc/` and the `sendExclude` globs.
-  - **Open kit from zip…** extracts and opens it.
-  - A plain `.zip` is enough because the folder already describes itself; there is no separate bundle format.
-- **A library entry:** its `-json` file, imported by drag and drop onto the Library or Materials window through the same decision table (§A).
-- **A curated library:** a catalogue folder (§A); "Add catalogue folder…" on the receiving side.
-- **Moving work between kits:** "Copy experiments from another kit…" copies the chosen experiments with their setups, their data files and the items they use. Items are mapped onto existing items in the target kit where the user says so, otherwise added.
-- **Review round-trip:** notes on experiments, studies and fit runs live in their files, so B's comments come back in the returned folder or zip. A git-managed kit gets the full history for free.
+- **A kit:** copy its folder.
+  - **Send kit…** writes one `<kit name>.zip` (excluding `.oc/` and `sendExclude`), and **Open kit from zip…** extracts it.
+  - There is no separate bundle format; this answers `018`'s bundle-extension question.
+- **A library entry:** its `-json` file, dropped onto the Library or Materials window (§B decision table).
+- **A curated library:** a catalogue folder, registered on the receiving side.
+- **Between kits:** "Copy experiments from another kit…" brings the experiments with their setups, data files and the items they use. Items map onto existing items where the user says so; otherwise they are added.
 
-### G. Items — the physical pieces of a kit (new data model; files in `items/`)
+### I. Items — the physical pieces (`<label>.item-json`)
 
-- **`KitItem`** = one PHYSICAL piece:
-  - a `KitItemId` (GUID) and a short `ItemLabel` (`LP1`, `CPL2`, `QZ`, `Phone`);
-  - the library model it is an instance of (an `ItemModel` reference, pinned by version and snapshotted);
-  - its own `ItemParameter` values;
-  - optional photo (a file in the kit) and notes.
+- **`Kit.Item`** = one PHYSICAL piece:
+  - `ItemId` (GUID) and an `ItemLabel` (`LP1`, `CPL2`, `QZ`, `Phone`);
+  - the `ItemModel` it instantiates (pinned and snapshotted);
+  - its own `Parameter` values;
+  - optional photo (a kit file) and notes.
 
-  Two LPs of the same library model are two items with independent parameters.
-- **`ItemModel`** — parameterised physics as data, a library entry (slow). Each model declares its parameter axes, so the fitter's `ParameterAxis` list is generated rather than hand-written per problem.
+  Two LPs of one model are two items with independent parameters.
+- **`ItemModel`** — parameterised physics, a library entry (`.item-model-json`). Each model publishes its parameter axes, so the fitter's `ParameterAxis` list is generated, not hand-written.
 
   | Model | Parameters |
   |---|---|
-  | Light source | λ, or tunable limits (exists) + an output polarization state: azimuth, ellipticity, degree of polarization + an intensity scale. Lets "the laser is almost linear" be modelled, or absorbed into the first polarizer as today |
+  | Light source | λ or tunable limits (exists) + output polarization (azimuth, ellipticity, degree of polarization) + an intensity scale |
   | Ideal LP / ideal CP | None (exists) |
   | Real linear polarizer | Extinction ratio or diattenuation, axis offset |
   | Retarder plate | Retardance δ (optionally dispersive), fast-axis offset |
-  | Compound in light order | E.g. **CPL** = `LP · Retarder(axis = 45° + Δ, δ)` — "LP-CP of unknown CP rotation" is this item with Δ and δ unknown. Generalises the existing `ConstantMueller` component list with parameters |
-  | Sample by stack | The existing `Sample`: materials + thicknesses + cut + orientation. Its unknowns can be any thickness, orientation, or a parameter of a material it uses |
-  | Sample as black-box Mueller matrix | 16 parameters (or 15 + scale) at its reference orientation — QZ and LR here. Rotation enters as `R(−φ) M R(φ)` |
+  | Compound in light order | E.g. CPL = `LP · Retarder(axis = 45° + Δ, δ)` — "LP-CP of unknown CP rotation"; generalises `ConstantMueller` with parameters |
+  | Sample by stack | The existing `Sample` (materials, thicknesses, cut, orientation); unknowns may be a thickness, an orientation, or a material parameter |
+  | Sample as black-box Mueller matrix | 16 parameters (or 15 + scale) at reference orientation; rotation as `R(−φ) M R(φ)` |
   | Empty slot (air) | Identity, the calibration reference |
-  | Intensity detector | Gain (per session block — see scope), dark offset, optional noise model |
-  | Ellipsometer | (exists) Plus optional calibration offsets |
+  | Intensity detector | Gain (session-scoped), dark offset, noise model |
+  | Mueller polarimeter / ellipsometer | Records a full Mueller matrix, or Ψ / Δ; noise model (angles, elements, throughput — §Q reuse) |
 
-- **`ItemParameter`** = a named value with a **state**:
-  - `Known of value`;
-  - `Unknown of start * bounds * prior option`;
-  - `Calibrated of value * sigma * fromFitRun`.
-- **Dial mapping:** a rotatable item carries a `DialMapping`, i.e. a zero offset and a sign (`DialSign` exists in `MuellerReconstruction`). Experiments record the RAW dial reading, as the lab does. The dial zero is an ordinary parameter (LP2's zero 155.44° raw was fitted).
-- **Item revisions.**
-  - An item file keeps a revision number and a short history of its parameter values.
-  - "Publish calibration" from a fit run writes the next revision.
-  - Reproducibility of older results comes from the fit runs, which store the vector they used, so items need no database versioning.
+- **`Parameter`** = a name plus a `ParameterState`: `Known of value` | `Unknown of start * bounds * prior option` | `Calibrated of value * sigma * fromFitRun`.
+- **Dial mapping:** a rotatable item has a zero and a sign (`DialSign` exists). Experiments record raw dial readings, and the zero is an ordinary parameter.
+- **Revisions:** an item file carries a revision number and a short value history; "Publish calibration" writes the next revision. Old results stay reproducible because each fit run stores its parameter vector.
 - **Material parameters as unknowns:**
-  - a study may "open" a material version, which creates a study-local working copy, stored in the study file, whose chosen components are `Unknown`;
-  - every sample of the study made of that material shares them — the 0044 multi-cut case (three cuts, one crystal);
-  - **Promote to library** is the explicit step that mints the material's next version in the database (slow data), with provenance "fitted in kit K, study S, run R".
+  - a study may OPEN a material version, which creates a study-local working copy, stored in the study file, with `Unknown` components;
+  - every sample made of it shares them (`MaterialScope` — case 1b);
+  - **Promote to library** mints the material's next version in the database, with provenance "fitted in kit K, study S, run R".
 
-### H. Setups, slots and quick swap (files in `setups/`)
+### J. Setups, slots and quick swap (`<name>.setup-json`)
 
-- **`Setup`** = an ordered optical path of **slots**, each holding a kit item or nothing:
-  - Source, Prep 1…k (polarizers or compensators before the objects), Object 1…n (**two or more samples in series** are allowed — "pick two samples for the experiment"), Analyzer 1…k, Detector;
-  - per slot: the item's placement (position on the beam, R1/R2/R3, or a dial reading).
+- **`Setup`** = an ordered optical path of slots, each holding an item or nothing:
+  - Source, Prep 1…k, Object 1…n (**two or more samples in series**), Analyzer 1…k, Detector;
+  - per slot: position on the beam, R1 / R2 / R3, or a dial reading.
 
-  The table drawing renders the active setup, and the existing `BeamLayout` / `RayModel` laws are unchanged.
-- **Setups are files with a revision number.** An experiment REFERENCES a setup (name + revision) instead of embedding a frozen descriptor list; the existing `ElementDescriptor` list becomes the setup's slot list.
-- **Quick swap (the lab gesture):**
+  The table draws the active setup, and the `BeamLayout` / `RayModel` laws are unchanged.
+- **Experiments reference setups** (name + revision). The `ElementDescriptor` list becomes the slot list.
+- **Quick swap:**
   - a slot bar above the table shows one chip per slot (`Source: Laser | Prep: CPL1 ▾ | Obj 1: QZ ▾ @ 45° ▾ | Obj 2: LR ▾ @ 45° ▾ | Analyzer: CPL2 ▾ | Detector: Phone`);
-  - a chip's dropdown lists only kit items compatible with that slot;
-  - choosing one swaps the piece, which is either a new setup or an existing one if that combination already exists;
+  - each dropdown lists compatible items only;
+  - choosing one is either a new setup or an existing one;
   - keyboard: Tab between chips, letters pick.
-- **Naming template:**
-  - each setup and experiment gets a name from the kit's template, e.g. `{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}` (the lab's own scheme);
-  - the template also PARSES names back, so imported data files auto-match (§I);
-  - this generalises `MuellerReconstruction.parseExperiment` from a hard-coded regex into kit data.
-- **Setup grid generator:** pick a set of options per slot (Source {LP1, CPL1} × Analyzer {LP2, CPL2} × Objects {∅, QZ, LR, QZ→LR} × φ {0, 45, 90}), untick impossible or unwanted combinations, and create all setups and experiments at once.
-- **The direct problem keeps working.** A forward Main scene is a setup with no data. Varying several things on one table stays as it is: several experiments over one setup.
+- **Naming template:** each kit carries one (e.g. `{source}-({obj1}#{phi1}-{obj2}#{phi2})-{analyzer}-{note}`).
+  - It names setups and experiments, and PARSES names back to match imported data.
+  - It replaces the hard-coded regex in `MuellerReconstruction.parseExperiment`, which becomes the template engine's first test case; it is not kept beside it.
+- **Grid generator:** a set of options per slot → their product, with impossible or unwanted combinations unticked → all setups and experiments created at once.
+- **Direct problem:** several experiments over one setup, as today, now saved in the kit.
 
-### I. Experiments and data attachment (files in `experiments/`, data in the kit)
+### K. Experiments and data (`<name>.experiment-json`, lab files in the kit)
 
-- **`Experiment`** (the existing name stays) = one recorded run:
-  - a setup reference and a **scan**: one or more variables over values or ranges (the analyzer dial 0…360 step 20; the object rotation fixed per experiment, or itself scanned; λ for a tunable source);
-  - the capture (T / R, from the detectors as today);
-  - a **role**: `Science | Calibration | Dark | DriftCheck | Diagnostic | Ignored`;
-  - a session (§J);
-  - the data attachment: a relative path in the kit + hash + import profile + row selection.
-- **Generic tabular import with a column-mapping wizard** (replacing the strict `X,Y` v1 as the only shape; v1 stays as a preset):
-  - a delimiter, header and BOM sniffer with a preview;
-  - map columns to:
-    - the scan variable(s), with unit and raw-dial vs physical angle;
-    - the signal (`avg_total`, or `avg_R`, or any column);
-    - an optional σ;
-    - an optional timestamp (`captured_at`), an optional capture index, and the experiment key;
-  - mappings are saved in `kit.kit-json` as named **import profiles** ("Phone ROI CSV v1"), so the next file needs one click and the profile travels with the kit.
-- **One file → many experiments:**
-  - split by a key column (`experiment`), then match each group to an experiment by the naming template;
-  - unmatched groups are listed, and creating setups for them is offered (the template parse supplies the slots and angles);
-  - the four optics-mueller CSVs attach in four steps.
-- **Raw data is immutable.**
-  - Point exclusion carries a reason (as in optics-mueller `summary.json`) and is stored in the experiment file.
-  - Excluded points stay visible in plots, marked.
-- **Corrections without touching data:**
-  - an experiment's setup can be re-pointed after the fact (e.g. "LR was at −45, not +45");
-  - this carries a mandatory audit note kept in the experiment file's history, so a fit can be re-run with the corrected setup.
-- **Other observables:**
-  - Ψ / Δ series (exists);
-  - full measured Mueller matrices per configuration (the `MuellerObservation` shape of spec 0044, from a commercial polarimeter);
-  - N / C / S later.
+- **`Experiment`** (decided name) = one recorded run:
+  - a setup reference and a **scan**: one or more variables (dial 0…360 step 20; φ; incidence × azimuth × observable; λ on a tunable source);
+  - a capture (T / R, from the detectors);
+  - a role: `Science | Calibration | Dark | DriftCheck | Diagnostic | Ignored`;
+  - a session;
+  - the data attachment: a relative path + hash + import profile + row selection.
+- **Column-mapping import wizard:**
+  - sniff the delimiter, header and BOM, and show a preview;
+  - map columns to scan variable(s) (unit; raw dial vs physical), signal, σ, timestamp, capture index, experiment key — or to Mueller elements m00…m33 plus configuration columns;
+  - save the mapping as a named **import profile** in `.kit-json`.
 
-  A study can mix them.
-- **Per-experiment status badges:** no data / mapped / validated (point count) / excluded points / data changed since attach / out-of-range (the existing typed validation, generalised to multi-variable scans).
+  Built-in profiles REUSE the existing parsers instead of keeping a separate v1 path:
+  - `MeasuredData.parseIntensitySeries` / `parseEllipsometricSeries`;
+  - `MuellerDataStore.parseMuellerCsv` (the "Phone ROI CSV" profile).
+- **One file → many experiments:** split by a key column, match each group by the naming template, list the unmatched groups and offer to create setups for them (the template parse supplies slots and angles).
+- **Raw data is immutable;** exclusions carry a reason and stay visible in plots, marked.
+- **Corrections:** re-point an experiment's setup after the fact (e.g. "LR was at −45"), with a mandatory audit note.
+- **Observables:** intensity, Ψ / Δ, full Mueller matrices (the 0044 `MuellerObservation` shape, normalized + absolute throughput), and later N / C / S. A study mixes them.
+- **Status badges:** no data / mapped / validated (points) / excluded points / data changed / out of range.
 
-### J. Studies — combining experiments into one inverse problem (files in `studies/`)
+### L. Studies — combining experiments into one inverse problem (`<name>.study-json`, `<study>@<stamp>.fitrun-json`)
 
-- **`Study`** grows from today's experiment collection: a named set of experiments inside ONE kit (possibly many setups, many samples, many sessions), plus:
-  - the **unknowns**: every `Unknown` parameter of the items, opened materials and samples the included experiments use, each listed with an owner and a scope;
-  - the **sessions**: time blocks, each with its own nuisance parameters;
-  - the fit settings;
-  - its fit runs (append-only files).
-- **Parameter scope** is the sharing rule:
+- **`Study`** (decided name) grows from the experiment collection: a named set of experiments inside ONE kit, plus:
+  - the unknowns (owner + scope);
+  - sessions;
+  - fit settings;
+  - its append-only fit runs.
+- **Scope is the sharing rule:**
 
   | Scope | Meaning |
   |---|---|
-  | `ItemScope` | One value for every experiment that uses the item (CPL1.δ, M_QZ) |
-  | `MaterialScope` | One value for every sample of an opened material (multi-cut) |
-  | `SessionScope` | One value per session block (the phone gain before and after the laser restart) |
-  | `ExperimentScope` | One value per run (a local offset) |
+  | `ItemScope` | One value for every experiment using the item (CPL1.δ, M_QZ) |
+  | `MaterialScope` | One value for every sample of an opened material (case 1b) |
+  | `SessionScope` | One value per session block (gain) |
+  | `ExperimentScope` | One value per run |
 
-  Linking two parameters explicitly ("CPL2.δ = CPL1.δ", the same filter type) is a constraint — the CompleteEASE "coupling" / SasView constraint.
-- **Sessions and gain models as data**, replacing the hand-written family rules in `MuellerReconstruction`:
-  - a session is a time interval, auto-split at Diagnostic experiments such as the laser restart, or split by hand;
-  - per session the gain is either free or anchored to its AIR / Calibration experiments, optionally interpolated linearly between two AIR repeats;
-  - the dark level comes from the Dark experiments (subtract, or fit as an offset).
+  Explicit links ("CPL2.δ = CPL1.δ") are constraints.
+- **Sessions and gain models as data:**
+  - auto-split at Diagnostic experiments (or by hand);
+  - per session the gain is free, anchored to its AIR runs, or interpolated between two AIR repeats;
+  - dark from the Dark runs.
+
+  These rules replace the hand-written family rules (`MuellerReconstruction.familyGain` becomes their first implementation, not a parallel one).
 - **Fit modes:**
-  - **Joint**: everything free at once.
-  - **Staged** (the lab's way):
-    - stage 1 fits the item parameters from Calibration experiments (AIR through each source/analyzer family — ECM-style);
-    - "Publish calibration" marks them `Calibrated` in the item files;
-    - stage 2 fits the objects with those values fixed, or as priors with their σ.
+  - **joint**;
+  - **staged**: stage 1 calibrates items on Calibration runs (ECM-style); **Publish calibration**; stage 2 fits objects with those values fixed, or as priors with σ.
+- **Engines — the existing ones, reused:**
+  - the linear path is `MuellerReconstruction.buildDesign` + `reconstruct` (SVD, rank, condition);
+  - the nonlinear path is `InverseFit` / `MuellerInverseSolver` (Alglib, multi-start) over `MuellerInverse.forwardModels`, driven by the generated parameter axes.
 
-  Staged and joint runs can be compared side by side.
-- **Engine choice is automatic.** When the only unknowns enter linearly (one black-box Mueller matrix, known source and analyzer), the problem is linear least squares (`MuellerReconstruction.reconstruct`, SVD, rank and condition reported). Otherwise it is the nonlinear path (Alglib adapter, multi-start — the existing `InverseFit` / `MuellerInverseSolver` machinery, made generic over the generated parameter axes).
-- **Ablation and weighting:** enable / disable per experiment, and a weight per experiment or per detector (SasView-style). Experiments from another kit come in through "Copy experiments from another kit…" (§F).
-- **Results**, written into the fit-run file:
-  - per-parameter value ± σ (from the Jacobian covariance) and the correlation matrix;
-  - rank and condition number;
+  The choice is automatic: linear when the unknowns enter linearly.
+- **Weights and ablation:** a weight per experiment or per detector; enable / disable per experiment.
+- **Results**, stored in the fit run:
+  - value ± σ (Jacobian covariance; `FitQuality` REUSED);
+  - correlation matrix, rank, condition;
   - per-experiment residuals and RMSE;
-  - the physical-realizability check for every fitted Mueller matrix;
-  - for series objects, the **product check** (fitted M_comb against the product M_LR · M_QZ in light order, with RMSE ratio — exactly the step-2 report);
-  - a profile-likelihood check for suspect parameters (`018` §3).
-- **Publishing:**
-  - item → next item revision in the kit (`Calibrated`);
-  - material → **Promote to library** (database, explicit);
-  - a black-box Mueller object → optionally **Promote to library** as a constant-Mueller sample model.
-- **Measurement Planner hook (`018` §3):** the planner reads the kit's items (what you own) and the study (what is unknown), and emits proposed experiments as setups + scans in this same model.
+  - Mueller realizability;
+  - the product check for series objects (M_comb against M_LR · M_QZ);
+  - **post-fit identifiability by profile likelihood** for suspect parameters (`018` §3, Raue et al.).
+- **Publishing:** item → next revision (`Calibrated`); material or black-box object → **Promote to library**.
 
-### K. Solver and physics changes these features need
+### M. Measurement Planner (from `018` §3) — kit-driven
 
-- **The run law walks any number of objects.**
-  - `ExperimentRun` folds slot by slot, in light order, through each item's Mueller matrix at its experiment orientation.
-  - "First bound sample" (`measuredElementOf`) goes away; capture branches (T / R) are decided per object on the path to the detector.
-- **The source is real.**
-  - A source item with a Stokes state and an intensity scale replaces "the first polarizer sets a unit-intensity state".
-  - The old behaviour is the default model (unpolarized source, unit scale after the first polarizer), so existing charts do not move.
+- **Its inputs are the kit; there is no separate "lab profile" to type in:**
+  - **lab profile** = the kit's items: sources and λ ranges, polarizers, compensators, compounds, detectors, angle ranges, and each detector's **noise model** (the same bench model §Q promotes);
+  - **sample inventory** = the kit's sample items: cuts, thicknesses, substrates;
+  - **prior** = `Known` / `Calibrated` parameters, material class or point group, dispersion choices, source uncertainties (PTB σ);
+  - **targets** = the study's chosen unknowns.
+- **Layer 1, structural (exact, tabulated):**
+  - the point group fixes the tensor components: isotropic 1, uniaxial 2, biaxial 3 + orientation;
+  - optical activity in 18 of the 21 non-centrosymmetric classes;
+  - what each cut sees: a c-cut at normal incidence sees n_o only (and g₃₃); n_e needs oblique incidence or an a-cut;
+  - activity along birefringent directions needs full-Mueller or HAUP-class measurements;
+  - low-symmetry crystals need several cuts × azimuths × angles;
+  - intensity-only detectors lose phase.
+
+  It answers "this kit can never recover X" and "you need an off-axis cut".
+- **Layer 2, numerical (local, at a nominal point):**
+  - the Fisher information from the Jacobians of every candidate experiment — the study engine's own forward model and Jacobian, REUSED;
+  - **rank** (identifiable combinations);
+  - **smallest singular vectors** (confounded combinations, e.g. thickness ↔ n);
+  - **Cramér–Rao bounds** per target;
+  - **greedy D-optimal** (or target-restricted A-optimal) selection of the next experiment;
+  - the instrument-matrix condition number for choosing polarizer and compensator states.
+- **Output:**
+  - a **recoverability report**;
+  - a **measurement plan** emitted as setups + experiments with role `Planned` into the same kit, so "plan → measure → attach → fit" is one object model.
+- **Cache:**
+  - key = hash of (items + parameter states + targets + nominal point);
+  - stored in the kit's `.oc/planner/` (derived, safe to delete, never sent);
+  - candidate Jacobians are cached per (sample, experiment), so adding one item computes only the new candidates.
+- **Shipped playbooks** (layer 1 and coarse layer 2 per crystal class × common kits) are catalogue data: slow, later, with an extension to be agreed.
+- **Workflow:**
+  1. kit;
+  2. planner report and plan;
+  3. measure;
+  4. attach;
+  5. fit;
+  6. post-fit identifiability;
+  7. the planner proposes the next experiment.
+
+  No LLM is involved; it is deterministic linear algebra over the solver.
+- **Later:** Bayesian expected information gain with sequential design.
+
+### N. Solver and physics changes
+
+- **The run law walks any number of objects.** `ExperimentRun` folds slot by slot, in light order, through each item's Mueller matrix. `measuredElementOf` ("the first bound sample") is deleted, and capture branches are decided per object.
+- **The source is real:** a source item with a Stokes state and an intensity scale. "Unpolarized, unit scale after the first polarizer" is its default parameter set, so existing charts keep their values.
 - **One item-model evaluator,** `ItemModel × parameters × orientation × λ → MuellerMatrix`:
-  - stack samples go through Berreman (`Propagation.sampleMuellerSpun`, flux-normalised as today);
+  - stack samples go through Berreman (`Propagation.sampleMuellerSpun` for the table; `MuellerInverse.orientForCut` + `createBerremanForward` for cut plates — REUSED);
   - black-box and compound items go through the Stokes/Mueller algebra.
+- **The forward model of an experiment** = slots + scan point + parameters → predicted reading: intensity → S₀ · gain + dark; polarimeter → Mueller elements + throughput; ellipsometer → Ψ / Δ.
+- **Parameter-axis generation:** a material complexity or item model publishes its `ParameterAxis` list. Case 1b's generated axes must equal `AbsorbingTriclinicParameters.axes` — an exact test.
+- **Long fits** run on `JobRunner`, with progress and cancel; the fit run is written on completion.
 
-  The fitter sees one function.
-- **The forward model of an experiment** = slots + scan point + parameters → predicted reading, with intensity → S₀ times session gain plus dark, and an ellipsometer → Ψ / Δ. The residual stack over all included experiments is the study objective.
-- **Parameter-axis generation:** each `ItemModel` / material complexity publishes its `ParameterAxis` list, so a new model needs no new fitter code (`MuellerInverse` is already generic in `'Parameters`; this supplies the axes from data).
-- **Long fits** run on the existing `JobRunner`, with progress and cancel. A fit-run file is written only on completion.
+### O. UI
 
-### L. UI changes
-
-- **Launcher:**
-  - `Main / Inverse / Materials / Library` stay; **Inverse** opens the kit start screen (§D);
-  - a "Data locations" footer link (§E).
-- **Kit start screen** (§D):
-  - the history list with stars, filter and missing-folder handling;
-  - New kit… / Open kit folder… / Open kit from zip….
-- **Inverse constructor** (the Main scene in inverse state, bound to the open kit; its title shows the kit name and folder) gains a left **flow strip**, each step reachable directly:
-  1. Items;
-  2. Setups (the slot bar + grid generator);
-  3. Experiments (the list, grouped by setup family);
-  4. Data (attach, mapping wizard, split-by-column, match report);
-  5. Unknowns (the study parameter table with scope and links);
-  6. Fit;
-  7. Results;
-  8. Publish.
-
-  The Experiments bay's "Data files" section moves into step 4.
-- **Items panel:**
-  - the item list, and "Add item from library model…";
-  - a parameter grid per item: name, state Known / Unknown / Calibrated, value, bounds, σ, provenance;
-  - the dial mapping;
-  - the revision history.
-- **Slot bar** over the table (§H): chips, compatible-item dropdowns, a φ / dial field per chip, and a "Record experiment" button. The table drawing follows the active setup.
-- **Experiment matrix view:** rows = source × objects × φ, columns = analyzer. Each cell is an experiment with a data badge, so "which of my 40 runs still lack data" is visible at a glance.
-- **Data attach dialog:**
-  - a preview of the first rows;
-  - column-role dropdowns and an import-profile picker;
-  - a key-column split with a matched / unmatched table;
-  - per-point exclusion from the preview plot, with a reason.
+- **Launcher:** `Main / Inverse / Materials / Library`. Main and Inverse open the kit start screen (§F). A footer link opens "Data locations".
+- **Constructor:**
+  - the title shows the kit name and folder;
+  - a left **flow strip**: Items → Setups → Experiments → Data → Unknowns → Plan → Fit → Results → Publish, each step reachable directly;
+  - the Experiments bay's "Data files" section moves into Data.
+- **Items panel:** the list, "Add item from library model…", a parameter grid (state, value, bounds, σ, provenance), the dial mapping, revisions.
+- **Slot bar** over the table (§J), with "Record experiment"; the **grid generator**.
+- **Experiment matrix view:** rows source × objects × φ, columns analyzer, with a data badge per cell.
+- **Data dialog:** preview, column roles, an import-profile picker, the key split with a matched / unmatched table, per-point exclusion with a reason.
 - **Study view:**
-  - the unknowns table (filter by owner and scope; fix / free toggles; bounds; priors; links);
+  - the unknowns table (owner, scope, fix / free, bounds, priors, links);
   - Run joint / Run stage;
   - the fit-run history;
-  - results tabs: values, correlation heat map, residuals per experiment, realizability, product check.
-- **Kit menu:** Send kit…, Open kit folder in Explorer, Copy experiments from another kit…, Reload changes, Close kit.
-- **Every new control** gets a stable automation id in `UiIds` (`KitHistoryList`, `KitHistoryStarToggle`, `NewKitButton`, `KitItemList`, `SlotChip_<slot>`, `SetupGridGenerateButton`, `DataSplitKeyColumn`, `StudyRunFitButton`, `SendKitButton`, …), and every new window joins `ScrollExtentTests`.
+  - results tabs: values, correlation, residuals, realizability, product check, profile likelihood.
+- **Plan view:** the recoverability report (rank, confounded combinations, CRB per target) and the ranked candidates, with "Add to kit".
+- **Kit menu:** Send kit…, Show in Explorer, Copy experiments from another kit…, Reload changes, Close kit.
+- **Import dialog** (§B / §E): one row per entry, its status, the default action and an override.
+- **Automation:** every new control gets a stable id in `UiIds` (`KitHistoryList`, `KitHistoryStarToggle`, `NewKitButton`, `KitItemList`, `SlotChip_<slot>`, `SetupGridGenerateButton`, `DataSplitKeyColumn`, `StudyRunFitButton`, `PlanRunButton`, `SendKitButton`, …), and every new window joins `ScrollExtentTests`.
 
-### M. Proxies, semantic commands, and the Mueller acceptance test
+### P. Proxies and semantic commands
 
 - **IO stays in proxies:**
-  - library proxies over SQLite (§B);
-  - **`ExperimentKitProxy`**, created per opened folder by `ExperimentKitProxy.create (folder : KitFolder)`. It reads and writes the manifest, items, setups, experiments, studies and fit runs; reads data files by relative path; copies external files in; writes library snapshots; takes and releases the lock; and checks for external changes;
-  - **`KitHistoryProxy`** over the preferences file;
-  - **`CatalogueSourceProxy`** (list and read catalogue folders);
-  - **`KitArchiveProxy`** (zip and unzip a kit);
-  - a `ClockProvider` for last-opened dates and session times.
+  - the library proxies over SQLite;
+  - **`KitProxy`**, built per opened folder by `KitProxy.create (folder : KitFolder)`: kit, items, setups, experiments, studies and fit runs; data by relative path; copy-in; snapshots; lock; change check;
+  - `KitHistoryProxy` (preferences);
+  - `CatalogueProxy` (catalogue folders);
+  - `KitArchiveProxy` (zip / unzip);
+  - `MaterialSourceProxy` (online sources);
+  - a `ClockProvider`.
 
-  Logic receives a `KitContext` (kit data + proxies + providers). Every proxy has an in-memory stub of the same shape.
-- **Every user step is a semantic message**, so a test drives the app by meaning, not by pixels:
-  - `CreateKitInFolder`, `OpenKitFolder`, `StarKit`, `UnstarKit`, `ForgetKit`;
-  - `AddKitItem`, `SetParameterState`;
+  Logic receives a `KitContext`, and every proxy has an in-memory stub of the same shape.
+- **Every user step is a semantic message:**
+  - `CreateKit`, `OpenKit`, `OpenKitZip`, `StarKit`, `UnstarKit`, `ForgetKit`, `SendKit`;
+  - `AddItem`, `SetParameterState`;
   - `CreateSetup`, `AssignSlot`, `SwapSlot`, `GenerateSetupGrid`, `RecordExperiment`, `SetExperimentRole`;
-  - `AttachDataFile` (with an import profile), `SplitByColumn`, `MatchByTemplate`, `ExcludePoint`, `CorrectSetup`;
-  - `CreateStudy`, `AddExperimentsToStudy`, `SetParameterScope`, `LinkParameters`;
-  - `RunFit` (joint / stage), `PublishCalibration`, `PromoteToLibrary`;
-  - `SendKit`, `OpenKitFromZip`.
+  - `AttachDataFile`, `SplitByColumn`, `MatchByTemplate`, `ExcludePoint`, `CorrectSetup`;
+  - `CreateStudy`, `AddExperimentsToStudy`, `OpenMaterial`, `SetParameterScope`, `LinkParameters`;
+  - `RunPlan`, `RunFit`, `PublishCalibration`, `PromoteToLibrary`.
 
-  The same messages back the buttons.
-- **Acceptance test "Mueller QZ + LR"** (trait `mueller-acceptance`, the `FsxAcceptanceTests` pattern). It runs against SQLite `:memory:` for the library and an in-memory `ExperimentKitProxy` seeded with the committed optics-mueller CSVs (the data `MuellerDataStore` ships today):
-  1. **Kit:** create the kit; add the laser, LP1, LP2, CPL1 / CPL2 (LP + retarder, δ and Δ unknown), QZ / LR (black-box Mueller), and the phone (gain per session, dark).
-  2. **Setups:** the grid over 4 families × {∅, QZ, LR, QZ → LR} × φ {0, 45, 90}. The **two-sample setups** (QZ in Object 1, LR in Object 2) are the "pick two samples" requirement.
-  3. **Data:** attach the CSVs, split by `experiment`, match by the lab template. Darkness, BullshitCheck, AIR-BR / -2R get their roles; the LR ±45 correction and the one excluded frame are applied as data.
-  4. **Fit:**
-     - staged — AIR calibration, publish, then the object fit;
-     - joint.
-  5. **Assertions:**
-     - M_QZ, M_LR and M_comb, CPL retardances and dial zeros match `analysis/matrix_solution/step2_linear/report.md` within tolerance (the `MuellerReconstruction` results are the oracle);
-     - the product-check RMSE ratio reproduces.
-- **Folder twin of the same test:**
-  - write the kit through the REAL folder `ExperimentKitProxy` into a throw-away folder under the test run's output directory;
-  - zip it with `SendKit`, unzip it elsewhere, and open it against an EMPTY library database (resolution through the snapshot);
-  - re-run the fit and assert the same numbers.
+  The same messages back the buttons, so tests drive by meaning, never by pixels.
 
-  This proves the folder is self-contained.
-- **Synthetic twin test:** generate readings from KNOWN CPL δ / Δ and known QZ / LR matrices through the forward model, then recover them. This pins light order (M_LR · M_QZ, not M_QZ · M_LR) and the `R(−φ) M R(φ)` convention independently of lab data.
-- **0044 twin:** a multi-cut study (three samples, one opened material) reproduces a `MuellerInverseTests` case through the same Study model, proving `MaterialScope`.
-- **Library, history and folder tests:**
-  - catalogue export → import → equality with today's seeds (GUIDs, values, hashes);
-  - every library proxy contract on both stores;
-  - migration from an empty database, and a newer-schema refusal;
-  - `Pinned` blocks in-place edits;
-  - an import-decision-table property test (FsCheck: re-importing the same catalogue is a no-op; import order does not matter);
-  - history: cap eviction skips starred entries, sort by last open, a missing folder is flagged;
-  - kit files: round-trip, atomic-write, hash-change detection and lock tests.
+### Q. The two acceptance tests (slice 8) — replication by REUSE, no copy-paste
 
-### N. Proposed phasing (each slice green on its own)
+**Common rules:**
+- Each test builds its kit ONLY through the semantic messages (§P).
+- Library: SQLite `:memory:`. Kit: an in-memory `KitProxy` stub.
+- **The data and the expected values come from where they already live;** nothing is transcribed or copied.
+- At the end the kit is written through the REAL folder `KitProxy` into a throw-away folder under the test run's output directory, zipped with `SendKit`, unzipped elsewhere, and reopened against an EMPTY library database. The test asserts:
+  - the reopened kit is equal to the original;
+  - the study's residual vector at its start point is equal too.
 
-1. **Pure data first:** the tabulated-material data case; canonical JSON + hash; per-kind schemas; export of the code seeds to the catalogue files; tests load the files; Domain seeds deleted.
-2. **Library database (slow data only)** behind the library proxies, plus migrations, backup, `Pinned`, locations and contract tests. Catalogue import on start, with the decision table and extra catalogue folders.
-3. **Experiment-kit folder:**
-   - the format, `ExperimentKitProxy`, the lock and change detection;
-   - the start screen and history (100, stars, last-open sort);
-   - today's experiment collection and scene persist into the kit;
-   - data copy-in + hashes;
-   - the library snapshot + resolution on open;
-   - Main "Save as kit…".
-4. **Send kit / open kit from zip;** single-entry library exchange; "Copy experiments from another kit".
-5. **Items + item models + parameters** (Domain, item files, the Items panel).
-6. **Setups as slots;** the N-object run law; the real source; the slot bar and grid generator.
-7. **Experiments v2:** roles, sessions, multi-variable scans, the import wizard with kit-stored profiles, split-by-column, template match, exclusions, corrections.
-8. **Study + fit:** scopes and links, staged and joint fits, fit-run files, results, publish / promote. Then the Mueller acceptance test, its folder twin and the synthetic twin.
-9. **0044 multi-cut through the Study model; Measurement Planner** (`018` §3) on top.
+  This proves the folder is self-contained without paying for a second fit.
+- Trait `kit-acceptance`, the `FsxAcceptanceTests` pattern, in `OpticalConstructor.Ui.Tests` (the headless app).
 
-## 4. Open questions for the operator (short; none blocks writing the spec)
+**AT-1 — optics-mueller:**
+- **Kit:** laser, LP1, LP2, CPL1 / CPL2 (compound LP + retarder, δ and Δ unknown), QZ / LR (black-box Mueller), phone (session gain, dark).
+- **Setups:** the grid over 4 families × {AIR, QZ, LR, QZ → LR} × φ. The **two-sample** setups put QZ in Object 1 and LR in Object 2.
+- **Data:** the committed `Berreman/Data/MuellerMatrix/data.zip`.
+  - The in-memory kit is seeded from its CSV entries through the existing `MuellerDataStore` reader, so there is no second copy of the data.
+  - Attach, split by `experiment`, match by the lab template.
+  - Roles for Darkness, BullshitCheck and the AIR repeats.
+  - The LR correction and the excluded frame are applied as data.
+- **Study:** staged (stage 1 AIR calibration → publish → stage 2 objects).
+- **Expected:** the reference pipeline's full-precision values that `MuellerReconstructionTests` §7.2 ("section 7.2 end-to-end…") already asserts (provenance `Berreman/Data/MuellerMatrix/reference_step2_linear_summary.json`).
+- **Reuse, so that ONE implementation exists:**
+  - the stage pipeline that §7.2 composes by hand (`loadDataSet`, `reduceAirTraces`, `unwrapFit`, stage-1 constants, `familyGain`, `correctSignal`, `buildDesign`, `reconstruct`) is promoted into product code as the study's staged Mueller path, and §7.2 is re-pointed to call it;
+  - the transcribed expected literals move from the §7.2 test body into one shared reference module, which both tests open. The §8.5 decision "the test reads no file for its expectations" stays intact.
+- **Assertions:** M_QZ, M_LR, M_{QZ+LR}, the CPL retardances, the angle offset and the dial zeros within the existing `dataMatrixTol`; the product-check RMSE ratio.
 
-- **Extensions:** confirm the `.<kind>-json` family (library: `material-json`, `sample-json`, `item-model-json`, …; kit: `kit-json`, `item-json`, `setup-json`, `experiment-json`, `study-json`, `fitrun-json`). Is a plain `.zip` acceptable for "Send kit…"?
-- **History:** starred kits pinned in a top section (as proposed), or one list sorted only by last-open date with a "starred only" filter?
-- **Code seeds:** delete them after the export to files (one source of truth), or keep them as a test-only fixture?
-- **`.ocproj`:** retire it in favour of kit folders, or keep it as a "save scratch scene" format for the forward constructor?
-- **Naming:** keep `Experiment` for one run and `Study` for the combined inverse problem (the experiment collection grows into it), or rename?
-- **First target for slice 8:** the optics-mueller staged fit (proves the pipeline against existing results), or the joint fit?
+**AT-2 — `AbsorbingBiaxialNoisyTests` (case 1b):**
+- **Kit:**
+  - a source at `referenceWaveLength`;
+  - an ideal polarimeter detector with the `NoiseParam.decentLab` noise model;
+  - five sample items — 100 µm plates cut `opticAxisCut`, `otherOpticAxisCut`, `ZCut`, `XCut`, `YCut` — all made of ONE material version holding the `absorbing` ground truth.
+- **Setups and experiments:** one experiment per plate, with a multi-variable scan (incidence × azimuth × T / R) that reproduces exactly `a1 @ a2 @ a3` = 44 configurations. This is the grid generator's job, checked configuration by configuration against `fullConfigurations`.
+- **Data:**
+  - for each seed, the observations come from the EXISTING `noisyObserveAbsoluteWith forward absorbing NoiseParam.decentLab seed fullConfigurations`;
+  - they are written as kit data files through the Mueller-matrix import profile, and read back through the same profile.
+- **Study:**
+  - open the material with all 15 components `Unknown` (`MaterialScope` across the five plates);
+  - start = `perturbedStart`, box = `searchBox`.
+- **Assertions, cheap to expensive:**
+  1. **Data identity:** the observations the study loads equal the harness's, exactly.
+  2. **Model identity:** the generated parameter axes equal `AbsorbingTriclinicParameters.axes`, and the study's residual vector at `perturbedStart` equals the harness's `throughputResidualFor` vector (≤ 1e-12 relative).
+  3. **Fit:** one seed through the study engine recovers the 15 constants and the derived quantities (birefringences, isotropic absorption) within the bands `AbsorbingBiaxialNoisyTests` asserts. Those band checks move into one shared function that both tests call.
+  4. **Full five-seed ensemble** (same statistics through the reused `statisticsFor`): optional, under the trait `kit-acceptance-full`, because it costs the existing test's ~16 minutes.
+- **Reuse, so that ONE implementation exists:**
+  - **Promoted to product** (`OpticalConstructor.Optimization`), because the study engine, the "simulate measurement" path and the Planner need them:
+    - the bench noise model (`NoiseSeed`, `AngleUncertainty`, `ElementUncertainty`, `ThroughputUncertainty`, `NoiseParam`, `UniformDeviateProvider`, `disturb`, `misread`, `misreadAbsolute`, `noisyObserveWith`, `noisyObserveAbsoluteWith`);
+    - `observeWith`, `residualFor`, `throughputResidualFor`;
+    - `scalingAround`, `fitWithResidual`, `fitObservations`, `fitAbsorbingObservations`;
+    - `RecoveredQuantity`, `RecoveryStatistics`, `statisticsFor`.
+
+    `BerremanTests/InverseFitHarness.fs` keeps only test assertions (`assertMuellerEqual`, the error formatting) and opens the product modules. This is a MOVE; BerremanTests' behaviour and numbers are unchanged.
+  - **The ground truth and designs** (`BiaxialSample.fs`, `AbsorbingBiaxialSample.fs`: constants, `buildAbsorbing`, the cuts, `a1` / `a2` / `a3`, `perturbedStart`, `searchBox`) move into a shared test-support project, `Berreman/BerremanTestSupport/`, one `.fsproj` in its own folder. Both `BerremanTests` and `OpticalConstructor.Ui.Tests` reference it, so one compiled copy serves both test suites.
+- **Not written now** (operator): no new inverse test is authored. AT-2 replicates the existing one through the kit model, and BerremanTests is not run as part of this plan.
+
+### R. What is removed (no legacy, no migration)
+
+- **`.ocproj`:** `ProjectFile`, the `ProjectJson` project aggregate and the `Project` record. Kits replace them, and the JSON + schema stack is reused (§B).
+- **`Scene.SceneProxy` and `ExperimentCollectionProxy`** (in-memory seams), replaced by `KitProxy`.
+- **The 16-entry `recent.json` list,** replaced by the kit history (`bump` reused).
+- **The code seed values and `seedAll`'s Domain source,** replaced by catalogue files + `CatalogueImport`.
+- **The `Test` EF table / initial migration**, replaced by the library model with `EnsureCreated`.
+- **`SolverHandoffView`'s stub screen**, replaced by the study view. Its three validation checks are reused as the study's pre-fit checks.
+- **`MuellerDataSet`** (a hard-coded DU of data sets) and the archive-keyed `MuellerDataProxy`. `parseMuellerCsv` is reused as an import profile, and the archive stays only as AT-1's data source.
+- **The strict v1 `X,Y` path,** whose parsers are reused as built-in import profiles.
+- **`measuredElementOf` and the "first polarizer sets unit intensity" special case,** replaced by N objects and a real source with that default.
+- **No up-converters and no migrations** anywhere; a version mismatch is a typed error.
+
+### S. Proposed phasing (each slice green on its own)
+
+1. **Pure data + names:** the tabulated-material case; canonical JSON + hash; per-kind schemas; seeds exported to catalogue files and deleted; tests load the files.
+2. **Library database** (slow data only, `EnsureCreated`, `Pinned`, backup, locations, contract tests); catalogue import with the decision dialog; extra catalogue folders.
+3. **Kit folder** for BOTH constructors:
+   - `KitProxy`, lock, change check;
+   - start screen + history (stars on top, `KitHistoryLimit`);
+   - experiments and scenes persist into the kit;
+   - copy-in + hashes; snapshot + resolution;
+   - `.ocproj`, the scene and collection seams and `recent.json` deleted.
+4. **Send kit / open kit from zip;** single-entry drops; copy experiments between kits.
+5. **Items + item models + parameters.**
+6. **Setups as slots;** the N-object run law; the real source; slot bar; grid generator; the naming template (replacing `parseExperiment`).
+7. **Experiments v2:** roles, sessions, multi-variable scans, the import wizard with profiles (the existing parsers reused), split and match, exclusions, corrections.
+8. **Study + fit:**
+   - scopes and links, staged and joint fits, fit runs, results, publish / promote;
+   - first the harness and pipeline promotion and the test-support project (§Q reuse);
+   - then **AT-1 and AT-2**.
+9. **Online material sources** (`MaterialSourceProxy`: refractiveindex.info, then PTB OCDB, then Henke).
+10. **Measurement Planner:** layer 1, then the layer-2 recoverability report and plan generation with the kit cache.
+
+## 4. Decisions recorded (operator, rounds 2 and 3)
+
+- **The database is not overstuffed:** slow data (the library) only. Kits, setups, experiments, studies, fit runs, data and the history are files.
+- **A kit is a folder the user chooses or creates;** direct and inverse work both live in kits.
+- **History:** `KitHistoryLimit` = 100 (configurable); starred kits always at the top, sorted by last open date; the rest by last open date.
+- **Extensions agreed** (§A), with the singleton rule: `.kit-json`, `.catalogue-json`.
+- **Names:** `Experiment` = one run; `Study` = the combined inverse problem.
+- **No legacy, no migration** (§R).
+- **Two acceptance tests:** optics-mueller, and the most complex existing inverse test (`AbsorbingBiaxialNoisyTests`). Both use reused code, not copies, and no new inverse test is written now.
+
+## 5. Open questions (short; none blocks writing the spec)
+
+- **Kit root:** flat (kind by extension only, as §A's rule implies) or per-kind subfolders? Per-kind subfolders repeat the extension, but browse more easily in Explorer.
+- **AT-2:** confirm `AbsorbingBiaxialNoisyTests` (five plates, 15 unknowns) is the test meant, rather than the quartz ensemble in `MuellerInverseTests` (two cuts, 4 unknowns).
+- **Planner first target** (from `018`): isotropic films, uniaxial crystals, or gyrotropic crystals?
 
 ## Sources
 
@@ -611,26 +682,30 @@ Inputs:
 - OneDrive sync and SQLite reports: https://forums.tropy.org/t/error-with-onedrive-sync/2961 ·
   https://sqlitetoolsforrootsmagic.com/forum/topic/rmv11-any-idea-what-the-new-temporay-files-are-for/ ·
   https://github.com/Sonarr/Sonarr/issues/1886
-- OneDrive Known Folder Move (Documents redirected): https://learn.microsoft.com/en-us/sharepoint/redirect-known-folders
-- OpticStudio catalogue folders, project directories and the network-drive caveat:
+- OneDrive Known Folder Move: https://learn.microsoft.com/en-us/sharepoint/redirect-known-folders
+- OpticStudio catalogue folders, project directories, network-drive caveat:
   https://optics.ansys.com/hc/en-us/articles/42661745091603 ·
   https://community.zemax.com/licensing-and-installation-8/what-is-the-programdata-zemax-folder-for-446
-- refnx co-refinement with shared parameters (`GlobalObjective`): https://refnx.readthedocs.io/en/latest/reflectometry_global.html
+- refnx co-refinement (`GlobalObjective`): https://refnx.readthedocs.io/en/latest/reflectometry_global.html
 - Origin global fitting with parameter sharing: https://www.originlab.com/doc/Origin-Help/GlobalFitting-Param-Sharing ·
-  global vs independent fit: https://docs.originlab.com/quick-help/globatfit-independentfit/
-- GraphPad Prism global nonlinear regression: https://graphpad.com/guides/prism/latest/curve-fitting/reg_how-global-nonlinear-regressio.htm
-- SasView simultaneous fitting and constraints: https://sasview.github.io/downloads/simultaneous_1d_fitting_in_sasview_v5.pdf ·
-  weights and priors in simultaneous fits: https://arxiv.org/pdf/2311.06408
-- Multi-sample ellipsometry reduces correlation (Synowicki & Hilfiker, WVASE32):
-  https://www.laserfocusworld.com/test-measurement/test-measurement/article/16550827/multiwavelength-ellipsometry-fathoms-materials ·
-  CompleteEASE parameter coupling: https://arxiv.org/pdf/2511.13991
-- Eigenvalue Calibration Method (Compain, Poirier, Drévillon 1999) and variants:
-  https://arxiv.org/pdf/1509.05270 · https://www.jeos.org/index_php/jeos_rp/article/view/595 ·
-  https://link.springer.com/article/10.1007/s13320-025-0767-z · https://doi.org/10.1364/ao.409799
-- Dual-rotating-retarder calibration of retardance and orientation errors (Chenault, Pezzaniti, Chipman 1992):
-  https://remotesensing.spiedigitallibrary.org/conference-proceedings-of-spie/1746/0000/Mueller-matrix-algorithms/10.1117/12.138793.full ·
+  https://docs.originlab.com/quick-help/globatfit-independentfit/
+- GraphPad Prism global regression: https://graphpad.com/guides/prism/latest/curve-fitting/reg_how-global-nonlinear-regressio.htm
+- SasView simultaneous fitting: https://sasview.github.io/downloads/simultaneous_1d_fitting_in_sasview_v5.pdf ·
+  weights and priors: https://arxiv.org/pdf/2311.06408
+- Multi-sample ellipsometry: https://www.laserfocusworld.com/test-measurement/test-measurement/article/16550827/multiwavelength-ellipsometry-fathoms-materials ·
+  CompleteEASE coupling: https://arxiv.org/pdf/2511.13991
+- Eigenvalue Calibration Method and variants: https://arxiv.org/pdf/1509.05270 ·
+  https://www.jeos.org/index_php/jeos_rp/article/view/595 · https://link.springer.com/article/10.1007/s13320-025-0767-z ·
+  https://doi.org/10.1364/ao.409799
+- Dual-rotating-retarder calibration errors: https://remotesensing.spiedigitallibrary.org/conference-proceedings-of-spie/1746/0000/Mueller-matrix-algorithms/10.1117/12.138793.full ·
   https://pure.bit.edu.cn/en/publications/error-analysis-of-the-calibration-of-a-dual-rotating-retarder-mue/
 - Physical realizability (the cone of Mueller matrices): https://arxiv.org/pdf/2309.00161
-- Earlier reports in this folder: `018-sharing-libraries-inverse-planner.md` (identity, decision table, online libraries,
-  Measurement Planner); optics-mueller `notes/matrix_solution.md`, `notes/final_normalization_caveat.md`,
-  `analysis/matrix_solution/step1/report.md`, `analysis/matrix_solution/step2_linear/report.md`.
+- From `018` (online sources, planner): refractiveindex.info https://refractiveindex.info/about ·
+  https://github.com/polyanskiy/refractiveindex.info-database · PTB OCDB https://www.ocdb.ptb.de/ ·
+  CXRO https://henke.lbl.gov/optical_constants/ · FIM design https://arxiv.org/pdf/2103.08973 ·
+  https://arxiv.org/pdf/2504.12133 · profile likelihood https://pubmed.ncbi.nlm.nih.gov/19505944 ·
+  gyrotropic point groups https://arxiv.org/pdf/2003.10872 — the full list is in `018`.
+- Repository references: `018-sharing-libraries-inverse-planner.md`; `Berreman/Data/MuellerMatrix/README.md`;
+  `Berreman/BerremanTests/MuellerReconstructionTests.fs` (§7.2 end-to-end); `Berreman/BerremanTests/AbsorbingBiaxialNoisyTests.fs`,
+  `AbsorbingBiaxialSample.fs`, `InverseFitHarness.fs`; spec 0044 `020-handover.md`; optics-mueller `notes/matrix_solution.md`,
+  `analysis/matrix_solution/step2_linear/report.md`.
