@@ -15,7 +15,8 @@ open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
 /// The reusable bottom "rotation-controls" bar (Spec 0027, task 008): R1−/R1+/R2−/R2+/R3−/R3+
-/// with editable degree fields, a dynamic Lock/Unlock R3 button, and confirmation-gated Reset /
+/// with editable degree fields, a dynamic Lock/Unlock R3 button (spec 0046: and R1 / R2 ones where the
+/// host offers them), and confirmation-gated Reset /
 /// Reset All. The visible buttons are a pure projection of the host state; the bar additionally
 /// watches the live keyboard so the +/- pair of an axis "lights up" while its rotate modifier is
 /// held (task 009) — that key-tracking is self-contained here, so no host screen needs changing.
@@ -26,6 +27,17 @@ module RotationControls =
         | R1
         | R2
         | R3
+
+    /// Whether an axis is held still (spec 0046 — R1 / R2 join the task-008 R3 lock).
+    type AxisLock =
+        | AxisLocked
+        | AxisFree
+
+    /// Whether the bar offers a Lock / Unlock toggle for R1 or R2, and the axis' lock when it does. R3's
+    /// toggle is always offered (task 008); an element offers all three, the table R3 alone.
+    type AxisLockOffer =
+        | NotLockable
+        | Lockable of AxisLock
 
     /// Which reset (if any) is awaiting confirmation. Held by the host so the bar stays stateless.
     type ResetConfirm =
@@ -39,6 +51,10 @@ module RotationControls =
             r1 : float          // degrees
             r2 : float
             r3 : float
+            /// Spec 0046: R1's / R2's Lock/Unlock toggle (absent for `NotLockable`); a locked axis disables
+            /// its controls. Elements offer them (the light source starts with both locked).
+            r1Lock : AxisLockOffer
+            r2Lock : AxisLockOffer
             /// Drives the Lock/Unlock R3 label and disables the R3 controls. The table is unlocked
             /// by default (button reads "Lock R3"); elements are locked by default ("Unlock R3").
             r3Locked : bool
@@ -52,7 +68,7 @@ module RotationControls =
         {
             rotate : Axis -> float -> unit       // rotate the selection about Axis by N degrees
             setAngle : Axis -> float -> unit     // set the selection's Axis to exactly N degrees
-            toggleR3Lock : unit -> unit          // lock (freezing the current R3 value) / unlock R3
+            toggleLock : Axis -> unit            // lock (freezing the current value) / unlock an axis
             requestReset : unit -> unit          // Reset clicked → host arms ConfirmReset
             requestResetAll : unit -> unit       // Reset All clicked → host arms ConfirmResetAll
             confirm : unit -> unit               // Yes → host performs the armed reset and disarms
@@ -219,13 +235,40 @@ module RotationControls =
             top.AddHandler(InputElement.KeyDownEvent, onKey, RoutingStrategies.Tunnel, true)
             top.AddHandler(InputElement.KeyUpEvent, onKey, RoutingStrategies.Tunnel, true)
 
+    /// How the bar lays its units out (spec 0046): on ONE row (the rotation test windows, whose layouts the
+    /// headless tests pin), or on a row that WRAPS between the units when the host is narrower than the bar
+    /// (the Main screen, where an element's three lock toggles outgrow the window).
+    type private BarLayout =
+        | SingleRow
+        | WrapBetweenUnits
+
     /// The bar's visible tree: a pure projection of `state` plus which axis (if any) is armed.
-    let private renderBar (state : State) (handlers : Handlers) (activeAxis : Axis option) : IView =
+    let private renderBar (state : State) (handlers : Handlers) (activeAxis : Axis option) (layout : BarLayout) : IView =
         let r3Enabled = state.enabled && not state.r3Locked
+        let offerEnabled (offer : AxisLockOffer) : bool =
+            match offer with
+            | Lockable AxisLocked -> false
+            | Lockable AxisFree | NotLockable -> state.enabled
+        let r1Enabled = offerEnabled state.r1Lock
+        let r2Enabled = offerEnabled state.r2Lock
         // An axis lights up only when its modifier is armed AND its buttons are actually live.
         let armed (axis : Axis) (groupEnabled : bool) : bool = groupEnabled && activeAxis = Some axis
         let lockButton =
-            clickBox UiIds.Rotation.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleR3Lock ())
+            clickBox UiIds.Rotation.lockR3 (if state.r3Locked then "Unlock R3" else "Lock R3") state.enabled false (fun _ -> handlers.toggleLock R3)
+        // Spec 0046: R1 / R2's toggles, right after their axis group, shown only where the host offers them.
+        // The slot is ALWAYS present (hidden when not offered), so the bar's children keep their positions
+        // and FuncUI never patches one axis group's named field into another's slot.
+        let offeredLock (id : string) (label : string) (axis : Axis) (offer : AxisLockOffer) : IView =
+            let shown, text =
+                match offer with
+                | NotLockable -> false, $"Lock %s{label}"
+                | Lockable AxisLocked -> true, $"Unlock %s{label}"
+                | Lockable AxisFree -> true, $"Lock %s{label}"
+            Border.create [
+                Border.isVisible shown
+                Border.verticalAlignment VerticalAlignment.Center
+                Border.child (clickBox id text (state.enabled && shown) false (fun _ -> handlers.toggleLock axis))
+            ] :> IView
         // Reset / Reset All become a Yes / No confirmation IN PLACE: the same two buttons (plus a
         // prompt) keep their stable automation ids across the swap — only the label / action / prompt
         // change. A structural swap to differently-identified buttons made FuncUI reuse a Border and
@@ -240,31 +283,61 @@ module RotationControls =
         let resetLabel, resetAllLabel = if armedConfirm then "Yes", "No" else "Reset", "Reset All"
         let onReset () = match state.confirm with NoConfirm -> handlers.requestReset () | _ -> handlers.confirm ()
         let onResetAll () = match state.confirm with NoConfirm -> handlers.requestResetAll () | _ -> handlers.cancel ()
-        let resetArea : IView list =
-            [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt; TextBlock.isVisible armedConfirm ] :> IView
-              clickBox UiIds.Rotation.reset resetLabel state.enabled false (fun _ -> onReset ())
-              clickBox UiIds.Rotation.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 10.0
-            StackPanel.margin (Thickness 8.0)
-            // Hook this window's keyboard once (guarded), so holding a rotate modifier lights up its axis.
-            StackPanel.onLoaded (fun e ->
-                match e.Source with
-                | :? Visual as v ->
-                    let top = TopLevel.GetTopLevel v
-                    if not (isNull (box top)) then ensureKeyHook top
-                | _ -> ())
-            // The whole bar is disabled (and dimmed) when nothing is selected.
-            StackPanel.isEnabled state.enabled
-            StackPanel.opacity (if state.enabled then 1.0 else 0.5)
-            StackPanel.children
-                ([ axisGroup handlers (UiIds.Rotation.r1Minus, UiIds.Rotation.r1Plus, UiIds.Rotation.r1Field) "R1" R1 state.r1 state.enabled (armed R1 state.enabled)
-                   axisGroup handlers (UiIds.Rotation.r2Minus, UiIds.Rotation.r2Plus, UiIds.Rotation.r2Field) "R2" R2 state.r2 state.enabled (armed R2 state.enabled)
-                   axisGroup handlers (UiIds.Rotation.r3Minus, UiIds.Rotation.r3Plus, UiIds.Rotation.r3Field) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
-                   lockButton ]
-                 @ resetArea)
-        ] :> IView
+        // The bar is built of UNITS — an axis with its lock toggle, and the reset pair with its prompt — so a
+        // wrapped line never separates a lock from its axis.
+        let unit (children : IView list) : IView =
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 6.0
+                StackPanel.verticalAlignment VerticalAlignment.Center
+                StackPanel.children children
+            ] :> IView
+        let resetArea : IView =
+            unit
+                [ TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text prompt; TextBlock.isVisible armedConfirm ] :> IView
+                  clickBox UiIds.Rotation.reset resetLabel state.enabled false (fun _ -> onReset ())
+                  clickBox UiIds.Rotation.resetAll resetAllLabel state.enabled false (fun _ -> onResetAll ()) ]
+        let units : IView list =
+            [ unit
+                  [ axisGroup handlers (UiIds.Rotation.r1Minus, UiIds.Rotation.r1Plus, UiIds.Rotation.r1Field) "R1" R1 state.r1 r1Enabled (armed R1 r1Enabled)
+                    offeredLock UiIds.Rotation.lockR1 "R1" R1 state.r1Lock ]
+              unit
+                  [ axisGroup handlers (UiIds.Rotation.r2Minus, UiIds.Rotation.r2Plus, UiIds.Rotation.r2Field) "R2" R2 state.r2 r2Enabled (armed R2 r2Enabled)
+                    offeredLock UiIds.Rotation.lockR2 "R2" R2 state.r2Lock ]
+              unit
+                  [ axisGroup handlers (UiIds.Rotation.r3Minus, UiIds.Rotation.r3Plus, UiIds.Rotation.r3Field) "R3" R3 state.r3 r3Enabled (armed R3 r3Enabled)
+                    lockButton ]
+              resetArea ]
+        // Hook this window's keyboard once (guarded), so holding a rotate modifier lights up its axis.
+        let hookKeys (e : RoutedEventArgs) : unit =
+            match e.Source with
+            | :? Visual as v ->
+                let top = TopLevel.GetTopLevel v
+                if not (isNull (box top)) then ensureKeyHook top
+            | _ -> ()
+        // The whole bar is disabled (and dimmed) when nothing is selected.
+        match layout with
+        | SingleRow ->
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.spacing 10.0
+                StackPanel.margin (Thickness 8.0)
+                StackPanel.onLoaded hookKeys
+                StackPanel.isEnabled state.enabled
+                StackPanel.opacity (if state.enabled then 1.0 else 0.5)
+                StackPanel.children units
+            ] :> IView
+        | WrapBetweenUnits ->
+            WrapPanel.create [
+                WrapPanel.orientation Orientation.Horizontal
+                AttrBuilder<WrapPanel>.CreateProperty<float>(WrapPanel.ItemSpacingProperty, 10.0, ValueNone)
+                AttrBuilder<WrapPanel>.CreateProperty<float>(WrapPanel.LineSpacingProperty, 6.0, ValueNone)
+                WrapPanel.margin (Thickness 8.0)
+                WrapPanel.onLoaded hookKeys
+                WrapPanel.isEnabled state.enabled
+                WrapPanel.opacity (if state.enabled then 1.0 else 0.5)
+                WrapPanel.children units
+            ] :> IView
 
     /// The bar — a PURE projection of `state`/`handlers`, so it always reflects the host's CURRENT
     /// selection. Being pure, it re-renders on every host update (per-window: a different window's bar
@@ -274,4 +347,9 @@ module RotationControls =
     /// build-time read of `armedAxis`), so no component state is needed and the host screens stay
     /// untouched.
     let view (state : State) (handlers : Handlers) : IView =
-        renderBar state handlers armedAxis
+        renderBar state handlers armedAxis SingleRow
+
+    /// The same bar laid out on a row that WRAPS between its units when the host is narrower (spec 0046 —
+    /// the Main screen, where an element's R1 / R2 / R3 lock toggles outgrow the window).
+    let wrappingView (state : State) (handlers : Handlers) : IView =
+        renderBar state handlers armedAxis WrapBetweenUnits

@@ -59,6 +59,10 @@ module WireUiCompositionTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
+            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
+            // the visible area of its scroller, where a click at the box's centre lands nowhere).
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
@@ -154,7 +158,7 @@ module WireUiCompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``composition acceptance: the REAL Main window renders every ribbon bay, with the Selector bay and the Materials / Library windows over the root-wired stores`` () =
+    let ``composition acceptance: the REAL Main window renders every ribbon bay, with the Select bay and the Materials / Library windows over the root-wired stores`` () =
         HeadlessSession.run (fun () ->
             let window = mountRoot ()
             Assert.True(window.IsVisible, "the Main window must open headless")
@@ -169,7 +173,7 @@ module WireUiCompositionTests =
             // Selector: the kind-constrained binding surface mounts (its ids are unconditional).
             clickOn window (UiIds.Ribbon.tab BayNames.selector)
             for id in [ UiIds.Library.kindLabel; UiIds.Library.readout; UiIds.Library.tree ] do
-                Assert.True(isPresent window id, $"the Selector bay must mount %s{id}")
+                Assert.True(isPresent window id, $"the Select bay must mount %s{id}")
             // Materials: the strip button opens the REAL single-instance Materials window,
             // whose faceted tree lists the SEEDED store — the root wired a live MaterialProxy,
             // not an empty stand-in.

@@ -29,7 +29,8 @@ module ElementRendererBindingTests =
           centre = ElementRenderer.centreOfPlacement placement
           zoom = 3.5
           opticalSign = 0
-          bindingState = ElementRenderer.bindingStateOf placement }
+          bindingState = ElementRenderer.bindingStateOf placement
+          normals = ElementRenderer.ShowNormals }
 
     /// Render one drawable through the given renderer kind and collect the realized Avalonia shapes. MUST be
     /// called on the headless UI thread (inside `HeadlessSession.run`).
@@ -74,6 +75,25 @@ module ElementRendererBindingTests =
         Assert.Equal(ElementRenderer.BoundElement, stateOf LinearPolarizer (Some "lib:lp"))
         Assert.Equal(ElementRenderer.UnboundElement, stateOf Detector None)
         Assert.Equal(ElementRenderer.BoundElement, stateOf LightSource (Some "lib:src"))
+
+    // ============================ spec 0046: the normals never pass for a ray ============================
+
+    /// The shapes stroked in exactly `c`.
+    let private strokedIn (c : Color) (shapes : Shape list) : Shape list =
+        shapes |> List.filter (fun s -> match s.Stroke with | :? ISolidColorBrush as b -> b.Color = c | _ -> false)
+
+    [<Fact>]
+    let ``the N1 normal marker never shares the ray colour`` () =
+        Assert.NotEqual(TableAndElementRotationView.rayColor, ElementRenderer.normalAxisColor)
+
+    [<Fact>]
+    let ``HideNormals drops the orientation markers and ShowNormals draws them, in both renderers`` () =
+        HeadlessSession.run (fun () ->
+            for kind in [ RendererControls.Wireframe; RendererControls.Shapes ] do
+                let shown = drawableOf LinearPolarizer (Some "pol-lp")
+                let hidden = { shown with normals = ElementRenderer.HideNormals }
+                Assert.Single(strokedIn ElementRenderer.normalAxisColor (renderShapes kind shown)) |> ignore
+                Assert.Empty(strokedIn ElementRenderer.normalAxisColor (renderShapes kind hidden)))
 
     // ============================ headless render proofs ============================
 

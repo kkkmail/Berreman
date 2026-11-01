@@ -14,9 +14,6 @@
   <Project Path="Berreman/Berreman.fsproj">
     <Platform Project="x64" />
   </Project>
-  <Project Path="BerremanRunner/BerremanRunner.fsproj">
-    <Platform Project="x64" />
-  </Project>
   <Project Path="BerremanTests/BerremanTests.fsproj">
     <Platform Project="x64" />
   </Project>

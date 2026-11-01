@@ -75,6 +75,9 @@ module LauncherIds =
     let openMaterialsButton = "OpenMaterialsButton"
     [<Literal>]
     let openLibraryButton = "OpenLibraryButton"
+    /// Spec 0046: the footer line showing the app version (`Berreman.BuildInfo.version`).
+    [<Literal>]
+    let versionText = "LauncherVersionText"
 
 /// Spec 0038 step 045: the shared body of the two constructor windows. The forward Main scene and
 /// the inverse scene are the SAME dynamic "Lego constructor" (`mainView` over
@@ -89,6 +92,9 @@ module private ConstructorScene =
     let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.Model) : unit =
         window.Width <- TableAndElementRotationView.canvasWidth
         window.Height <- TableAndElementRotationView.canvasHeight + 210.0
+        // Spec 0046: never larger than the screen it opens on — on a laptop the design height can exceed
+        // the working area, which put the bottom of the scrolling page (the table) off-screen.
+        OpticalConstructor.Controls.WindowFit.keepOnScreen window
         Program.mkSimple seed TableAndElementRotationView.update TableAndElementRotationView.mainView
         |> Program.withHost window
         |> Program.run
@@ -109,6 +115,8 @@ type MainConstructorWindow(context : AppContext) as this =
         this.Title <- "Optical Constructor — Main"
         ConstructorScene.mount this (fun () ->
             { TableAndElementRotationView.initMainWith context.library context.experiments context.materials context.samples context.categories with
+                sources = context.sources
+                experimentExport = context.experimentExport
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 
@@ -125,6 +133,8 @@ type InverseConstructorWindow(context : AppContext) as this =
         this.Title <- "Optical Constructor — Inverse"
         ConstructorScene.mount this (fun () ->
             { TableAndElementRotationView.initInverse context.library context.experiments context.materials context.samples context.categories with
+                sources = context.sources
+                experimentExport = context.experimentExport
                 experimentData = context.experimentData
                 experimentCollections = context.experimentCollections })
 
@@ -150,6 +160,7 @@ type LauncherWindow(context : AppContext) as this =
         this.Width <- 380.0
         this.Height <- 300.0
         this.CanResize <- false
+        OpticalConstructor.Controls.WindowFit.keepOnScreen this
         let title =
             TextBlock(
                 Text = "Optical Constructor",
@@ -182,14 +193,31 @@ type LauncherWindow(context : AppContext) as this =
                 launchers.openMaterialsWindow context.materials context.categories)
         let libraryButton =
             surfaceButton LauncherIds.openLibraryButton "Library" (fun () ->
-                launchers.openLibraryWindow context.library context.samples context.materials context.categories)
+                launchers.openLibraryWindow context.library context.samples context.sources context.materials context.categories)
+        // Spec 0046: the app version (the STL slow-ring scheme, one ring for the whole app) as a footer
+        // line at the bottom of the form, read from the ONE F# source of it (`Berreman.BuildInfo`).
+        let versionText = $"Version {Berreman.BuildInfo.version.value}"
+        let version =
+            TextBlock(
+                Name = LauncherIds.versionText,
+                Text = versionText,
+                FontSize = 11.0,
+                Opacity = 0.7,
+                HorizontalAlignment = Layout.HorizontalAlignment.Right,
+                Margin = Thickness(20.0, 0.0, 20.0, 10.0))
+        AutomationProperties.SetAutomationId(version, LauncherIds.versionText)
+        AutomationProperties.SetName(version, versionText)
+        DockPanel.SetDock(version, Dock.Bottom)
         let panel = StackPanel(Margin = Thickness 20.0, Spacing = 8.0)
         panel.Children.Add title
         panel.Children.Add mainButton
         panel.Children.Add inverseButton
         panel.Children.Add materialsButton
         panel.Children.Add libraryButton
-        this.Content <- panel
+        let form = DockPanel()
+        form.Children.Add version
+        form.Children.Add panel
+        this.Content <- form
 
 /// The Avalonia application: Fluent theme plus the persisted light/dark variant
 /// (§J.8 — `AppShell.themeVariant` is the only theme-label → Avalonia seam).

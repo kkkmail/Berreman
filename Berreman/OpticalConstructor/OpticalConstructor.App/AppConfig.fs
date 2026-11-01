@@ -75,6 +75,23 @@ module AppConfig =
             Logger.logWarn $"loadWorkbenchSettings: '{name}' = {raw} rejected (%A{e}); using the built-in default."
             defaultValue
 
+    /// Spec 0046: the parse / render doors for the raw values. STL 10.1.402.x reads every type through
+    /// the provider's one generic `getOrDefault` (its typed bool / int getters are gone): a value that
+    /// does not parse falls back to the default and is written back, exactly like a missing key.
+    let private parseBool (v : AppSettings.ConfigValue) : Result<bool, string> =
+        match System.Boolean.TryParse v.value with
+        | true, b -> Ok b
+        | false, _ -> Error $"'{v.value}' is not a boolean"
+
+    let private parseInt (v : AppSettings.ConfigValue) : Result<int, string> =
+        match System.Int32.TryParse(v.value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture) with
+        | true, i -> Ok i
+        | false, _ -> Error $"'{v.value}' is not an integer"
+
+    let private renderBool (b : bool) : AppSettings.ConfigValue = AppSettings.ConfigValue (if b then "true" else "false")
+
+    let private renderInt (i : int) : AppSettings.ConfigValue = AppSettings.ConfigValue (string i)
+
     /// Create the provider ONCE via `AppSettingsProvider.tryCreate ()` (it opens the
     /// build-copied appsettings.json beside the assembly), read the four workbench
     /// keys — `SetOnMissing = true` writes each missing key's default back, so the
@@ -84,10 +101,10 @@ module AppConfig =
     let loadWorkbenchSettings () : WorkbenchSettings =
         match AppSettings.AppSettingsProvider.tryCreate () with
         | Ok provider ->
-            let modal = provider.getBoolOrDefault (AppSettings.ConfigKey ConfigKey.selectWindowsModal) SelectWindowModality.defaultValue.value
-            let quickPick = provider.getIntOrDefault (AppSettings.ConfigKey ConfigKey.quickPickThreshold) QuickPickThreshold.defaultValue.value
-            let treeAutoBuild = provider.getIntOrDefault (AppSettings.ConfigKey ConfigKey.treeAutoBuildThreshold) TreeAutoBuildThreshold.defaultValue.value
-            let bucketCap = provider.getIntOrDefault (AppSettings.ConfigKey ConfigKey.thicknessBucketCap) ThicknessBucketCap.defaultValue.value
+            let modal = provider.getOrDefault (AppSettings.ConfigKey ConfigKey.selectWindowsModal) SelectWindowModality.defaultValue.value parseBool renderBool
+            let quickPick = provider.getOrDefault (AppSettings.ConfigKey ConfigKey.quickPickThreshold) QuickPickThreshold.defaultValue.value parseInt renderInt
+            let treeAutoBuild = provider.getOrDefault (AppSettings.ConfigKey ConfigKey.treeAutoBuildThreshold) TreeAutoBuildThreshold.defaultValue.value parseInt renderInt
+            let bucketCap = provider.getOrDefault (AppSettings.ConfigKey ConfigKey.thicknessBucketCap) ThicknessBucketCap.defaultValue.value parseInt renderInt
 
             match provider.trySave () with
             | Ok () -> ()

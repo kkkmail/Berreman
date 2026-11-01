@@ -67,6 +67,10 @@ module WireUi0040CompositionTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
+            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
+            // the visible area of its scroller, where a click at the box's centre lands nowhere).
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
@@ -339,19 +343,19 @@ module WireUi0040CompositionTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``composition acceptance (013): a ThinFilm Sample editor over the app scope pins R on and shows no T control`` () =
+    let ``composition acceptance (013): a Mirror Sample editor over the app scope pins R on and shows no T control`` () =
         HeadlessSession.run (fun () ->
             let ctx = AppContext.create WorkbenchSettings.defaults
-            // A seeded ThinFilm sample (glassFilm600) opened over the app scope — R fixed on, no T
-            // (the step-9/10 invariant): a ThinFilm sits on a semi-infinite substrate, reflected-only.
+            // The seeded MIRROR sample (the EUV Mo/Si multilayer) opened over the app scope — R fixed on, no
+            // T (spec 0046: a mirror is the only geometry observed in reflection alone).
             let window =
                 OpticalConstructor.Ui.SampleEditorWindow(
-                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.glassFilm600)
+                    ctx.materials, ctx.samples, ctx.categories, SampleEditorView.EditSample SeedSamples.euvMoSi)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a ThinFilm")
+            Assert.True(isPresent window UiIds.SampleEditor.emitReflectedCheck, "the R checkbox must render for a Mirror")
             let rBox = checkBox window UiIds.SampleEditor.emitReflectedCheck
-            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the ThinFilm R checkbox is fixed on")
-            Assert.False(rBox.IsEnabled, "the ThinFilm R checkbox is disabled (fixed)")
-            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a ThinFilm shows no T control")
+            Assert.True(rBox.IsChecked.GetValueOrDefault false, "the Mirror R checkbox is fixed on")
+            Assert.False(rBox.IsEnabled, "the Mirror R checkbox is disabled (fixed)")
+            Assert.False(isPresent window UiIds.SampleEditor.emitTransmittedCheck, "a Mirror shows no T control")
             window.Close())

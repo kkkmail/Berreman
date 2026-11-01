@@ -171,6 +171,7 @@ module OutOfBandDiagnosticTests =
                 measurement = CaptureTransmitted
                 range = { min = 200.0; max = 800.0; points = 91 }
                 dataFileOpt = None
+                sourceWaveLengthOpt = None
             }
         Assert.Equal(SweptWavelengths (band 200.0 800.0), requestedWavelengthsOf fixedλ sweep)
         // A dark line (varied = None) has no sweep, so it runs at the fixed source λ.

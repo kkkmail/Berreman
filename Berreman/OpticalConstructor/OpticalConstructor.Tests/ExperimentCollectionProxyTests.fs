@@ -51,6 +51,7 @@ module ExperimentCollectionProxyTests =
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
             dataFileOpt = dataFileOpt
+            sourceWaveLengthOpt = None
         }
 
     /// A pure `ExperimentCollectionSnapshot` fixture under the given name: two full-setup experiments,

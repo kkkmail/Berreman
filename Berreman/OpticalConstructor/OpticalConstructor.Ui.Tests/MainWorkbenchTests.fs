@@ -52,6 +52,10 @@ module MainWorkbenchTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
+            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
+            // the visible area of its scroller, where a click at the box's centre lands nowhere).
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
@@ -100,11 +104,11 @@ module MainWorkbenchTests =
         let launchers : EditorLaunchers =
             {
                 openMaterialsWindow = fun _ _ -> calls.Add "materials-window"
-                openLibraryWindow = fun _ _ _ _ -> calls.Add "library-window"
+                openLibraryWindow = fun _ _ _ _ _ -> calls.Add "library-window"
                 // Spec 0038 (017): the Choose… Select-state open — recorded, never a real
                 // window; the returned handle records the staleness close like the real one.
                 openLibrarySelectWindow =
-                    fun _ _ _ _ _ _ _ ->
+                    fun _ _ _ _ _ _ _ _ ->
                         calls.Add "library-select-window"
                         Some (fun () -> calls.Add "library-select-close")
             }

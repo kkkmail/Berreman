@@ -63,6 +63,7 @@ module ExperimentCollectionRoundTripTests =
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
             dataFileOpt = Some (DataFilePath.create "C:/data/e1-transmitted.csv")
+            sourceWaveLengthOpt = None
         }
 
     /// E2 — the sample-LESS variant (source + two polarizers + detector), WITHOUT a data file: the
@@ -77,7 +78,8 @@ module ExperimentCollectionRoundTripTests =
                     desc "lp2" "Linear polarizer #3" LinearPolarizer (BoundByEntryId "pol-lp")
                     desc "det" "Detector #4" Detector (BoundByEntryId "det-intensity")
                 ]
-            dataFileOpt = None }
+            dataFileOpt = None
+            sourceWaveLengthOpt = None }
 
     /// E3 — an empty DARK line (nothing varied), WITH an attached calibration file: proves the
     /// optional attachment rides along even on a setup-less experiment and that the dark
@@ -90,6 +92,7 @@ module ExperimentCollectionRoundTripTests =
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
             dataFileOpt = Some (DataFilePath.create "C:/data/e3-dark.csv")
+            sourceWaveLengthOpt = None
         }
 
     /// The deterministic fixture snapshot under the given name: the ordered E1/E2/E3.

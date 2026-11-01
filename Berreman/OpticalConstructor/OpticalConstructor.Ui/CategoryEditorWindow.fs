@@ -22,6 +22,8 @@ type CategoryEditorWindow(categories : CategoryProxy) as this =
         AutomationProperties.SetAutomationId(this, UiIds.CategoryEditor.window)
         this.Width <- 720.0
         this.Height <- 640.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         let context : CategoryEditorView.CategoryEditorContext =
             {
                 categories = categories

@@ -1,0 +1,83 @@
+<Project InitialTargets="BerremanForbidNonReleaseConfiguration">
+
+  <!--
+    Spec 0046 (the STL operator ruling 2026-09-13, "Release only, ever"). An InitialTarget runs before any
+    other target of every project, so a non-Release request fails before it can build anything.
+  -->
+  <Target Name="BerremanForbidNonReleaseConfiguration" Condition="'$(Configuration)' != 'Release'">
+    <Error Code="RELEASEONLY" Text="Configuration '$(Configuration)' is forbidden: this repository builds Release only. Pass -c Release (or -p:Configuration=Release)." />
+  </Target>
+
+  <!--
+    Spec 0046 - a mirror the version pattern no longer matches would leave the SDK's 1.0.0 on every
+    assembly, silently (Directory.Build.props).
+  -->
+  <Target Name="BerremanRequireAppVersion" BeforeTargets="GetAssemblyVersion" Condition="'$(BerremanAppVersion)' == ''">
+    <Error Code="APPVERSION" Text="No four-part version found in $(BerremanVersionMirror), which Berreman/PreBuild/IncrementBuildNumber.fsx writes." />
+  </Target>
+
+  <!--
+    Spec 0046 (the STL pattern, C:\GitHub\Softellect\Directory.Build.targets) - the ONE version of every
+    third-party package. Projects declare `<PackageReference Include="X" />` with no version; the Update
+    below hands each one its version, which is why this lives in .targets (an Update only reaches
+    references already declared). Versions follow STL's list wherever STL uses the package; the rest keep
+    the version this repository already used. FsCheck.Xunit ships in lockstep with FsCheck.
+
+    Softellect.* (STL) restore from BOTH the local ../Packages feed and nuget.org (the root nuget.config).
+    Softellect.Sys rides STL's current slow ring (Sys/BuildInfo.ps1 in STL), which is in the local feed
+    only until STL uploads it. (Berreman/Berreman/BuildInfo.fs is unrelated: that is this app's own version.)
+    Softellect.DistributedProcessing.SolverRunner serves only BerremanRunner, which is kept on disk but is
+    NOT in Berreman.slnx; it stays at the version that project last compiled against.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="alglib.net" Version="3.19.0" />
+    <PackageVersion Include="Avalonia" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.FuncUI" Version="2.0.0" />
+    <PackageVersion Include="Avalonia.FuncUI.Elmish" Version="2.0.0" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="Elmish" Version="5.0.2" />
+    <PackageVersion Include="FluentAssertions" Version="[7.2.0]" />
+    <PackageVersion Include="FsCheck" Version="3.5.0" />
+    <PackageVersion Include="FsCheck.Xunit" Version="3.5.0" />
+    <PackageVersion Include="FSharp.Collections.ParallelSeq" Version="1.2.0" />
+    <PackageVersion Include="FSharp.Data" Version="8.2.0" />
+    <PackageVersion Include="FSharp.SystemTextJson" Version="1.4.36" />
+    <PackageVersion Include="Giraffe.ViewEngine.StrongName" Version="2.0.0-alpha1" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.400" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" />
+    <PackageVersion Include="OpenTK" Version="4.9.4" />
+    <PackageVersion Include="Plotly.NET" Version="5.1.0" />
+    <PackageVersion Include="ScottPlot.Avalonia" Version="5.1.59" />
+    <PackageVersion Include="Softellect.DistributedProcessing.SolverRunner" Version="10.1.301.54" />
+    <PackageVersion Include="Softellect.Sys" Version="10.1.402.120" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' != 'true'">
+    <PackageReference Update="@(PackageVersion)" Version="%(PackageVersion.Version)" />
+  </ItemGroup>
+
+  <!--
+    Spec 0046 (as STL spec 0229 .manual/001) - CoreWCF's buildTransitive targets, which reach us through
+    Softellect.Sys, add this attribute with `_Parameter1_IsLiteral`, which the F# WriteCodeFragment cannot
+    parse ("Unable to parse '1_IsLiteral' as an index"): it is why every project once set
+    GenerateAssemblyInfo=false. It only switches on a C# source generator, so an F# assembly loses
+    nothing without it - and every assembly now carries the app version.
+  -->
+  <Target Name="BerremanDropCoreWcfGeneratorAttribute" BeforeTargets="CoreGenerateAssemblyInfo" Condition="'$(Language)' == 'F#'">
+    <ItemGroup>
+      <AssemblyAttribute Remove="CoreWCF.EnableCoreWCFOperationInvokerGenerator" />
+    </ItemGroup>
+  </Target>
+
+</Project>

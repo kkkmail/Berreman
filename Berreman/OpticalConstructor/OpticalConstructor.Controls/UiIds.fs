@@ -39,6 +39,11 @@ module UiIds =
         let r3Field = "RotationR3Field"
         [<Literal>]
         let lockR3 = "RotationLockR3Button"
+        /// Spec 0046: the R1 / R2 lock toggles (offered for elements; the light source starts locked).
+        [<Literal>]
+        let lockR1 = "RotationLockR1Button"
+        [<Literal>]
+        let lockR2 = "RotationLockR2Button"
         // The two reset buttons keep these stable ids in BOTH modes: "Reset"/"Reset All" when idle,
         // and the confirmation "Yes"/"No" when a reset is armed (the label/action changes, not the id).
         [<Literal>]
@@ -65,6 +70,38 @@ module UiIds =
         let reset = "RayPositionResetButton"
         [<Literal>]
         let readout = "RayPositionReadout"
+
+    /// Spec 0046: the free table-position bar (`TablePositionControls`) — the light source's x / y / z,
+    /// each with − / + steps, a metres field and a Lock / Unlock toggle, plus one Reset.
+    module TablePosition =
+        [<Literal>]
+        let xMinus = "TablePositionXMinusButton"
+        [<Literal>]
+        let xPlus = "TablePositionXPlusButton"
+        [<Literal>]
+        let xField = "TablePositionXField"
+        [<Literal>]
+        let xLock = "TablePositionXLockButton"
+        [<Literal>]
+        let yMinus = "TablePositionYMinusButton"
+        [<Literal>]
+        let yPlus = "TablePositionYPlusButton"
+        [<Literal>]
+        let yField = "TablePositionYField"
+        [<Literal>]
+        let yLock = "TablePositionYLockButton"
+        [<Literal>]
+        let zMinus = "TablePositionZMinusButton"
+        [<Literal>]
+        let zPlus = "TablePositionZPlusButton"
+        [<Literal>]
+        let zField = "TablePositionZField"
+        [<Literal>]
+        let zLock = "TablePositionZLockButton"
+        [<Literal>]
+        let reset = "TablePositionResetButton"
+        [<Literal>]
+        let readout = "TablePositionReadout"
 
     /// The renderer "large control" (`RendererControls`).
     module Renderer =
@@ -132,6 +169,20 @@ module UiIds =
         let variable (code : string) : string = "ExperimentVariable_" + code
         /// A measurement-choice selector, by its code ("t" / "r" / "both").
         let measurement (code : string) : string = "ExperimentMeasurement_" + code
+        /// Spec 0046: the hint shown instead of the capture choices while no detector captures the chosen
+        /// element's light.
+        [<Literal>]
+        let noCapture = "ExperimentNoCapture"
+        /// Spec 0046: the source-wavelength field (a tunable source's setting while something else varies).
+        [<Literal>]
+        let sourceWaveLength = "ExperimentSourceWaveLength"
+        [<Literal>]
+        let sourceWaveLengthNote = "ExperimentSourceWaveLengthNote"
+        /// Spec 0046: Export data (the draft's computed run through the export seam) and its status line.
+        [<Literal>]
+        let exportButton = "ExperimentExportButton"
+        [<Literal>]
+        let exportStatus = "ExperimentExportStatus"
         /// The range inputs.
         [<Literal>]
         let rangeMin = "ExperimentRangeMin"
@@ -151,9 +202,6 @@ module UiIds =
         let removeButton (id : string) : string = "ExperimentRemove_" + id
         /// A row's "View" action — open the pop-out chart window for that experiment.
         let viewButton (id : string) : string = "ExperimentView_" + id
-        /// The explicit "open the pop-out chart window" action (also opened by double-clicking the chart).
-        [<Literal>]
-        let openChart = "ExperimentOpenChart"
         /// The inline result polyline (the first series — the intensity / Ψ curve).
         [<Literal>]
         let chart = "ExperimentChart"
@@ -363,6 +411,9 @@ module UiIds =
     module TableAndElementRotation =
         [<Literal>]
         let canvas = "TableElementCanvas"
+        /// Spec 0046: an element's invisible hover target on the table (it carries the "what is it"
+        /// tooltip), by the element's id.
+        let elementHover (elementId : string) : string = "ElementHover_" + elementId
         [<Literal>]
         let rotateR1Minus = "TeRotateR1MinusButton"
         [<Literal>]
@@ -381,11 +432,76 @@ module UiIds =
         let reset = "TeResetButton"
         [<Literal>]
         let readout = "TeReadout"
+        /// Spec 0046: the Main view's page-level scroll viewer (a tall bay never pushes content out of reach).
+        [<Literal>]
+        let scrollViewer = "TableElementScrollViewer"
+        /// Spec 0046: the Rotation bay's global option — rotate every element about the middle of its incident
+        /// face (checked) instead of its centre.
+        [<Literal>]
+        let pivotAtIncidentFace = "RotateAboutIncidentFaceCheck"
         /// Spec 0038 (031): the out-of-band dispersion warning badge on scene element index `i` — an
         /// indexed id so a headless test addresses the per-element badge.
         [<Literal>]
         let badgePrefix = "OutOfBandBadge_"
         let outOfBandBadge (i : int) : string = $"%s{badgePrefix}%d{i}"
+
+    /// Spec 0046: the Main canvas's right-click ELEMENT MENU — switch the element's reflected /
+    /// transmitted rays, choose the beam it sits on, remove it. Intent-named, so they survive restyling.
+    module ElementMenu =
+        [<Literal>]
+        let menu = "ElementMenu"
+        [<Literal>]
+        let toggleReflected = "ElementMenuToggleReflected"
+        [<Literal>]
+        let toggleTransmitted = "ElementMenuToggleTransmitted"
+        [<Literal>]
+        let placeOnMainBeam = "ElementMenuPlaceOnMainBeam"
+        /// "Place on the reflected ray of" the element with this id (prefixed so it cannot collide).
+        let placeOnReflectedOf (elementId : string) : string = "ElementMenuPlaceOnReflectedOf_" + elementId
+        /// Spec 0046: the menu's Choose… — the Select bay's Choose… verb for the element the menu serves.
+        [<Literal>]
+        let choose = "ElementMenuChoose"
+        /// Spec 0046: the menu's "what is it" lines — the bound entry's name and description.
+        [<Literal>]
+        let info = "ElementMenuInfo"
+        [<Literal>]
+        let remove = "ElementMenuRemove"
+        [<Literal>]
+        let close = "ElementMenuClose"
+
+    /// Spec 0046: the Library's light-source editor (`LightSourceEditorView`).
+    module SourceEditor =
+        [<Literal>]
+        let window = "SourceEditorWindow"
+        [<Literal>]
+        let nameBox = "SourceNameBox"
+        [<Literal>]
+        let waveLengthBox = "SourceWaveLengthBox"
+        /// One wavelength-unit choice box, by the unit's short code (prefixed so it cannot collide).
+        let unitButton (code : string) : string = "SourceWaveLengthUnit_" + code
+        [<Literal>]
+        let waveLengthReadout = "SourceWaveLengthReadout"
+        /// Spec 0046: the fixed-line / tunable choice and a tunable source's limits.
+        [<Literal>]
+        let tuningFixed = "SourceTuningFixed"
+        [<Literal>]
+        let tuningTunable = "SourceTuningTunable"
+        [<Literal>]
+        let minimumBox = "SourceTunableMinimumBox"
+        [<Literal>]
+        let maximumBox = "SourceTunableMaximumBox"
+        [<Literal>]
+        let statusText = "SourceEditorStatus"
+        [<Literal>]
+        let saveButton = "SourceSaveButton"
+        [<Literal>]
+        let cancelButton = "SourceCancelButton"
+        [<Literal>]
+        let exitConfirm = "SourceExitConfirm"
+        [<Literal>]
+        let discardButton = "SourceDiscardButton"
+        [<Literal>]
+        let keepEditingButton = "SourceKeepEditingButton"
 
     /// The Sample editor (`SampleEditorView`).
     module SampleEditor =
@@ -460,7 +576,7 @@ module UiIds =
         [<Literal>]
         let statusText = "SampleEditorStatus"
         // The supported-emission R / T checkboxes (spec 0040 Part D.2 step 010): a Plate exposes
-        // both; a ThinFilm shows R fixed on + disabled and renders no T box.
+        // both, as does a ThinFilm; a Mirror (spec 0046) shows R fixed on + disabled and renders no T box.
         [<Literal>]
         let emitReflectedCheck = "SampleEmitReflectedCheck"
         [<Literal>]
@@ -655,6 +771,9 @@ module UiIds =
         let addSampleButton = "LibraryAddSampleButton"
         [<Literal>]
         let makeMultilayerButton = "LibraryMakeMultilayerButton"
+        /// Spec 0046: open the source editor on a NEW user light source.
+        [<Literal>]
+        let addSourceButton = "LibraryAddSourceButton"
         [<Literal>]
         let editButton = "LibraryEditButton"
         [<Literal>]

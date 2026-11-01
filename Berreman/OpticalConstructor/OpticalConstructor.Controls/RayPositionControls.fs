@@ -13,19 +13,26 @@ open Avalonia.FuncUI.Types
 
 /// The reusable "position-on-the-ray" control bar (Spec 0027, task 014): − / + step buttons, an editable
 /// metres field, and a Reset, for sliding an element ALONG THE BEAM (§E.4 — the along-ray position is a
-/// distance from the source; the host clamps it to the plate). It is the position analogue of the shared
-/// `RotationControls` bar: the visible controls are a pure projection of the host `State`, and the host
-/// owns what "the selection" is and how the value is clamped. Generic — no domain types — so any screen
-/// that moves something along the ray reuses ONE control.
+/// distance from the source; the host clamps it to the element's ray — a detector only from below). It is the
+/// position analogue of the shared `RotationControls` bar: the visible controls are a pure projection of
+/// the host `State`, and the host owns what "the selection" is and how the value is clamped. Generic — no
+/// domain types — so any screen that moves something along the ray reuses ONE control.
 module RayPositionControls =
 
-    /// The current along-ray position the bar displays. `position` is in metres; `minPosition`/
-    /// `maxPosition` are the clamp the host computed (typically ±half the table length).
+    /// How far the host lets the position go (spec 0046): between two bounds (an element between the
+    /// start and the end of its ray), from a lower bound on (a detector — moving it extends its ray), or
+    /// anywhere.
+    type PositionRange =
+        | BoundedRange of minPosition : float * maxPosition : float
+        | AtLeast of minPosition : float
+        | UnboundedRange
+
+    /// The current along-ray position the bar displays. `position` is in metres; `range` is the clamp the
+    /// host applies.
     type State =
         {
             position : float        // metres along the beam (0 = the host's chosen origin, e.g. table centre)
-            minPosition : float
-            maxPosition : float
+            range : PositionRange
             /// `false` when nothing is selected → the whole bar is disabled (nothing to move).
             enabled : bool
         }
@@ -56,6 +63,15 @@ module RayPositionControls =
 
     let private formatMeters (v : float) : string =
         System.String.Format(CultureInfo.InvariantCulture, "{0:+0.000;-0.000;0.000}", v)
+
+    /// The readout line: the position and the range it may move in.
+    let readoutText (state : State) : string =
+        let rangeText =
+            match state.range with
+            | BoundedRange (lo, hi) -> System.String.Format(CultureInfo.InvariantCulture, "range {0:+0.000;-0.000;0.000} … {1:+0.000;-0.000;0.000} m", lo, hi)
+            | AtLeast lo -> System.String.Format(CultureInfo.InvariantCulture, "from {0:+0.000;-0.000;0.000} m, uncapped", lo)
+            | UnboundedRange -> "uncapped"
+        $"x = %s{formatMeters state.position} m along the beam (%s{rangeText})"
 
     /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
     /// `Control.Name`) through FuncUI's attr builder: the bar's boxes are regenerable per host
@@ -119,7 +135,7 @@ module RayPositionControls =
                     TextBlock.name UiIds.RayPosition.readout
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
-                    TextBlock.text (System.String.Format(CultureInfo.InvariantCulture, "x = {0:+0.000;-0.000;0.000} m along the beam", state.position))
+                    TextBlock.text (readoutText state)
                 ]
             ]
         ] :> IView

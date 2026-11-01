@@ -173,6 +173,8 @@ type ChartWindow(chart : ExperimentChart) as this =
         this.Title <- (if chart.title = "" then "Experiment chart" else chart.title)
         this.Width <- 980.0
         this.Height <- 680.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
 
         let ava = new ScottPlot.Avalonia.AvaPlot(Name = UiIds.ChartWindow.plot)
         let plot = ava.Plot
@@ -432,18 +434,24 @@ type ChartWindow(chart : ExperimentChart) as this =
                 rebuildProperties ())
         rebuildProperties ()
 
+        // Spec 0046: the format panel scrolls (both ways) inside its fixed-width column, so a short or narrow
+        // window never cuts off its lower or right-hand controls.
         let rightPanel =
-            let sp = StackPanel(Orientation = Orientation.Vertical, Margin = Thickness(8.0), Width = 250.0)
+            let sp = StackPanel(Orientation = Orientation.Vertical, Margin = Thickness(8.0), MinWidth = 250.0)
             sp.Children.Add(TextBlock(Text = "Format:", FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 4.0)))
             sp.Children.Add elementSelector
             sp.Children.Add propertiesHost
-            sp
+            ScrollViewer(
+                Content = sp,
+                HorizontalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = Primitives.ScrollBarVisibility.Auto)
 
         // ----------------------------------------------------------------------------------------------
         // The bottom toolbar: polar toggle (angular charts only), gridline toggles, PNG + CSV export.
         // ----------------------------------------------------------------------------------------------
 
-        let toolbar = StackPanel(Orientation = Orientation.Horizontal, Margin = Thickness(8.0))
+        // Spec 0046: the toolbar WRAPS in a narrow window instead of running its buttons off the right edge.
+        let toolbar = WrapPanel(Orientation = Orientation.Horizontal, Margin = Thickness(8.0))
 
         if chart.angular then
             let polarBtn = Button(Name = UiIds.ChartWindow.polarToggle, Content = "Polar view", Margin = Thickness(0.0, 0.0, 16.0, 0.0))

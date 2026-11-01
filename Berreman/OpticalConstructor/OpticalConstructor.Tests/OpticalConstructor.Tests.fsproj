@@ -5,14 +5,6 @@
         <Platforms>x64</Platforms>
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -30,6 +22,10 @@
         <Compile Include="BeamRoutingTests.fs" />
         <Compile Include="PlacementTests.fs" />
         <Compile Include="RayModelTests.fs" />
+        <!-- Spec 0046: the ONE crossing law (RayModel.crossElement) and the Main-scene beam tree
+             (BeamLayout) — three segments per tilted element, reflected side beams, host fallback,
+             the element-menu ray switches, and the detector-driven experiment captures. -->
+        <Compile Include="BeamLayoutTests.fs" />
         <Compile Include="ProjectJsonRoundtripTests.fs" />
         <Compile Include="RoundTripTests.fs" />
         <Compile Include="SidecarTests.fs" />
@@ -138,6 +134,10 @@
              ORDERED ConstantMueller compound product, EntryProtection over the seeds, and the
              polarizer-category facet. -->
         <Compile Include="PolarizerBehaviorTests.fs" />
+        <!-- Spec 0046: the seeded light sources, the user-sources store, and the live Library. -->
+        <Compile Include="SourceLibraryTests.fs" />
+        <!-- Spec 0046: what a detector reads along its light path; the export CSV layout; tunable sources. -->
+        <Compile Include="ExperimentRunTests.fs" />
         <!-- Spec 0038 Part H (step 020): the pure entry-lifecycle foundation — the shared
              version-creation rule (decideVersioning) enumerated over the used/unused ×
              physics-changed/identical × metadata-only decision table, plus the VersionNumber /
@@ -274,23 +274,22 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
         <!-- Spec 0038 Part D (step 010): FsCheck for the exactly-one-bucket property —
              the version BerremanTests pins; run via Check.One inside a [<Fact>] (the
              solution's established FsCheck-under-xunit pattern). -->
-        <PackageReference Include="FsCheck" Version="3.3.4" />
+        <PackageReference Include="FsCheck" />
         <!-- Spec 0038 Part M (step 040): the EFC-wiring proof drives the SQLite provider
              directly (UseSqlite / SqliteConnectionStringBuilder / Database.Migrate) and
              needs the native SQLite assets in the test output. Version-matched to the
              OpticalConstructor.Database project reference (net10.0). -->
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
-        <PackageReference Include="xunit.v3" Version="4.0.0" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="xunit.v3" />
+        <PackageReference Include="xunit.runner.visualstudio">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="coverlet.collector" Version="10.0.1">
+        <PackageReference Include="coverlet.collector">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>

@@ -87,7 +87,8 @@ let private elementSelectRadiusPx : float = 50.0
 /// Source on the left, a flat mirror at the table centre tilted R2 = 45° (R3 unlocked so R3 also steers),
 /// and a detector half a metre past it. The mirror starts selected so the bar acts on it.
 let init () : Model =
-    let source = ElementPlacement.create LightSource RayModel.defaultSourcePoint
+    // This test window steers its source freely (spec 0046 locks a fresh source's R1 / R2).
+    let source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = false; r2Locked = false }
     let mirror = withR2 (Angle.degree 45.0) { ElementPlacement.create FlatMirror { x = 0.0<meter>; y = 0.0<meter> } with r3Locked = false }
     let detector = ElementPlacement.create Detector { x = 0.0<meter>; y = 0.0<meter> }
     {
@@ -369,19 +370,21 @@ let private rotationState (model : Model) : RotationControls.State =
     match model.selection with
     | TableSelected ->
         { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+          r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
           r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
     | ElementSelected i ->
         let p = List.item i model.elements
         { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+          r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
           r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
     | NothingSelected ->
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
         rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
         setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
-        toggleR3Lock = fun () -> dispatch ToggleR3Lock
+        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
         confirm = fun () -> dispatch RotConfirm

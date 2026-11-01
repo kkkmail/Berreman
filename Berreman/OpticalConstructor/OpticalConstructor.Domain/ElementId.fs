@@ -71,15 +71,17 @@ module Library =
         static member firstOf (sampleId : SampleId) : SampleVersionId =
             { sampleId = sampleId; version = VersionNumber.first }
 
-    /// Whether a sample's geometry is a thin film (0+ layers on a semi-infinite substrate — reflectance
-    /// only) or a thick plate (0+ layers on a specified substrate plate — reflectance and/or
-    /// transmittance). A DU, not a bool/enum, so the sample editor can add geometries case-by-case
+    /// Whether a sample's geometry is a thin film (0+ layers on a semi-infinite substrate), a thick plate
+    /// (0+ layers on a specified substrate plate), or a MIRROR (a reflective stack — spec 0046: the ONLY
+    /// geometry observed in reflection alone; a thin film and a plate both reflect AND transmit). A DU,
+    /// not a bool/enum, so the sample editor can add geometries case-by-case
     /// (compiler-guided). The former `Wedge` case was removed (spec 0038 comment 007): a thin film
     /// already covers the semi-infinite case it duplicated. (This is the display/search geometry facet,
     /// distinct from the engine `Berreman.Media.Substrate` whose `Wedge` case is unaffected.)
     type SubstrateKind =
         | ThinFilm
         | Plate
+        | Mirror
 
     /// How a layer's crystal tensors are oriented relative to the lab frame (spec 0033 step 020):
     /// `PrimaryAxes` keeps the material's own principal axes (the identity — tensors exactly as
@@ -187,41 +189,42 @@ module Library =
             description : string
             /// The ray groups this sample can emit, geometry-constrained (spec 0040 Part D.2 / operator
             /// 010/Q3 Part D.2). Reuses the shared `Emission` DU (`Placement.fs`), so the "both groups
-            /// off" state stays unrepresentable. The invariant is DATA: a `ThinFilm` (semi-infinite on
-            /// both sides — observable in reflection off its stack ALONE) is pinned to
-            /// `EmitReflectedOnly` and can never clear its R branch; a `Plate` (a finite two-surface
-            /// slab that reflects AND transmits) defaults to `EmitBoth` and is constrainable to R-only
-            /// or T-only through `Emission`'s smart setters. Defaulted by `defaultSupportedEmission` and
+            /// off" state stays unrepresentable. The invariant is DATA (spec 0046): a `Mirror` is pinned to
+            /// `EmitReflectedOnly` and can never clear its R branch; a `ThinFilm` and a `Plate` both reflect
+            /// AND transmit, default to `EmitBoth`, and are constrainable to R-only or T-only through
+            /// `Emission`'s smart setters. Defaulted by `defaultSupportedEmission` and
             /// mutated by `withSupportedEmission`, both of which route through `constrainEmission`.
             supportedEmission : Emission
         }
 
-    /// The geometry-constrained DEFAULT supported emission of a sample (spec 0040 Part D.2 / operator
-    /// 010/Q3): a `ThinFilm` sits between semi-infinite half-spaces and is observable in reflection off
-    /// its stack ALONE, so it supports `EmitReflectedOnly`; a `Plate` is a finite slab that both
-    /// reflects and transmits, so it defaults to `EmitBoth`. Pure — the seeds and the sample editor
-    /// derive the field from the geometry rather than restating an `Emission` literal per site.
+    /// The geometry-constrained DEFAULT supported emission of a sample (spec 0040 Part D.2; spec 0046 —
+    /// operator: locked R-only belongs to MIRRORS alone): a `Mirror` is observed in reflection only, so
+    /// it supports `EmitReflectedOnly`; a `ThinFilm` (light also enters its semi-infinite substrate) and
+    /// a `Plate` both reflect and transmit, so they default to `EmitBoth`. Pure — the seeds and the
+    /// sample editor derive the field from the geometry rather than restating an `Emission` literal.
     let defaultSupportedEmission (kind : SubstrateKind) : Emission =
         match kind with
-        | ThinFilm -> EmitReflectedOnly
+        | Mirror -> EmitReflectedOnly
+        | ThinFilm
         | Plate -> EmitBoth
 
-    /// Force a candidate supported emission back inside its geometry's constraint (spec 0040 Part D.2).
-    /// Under `ThinFilm` the reflected-only rule is ABSOLUTE: any candidate collapses to
-    /// `EmitReflectedOnly`, so a thin film can never clear its R branch (nor gain a transmitted branch
-    /// its physics does not support). Under `Plate` the candidate passes through untouched, so the
-    /// existing `Emission.withReflected` / `Emission.withTransmitted` setters constrain a plate to
-    /// R-only or T-only freely. This is the single enforcement point every emission change routes
-    /// through (`withSupportedEmission`).
+    /// Force a candidate supported emission back inside its geometry's constraint (spec 0040 Part D.2,
+    /// spec 0046). Under `Mirror` the reflected-only rule is ABSOLUTE: any candidate collapses to
+    /// `EmitReflectedOnly`, so a mirror can never clear its R branch (nor gain a transmitted branch).
+    /// Under `ThinFilm` and `Plate` the candidate passes through untouched, so the existing
+    /// `Emission.withReflected` / `Emission.withTransmitted` setters constrain them to R-only or T-only
+    /// freely. This is the single enforcement point every emission change routes through
+    /// (`withSupportedEmission`).
     let constrainEmission (kind : SubstrateKind) (candidate : Emission) : Emission =
         match kind with
-        | ThinFilm -> EmitReflectedOnly
+        | Mirror -> EmitReflectedOnly
+        | ThinFilm
         | Plate -> candidate
 
     /// Set a sample's `supportedEmission`, re-imposing its geometry constraint (spec 0040 Part D.2):
-    /// the candidate is routed through `constrainEmission s.substrate`, so a `ThinFilm` sample stays
-    /// `EmitReflectedOnly` no matter what is offered (unclearable) and a `Plate` takes the candidate as
-    /// given. The single write path that keeps the field's invariant intact.
+    /// the candidate is routed through `constrainEmission s.substrate`, so a `Mirror` sample stays
+    /// `EmitReflectedOnly` no matter what is offered (unclearable) and a `ThinFilm` / `Plate` takes the
+    /// candidate as given. The single write path that keeps the field's invariant intact.
     let withSupportedEmission (candidate : Emission) (s : Sample) : Sample =
         { s with supportedEmission = constrainEmission s.substrate candidate }
 
@@ -235,14 +238,30 @@ module Library =
         | ProtectedBuiltIn
         | UserManaged
 
-    /// A monochromatic source preset — defines λ (spec Q3: source = wavelength).
+    /// How a light source's wavelength may be set (spec 0046): a FIXED line, or TUNABLE anywhere between
+    /// two limits (a monochromator, a tunable laser, a synchrotron beamline). An experiment may vary only a
+    /// tunable source's wavelength, and only within its limits.
+    type SourceTuning =
+        | FixedLine
+        | TunableBetween of minimum : WaveLength * maximum : WaveLength
+
+    /// A monochromatic source preset — defines λ (spec Q3: source = wavelength). `waveLength` is the line
+    /// of a fixed source, or the setting a tunable source runs at unless an experiment says otherwise.
     type SourcePreset =
         {
             id : string
             name : string
             waveLength : WaveLength
+            tuning : SourceTuning
             protection : EntryProtection
         }
+
+        /// The tunable limits in nm, or `None` for a fixed line (spec 0046).
+        member this.tunableRangeNm : (float * float) option =
+            let toNm (w : WaveLength) : float = w.value / nmToMeter / oneNanometer
+            match this.tuning with
+            | FixedLine -> None
+            | TunableBetween (minimum, maximum) -> Some (toNm minimum, toNm maximum)
 
     /// The detector type fixes the measurement (spec §4): Intensity records S0; Ellipsometer records
     /// Ψ/Δ. A DU, not an enum, so non-ideal/compound detectors are a non-breaking addition later.
@@ -358,7 +377,9 @@ module Library =
             | SampleItem s -> s.description
             | SourceItem s ->
                 let wNm = s.waveLength.value / nmToMeter / oneNanometer
-                $"Monochromatic light source at %g{wNm} nm."
+                match s.tunableRangeNm with
+                | Some (lo, hi) -> $"Tunable monochromatic light source, %g{lo}–%g{hi} nm (set to %g{wNm} nm unless an experiment varies or sets it)."
+                | None -> $"Monochromatic light source at %g{wNm} nm (a fixed line)."
             | DetectorItem d ->
                 match d.kind with
                 | Intensity -> "Intensity detector — records the transmitted irradiance S₀."
@@ -387,7 +408,7 @@ module Library =
 
     /// Spec 0040 Part D.3: the placement emission a table element takes when bound to a library ENTRY.
     /// A bound SAMPLE bounds the placed element by its geometry-constrained `supportedEmission` (a
-    /// `ThinFilm` reflects only, a `Plate` emits both by default, or the R/T-only it was constrained
+    /// `Mirror` reflects only, a `ThinFilm` / `Plate` emits both by default, or the R/T-only it was constrained
     /// to) rather than the generic per-kind `Placement.defaultEmission` (which hands every non-mirror
     /// element `EmitBoth`). A source / detector / polarizer carries no such geometry constraint, so a
     /// placement bound to one keeps the `fallback` emission its catalogue kind already gave it. Pure —
@@ -506,6 +527,43 @@ module Library =
             supersedeSample : SampleId -> Result<unit, SampleError>
             removeSample : SampleId -> Result<unit, SampleError>
         }
+
+    /// The user-sources write-seam error channel (spec 0046; errors as values, each case carrying a
+    /// diagnostic `reason`): an unknown id on remove, a malformed source, and an attempt to store a
+    /// protected built-in (the seeded presets live in the read-only `LibraryProxy`, never here).
+    type SourceError =
+        | UnknownSourceId of reason : string
+        | InvalidSource of reason : string
+        | ProtectedSourceRefused of reason : string
+
+        member this.reason : string =
+            match this with
+            | UnknownSourceId reason
+            | InvalidSource reason
+            | ProtectedSourceRefused reason -> reason
+
+    /// The mutating USER-SOURCES write-seam (spec 0046 — the Library's source editor): the
+    /// functional-proxy convention, a record of camelCase `Result`-returning functions a test
+    /// substitutes with stubs of the SAME shape (reference-compared, so a model holding one keeps
+    /// its equality). It holds only `UserManaged` sources; the seeded protected presets stay in the
+    /// read-only `LibraryProxy`. Unversioned: an experiment binds a source by its entry id.
+    ///
+    /// - `listSources` — every user source, in creation order;
+    /// - `tryGetSource id` — the user source with this entry id, if any;
+    /// - `saveSource source` — insert a new source or replace the one with the same id (validated);
+    /// - `removeSource id` — delete a user source; an unknown id is `UnknownSourceId`.
+    [<ReferenceEquality>]
+    type SourceProxy =
+        {
+            listSources : unit -> Result<SourcePreset list, SourceError>
+            tryGetSource : string -> Result<SourcePreset option, SourceError>
+            saveSource : SourcePreset -> Result<unit, SourceError>
+            removeSource : string -> Result<unit, SourceError>
+        }
+
+    /// Mint the entry id of a NEW user source (spec 0046) — at the editor's window open, like a new
+    /// sample's `SampleId`, so the launcher keys the editor by the id Save persists under.
+    let newSourceId () : string = $"src-%s{Guid.NewGuid().ToString()}"
 
     /// A single-layer thin-film structure between vacuum (the common seed shape). The layer pins
     /// version one of the material (spec 0038 step 022 — the seeds carry version-pinned references).
@@ -662,9 +720,9 @@ module Library =
                         substrate = None
                         lower = None
                     }
-                substrate = ThinFilm
+                substrate = Mirror
                 description = "EUV reflective multilayer: 100 Mo/Si bilayers, each layer 2.65 nm (λ/4 at 10.6 nm), on vacuum."
-                supportedEmission = defaultSupportedEmission ThinFilm
+                supportedEmission = defaultSupportedEmission Mirror
             }
 
         let uniaxial : Sample =
@@ -719,9 +777,77 @@ module Library =
                 multilayerQw; euvMoSi; uniaxial; biaxial; activeCrystal; langasiteSilicon
             ]
 
+    /// The seeded light sources (spec 0046): the 600 nm reference source, well-known lasers, and the
+    /// UV / EUV lithography sources — every one a PROTECTED monochromatic preset (a source is its
+    /// wavelength, spec Q3). Commonly quoted line wavelengths; the excimer and mercury lines are the
+    /// ones the lithography steppers are named after.
+    module SeedSources =
+
+        let private source (id : string) (name : string) (waveLength : WaveLength) : SourcePreset =
+            { id = id; name = name; waveLength = waveLength; tuning = FixedLine; protection = ProtectedBuiltIn }
+
+        let private tunable (id : string) (name : string) (minNm : float) (maxNm : float) (settingNm : float) : SourcePreset =
+            {
+                id = id
+                name = name
+                waveLength = WaveLength.nm (settingNm * 1.0<nm>)
+                tuning = TunableBetween (WaveLength.nm (minNm * 1.0<nm>), WaveLength.nm (maxNm * 1.0<nm>))
+                protection = ProtectedBuiltIn
+            }
+
+        /// The reference source every scene defaulted to before spec 0046.
+        let reference600 : SourcePreset = source "src-600" "Monochromatic 600 nm" (WaveLength.nm 600.0<nm>)
+
+        /// Well-known lasers, by gain medium (the harmonics of Nd:YAG included).
+        let lasers : SourcePreset list =
+            [
+                source "src-hene-633" "HeNe laser 632.8 nm" (WaveLength.nm 632.8<nm>)
+                source "src-hene-543" "HeNe laser 543.5 nm (green)" (WaveLength.nm 543.5<nm>)
+                source "src-ar-488" "Argon-ion laser 488 nm" (WaveLength.nm 488.0<nm>)
+                source "src-ar-515" "Argon-ion laser 514.5 nm" (WaveLength.nm 514.5<nm>)
+                source "src-hecd-442" "HeCd laser 441.6 nm" (WaveLength.nm 441.6<nm>)
+                source "src-hecd-325" "HeCd laser 325 nm (UV)" (WaveLength.nm 325.0<nm>)
+                source "src-diode-405" "GaN diode laser 405 nm" (WaveLength.nm 405.0<nm>)
+                source "src-ruby-694" "Ruby laser 694.3 nm" (WaveLength.nm 694.3<nm>)
+                source "src-tisa-800" "Ti:sapphire laser 800 nm" (WaveLength.nm 800.0<nm>)
+                source "src-ndyag-1064" "Nd:YAG laser 1064 nm" (WaveLength.nm 1064.0<nm>)
+                source "src-ndyag-532" "Nd:YAG ×2 532 nm" (WaveLength.nm 532.0<nm>)
+                source "src-ndyag-355" "Nd:YAG ×3 355 nm (UV)" (WaveLength.nm 355.0<nm>)
+                source "src-ndyag-266" "Nd:YAG ×4 266 nm (DUV)" (WaveLength.nm 266.0<nm>)
+                source "src-er-1550" "Erbium fibre laser 1550 nm" (WaveLength.nm 1550.0<nm>)
+                source "src-co2-10600" "CO₂ laser 10.6 µm" (WaveLength.nm 10600.0<nm>)
+            ]
+
+        /// The UV / EUV lithography sources: the mercury-lamp lines, the DUV excimer lasers, and the
+        /// tin-plasma EUV source with its beyond-EUV successor.
+        let lithography : SourcePreset list =
+            [
+                source "src-hg-g-436" "Mercury g-line 435.8 nm" (WaveLength.nm 435.8<nm>)
+                source "src-hg-h-405" "Mercury h-line 404.7 nm" (WaveLength.nm 404.7<nm>)
+                source "src-hg-i-365" "Mercury i-line 365 nm" (WaveLength.nm 365.0<nm>)
+                source "src-krf-248" "KrF excimer 248 nm (DUV)" (WaveLength.nm 248.4<nm>)
+                source "src-arf-193" "ArF excimer 193 nm (DUV, dry / immersion)" (WaveLength.nm 193.4<nm>)
+                source "src-f2-157" "F₂ excimer 157 nm (VUV)" (WaveLength.nm 157.6<nm>)
+                source "src-euv-13p5" "EUV 13.5 nm (Sn plasma)" (WaveLength.nm 13.5<nm>)
+                source "src-beuv-6p7" "BEUV 6.7 nm (beyond EUV)" (WaveLength.nm 6.7<nm>)
+            ]
+
+        /// Tunable sources (spec 0046): an experiment varies their wavelength within their limits, or sets
+        /// it there when it varies something else.
+        let tunables : SourcePreset list =
+            [
+                tunable "src-xe-mono" "Xenon lamp + monochromator, 190–1000 nm" 190.0 1000.0 600.0
+                tunable "src-tisa-tunable" "Ti:sapphire laser, tunable 700–1000 nm" 700.0 1000.0 800.0
+                tunable "src-supercontinuum" "Supercontinuum source, 450–2400 nm" 450.0 2400.0 600.0
+                tunable "src-euv-beamline" "EUV beamline (synchrotron), 5–20 nm" 5.0 20.0 13.5
+            ]
+
+        /// Every seeded source, in Library display order.
+        let all : SourcePreset list = reference600 :: lasers @ lithography @ tunables
+
     /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
-    /// LP + two ideal CP, and one monochromatic source. Every sample's stack is DATA (spec 0033
+    /// LP + two ideal CP, and the seeded sources (`SeedSources`). Every sample's stack is DATA (spec 0033
     /// step 001) — the multilayers are `Repeated` period groups, never a per-id special case — and
     /// the samples are the named `SeedSamples` values (spec 0033 step 002). The six presets are
     /// ordinary PROTECTED entries (spec 0038 Part F — `ProtectedBuiltIn`); the seeded samples stay
@@ -735,8 +861,9 @@ module Library =
             PolarizerItem { id = "pol-lp"; name = "Ideal linear polarizer"; behavior = ComputedIdeal IdealLinear; category = LpCategory; protection = ProtectedBuiltIn }
             PolarizerItem { id = "pol-cp-left"; name = "Ideal circular polarizer (left)"; behavior = ComputedIdeal IdealCircularLeft; category = CpCategory; protection = ProtectedBuiltIn }
             PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
-            SourceItem { id = "src-600"; name = "Monochromatic 600 nm"; waveLength = WaveLength.nm 600.0<nm>; protection = ProtectedBuiltIn }
         ]
+        // Spec 0046: the seeded sources — the 600 nm reference, the lasers, the lithography sources.
+        @ (SeedSources.all |> List.map SourceItem)
 
     /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
     /// (spec 0033 step 002 — the id literal lives only in `SeedSamples`), carrying its Guid-string
@@ -785,7 +912,14 @@ module Library =
                                                sampleLeaf "Langasite on silicon" SeedSamples.langasiteSilicon
                                            ])
                                   ])
-                             Group (TreeLabel "Sources", [ Leaf (TreeLabel "600 nm", "src-600") ])
+                             Group
+                                 (TreeLabel "Sources",
+                                  [
+                                      Leaf (TreeLabel "600 nm", SeedSources.reference600.id)
+                                      Group (TreeLabel "Lasers", SeedSources.lasers |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
+                                      Group (TreeLabel "Lithography (UV / EUV)", SeedSources.lithography |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
+                                      Group (TreeLabel "Tunable", SeedSources.tunables |> List.map (fun src -> Leaf (TreeLabel src.name, src.id)))
+                                  ])
                              Group
                                  (TreeLabel "Detectors",
                                   [
@@ -903,3 +1037,103 @@ module Library =
         match samples.listSamples ActiveOnly with
         | Ok all -> all |> List.filter (fun s -> s.structure.referencedMaterials |> Set.contains id)
         | Error _ -> []
+
+    /// The write-seam validation the user-sources store's `saveSource` runs (spec 0046): a blank
+    /// name, a blank id, or a wavelength that is not a positive finite length is `InvalidSource`; a
+    /// `ProtectedBuiltIn` source is refused (only user-managed sources are stored here).
+    let validateSource (s : SourcePreset) : Result<unit, SourceError> =
+        let positive (w : WaveLength) : bool =
+            let metres = w.value / 1.0<meter>
+            not (Double.IsNaN metres || Double.IsInfinity metres) && metres > 0.0
+        let tuningProblem =
+            match s.tuning with
+            | FixedLine -> None
+            | TunableBetween (minimum, maximum) ->
+                if not (positive minimum && positive maximum) then Some "needs positive tunable limits"
+                elif minimum.value >= maximum.value then Some "needs a lower tunable limit below the upper one"
+                elif s.waveLength.value < minimum.value || s.waveLength.value > maximum.value then Some "must be set within its tunable limits"
+                else None
+        if String.IsNullOrWhiteSpace s.id then Error (InvalidSource "a source needs an id")
+        elif String.IsNullOrWhiteSpace s.name then Error (InvalidSource $"source '%s{s.id}' has a blank name")
+        elif not (positive s.waveLength) then
+            Error (InvalidSource $"source '%s{s.name}' needs a positive wavelength")
+        elif Option.isSome tuningProblem then
+            Error (InvalidSource $"source '%s{s.name}' %s{tuningProblem |> Option.defaultValue String.Empty}")
+        else
+            match s.protection with
+            | ProtectedBuiltIn -> Error (ProtectedSourceRefused $"source '%s{s.name}' is a protected built-in — it is not stored with the user sources")
+            | UserManaged -> Ok ()
+
+    type SourceProxy with
+
+        /// The in-memory user-sources store (spec 0046): empty at start (§0.2 — nothing is persisted
+        /// across app runs), `saveSource` inserts or replaces by id, `removeSource` deletes. Mutation
+        /// stays INSIDE the closure (the IO boundary), so logic holding the proxy stays pure.
+        static member createInMemory () : SourceProxy =
+            let store = ref ([] : SourcePreset list)
+            {
+                listSources = fun () -> Ok store.Value
+                tryGetSource = fun id -> Ok (store.Value |> List.tryFind (fun s -> s.id = id))
+                saveSource =
+                    fun source ->
+                        validateSource source
+                        |> Result.map (fun () ->
+                            match store.Value |> List.exists (fun s -> s.id = source.id) with
+                            | true -> store.Value <- store.Value |> List.map (fun s -> if s.id = source.id then source else s)
+                            | false -> store.Value <- store.Value @ [ source ])
+                removeSource =
+                    fun id ->
+                        match store.Value |> List.exists (fun s -> s.id = id) with
+                        | true ->
+                            store.Value <- store.Value |> List.filter (fun s -> s.id <> id)
+                            Ok ()
+                        | false -> Error (UnknownSourceId $"unknown source id '%s{id}'")
+            }
+
+    /// The LIVE Library (spec 0046): the read-only seeded `presets` composed with the app-scope
+    /// SAMPLES and USER-SOURCES stores, so an entry created in the Library window (a sample through
+    /// the Sample editor, a source through the source editor) is offered for its kind AND resolves
+    /// once a table element is bound to it. Samples come from the live store (the latest ACTIVE
+    /// versions are offered; `tryGetEntry` resolves any latest version, so a bound retired sample
+    /// still resolves), user sources follow the seeded ones, the other presets are the seeds'.
+    /// `libraryTrees` stays the seeded grouping. A proxy listing error passes through as
+    /// `LibraryUnavailable`.
+    let liveLibrary (presets : LibraryProxy) (samples : SampleProxy) (sources : SourceProxy) : LibraryProxy =
+        let liveSamples () : LibraryEntry list =
+            match samples.listSamples ActiveOnly with
+            | Ok all -> all |> List.map SampleItem
+            | Error _ -> []
+        let userSources () : LibraryEntry list =
+            match sources.listSources () with
+            | Ok all -> all |> List.map SourceItem
+            | Error _ -> []
+        let isSample (e : LibraryEntry) : bool =
+            match e with
+            | SampleItem _ -> true
+            | SourceItem _ | DetectorItem _ | PolarizerItem _ -> false
+        {
+            entriesForKind =
+                fun kind ->
+                    presets.entriesForKind kind
+                    |> Result.map (fun seeded ->
+                        let ofKind (entries : LibraryEntry list) = entries |> List.filter (fun e -> e.forKinds |> List.contains kind)
+                        ofKind (liveSamples ()) @ (seeded |> List.filter (isSample >> not)) @ ofKind (userSources ())
+                        |> List.distinctBy (fun e -> e.entryId))
+            libraryTrees = presets.libraryTrees
+            tryGetEntry =
+                fun id ->
+                    let userSource =
+                        match sources.tryGetSource id with
+                        | Ok found -> found |> Option.map SourceItem
+                        | Error _ -> None
+                    let liveSample =
+                        match Guid.TryParse id with
+                        | true, guid ->
+                            match samples.tryGetSample (SampleId guid) with
+                            | Ok found -> found |> Option.map SampleItem
+                            | Error _ -> None
+                        | false, _ -> None
+                    match userSource, liveSample with
+                    | Some entry, _ | None, Some entry -> Ok (Some entry)
+                    | None, None -> presets.tryGetEntry id
+        }

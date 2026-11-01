@@ -75,6 +75,21 @@ module ExperimentControls =
         | CaptureR -> "Reflected (R)"
         | CaptureBoth -> "Both (T + R)"
 
+    /// Spec 0046: one capture the scene's detectors offer — the branch choice and what its detector reads
+    /// there (e.g. "Transmitted (T) — intensity", "Reflected (R) — Ψ, Δ (ellipsometer)").
+    type MeasurementOffer =
+        {
+            choice : MeasurementChoice
+            label : string
+        }
+
+    /// Spec 0046: the source wavelength the run uses, shown below the range while the wavelength is NOT the
+    /// varied quantity: a fixed line (read only), or a tunable source's setting (editable within its limits).
+    type SourceWaveLengthState =
+        | NoSourceWaveLength
+        | FixedSourceWaveLength of nm : float
+        | TunableSourceWaveLength of nm : float * minNm : float * maxNm : float
+
     /// One drawn chart series: a display name (legend) and its (x, y) points in axis-display units.
     type ChartSeries =
         {
@@ -107,6 +122,12 @@ module ExperimentControls =
             chosenVariable : VariableChoice option
             /// The chosen capture mode (transmitted / reflected / both).
             measurement : MeasurementChoice
+            /// Spec 0046: the captures the scene's detectors offer for the chosen element, each labelled by
+            /// what its detector reads (host-supplied: a transmitted detector offers T, a reflected one R,
+            /// both offer T / R / Both). Only these are shown; empty while no detector sees the element.
+            measurementOffers : MeasurementOffer list
+            /// Spec 0046: the source wavelength the run uses while the wavelength is not varied.
+            sourceWaveLength : SourceWaveLengthState
             /// The variation range (in the variable's display unit) and its point count.
             rangeMin : float
             rangeMax : float
@@ -143,6 +164,8 @@ module ExperimentControls =
             variableChoices = []
             chosenVariable = None
             measurement = CaptureT
+            measurementOffers = []
+            sourceWaveLength = NoSourceWaveLength
             rangeMin = 0.0
             rangeMax = 360.0
             rangePoints = 73
@@ -172,6 +195,8 @@ module ExperimentControls =
             setRangeMin : float -> unit
             setRangeMax : float -> unit
             setRangePoints : int -> unit
+            /// Spec 0046: set a tunable source's wavelength (nm) for the run.
+            setSourceWaveLength : float -> unit
             /// Confirm the draft: Add a new experiment, or Update the one being edited.
             addOrUpdate : unit -> unit
             /// Start a brand-new experiment (clears the editor).
@@ -183,8 +208,9 @@ module ExperimentControls =
             /// VIEW an experiment (by id): open the pop-out chart window for that collected experiment. The
             /// per-row "View" button and a double-click on the row both call this — the same testable action.
             viewExperiment : string -> unit
-            /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart
-            /// or the "Open chart" button).
+            /// Open the pop-out interactive chart window for the current DRAFT (double-click the inline chart).
+            /// Spec 0046: the separate "Open chart window" button is gone — a collected experiment's "View"
+            /// is the explicit way to open its chart.
             openChartWindow : unit -> unit
         }
 
@@ -227,10 +253,6 @@ module ExperimentControls =
             // chosen flag flips so a reused box can't keep a stale handler.
             Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box (chosen, visible)))
         ] :> IView
-
-    /// An always-visible clickable option box (measurements — a fixed set, so a stable `Name` is safe).
-    let private optionBox (id : string) (label : string) (chosen : bool) (enabled : bool) (onClick : unit -> unit) : IView =
-        optionBoxV id label chosen enabled true onClick
 
     /// A clickable option box for a REORDERABLE list (candidates, collection rows). Such a list shifts a
     /// control onto a different item's slot when an item is removed, so the box carries a reuse-safe
@@ -403,23 +425,6 @@ module ExperimentControls =
             match state.series with
             | [] -> []
             | _ ->
-                // An explicit, always-reliable way to open the pop-out interactive window — the earlier
-                // double-click-only trigger was easy to miss / not fire. (Double-click still works too.)
-                let openButton =
-                    Border.create [
-                        automationId UiIds.Experiment.openChart
-                        Border.isEnabled state.enabled
-                        Border.background (brush chosenBackground)
-                        Border.borderBrush (brush idleBorder)
-                        Border.borderThickness 1.0
-                        Border.cornerRadius (CornerRadius 3.0)
-                        Border.padding (Thickness(12.0, 5.0))
-                        Border.margin (Thickness(0.0, 2.0, 0.0, 4.0))
-                        Border.horizontalAlignment HorizontalAlignment.Left
-                        Border.child (TextBlock.create [ TextBlock.text "Open chart window ↗" ])
-                        Border.onPointerPressed ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
-                    ]
-                    |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.openChart
                 let chartBox =
                     Border.create [
                         Border.borderBrush (brush idleBorder)
@@ -429,7 +434,7 @@ module ExperimentControls =
                         Border.height chartHeight
                         Border.horizontalAlignment HorizontalAlignment.Left
                         Border.child (chartCanvas state)
-                        // Double-click ALSO opens the pop-out window — via Avalonia's built-in DoubleTapped
+                        // A double-click opens the draft's pop-out window — via Avalonia's built-in DoubleTapped
                         // gesture (more reliable than a hand-rolled PointerPressed ClickCount check).
                         Border.onDoubleTapped ((fun e -> e.Handled <- true; handlers.openChartWindow ()), SubPatchOptions.Always)
                     ]
@@ -443,7 +448,7 @@ module ExperimentControls =
                         TextBlock.maxWidth 360.0
                     ]
                     |> Avalonia.FuncUI.DSL.View.withKey UiIds.Experiment.description
-                [ openButton :> IView; chartBox :> IView; descriptionText :> IView ]
+                [ chartBox :> IView; descriptionText :> IView ]
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).
@@ -496,18 +501,42 @@ module ExperimentControls =
             ]
         ] :> IView
 
-    /// The capture-mode selection row (step 3a: T / R / both).
+    /// The capture selection row (step 3). Spec 0046: the DETECTORS decide what is captured — only the
+    /// captures they offer are shown, each labelled by what its detector reads (`measurementOffers`); every
+    /// box stays at its stable slot and only its visibility flips (the `variableRow` discipline); with none,
+    /// a hint says why. The whole row appears only once something to vary is chosen.
     let private measurementRow (state : State) (handlers : Handlers) : IView =
+        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
+        let offerOf (m : MeasurementChoice) : MeasurementOffer option = state.measurementOffers |> List.tryFind (fun o -> o.choice = m)
+        let noneOffered = List.isEmpty state.measurementOffers
         let one (m : MeasurementChoice) : IView =
-            optionBox
+            let offer = offerOf m
+            let offered = Option.isSome offer
+            optionBoxV
                 (UiIds.Experiment.measurement (measurementCode m))
-                (measurementLabel m)
+                (offer |> Option.map (fun o -> o.label) |> Option.defaultValue (measurementLabel m))
                 (state.measurement = m)
-                state.enabled
+                (state.enabled && offered)
+                offered
                 (fun () -> handlers.chooseMeasurement m)
-        WrapPanel.create [
-            WrapPanel.orientation Orientation.Horizontal
-            WrapPanel.children [ one CaptureT; one CaptureR; one CaptureBoth ]
+        StackPanel.create [
+            StackPanel.orientation Orientation.Vertical
+            StackPanel.isVisible hasVariable
+            StackPanel.children [
+                TextBlock.create [
+                    TextBlock.name UiIds.Experiment.noCapture
+                    TextBlock.text "(no detector captures this element's light — put a detector on its transmitted beam or on its reflected ray: right-click an element for its rays)"
+                    TextBlock.textWrapping TextWrapping.Wrap
+                    TextBlock.maxWidth 420.0
+                    TextBlock.foreground (brush (color 120 120 120))
+                    TextBlock.isVisible noneOffered
+                ]
+                WrapPanel.create [
+                    WrapPanel.orientation Orientation.Horizontal
+                    WrapPanel.isVisible (not noneOffered)
+                    WrapPanel.children [ one CaptureT; one CaptureR; one CaptureBoth ]
+                ]
+            ]
         ] :> IView
 
     /// Parse a plain decimal (invariant culture).
@@ -558,6 +587,34 @@ module ExperimentControls =
                 numberField UiIds.Experiment.rangePoints $"%d{state.rangePoints}" state.enabled (commitInt handlers.setRangePoints)
             ]
         ] :> IView
+
+    /// Spec 0046: the source-wavelength row — always present (stable slots), shown while the run's source
+    /// wavelength is not the varied quantity: a fixed line read only, a tunable source's setting editable
+    /// (the host clamps it to the source's limits).
+    let private sourceWaveLengthRow (state : State) (handlers : Handlers) : IView =
+        let shown, editable, valueText, note =
+            match state.sourceWaveLength with
+            | NoSourceWaveLength -> false, false, "", ""
+            | FixedSourceWaveLength nm -> true, false, $"%g{nm}", "nm (a fixed line)"
+            | TunableSourceWaveLength (nm, lo, hi) -> true, true, $"%g{nm}", $"nm (tunable %g{lo} … %g{hi} nm)"
+        let commit (src : obj) : unit =
+            match src with
+            | :? TextBox as tb when not (isNull tb.Text) -> parseFloat tb.Text |> Option.iter handlers.setSourceWaveLength
+            | _ -> ()
+        StackPanel.create [
+            StackPanel.orientation Orientation.Horizontal
+            StackPanel.spacing 6.0
+            StackPanel.isVisible shown
+            StackPanel.children [
+                TextBlock.create [ TextBlock.text "Source wavelength:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+                numberField UiIds.Experiment.sourceWaveLength valueText (state.enabled && editable) commit
+                TextBlock.create [ TextBlock.name UiIds.Experiment.sourceWaveLengthNote; TextBlock.text note; TextBlock.verticalAlignment VerticalAlignment.Center ]
+            ]
+        ] :> IView
+
+    /// A step heading shown only once something to vary is chosen (stable slot, visibility toggled).
+    let private stepHeading (text : string) (visible : bool) : IView =
+        TextBlock.create [ TextBlock.text text; TextBlock.fontWeight FontWeight.SemiBold; TextBlock.margin (Thickness(0.0, 2.0, 0.0, 2.0)); TextBlock.isVisible visible ] :> IView
 
     // -- A plain action button (Add / Update / New). Regenerable (the Add label swaps to "Update
     // experiment" in place), so it carries a reuse-safe AutomationId, never a write-once `Name`. --
@@ -655,6 +712,7 @@ module ExperimentControls =
         let readoutText =
             if state.readout = "" then "Experiment: (choose an element, a variable to vary, and click Add)"
             else state.readout
+        let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
@@ -665,10 +723,11 @@ module ExperimentControls =
                     elementRow state handlers
                     heading "2. Vary:"
                     variableRow state handlers
-                    heading "3. Capture:"
+                    stepHeading "3. Capture (the detectors decide what):" hasVariable
                     measurementRow state handlers
+                    stepHeading "4. Range:" hasVariable
                 ]
-                @ [ rangeRow state handlers ]
+                @ [ rangeRow state handlers; sourceWaveLengthRow state handlers ]
                 @ [ actionRow state handlers ]
                 @ collectionBlock state handlers
                 @ resultBlock state handlers)

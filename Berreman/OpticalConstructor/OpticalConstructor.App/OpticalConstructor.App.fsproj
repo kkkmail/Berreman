@@ -5,15 +5,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>Softellect.Berreman.OpticalConstructor.App</AssemblyName>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <IsPackable>false</IsPackable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -47,19 +39,18 @@
          unreferenced until the §A.9 audit passes (AC-A8). Versions mirror
          OpticalConstructor.Ui. -->
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-        <PackageReference Include="Avalonia" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
-        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0" />
+        <PackageReference Include="Avalonia" />
+        <PackageReference Include="Avalonia.Desktop" />
+        <PackageReference Include="Avalonia.Themes.Fluent" />
+        <PackageReference Include="Avalonia.FuncUI" />
         <!-- spec 0024 §U1.1 / R-1: the Elmish host packages so the composition root
              mounts the MVU program. Version-aligned with FuncUI 2.0.0-preview1 (Avalonia 12); MIT NuGet. -->
-        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0" />
-        <PackageReference Include="Elmish" Version="5.0.2" />
+        <PackageReference Include="Avalonia.FuncUI.Elmish" />
+        <PackageReference Include="Elmish" />
         <!-- Spec 0038 Part C (step 005): appsettings.json is read/written ONLY through
              Softellect.Sys.AppSettings.AppSettingsProvider — version-matched to the
              existing OpticalConstructor.Storage reference. -->
-        <PackageReference Include="Softellect.Sys" Version="10.1.301.54" />
+        <PackageReference Include="Softellect.Sys" />
     </ItemGroup>
 
     <ItemGroup>

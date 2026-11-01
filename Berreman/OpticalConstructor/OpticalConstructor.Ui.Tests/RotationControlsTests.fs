@@ -37,14 +37,14 @@ module RotationControlsTests =
     let private noopHandlers : RotationControls.Handlers =
         { rotate = fun _ _ -> ()
           setAngle = fun _ _ -> ()
-          toggleR3Lock = fun () -> ()
+          toggleLock = fun _ -> ()
           requestReset = fun () -> ()
           requestResetAll = fun () -> ()
           confirm = fun () -> ()
           cancel = fun () -> () }
 
     let private enabledState : RotationControls.State =
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r3Locked = false; enabled = true; confirm = RotationControls.NoConfirm }
+        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Locked = false; enabled = true; confirm = RotationControls.NoConfirm }
 
     /// The light-accent fill the bar paints onto an armed axis's buttons (#CCE8FF, from the control).
     let private accent : Color = Color.FromRgb(204uy, 232uy, 255uy)
@@ -179,7 +179,7 @@ module RotationControlsTests =
                     let handlers : RotationControls.Handlers =
                         { rotate = fun _ _ -> ()
                           setAngle = fun _ _ -> ()
-                          toggleR3Lock = fun () -> ()
+                          toggleLock = fun _ -> ()
                           requestReset = fun () -> confirm.Set RotationControls.ConfirmReset
                           requestResetAll = fun () -> confirm.Set RotationControls.ConfirmResetAll
                           confirm = fun () -> resets <- resets + 1; confirm.Set RotationControls.NoConfirm

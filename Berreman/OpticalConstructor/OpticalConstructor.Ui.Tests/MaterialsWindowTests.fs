@@ -67,6 +67,10 @@ module MaterialsWindowTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
+            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
+            // the visible area of its scroller, where a click at the box's centre lands nowhere).
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, MouseButton.Left, RawInputModifiers.None)
@@ -203,6 +207,7 @@ module MaterialsWindowTests =
         let context : SelectionContext<MaterialEntry> =
             {
                 kindConstraint = KindConstraint kind
+                currentEntryIdOpt = None
                 target = target
                 onSelected = fun entry -> events.Add ("selected:" + string entry.id.value)
                 onCancelled = fun () -> events.Add "cancelled"
@@ -1114,6 +1119,7 @@ module MaterialsWindowTests =
             let selectCtx : SelectionContext<MaterialEntry> =
                 {
                     kindConstraint = KindConstraint Sample
+                    currentEntryIdOpt = None
                     target = SampleLayerTarget (AtSingleLayer 0)
                     onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
                     onCancelled = fun () -> cancels.Add "cancelled"
@@ -1187,6 +1193,7 @@ module MaterialsWindowTests =
             let selectCtx : SelectionContext<MaterialEntry> =
                 {
                     kindConstraint = KindConstraint Sample
+                    currentEntryIdOpt = None
                     target = SampleLayerTarget (AtSingleLayer 0)
                     onSelected = fun entry -> dispatch (SampleEditorView.BindMaterialToLayer (AtSingleLayer 0, entry.id))
                     onCancelled = fun () -> ()

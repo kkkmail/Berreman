@@ -90,13 +90,25 @@ module RayModelTests =
         Assert.Equal(1, List.length mirrorTransmittedGroups)            // exactly one group ...
         Assert.Equal(Reflected, List.head mirrorTransmittedGroups)      // ... and it is the RRG
         Assert.DoesNotContain(Transmitted, mirrorTransmittedGroups)
-        // A non-mirror element emitting both draws both groups.
+        // A non-mirror element emitting both (a sample) draws both groups.
+        let sample = ElementPlacement.create Sample TablePoint.origin
+        let polarizerGroups = outgoingGroups sample
+        Assert.Contains(Reflected, polarizerGroups)
+        Assert.Contains(Transmitted, polarizerGroups)
+        // Spec 0046 (operator): every POLARIZER carries the transmitted group only — structurally, like a
+        // lens: even forced to EmitBoth it draws the TRG alone.
+        let polarizer = ElementPlacement.create LinearPolarizer TablePoint.origin
+        Assert.Equal(EmitTransmittedOnly, polarizer.emission)
+        Assert.Equal<RayGroupKind list>([ Transmitted ], outgoingGroups { polarizer with emission = EmitBoth })
+        // Spec 0046 (operator): a LENS carries the transmitted group only — structurally, the mirror
+        // rule's counterpart: even forced to EmitBoth it draws the TRG alone.
         let lens = ElementPlacement.create Lens TablePoint.origin
-        let lensGroups = outgoingGroups lens
-        Assert.Contains(Reflected, lensGroups)
-        Assert.Contains(Transmitted, lensGroups)
+        Assert.Equal(EmitTransmittedOnly, lens.emission)
+        let lensBoth = { lens with emission = EmitBoth }
+        let lensGroups = outgoingGroups lensBoth
+        Assert.Equal<RayGroupKind list>([ Transmitted ], lensGroups)
         // Every drawn outgoing group corresponds to an engine branch (B.7.1) ...
-        for g in mirrorGroups @ mirrorBothGroups @ mirrorTransmittedGroups @ lensGroups do
+        for g in mirrorGroups @ mirrorBothGroups @ mirrorTransmittedGroups @ polarizerGroups @ lensGroups do
             match toBeamBranch g with
             | Some _ -> ()
             | None -> failwith $"outgoing group {g} has no engine branch"
@@ -205,22 +217,27 @@ module RayModelTests =
     // --- AC-B6: schematic Snell bending ------------------------------------
 
     [<Fact>]
-    let ``AC-B6 a ray crossing a tilted element bends per Snell's law with n = 1.0 outside and n = 1.5 inside`` () =
+    let ``AC-B6 a ray crossing a tilted element bends per Snell's law inside and leaves parallel to the incoming ray`` () =
         let incoming = centralRayDirection
         let tilted = ElementPlacement.create Sample TablePoint.origin |> withR2 (Angle.degree 30.0)
         let n = (faceNormal incoming tilted).normalized
-        // Angle of incidence is the element's 30 deg tilt; the schematic transmitted
-        // ray refracts toward the normal entering the n = 1.5 medium.
+        // Angle of incidence is the element's 30 deg tilt; INSIDE the element the ray
+        // refracts toward the normal entering the n = 1.5 medium.
         let theta1 = acos (incoming.normalized.dot n)
-        let outDir = (outgoingDirection BeamTree.Transmitted incoming tilted).normalized
-        let theta2 = acos (outDir.dot n)
+        let crossing = crossElement (Vector3.create 0.0 0.0 0.0) incoming n 0.025<meter>
+        let theta2 = acos (crossing.inside.normalized.dot n)
         Assert.True(close (theta1 * 180.0 / Math.PI) 30.0, $"incidence {theta1 * 180.0 / Math.PI} deg")
         Assert.True(theta2 < theta1, "the refracted ray must bend toward the normal")
         // Snell's law: n_out sin(theta1) = n_in sin(theta2).
         let lhs = refractiveIndexOutside * sin theta1
         let rhs = refractiveIndexInside * sin theta2
         Assert.True(close lhs rhs, $"Snell mismatch: {lhs} vs {rhs}")
-        // A square (normal-incidence) element does not bend the ray.
+        // Spec 0046: refracting back out of the parallel back face, the transmitted ray
+        // leaves PARALLEL to the incoming one — the tilt never steers the transmitted beam.
+        let outDir = (outgoingDirection BeamTree.Transmitted incoming tilted).normalized
+        Assert.True(close (outDir.dot incoming.normalized) 1.0, "the transmitted ray must leave parallel to the incoming ray")
+        Assert.True(close (crossing.transmitted.dot incoming.normalized) 1.0, "the crossing's exit direction must be the incoming direction")
+        // A square (normal-incidence) element does not bend the ray at all.
         let square = ElementPlacement.create Sample TablePoint.origin
         let outSquare = (outgoingDirection BeamTree.Transmitted incoming square).normalized
         Assert.True(close (outSquare.dot incoming.normalized) 1.0, "normal incidence must pass straight through")

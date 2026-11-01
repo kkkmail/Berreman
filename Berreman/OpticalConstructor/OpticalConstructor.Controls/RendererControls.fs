@@ -134,8 +134,13 @@ module RendererControls =
     let private valueLabel (text : string) : IView =
         TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.margin (Thickness(6.0, 0.0, 0.0, 0.0)); TextBlock.text text ] :> IView
 
-    let private row (children : IView list) : IView =
-        StackPanel.create [ StackPanel.orientation Orientation.Horizontal; StackPanel.children children ] :> IView
+    /// Spec 0046: a row WRAPS its labelled units (a label + its knob + its value stay together) onto a new
+    /// line in a narrow window, instead of running the knobs off its right edge.
+    let private row (units : IView list list) : IView =
+        WrapPanel.create [
+            WrapPanel.orientation Orientation.Horizontal
+            WrapPanel.children (units |> List.map (fun unit -> StackPanel.create [ StackPanel.orientation Orientation.Horizontal; StackPanel.children unit ] :> IView))
+        ] :> IView
 
     /// A DISCRETE slider riding the INDEX of a preset list, snapping to whole ticks.
     let private presetSlider (id : string) (width : float) (options : int list) (value : int) (indexOf : int -> int) (onIndex : int -> unit) : IView =
@@ -190,30 +195,30 @@ module RendererControls =
             StackPanel.spacing 6.0
             StackPanel.children [
                 row [
-                    clickBox UiIds.Renderer.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
-                    TextBlock.create [ TextBlock.name UiIds.Renderer.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ]
-                    fixedLabel "Cylinder rails:"
-                    presetSlider UiIds.Renderer.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
-                    valueLabel (string state.rails)
+                    [ clickBox UiIds.Renderer.swapRenderer "Swap renderer" (fun () -> handlers.swap ())
+                      TextBlock.create [ TextBlock.name UiIds.Renderer.readout; TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text $"Renderer: %s{rendererName state.kind}" ] ]
+                    [ fixedLabel "Cylinder rails:"
+                      presetSlider UiIds.Renderer.railsSlider 170.0 railOptions state.rails railIndex handlers.setRailsIndex
+                      valueLabel (string state.rails) ]
                 ]
                 row [
-                    fixedLabel "Cap circles:"
-                    intSlider UiIds.Renderer.capCirclesSlider capCirclesMin capCirclesMax state.circles handlers.setCircles
-                    valueLabel (string state.circles)
-                    fixedLabel "Cap radials:"
-                    presetSlider UiIds.Renderer.capRadialsSlider 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
-                    valueLabel (string state.radials)
+                    [ fixedLabel "Cap circles:"
+                      intSlider UiIds.Renderer.capCirclesSlider capCirclesMin capCirclesMax state.circles handlers.setCircles
+                      valueLabel (string state.circles) ]
+                    [ fixedLabel "Cap radials:"
+                      presetSlider UiIds.Renderer.capRadialsSlider 150.0 radialOptions state.radials radialIndex handlers.setRadialsIndex
+                      valueLabel (string state.radials) ]
                 ]
                 row [
-                    fixedLabel "Rail opacity:"
-                    opacitySlider UiIds.Renderer.railOpacitySlider state.railOpacity handlers.setRailOpacity
-                    valueLabel $"%.2f{state.railOpacity}"
-                    fixedLabel "Face opacity:"
-                    opacitySlider UiIds.Renderer.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
-                    valueLabel $"%.2f{state.faceOpacity}"
-                    fixedLabel "Line opacity:"
-                    opacitySlider UiIds.Renderer.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
-                    valueLabel $"%.2f{state.lineOpacity}"
+                    [ fixedLabel "Rail opacity:"
+                      opacitySlider UiIds.Renderer.railOpacitySlider state.railOpacity handlers.setRailOpacity
+                      valueLabel $"%.2f{state.railOpacity}" ]
+                    [ fixedLabel "Face opacity:"
+                      opacitySlider UiIds.Renderer.faceOpacitySlider state.faceOpacity handlers.setFaceOpacity
+                      valueLabel $"%.2f{state.faceOpacity}" ]
+                    [ fixedLabel "Line opacity:"
+                      opacitySlider UiIds.Renderer.lineOpacitySlider state.lineOpacity handlers.setLineOpacity
+                      valueLabel $"%.2f{state.lineOpacity}" ]
                 ]
             ]
         ] :> IView

@@ -13,6 +13,7 @@ type ElementMovementWindow() as this =
         this.Title <- "Test — Element Movement"
         this.Width <- ElementMovementView.canvasWidth
         this.Height <- ElementMovementView.canvasHeight + 100.0
+        OpticalConstructor.Controls.WindowFit.keepOnScreen this
         Program.mkSimple ElementMovementView.init ElementMovementView.update ElementMovementView.view
         |> Program.withHost this
         |> Program.run

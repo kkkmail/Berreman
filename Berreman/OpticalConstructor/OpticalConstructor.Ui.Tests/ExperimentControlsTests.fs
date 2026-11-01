@@ -31,15 +31,20 @@ module ExperimentControlsTests =
     let private bind (i : int) (entryId : string) (m : Model) : Model =
         { m with selection = ElementSelected i } |> update (BindValueId entryId)
 
+    /// Spec 0046: the Main scene with its source bound to a TUNABLE source (xenon lamp + monochromator,
+    /// 190–1000 nm) — only a tunable source's wavelength can be varied.
+    let private withTunableSource () : Model = bind 0 "src-xe-mono" (initMain ())
+
     /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
     let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
 
-    /// A seeded ThinFilm sample (`supportedEmission = EmitReflectedOnly`) and a seeded Plate sample
-    /// supporting BOTH branches (`supportedEmission = EmitBoth`) — the two geometries spec 0040 D.3
-    /// bounds a placed sample's emission by.
+    /// A seeded ThinFilm and a seeded Plate sample — both supporting BOTH branches (spec 0046) — and the
+    /// seeded MIRROR (the EUV multilayer, `EmitReflectedOnly`): the geometries spec 0040 D.3 bounds a
+    /// placed sample's emission by.
     let private glassFilm600Id : string = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId
     let private glassPlate1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+    let private euvMirrorId : string = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId
 
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : Model) : string = (elem i m).id.value
@@ -78,9 +83,9 @@ module ExperimentControlsTests =
     let ``the ribbon offers every bay including Experiments and Details`` () =
         // Spec 0038 (013): the Materials bay left the ribbon (the Materials WINDOW carries that
         // workbench now); spec 0038 (015): the Library (samples) workbench bay left the same
-        // way (the Library WINDOW), so seven in-pane bays remain, Details last.
+        // way (the Library WINDOW), so seven in-pane bays remain, Details last. Spec 0046: Add first.
         Assert.Equal<string list>(
-            [ BayNames.rotation; BayNames.move; BayNames.add; BayNames.render; BayNames.selector
+            [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector
               BayNames.experiments; BayNames.details ],
             BayNames.all)
         let m = initMain ()
@@ -91,9 +96,20 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``choosing the source constrains the variable to wavelength (data-driven)`` () =
-        let m = initMain () |> update (ExpChooseElement "src")
+        let m = withTunableSource () |> update (ExpChooseElement "src")
         Assert.Equal(Some (Library.elementId "src"), m.experimentCollection.draft.elementId)
         Assert.Equal(Some Experiments.VaryWaveLength, m.experimentCollection.draft.variable)
+        // Spec 0046: the sweep spans the tunable source's limits (190–1000 nm) and stays inside them.
+        Assert.True(abs (m.experimentCollection.draft.range.min - 190.0) < 1e-9)
+        Assert.True(abs (m.experimentCollection.draft.range.max - 1000.0) < 1e-9)
+        Assert.True(abs ((update (ExpSetRangeMin 50.0) m).experimentCollection.draft.range.min - 190.0) < 1e-9)
+
+    [<Fact>]
+    let ``a fixed-line or unbound source varies nothing — its wavelength cannot be changed`` () =
+        for m in [ initMain (); bind 0 "src-hene-633" (initMain ()) ] do
+            let chosen = m |> update (ExpChooseElement "src")
+            Assert.Equal(None, chosen.experimentCollection.draft.variable)
+            Assert.Empty((experimentState chosen).variableChoices)
 
     [<Fact>]
     let ``choosing a sample allows R1 and R2 and can then switch variable`` () =
@@ -117,17 +133,21 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``acceptance (012): a placed sample's emission and experiment default derive from its supportedEmission`` () =
         // Spec 0040 Part D.3: a placed sample is bounded by the SAMPLE it is bound to, not the generic
-        // defaultEmission (EmitBoth for every non-mirror). A ThinFilm reflects only ⇒ CaptureReflected;
-        // a Plate supporting both ⇒ EmitBoth ⇒ CaptureBoth.
+        // defaultEmission. Spec 0046: a MIRROR reflects only ⇒ the beam continues reflected and the seeded
+        // detector captures R; a ThinFilm reflects AND transmits (EmitBoth).
+        let mirror = initMain () |> update (AddElement Sample) |> bind 2 euvMirrorId
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 mirror).placement.emission)
+        let mirrorChosen = mirror |> update (ExpChooseElement (idOf 2 mirror))
+        Assert.Equal(Experiments.CaptureReflected, mirrorChosen.experimentCollection.draft.measurement)
         let film = initMain () |> update (AddElement Sample) |> bind 2 glassFilm600Id
-        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, (elem 2 film).placement.emission)
-        let filmChosen = film |> update (ExpChooseElement (idOf 2 film))
-        Assert.Equal(Experiments.CaptureReflected, filmChosen.experimentCollection.draft.measurement)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 film).placement.emission)
 
+        // Spec 0046: a Plate EMITS both, but what an experiment captures follows the DETECTORS — the
+        // seeded detector sits on the plate's transmitted beam only ⇒ CaptureTransmitted.
         let plate = initMain () |> update (AddElement Sample) |> bind 2 glassPlate1mmId
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, (elem 2 plate).placement.emission)
         let plateChosen = plate |> update (ExpChooseElement (idOf 2 plate))
-        Assert.Equal(Experiments.CaptureBoth, plateChosen.experimentCollection.draft.measurement)
+        Assert.Equal(Experiments.CaptureTransmitted, plateChosen.experimentCollection.draft.measurement)
 
     [<Fact>]
     let ``the measurement and range round-trip through the model`` () =
@@ -148,7 +168,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``Add appends to the collection and re-Add does not duplicate`` () =
-        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let m = withTunableSource () |> update (ExpChooseElement "src") |> update ExpCommit
         Assert.Equal(1, List.length m.experimentCollection.experiments)
         let m2 = m |> update ExpCommit
         Assert.Equal(1, List.length m2.experimentCollection.experiments)
@@ -156,7 +176,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``New then Add appends a distinct second experiment`` () =
         let m =
-            initMain ()
+            withTunableSource ()
             |> update (ExpChooseElement "src") |> update ExpCommit
             |> update ExpNew
             |> update (ExpChooseElement "det")           // detector has nothing to vary → cannot commit
@@ -171,7 +191,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``Edit loads an experiment and Remove deletes it`` () =
-        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let m = withTunableSource () |> update (ExpChooseElement "src") |> update ExpCommit
         let exp = List.head m.experimentCollection.experiments
         let idStr = string exp.id.value
         let mEdit = m |> update (ExpEdit idStr)
@@ -181,7 +201,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``the bay state exposes the collection rows and the editing highlight`` () =
-        let m = initMain () |> update (ExpChooseElement "src") |> update ExpCommit
+        let m = withTunableSource () |> update (ExpChooseElement "src") |> update ExpCommit
         let st = experimentState m
         Assert.Single(st.collection) |> ignore
         let row = List.head st.collection
@@ -241,9 +261,13 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``capturing BOTH branches yields two series (T and R)`` () =
-        // A bound sample, VaryR2, capture Both ⇒ a transmitted AND a reflected intensity series.
+        // A bound Plate sample with a detector on its transmitted beam (the seeded one) AND one on its
+        // reflected ray (spec 0046: Both is offered only then), VaryR2, capture Both ⇒ a transmitted AND
+        // a reflected intensity series.
         let m =
-            initMain () |> update (AddElement Sample) |> bind 2 glassFilm200Id
+            initMain () |> update (AddElement Sample) |> bind 2 glassPlate1mmId
+            |> update (AddElement Detector)
+            |> (fun m -> m |> update (PlaceOnBeam ((elem 3 m).id, BeamLayout.OnReflectedBeamOf (elem 2 m).id)))
             |> (fun m -> m |> update (ExpChooseElement (idOf 2 m)))
             |> update (ExpChooseVariable ExperimentControls.VaryR2)
             |> update (ExpChooseMeasurement ExperimentControls.CaptureBoth)
@@ -764,19 +788,16 @@ module ExperimentControlsTests =
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
-    let ``the Open chart button triggers openChartWindow`` () =
-        // Regression: the pop-out window opened only on a hand-rolled double-click that could miss. There is
-        // now an explicit, always-present button (plus a proper DoubleTapped gesture). This proves a click on
-        // the button fires the `openChartWindow` handler that the host maps to opening the ChartWindow.
+    let ``there is no separate Open chart window button; a collected experiment's View opens its chart`` () =
+        // Spec 0046 (operator): "Open chart window" duplicated a collected experiment's "View" — removed. The
+        // draft's inline chart still opens its pop-out on a double-click (`openChartWindow`).
         HeadlessSession.run (fun () ->
-            let mutable opened = 0
             let handlers : ExperimentControls.Handlers =
                 {
                     chooseElement = ignore; chooseVariable = ignore; chooseMeasurement = ignore
-                    setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore
+                    setRangeMin = ignore; setRangeMax = ignore; setRangePoints = ignore; setSourceWaveLength = ignore
                     addOrUpdate = ignore; newExperiment = ignore; editExperiment = ignore; removeExperiment = ignore
-                    viewExperiment = ignore
-                    openChartWindow = fun () -> opened <- opened + 1
+                    viewExperiment = ignore; openChartWindow = ignore
                 }
             let state =
                 { ExperimentControls.empty with
@@ -787,13 +808,6 @@ module ExperimentControlsTests =
             window.Content <- Component(fun _ -> ExperimentControls.view state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
-            match window.GetVisualDescendants() |> Seq.tryPick (function :? Border as b when matchesId UiIds.Experiment.openChart b -> Some b | _ -> None) with
-            | Some b ->
-                match b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window) with
-                | p when p.HasValue ->
-                    window.MouseDown(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
-                    window.MouseUp(p.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None); Dispatcher.UIThread.RunJobs()
-                | _ -> Assert.Fail("the Open chart button is off-screen")
-            | None -> Assert.Fail("the Open chart button was not rendered")
-            Assert.True(opened >= 1, "clicking Open chart did not trigger openChartWindow")
+            let texts = window.GetVisualDescendants() |> Seq.choose (function :? TextBlock as t -> Option.ofObj t.Text | _ -> None) |> List.ofSeq
+            Assert.DoesNotContain(texts, fun t -> t.StartsWith "Open chart")
             window.Close())

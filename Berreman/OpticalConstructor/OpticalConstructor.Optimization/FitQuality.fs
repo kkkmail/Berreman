@@ -155,7 +155,7 @@ module FitQuality =
     /// 4; `serialize … BinaryZippedFormat`, `Core.fs:257`). The bytes are written
     /// to a fit-history sidecar referenced from the canonical JSON, NEVER embedded
     /// in the canonical JSON project.
-    let toBinz (report : FitReport) : byte[] = serialize BinaryZippedFormat report
+    let toBinz (report : FitReport) : byte[] = (serialize BinaryZippedFormat report).value
 
     /// Inverse of `toBinz` — read a `FitReport` back from a `.binz` sidecar payload.
-    let fromBinz (bytes : byte[]) : FitReport = deserialize BinaryZippedFormat bytes
+    let fromBinz (bytes : byte[]) : FitReport = deserialize BinaryZippedFormat (SerializedData bytes)

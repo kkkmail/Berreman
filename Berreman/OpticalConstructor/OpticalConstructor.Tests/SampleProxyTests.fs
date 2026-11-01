@@ -202,26 +202,37 @@ module SampleProxyTests =
     // ============ supportedEmission: geometry-constrained ray groups (spec 0040 Part D.2) ============
 
     [<Fact>]
-    let ``defaultSupportedEmission maps ThinFilm to EmitReflectedOnly and Plate to EmitBoth`` () =
-        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, defaultSupportedEmission ThinFilm)
+    let ``defaultSupportedEmission pins a Mirror to EmitReflectedOnly; a ThinFilm and a Plate emit both`` () =
+        // Spec 0046 (operator): locked R-only belongs to mirrors alone.
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, defaultSupportedEmission Mirror)
+        Assert.Equal<Placement.Emission>(Placement.EmitBoth, defaultSupportedEmission ThinFilm)
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, defaultSupportedEmission Plate)
 
     [<Fact>]
-    let ``a seeded ThinFilm supports the reflected group alone; a seeded Plate supports both`` () =
-        // glassFilm600 is a ThinFilm, glassPlate1mm a Plate — the field carries the geometry default.
-        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, SeedSamples.glassFilm600.supportedEmission)
-        Assert.Equal<Placement.Emission>(Placement.EmitBoth, SeedSamples.glassPlate1mm.supportedEmission)
+    let ``the seeded EUV multilayer is the one Mirror; seeded thin films and plates support both`` () =
+        Assert.Equal(Mirror, SeedSamples.euvMoSi.substrate)
+        Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, SeedSamples.euvMoSi.supportedEmission)
+        for s in [ SeedSamples.glassFilm600; SeedSamples.glassFilm200; SeedSamples.multilayerQw; SeedSamples.glassPlate1mm ] do
+            Assert.Equal<Placement.Emission>(Placement.EmitBoth, s.supportedEmission)
+        // Every seed carrying R-only is a Mirror.
+        for s in SeedSamples.all do
+            match s.supportedEmission with
+            | Placement.EmitReflectedOnly -> Assert.Equal(Mirror, s.substrate)
+            | Placement.EmitBoth | Placement.EmitTransmittedOnly -> ()
 
     [<Fact>]
-    let ``a ThinFilm's supportedEmission is unclearable: every candidate collapses to EmitReflectedOnly`` () =
+    let ``a Mirror's supportedEmission is unclearable: every candidate collapses to EmitReflectedOnly`` () =
         // constrainEmission forces the reflected-only invariant regardless of the candidate offered…
         for candidate in [ Placement.EmitReflectedOnly; Placement.EmitTransmittedOnly; Placement.EmitBoth ] do
-            Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, constrainEmission ThinFilm candidate)
-        // …and the Sample setter routes through it, so trying to clear R on a thin film is a no-op.
-        let film = SeedSamples.glassFilm600
-        let clearedR = film.supportedEmission |> Placement.Emission.withReflected false
-        let after = film |> withSupportedEmission clearedR
+            Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, constrainEmission Mirror candidate)
+        // …and the Sample setter routes through it, so trying to clear R on a mirror is a no-op.
+        let mirror = SeedSamples.euvMoSi
+        let clearedR = mirror.supportedEmission |> Placement.Emission.withReflected false
+        let after = mirror |> withSupportedEmission clearedR
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, after.supportedEmission)
+        // A thin film, by contrast, is constrainable like a plate (spec 0046).
+        let film = SeedSamples.glassFilm600 |> withSupportedEmission Placement.EmitTransmittedOnly
+        Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, film.supportedEmission)
 
     [<Fact>]
     let ``a Plate is constrainable: clearing R via Emission.withReflected false leaves T on`` () =

@@ -204,6 +204,7 @@ module ExperimentProxyTests =
             measurement = CaptureTransmitted
             range = VariableRange.forVariable VaryR1
             dataFileOpt = None
+            sourceWaveLengthOpt = None
         }
 
     /// E2 = the same WITHOUT a sample (captures that the polarizers are not ideal).
@@ -220,7 +221,7 @@ module ExperimentProxyTests =
 
     /// E3 = an empty dark line (nothing varied) — how much ambient light reaches the detector with no source.
     let private e3 : Experiment =
-        { id = ExperimentId 3; setup = []; varied = None; measurement = CaptureTransmitted; range = VariableRange.forVariable VaryR1; dataFileOpt = None }
+        { id = ExperimentId 3; setup = []; varied = None; measurement = CaptureTransmitted; range = VariableRange.forVariable VaryR1; dataFileOpt = None; sourceWaveLengthOpt = None }
 
     [<Fact>]
     let ``E1 carries the ordered chain incl. the detector, with the varied polarizer identified within it`` () =
@@ -366,6 +367,7 @@ module ExperimentProxyTests =
                 measurement = CaptureTransmitted
                 range = VariableRange.forVariable VaryR1
                 dataFileOpt = None
+                sourceWaveLengthOpt = None
             }
         let stub : ExperimentProxy =
             {

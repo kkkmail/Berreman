@@ -14,6 +14,7 @@ type SnapToBeamWindow() as this =
         this.Title <- "Test — Snap to Beam"
         this.Width <- SnapToBeamView.canvasWidth
         this.Height <- SnapToBeamView.canvasHeight + 100.0
+        OpticalConstructor.Controls.WindowFit.keepOnScreen this
         Program.mkSimple SnapToBeamView.init SnapToBeamView.update SnapToBeamView.view
         |> Program.withHost this
         |> Program.run

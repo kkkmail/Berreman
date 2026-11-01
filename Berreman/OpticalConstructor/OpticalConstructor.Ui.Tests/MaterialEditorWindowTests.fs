@@ -57,6 +57,10 @@ module MaterialEditorWindowTests =
         match found with
         | None -> Assert.Fail($"%s{id} was not found (or not visible)")
         | Some b ->
+            // Spec 0046: scroll the box into view first (the facet rows now WRAP, so the tree can sit below
+            // the visible area of its scroller, where a click at the box's centre lands nowhere).
+            b.BringIntoView() |> ignore
+            Dispatcher.UIThread.RunJobs()
             let c = b.TranslatePoint(Point(b.Bounds.Width / 2.0, b.Bounds.Height / 2.0), window)
             if c.HasValue then
                 window.MouseDown(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)

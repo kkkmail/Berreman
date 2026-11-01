@@ -88,7 +88,8 @@ let init () : Model =
           centre = ElementRenderer.centreOfPlacement placement
           zoom = 3.5
           opticalSign = sign
-          bindingState = ElementRenderer.bindingStateOf placement }
+          bindingState = ElementRenderer.bindingStateOf placement
+          normals = ElementRenderer.ShowNormals }
     {
         table = Table.defaultTable
         view = Table.defaultView

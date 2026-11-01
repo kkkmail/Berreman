@@ -136,7 +136,7 @@ type AnalysisFunctionsTests() =
 
         // JSON-exclusion: the bulk array travels the zipped-binary `.binz` path, whose
         // payload begins with the gzip magic bytes, never the canonical JSON '{'.
-        Assert.True(bytes.Length > 2, "empty payload")
-        Assert.Equal(0x1fuy, bytes.[0])
-        Assert.Equal(0x8buy, bytes.[1])
-        Assert.NotEqual(byte '{', bytes.[0])
+        Assert.True(bytes.value.Length > 2, "empty payload")
+        Assert.Equal(0x1fuy, bytes.value.[0])
+        Assert.Equal(0x8buy, bytes.value.[1])
+        Assert.NotEqual(byte '{', bytes.value.[0])

@@ -8,21 +8,11 @@
         <Authors>Konstantin Konstantinov</Authors>
         <Company>Softellect Systems, Inc.</Company>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>10.0.100.6</Version>
-        <PackageVersion>10.0.100.6</PackageVersion>
         <Description>Softellect.Berreman.Core Library</Description>
         <PackageTags>framework</PackageTags>
         <RepositoryUrl>https://github.com/kkkmail/Berreman</RepositoryUrl>
         <PackageProjectUrl>https://github.com/kkkmail/Berreman/tree/master/Berreman/Berreman</PackageProjectUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -35,6 +25,9 @@
         <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
+        <Compile Include="BuildInfo.fs" />
+        <None Include="BuildInfo.ps1" />
+        <None Include=".version-update-lock" />
         <Compile Include="MathNetNumericsMath.fs" />
         <Compile Include="FourierTransform.fs" />
         <Compile Include="MatrixExp.fs" />
@@ -49,9 +42,15 @@
         <Compile Include="FieldFunctions.fs" />
     </ItemGroup>
 
-    <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-    </ItemGroup>
+    <!--
+        Spec 0046 - the app version bump (the STL slow-ring scheme, one ring for the whole app). Deleting
+        .version-update-lock requests a bump: this target then runs Berreman/PreBuild/IncrementBuildNumber.fsx,
+        which stamps BuildInfo.fs / BuildInfo.ps1 and re-creates the lock. MSBuild has already read $(Version)
+        by the time it runs, so take the bump BEFORE building (the script header shows how).
+    -->
+    <Target Name="IncrementBuildNumber" BeforeTargets="BeforeBuild" Condition="!Exists('$(MSBuildThisFileDirectory).version-update-lock')">
+        <Exec Command="dotnet fsi &quot;$(MSBuildThisFileDirectory)..\PreBuild\IncrementBuildNumber.fsx&quot;" />
+    </Target>
 
     <ItemGroup>
         <ProjectReference Include="..\..\MathNetNumerics\FSharp\FSharp.fsproj" />

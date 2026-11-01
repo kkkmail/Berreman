@@ -4,15 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>Softellect.Berreman.OpticalConstructor.TestWindows</AssemblyName>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <IsPackable>false</IsPackable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -55,13 +47,12 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-        <PackageReference Include="Avalonia" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
-        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0" />
-        <PackageReference Include="Avalonia.FuncUI.Elmish" Version="2.0.0" />
-        <PackageReference Include="Elmish" Version="5.0.2" />
+        <PackageReference Include="Avalonia" />
+        <PackageReference Include="Avalonia.Desktop" />
+        <PackageReference Include="Avalonia.Themes.Fluent" />
+        <PackageReference Include="Avalonia.FuncUI" />
+        <PackageReference Include="Avalonia.FuncUI.Elmish" />
+        <PackageReference Include="Elmish" />
         <!-- ScottPlot.Avalonia moved with the chart window to OpticalConstructor.Controls (spec 0033,
              017); its compile/runtime assets flow here transitively through the Controls reference. -->
     </ItemGroup>

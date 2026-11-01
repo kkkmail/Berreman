@@ -31,17 +31,20 @@ module SceneProxyTests =
                 id = Library.elementId "src"
                 placement = { ElementPlacement.create LightSource TablePoint.origin with valueId = Some "src-600" }
                 zoom = 1.0
+                beam = BeamLayout.OnMainBeam
             }
         let detector : SceneElement =
             {
                 id = Library.elementId "det"
                 placement = ElementPlacement.create Detector TablePoint.origin
                 zoom = 2.0
+                beam = BeamLayout.OnMainBeam
             }
         {
             elements = [ source; detector ]
             view = Table.defaultView
             snap = snap
+            pivot = BeamLayout.PivotAtIncidentFace
         }
 
     /// The MOCK: an inline stub `SceneProxy` over a fixed map (a `ref` so `saveScene` genuinely

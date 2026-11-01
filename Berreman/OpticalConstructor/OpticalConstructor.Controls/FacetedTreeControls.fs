@@ -260,12 +260,12 @@ module FacetedTreeControls =
 
     /// The representation picker: a titled WrapPanel of clickable representation options, the
     /// active one highlighted.
+    /// Spec 0046: a DockPanel, not a horizontal StackPanel — a horizontal stack hands its children an
+    /// unbounded width, so the WrapPanel never wrapped and its options ran off the window's right edge.
     let private representationRow (state : State) (handlers : Handlers) : IView =
-        StackPanel.create [
-            StackPanel.orientation Orientation.Horizontal
-            StackPanel.spacing 6.0
-            StackPanel.children [
-                TextBlock.create [ TextBlock.text "View by:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
+        DockPanel.create [
+            DockPanel.children [
+                TextBlock.create [ TextBlock.dock Dock.Left; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0)); TextBlock.text "View by:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
                 WrapPanel.create [
                     automationId<WrapPanel> UiIds.FacetedTree.representationPicker
                     WrapPanel.orientation Orientation.Horizontal
@@ -322,13 +322,13 @@ module FacetedTreeControls =
                      ]
                      |> Avalonia.FuncUI.DSL.View.withKey (UiIds.FacetedTree.manualRangeBox group.code)) :> IView
                 ]
+        // Spec 0046: a DockPanel (the title docked left, the values filling the rest) so the values WRAP at
+        // the window's width instead of running off its right edge.
         let keyedGroup =
-            StackPanel.create [
-                automationId<StackPanel> (UiIds.FacetedTree.offerGroup group.code)
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.spacing 6.0
-                StackPanel.children [
-                    TextBlock.create [ TextBlock.text (group.title + ":"); TextBlock.verticalAlignment VerticalAlignment.Center ]
+            DockPanel.create [
+                automationId<DockPanel> (UiIds.FacetedTree.offerGroup group.code)
+                DockPanel.children [
+                    TextBlock.create [ TextBlock.dock Dock.Left; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0)); TextBlock.text (group.title + ":"); TextBlock.verticalAlignment VerticalAlignment.Center ]
                     WrapPanel.create [
                         WrapPanel.orientation Orientation.Horizontal
                         WrapPanel.children (

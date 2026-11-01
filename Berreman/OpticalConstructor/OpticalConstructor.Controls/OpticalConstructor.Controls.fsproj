@@ -4,15 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <Platforms>x64</Platforms>
         <AssemblyName>Softellect.Berreman.OpticalConstructor.Controls</AssemblyName>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <IsPackable>false</IsPackable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-        <PlatformTarget>x64</PlatformTarget>
-        <DefineConstants>DEBUG</DefineConstants>
-        <OtherFlags>--warnaserror+:25 --platform:x64</OtherFlags>
-        <NoWarn>NU5100;NU5110;NU5111;NU1903</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -28,10 +20,14 @@
         <!-- Spec 0038 (step 044): the ONE consolidated automation-id module (per-surface sub-modules
              of [<Literal>] ids). Compiled FIRST so every control / view / window / test resolves it. -->
         <Compile Include="UiIds.fs" />
+        <!-- Spec 0046: the min-width layout panel (content scrolls, never clips) and the fit-to-screen rule. -->
+        <Compile Include="WindowLayout.fs" />
         <Compile Include="RotationControls.fs" />
         <Compile Include="ElementPaletteControls.fs" />
         <!-- Spec 0027 (014-more-standardization): the shared "position-on-the-ray" bar (§E.4). -->
         <Compile Include="RayPositionControls.fs" />
+        <!-- Spec 0046: the light source's free x / y / z position bar (every other element rides its beam). -->
+        <Compile Include="TablePositionControls.fs" />
         <!-- Spec 0027 (018): the renderer "large control" and the main-screen ribbon of "Bays". -->
         <Compile Include="RendererControls.fs" />
         <Compile Include="Ribbon.fs" />
@@ -82,12 +78,11 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Update="FSharp.Core" Version="10.1.400" />
-        <PackageReference Include="Avalonia" Version="12.1.1" />
-        <PackageReference Include="Avalonia.FuncUI" Version="2.0.0" />
+        <PackageReference Include="Avalonia" />
+        <PackageReference Include="Avalonia.FuncUI" />
         <!-- Spec 0033 (017): the interactive chart-window host (moved here with ChartWindow.fs) — the
              same version both hosts already used, so one ScottPlot resolves solution-wide. -->
-        <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
+        <PackageReference Include="ScottPlot.Avalonia" />
     </ItemGroup>
 
 </Project>

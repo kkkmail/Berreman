@@ -38,6 +38,8 @@ type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView
         // ScrollViewer viewport for a single-aspect ladder without scrolling.
         this.Width <- 1400.0
         this.Height <- 1000.0
+        // Spec 0046: never larger than the screen it opens on (its content scrolls).
+        WindowFit.keepOnScreen this
         // Spec 0035 (009): the create picker's live catalogue seam. The Main-screen launcher passes
         // the SHARED store (so a rename in the Category editor re-labels this picker); a standalone
         // open (no `categories` argument) defaults to a fresh in-memory catalogue of the built-ins.

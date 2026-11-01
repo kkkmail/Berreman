@@ -113,6 +113,7 @@ module OutOfBandBadgeTests =
                 id = Library.elementId "sample0"
                 placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some entryId }
                 zoom = defaultElementZoom
+                beam = BeamLayout.OnMainBeam
             }
         let draft = { baseModel.experimentCollection.draft with variable = variable; range = { min = 200.0; max = 800.0; points = 91 } }
         let model =

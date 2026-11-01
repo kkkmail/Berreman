@@ -139,7 +139,7 @@ let private kindName (k : CatalogueKind) : string =
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     let half = halfLength model
     let state : RayPositionControls.State =
-        { position = elementX model; minPosition = -half; maxPosition = half; enabled = true }
+        { position = elementX model; range = RayPositionControls.BoundedRange (-half, half); enabled = true }
     let handlers : RayPositionControls.Handlers =
         {
             moveBy = fun dx -> dispatch (SlideBy dx)

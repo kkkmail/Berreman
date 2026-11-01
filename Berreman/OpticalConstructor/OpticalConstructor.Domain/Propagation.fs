@@ -7,6 +7,7 @@ open Berreman.MaterialProperties
 open Berreman.Fields
 open Berreman.Media
 open Berreman.Solvers
+open Berreman.FieldFunctions            // Solution.func (the engine's flux T, spec 0046)
 open Berreman.Constants
 open Berreman.Dispersion
 open OpticalConstructor.Domain.MaterialLibrary
@@ -277,6 +278,53 @@ module Propagation =
         let solver = OpticalSystemSolver(info, sampleToSystem sample w)
         match branch with
         | BranchTransmitted -> solver.muellerMatrixT ()
+        | BranchReflected -> solver.muellerMatrixR ()
+
+    /// The sample's Mueller matrix for a branch with the sample SPUN by `spin` about its own normal (spec
+    /// 0046 — the sample's R1): every layer's tensors are turned about the sample normal (the engine's z)
+    /// before the solve, so an anisotropic sample's axes move against the fixed plane of incidence; an
+    /// isotropic one is unchanged.
+    let sampleMuellerSpun (branch : Branch) (sample : ResolvedSample) (w : WaveLength) (inc : IncidenceAngle) (spin : Angle) : MuellerMatrix =
+        let info = { (IncidentLightInfo.createInclined w inc) with refractionIndex = RefractionIndex.vacuum }
+        let system = sampleToSystem sample w
+        let spun =
+            if spin.value = 0.0 then system
+            else
+                let turn (l : Layer) : Layer = l.rotate (Rotation.rotateZ spin)
+                { system with
+                    films = system.films |> List.map turn
+                    substrate =
+                        system.substrate
+                        |> Option.map (fun s ->
+                            match s with
+                            | Substrate.Plate l -> Substrate.Plate (turn l)
+                            | other -> other) }
+        let solver = OpticalSystemSolver(info, spun)
+        match branch with
+        | BranchTransmitted ->
+            // The engine builds its Mueller matrices from field AMPLITUDES (|E|²), while its T is the energy
+            // FLUX; the two differ by the exit medium's n·cosθ factor whenever that medium is not vacuum (a
+            // film on glass, a substrate) — and, in an ABSORBING exit medium at oblique incidence, differently
+            // for s and p. So the matrix is corrected by an s/p diattenuator D on its input side whose two
+            // transmittances are the engine's own flux-to-amplitude ratios for its s and p inputs (whose
+            // Stokes vectors are [1, ±1, 0, 0]): S₀ then reads exactly the engine's T for either input.
+            let mm = solver.muellerMatrixT ()
+            let flux (s : OpticalSystemSolver) : float = s.solution.func OpticalFunction.T |> Option.defaultValue 0.0
+            let ratio (fluxValue : float) (amplitude : float) : float = if amplitude > 1.0e-300 then fluxValue / amplitude else 1.0
+            let m00 = muellerElement mm 0 0
+            let m01 = muellerElement mm 0 1
+            let fs = ratio (flux (solver.solutionS ())) (m00 + m01)
+            let fp = ratio (flux (solver.solutionP ())) (m00 - m01)
+            let mean = (fs + fp) / 2.0
+            let half = (fs - fp) / 2.0
+            let cross = sqrt (max 0.0 (fs * fp))
+            let diattenuator =
+                muellerOfRows
+                    [ [ mean; half; 0.0; 0.0 ]
+                      [ half; mean; 0.0; 0.0 ]
+                      [ 0.0; 0.0; cross; 0.0 ]
+                      [ 0.0; 0.0; 0.0; cross ] ]
+            mm * diattenuator
         | BranchReflected -> solver.muellerMatrixR ()
 
     /// The sample's transmitted-branch Mueller matrix from the EXISTING engine (no new physics). Solves the
