@@ -2,6 +2,12 @@
 
 Research and proposal only. No code was changed.
 
+**Revision 4 (2026-11-01, the operator's third round of comments)** — every open question is now decided (§4, §5):
+
+- **The kit root is flat;** subfolders hold only additional data (§A).
+- **AT-2 is confirmed** as `AbsorbingBiaxialNoisyTests` (§1b, §Q).
+- **The Measurement Planner's first target is gyrotropic crystals,** with exact references to the existing code, specs and tests (§M).
+
 **Revision 3 (2026-11-01, the operator's second round of comments)** — every change below is a decision now (§4):
 
 - **The direct and the inverse problem work the same way: both work inside an experiment-kit folder.** There is no scratch scene and no `.ocproj`.
@@ -123,7 +129,7 @@ Inputs:
 - **Noise (`NoiseParam.decentLab`):** angles ±0.2°, elements ±0.005, throughput ±1 %. Five fixed seeds; the fit starts from `perturbedStart` inside `searchBox`.
 - **Runtime:** about 946 s.
 - **Why it is the right second test:** several samples share one material — the multi-cut, `MaterialScope` case — the measurements are noisy, and the fit is the largest the code has (15 unknowns).
-- Recorded interpretation: "uses two samples" is read as "more than one sample". This test has five plates, starting with the two optic-axis cuts. If the quartz ensemble in `MuellerInverseTests` (two cuts) was meant, §Q applies unchanged.
+- **Confirmed by the operator** (round 4) as AT-2: five plates, 15 unknowns — "a great test to play around".
 
 ## 2. Best practice and similar software (web survey, short)
 
@@ -158,7 +164,10 @@ Inputs:
 - **The rule** (no useless name part):
   1. A file that exists **once per folder** is named by its extension alone: `.kit-json`, `.catalogue-json`.
   2. A file that exists **many times** is named by its own identity (label, name, id + version, timestamp) plus its kind extension.
-  3. **No folder or name part repeats** what the extension already says. Subfolders exist only for a distinct PURPOSE (`library/` = copies of slow data, `data/` = raw lab files, `.oc/` = app cache), never to group one kind.
+  3. **No folder or name part repeats** what the extension already says.
+     - **The kit root is flat (decided):** every kit file sits at the root, and its kind is its extension.
+     - Subfolders hold only ADDITIONAL data: `library/` (copies of slow data), `data/` (raw lab files), `.oc/` (app cache), and any further data a later feature needs.
+     - A subfolder never exists to group one kind of kit file.
 - **Library extensions (agreed):** `.material-json`, `.sample-json`, `.source-json`, `.polarizer-json`, `.detector-json`, `.item-model-json`, `.category-json`; the catalogue manifest is `.catalogue-json`.
 - **Kit extensions (agreed):** `.kit-json` (the kit itself), `.item-json`, `.setup-json`, `.experiment-json`, `.study-json`, `.fitrun-json`.
 - **Catalogue folder layout:**
@@ -474,6 +483,29 @@ Inputs:
 
 ### M. Measurement Planner (from `018` §3) — kit-driven
 
+- **First target (decided): gyrotropic crystals,** transparent and absorbing, from uniaxial to triclinic. This is the class the existing inverse code already covers, so the planner starts on proven ground.
+  - **Code:**
+    - `Berreman/OpticalConstructor/OpticalConstructor.Domain/MuellerInverse.fs`: `UniaxialParameters` (4 unknowns), `TriclinicParameters` (9), `AbsorbingTriclinicParameters` (15), `SampleCut`, `orientForCut`, `internalAngle`, `gyrationProjection`, `jacobianColumnNorms` (`:884`);
+    - `OpticalConstructor.Optimization/FitQuality.fs`: `residualJacobian`, `FitReport.standardErrors`;
+    - `predictedRelativeErrors` / `combinationVariance` (in `BerremanTests/InverseFitHarness.fs` today; promoted by §Q).
+  - **Specs:** `specs/0044/.manual/004-active-anisotropic-inverse-problem.md` sets out the physics:
+    - a wave sees only the tensor components transverse to its propagation direction;
+    - along the optic axis the plate is a pure circular retarder;
+    - across the optic axis the activity is buried under the birefringence;
+    - Snell caps the internal angle at arcsin(1/n_o) ≈ 40.4° for quartz, so more than one cut is required.
+
+    `017-feasible-biaxial-experiments.md` covers the binormal optic-axis plate (100 µm vendor minimum, 0.11 wave per degree of misalignment). `015` and `019` are the noisy ensembles.
+  - **Acceptance — the planner must reproduce existing facts.** Their designs and helpers are reused; no new physics test is written:
+    - **Layer 1 / rank, `MuellerInverseTests`:** "C1 is completely blind to g33, which is why a second crystal cut is required", and "C1 alone cannot determine three of the four constants, which is why the design needs more cuts". The planner reports what C1 leaves unrecoverable and proposes the second cut.
+    - **Layer 1 / rank, `BiaxialInverseTests`:** "the cuts buy the gyration DIAGONAL and only the tilt buys its OFF-DIAGONAL". For a normal-incidence-only kit the planner flags g12, g13 and g23 as unrecoverable, and it ranks oblique incidence AND further cuts as the remedy.
+    - **Full rank, `MuellerInverseTests`:** "the full measurement set is well conditioned and every parameter is observable". The planner reports full rank for that design.
+    - **Layer 2 / Cramér–Rao, `MuellerInverseTests`:** "an ensemble of noisy experiments recovers every constant, and its scatter IS what one fit's own covariance predicts". The planner's bounds for that design equal the promoted `predictedRelativeErrors`, and likewise for AT-2's design.
+  - **Literature anchors** (`018` §3):
+    - Arteaga, Canillas & Jellison: quartz g₁₁ and g₃₃ by two-modulator generalized ellipsometry;
+    - HAUP-class measurements for activity along birefringent directions;
+    - the 18 of 21 gyrotropic point groups (arXiv 2003.10872).
+  - **Later targets:** isotropic films (the thickness ↔ n confounding of thin-film stacks) and uniaxial non-gyrotropic crystals.
+
 - **Its inputs are the kit; there is no separate "lab profile" to type in:**
   - **lab profile** = the kit's items: sources and λ ranges, polarizers, compensators, compounds, detectors, angle ranges, and each detector's **noise model** (the same bench model §Q promotes);
   - **sample inventory** = the kit's sample items: cuts, thicknesses, substrates;
@@ -613,13 +645,14 @@ Inputs:
   1. **Data identity:** the observations the study loads equal the harness's, exactly.
   2. **Model identity:** the generated parameter axes equal `AbsorbingTriclinicParameters.axes`, and the study's residual vector at `perturbedStart` equals the harness's `throughputResidualFor` vector (≤ 1e-12 relative).
   3. **Fit:** one seed through the study engine recovers the 15 constants and the derived quantities (birefringences, isotropic absorption) within the bands `AbsorbingBiaxialNoisyTests` asserts. Those band checks move into one shared function that both tests call.
-  4. **Full five-seed ensemble** (same statistics through the reused `statisticsFor`): optional, under the trait `kit-acceptance-full`, because it costs the existing test's ~16 minutes.
+  4. **Full five-seed ensemble** (same statistics through the reused `statisticsFor`): marked xUnit v3 `Explicit`, so it runs on demand only. It costs the existing test's ~16 minutes, and the `ui-tests` gate filter (`Category!=ui-smoke`) would otherwise pick it up.
 - **Reuse, so that ONE implementation exists:**
   - **Promoted to product** (`OpticalConstructor.Optimization`), because the study engine, the "simulate measurement" path and the Planner need them:
     - the bench noise model (`NoiseSeed`, `AngleUncertainty`, `ElementUncertainty`, `ThroughputUncertainty`, `NoiseParam`, `UniformDeviateProvider`, `disturb`, `misread`, `misreadAbsolute`, `noisyObserveWith`, `noisyObserveAbsoluteWith`);
     - `observeWith`, `residualFor`, `throughputResidualFor`;
     - `scalingAround`, `fitWithResidual`, `fitObservations`, `fitAbsorbingObservations`;
-    - `RecoveredQuantity`, `RecoveryStatistics`, `statisticsFor`.
+    - `RecoveredQuantity`, `RecoveryStatistics`, `statisticsFor`;
+    - `predictedRelativeErrors`, `combinationVariance` (the Planner's layer 2 reuses them, §M).
 
     `BerremanTests/InverseFitHarness.fs` keeps only test assertions (`assertMuellerEqual`, the error formatting) and opens the product modules. This is a MOVE; BerremanTests' behaviour and numbers are unchanged.
   - **The ground truth and designs** (`BiaxialSample.fs`, `AbsorbingBiaxialSample.fs`: constants, `buildAbsorbing`, the cuts, `a1` / `a2` / `a3`, `perturbedStart`, `searchBox`) move into a shared test-support project, `Berreman/BerremanTestSupport/`, one `.fsproj` in its own folder. Both `BerremanTests` and `OpticalConstructor.Ui.Tests` reference it, so one compiled copy serves both test suites.
@@ -657,9 +690,9 @@ Inputs:
    - first the harness and pipeline promotion and the test-support project (§Q reuse);
    - then **AT-1 and AT-2**.
 9. **Online material sources** (`MaterialSourceProxy`: refractiveindex.info, then PTB OCDB, then Henke).
-10. **Measurement Planner:** layer 1, then the layer-2 recoverability report and plan generation with the kit cache.
+10. **Measurement Planner, gyrotropic crystals first** (§M): layer 1, then the layer-2 recoverability report and plan generation with the kit cache. Acceptance is the set of existing facts listed in §M.
 
-## 4. Decisions recorded (operator, rounds 2 and 3)
+## 4. Decisions recorded (operator, rounds 2–4)
 
 - **The database is not overstuffed:** slow data (the library) only. Kits, setups, experiments, studies, fit runs, data and the history are files.
 - **A kit is a folder the user chooses or creates;** direct and inverse work both live in kits.
@@ -668,12 +701,13 @@ Inputs:
 - **Names:** `Experiment` = one run; `Study` = the combined inverse problem.
 - **No legacy, no migration** (§R).
 - **Two acceptance tests:** optics-mueller, and the most complex existing inverse test (`AbsorbingBiaxialNoisyTests`). Both use reused code, not copies, and no new inverse test is written now.
+- **Kit root** (round 4): flat; subfolders only for additional data.
+- **AT-2** (round 4): `AbsorbingBiaxialNoisyTests` (five plates, 15 unknowns), confirmed.
+- **Planner first target** (round 4): gyrotropic crystals, with the exact references and acceptance facts in §M.
 
-## 5. Open questions (short; none blocks writing the spec)
+## 5. Open questions
 
-- **Kit root:** flat (kind by extension only, as §A's rule implies) or per-kind subfolders? Per-kind subfolders repeat the extension, but browse more easily in Explorer.
-- **AT-2:** confirm `AbsorbingBiaxialNoisyTests` (five plates, 15 unknowns) is the test meant, rather than the quartz ensemble in `MuellerInverseTests` (two cuts, 4 unknowns).
-- **Planner first target** (from `018`): isotropic films, uniaxial crystals, or gyrotropic crystals?
+None. Every question raised in revisions 1–3 is decided (§4).
 
 ## Sources
 
