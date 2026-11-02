@@ -32,3 +32,8 @@ module ConstructorUiIdOfDomain =
 
         /// The element as the key of its repeated controls (an Experiments-bay candidate).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+    type CategoryId with
+
+        /// The category as the key of its Category-manager row (its Guid's text).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)

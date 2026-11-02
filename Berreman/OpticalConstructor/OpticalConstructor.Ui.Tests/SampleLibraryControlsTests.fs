@@ -27,26 +27,26 @@ module SampleLibraryControlsTests =
     /// a wedge (one per domain `SubstrateKind`, as the host would flatten them).
     let private knownRows : SampleLibraryControls.SampleLibraryControlsRow list =
         [
-            { sampleId = "glass-plate"; label = "Glass plate" }
-            { sampleId = "multilayer-qw"; label = "Quarter-wave multilayer" }
-            { sampleId = "quartz-wedge"; label = "Quartz wedge" }
+            { sampleId = ConstructorUiKey "glass-plate"; label = ControlCaption "Glass plate" }
+            { sampleId = ConstructorUiKey "multilayer-qw"; label = ControlCaption "Quarter-wave multilayer" }
+            { sampleId = ConstructorUiKey "quartz-wedge"; label = ControlCaption "Quartz wedge" }
         ]
 
     /// The known State the structure tests mount: the substrate facet populated (the host includes
     /// its own "all" option) and a row selected, so every row-targeted verb is live.
     let private knownState : SampleLibraryControls.SampleLibraryControlsState =
         {
-            searchText = ""
+            searchText = ControlCaption ""
             substrateOptions =
                 [
-                    { code = "all"; label = "All substrates" }
-                    { code = "thin-film"; label = "Thin film" }
-                    { code = "plate"; label = "Plate" }
-                    { code = "wedge"; label = "Wedge" }
+                    { code = ConstructorUiKey "all"; label = ControlCaption "All substrates" }
+                    { code = ConstructorUiKey "thin-film"; label = ControlCaption "Thin film" }
+                    { code = ConstructorUiKey "plate"; label = ControlCaption "Plate" }
+                    { code = ConstructorUiKey "wedge"; label = ControlCaption "Wedge" }
                 ]
-            selectedSubstrate = "all"
+            selectedSubstrate = Some (ConstructorUiKey "all")
             rows = knownRows
-            selectedId = Some "glass-plate"
+            selectedId = Some (ConstructorUiKey "glass-plate")
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
@@ -55,9 +55,9 @@ module SampleLibraryControlsTests =
         let calls = ResizeArray<string>()
         let handlers : SampleLibraryControls.SampleLibraryControlsHandlers =
             {
-                setSearchText = fun t -> calls.Add("search:" + t)
-                selectSubstrate = fun s -> calls.Add("substrate:" + s)
-                selectSample = fun id -> calls.Add("select:" + id)
+                setSearchText = fun t -> calls.Add("search:" + t.value)
+                selectSubstrate = fun s -> calls.Add("substrate:" + s.value)
+                selectSample = fun id -> calls.Add("select:" + id.value)
                 addSample = fun () -> calls.Add("add")
                 editSample = fun () -> calls.Add("edit")
                 removeSample = fun () -> calls.Add("remove")
@@ -71,10 +71,10 @@ module SampleLibraryControlsTests =
     [<Fact>]
     let ``the empty Samples state has no rows, no selection, an empty search and no facet options`` () =
         let s = SampleLibraryControls.emptySampleLibraryControls
-        Assert.Equal("", s.searchText)
+        Assert.Equal("", s.searchText.value)
         Assert.Empty(s.rows)
         Assert.Empty(s.substrateOptions)
-        Assert.Equal("", s.selectedSubstrate)
+        Assert.Equal(None, s.selectedSubstrate)
         Assert.Equal(None, s.selectedId)
 
     [<Fact>]
@@ -93,12 +93,12 @@ module SampleLibraryControlsTests =
 
     [<Fact>]
     let ``selectedRow resolves the selected id to its listed row, and None otherwise`` () =
-        match SampleLibraryControls.selectedRow knownState with
-        | Some r -> Assert.Equal("glass-plate", r.sampleId)
+        match knownState.selectedRow with
+        | Some r -> Assert.Equal("glass-plate", r.sampleId.value)
         | None -> Assert.Fail("expected the selected row")
-        Assert.Equal(None, SampleLibraryControls.selectedRow { knownState with selectedId = None })
+        Assert.Equal(None, { knownState with selectedId = None }.selectedRow)
         // A selection the host's filter no longer lists resolves to no row (verbs then disable).
-        Assert.Equal(None, SampleLibraryControls.selectedRow { knownState with selectedId = Some "not-listed" })
+        Assert.Equal(None, { knownState with selectedId = Some (ConstructorUiKey "not-listed") }.selectedRow)
 
     // ============================ headless structure proof ============================
 

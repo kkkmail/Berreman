@@ -259,20 +259,25 @@ let private saveCancelRow (dispatch : CategoryEditorMsg -> unit) : IView =
         ]
     ] :> IView
 
-/// Flatten one working `MaterialCategory` into the domain-free `CategoryControls.Row` (the id in
-/// its string form; `isBuiltIn` marks a `BuiltInCategory` — its Remove verb is omitted by the
-/// control, and the store enforces the actual block).
+/// Flatten one working `MaterialCategory` into the domain-free `CategoryControls.Row` (a
+/// `BuiltInCategory` row's Remove verb is omitted by the control; the store enforces the actual block).
 let private toRow (c : MaterialCategory) : CategoryControls.CategoryControlsRow =
     {
-        categoryId = string c.id.value
-        name = c.name
-        isBuiltIn = (c.origin = BuiltInCategory)
+        categoryId = c.id.uiKey
+        name = ControlCaption c.name
+        origin =
+            match c.origin with
+            | BuiltInCategory -> CategoryControls.BuiltInCategoryRow
+            | UserCategory -> CategoryControls.UserCategoryRow
     }
 
 let private toState (m : CategoryEditorModel) : CategoryControls.CategoryControlsState =
     {
         rows = m.editor.rows |> List.map toRow
-        blockMessage = m.blockMessage
+        blockMessage =
+            match m.blockMessage with
+            | "" -> None
+            | message -> Some (ControlCaption message)
     }
 
 /// Parse a `CategoryControls.Row` id (a category id's Guid string) back to the elevated
@@ -285,15 +290,15 @@ let private toCategoryId (s : string) : CategoryId option =
 /// The behaviour injected into `CategoryControls` (the functional-proxy seam): each verb parses
 /// the row id and dispatches the matching `Msg`.
 let private handlers (dispatch : CategoryEditorMsg -> unit) : CategoryControls.CategoryControlsHandlers =
-    let withId (toMsg : CategoryId -> CategoryEditorMsg) (s : string) : unit =
-        match toCategoryId s with
+    let withId (toMsg : CategoryId -> CategoryEditorMsg) (key : ConstructorUiKey) : unit =
+        match toCategoryId key.value with
         | Some id -> dispatch (toMsg id)
         | None -> ()
     {
         addCategory = fun () -> dispatch BeginAdd
-        setCategoryName = fun s name ->
-            match toCategoryId s with
-            | Some id -> dispatch (SetCategoryEditorName (id, name))
+        setCategoryName = fun key name ->
+            match toCategoryId key.value with
+            | Some id -> dispatch (SetCategoryEditorName (id, name.value))
             | None -> ()
         saveCategory = withId SaveRow
         removeCategory = withId RemoveRow

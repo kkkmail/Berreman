@@ -27,32 +27,32 @@ module MaterialsControlsTests =
     /// spec-0033 step-013 `complexity = None` shape the host flattens to `ViewOnly`).
     let private knownRows : MaterialsControls.MaterialsControlsRow list =
         [
-            { materialId = "bk7"; label = "BK7 glass"; editability = MaterialsControls.Editable }
-            { materialId = "gold"; label = "Gold"; editability = MaterialsControls.Editable }
-            { materialId = "silicon"; label = "Silicon (tabulated)"; editability = MaterialsControls.ViewOnly }
+            { materialId = ConstructorUiKey "bk7"; label = ControlCaption "BK7 glass"; editability = MaterialsControls.Editable }
+            { materialId = ConstructorUiKey "gold"; label = ControlCaption "Gold"; editability = MaterialsControls.Editable }
+            { materialId = ConstructorUiKey "silicon"; label = ControlCaption "Silicon (tabulated)"; editability = MaterialsControls.ViewOnly }
         ]
 
     /// The known State the structure tests mount: both facets populated, an EDITABLE row selected
     /// (so every verb — including Edit — is present).
     let private knownState : MaterialsControls.MaterialsControlsState =
         {
-            searchText = ""
+            searchText = ControlCaption ""
             categoryOptions =
                 [
-                    { code = "all"; label = "All categories" }
-                    { code = "glass"; label = "Glass" }
-                    { code = "metal"; label = "Metal" }
+                    { code = ConstructorUiKey "all"; label = ControlCaption "All categories" }
+                    { code = ConstructorUiKey "glass"; label = ControlCaption "Glass" }
+                    { code = ConstructorUiKey "metal"; label = ControlCaption "Metal" }
                 ]
-            selectedCategory = "all"
+            selectedCategory = Some (ConstructorUiKey "all")
             dispersionOptions =
                 [
-                    { code = "any"; label = "Any" }
-                    { code = "dispersive"; label = "Dispersive" }
-                    { code = "non-dispersive"; label = "Non-dispersive" }
+                    { code = ConstructorUiKey "any"; label = ControlCaption "Any" }
+                    { code = ConstructorUiKey "dispersive"; label = ControlCaption "Dispersive" }
+                    { code = ConstructorUiKey "non-dispersive"; label = ControlCaption "Non-dispersive" }
                 ]
-            selectedDispersion = "any"
+            selectedDispersion = Some (ConstructorUiKey "any")
             rows = knownRows
-            selectedId = Some "bk7"
+            selectedId = Some (ConstructorUiKey "bk7")
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
@@ -61,10 +61,10 @@ module MaterialsControlsTests =
         let calls = ResizeArray<string>()
         let handlers : MaterialsControls.MaterialsControlsHandlers =
             {
-                setSearchText = fun t -> calls.Add("search:" + t)
-                selectCategory = fun c -> calls.Add("category:" + c)
-                selectDispersion = fun d -> calls.Add("dispersion:" + d)
-                selectMaterial = fun id -> calls.Add("select:" + id)
+                setSearchText = fun t -> calls.Add("search:" + t.value)
+                selectCategory = fun c -> calls.Add("category:" + c.value)
+                selectDispersion = fun d -> calls.Add("dispersion:" + d.value)
+                selectMaterial = fun id -> calls.Add("select:" + id.value)
                 addMaterial = fun () -> calls.Add("add")
                 editMaterial = fun () -> calls.Add("edit")
                 removeMaterial = fun () -> calls.Add("remove")
@@ -77,12 +77,12 @@ module MaterialsControlsTests =
     [<Fact>]
     let ``the empty Materials state has no rows, no selection, an empty search and no facet options`` () =
         let s = MaterialsControls.emptyMaterialsControls
-        Assert.Equal("", s.searchText)
+        Assert.Equal("", s.searchText.value)
         Assert.Empty(s.rows)
         Assert.Empty(s.categoryOptions)
         Assert.Empty(s.dispersionOptions)
-        Assert.Equal("", s.selectedCategory)
-        Assert.Equal("", s.selectedDispersion)
+        Assert.Equal(None, s.selectedCategory)
+        Assert.Equal(None, s.selectedDispersion)
         Assert.Equal(None, s.selectedId)
 
     [<Fact>]
@@ -102,12 +102,12 @@ module MaterialsControlsTests =
 
     [<Fact>]
     let ``selectedRow resolves the selected id to its listed row, and None otherwise`` () =
-        match MaterialsControls.selectedRow knownState with
-        | Some r -> Assert.Equal("bk7", r.materialId)
+        match knownState.selectedRow with
+        | Some r -> Assert.Equal("bk7", r.materialId.value)
         | None -> Assert.Fail("expected the selected row")
-        Assert.Equal(None, MaterialsControls.selectedRow { knownState with selectedId = None })
+        Assert.Equal(None, { knownState with selectedId = None }.selectedRow)
         // A selection the host's filter no longer lists resolves to no row (verbs then disable).
-        Assert.Equal(None, MaterialsControls.selectedRow { knownState with selectedId = Some "not-listed" })
+        Assert.Equal(None, { knownState with selectedId = Some (ConstructorUiKey "not-listed") }.selectedRow)
 
     // ============================ headless structure proof ============================
 
@@ -185,7 +185,7 @@ module MaterialsControlsTests =
     let ``a view-only selection carries no Edit affordance — the button is removed, not greyed`` () =
         HeadlessSession.run (fun () ->
             let _, handlers = recorder ()
-            let state = { knownState with selectedId = Some "silicon" }   // the view-only row
+            let state = { knownState with selectedId = Some (ConstructorUiKey "silicon") }   // the view-only row
             let window = Window(Width = 640.0, Height = 560.0)
             window.Content <- Component(fun _ -> MaterialsControls.materialsControlsView state handlers)
             window.Show()
