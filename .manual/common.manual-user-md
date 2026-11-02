@@ -145,9 +145,7 @@ Two traps:
 
 - **The file list is not a sandbox.** The tool commits every dirty path in the
   tree even when you pass an explicit list. Run `git status --porcelain` first.
-  Unrelated dirt is a legitimate stop. The runner's own files are not dirt:
-  `specs/*/.manual-loop.log` is gitignored and `specs/*/.manual-loop.state.json`
-  is gitignored.
+  Unrelated dirt is a legitimate stop.
 - **Past roughly 600 dirty paths the endpoint returns a bare HTTP 500** (the
   host's argument-length limit). Escalate and say how many paths were dirty.
 
