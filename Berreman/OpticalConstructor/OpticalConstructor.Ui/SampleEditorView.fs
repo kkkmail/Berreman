@@ -303,30 +303,37 @@ let filmsCount (m : SampleEditorModel) : int =
 let substrateCode (kind : SubstrateKind) : string =
     match kind with
     | ThinFilm -> "ThinFilm"
-    | Plate -> "Plate"
+    | ThickPlate -> "Plate"
     | Mirror -> "Mirror"
 
 let private substrateLabel (kind : SubstrateKind) : string =
     match kind with
     | ThinFilm -> "Thin film"
-    | Plate -> "Plate"
+    | ThickPlate -> "Plate"
     | Mirror -> "Mirror"
 
 let private orientationDegrees (o : CrystalOrientation) : float * float * float =
     match o with
     | PrimaryAxes -> (0.0, 0.0, 0.0)
-    | EulerRotation (_, phi, theta, psi) -> (phi.degrees, theta.degrees, psi.degrees)
+    | EulerRotation angles -> (angles.phi.degrees, angles.theta.degrees, angles.psi.degrees)
 
 /// Degrees → orientation: all-zero angles mean the material's own principal axes (the
 /// identity is DATA, not an EulerRotation carrying zeros).
 let private orientationOf (phi : float) (theta : float) (psi : float) : CrystalOrientation =
     if phi = 0.0 && theta = 0.0 && psi = 0.0 then PrimaryAxes
-    else EulerRotation (defaultConvention, Angle.degree (phi * 1.0<deg>), Angle.degree (theta * 1.0<deg>), Angle.degree (psi * 1.0<deg>))
+    else
+        EulerRotation
+            {
+                EulerAngles.convention = defaultConvention
+                phi = Angle.degree (phi * 1.0<deg>)
+                theta = Angle.degree (theta * 1.0<deg>)
+                psi = Angle.degree (psi * 1.0<deg>)
+            }
 
 let private orientationLabel (o : CrystalOrientation) : string =
     match o with
     | PrimaryAxes -> "primary axes"
-    | EulerRotation (_, phi, theta, psi) -> $"φ=%g{phi.degrees}° θ=%g{theta.degrees}° ψ=%g{psi.degrees}°"
+    | EulerRotation angles -> $"φ=%g{angles.phi.degrees}° θ=%g{angles.theta.degrees}° ψ=%g{angles.psi.degrees}°"
 
 /// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets, the
 /// supported emission (spec 0040 Part D.2 step 010 — an R/T change dirties the editor) and the
@@ -359,11 +366,11 @@ let initSampleEditor (context : SampleEditorContext) (materials : MaterialEntry 
         // emission (spec 0040 Part D.2 step 010); an edited one carries the sample's own value.
         match intent with
         | NewBlankSample mintedId ->
-            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure, defaultSupportedEmission ThinFilm)
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, emptyStructure, ThinFilm.defaultSupportedEmission)
         | NewSeededMultilayer mintedId ->
-            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure, defaultSupportedEmission ThinFilm)
+            ({ sampleId = mintedId; freshness = WindowLauncher.NewUnsaved }, "", "", ThinFilm, starterMultilayerStructure, ThinFilm.defaultSupportedEmission)
         | EditSample s ->
-            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name, s.description, s.substrate, s.structure, s.supportedEmission)
+            ({ sampleId = s.id; freshness = WindowLauncher.Persisted }, s.name.value, s.description.value, s.substrate, s.structure, s.supportedEmission)
     // Normalise the seed emission to its geometry constraint so the model starts consistent even
     // if an inconsistent sample is opened (spec 0040 Part D.2 — the single enforcement point).
     let supportedEmission = constrainEmission substrate emission
@@ -395,10 +402,10 @@ let initSampleEditor (context : SampleEditorContext) (materials : MaterialEntry 
 let toSample (id : SampleId) (m : SampleEditorModel) : Sample =
     {
         id = id
-        name = m.name
+        name = EntryName m.name
         structure = m.editor.structure
         substrate = m.substrate
-        description = m.description
+        description = EntryDescription m.description
         // The user's edited emission (spec 0040 Part D.2 step 010): the R/T checkboxes drive
         // `m.supportedEmission`, already kept inside the geometry constraint by every update arm
         // (a Mirror stays EmitReflectedOnly; a ThinFilm / Plate keeps its R-only / T-only / both choice).
@@ -413,18 +420,18 @@ let private stackErrorReason (e : SampleStackEditError) : string =
 
 let private sampleErrorReason (e : SampleError) : string =
     match e with
-    | UnknownSampleId reason
-    | DuplicateSampleId reason
-    | SampleVersionInUse reason
-    | InvalidSample reason -> reason
+    | UnknownSampleIdErr reason
+    | DuplicateSampleIdErr reason
+    | SampleVersionInUseErr reason
+    | InvalidSampleErr reason -> reason
 
 let private materialErrorReason (e : MaterialError) : string =
     match e with
-    | UnknownMaterialId reason
-    | DuplicateMaterialId reason
-    | MaterialStillReferenced reason
-    | MaterialVersionInUse reason
-    | InvalidMaterial reason -> reason
+    | UnknownMaterialIdErr reason
+    | DuplicateMaterialIdErr reason
+    | MaterialStillReferencedErr reason
+    | MaterialVersionInUseErr reason
+    | InvalidMaterialErr reason -> reason
 
 /// Route one step-21 editor message; a typed rejection surfaces its reason as the status.
 let private applyStack (msg : SampleStackMsg) (m : SampleEditorModel) : SampleEditorModel =
@@ -443,7 +450,7 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
         // geometry's default (R + T) rather than keeping the R-only a mirror forced.
         let emission =
             match m.substrate, kind with
-            | Mirror, (ThinFilm | Plate) -> defaultSupportedEmission kind
+            | Mirror, (ThinFilm | ThickPlate) -> kind.defaultSupportedEmission
             | _ -> constrainEmission kind m.supportedEmission
         { m with substrate = kind; supportedEmission = emission }
     | SetReflectedEmission on ->
@@ -543,7 +550,7 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
     | MakeRepeatBlockClicked -> applyStack (MakeRepeatBlock m.foldCount) m
     | GroupCountBy (groupIndex, delta) ->
         match List.tryItem groupIndex m.editor.structure.films with
-        | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count + delta)) m
+        | Some (Repeated g) -> applyStack (SetRepeatCount (groupIndex, g.count.value + delta)) m
         | Some (SingleLayer _) | None -> { m with status = Some $"films item %d{groupIndex} is not a repeat group" }
     | BindMaterialToSubstrate materialId ->
         // Spec 0040 (D.4 step 011): a Materials-window Select session returned for the substrate
@@ -736,7 +743,7 @@ let private substrateRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
         StackPanel.spacing 6.0
         StackPanel.children (
             labelBlock "Geometry:"
-            :: ([ ThinFilm; Plate; Mirror ]
+            :: ([ ThinFilm; ThickPlate; Mirror ]
                 |> List.map (fun kind ->
                     clickBox (ConstructorUiId.sampleSubstrateKind (ConstructorUiKey (substrateCode kind))).value (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSampleSubstrate kind)))))
     ] :> IView
@@ -768,7 +775,7 @@ let private emissionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> u
     let reflectedEnabled =
         match m.substrate with
         | ThinFilm
-        | Plate -> true
+        | ThickPlate -> true
         | Mirror -> false
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
@@ -780,7 +787,7 @@ let private emissionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> u
             ]
             @ (match m.substrate with
                | ThinFilm
-               | Plate -> [ emissionCheck ConstructorUiId.sampleEmitTransmittedCheck.value "Transmitted (T)" transmittedOn true SetTransmittedEmission dispatch ]
+               | ThickPlate -> [ emissionCheck ConstructorUiId.sampleEmitTransmittedCheck.value "Transmitted (T)" transmittedOn true SetTransmittedEmission dispatch ]
                | Mirror -> []))
     ] :> IView
 
@@ -929,7 +936,7 @@ let private layerRowView
     let entryOpt = m.materials |> List.tryFind (fun e -> e.id = layer.materialId.materialId)
     let materialName =
         match entryOpt with
-        | Some entry -> entry.name
+        | Some entry -> entry.name.value
         | None -> $"unknown material %s{string layer.materialId.materialId.value}"
     let orientationEditor =
         match entryOpt with
@@ -1003,10 +1010,10 @@ let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> 
                         (ConstructorUiId.repeatCountStepperOfGroup (ConstructorUiPosition groupIndex)).value
                         (ConstructorUiId.repeatCountStepperMinusOfGroup (ConstructorUiPosition groupIndex)).value
                         (ConstructorUiId.repeatCountStepperPlusOfGroup (ConstructorUiPosition groupIndex)).value
-                        group.count
+                        group.count.value
                         (fun delta -> dispatch (GroupCountBy (groupIndex, delta)))
                     TextBlock.create [
-                        TextBlock.text $"× %d{group.count} periods = %d{group.count * List.length group.cell} films"
+                        TextBlock.text $"× %d{group.count.value} periods = %d{group.count.value * List.length group.cell} films"
                         TextBlock.foreground (brush hintColor)
                         TextBlock.verticalAlignment VerticalAlignment.Center
                     ] :> IView
@@ -1072,7 +1079,7 @@ let private hasChosenMaterial (m : SampleEditorModel) : bool =
 /// A material's display name by id (a placeholder when the id is unresolved).
 let private nameOfMaterialId (m : SampleEditorModel) (id : MaterialId) : string =
     match m.materials |> List.tryFind (fun e -> e.id = id) with
-    | Some e -> e.name
+    | Some e -> e.name.value
     | None -> $"unknown ({id.value})"
 
 /// The substrate-plate and lower-half-space editor (spec 0033 gap G12): both

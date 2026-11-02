@@ -12,8 +12,8 @@ open Avalonia.FuncUI.Types
 /// the Category manager projects the slice-004 `CategoryEditor` onto. A category list with an inline
 /// name box per row and Add / Rename(save) / Remove verbs; a BUILT-IN row's name stays editable but
 /// its Remove verb is OMITTED (removed, not greyed), matching the `MaterialsControls` view-only-Edit
-/// precedent; an inline block-message slot surfaces the store's typed refusals (`CategoryStillReferenced`
-/// / `BuiltInNotRemovable`). This control is DOMAIN-FREE (matching `MaterialsControls` / `LibraryControls`):
+/// precedent; an inline block-message slot surfaces the store's typed refusals (`CategoryStillReferencedErr`
+/// / `BuiltInNotRemovableErr`). This control is DOMAIN-FREE (matching `MaterialsControls` / `LibraryControls`):
 /// the host flattens the editor's working `MaterialCategory` rows into `Row`s and injects the behaviour
 /// as a `Handlers` function record (the functional-proxy seam; a test substitutes stubs). The control
 /// renders the rows it is given and never touches a proxy (the host flattens and dispatches).
@@ -39,7 +39,7 @@ module CategoryControls =
         {
             /// The rows the host flattened from the editor's working set — rendered as given.
             rows : CategoryControlsRow list
-            /// The inline block message (`CategoryStillReferenced` / `BuiltInNotRemovable`), if one is
+            /// The inline block message (`CategoryStillReferencedErr` / `BuiltInNotRemovableErr`), if one is
             /// surfaced — the slot renders only while a message is present.
             blockMessage : ControlCaption option
         }
@@ -141,8 +141,8 @@ module CategoryControls =
                 ])
         ] :> IView
 
-    /// The inline block-message slot — the store's typed refusal (`CategoryStillReferenced` /
-    /// `BuiltInNotRemovable`), shown only while a message is present (the `LibraryControls.confirmPanel`
+    /// The inline block-message slot — the store's typed refusal (`CategoryStillReferencedErr` /
+    /// `BuiltInNotRemovableErr`), shown only while a message is present (the `LibraryControls.confirmPanel`
     /// precedent — no message means the control is absent, not an empty box).
     let private blockMessagePanel (state : CategoryControlsState) : IView list =
         match state.blockMessage with

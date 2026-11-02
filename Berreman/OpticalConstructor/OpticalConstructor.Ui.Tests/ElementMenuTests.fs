@@ -32,7 +32,7 @@ module ElementMenuTests =
     /// Bind element `i` through the ONE targeted bind arm.
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
 
-    let private plateId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
+    let private plateId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
 
     /// The canvas point an element is drawn at (its snapped centre through the live view).
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =

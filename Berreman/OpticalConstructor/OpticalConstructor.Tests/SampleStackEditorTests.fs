@@ -48,7 +48,7 @@ module SampleStackEditorTests =
                     Repeated
                         {
                             cell = [ layerOf MaterialIds.glass152 10.0; layerOf MaterialIds.vacuumMaterial 20.0 ]
-                            count = 3
+                            count = PeriodCount 3
                         }
                     SingleLayer (layerOf MaterialIds.glass175 30.0)
                 ]
@@ -166,7 +166,7 @@ module SampleStackEditorTests =
 
     [<Fact>]
     let ``SetOrientationOfSelected orients exactly the selected layers`` () =
-        let orientation = EulerRotation (ZmXpZm, deg 30.0, deg 40.0, deg 50.0)
+        let orientation = EulerRotation { EulerAngles.convention = ZmXpZm; phi = deg 30.0; theta = deg 40.0; psi = deg 50.0 }
         let state =
             editorOf threeSingles
             |> applyAll [ SelectLayer (AtSingleLayer 0); SetOrientationOfSelected orientation ]
@@ -275,7 +275,7 @@ module SampleStackEditorTests =
         match state.structure.films with
         | [ SingleLayer single; Repeated group ] ->
             Assert.Equal(MaterialIds.glass175, single.materialId.materialId)
-            Assert.Equal(3, group.count)
+            Assert.Equal(3, group.count.value)
         | films -> failwith $"unexpected films shape: %A{films}"
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0 ], state.selection)
 
@@ -313,7 +313,7 @@ module SampleStackEditorTests =
             |> applyAll [ SelectLayer (AtSingleLayer 0); SelectLayer (AtSingleLayer 1); MakeRepeatBlock 3 ]
         match state.structure.films with
         | [ Repeated group; SingleLayer trailing ] ->
-            Assert.Equal(3, group.count)
+            Assert.Equal(3, group.count.value)
             Assert.Equal(2, List.length group.cell)
             Assert.Equal(MaterialIds.glass152, trailing.materialId.materialId)
         | films -> failwith $"unexpected films shape: %A{films}"

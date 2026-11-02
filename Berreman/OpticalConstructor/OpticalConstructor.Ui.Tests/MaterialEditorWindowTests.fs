@@ -112,7 +112,7 @@ module MaterialEditorWindowTests =
                 searchMaterials = fun _ -> Ok []
                 tryGetMaterial = fun _ -> Ok None
                 resolveVersion = fun _ -> Ok None
-                saveMaterial = fun e -> calls.Add("save:" + e.name); saved.Add e; Ok ()
+                saveMaterial = fun e -> calls.Add("save:" + e.name.value); saved.Add e; Ok ()
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
@@ -472,8 +472,8 @@ module MaterialEditorWindowTests =
             | Some c ->
                 match ofComplexity c with
                 | Ok st -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity st)
-                | Error e -> Assert.Fail($"%s{entry.name} must seed the editor, got %A{e}")
-            | None -> Assert.Fail($"%s{entry.name} must carry an edit model")
+                | Error e -> Assert.Fail($"%s{entry.name.value} must seed the editor, got %A{e}")
+            | None -> Assert.Fail($"%s{entry.name.value} must carry an edit model")
 
     [<Fact>]
     let ``the imaginaryIndexGainWarning rule flags a finite negative k only`` () =
@@ -501,7 +501,7 @@ module MaterialEditorWindowTests =
         let _, _, context = recordingContext ()
         let existing = initMaterialEditor context (EditMaterial glass)
         Assert.Equal({ materialId = glass.id; freshness = WindowLauncher.Persisted }, existing.target)
-        Assert.Equal(glass.name, existing.name)
+        Assert.Equal(glass.name.value, existing.name)
         Assert.Equal(EditableMaterial, existing.mode)
         match glass.complexity with
         | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity existing.editor)
@@ -568,7 +568,7 @@ module MaterialEditorWindowTests =
                 searchMaterials = fun _ -> Ok []
                 tryGetMaterial = fun _ -> Ok None
                 resolveVersion = fun _ -> Ok None
-                saveMaterial = fun _ -> Error (InvalidMaterial "the name is blank")
+                saveMaterial = fun _ -> Error (InvalidMaterialErr "the name is blank")
                 markMaterialInactive = fun _ -> Ok ()
                 markMaterialActive = fun _ -> Ok ()
                 supersedeMaterial = fun _ -> Ok ()
@@ -775,7 +775,7 @@ module MaterialEditorWindowTests =
             match materials.listMaterials ActiveOnly with
             | Ok all ->
                 Assert.Equal(seededCount + 1, List.length all)
-                match all |> List.tryFind (fun e -> e.name = "Headless material") with
+                match all |> List.tryFind (fun e -> e.name.value = "Headless material") with
                 | Some savedEntry ->
                     match savedEntry.complexity with
                     | Some c ->
@@ -813,7 +813,7 @@ module MaterialEditorWindowTests =
             Assert.False(window.IsVisible)
             match materials.tryGetMaterial MaterialIds.glass152 with
             | Ok (Some updated) ->
-                Assert.Equal("Renamed glass", updated.name)
+                Assert.Equal("Renamed glass", updated.name.value)
                 match updated.complexity with
                 | Some _ -> ()
                 | None -> Assert.Fail("the updated entry must keep complexity = Some model")
@@ -1099,7 +1099,7 @@ module MaterialEditorWindowTests =
         Assert.False(isMaterialEditorDirty m, "an unedited existing entry is pristine")
         let renamed = updateMaterialEditor (SetMaterialName "Other") m
         Assert.True(isMaterialEditorDirty renamed)
-        let reverted = updateMaterialEditor (SetMaterialName glass.name) renamed
+        let reverted = updateMaterialEditor (SetMaterialName glass.name.value) renamed
         Assert.False(isMaterialEditorDirty reverted, "restoring the captured name clears dirtiness")
         updateMaterialEditor MaterialCancelClicked reverted |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)

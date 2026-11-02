@@ -180,7 +180,7 @@ module SampleEditorWindowTests =
                 resolveVersion = fun _ -> Ok None
                 // Spec 0038 step 022: the ONE versioned `saveSample` records the Save (the mirror of
                 // the material editor's collapse — `addSample`/`updateSample` are gone).
-                saveSample = fun s -> calls.Add("save:" + s.name); Ok ()
+                saveSample = fun s -> calls.Add("save:" + s.name.value); Ok ()
                 markSampleInactive = fun _ -> Ok ()
                 markSampleActive = fun _ -> Ok ()
                 supersedeSample = fun _ -> Ok ()
@@ -205,7 +205,7 @@ module SampleEditorWindowTests =
     let private threeFilmSample () : Sample =
         {
             id = newSampleId ()
-            name = "Three films"
+            name = EntryName "Three films"
             structure =
                 {
                     films =
@@ -218,19 +218,19 @@ module SampleEditorWindowTests =
                     lower = None
                 }
             substrate = ThinFilm
-            description = "test three-film stack"
-            supportedEmission = defaultSupportedEmission ThinFilm
+            description = EntryDescription "test three-film stack"
+            supportedEmission = ThinFilm.defaultSupportedEmission
         }
 
     /// A `Plate` variant of the three-film sample (geometry `Plate`, default `EmitBoth`) — the
     /// emission-editing fixture (spec 0040 Part D.2 step 010): a Plate exposes the R and T
     /// checkboxes, a ThinFilm pins R on.
     let private threeFilmPlate () : Sample =
-        { threeFilmSample () with substrate = Plate; supportedEmission = defaultSupportedEmission Plate }
+        { threeFilmSample () with substrate = ThickPlate; supportedEmission = ThickPlate.defaultSupportedEmission }
 
     /// The same stack as a MIRROR — spec 0046: the only geometry pinned to reflected-only.
     let private threeFilmMirror () : Sample =
-        { threeFilmSample () with substrate = Mirror; supportedEmission = defaultSupportedEmission Mirror }
+        { threeFilmSample () with substrate = Mirror; supportedEmission = Mirror.defaultSupportedEmission }
 
     let private newModel () : SampleEditorModel =
         let _, context = recordingContext ()
@@ -292,8 +292,8 @@ module SampleEditorWindowTests =
         let sample = threeFilmSample ()
         let _, context = recordingContext ()
         let m = initSampleEditor context builtInEntries (EditSample sample)
-        Assert.Equal(sample.name, m.name)
-        Assert.Equal(sample.description, m.description)
+        Assert.Equal(sample.name.value, m.name)
+        Assert.Equal(sample.description.value, m.description)
         Assert.Equal(sample.substrate, m.substrate)
         Assert.Equal<SampleStructure>(sample.structure, m.editor.structure)
         Assert.Equal({ sampleId = sample.id; freshness = WindowLauncher.Persisted }, m.target)
@@ -312,7 +312,7 @@ module SampleEditorWindowTests =
         match seeded.editor.structure.films with
         | [ Repeated g ] ->
             Assert.Equal(2, List.length g.cell)
-            Assert.True(g.count >= 1, "the starter period repeats at least once")
+            Assert.True(g.count.value >= 1, "the starter period repeats at least once")
         | films -> Assert.Fail($"expected one Repeated 2-layer period, got %A{films}")
         // The blank Add path opens onto NOTHING — the two NEW intents are genuinely distinct.
         Assert.Empty((initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))).editor.structure.films)
@@ -323,13 +323,13 @@ module SampleEditorWindowTests =
             newModel ()
             |> updateSampleEditor (SetName "Built")
             |> updateSampleEditor (SetDescription "built by test")
-            |> updateSampleEditor (SetSampleSubstrate Plate)
+            |> updateSampleEditor (SetSampleSubstrate ThickPlate)
         let id = newSampleId ()
         let s = toSample id m
         Assert.Equal(id, s.id)
-        Assert.Equal("Built", s.name)
-        Assert.Equal("built by test", s.description)
-        Assert.Equal(Plate, s.substrate)
+        Assert.Equal("Built", s.name.value)
+        Assert.Equal("built by test", s.description.value)
+        Assert.Equal(ThickPlate, s.substrate)
         Assert.Equal<SampleStructure>(m.editor.structure, s.structure)
 
     [<Fact>]
@@ -376,7 +376,7 @@ module SampleEditorWindowTests =
         | Some reason -> Assert.Contains("at least 1", reason)
         | None -> Assert.Fail("expected a status reason for the count-below-1 step")
         match below.editor.structure.films with
-        | Repeated g :: _ -> Assert.Equal(2, g.count)
+        | Repeated g :: _ -> Assert.Equal(2, g.count.value)
         | films -> Assert.Fail($"expected the repeat group to survive, got %A{films}")
 
     [<Fact>]
@@ -490,7 +490,7 @@ module SampleEditorWindowTests =
                 searchSamples = fun _ -> Ok []
                 tryGetSample = fun _ -> Ok None
                 resolveVersion = fun _ -> Ok None
-                saveSample = fun _ -> Error (InvalidSample "the name is blank")
+                saveSample = fun _ -> Error (InvalidSampleErr "the name is blank")
                 markSampleInactive = fun _ -> Ok ()
                 markSampleActive = fun _ -> Ok ()
                 supersedeSample = fun _ -> Ok ()
@@ -528,7 +528,7 @@ module SampleEditorWindowTests =
         let m = initSampleEditor context opened (NewBlankSample (newSampleId ()))
         // Another window writes through the SHARED store while this editor is open (no live
         // notification reaches the editor — out of scope).
-        let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = "Added elsewhere" }
+        let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = EntryName "Added elsewhere" }
         match materials.saveMaterial added with
         | Ok () -> ()
         | Error e -> failwith $"saveMaterial failed: %A{e}"
@@ -761,9 +761,9 @@ module SampleEditorWindowTests =
             match samples.listSamples ActiveOnly with
             | Ok all ->
                 Assert.Equal(seededCount + 1, List.length all)
-                match all |> List.tryFind (fun s -> s.name = "Headless stack") with
+                match all |> List.tryFind (fun s -> s.name.value = "Headless stack") with
                 | Some saved ->
-                    Assert.Equal("made by the headless test", saved.description)
+                    Assert.Equal("made by the headless test", saved.description.value)
                     Assert.Equal(1, List.length saved.structure.expandedFilms)
                 | None -> Assert.Fail("the new sample was not persisted")
             | Error e -> Assert.Fail($"listSamples failed: %A{e}"))
@@ -794,7 +794,7 @@ module SampleEditorWindowTests =
             match samples.listSamples ActiveOnly with
             | Ok all ->
                 Assert.Equal(seededCount + 1, List.length all)
-                match all |> List.tryFind (fun s -> s.name = "Headless multilayer") with
+                match all |> List.tryFind (fun s -> s.name.value = "Headless multilayer") with
                 | Some saved ->
                     match saved.structure.films with
                     | [ Repeated g ] -> Assert.Equal(2, List.length g.cell)
@@ -819,7 +819,7 @@ module SampleEditorWindowTests =
             clickOn window ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(window.IsVisible)
             match samples.tryGetSample existing.id with
-            | Ok (Some updated) -> Assert.Equal("Renamed film", updated.name)
+            | Ok (Some updated) -> Assert.Equal("Renamed film", updated.name.value)
             | Ok None -> Assert.Fail("the existing sample vanished")
             | Error e -> Assert.Fail($"tryGetSample failed: %A{e}")
             match samples.listSamples ActiveOnly with
@@ -918,7 +918,7 @@ module SampleEditorWindowTests =
             let sample =
                 {
                     id = newSampleId ()
-                    name = "Orientation visibility"
+                    name = EntryName "Orientation visibility"
                     structure =
                         {
                             films =
@@ -930,8 +930,8 @@ module SampleEditorWindowTests =
                             lower = None
                         }
                     substrate = ThinFilm
-                    description = "uniaxial over glass"
-                    supportedEmission = defaultSupportedEmission ThinFilm
+                    description = EntryDescription "uniaxial over glass"
+                    supportedEmission = ThinFilm.defaultSupportedEmission
                 }
             let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
             window.Show()
@@ -1131,7 +1131,7 @@ module SampleEditorWindowTests =
             let sample =
                 {
                     id = newSampleId ()
-                    name = "Awaiting the fresh oxide"
+                    name = EntryName "Awaiting the fresh oxide"
                     structure =
                         {
                             films = [ SingleLayer { materialId = MaterialVersionId.firstOf mintedId; thickness = nmT 100.0; orientation = PrimaryAxes } ]
@@ -1139,8 +1139,8 @@ module SampleEditorWindowTests =
                             lower = None
                         }
                     substrate = ThinFilm
-                    description = "step-019 activation re-query"
-                    supportedEmission = defaultSupportedEmission ThinFilm
+                    description = EntryDescription "step-019 activation re-query"
+                    supportedEmission = ThinFilm.defaultSupportedEmission
                 }
             let window = SampleEditorWindow(materials, samples, categories, EditSample sample)
             window.Show()
@@ -1173,7 +1173,7 @@ module SampleEditorWindowTests =
             Dispatcher.UIThread.RunJobs()
             // A material lands in the SHARED store while the editor is open (any other
             // window's save path) — the editor's open-time snapshot cannot know it.
-            let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = "Mid-session titania" }
+            let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = EntryName "Mid-session titania" }
             match materials.saveMaterial added with
             | Ok () -> ()
             | Error e -> failwith $"saveMaterial failed: %A{e}"
@@ -1244,11 +1244,11 @@ module SampleEditorWindowTests =
     let private filmlessPlate () : Sample =
         {
             id = newSampleId ()
-            name = "Bare plate"
+            name = EntryName "Bare plate"
             structure = { films = []; substrate = None; lower = None }
-            substrate = Plate
-            description = "film-less Plate — substrate set via the Materials Select window"
-            supportedEmission = defaultSupportedEmission Plate
+            substrate = ThickPlate
+            description = EntryDescription "film-less Plate — substrate set via the Materials Select window"
+            supportedEmission = ThickPlate.defaultSupportedEmission
         }
 
     [<Fact>]

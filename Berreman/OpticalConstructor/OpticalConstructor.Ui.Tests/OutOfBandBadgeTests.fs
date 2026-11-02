@@ -64,7 +64,7 @@ module OutOfBandBadgeTests =
     let private dispersiveMaterial (matId : MaterialId) : MaterialEntry =
         {
             id = matId
-            name = "Dispersive glass"
+            name = EntryName "Dispersive glass"
             category = CategoryIds.glass
             description = None
             properties = dispersiveComplexity.toProperties
@@ -75,16 +75,16 @@ module OutOfBandBadgeTests =
     let private dispersiveSample (matId : MaterialId) : Sample =
         {
             id = newSampleId ()
-            name = "Dispersive film"
+            name = EntryName "Dispersive film"
             structure =
                 {
                     films = [ SingleLayer { materialId = MaterialVersionId.firstOf matId; thickness = Thickness.mm 0.01<mm>; orientation = PrimaryAxes } ]
                     substrate = None
                     lower = None
                 }
-            substrate = Plate
-            description = "A single dispersive film for the out-of-band diagnostic test."
-            supportedEmission = defaultSupportedEmission Plate
+            substrate = ThickPlate
+            description = EntryDescription "A single dispersive film for the out-of-band diagnostic test."
+            supportedEmission = ThickPlate.defaultSupportedEmission
         }
 
     /// A Main-scene model with a bound-sample element reaching a 300–700 nm dispersive material, whose
@@ -111,8 +111,8 @@ module OutOfBandBadgeTests =
         let baseModel = initMainWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
         let flagged : TestElement =
             {
-                id = Library.elementId "sample0"
-                placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some (ElementValueId entryId) }
+                id = Library.ElementId "sample0"
+                placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some entryId }
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
             }

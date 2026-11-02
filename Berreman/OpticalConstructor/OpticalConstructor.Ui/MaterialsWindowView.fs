@@ -296,30 +296,30 @@ type MaterialsWindowMsg =
 /// Resolve a category's display NAME through the LIVE catalogue: the store's `listCategories`
 /// is the source of truth, so a renamed category reads its new name here (the retired bay's
 /// `liveCategoryName` discipline). An id the store no longer holds falls back to the seeded
-/// `categoryName` (a diagnostic, never a throw).
+/// `CategoryId.categoryName` (a diagnostic, never a throw).
 let liveCategoryName (categories : CategoryProxy) (id : CategoryId) : string =
     match categories.listCategories () with
     | Ok cats ->
         match cats |> List.tryFind (fun c -> c.id = id) with
-        | Some c -> c.name
-        | None -> categoryName id
-    | Error _ -> categoryName id
+        | Some c -> c.name.value
+        | None -> id.categoryName
+    | Error _ -> id.categoryName
 
 /// The step-011 material facet catalogue with the category def's extractor re-pointed at the
 /// LIVE category store: `materialFacets`' own category def resolves names through the STATIC
-/// seeded catalogue (`categoryName`), so a category renamed through `CategoryProxy` would keep
+/// seeded catalogue (`CategoryId.categoryName`), so a category renamed through `CategoryProxy` would keep
 /// its stale branch label there. The facet KEY is unchanged — only name resolution goes live —
 /// and the catalogue is read ONCE per projection (the discrete value key doubles as the branch
 /// label, step 009, so a rename re-labels branch, offer, and chip alike).
 let liveMaterialFacets (categories : CategoryProxy) : AttributeDef<MaterialEntry> list =
     let liveNames : Map<CategoryId, string> =
         match categories.listCategories () with
-        | Ok cats -> cats |> List.map (fun c -> c.id, c.name) |> Map.ofList
+        | Ok cats -> cats |> List.map (fun c -> c.id, c.name.value) |> Map.ofList
         | Error _ -> Map.empty
     let liveName (id : CategoryId) : string =
         match Map.tryFind id liveNames with
         | Some name -> name
-        | None -> categoryName id
+        | None -> id.categoryName
     materialFacets
     |> List.map (fun def ->
         if def.key = materialCategoryKey
@@ -351,7 +351,7 @@ let effectiveScope (m : MaterialsWindowModel) : InactiveVisibility =
     | Browse -> m.showInactive
 
 let private projectionInputs (m : MaterialsWindowModel) : ProjectionInputs =
-    let textDef = textFilterDef materialTextFilterKey "Text" (fun (e : MaterialEntry) -> e.name) m.textFilter
+    let textDef = textFilterDef materialTextFilterKey "Text" (fun (e : MaterialEntry) -> e.name.value) m.textFilter
     let defs = textDef :: liveMaterialFacets m.context.categories
     let textApplied =
         match m.textFilter.value with
@@ -746,7 +746,7 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
     let entryLeafNode (leafCode : string) (entry : MaterialEntry) : FacetedTreeControls.TreeNode =
         {
             code = ConstructorUiKey leafCode
-            label = ControlCaption (if isEntryInactive activeIds entry then entry.name + inactiveBadge else entry.name)
+            label = ControlCaption (if isEntryInactive activeIds entry then entry.name.value + inactiveBadge else entry.name.value)
             countOpt = None
             expansion = expansionOf leafCode
             children = []
@@ -1053,7 +1053,7 @@ let private confirmRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg
     | PendingRemove id ->
         let name =
             match m.context.materials.tryGetMaterial id with
-            | Ok (Some entry) -> entry.name
+            | Ok (Some entry) -> entry.name.value
             | Ok None | Error _ -> string id.value
         [ WrapPanel.create [
               WrapPanel.orientation Orientation.Horizontal
@@ -1077,7 +1077,7 @@ let private lifecycleConfirmRow (m : MaterialsWindowModel) (dispatch : Materials
     | PendingLifecycle (id, action) ->
         let name =
             match m.context.materials.tryGetMaterial id with
-            | Ok (Some entry) -> entry.name
+            | Ok (Some entry) -> entry.name.value
             | Ok None | Error _ -> string id.value
         let prompt =
             match action with
@@ -1105,11 +1105,11 @@ let private messageRow (m : MaterialsWindowModel) : IView list =
     | Some err ->
         let text =
             match err with
-            | UnknownMaterialId reason
-            | DuplicateMaterialId reason
-            | MaterialStillReferenced reason
-            | MaterialVersionInUse reason
-            | InvalidMaterial reason -> reason
+            | UnknownMaterialIdErr reason
+            | DuplicateMaterialIdErr reason
+            | MaterialStillReferencedErr reason
+            | MaterialVersionInUseErr reason
+            | InvalidMaterialErr reason -> reason
         [ TextBlock.create [
               automationId<TextBlock> ConstructorUiId.materialsWindowMessage.value
               TextBlock.foreground (brush messageColor)
@@ -1195,12 +1195,12 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                                 TextBlock.fontWeight FontWeight.SemiBold
                                 TextBlock.textWrapping TextWrapping.Wrap
                                 TextBlock.maxWidth 380.0
-                                TextBlock.text $"%s{shownEntry.name} — %s{liveCategoryName m.context.categories shownEntry.category}%s{editability}"
+                                TextBlock.text $"%s{shownEntry.name.value} — %s{liveCategoryName m.context.categories shownEntry.category}%s{editability}"
                             ] :> IView
                             TextBlock.create [
                                 TextBlock.textWrapping TextWrapping.Wrap
                                 TextBlock.maxWidth 380.0
-                                TextBlock.text (shownEntry.description |> Option.defaultValue "")
+                                TextBlock.text (shownEntry.description |> Option.map (fun d -> d.value) |> Option.defaultValue "")
                             ] :> IView ]
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch

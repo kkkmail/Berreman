@@ -30,7 +30,7 @@ module ExperimentDataLoad =
         | Some descriptor ->
             match descriptor.binding with
             | BoundByEntryId entryId ->
-                match library.tryGetEntry entryId with
+                match library.tryGetEntry (Placement.ElementValueId entryId) with
                 | Ok (Some (DetectorItem detector)) -> detector.kind
                 | Ok (Some _) | Ok None | Error _ -> Intensity
             | BoundByVersion _ | Unbound -> Intensity

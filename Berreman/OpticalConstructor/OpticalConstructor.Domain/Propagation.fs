@@ -200,7 +200,7 @@ module Propagation =
         |> Result.bind (fun entryOpt ->
             match entryOpt with
             | Some e -> Ok e.properties
-            | None -> Error (UnknownMaterialId $"unknown material version '%s{string mvid.materialId.value}' v%d{mvid.version.value}"))
+            | None -> Error (UnknownMaterialIdErr $"unknown material version '%s{string mvid.materialId.value}' v%d{mvid.version.value}"))
 
     /// Resolve every material a sample's structure references to its `OpticalPropertiesWithDisp`
     /// through the VERSIONED material store's by-version resolve (spec 0033 step 001; re-based on
@@ -239,7 +239,7 @@ module Propagation =
                     | Some mvid -> resolveMaterialVersion materials mvid
                 match lowerResult with
                 | Error e -> Error e
-                | Ok lower -> Ok { name = sample.name; films = films; substrate = substrate; lower = lower }
+                | Ok lower -> Ok { name = sample.name.value; films = films; substrate = substrate; lower = lower }
 
     /// Map a RESOLVED sample to an engine `OpticalSystem` at the run wavelength `w` (the wavelength only
     /// matters for the dispersive materials; the rest ignore it): evaluate each material at `w`, apply

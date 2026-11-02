@@ -25,7 +25,7 @@ module LayerBandsControlsTests =
 
     /// The Guid-string entry id of the seeded 41-layer multilayer these tests bind (referenced
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
-    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId
+    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId.value
 
     // ============================ pure control contract ============================
 
@@ -76,7 +76,7 @@ module LayerBandsControlsTests =
         // Re-derive the band view through the same public seam the host uses (the ribbon bay's content is the
         // LayerBandsControls.view of detailsState); assert the band shape via the rendered Details bay below.
         // Here assert that the bound entry resolves to a multilayer whose description spells out the stack.
-        match m.library.tryGetEntry multilayerQwId with
+        match m.library.tryGetEntry (ElementValueId multilayerQwId) with
         | Ok (Some entry) -> Assert.Contains("layer", entry.fullDescription)
         | other -> Assert.Fail($"expected the multilayer entry, got %A{other}")
         // The bound element carries the multilayer valueId.

@@ -136,9 +136,9 @@ module PolarizerBehaviorTests =
         // The protected built-ins are exactly the seeded presets the spec names (F.0) plus, since spec
         // 0046, every seeded light source (the lasers and the UV / EUV lithography sources).
         Assert.Equal<string list>(
-            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.allSeedSources |> List.map (fun s -> s.id))
+            [ "det-ellipsometer"; "det-intensity"; "pol-cp-left"; "pol-cp-right"; "pol-lp" ] @ (SeedSources.allSeedSources |> List.map (fun s -> s.id.value))
             |> List.sort,
-            presets |> List.map (fun e -> e.entryId) |> List.sort)
+            presets |> List.map (fun e -> e.entryId.value) |> List.sort)
 
     [<Fact>]
     let ``the three seeded ideals are ComputedIdeal entries with their Lp and Cp categories`` () =
@@ -146,7 +146,7 @@ module PolarizerBehaviorTests =
             seedEntries
             |> List.pick (fun e ->
                 match e with
-                | PolarizerItem p when p.id = id -> Some p
+                | PolarizerItem p when p.id.value = id -> Some p
                 | _ -> None)
         Assert.Equal<PolarizerBehavior>(ComputedIdeal IdealLinear, (polarizer "pol-lp").behavior)
         Assert.Equal<PolarizerCategory>(LpCategory, (polarizer "pol-lp").category)
@@ -170,7 +170,7 @@ module PolarizerBehaviorTests =
             Assert.Equal<Applicability>(expected, def.appliesTo entry)
         let extractedLabels (id : string) : string list =
             seedEntries
-            |> List.find (fun e -> e.entryId = id)
+            |> List.find (fun e -> e.entryId.value = id)
             |> def.extract
             |> List.map (fun v -> v.label)
         Assert.Equal<string list>([ "Linear" ], extractedLabels "pol-lp")

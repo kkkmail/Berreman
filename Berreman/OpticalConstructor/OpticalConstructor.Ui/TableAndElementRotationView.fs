@@ -380,7 +380,7 @@ let defaultElementZoom : float = 5.0
 
 /// Mint a fresh, serializable element id (spec §1/§5). Added elements get a GUID; the seeded
 /// source/detector get deterministic ids (see `initMain`) so wiring/experiment tests can name them.
-let private freshId () : Library.ElementId = Library.elementId (System.Guid.NewGuid().ToString())
+let private freshId () : Library.ElementId = System.Guid.NewGuid().ToString() |> Library.ElementId
 
 let private mkElement (x : float) (kind : CatalogueKind) : TestElement =
     { id = freshId (); placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
@@ -504,8 +504,8 @@ let initTableAndElementRotation () : TableAndElementRotationModel =
 /// edges), with DETERMINISTIC ids so wiring / experiment tests can name them. The forward Main scene uses
 /// exactly this; the inverse scene splices an unbound sample between them (`initInverse`).
 let private mainSeedElements : TestElement list =
-    [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-      { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
+    [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+      { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
 
 let initMainWith
     (library : Library.LibraryProxy)
@@ -554,9 +554,9 @@ let initInverse
         categories
         experimentData
         experimentCollections
-        [ { id = Library.elementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-          { id = Library.elementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
-          { id = Library.elementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
+        [ { id = Library.ElementId "src"; placement = ElementPlacement.create LightSource RayModel.defaultSourcePoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+          { id = Library.ElementId "sample"; placement = ElementPlacement.create Sample { x = 0.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam }
+          { id = Library.ElementId "det"; placement = ElementPlacement.create Detector RayModel.defaultDetectorPoint; zoom = defaultElementZoom; beam = BeamLayout.OnMainBeam } ]
         mainPalette
         with snapChain = true; constructorMode = InverseConstructor }
 
@@ -974,7 +974,7 @@ let private cancelActiveSelect (m : TableAndElementRotationModel) : TableAndElem
 let private withBoundSampleEmission (m : TableAndElementRotationModel) (p : ElementPlacement) : ElementPlacement =
     match p.valueId with
     | Some id ->
-        match m.library.tryGetEntry id.value with
+        match m.library.tryGetEntry id with
         | Ok (Some entry) -> { p with emission = Library.placementEmissionForEntry p.emission entry }
         | Ok None | Error _ -> p
     | None -> p
@@ -1197,7 +1197,7 @@ let private resetSelectedPosition (m : TableAndElementRotationModel) : TableAndE
 let supportedEmissionOf (m : TableAndElementRotationModel) (p : ElementPlacement) : Emission =
     match p.valueId with
     | Some id ->
-        match m.library.tryGetEntry id.value with
+        match m.library.tryGetEntry id with
         | Ok (Some entry) -> Library.placementEmissionForEntry EmitBoth entry
         | Ok None | Error _ -> EmitBoth
     | None -> EmitBoth
@@ -1299,7 +1299,7 @@ let boundSourceOf (model : TableAndElementRotationModel) : Library.SourcePreset 
     |> List.tryPick (fun e ->
         match e.placement.catalogueKind, e.placement.valueId with
         | LightSource, Some id ->
-            match model.library.tryGetEntry id.value with
+            match model.library.tryGetEntry id with
             | Ok (Some (Library.SourceItem source)) -> Some source
             | Ok (Some _) | Ok None | Error _ -> None
         | (LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
@@ -1314,7 +1314,7 @@ let operatingWaveLength (model : TableAndElementRotationModel) (requested : Wave
     match boundSourceOf model with
     | Some source ->
         match source.tuning, requested with
-        | Library.TunableBetween (lo, hi), Some w -> ofNm (clamp (toNm lo) (toNm hi) (toNm w))
+        | Library.TunableBetween limits, Some w -> ofNm (clamp (toNm limits.lower) (toNm limits.upper) (toNm w))
         | Library.TunableBetween _, None
         | Library.FixedLine, _ -> source.waveLength
     | None -> WaveLength.nm 600.0<nm>
@@ -1333,14 +1333,16 @@ let variablesOfElement (model : TableAndElementRotationModel) (e : TestElement) 
 /// A wavelength sweep's range for the scene's source (spec 0046): a tunable source's limits; else the generic
 /// default.
 let private wavelengthRangeFor (model : TableAndElementRotationModel) : Experiments.VariableRange =
-    match boundSourceOf model |> Option.bind (fun source -> source.tunableRangeNm) with
-    | Some (lo, hi) -> { Experiments.VariableRange.forVariable Experiments.VaryWaveLength with min = lo; max = hi }
+    match boundSourceOf model |> Option.bind (fun source -> source.tunableLimitsOpt) with
+    | Some limits -> { Experiments.VariableRange.forVariable Experiments.VaryWaveLength with min = toNm limits.lower; max = toNm limits.upper }
     | None -> Experiments.VariableRange.forVariable Experiments.VaryWaveLength
 
 /// Keep a wavelength sweep inside a tunable source's limits (spec 0046); any other range as it is.
 let private clampSweep (model : TableAndElementRotationModel) (range : Experiments.VariableRange) : Experiments.VariableRange =
-    match model.experimentCollection.draft.variable, boundSourceOf model |> Option.bind (fun source -> source.tunableRangeNm) with
-    | Some Experiments.VaryWaveLength, Some (lo, hi) -> { range with min = clamp lo hi range.min; max = clamp lo hi range.max }
+    match model.experimentCollection.draft.variable, boundSourceOf model |> Option.bind (fun source -> source.tunableLimitsOpt) with
+    | Some Experiments.VaryWaveLength, Some limits ->
+        let lo, hi = toNm limits.lower, toNm limits.upper
+        { range with min = clamp lo hi range.min; max = clamp lo hi range.max }
     | _ -> range
 
 /// The element an experiment MEASURES (spec 0046 task 5): the first element bound to a SAMPLE (the one the
@@ -1350,7 +1352,7 @@ let private measuredElementOf (model : TableAndElementRotationModel) (varied : L
     |> List.tryPick (fun e ->
         match e.placement.valueId with
         | Some id ->
-            match model.library.tryGetEntry id.value with
+            match model.library.tryGetEntry id with
             | Ok (Some (Library.SampleItem _)) -> Some e.id
             | Ok (Some _) | Ok None | Error _ -> None
         | None -> None)
@@ -1374,7 +1376,7 @@ let captureDetectors (model : TableAndElementRotationModel) (varied : Library.El
 let detectorKindOf (model : TableAndElementRotationModel) (j : int) : Library.DetectorKind =
     match (List.item j model.elements).placement.valueId with
     | Some id ->
-        match model.library.tryGetEntry id.value with
+        match model.library.tryGetEntry id with
         | Ok (Some (Library.DetectorItem d)) -> d.kind
         | Ok (Some _) | Ok None | Error _ -> Library.Intensity
     | None -> Library.Intensity
@@ -1391,7 +1393,7 @@ let availableCaptures (model : TableAndElementRotationModel) (varied : Library.E
         |> List.tryPick (fun e ->
             match e.placement.valueId with
             | Some id ->
-                match model.library.tryGetEntry id.value with
+                match model.library.tryGetEntry id with
                 | Ok (Some (Library.SampleItem _)) -> Some e.id
                 | Ok (Some _) | Ok None | Error _ -> None
             | None -> None)
@@ -1441,7 +1443,7 @@ let private descriptorBinding (model : TableAndElementRotationModel) (kind : Cat
     | Some vid ->
         match kind with
         | Sample ->
-            match model.library.tryGetEntry vid with
+            match model.library.tryGetEntry (ElementValueId vid) with
             | Ok (Some (Library.SampleItem s)) ->
                 Experiments.BoundByVersion (Lifecycle.SampleVersionRef (Library.SampleVersionId.firstOf s.id))
             | Ok (Some _) | Ok None | Error _ -> Experiments.BoundByEntryId vid
@@ -1625,8 +1627,10 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
         { model with experimentCollection = Experiments.setRange (clampSweep model set.draft.range) set }
     | ExpSetSourceWaveLength nm ->
         // Spec 0046: only a TUNABLE source takes a setting, and only within its limits.
-        match boundSourceOf model |> Option.bind (fun source -> source.tunableRangeNm) with
-        | Some (lo, hi) -> { model with experimentCollection = Experiments.setSourceWaveLength (Some (ofNm (clamp lo hi nm))) model.experimentCollection }
+        match boundSourceOf model |> Option.bind (fun source -> source.tunableLimitsOpt) with
+        | Some limits ->
+            let lo, hi = toNm limits.lower, toNm limits.upper
+            { model with experimentCollection = Experiments.setSourceWaveLength (Some (ofNm (clamp lo hi nm))) model.experimentCollection }
         | None -> model
     | ExportExperimentData -> exportDraftRun model
     | ExpSetRangePoints n -> { model with experimentCollection = Experiments.setRangePoints n model.experimentCollection }
@@ -1942,7 +1946,7 @@ let private readoutText (model : TableAndElementRotationModel) : string =
         let boundName =
             match p.valueId with
             | Some id ->
-                match model.library.tryGetEntry id.value with
+                match model.library.tryGetEntry id with
                 | Ok (Some entry) -> entry.displayName
                 | Ok None | Error _ -> "unbound"
             | None -> "unbound"
@@ -2210,7 +2214,7 @@ let private renderHandlers (dispatch : TableAndElementRotationMsg -> unit) : Ren
 /// The Library entry ids valid for `kind` (the kind-constrained set; `[]` on a proxy error).
 let private allowedEntryIds (model : TableAndElementRotationModel) (kind : CatalogueKind) : Set<string> =
     match model.library.entriesForKind kind with
-    | Ok entries -> entries |> List.map (fun e -> e.entryId) |> Set.ofList
+    | Ok entries -> entries |> List.map (fun e -> e.entryId.value) |> Set.ofList
     | Error _ -> Set.empty
 
 type Library.TreeLabel with
@@ -2225,9 +2229,9 @@ type Library.TreeLabel with
 let rec private flattenNode (allowed : Set<string>) (boundId : string option) (depth : int) (node : Library.LibraryTreeNode) : LibraryControls.Row list =
     match node with
     | Library.Leaf (label, entryId) ->
-        if Set.contains entryId allowed then
-            let binding = if boundId = Some entryId then LibraryControls.EntryBound else LibraryControls.EntryUnbound
-            [ { label = label.rowCaption; depth = LibraryControls.LibraryRowDepth depth; kind = LibraryControls.LibraryEntryLeaf (ConstructorUiKey entryId, binding) } ]
+        if Set.contains entryId.value allowed then
+            let binding = if boundId = Some entryId.value then LibraryControls.EntryBound else LibraryControls.EntryUnbound
+            [ { label = label.rowCaption; depth = LibraryControls.LibraryRowDepth depth; kind = LibraryControls.LibraryEntryLeaf (entryId.uiKey, binding) } ]
         else []
     | Library.Group (label, children) ->
         let childRows = children |> List.collect (flattenNode allowed boundId (depth + 1))
@@ -2248,7 +2252,7 @@ let private libraryState (model : TableAndElementRotationModel) : LibraryControl
             | Ok (tree :: _) -> flattenNode allowed boundId 0 tree.root
             | Ok [] | Error _ -> []
         let boundName =
-            match boundId with
+            match e.placement.valueId with
             | Some id ->
                 match model.library.tryGetEntry id with
                 | Ok (Some entry) -> Some (ControlCaption entry.displayName)
@@ -2259,7 +2263,7 @@ let private libraryState (model : TableAndElementRotationModel) : LibraryControl
         let pendingName, pendingDescription =
             match model.pendingEntry with
             | Some id ->
-                match model.library.tryGetEntry id with
+                match model.library.tryGetEntry (ElementValueId id) with
                 | Ok (Some entry) -> Some (ControlCaption entry.displayName), ControlCaption entry.fullDescription
                 | Ok None | Error _ -> None, ControlCaption ""
             | None -> None, ControlCaption ""
@@ -2339,7 +2343,7 @@ let private experimentReadout (model : TableAndElementRotationModel) : string =
 let private boundEntry (model : TableAndElementRotationModel) (e : TestElement) : Library.LibraryEntry option =
     match e.placement.valueId with
     | Some id ->
-        match model.library.tryGetEntry id.value with
+        match model.library.tryGetEntry id with
         | Ok (Some entry) -> Some entry
         | Ok None | Error _ -> None
     | None -> None
@@ -2523,16 +2527,16 @@ let runAnalyzerKind (model : TableAndElementRotationModel) (varied : Library.Ele
 let private materialLibrary : MaterialLibrary.MaterialLibrary = MaterialLibrary.standard
 
 /// The human-readable message a failed sample-material resolution surfaces on the chart. Every error
-/// case carries a diagnostic `reason` (spec 0033 steps 002/003); only `UnknownMaterialId` can actually
+/// case carries a diagnostic `reason` (spec 0033 steps 002/003); only `UnknownMaterialIdErr` can actually
 /// arise from resolution — the write-seam cases (step 003) render a generic library message.
 let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
     match err with
-    | MaterialLibrary.UnknownMaterialId reason ->
+    | MaterialLibrary.UnknownMaterialIdErr reason ->
         $"Cannot run: the sample references an unknown material (%s{reason})."
-    | MaterialLibrary.DuplicateMaterialId reason
-    | MaterialLibrary.MaterialStillReferenced reason
-    | MaterialLibrary.MaterialVersionInUse reason
-    | MaterialLibrary.InvalidMaterial reason ->
+    | MaterialLibrary.DuplicateMaterialIdErr reason
+    | MaterialLibrary.MaterialStillReferencedErr reason
+    | MaterialLibrary.MaterialVersionInUseErr reason
+    | MaterialLibrary.InvalidMaterialErr reason ->
         $"Cannot run: material library error (%s{reason})."
 
 /// A `ChartSeries` from named (x, y) points.
@@ -2627,7 +2631,7 @@ let chartForRun
     let boundOf (e : TestElement) : Library.LibraryEntry option =
         match e.placement.valueId with
         | Some id ->
-            match model.library.tryGetEntry id.value with
+            match model.library.tryGetEntry id with
             | Ok entry -> entry
             | Error _ -> None
         | None -> None
@@ -2875,8 +2879,9 @@ let experimentState (model : TableAndElementRotationModel) : ExperimentControls.
             | Some Experiments.VaryWaveLength, _ | None, _ | Some _, None -> ExperimentControls.NoSourceWaveLength
             | Some _, Some source ->
                 let setting = ExperimentControls.BayNanometers (toNm (operatingWaveLength model draft.sourceWaveLengthOpt))
-                match source.tunableRangeNm with
-                | Some (lo, hi) ->
+                match source.tunableLimitsOpt with
+                | Some limits ->
+                    let lo, hi = toNm limits.lower, toNm limits.upper
                     ExperimentControls.TunableSourceWaveLength
                         (setting, { ExperimentControls.SourceWaveLengthLimits.lowest = ExperimentControls.BayNanometers lo; highest = ExperimentControls.BayNanometers hi })
                 | None -> ExperimentControls.FixedSourceWaveLength setting
@@ -2982,7 +2987,7 @@ let private bandColorHex (materialId : MaterialLibrary.MaterialId) : string =
 let private materialDisplayName (materialId : MaterialLibrary.MaterialId) : string =
     materialLibrary.entries
     |> List.tryFind (fun e -> e.id = materialId)
-    |> Option.map (fun e -> e.name)
+    |> Option.map (fun e -> e.name.value)
     |> Option.defaultValue (string materialId.value)
 
 /// A band's thickness for the Details view — finite layers carry their thickness in metres; a half-space /
@@ -3030,7 +3035,7 @@ let private sampleBandSpecs (sample : Library.Sample) : (MaterialLibrary.Materia
         |> List.collect (fun item ->
             match item with
             | Library.SingleLayer l -> [ l.materialId.materialId, layerBandThickness l, 1 ]
-            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId.materialId, layerBandThickness l, g.count))
+            | Library.Repeated g -> g.cell |> List.map (fun l -> l.materialId.materialId, layerBandThickness l, g.count.value))
     let substrateBands =
         match sample.structure.substrate with
         | Some l -> [ l.materialId.materialId, layerBandThickness l, 1 ]
@@ -3056,7 +3061,7 @@ let sampleBandsState (s : Library.Sample) : LayerBandsControls.LayerBandsControl
                 heightWeight = LayerBandsControls.BandWeight (bandWeight thickness)
                 colorHex = LayerBandsControls.BandColorHex (bandColorHex materialId)
              } : LayerBandsControls.Band))
-    ({ title = ControlCaption $"%s{s.name} — %s{s.description}"; bands = bands } : LayerBandsControls.LayerBandsControlsState)
+    ({ title = ControlCaption $"%s{s.name.value} — %s{s.description.value}"; bands = bands } : LayerBandsControls.LayerBandsControlsState)
 
 /// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
 /// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
@@ -3181,7 +3186,7 @@ let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch :
             // Spec 0046: the Library opens with the element's current binding shown as chosen.
             currentEntryIdOpt = element.placement.valueId |> Option.map (fun v -> v.value)
             target = WindowMode.TableElementTarget element.id
-            onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
+            onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId.value))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
         }
     match model.launchers.openLibrarySelectWindow model.library model.samples model.sources model.materials model.categories model.selectWindowModality owner selectCtx with

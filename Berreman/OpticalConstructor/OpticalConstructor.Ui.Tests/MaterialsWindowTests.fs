@@ -189,7 +189,7 @@ module MaterialsWindowTests =
                         calls.Add(
                             match intent with
                             | MaterialEditorView.NewMaterial mintedId -> $"material-add:{mintedId.value}"
-                            | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name)
+                            | MaterialEditorView.EditMaterial entry -> "material-edit:" + entry.name.value)
                 openCategoryEditor = fun () -> calls.Add "categories-open"
                 requestClose = fun () -> calls.Add "close-requested"
             }
@@ -217,7 +217,7 @@ module MaterialsWindowTests =
     /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard
     /// on update), failing the test on a typed rejection.
     let private renameGlass (categories : CategoryProxy) (newName : string) : unit =
-        match categories.updateCategory { id = CategoryIds.glass; name = newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
+        match categories.updateCategory { id = CategoryIds.glass; name = CategoryName newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
         | Ok () -> ()
         | Error e -> Assert.Fail($"rename failed: %A{e}")
 
@@ -377,11 +377,11 @@ module MaterialsWindowTests =
             |> MW.updateMaterialsWindow MW.RequestRemoveSelected
             |> MW.updateMaterialsWindow MW.ConfirmRemove
         match refused.lastError with
-        | Some (MaterialStillReferenced reason) ->
+        | Some (MaterialStillReferencedErr reason) ->
             Assert.Contains("still referenced", reason)
             // The block NAMES the referencing samples (never a cascade).
             Assert.Contains("Glass plate (n=1.52, 1 mm)", reason)
-        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
+        | other -> Assert.Fail($"expected MaterialStillReferencedErr, got %A{other}")
         match materials.listMaterials ActiveOnly with
         | Ok entries -> Assert.Equal(12, List.length entries)
         | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
@@ -428,8 +428,8 @@ module MaterialsWindowTests =
             |> MW.updateMaterialsWindow MW.RequestRemoveSelected
             |> MW.updateMaterialsWindow MW.ConfirmRemove
         match refused.lastError with
-        | Some (MaterialStillReferenced _) -> ()
-        | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
+        | Some (MaterialStillReferencedErr _) -> ()
+        | other -> Assert.Fail($"expected MaterialStillReferencedErr, got %A{other}")
         let cancelled = MW.updateMaterialsWindow MW.CancelRemove refused
         Assert.Equal(MW.NoPendingRemove, cancelled.removeGate)
         match cancelled.lastError with
@@ -472,7 +472,7 @@ module MaterialsWindowTests =
         Assert.Equal<MaterialEntry option>(None, MW.selectedEntry m)
         let glass = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
         match MW.selectedEntry glass with
-        | Some entry -> Assert.Equal("Transparent glass (n = 1.52)", entry.name)
+        | Some entry -> Assert.Equal("Transparent glass (n = 1.52)", entry.name.value)
         | None -> Assert.Fail "the selected glass entry must resolve"
         match MW.editableSelection glass with
         | Some _ -> ()
@@ -798,7 +798,7 @@ module MaterialsWindowTests =
             Assert.False(editor.IsVisible, "Save must close the editor")
             // The save landed in the SHARED store…
             match materials.listMaterials ActiveOnly with
-            | Ok entries -> Assert.Contains(entries, fun (e : MaterialEntry) -> e.name = "Faceted window material")
+            | Ok entries -> Assert.Contains(entries, fun (e : MaterialEntry) -> e.name.value = "Faceted window material")
             | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
             // …and the window's next dispatch-driven render re-queries it: committing the
             // matching filter narrows the tree to the just-saved entry.
@@ -1153,7 +1153,7 @@ module MaterialsWindowTests =
                 Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
             let session : Scene.SelectSession =
                 {
-                    target = elementId "det"
+                    target = ElementId "det"
                     cancelAndClose = fun () -> selectWindow.Close()
                 }
             let mainWindow = HostWindow(Width = 980.0, Height = 1050.0)
@@ -1218,8 +1218,8 @@ module MaterialsWindowTests =
     let private twoVersionMaterials () : MaterialId * MaterialEntry * MaterialEntry * MaterialProxy =
         let template = builtInEntries |> List.find (fun e -> e.id = MaterialIds.glass152)
         let id = newMaterialId ()
-        let v1 = { template with id = id; name = "Versioned material v1" }
-        let v2 = { template with id = id; name = "Versioned material v2" }
+        let v1 = { template with id = id; name = EntryName "Versioned material v1" }
+        let v2 = { template with id = id; name = EntryName "Versioned material v2" }
         let proxy : MaterialProxy =
             {
                 listMaterials = fun _ -> Ok [ v2 ]
@@ -1314,8 +1314,8 @@ module MaterialsWindowTests =
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
         let refused = MW.updateMaterialsWindow MW.ConfirmLifecycle armedAgain
         match refused.lastError with
-        | Some (UnknownMaterialId reason) -> Assert.Contains("unknown material id", reason)
-        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
+        | Some (UnknownMaterialIdErr reason) -> Assert.Contains("unknown material id", reason)
+        | other -> Assert.Fail($"expected UnknownMaterialIdErr, got %A{other}")
 
     [<Fact>]
     let ``supersede retires the latest version exactly like mark-inactive`` () =

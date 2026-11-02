@@ -114,16 +114,16 @@ module PropagationTests =
     let private glassSample : Sample =
         {
             id = SampleId.create ()
-            name = "Glass plate (n=1.52, 1 mm)"
+            name = MaterialLibrary.EntryName "Glass plate (n=1.52, 1 mm)"
             structure =
                 {
                     films = []
                     substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.mm 1.0<mm>; orientation = PrimaryAxes }
                     lower = None
                 }
-            substrate = Library.Plate
-            description = "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
-            supportedEmission = Library.defaultSupportedEmission Library.Plate
+            substrate = Library.ThickPlate
+            description = MaterialLibrary.EntryDescription "Single transparent-glass plate, n = 1.52, thickness 1 mm, in vacuum."
+            supportedEmission = Library.ThickPlate.defaultSupportedEmission
         }
 
     /// The versioned material store over the standard built-ins (spec 0038 step 022): the sample
@@ -138,7 +138,7 @@ module PropagationTests =
     let private resolveOrFail (s : Sample) : ResolvedSample =
         match resolveSampleMaterials standardProxy s with
         | Ok r -> r
-        | Error e -> failwith ($"sample %s{s.name} did not resolve: %A{e}")
+        | Error e -> failwith ($"sample %s{s.name.value} did not resolve: %A{e}")
 
     let private glassResolved : ResolvedSample = resolveOrFail glassSample
 
@@ -210,15 +210,15 @@ module PropagationTests =
             let w = runWaveLengthFor s
             let mm = sampleMuellerT (resolveOrFail s) w IncidenceAngle.normal
             let out = s0 (mm * unpolarizedStokes)
-            Assert.False(System.Double.IsNaN out, $"%s{s.name} produced NaN S0")
-            Assert.False(System.Double.IsInfinity out, $"%s{s.name} produced infinite S0")
-            Assert.True(out >= -1.0e-9, $"%s{s.name} transmitted a negative S0: %g{out}")
-            Assert.True(out <= 1.0 + 1.0e-9, $"%s{s.name} transmitted S0 > input: %g{out}")
+            Assert.False(System.Double.IsNaN out, $"%s{s.name.value} produced NaN S0")
+            Assert.False(System.Double.IsInfinity out, $"%s{s.name.value} produced infinite S0")
+            Assert.True(out >= -1.0e-9, $"%s{s.name.value} transmitted a negative S0: %g{out}")
+            Assert.True(out <= 1.0 + 1.0e-9, $"%s{s.name.value} transmitted S0 > input: %g{out}")
 
     [<Fact>]
     let ``sampleToSystem is total for every seeded sample with the expected layer count`` () =
         let plateIds =
-            [ SeedSamples.activeCrystal.id; SeedSamples.glassVacuum.id; SeedSamples.glassPlate1mm.id; SeedSamples.glassPlate2mm.id ]
+            [ SeedSamples.activeCrystalPlate.id; SeedSamples.glassVacuum.id; SeedSamples.glassPlate1mm.id; SeedSamples.glassPlate2mm.id ]
         for s in seededSamples do
             let w = runWaveLengthFor s
             let system = sampleToSystem (resolveOrFail s) w
@@ -226,7 +226,7 @@ module PropagationTests =
             elif s.id = SeedSamples.euvMoSi.id then Assert.Equal(200, List.length system.films)
             elif plateIds |> List.contains s.id then
                 Assert.Empty system.films
-                Assert.True(Option.isSome system.substrate, $"%s{s.name} should be a substrate plate")
+                Assert.True(Option.isSome system.substrate, $"%s{s.name.value} should be a substrate plate")
             else
                 // The remaining seeded samples are single-film systems.
                 Assert.Equal(1, List.length system.films)
@@ -234,7 +234,7 @@ module PropagationTests =
     [<Fact>]
     let ``every seeded sample carries a non-empty description`` () =
         for s in seededSamples do
-            Assert.False(System.String.IsNullOrWhiteSpace s.description, $"%s{s.name} has an empty description")
+            Assert.False(System.String.IsNullOrWhiteSpace s.description.value, $"%s{s.name.value} has an empty description")
 
     [<Fact>]
     let ``the dispersive langasite sample evaluates differently at different wavelengths`` () =
@@ -365,8 +365,8 @@ module PropagationTests =
                         lower = None
                     } }
         match resolveSampleMaterials standardProxy sample with
-        | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
-        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
+        | Error (MaterialLibrary.UnknownMaterialIdErr reason) -> Assert.Contains(string missing.value, reason)
+        | other -> Assert.Fail($"expected UnknownMaterialIdErr, got %A{other}")
 
     [<Fact>]
     let ``resolveSampleMaterials returns a typed Error for an unknown lower half-space id`` () =
@@ -381,15 +381,15 @@ module PropagationTests =
                         lower = Some (MaterialLibrary.MaterialVersionId.firstOf missing)
                     } }
         match resolveSampleMaterials standardProxy sample with
-        | Error (MaterialLibrary.UnknownMaterialId reason) -> Assert.Contains(string missing.value, reason)
-        | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
+        | Error (MaterialLibrary.UnknownMaterialIdErr reason) -> Assert.Contains(string missing.value, reason)
+        | other -> Assert.Fail($"expected UnknownMaterialIdErr, got %A{other}")
 
     [<Fact>]
     let ``every seeded sample resolves against the standard material library`` () =
         for s in seededSamples do
             match resolveSampleMaterials standardProxy s with
             | Ok _ -> ()
-            | Error e -> Assert.Fail($"%s{s.name} did not resolve: %A{e}")
+            | Error e -> Assert.Fail($"%s{s.name.value} did not resolve: %A{e}")
 
     /// The 41-layer λ/4 films exactly as the PRE-0033 hand-built branch constructed them.
     let private legacyQwFilms : Layer list =
@@ -451,7 +451,7 @@ module PropagationTests =
             }
         elif s.id = SeedSamples.uniaxial.id then film OpticalProperties.uniaxialCrystal (Thickness.nm 1000.0<nm>)
         elif s.id = SeedSamples.biaxial.id then film OpticalProperties.biaxialCrystal (Thickness.nm 1000.0<nm>)
-        elif s.id = SeedSamples.activeCrystal.id then
+        elif s.id = SeedSamples.activeCrystalPlate.id then
             let e11 = RefractionIndex 2.315 |> EpsValue.fromRefractionIndex
             let e33 = RefractionIndex 2.226 |> EpsValue.fromRefractionIndex
             plate (OpticalProperties.planarCrystal e11 e33 (RhoValue 1.5e-6)) Thickness.oneCentiMeter
@@ -471,7 +471,7 @@ module PropagationTests =
                 substrate = None
                 lower = siliconOpticalProperties.getProperties w
             }
-        else failwith ($"no legacy expectation for sample %s{s.name}")
+        else failwith ($"no legacy expectation for sample %s{s.name.value}")
 
     [<Fact>]
     let ``every seeded sample's structurally-built system equals the previously hand-built system`` () =
@@ -489,7 +489,7 @@ module PropagationTests =
     let private uniaxialFilm (orientation : CrystalOrientation) : Sample =
         {
             id = SampleId.create ()
-            name = "Uniaxial film (oriented)"
+            name = MaterialLibrary.EntryName "Uniaxial film (oriented)"
             structure =
                 {
                     films = [ SingleLayer { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.nm 1000.0<nm>; orientation = orientation } ]
@@ -497,8 +497,8 @@ module PropagationTests =
                     lower = None
                 }
             substrate = Library.ThinFilm
-            description = "Uniaxial crystal thin film at the given crystal orientation."
-            supportedEmission = Library.defaultSupportedEmission Library.ThinFilm
+            description = MaterialLibrary.EntryDescription "Uniaxial crystal thin film at the given crystal orientation."
+            supportedEmission = Library.ThinFilm.defaultSupportedEmission
         }
 
     /// A uniaxial-crystal PLATE sample (the substrate is a `SampleLayer` too, so it carries an
@@ -506,16 +506,16 @@ module PropagationTests =
     let private uniaxialPlate (orientation : CrystalOrientation) : Sample =
         {
             id = SampleId.create ()
-            name = "Uniaxial plate (oriented)"
+            name = MaterialLibrary.EntryName "Uniaxial plate (oriented)"
             structure =
                 {
                     films = []
                     substrate = Some { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.uniaxialCrystal; thickness = Thickness.mm 1.0<mm>; orientation = orientation }
                     lower = None
                 }
-            substrate = Library.Plate
-            description = "Uniaxial crystal plate at the given crystal orientation."
-            supportedEmission = Library.defaultSupportedEmission Library.Plate
+            substrate = Library.ThickPlate
+            description = MaterialLibrary.EntryDescription "Uniaxial crystal plate at the given crystal orientation."
+            supportedEmission = Library.ThickPlate.defaultSupportedEmission
         }
 
     [<Fact>]
@@ -523,7 +523,7 @@ module PropagationTests =
         // Spec 0033 step 020 acceptance: the system built from an EulerRotation-oriented layer MUST
         // equal applying `Layer.rotate` directly to the same (PrimaryAxes-built) layer.
         let phi, theta, psi = deg 30.0, deg 40.0, deg 50.0
-        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation (ZmXpZm, phi, theta, psi)))) orientationRunW
+        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation { Library.EulerAngles.convention = ZmXpZm; phi = phi; theta = theta; psi = psi }))) orientationRunW
         let unrotated = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
         let rotation = Rotation.create ZmXpZm phi theta psi |> Rotation
         let expected = unrotated.films |> List.map (fun (l : Layer) -> l.rotate rotation)
@@ -545,7 +545,7 @@ module PropagationTests =
         // The named engine shortcuts (Rotation.rotatePiX / rotateHalfPiY) remain available for tests:
         // an EulerRotation carrying rotatePiX's own angles (ZmXpZm, 0, π, 0) builds the same system
         // as `Layer.rotatePiX` on the unrotated layer.
-        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation (ZmXpZm, Angle.zero, Angle.pi, Angle.zero)))) orientationRunW
+        let built = sampleToSystem (resolveOrFail (uniaxialFilm (EulerRotation { Library.EulerAngles.convention = ZmXpZm; phi = Angle.zero; theta = Angle.pi; psi = Angle.zero }))) orientationRunW
         let unrotated = sampleToSystem (resolveOrFail (uniaxialFilm PrimaryAxes)) orientationRunW
         let expected = unrotated.films |> List.map (fun (l : Layer) -> l.rotatePiX)
         Assert.Equal<Layer list>(expected, built.films)
@@ -555,7 +555,7 @@ module PropagationTests =
         // The substrate is a `SampleLayer` too — its orientation goes through the same
         // `Layer.rotate` path when the plate is assembled.
         let phi, theta, psi = deg 30.0, deg 40.0, deg 50.0
-        let built = sampleToSystem (resolveOrFail (uniaxialPlate (EulerRotation (ZmXpZm, phi, theta, psi)))) orientationRunW
+        let built = sampleToSystem (resolveOrFail (uniaxialPlate (EulerRotation { Library.EulerAngles.convention = ZmXpZm; phi = phi; theta = theta; psi = psi }))) orientationRunW
         let unrotated = sampleToSystem (resolveOrFail (uniaxialPlate PrimaryAxes)) orientationRunW
         let rotation = Rotation.create ZmXpZm phi theta psi |> Rotation
         match built.substrate, unrotated.substrate with

@@ -87,9 +87,9 @@ module MaterialImport =
     let private entryFromTabulated (name : string) (category : CategoryId) (points : (float * float * float)[]) : MaterialEntry =
         {
             id = MaterialId.create ()
-            name = name
+            name = EntryName name
             category = category
-            description = Some "Imported tabulated n,k (refractiveindex.info)."
+            description = Some (EntryDescription "Imported tabulated n,k (refractiveindex.info).")
             properties = (EpsWithDisp (buildTabulatedClosure points)).isotropicProperties
             // Tabulated imports stay closure-backed (view-only): linear interpolation
             // over samples is not finite term data. Formula imports carry an editable
@@ -388,9 +388,9 @@ module MaterialImport =
             }
         {
             id = MaterialId.create ()
-            name = $"Imported (refractiveindex.info formula %d{formulaNumber})"
+            name = EntryName $"Imported (refractiveindex.info formula %d{formulaNumber})"
             category = CategoryIds.glass
-            description = Some $"Imported %s{formulaFamily formulaNumber} (refractiveindex.info formula %d{formulaNumber})."
+            description = Some (EntryDescription $"Imported %s{formulaFamily formulaNumber} (refractiveindex.info formula %d{formulaNumber}).")
             properties = complexity.toProperties
             complexity = Some complexity
         }

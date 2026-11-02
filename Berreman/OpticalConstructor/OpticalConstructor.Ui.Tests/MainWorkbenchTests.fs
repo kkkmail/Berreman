@@ -136,7 +136,7 @@ module MainWorkbenchTests =
     /// Rename a built-in category through the proxy (built-ins ARE renamable — no origin guard on
     /// update), failing the test on a typed rejection.
     let private renameGlass (categories : CategoryProxy) (newName : string) : unit =
-        match categories.updateCategory { id = CategoryIds.glass; name = newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
+        match categories.updateCategory { id = CategoryIds.glass; name = CategoryName newName; visibility = SelectableOnCreate; origin = BuiltInCategory } with
         | Ok () -> ()
         | Error e -> Assert.Fail($"rename failed: %A{e}")
 
@@ -154,8 +154,8 @@ module MainWorkbenchTests =
         // A rename through the shared proxy re-labels the picker on its next read.
         renameGlass categories "Glazing"
         let after = MaterialEditorView.selectableCategories em
-        Assert.Contains(after, fun (c : MaterialCategory) -> c.name = "Glazing")
-        Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name = "Glass")
+        Assert.Contains(after, fun (c : MaterialCategory) -> c.name.value = "Glazing")
+        Assert.DoesNotContain(after, fun (c : MaterialCategory) -> c.name.value = "Glass")
 
     // ============================ pure: the strip-button launcher seam ============================
 

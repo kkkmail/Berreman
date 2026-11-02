@@ -41,7 +41,7 @@ type SampleEditorWindow(materials : MaterialProxy, samples : SampleProxy, catego
     do
         this.Title <-
             match intent with
-            | SampleEditorView.EditSample s -> $"Sample Editor — %s{s.name}"
+            | SampleEditorView.EditSample s -> $"Sample Editor — %s{s.name.value}"
             | SampleEditorView.NewSeededMultilayer _ -> "Sample Editor — new multilayer"
             | SampleEditorView.NewBlankSample _ -> "Sample Editor — new sample"
         this.Name <- ConstructorUiId.sampleEditorWindow.value

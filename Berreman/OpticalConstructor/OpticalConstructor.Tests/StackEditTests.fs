@@ -105,8 +105,8 @@ module StackEditTests =
         | Error e -> failwith $"expected a resolved medium, got {e}"
         let unknown = MaterialId.create ()
         match StackEditor.mediumFromMaterial standard unknown (WaveLength.nm 600.0<nm>) with
-        | Error (UnknownMaterialId reason) -> Assert.Contains(string unknown.value, reason)
-        | other -> failwith $"expected UnknownMaterialId, got {other}"
+        | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
+        | other -> failwith $"expected UnknownMaterialIdErr, got {other}"
 
     // ---------------------------------------------------------------- AC-B7
 
@@ -171,8 +171,8 @@ module StackEditTests =
     let ``AC-J4 dropping an unknown material id is a no-op error, never throwing`` () =
         let unknown = MaterialId.create ()
         match StackEditor.layerMaterialDrop standard (WaveLength.nm 600.0<nm>) 0 unknown with
-        | Error (UnknownMaterialId reason) -> Assert.Contains(string unknown.value, reason)
-        | other -> failwith $"expected UnknownMaterialId, got {other}"
+        | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
+        | other -> failwith $"expected UnknownMaterialIdErr, got {other}"
         // setLayerMaterial on an out-of-range index leaves the system unchanged.
         let r = StackEditor.setLayerMaterial 99 glass baseSystem
         Assert.True(refEq r.films baseSystem.films)

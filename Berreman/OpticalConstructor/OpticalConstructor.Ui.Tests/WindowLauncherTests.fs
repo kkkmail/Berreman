@@ -515,8 +515,8 @@ module WindowLauncherTests =
             | Ok entries ->
                 let added = entries |> List.filter (fun e -> not (Set.contains e.id seededIds))
                 Assert.Equal(2, List.length added)
-                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name = "Launcher add A")
-                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name = "Launcher add B")
+                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name.value = "Launcher add A")
+                Assert.Contains(added, fun (e : MaterialLibrary.MaterialEntry) -> e.name.value = "Launcher add B")
                 match added |> List.map (fun e -> e.id) with
                 | [ a; b ] -> Assert.NotEqual(a, b)
                 | other -> Assert.Fail($"expected two added ids, got %A{other}")
@@ -557,5 +557,5 @@ module WindowLauncherTests =
             clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible)
             match samples.tryGetSample minted with
-            | Ok (Some s) -> Assert.Equal("Launcher sample", s.name)
+            | Ok (Some s) -> Assert.Equal("Launcher sample", s.name.value)
             | other -> Assert.Fail($"the sample Add must persist under its upfront-minted id, got %A{other}"))

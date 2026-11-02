@@ -23,16 +23,16 @@ module PlacedSampleEmissionTests =
 
     /// Resolve a seeded entry by its id (the entry id is the `valueId` written onto a bound element).
     let private entry (id : string) : LibraryEntry =
-        match lib.tryGetEntry id with
+        match lib.tryGetEntry (ElementValueId id) with
         | Ok (Some e) -> e
         | other -> failwith $"seed entry '%s{id}' unexpectedly not resolvable: %A{other}"
 
     /// The seeded MIRROR sample (`supportedEmission = EmitReflectedOnly`; spec 0046 — the EUV multilayer).
-    let private mirrorId : string = (SampleItem SeedSamples.euvMoSi).entryId
+    let private mirrorId : string = (SampleItem SeedSamples.euvMoSi).entryId.value
     /// A seeded ThinFilm sample — spec 0046: a thin film reflects AND transmits (`EmitBoth`).
-    let private thinFilmId : string = (SampleItem SeedSamples.glassFilm600).entryId
+    let private thinFilmId : string = (SampleItem SeedSamples.glassFilm600).entryId.value
     /// A seeded Plate sample supporting BOTH branches (`supportedEmission = EmitBoth`).
-    let private plateId : string = (SampleItem SeedSamples.glassPlate1mm).entryId
+    let private plateId : string = (SampleItem SeedSamples.glassPlate1mm).entryId.value
     /// A non-sample seeded entry (the 600 nm source) — carries no geometry emission constraint.
     let private sourceId : string = "src-600"
 

@@ -59,9 +59,9 @@ module LightSourceEditorTests =
             |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
         Assert.Equal(None, saved.status)
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
-        match sources.tryGetSource "src-new-1" with
+        match sources.tryGetSource (Placement.ElementValueId "src-new-1") with
         | Ok (Some s) ->
-            Assert.Equal("My EUV line", s.name)
+            Assert.Equal("My EUV line", s.name.value)
             Assert.True(abs (nmOf s.waveLength - 13.4) < 1.0e-9)
             Assert.Equal<EntryProtection>(UserManaged, s.protection)
         | other -> Assert.Fail($"expected the saved source, got %A{other}")
@@ -95,7 +95,7 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``editing a user source replaces it; Cancel closes a pristine editor and confirms a dirty one`` () =
         let sources = SourceProxy.createInMemory ()
-        let original : SourcePreset = { id = "src-u"; name = "Line A"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
+        let original : SourcePreset = { id = Placement.ElementValueId "src-u"; name = EntryName "Line A"; waveLength = WaveLength.nm 500.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Equal(Ok (), sources.saveSource original)
         let calls, context = editorContext sources
         let m0 = SE.initLightSourceEditor context (SE.EditSource original)
@@ -112,10 +112,10 @@ module LightSourceEditorTests =
         Assert.Equal(SE.LightSourceEditing, (SE.updateLightSourceEditor SE.LightSourceKeepEditing asking).exit)
         SE.updateLightSourceEditor SE.LightSourceDiscardConfirmed asking |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
-        Assert.Equal(Ok (Some original), sources.tryGetSource "src-u")
+        Assert.Equal(Ok (Some original), sources.tryGetSource (Placement.ElementValueId "src-u"))
         // Save replaces it in place.
         SE.updateLightSourceEditor SE.LightSourceSaveClicked dirty |> ignore
-        Assert.Equal(Ok (Some { original with name = "Line B" }), sources.tryGetSource "src-u")
+        Assert.Equal(Ok (Some { original with name = EntryName "Line B" }), sources.tryGetSource (Placement.ElementValueId "src-u"))
 
     // ------------------------------ the Library window verbs (pure) ------------------------------
 
@@ -137,7 +137,7 @@ module LightSourceEditorTests =
                     calls.Add(
                         match intent with
                         | SE.NewSource mintedId -> "source-add:" + mintedId
-                        | SE.EditSource s -> "source-edit:" + s.name)
+                        | SE.EditSource s -> "source-edit:" + s.name.value)
             requestClose = fun () -> calls.Add "close"
         }
 
@@ -151,11 +151,11 @@ module LightSourceEditorTests =
     [<Fact>]
     let ``a user source joins the Library, offers Edit, and is removed through the confirm gate`` () =
         let sources = SourceProxy.createInMemory ()
-        let mine : SourcePreset = { id = "src-mine"; name = "My line"; waveLength = WaveLength.nm 450.0<nm>; tuning = FixedLine; protection = UserManaged }
+        let mine : SourcePreset = { id = Placement.ElementValueId "src-mine"; name = EntryName "My line"; waveLength = WaveLength.nm 450.0<nm>; tuning = FixedLine; protection = UserManaged }
         Assert.Equal(Ok (), sources.saveSource mine)
         let calls, context = libraryContext sources
         let m0 = LW.initLibraryWindow context Browse
-        Assert.Contains("src-mine", LW.filteredEntries m0 |> List.map (fun e -> e.entryId))
+        Assert.Contains("src-mine", LW.filteredEntries m0 |> List.map (fun e -> e.entryId.value))
         let selected = LW.updateLibraryWindow (LW.SelectEntry "src-mine") m0
         Assert.Equal(Some mine, LW.editableSource selected)
         LW.updateLibraryWindow LW.EditSelected selected |> ignore
@@ -201,7 +201,7 @@ module LightSourceEditorTests =
     let ``a user source and a seeded lithography source bind to the table's source and resolve`` () =
         HeadlessSession.run (fun () ->
             let m0 = { Scene.initMain () with selection = Scene.ElementSelected 0 }
-            let mine : SourcePreset = { id = "src-mine"; name = "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; tuning = FixedLine; protection = UserManaged }
+            let mine : SourcePreset = { id = Placement.ElementValueId "src-mine"; name = EntryName "My 13.4 nm line"; waveLength = WaveLength.nm 13.4<nm>; tuning = FixedLine; protection = UserManaged }
             Assert.Equal(Ok (), m0.sources.saveSource mine)
             let sourceId = (List.item 0 m0.elements).id
             let boundMine = Scene.updateTableAndElementRotation (Scene.BindValueIdTo (sourceId, "src-mine")) m0
@@ -251,8 +251,8 @@ module LightSourceEditorTests =
             typeInto window ConstructorUiId.sourceWaveLengthBox.value "248.4"
             clickOn window ConstructorUiId.sourceSaveButton.value
             Assert.False(window.IsVisible, "Save closes the editor")
-            match sources.tryGetSource "src-typed" with
+            match sources.tryGetSource (Placement.ElementValueId "src-typed") with
             | Ok (Some s) ->
-                Assert.Equal("Typed KrF", s.name)
+                Assert.Equal("Typed KrF", s.name.value)
                 Assert.True(abs (nmOf s.waveLength - 248.4) < 1.0e-9)
             | other -> Assert.Fail($"expected the typed source, got %A{other}"))

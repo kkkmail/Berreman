@@ -177,7 +177,7 @@ module LibraryWindowTests =
                             match intent with
                             | SampleEditorView.NewBlankSample mintedId -> $"sample-add:{mintedId.value}"
                             | SampleEditorView.NewSeededMultilayer mintedId -> $"sample-multilayer:{mintedId.value}"
-                            | SampleEditorView.EditSample s -> "sample-edit:" + s.name)
+                            | SampleEditorView.EditSample s -> "sample-edit:" + s.name.value)
                 // Spec 0046: a fresh user-sources store (reachable as `context.sources`) and a recording
                 // source-editor launcher.
                 sources = SourceProxy.createInMemory ()
@@ -186,7 +186,7 @@ module LibraryWindowTests =
                         calls.Add(
                             match intent with
                             | LightSourceEditorView.NewSource mintedId -> "source-add:" + mintedId
-                            | LightSourceEditorView.EditSource s -> "source-edit:" + s.name)
+                            | LightSourceEditorView.EditSource s -> "source-edit:" + s.name.value)
                 requestClose = fun () -> calls.Add "close-requested"
             }
         calls, context
@@ -211,7 +211,7 @@ module LibraryWindowTests =
                 kindConstraint = KindConstraint kind
                 currentEntryIdOpt = None
                 target = target
-                onSelected = fun entry -> events.Add ("selected:" + entry.entryId)
+                onSelected = fun entry -> events.Add ("selected:" + entry.entryId.value)
                 onCancelled = fun () -> events.Add "cancelled"
             }
         events, context
@@ -225,7 +225,7 @@ module LibraryWindowTests =
         events, calls, LW.initLibraryWindow context (Select selectCtx)
 
     let private filteredEntryIds (m : LW.LibraryWindowModel) : string list =
-        LW.filteredEntries m |> List.map (fun e -> e.entryId)
+        LW.filteredEntries m |> List.map (fun e -> e.entryId.value)
 
     let private glassFilm600EntryId : string = string SeedSamples.glassFilm600.id.value
 
@@ -667,11 +667,11 @@ module LibraryWindowTests =
         match samples.removeSample SeedSamples.glassFilm600.id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
-        // …so the armed confirm meets the typed UnknownSampleId block, surfaced inline.
+        // …so the armed confirm meets the typed UnknownSampleIdErr block, surfaced inline.
         let refused = LW.updateLibraryWindow LW.ConfirmRemove armed
         match refused.lastError with
-        | Some (LW.SampleRemoveRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
-        | other -> Assert.Fail($"expected SampleRemoveRefused UnknownSampleId, got %A{other}")
+        | Some (LW.SampleRemoveRefused (UnknownSampleIdErr reason)) -> Assert.Contains("unknown sample id", reason)
+        | other -> Assert.Fail($"expected SampleRemoveRefused UnknownSampleIdErr, got %A{other}")
         Assert.Equal(LW.NoPendingRemove, refused.removeGate)
         Assert.Equal(seededCorpus - 1, (LW.facetedState refused).resultCount.value)
 
@@ -865,7 +865,7 @@ module LibraryWindowTests =
             Assert.False(editor.IsVisible, "Save must close the editor")
             // The save landed in the SHARED store…
             match samples.listSamples ActiveOnly with
-            | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name = "Library window sample")
+            | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name.value = "Library window sample")
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             // …and the window's next dispatch-driven render re-queries it: committing the
             // matching filter narrows the tree to the just-saved entry.
@@ -949,7 +949,7 @@ module LibraryWindowTests =
             clickOn editor ConstructorUiId.sampleEditorSaveButton.value
             Assert.False(editor.IsVisible)
             match samples.listSamples ActiveOnly with
-            | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name = "Window multilayer")
+            | Ok all -> Assert.Contains(all, fun (s : Sample) -> s.name.value = "Window multilayer")
             | Error e -> Assert.Fail($"listSamples failed: %A{e}")
             window.Close())
 
@@ -1067,7 +1067,7 @@ module LibraryWindowTests =
         // Constrained to CircularPolarizer: exactly the two CP presets remain; the constraint
         // takes NO chip (nothing to remove — it lives below the facet engine) and the ordinary
         // window state (filter, offers, representation) is otherwise untouched.
-        let _, _, m = freshSelectModel CircularPolarizer (TableElementTarget (elementId "el-1"))
+        let _, _, m = freshSelectModel CircularPolarizer (TableElementTarget (ElementId "el-1"))
         Assert.Equal<string list>(
             [ "pol-cp-left"; "pol-cp-right" ],
             filteredEntryIds m |> List.sort)
@@ -1075,7 +1075,7 @@ module LibraryWindowTests =
         Assert.Equal(2, state.resultCount.value)
         Assert.Empty(state.breadcrumbs)
         // A LinearPolarizer constraint narrows to the one LP preset (forKinds, never re-derived).
-        let _, _, lp = freshSelectModel LinearPolarizer (TableElementTarget (elementId "el-1"))
+        let _, _, lp = freshSelectModel LinearPolarizer (TableElementTarget (ElementId "el-1"))
         Assert.Equal<string list>([ "pol-lp" ], filteredEntryIds lp)
         // The selection resolves through the CONSTRAINED corpus: an out-of-constraint id
         // resolves to nothing (Select can never return an entry outside its constraint).
@@ -1087,7 +1087,7 @@ module LibraryWindowTests =
 
     [<Fact>]
     let ``ConfirmSelect returns the HIGHLIGHTED entry through onSelected and closes — no highlight is inert`` () =
-        let events, calls, m = freshSelectModel Detector (TableElementTarget (elementId "det"))
+        let events, calls, m = freshSelectModel Detector (TableElementTarget (ElementId "det"))
         // No highlight → inert: no callback, no close, the model unchanged.
         Assert.Equal<LW.LibraryWindowModel>(m, LW.updateLibraryWindow LW.ConfirmSelect m)
         Assert.Empty(events)
@@ -1111,7 +1111,7 @@ module LibraryWindowTests =
     [<Fact>]
     let ``CancelSelect and the host dismissal cancel a pending session exactly once`` () =
         // The Close verb: onCancelled, then the close request.
-        let events, calls, m = freshSelectModel Detector (TableElementTarget (elementId "det"))
+        let events, calls, m = freshSelectModel Detector (TableElementTarget (ElementId "det"))
         let cancelled = LW.updateLibraryWindow LW.CancelSelect m
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         Assert.Contains("close-requested", calls)
@@ -1121,7 +1121,7 @@ module LibraryWindowTests =
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         // The host dismissal alone (title-bar X / a staleness Close()): onCancelled once,
         // WITHOUT a close request (the window is already closing).
-        let events2, calls2, m2 = freshSelectModel Detector (TableElementTarget (elementId "det"))
+        let events2, calls2, m2 = freshSelectModel Detector (TableElementTarget (ElementId "det"))
         let dismissed = LW.updateLibraryWindow LW.SelectDismissed m2
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events2)
         Assert.DoesNotContain("close-requested", calls2)
@@ -1129,12 +1129,12 @@ module LibraryWindowTests =
 
     [<Fact>]
     let ``RetargetSelect cancels the superseded session, re-points the constraint and target, and clears the highlight`` () =
-        let events, _, m = freshSelectModel LinearPolarizer (TableElementTarget (elementId "el-1"))
+        let events, _, m = freshSelectModel LinearPolarizer (TableElementTarget (ElementId "el-1"))
         let highlighted = LW.updateLibraryWindow (LW.SelectEntry "pol-lp") m
         // A second Select open re-targets the live single instance: the FIRST session is
         // cancelled (a second Choose closes the first, logically) and the window now serves
         // the new constraint/target with a fresh highlight.
-        let events2, retargetCtx = selectContext Detector (TableElementTarget (elementId "det"))
+        let events2, retargetCtx = selectContext Detector (TableElementTarget (ElementId "det"))
         let retargeted = LW.updateLibraryWindow (LW.RetargetSelect retargetCtx) highlighted
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         Assert.Empty(events2)
@@ -1201,7 +1201,7 @@ module LibraryWindowTests =
     let ``acceptance (016): the Select state shows the Select-Close pair and the NON-REMOVABLE kind constraint — everything else IS the ordinary window`` () =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
-            let _, selectCtx = selectContext CircularPolarizer (TableElementTarget (elementId "el-1"))
+            let _, selectCtx = selectContext CircularPolarizer (TableElementTarget (ElementId "el-1"))
             let window = mountSelectLibraryWindow library samples materials selectCtx
             // Exactly the TWO buttons, one row, distinct positive/negative styling.
             Assert.True(isPresent window ConstructorUiId.librarySelectButton.value, "the Select button must render")
@@ -1240,8 +1240,8 @@ module LibraryWindowTests =
                 {
                     kindConstraint = KindConstraint Detector
                     currentEntryIdOpt = None
-                    target = TableElementTarget (elementId "det")
-                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (elementId "det", entry.entryId))
+                    target = TableElementTarget (ElementId "det")
+                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (ElementId "det", entry.entryId.value))
                     onCancelled = fun () -> cancels.Add "cancelled"
                 }
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
@@ -1263,14 +1263,14 @@ module LibraryWindowTests =
     let ``acceptance (016): a changed table selection cancels and CLOSES the open Select-state Library window`` () =
         HeadlessSession.run (fun () ->
             let library, samples, materials = freshStores ()
-            let events, selectCtx = selectContext Detector (TableElementTarget (elementId "det"))
+            let events, selectCtx = selectContext Detector (TableElementTarget (ElementId "det"))
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
             // The workbench holds the session handle (the step-017 Choose… flow populates it;
             // seeded here): selection sits on the detector element.
             let model0 = freshMainModel ()
             let session : Scene.SelectSession =
                 {
-                    target = elementId "det"
+                    target = ElementId "det"
                     cancelAndClose = fun () -> selectWindow.Close()
                 }
             let mainWindow, _ =
@@ -1297,8 +1297,8 @@ module LibraryWindowTests =
                 {
                     kindConstraint = KindConstraint Detector
                     currentEntryIdOpt = None
-                    target = TableElementTarget (elementId "det")
-                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (elementId "det", entry.entryId))
+                    target = TableElementTarget (ElementId "det")
+                    onSelected = fun entry -> dispatch (Scene.BindValueIdTo (ElementId "det", entry.entryId.value))
                     onCancelled = fun () -> ()
                 }
             let selectWindow = mountSelectLibraryWindow library samples materials selectCtx
@@ -1413,7 +1413,7 @@ module LibraryWindowTests =
             Assert.True(isPresent selectWindow ConstructorUiId.librarySelectButton.value)
             // The workbench holds the session's staleness handle while the window is open.
             (match (getModel ()).activeSelect with
-             | Some session -> Assert.Equal<ElementId>(elementId "det", session.target)
+             | Some session -> Assert.Equal<ElementId>(ElementId "det", session.target)
              | None -> Assert.Fail "Choose… must register the Select session handle")
             // Bind through the window: highlight the entry, then Select.
             clickOn selectWindow (LW.entryNode "det-intensity")
@@ -1461,7 +1461,7 @@ module LibraryWindowTests =
             Assert.True(matchesId ConstructorUiId.libraryWindow.value selectWindow, "the menu's Choose… must open the Library window")
             Assert.Contains("Light source", textOf selectWindow ConstructorUiId.librarySelectConstraint.value)
             (match (getModel ()).activeSelect with
-             | Some session -> Assert.Equal<ElementId>(elementId "src", session.target)
+             | Some session -> Assert.Equal<ElementId>(ElementId "src", session.target)
              | None -> Assert.Fail "the menu's Choose… must register the Select session handle")
             expandEntries selectWindow
             Assert.True(isPresent selectWindow (LW.entryNode "src-600"))
@@ -1498,7 +1498,7 @@ module LibraryWindowTests =
             let selectWindow = opened.[0]
             Assert.True(selectWindow.IsVisible, "the re-target keeps the one live window")
             (match (getModel ()).activeSelect with
-             | Some session -> Assert.Equal<ElementId>(elementId "det", session.target)
+             | Some session -> Assert.Equal<ElementId>(ElementId "det", session.target)
              | None -> Assert.Fail "the re-target must leave the NEW session handle in place")
             // Closing the window from ITS side (the title-bar X path) ends the session exactly
             // once and clears the workbench handle through the reference-keyed message.
@@ -1518,8 +1518,8 @@ module LibraryWindowTests =
     let private twoVersionSamples () : SampleId * Sample * Sample * SampleProxy =
         let template = SeedSamples.glassFilm600
         let id = newSampleId ()
-        let v1 = { template with id = id; name = "Versioned sample v1" }
-        let v2 = { template with id = id; name = "Versioned sample v2" }
+        let v1 = { template with id = id; name = EntryName "Versioned sample v1" }
+        let v2 = { template with id = id; name = EntryName "Versioned sample v2" }
         let proxy : SampleProxy =
             {
                 listSamples = fun _ -> Ok [ v2 ]
@@ -1613,8 +1613,8 @@ module LibraryWindowTests =
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
         let refused = LW.updateLibraryWindow LW.ConfirmLifecycle armed
         match refused.lastError with
-        | Some (LW.SampleLifecycleRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
-        | other -> Assert.Fail($"expected SampleLifecycleRefused UnknownSampleId, got %A{other}")
+        | Some (LW.SampleLifecycleRefused (UnknownSampleIdErr reason)) -> Assert.Contains("unknown sample id", reason)
+        | other -> Assert.Fail($"expected SampleLifecycleRefused UnknownSampleIdErr, got %A{other}")
 
     [<Fact>]
     let ``the view panel enumerates sample versions and an older version is view-only while Edit targets the latest`` () =

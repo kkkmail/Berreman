@@ -167,7 +167,7 @@ let private anisotropyLabel (anisotropy : Anisotropy) : string =
 /// A material category's stable code (the derived UiIds key): the display name resolved
 /// through the seeded catalogue by `CategoryId` (spec 0035 step 001), not a closed-union match.
 let categoryCode (category : CategoryId) : string =
-    categoryName category
+    category.categoryName
 
 /// The create picker's category choices (spec 0035 step 009): the LIVE catalogue from the context's
 /// `CategoryProxy` (`listCategories`, re-read at render), EXCLUDING every `HiddenOnCreate` category
@@ -209,11 +209,11 @@ let editErrorReason (e : MaterialComplexityEditError) : string =
 
 let private materialErrorReason (e : MaterialError) : string =
     match e with
-    | UnknownMaterialId reason
-    | DuplicateMaterialId reason
-    | MaterialStillReferenced reason
-    | MaterialVersionInUse reason
-    | InvalidMaterial reason -> reason
+    | UnknownMaterialIdErr reason
+    | DuplicateMaterialIdErr reason
+    | MaterialStillReferencedErr reason
+    | MaterialVersionInUseErr reason
+    | InvalidMaterialErr reason -> reason
 
 /// The live preview's fixed spectral window: the visible band in canonical meters (the
 /// display unit is nm; AC-D7 — the unit never changes the sampled range).
@@ -335,8 +335,8 @@ let initMaterialEditor (context : MaterialEditorContext) (intent : MaterialEdito
                     context = context
                     target = { materialId = entry.id; freshness = WindowLauncher.Persisted }
                     mode = EditableMaterial
-                    name = entry.name
-                    description = (match entry.description with Some d -> d | None -> "")
+                    name = entry.name.value
+                    description = (match entry.description with Some d -> d.value | None -> "")
                     category = entry.category
                     editor = defaultState
                     presetProperties = None
@@ -405,9 +405,9 @@ let updateMaterialEditor (msg : MaterialEditorMsg) (m : MaterialEditorModel) : M
                 let entryUnder (id : MaterialId) : MaterialEntry =
                     {
                         id = id
-                        name = m.name
+                        name = EntryName m.name
                         category = m.category
-                        description = (if String.IsNullOrWhiteSpace m.description then None else Some m.description)
+                        description = (if String.IsNullOrWhiteSpace m.description then None else Some (EntryDescription m.description))
                         properties = complexity.toProperties
                         complexity = Some complexity
                     }
@@ -619,7 +619,7 @@ let private categoryRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg 
                 WrapPanel.children (
                     selectableCategories m
                     |> List.map (fun category ->
-                        clickBox (ConstructorUiId.materialEditorCategoryOption category.id).value category.name (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
+                        clickBox (ConstructorUiId.materialEditorCategoryOption category.id).value category.name.value (m.category = category.id) (fun () -> dispatch (ChooseCategory category.id))))
             ] :> IView
         ]
     ] :> IView

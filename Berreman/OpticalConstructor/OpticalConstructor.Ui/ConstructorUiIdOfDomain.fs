@@ -36,10 +36,20 @@ module ConstructorUiIdOfDomain =
         /// The element as the key of its repeated controls (an Experiments-bay candidate).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
 
+    type OpticalConstructor.Domain.Placement.ElementValueId with
+
+        /// The Library entry as the key of its Select-bay leaf row.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
     type CategoryId with
 
         /// The category as the key of its Category-manager row (its Guid's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
+
+    type CategoryName with
+
+        /// The name as its Category-manager row shows it.
+        member this.caption : ControlCaption = ControlCaption this.value
 
     type AttributeKey with
 

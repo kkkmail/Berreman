@@ -38,8 +38,8 @@ module WorkbenchInfoAndCaptureTests =
 
     let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
     let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel = updateTableAndElementRotation (BindValueIdTo ((elem i m).id, entryId)) m
-    let private glassFilm200Id : string = (SampleItem SeedSamples.glassFilm200).entryId
-    let private glassPlate1mmId : string = (SampleItem SeedSamples.glassPlate1mm).entryId
+    let private glassFilm200Id : string = (SampleItem SeedSamples.glassFilm200).entryId.value
+    let private glassPlate1mmId : string = (SampleItem SeedSamples.glassPlate1mm).entryId.value
 
     let private canvasPointOf (i : int) (m : TableAndElementRotationModel) : ScreenPoint =
         TableView.project pixelsPerMeter center m.view ((snappedCentres m).[i])
@@ -115,7 +115,7 @@ module WorkbenchInfoAndCaptureTests =
         let session (current : string option) : SelectionContext<LibraryEntry> =
             {
                 kindConstraint = KindConstraint LightSource
-                target = TableElementTarget (elementId "src")
+                target = TableElementTarget (ElementId "src")
                 currentEntryIdOpt = current
                 onSelected = ignore
                 onCancelled = ignore
@@ -289,8 +289,8 @@ module WorkbenchInfoAndCaptureTests =
         let m = SE.initLightSourceEditor context (SE.NewSource "src-tune") |> SE.updateLightSourceEditor (SE.SetLightSourceName "My OPO") |> SE.updateLightSourceEditor (SE.SetTuning SE.TunableChoice)
         let saved = SE.updateLightSourceEditor SE.LightSourceSaveClicked m
         Assert.Equal(None, saved.status)
-        match sources.tryGetSource "src-tune" with
-        | Ok (Some s) -> Assert.Equal(Some (400.0, 800.0), s.tunableRangeNm |> Option.map (fun (a, b) -> round a, round b))
+        match sources.tryGetSource (ElementValueId "src-tune") with
+        | Ok (Some s) -> Assert.Equal(Some (400.0, 800.0), s.tunableLimitsOpt |> Option.map (fun l -> round (l.lower.value / nmToMeter / oneNanometer), round (l.upper.value / nmToMeter / oneNanometer)))
         | other -> Assert.Fail($"expected the tunable source, got %A{other}")
         let reversed = m |> SE.updateLightSourceEditor (SE.SetMinimumText "900") |> SE.updateLightSourceEditor SE.LightSourceSaveClicked
         Assert.True(Option.isSome reversed.status, "limits in the wrong order are refused with a reason")

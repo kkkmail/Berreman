@@ -431,7 +431,7 @@ let filteredEntries (m : LibraryWindowModel) : LibraryEntry list =
 /// row, and a Select session can only ever return an entry inside its constraint.
 let selectedEntry (m : LibraryWindowModel) : LibraryEntry option =
     match m.selectedEntryId with
-    | Some id -> constrainedEntries m |> List.tryFind (fun e -> e.entryId = id)
+    | Some id -> constrainedEntries m |> List.tryFind (fun e -> e.entryId.value = id)
     | None -> None
 
 /// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
@@ -628,7 +628,7 @@ let private showCurrentEntry (m : LibraryWindowModel) : LibraryWindowModel =
     match m.mode with
     | Select session ->
         match session.currentEntryIdOpt with
-        | Some id when constrainedEntries m |> List.exists (fun e -> e.entryId = id) ->
+        | Some id when constrainedEntries m |> List.exists (fun e -> e.entryId.value = id) ->
             let expanded = if m.expandedNodes.isExpanded "entries" then m.expandedNodes else m.expandedNodes.toggle "entries"
             { m with selectedEntryId = Some id; selectedNodeCode = entryNodeCode id; expandedNodes = expanded }
         | Some _ | None -> m
@@ -700,7 +700,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
     | AddSource ->
         // Spec 0046: the source's entry id is minted HERE, at the window-open dispatch (the Add
         // sample precedent), so the launcher keys the new editor by the id its Save stores under.
-        m.context.openSourceEditor (LightSourceEditorView.NewSource (newSourceId ()))
+        m.context.openSourceEditor (LightSourceEditorView.NewSource (newSourceId ()).value)
         disarmed m
     | EditSelected ->
         // Edit opens the Sample editor on the selected SAMPLE, or (spec 0046) the source editor on a
@@ -726,7 +726,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
             | UserManaged ->
                 match entry with
                 | SampleItem sample -> { m with removeGate = PendingRemove sample.id; lastError = None }
-                | SourceItem source -> { m with removeGate = PendingSourceRemove source.id; lastError = None }
+                | SourceItem source -> { m with removeGate = PendingSourceRemove source.id.value; lastError = None }
                 | DetectorItem _ | PolarizerItem _ ->
                     // Unreachable over today's corpus (every detector / polarizer seed is
                     // protected) — total handling, never a throw.
@@ -748,7 +748,7 @@ let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : Libr
                 // the store, selection and list untouched.
                 { m with removeGate = NoPendingRemove; lastError = Some (SampleRemoveRefused err) }
         | PendingSourceRemove id ->
-            match m.context.sources.removeSource id with
+            match m.context.sources.removeSource (ElementValueId id) with
             | Ok () ->
                 { m with
                     removeGate = NoPendingRemove
@@ -996,7 +996,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                     expansion = expansionOf "entries"
                     children =
                         filtered
-                        |> List.map (fun entry -> entryLeafNode (entryNodeCode entry.entryId) entry)
+                        |> List.map (fun entry -> entryLeafNode (entryNodeCode entry.entryId.value) entry)
                         |> sortNodesByLabel
                 }
             let engineTree = Facets.buildTree (Representation m.representation.order) inputs.defs inputs.appliedAll inputs.corpus
@@ -1039,7 +1039,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                                 // (path-shaped codes keep them tree-unique), alphabetical by label.
                                 children =
                                     members
-                                    |> List.map (fun entry -> entryLeafNode (branchCode + ":" + entryNodeCode entry.entryId) entry)
+                                    |> List.map (fun entry -> entryLeafNode (branchCode + ":" + entryNodeCode entry.entryId.value) entry)
                                     |> sortNodesByLabel
                              } : FacetedTreeControls.TreeNode))
                     // The facet group shows its total: the DISTINCT filtered entries it classifies (an
@@ -1259,11 +1259,11 @@ let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> 
         | NoPendingRemove -> None
         | PendingRemove id ->
             match m.context.samples.tryGetSample id with
-            | Ok (Some sample) -> Some $"Remove sample '%s{sample.name}'?"
+            | Ok (Some sample) -> Some $"Remove sample '%s{sample.name.value}'?"
             | Ok None | Error _ -> Some $"Remove sample '%s{string id.value}'?"
         | PendingSourceRemove id ->
-            match m.context.sources.tryGetSource id with
-            | Ok (Some source) -> Some $"Remove source '%s{source.name}'?"
+            match m.context.sources.tryGetSource (ElementValueId id) with
+            | Ok (Some source) -> Some $"Remove source '%s{source.name.value}'?"
             | Ok None | Error _ -> Some $"Remove source '%s{id}'?"
     match prompt with
     | None -> []
@@ -1290,7 +1290,7 @@ let private lifecycleConfirmRow (m : LibraryWindowModel) (dispatch : LibraryWind
     | PendingLifecycle (id, action) ->
         let name =
             match m.context.samples.tryGetSample id with
-            | Ok (Some sample) -> sample.name
+            | Ok (Some sample) -> sample.name.value
             | Ok None | Error _ -> string id.value
         let prompt =
             match action with
@@ -1323,10 +1323,10 @@ let private messageRow (m : LibraryWindowModel) : IView list =
             | SampleRemoveRefused sampleError
             | SampleLifecycleRefused sampleError ->
                 match sampleError with
-                | UnknownSampleId reason
-                | DuplicateSampleId reason
-                | SampleVersionInUse reason
-                | InvalidSample reason -> reason
+                | UnknownSampleIdErr reason
+                | DuplicateSampleIdErr reason
+                | SampleVersionInUseErr reason
+                | InvalidSampleErr reason -> reason
             | SourceRemoveRefused sourceError -> sourceError.reason
         [ TextBlock.create [
               automationId<TextBlock> ConstructorUiId.libraryWindowMessage.value
@@ -1388,7 +1388,7 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
         let shownOlderSample = versions |> List.tryPick (fun (vn, s) -> if vn = shownVersion && viewingOlder then Some s else None)
         let displayName, description, note =
             match shownOlderSample with
-            | Some sample -> sample.name, sample.description, $" (version {shownVersion.value} — view-only)"
+            | Some sample -> sample.name.value, sample.description.value, $" (version {shownVersion.value} — view-only)"
             | None ->
                 let protectionNote =
                     match entry.protection with

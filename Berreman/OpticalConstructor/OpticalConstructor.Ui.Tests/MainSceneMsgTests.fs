@@ -116,7 +116,7 @@ module MainSceneMsgTests =
         let m = updateTableAndElementRotation (AddElement kind) (initMain ())
         Assert.Equal(Some (ElementValueId seedId), (elem 2 m).placement.valueId)
         // The pre-bound id RESOLVES through the live Library seam to an entry valid for the kind.
-        match m.library.tryGetEntry seedId with
+        match m.library.tryGetEntry (ElementValueId seedId) with
         | Ok (Some entry) -> Assert.Contains(kind, entry.forKinds)
         | other -> Assert.Fail($"the seed id %s{seedId} did not resolve: %A{other}")
 
@@ -476,7 +476,7 @@ module MainSceneMsgTests =
         // (never "the current selection" — the modeless Select window may outlive it).
         let m = initMain ()
         Assert.Equal(TableSelected, m.selection)
-        let bound = updateTableAndElementRotation (BindValueIdTo (elementId "det", "det-intensity")) m
+        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", "det-intensity")) m
         Assert.Equal(Some (ElementValueId "det-intensity"), (elem 1 bound).placement.valueId)
         Assert.Equal<ElementValueId option>(None, (elem 0 bound).placement.valueId)
         Assert.Equal<string option>(None, bound.selectStatus)
@@ -486,20 +486,20 @@ module MainSceneMsgTests =
     [<Fact>]
     let ``BindValueIdTo on a vanished element is a NO-OP plus the status line — never a throw`` () =
         let m = initMain ()
-        let vanished = updateTableAndElementRotation (BindValueIdTo (elementId "not-on-the-table", "det-intensity")) m
+        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "not-on-the-table", "det-intensity")) m
         // Nothing changed but the status line.
         Assert.Equal<TestElement list>(m.elements, vanished.elements)
         match vanished.selectStatus with
         | Some text -> Assert.Contains("no longer on the table", text)
         | None -> Assert.Fail "the vanished target must surface the status line"
         // The next SUCCESSFUL targeted bind clears it; so does a selection change.
-        let recovered = updateTableAndElementRotation (BindValueIdTo (elementId "det", "det-intensity")) vanished
+        let recovered = updateTableAndElementRotation (BindValueIdTo (ElementId "det", "det-intensity")) vanished
         Assert.Equal<string option>(None, recovered.selectStatus)
         Assert.Equal<string option>(None, (clickAt offPlate vanished).selectStatus)
 
     [<Fact>]
     let ``a changed table selection cancels and closes the active Select session — an unchanged one does not`` () =
-        let cancels, session = recordingSession (elementId "det")
+        let cancels, session = recordingSession (ElementId "det")
         let m = { withSample () with activeSelect = Some session }
         // Element 2 is selected (withSample); an off-plate click CHANGES the selection → the
         // session cancels and closes exactly once (the pending-bind-clears precedent).
@@ -508,7 +508,7 @@ module MainSceneMsgTests =
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
         Assert.Equal<SelectSession option>(None, changed.activeSelect)
         // An UNCHANGED selection (a second off-plate click) leaves a live session alone.
-        let cancels2, session2 = recordingSession (elementId "det")
+        let cancels2, session2 = recordingSession (ElementId "det")
         let unchanged = clickAt offPlate { changed with activeSelect = Some session2 }
         Assert.Equal(NothingSelected, unchanged.selection)
         Assert.Empty(cancels2)
@@ -517,19 +517,19 @@ module MainSceneMsgTests =
     [<Fact>]
     let ``an element ADD and the selected element's REMOVAL both cancel the active Select session`` () =
         // AddElement selects the new element — a table-selection change (the staleness rule).
-        let cancels, session = recordingSession (elementId "det")
+        let cancels, session = recordingSession (ElementId "det")
         let added = updateTableAndElementRotation (AddElement Lens) { initMain () with activeSelect = Some session }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
         Assert.Equal<SelectSession option>(None, added.activeSelect)
         // RemoveSelected makes the session's target disappear — cancel and close.
-        let cancels2, session2 = recordingSession (elementId "det")
+        let cancels2, session2 = recordingSession (ElementId "det")
         let armed = { initMain () with selection = ElementSelected 1; activeSelect = Some session2 }
         let removed = updateTableAndElementRotation RemoveSelected armed
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
         Assert.Equal<SelectSession option>(None, removed.activeSelect)
         Assert.Equal(1, List.length removed.elements)
         // An INERT remove (the table is selected) touches nothing — the session survives.
-        let cancels3, session3 = recordingSession (elementId "det")
+        let cancels3, session3 = recordingSession (ElementId "det")
         let inert = updateTableAndElementRotation RemoveSelected { initMain () with activeSelect = Some session3 }
         Assert.Empty(cancels3)
         Assert.Equal<SelectSession option>(Some session3, inert.activeSelect)
@@ -564,11 +564,11 @@ module MainSceneMsgTests =
 
     [<Fact>]
     let ``SelectSessionStarted stores the handle and SelectSessionEnded clears only that SAME session`` () =
-        let cancels, session = recordingSession (elementId "det")
+        let cancels, session = recordingSession (ElementId "det")
         let started = updateTableAndElementRotation (SelectSessionStarted session) (initMain ())
         Assert.Equal<SelectSession option>(Some session, started.activeSelect)
         // A STALE session's end (superseded by a re-target) never clears the successor.
-        let _, stale = recordingSession (elementId "det")
+        let _, stale = recordingSession (ElementId "det")
         Assert.Equal<SelectSession option>(Some session, (updateTableAndElementRotation (SelectSessionEnded stale) started).activeSelect)
         // The live session's own end clears the handle — WITHOUT re-closing the window (the
         // window ended the session from its side; only the staleness rules close it).
@@ -583,13 +583,13 @@ module MainSceneMsgTests =
         // The quick-pick race: the strip commits while the Choose… Select window is still
         // open — the bind ends the session AND closes its window (on the window path the
         // window already closed itself; the extra Close is the safe no-op).
-        let cancels, session = recordingSession (elementId "det")
-        let bound = updateTableAndElementRotation (BindValueIdTo (elementId "det", "det-intensity")) { initMain () with activeSelect = Some session }
+        let cancels, session = recordingSession (ElementId "det")
+        let bound = updateTableAndElementRotation (BindValueIdTo (ElementId "det", "det-intensity")) { initMain () with activeSelect = Some session }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels)
         Assert.Equal<SelectSession option>(None, bound.activeSelect)
         Assert.Equal(Some (ElementValueId "det-intensity"), (elem 1 bound).placement.valueId)
         // The vanished-target no-op still ends the session (the choice was made either way).
-        let cancels2, session2 = recordingSession (elementId "gone")
-        let vanished = updateTableAndElementRotation (BindValueIdTo (elementId "gone", "det-intensity")) { initMain () with activeSelect = Some session2 }
+        let cancels2, session2 = recordingSession (ElementId "gone")
+        let vanished = updateTableAndElementRotation (BindValueIdTo (ElementId "gone", "det-intensity")) { initMain () with activeSelect = Some session2 }
         Assert.Equal<string list>([ "cancel-and-close" ], List.ofSeq cancels2)
         Assert.Equal<SelectSession option>(None, vanished.activeSelect)

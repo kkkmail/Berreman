@@ -206,14 +206,14 @@ module LibraryFacets =
 
     /// Category — applies to every entry; the value set is corpus-derived
     /// (branches come from the filtered population), names resolved through
-    /// the seeded catalogue (`standardCategories` via `categoryName`).
+    /// the seeded catalogue (`standardCategories` via `CategoryId.categoryName`).
     let private materialCategoryDef : AttributeDef<MaterialEntry> =
         {
             key = materialCategoryKey
             name = "Category"
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (DiscreteKey (categoryName entry.category)) ]
+            extract = fun entry -> [ DiscreteValue (DiscreteKey entry.category.categoryName) ]
         }
 
     /// Anisotropy — Isotropic/Uniaxial/Biaxial from the eps value tree. TOTAL
@@ -235,7 +235,7 @@ module LibraryFacets =
         }
 
     /// Constant vs dispersive — from the engine `properties`
-    /// (`materialDispersion`), so it applies to EVERY entry, coded presets
+    /// (`MaterialEntry.dispersion`), so it applies to EVERY entry, coded presets
     /// included (silicon/langasite classify Dispersive, the vacuum spacer
     /// Constant).
     let private materialDispersionDef : AttributeDef<MaterialEntry> =
@@ -244,11 +244,11 @@ module LibraryFacets =
             name = "Dispersion"
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
-            extract = fun entry -> [ DiscreteValue (dispersionKey (materialDispersion entry)) ]
+            extract = fun entry -> [ DiscreteValue (dispersionKey entry.dispersion) ]
         }
 
     /// Transparent vs absorbing — TOTAL (spec 0040 Part B / operator 010/Q2),
-    /// classified via `materialDispersion` (the constant-vs-dispersive
+    /// classified via `MaterialEntry.dispersion` (the constant-vs-dispersive
     /// discriminator): a CONSTANT material reads Transparent/Absorbing from its
     /// `ConstantEpsValue` case (`transparencyOf`), while every DISPERSIVE
     /// material lands under Absorbing (its wavelength-dependent eps is a segment
@@ -263,7 +263,7 @@ module LibraryFacets =
             appliesTo = fun _ -> ApplicableAttribute
             extract =
                 fun entry ->
-                    match materialDispersion entry, constantEpsOf entry with
+                    match entry.dispersion, constantEpsOf entry with
                     | ConstantMaterial, Some constant -> [ DiscreteValue (transparencyKey (transparencyOf constant)) ]
                     | ConstantMaterial, None
                     | DispersiveMaterial, _ -> [ DiscreteValue (transparencyKey Absorbing) ]
@@ -412,7 +412,7 @@ module LibraryFacets =
 
     /// The display name a material id resolves to through the corpus.
     let private materialName (materials : MaterialEntry list) (id : MaterialId) : string option =
-        materials |> List.tryFind (fun m -> m.id = id) |> Option.map (fun m -> m.name)
+        materials |> List.tryFind (fun m -> m.id = id) |> Option.map (fun m -> m.name.value)
 
     let private isApplicableTo (def : AttributeDef<MaterialEntry>) (entry : MaterialEntry) : bool =
         match def.appliesTo entry with
@@ -502,7 +502,7 @@ module LibraryFacets =
                     match entry with
                     | SampleItem sample ->
                         match sample.substrate with
-                        | Plate -> ApplicableAttribute
+                        | ThickPlate -> ApplicableAttribute
                         | ThinFilm
                         | Mirror -> InapplicableAttribute
                     | SourceItem _ | DetectorItem _ | PolarizerItem _ -> InapplicableAttribute

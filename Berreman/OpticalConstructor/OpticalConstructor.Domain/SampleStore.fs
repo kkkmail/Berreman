@@ -61,7 +61,7 @@ module SampleStore =
             let store = ref seeded
 
             let unknown (id : SampleId) : SampleError =
-                UnknownSampleId $"unknown sample id '%s{string id.value}'"
+                UnknownSampleIdErr $"unknown sample id '%s{string id.value}'"
 
             /// The latest (highest-numbered) version of a non-empty history.
             let latestOf (versions : VersionRecord list) : VersionRecord =
@@ -72,7 +72,7 @@ module SampleStore =
             let payloadOf (s : Sample) : VersionPayload<SampleStructure, SampleMetadata> =
                 {
                     physics = s.structure
-                    metadata = { name = s.name; description = s.description; substrate = s.substrate }
+                    metadata = { name = s.name.value; description = s.description.value; substrate = s.substrate }
                 }
 
             /// Whether the versioned reference is bound by a live experiment, through the seam.
@@ -110,7 +110,7 @@ module SampleStore =
                     fun q ->
                         let byText =
                             currentSamples ActiveOnly
-                            |> List.filter (fun s -> s.name.IndexOf(q.text, StringComparison.OrdinalIgnoreCase) >= 0)
+                            |> List.filter (fun s -> s.name.value.IndexOf(q.text.value, StringComparison.OrdinalIgnoreCase) >= 0)
                         match q.substrate with
                         | Some kind -> Ok (byText |> List.filter (fun s -> s.substrate = kind))
                         | None -> Ok byText
@@ -128,7 +128,7 @@ module SampleStore =
 
                 saveSample =
                     fun sample ->
-                        validateSample sample
+                        sample.validate
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind sample.id with
                             | None ->
@@ -176,7 +176,7 @@ module SampleStore =
                                 Ok ()
                             | _ ->
                                 let versionList = usedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                Error (SampleVersionInUse $"sample '%s{(latestOf versions).sample.name}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
+                                Error (SampleVersionInUseErr $"sample '%s{(latestOf versions).sample.name.value}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
                         | None -> Error (unknown id)
             }
 

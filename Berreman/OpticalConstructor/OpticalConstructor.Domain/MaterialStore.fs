@@ -65,7 +65,7 @@ module MaterialStore =
             let store = ref seeded
 
             let unknown (id : MaterialId) : MaterialError =
-                UnknownMaterialId $"unknown material id '%s{string id.value}'"
+                UnknownMaterialIdErr $"unknown material id '%s{string id.value}'"
 
             /// The latest (highest-numbered) version of a non-empty history.
             let latestOf (versions : VersionRecord list) : VersionRecord =
@@ -76,7 +76,7 @@ module MaterialStore =
             let payloadOf (e : MaterialEntry) : VersionPayload<MaterialComplexity option, MaterialMetadata> =
                 {
                     physics = e.complexity
-                    metadata = { name = e.name; category = e.category; description = e.description }
+                    metadata = { name = e.name.value; category = e.category; description = e.description |> Option.map (fun d -> d.value) }
                 }
 
             /// Whether the versioned reference is bound by a live experiment, through the seam.
@@ -125,7 +125,7 @@ module MaterialStore =
 
                 saveMaterial =
                     fun entry ->
-                        validateEntry entry
+                        entry.validate
                         |> Result.bind (fun () ->
                             match store.Value |> Map.tryFind entry.id with
                             | None ->
@@ -166,10 +166,10 @@ module MaterialStore =
                             | referencing when not (List.isEmpty referencing) ->
                                 let names =
                                     referencing
-                                    |> List.map (fun s -> $"'%s{s.name}'")
+                                    |> List.map (fun s -> $"'%s{s.name.value}'")
                                     |> List.sort
                                     |> String.concat ", "
-                                Error (MaterialStillReferenced $"material '%s{(latestOf versions).entry.name}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
+                                Error (MaterialStillReferencedErr $"material '%s{(latestOf versions).entry.name.value}' ('%s{string id.value}') is still referenced by %d{List.length referencing} sample(s): %s{names}")
                             | _ ->
                                 let usedVersions =
                                     versions
@@ -182,7 +182,7 @@ module MaterialStore =
                                     Ok ()
                                 | _ ->
                                     let versionList = usedVersions |> List.map (fun n -> $"v%d{n}") |> String.concat ", "
-                                    Error (MaterialVersionInUse $"material '%s{(latestOf versions).entry.name}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
+                                    Error (MaterialVersionInUseErr $"material '%s{(latestOf versions).entry.name.value}' ('%s{string id.value}') has %d{List.length usedVersions} version(s) bound by a live experiment: %s{versionList}")
                         | None -> Error (unknown id)
             }
 

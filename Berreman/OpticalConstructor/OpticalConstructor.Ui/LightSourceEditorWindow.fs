@@ -22,7 +22,7 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
     do
         this.Title <-
             match intent with
-            | LightSourceEditorView.EditSource s -> $"Source Editor — %s{s.name}"
+            | LightSourceEditorView.EditSource s -> $"Source Editor — %s{s.name.value}"
             | LightSourceEditorView.NewSource _ -> "Source Editor — new source"
         this.Name <- ConstructorUiId.sourceEditorWindow.value
         AutomationProperties.SetAutomationId(this, ConstructorUiId.sourceEditorWindow.value)

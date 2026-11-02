@@ -37,14 +37,14 @@ module ExperimentControlsTests =
 
     /// The Guid-string entry id of the seeded 200 nm glass film these tests bind (referenced
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
-    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
+    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId.value
 
     /// A seeded ThinFilm and a seeded Plate sample — both supporting BOTH branches (spec 0046) — and the
     /// seeded MIRROR (the EUV multilayer, `EmitReflectedOnly`): the geometries spec 0040 D.3 bounds a
     /// placed sample's emission by.
-    let private glassFilm600Id : string = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId
-    let private glassPlate1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
-    let private euvMirrorId : string = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId
+    let private glassFilm600Id : string = (Library.SampleItem Library.SeedSamples.glassFilm600).entryId.value
+    let private glassPlate1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
+    let private euvMirrorId : string = (Library.SampleItem Library.SeedSamples.euvMoSi).entryId.value
 
     /// The live id of the element at index `i`.
     let private idOf (i : int) (m : TableAndElementRotationModel) : string = (elem i m).id.value
@@ -97,7 +97,7 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``choosing the source constrains the variable to wavelength (data-driven)`` () =
         let m = withTunableSource () |> updateTableAndElementRotation (ExpChooseElement "src")
-        Assert.Equal(Some (Library.elementId "src"), m.experimentCollection.draft.elementId)
+        Assert.Equal(Some (Library.ElementId "src"), m.experimentCollection.draft.elementId)
         Assert.Equal(Some Experiments.VaryWaveLength, m.experimentCollection.draft.variable)
         // Spec 0046: the sweep spans the tunable source's limits (190–1000 nm) and stays inside them.
         Assert.True(abs (m.experimentCollection.draft.range.min - 190.0) < 1e-9)

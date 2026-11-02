@@ -50,7 +50,7 @@ module OutOfBandDiagnosticTests =
     let private entryOf (name : string) (c : MaterialComplexity) : MaterialEntry =
         {
             id = newMaterialId ()
-            name = name
+            name = EntryName name
             category = CategoryIds.glass
             description = None
             properties = c.toProperties
@@ -168,7 +168,7 @@ module OutOfBandDiagnosticTests =
             {
                 id = ExperimentId 1
                 setup = []
-                varied = Some { VariedElement.elementId = OpticalConstructor.Domain.Library.elementId "src"; variable = VaryWaveLength }
+                varied = Some { VariedElement.elementId = OpticalConstructor.Domain.Library.ElementId "src"; variable = VaryWaveLength }
                 measurement = CaptureTransmitted
                 range = { min = 200.0; max = 800.0; points = 91 }
                 dataFileOpt = None

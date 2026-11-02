@@ -72,17 +72,17 @@ module ExperimentRunTests =
     let ``a tunable source needs ordered positive limits and a setting inside them`` () =
         let tunable (lo : float) (hi : float) (at : float) : SourcePreset =
             {
-                id = "src-t"
-                name = "T"
+                id = Placement.ElementValueId "src-t"
+                name = MaterialLibrary.EntryName "T"
                 waveLength = WaveLength.nm (at * 1.0<nm>)
-                tuning = TunableBetween (WaveLength.nm (lo * 1.0<nm>), WaveLength.nm (hi * 1.0<nm>))
+                tuning = TunableBetween { Berreman.Dispersion.WaveLengthInterval.lower = WaveLength.nm (lo * 1.0<nm>); upper = WaveLength.nm (hi * 1.0<nm>) }
                 protection = UserManaged
             }
-        Assert.Equal(Ok (), validateSource (tunable 400.0 800.0 600.0))
+        Assert.Equal(Ok (), (tunable 400.0 800.0 600.0).validate)
         for bad in [ tunable 800.0 400.0 600.0; tunable 400.0 800.0 900.0; tunable 0.0 800.0 600.0 ] do
-            match validateSource bad with
-            | Error (InvalidSource _) -> ()
-            | other -> Assert.Fail($"expected InvalidSource, got %A{other}")
-        Assert.Equal(Some (400.0, 800.0), (tunable 400.0 800.0 600.0).tunableRangeNm |> Option.map (fun (a, b) -> round a, round b))
+            match bad.validate with
+            | Error (InvalidSourceErr _) -> ()
+            | other -> Assert.Fail($"expected InvalidSourceErr, got %A{other}")
+        Assert.Equal(Some (400.0, 800.0), (tunable 400.0 800.0 600.0).tunableLimitsOpt |> Option.map (fun l -> round (l.lower.value / nmToMeter / oneNanometer), round (l.upper.value / nmToMeter / oneNanometer)))
         // The seeded tunable sources are valid presets of their own kind.
-        Assert.All(SeedSources.tunables, fun s -> Assert.True(Option.isSome s.tunableRangeNm, s.name))
+        Assert.All(SeedSources.tunables, fun s -> Assert.True(Option.isSome s.tunableLimitsOpt, s.name.value))

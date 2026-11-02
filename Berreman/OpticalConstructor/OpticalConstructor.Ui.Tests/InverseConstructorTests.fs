@@ -36,7 +36,7 @@ module InverseConstructorTests =
         initInverse (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
 
     /// The seeded 200 nm glass-film sample entry id (bound as the inverse HINT).
-    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
+    let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId.value
 
     let private theSample (m : TableAndElementRotationModel) : TestElement =
         m.elements |> List.find (fun e -> e.placement.catalogueKind = Placement.Sample)

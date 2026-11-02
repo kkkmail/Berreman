@@ -26,7 +26,7 @@ module ExperimentCollectionProxyTests =
         | Ok n -> n
         | Error e -> failwith $"test collection name unexpectedly rejected: %A{e}"
 
-    let private el (s : string) : ElementId = Library.elementId s
+    let private el (s : string) : ElementId = Library.ElementId s
 
     /// A placement/orientation summary for a rest-pose element of the given kind.
     let private placementOf (kind : CatalogueKind) : PlacementSummary =

@@ -28,24 +28,24 @@ module SceneRoundTripTests =
     // zoom }`.
 
     let private sourceEl : TestElement =
-        { TestElement.id = Library.elementId "src"
+        { TestElement.id = Library.ElementId "src"
           placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some (ElementValueId "src-600") }
           zoom = 1.5
           beam = BeamLayout.OnMainBeam }
 
     let private polarizerEl : TestElement =
-        { TestElement.id = Library.elementId "pol"
+        { TestElement.id = Library.ElementId "pol"
           placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some (ElementValueId "pol-lp") }
           zoom = 3.25
           beam = BeamLayout.OnMainBeam }
 
     let private detectorEl : TestElement =
-        { TestElement.id = Library.elementId "det"
+        { TestElement.id = Library.ElementId "det"
           placement = ElementPlacement.create Detector { x = 0.80<meter>; y = -0.20<meter> }
           zoom = 2.0
           // Spec 0046: the detector sits on the polarizer's REFLECTED ray, so the round-trip proves the
           // beam host survives save-load too.
-          beam = BeamLayout.OnReflectedBeamOf (Library.elementId "pol") }
+          beam = BeamLayout.OnReflectedBeamOf (Library.ElementId "pol") }
 
     /// A NON-default table view (pan + zoom dialled off the straight top-down default), so the
     /// captured / restored view state is distinguishable from a fresh model's.
@@ -108,7 +108,7 @@ module SceneRoundTripTests =
         Assert.Equal<TestElement list>([ sourceEl; polarizerEl; detectorEl ], restored.elements)
         // ... the beam each element sits on (spec 0046) ...
         Assert.Equal<BeamLayout.BeamHost list>(
-            [ BeamLayout.OnMainBeam; BeamLayout.OnMainBeam; BeamLayout.OnReflectedBeamOf (Library.elementId "pol") ],
+            [ BeamLayout.OnMainBeam; BeamLayout.OnMainBeam; BeamLayout.OnReflectedBeamOf (Library.ElementId "pol") ],
             restored.elements |> List.map (fun e -> e.beam))
         // ... and the table view state + snap flag.
         Assert.Equal<Table.TableViewState>(dialledView, restored.view)

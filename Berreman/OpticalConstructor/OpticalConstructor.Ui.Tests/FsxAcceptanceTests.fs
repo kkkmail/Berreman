@@ -84,7 +84,7 @@ module FsxAcceptanceTests =
     /// Store a material with exactly the script's optical properties.
     let private material (b : Bench) (name : string) (properties : OpticalPropertiesWithDisp) : MaterialId =
         let id = newMaterialId ()
-        ok (b.materials.saveMaterial { id = id; name = name; category = CategoryIds.glass; description = None; properties = properties; complexity = None })
+        ok (b.materials.saveMaterial { id = id; name = EntryName name; category = CategoryIds.glass; description = None; properties = properties; complexity = None })
         id
 
     let private layer (id : MaterialId) (thickness : Thickness) : SampleLayer =
@@ -95,18 +95,18 @@ module FsxAcceptanceTests =
         let s : Sample =
             {
                 id = newSampleId ()
-                name = name
+                name = EntryName name
                 structure = structure
                 substrate = geometry
-                description = name
-                supportedEmission = defaultSupportedEmission geometry
+                description = EntryDescription name
+                supportedEmission = geometry.defaultSupportedEmission
             }
         ok (b.samples.saveSample s)
-        (SampleItem s).entryId
+        (SampleItem s).entryId.value
 
     /// Store a user light source and return its entry id.
     let private userSource (b : Bench) (id : string) (name : string) (nm : float) (tuning : SourceTuning) : string =
-        ok (b.sources.saveSource { id = id; name = name; waveLength = WaveLength.nm (nm * 1.0<nm>); tuning = tuning; protection = UserManaged })
+        ok (b.sources.saveSource { id = ElementValueId id; name = EntryName name; waveLength = WaveLength.nm (nm * 1.0<nm>); tuning = tuning; protection = UserManaged })
         id
 
     // ------------------------------ driving the headless app ------------------------------
@@ -176,8 +176,8 @@ module FsxAcceptanceTests =
                 sources = b.sources
                 experimentExport = b.export.proxy }
             |> apply
-                [ BindValueIdTo (elementId "src", run.sourceEntry)
-                  BindValueIdTo (elementId "det", SeedEntryIds.detectorIntensity)
+                [ BindValueIdTo (ElementId "src", run.sourceEntry)
+                  BindValueIdTo (ElementId "det", SeedEntryIds.detectorIntensity)
                   // The input polarizer (pre-bound to the ideal LP) at the script's polarization angle.
                   AddElement LinearPolarizer
                   RotSetAxis (RotationControls.R1, run.polarizationDegrees)
@@ -274,7 +274,7 @@ module FsxAcceptanceTests =
         let structure : SampleStructure =
             if plate then { films = []; substrate = Some (layer glass (Thickness.mm 0.001<mm>)); lower = None }
             else { films = [ SingleLayer (layer glass (Thickness.mm 0.001<mm>)) ]; substrate = None; lower = None }
-        let entry = sample b "Glass.fsx" (if plate then Plate else ThinFilm) structure
+        let entry = sample b "Glass.fsx" (if plate then ThickPlate else ThinFilm) structure
         let exported =
             runOnTable b
                 {
@@ -357,7 +357,7 @@ module FsxAcceptanceTests =
         let glass = material b "Sellmeier glass" dispersiveGlass
         let thickness = Thickness.mm 0.001<mm>
         let entry =
-            if plate then sample b "Glass_Dispersive.fsx plate" Plate { films = []; substrate = Some (layer glass thickness); lower = None }
+            if plate then sample b "Glass_Dispersive.fsx plate" ThickPlate { films = []; substrate = Some (layer glass thickness); lower = None }
             else filmsSample b "Glass_Dispersive.fsx film" [ glass, thickness ] None
         let film = { thickness = thickness; propertiesWithDisp = dispersiveGlass }
         let system : OpticalSystemWithDisp =

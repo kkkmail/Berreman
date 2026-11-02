@@ -85,7 +85,7 @@ module WireUiFinalCompositionTests =
         {
             kindConstraint = KindConstraint kind
             currentEntryIdOpt = None
-            target = TableElementTarget (Library.elementId "wire-sweep")
+            target = TableElementTarget (Library.ElementId "wire-sweep")
             onSelected = ignore
             onCancelled = ignore
         }
@@ -132,7 +132,7 @@ module WireUiFinalCompositionTests =
               LibraryWindowKey
               MaterialEditorKey (MaterialLibrary.newMaterialId ())
               SampleEditorKey (Library.newSampleId ())
-              SourceEditorKey (Library.newSourceId ())
+              SourceEditorKey (Library.newSourceId ()).value
               CategoryEditorKey
               SolverHandoffWindowKey ]
             |> List.iter (openThroughLauncher ctx))

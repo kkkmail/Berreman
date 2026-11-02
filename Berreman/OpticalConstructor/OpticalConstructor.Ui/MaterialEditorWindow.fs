@@ -29,7 +29,7 @@ type MaterialEditorWindow(materials : MaterialProxy, intent : MaterialEditorView
     do
         this.Title <-
             match intent with
-            | MaterialEditorView.EditMaterial e -> $"Material Editor — %s{e.name}"
+            | MaterialEditorView.EditMaterial e -> $"Material Editor — %s{e.name.value}"
             | MaterialEditorView.NewMaterial _ -> "Material Editor — new material"
         this.Name <- ConstructorUiId.materialEditorWindow.value
         AutomationProperties.SetAutomationId(this, ConstructorUiId.materialEditorWindow.value)

@@ -134,8 +134,8 @@ module DispersionModelsTests =
         // The error's reason (spec 0033 step 002) names the offending id's Guid string form.
         let unknown = MaterialId.create ()
         match resolveMaterial standard unknown (WaveLength.nm 500.0<nm>) with
-        | Error (UnknownMaterialId reason) -> Assert.Contains(string unknown.value, reason)
-        | other -> Assert.Fail($"expected Error (UnknownMaterialId _), got {other}")
+        | Error (UnknownMaterialIdErr reason) -> Assert.Contains(string unknown.value, reason)
+        | other -> Assert.Fail($"expected Error (UnknownMaterialIdErr _), got {other}")
 
     [<Fact>]
     let ``a minted MaterialId round-trips create-store-lookup through the library`` () =
@@ -146,7 +146,7 @@ module DispersionModelsTests =
         let entry =
             {
                 id = id
-                name = "Round-trip entry"
+                name = EntryName "Round-trip entry"
                 category = CategoryIds.glass
                 description = None
                 properties = siliconOpticalProperties

@@ -103,16 +103,16 @@ module Seeding =
             // it (pattern-match, never reach into a case) and re-wrap as the seam's `SeedRejected`.
             let categoryReason (e : CategoryError) : string =
                 match e with
-                | UnknownCategoryId r | DuplicateCategoryId r | CategoryStillReferenced r | BuiltInNotRemovable r | InvalidCategory r -> r
+                | UnknownCategoryIdErr r | DuplicateCategoryIdErr r | CategoryStillReferencedErr r | BuiltInNotRemovableErr r | InvalidCategoryErr r -> r
             let materialReason (e : MaterialError) : string =
                 match e with
-                | UnknownMaterialId r | DuplicateMaterialId r | MaterialStillReferenced r | InvalidMaterial r | MaterialVersionInUse r -> r
+                | UnknownMaterialIdErr r | DuplicateMaterialIdErr r | MaterialStillReferencedErr r | InvalidMaterialErr r | MaterialVersionInUseErr r -> r
             let sampleReason (e : SampleError) : string =
                 match e with
-                | UnknownSampleId r | DuplicateSampleId r | InvalidSample r | SampleVersionInUse r -> r
+                | UnknownSampleIdErr r | DuplicateSampleIdErr r | InvalidSampleErr r | SampleVersionInUseErr r -> r
             let libraryReason (e : LibraryError) : string =
                 match e with
-                | UnknownEntryId r | NoEntriesForKind r | LibraryUnavailable r -> r
+                | UnknownEntryIdErr r | NoEntriesForKindErr r | LibraryUnavailableErr r -> r
 
             let proxy =
                 {

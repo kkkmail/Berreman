@@ -97,8 +97,8 @@ module AppContextTests =
         // glass152 is referenced by seeded samples — the remove-block must consult the SAME
         // samples store `create` built (the composition order is the load-bearing part).
         match context.materials.removeMaterial MaterialIds.glass152 with
-        | Error (MaterialStillReferenced reason) -> Assert.Contains("is still referenced by", reason)
-        | other -> Assert.Fail($"expected MaterialStillReferenced from the coupled store, got %A{other}")
+        | Error (MaterialStillReferencedErr reason) -> Assert.Contains("is still referenced by", reason)
+        | other -> Assert.Fail($"expected MaterialStillReferencedErr from the coupled store, got %A{other}")
 
     [<Fact>]
     let ``two workbench surfaces composed from ONE app scope observe the same store`` () =
@@ -169,7 +169,7 @@ module AppContextTests =
             let savedId =
                 match context.samples.listSamples ActiveOnly with
                 | Ok all ->
-                    match all |> List.tryFind (fun s -> s.name = "Shared-scope sample") with
+                    match all |> List.tryFind (fun s -> s.name.value = "Shared-scope sample") with
                     | Some sample -> sample.id
                     | None -> failwith "the saved sample must be in the app-scope store"
                 | Error e -> failwith $"listSamples failed: %A{e}"

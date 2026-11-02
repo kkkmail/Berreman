@@ -93,7 +93,7 @@ module OutOfBandDiagnostic =
     /// only warns where a material declares a finite band.
     let reachableMaterialOf (entry : MaterialEntry) : ReachableMaterial =
         {
-            materialName = entry.name
+            materialName = entry.name.value
             definedSegments =
                 entry.complexity
                 |> Option.map definedSegmentIntervals

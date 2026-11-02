@@ -28,14 +28,14 @@ module SceneProxyTests =
     let private sampleSnapshot (snap : SnapMode) : SceneSnapshot =
         let source : SceneElement =
             {
-                id = Library.elementId "src"
+                id = Library.ElementId "src"
                 placement = { ElementPlacement.create LightSource TablePoint.origin with valueId = Some (ElementValueId "src-600") }
                 zoom = 1.0
                 beam = BeamLayout.OnMainBeam
             }
         let detector : SceneElement =
             {
-                id = Library.elementId "det"
+                id = Library.ElementId "det"
                 placement = ElementPlacement.create Detector TablePoint.origin
                 zoom = 2.0
                 beam = BeamLayout.OnMainBeam

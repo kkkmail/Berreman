@@ -210,11 +210,11 @@ module WireUi0040CompositionTests =
     let private filmlessPlate () : Sample =
         {
             id = newSampleId ()
-            name = "Bare plate"
+            name = EntryName "Bare plate"
             structure = { films = []; substrate = None; lower = None }
-            substrate = Plate
-            description = "film-less Plate — substrate set via the Materials Select window (spec 0040 step 011)"
-            supportedEmission = defaultSupportedEmission Plate
+            substrate = ThickPlate
+            description = EntryDescription "film-less Plate — substrate set via the Materials Select window (spec 0040 step 011)"
+            supportedEmission = ThickPlate.defaultSupportedEmission
         }
 
     // ============================ the headless wiring assertion (gate `ui-smoke`) ============================

@@ -83,7 +83,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
                         let key =
                             match intent with
                             | LightSourceEditorView.NewSource mintedId -> WindowLauncher.SourceEditorKey mintedId
-                            | LightSourceEditorView.EditSource source -> WindowLauncher.SourceEditorKey source.id
+                            | LightSourceEditorView.EditSource source -> WindowLauncher.SourceEditorKey source.id.value
                         openBrowse key (fun () -> LightSourceEditorWindow(sources, intent) :> Window)
                 requestClose = this.Close
             }

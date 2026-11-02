@@ -30,7 +30,7 @@ module MaterialLibrary =
     /// closed `MaterialCategory` union became a seeded catalogue keyed by `CategoryId`
     /// (spec 0035 step 001), the `category` field carries the category's DISPLAY NAME
     /// (`"Glass"`/`"Metal"`/… — exactly the schema's `category` enum): export resolves
-    /// the id to its name through `categoryName`, import resolves the name back through
+    /// the id to its name through `CategoryId.categoryName`, import resolves the name back through
     /// `tryFindCategoryByName`. A plain string here needs no custom converter — the one
     /// JSON stack round-trips it as-is (§I.5/§I.8 "one stack only").
     type private MaterialEntryDto =
@@ -92,14 +92,14 @@ module MaterialLibrary =
         // Both the elevated id and the category name are IO-boundary parses: an id that is
         // not a Guid and a category name absent from the seeded catalogue are typed errors
         // (spec 0033 step 002 / 0035 step 001), never a throw or a silent default.
-        match MaterialId.tryCreate dto.id, tryFindCategoryByName dto.category with
+        match MaterialId.tryCreate dto.id, tryFindCategoryByName (CategoryName dto.category) with
         | Some id, Some category ->
             Ok
                 {
                     id = id
-                    name = dto.name
+                    name = EntryName dto.name
                     category = category.id
-                    description = dto.description
+                    description = dto.description |> Option.map EntryDescription
                     properties = vacuumProperties
                     // The metadata-only library file carries no dispersion data; the
                     // rebuilt entry is view-only until the §D.9 mapping lands.
@@ -153,13 +153,13 @@ module MaterialLibrary =
                     let dict = System.Collections.Generic.Dictionary<string, obj>()
                     // The elevated MaterialId crosses the JSON boundary as its Guid string form.
                     dict.["id"] <- box (string e.id.value)
-                    dict.["name"] <- box e.name
+                    dict.["name"] <- box e.name.value
                     // The category id resolves to its display name through the seeded
                     // catalogue (spec 0035 step 001), writing "Glass"/"Metal"/… — exactly
                     // the schema's `category` enum (§I.5/§I.8 one-stack rule).
-                    dict.["category"] <- box (categoryName e.category)
+                    dict.["category"] <- box e.category.categoryName
                     match e.description with
-                    | Some d -> dict.["description"] <- box d
+                    | Some d -> dict.["description"] <- box d.value
                     | None -> ()
                     dict)
             // Validate each entry against the materialEntry $def before writing.

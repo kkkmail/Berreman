@@ -85,7 +85,7 @@ module LibraryFacetsTests =
     let private materialEntryWith (idText : string) (name : string) (complexity : MaterialComplexity) : MaterialEntry =
         {
             id = Guid.Parse idText |> MaterialId
-            name = name
+            name = EntryName name
             category = CategoryIds.crystal
             description = None
             properties = complexity.toProperties
@@ -174,11 +174,11 @@ module LibraryFacetsTests =
     let private filmSample (idText : string) (name : string) (films : StackItem list) : Sample =
         {
             id = Guid.Parse idText |> SampleId
-            name = name
+            name = EntryName name
             structure = { films = films; substrate = None; lower = None }
             substrate = ThinFilm
-            description = name
-            supportedEmission = defaultSupportedEmission ThinFilm
+            description = EntryDescription name
+            supportedEmission = ThinFilm.defaultSupportedEmission
         }
 
     /// Glass + EUV-molybdenum films: one Transparent and one Absorbing
@@ -198,7 +198,7 @@ module LibraryFacetsTests =
     let private repeatedFilmSample : Sample =
         {
             id = Guid.Parse "d275d205-8196-43a4-85d1-067283940516" |> SampleId
-            name = "Repeated film"
+            name = EntryName "Repeated film"
             structure =
                 {
                     films =
@@ -206,15 +206,15 @@ module LibraryFacetsTests =
                             Repeated
                                 {
                                     cell = [ layer MaterialIds.glass152 12.0; layer MaterialIds.glass152 30.0 ]
-                                    count = 5
+                                    count = PeriodCount 5
                                 }
                         ]
                     substrate = None
                     lower = None
                 }
             substrate = ThinFilm
-            description = "Repeated film"
-            supportedEmission = defaultSupportedEmission ThinFilm
+            description = EntryDescription "Repeated film"
+            supportedEmission = ThinFilm.defaultSupportedEmission
         }
 
     let private polarizerEntry : LibraryEntry =
@@ -348,7 +348,7 @@ module LibraryFacetsTests =
         // constant transparent value).
         let def = materialDef materialTransparencyKey
         let dispersiveEntries =
-            builtInEntries |> List.filter (fun e -> materialDispersion e = DispersiveMaterial)
+            builtInEntries |> List.filter (fun e -> e.dispersion = DispersiveMaterial)
         // The seed corpus does carry dispersive materials (silicon / langasite / the EUV metals).
         Assert.NotEmpty(dispersiveEntries)
         for entry in dispersiveEntries do
@@ -544,10 +544,10 @@ module LibraryFacetsTests =
             filter libraryDefs [ discrete materialCategoryKey [ name ] ] seedEntries
             |> List.map (fun e -> e.displayName)
         // Only the quarter-wave multilayer carries the vacuum spacer.
-        Assert.Equal<string list>([ SeedSamples.multilayerQw.name ], byCategory "Vacuum")
+        Assert.Equal<string list>([ SeedSamples.multilayerQw.name.value ], byCategory "Vacuum")
         // Only the EUV stack carries a metal (molybdenum) — its OTHER layer is
         // a semiconductor; either constituent alone makes the sample match.
-        Assert.Equal<string list>([ SeedSamples.euvMoSi.name ], byCategory "Metal")
+        Assert.Equal<string list>([ SeedSamples.euvMoSi.name.value ], byCategory "Metal")
 
     [<Fact>]
     let ``lifted material facets never offer themselves on non-sample entries`` () =
@@ -617,7 +617,7 @@ module LibraryFacetsTests =
             extractedKeys def (SampleItem SeedSamples.glassPlate1mm))
         Assert.Equal<string list>(
             [ "Active (gyrotropic) crystal" ],
-            extractedKeys def (SampleItem SeedSamples.activeCrystal))
+            extractedKeys def (SampleItem SeedSamples.activeCrystalPlate))
 
     [<Fact>]
     let ``has-thin-films derives from films alone, independent of the substrate kind`` () =

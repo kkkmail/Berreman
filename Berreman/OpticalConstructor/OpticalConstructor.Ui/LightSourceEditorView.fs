@@ -131,12 +131,12 @@ let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditor
     let sourceId, freshness, name, waveLength, tuning =
         match intent with
         | NewSource mintedId -> mintedId, WindowLauncher.NewUnsaved, "", defaultWaveLength, FixedLine
-        | EditSource s -> s.id, WindowLauncher.Persisted, s.name, s.waveLength, s.tuning
+        | EditSource s -> s.id.value, WindowLauncher.Persisted, s.name.value, s.waveLength, s.tuning
     // A fixed line opens with sensible limits ready should it be switched to tunable.
     let choice, minimum, maximum =
         match tuning with
         | FixedLine -> FixedChoice, WaveLength.nm 400.0<nm>, WaveLength.nm 800.0<nm>
-        | TunableBetween (lo, hi) -> TunableChoice, lo, hi
+        | TunableBetween limits -> TunableChoice, limits.lower, limits.upper
     {
         context = context
         sourceId = sourceId
@@ -159,9 +159,17 @@ let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditor
 let toSource (m : LightSourceEditorModel) : Result<SourcePreset, string> =
     match m.waveLength, m.tuning, m.minimum, m.maximum with
     | None, _, _, _ -> Error $"enter a positive wavelength in %s{m.unit.abbreviation}"
-    | Some w, FixedChoice, _, _ -> Ok { id = m.sourceId; name = m.name.Trim(); waveLength = w; tuning = FixedLine; protection = UserManaged }
+    | Some w, FixedChoice, _, _ ->
+        Ok { id = OpticalConstructor.Domain.Placement.ElementValueId m.sourceId; name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim()); waveLength = w; tuning = FixedLine; protection = UserManaged }
     | Some w, TunableChoice, Some lo, Some hi ->
-        Ok { id = m.sourceId; name = m.name.Trim(); waveLength = w; tuning = TunableBetween (lo, hi); protection = UserManaged }
+        Ok
+            {
+                id = OpticalConstructor.Domain.Placement.ElementValueId m.sourceId
+                name = OpticalConstructor.Domain.MaterialLibrary.EntryName (m.name.Trim())
+                waveLength = w
+                tuning = TunableBetween { Berreman.Dispersion.WaveLengthInterval.lower = lo; upper = hi }
+                protection = UserManaged
+            }
     | Some _, TunableChoice, _, _ -> Error $"enter positive tunable limits in %s{m.unit.abbreviation}"
 
 let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorModel) : LightSourceEditorModel =

@@ -104,7 +104,7 @@ module SourceAndDetectorMoveTests =
         let scene =
             initMain ()
             |> updateTableAndElementRotation (AddElement Sample)
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId)) m
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId.value)) m
             |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, 30.0))
             |> updateTableAndElementRotation (AddElement Detector)
         let before = snappedCentres scene
@@ -204,7 +204,7 @@ module SourceAndDetectorMoveTests =
         let scene =
             initMain ()
             |> updateTableAndElementRotation (AddElement Sample)
-            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId)) m
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo ((elem 2 m).id, plateId.value)) m
             |> updateTableAndElementRotation (RotSetAxis (RotationControls.R2, 30.0))
             |> updateTableAndElementRotation (AddElement Lens)
         let onReflected = updateTableAndElementRotation (PlaceOnBeam ((elem 3 scene).id, BeamLayout.OnReflectedBeamOf (elem 2 scene).id)) scene

@@ -23,9 +23,9 @@ module LibraryControlsTests =
     /// The Guid-string entry ids of the seeded samples these tests bind (the Selector valueId seam
     /// carries the Guid string form since spec 0033 step 002 — referenced programmatically, never as
     /// a repeated literal).
-    let private glass1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
-    let private glass2mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate2mm).entryId
-    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId
+    let private glass1mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId.value
+    let private glass2mmId : string = (Library.SampleItem Library.SeedSamples.glassPlate2mm).entryId.value
+    let private multilayerQwId : string = (Library.SampleItem Library.SeedSamples.multilayerQw).entryId.value
 
     // ============================ pure control contract ============================
 
@@ -75,7 +75,7 @@ module LibraryControlsTests =
         Assert.All(Set.toList sampleIds, fun id ->
             match m.library.tryGetEntry id with
             | Ok (Some (Library.SampleItem _)) -> ()
-            | other -> Assert.Fail($"%s{id} is not a Sample: %A{other}"))
+            | other -> Assert.Fail($"%s{id.value} is not a Sample: %A{other}"))
 
     [<Fact>]
     let ``BindValueId sets the selected element's valueId; inert for table or nothing`` () =
@@ -154,7 +154,7 @@ module LibraryControlsTests =
     let ``libraryState surfaces the pending entry's name and FULL description before confirm`` () =
         let m = withSampleSelected () |> updateTableAndElementRotation (RequestBindValueId multilayerQwId)
         // The host's libraryState fills the pending fields from the proxy; mirror that resolution here.
-        match m.library.tryGetEntry multilayerQwId with
+        match m.library.tryGetEntry (ElementValueId multilayerQwId) with
         | Ok (Some entry) ->
             Assert.False(System.String.IsNullOrWhiteSpace entry.fullDescription)
             // A multilayer's description spells out the stack, not just its short name.

@@ -93,8 +93,8 @@ module CategoryEditorWindowTests =
 
     /// A hand-rolled in-memory stub `CategoryProxy` (the functional-proxy seam — the how-to's "stub
     /// CategoryProxy"): a mutable ordered list that actually stores adds / renames / removes, records
-    /// each write verb it reaches, refuses a `BuiltInCategory` remove with `BuiltInNotRemovable`, and
-    /// refuses a `UserCategory` remove whose id is in `referenced` with `CategoryStillReferenced`.
+    /// each write verb it reaches, refuses a `BuiltInCategory` remove with `BuiltInNotRemovableErr`, and
+    /// refuses a `UserCategory` remove whose id is in `referenced` with `CategoryStillReferencedErr`.
     let private stubProxy (seed : MaterialCategory list) (referenced : Set<Guid>) : ResizeArray<string> * CategoryProxy =
         let store = ref seed
         let calls = ResizeArray<string>()
@@ -103,26 +103,26 @@ module CategoryEditorWindowTests =
                 listCategories = fun () -> Ok store.Value
                 addCategory =
                     fun c ->
-                        calls.Add("add:" + c.name)
+                        calls.Add("add:" + c.name.value)
                         store.Value <- store.Value @ [ c ]
                         Ok ()
                 updateCategory =
                     fun c ->
-                        calls.Add("update:" + c.name)
+                        calls.Add("update:" + c.name.value)
                         store.Value <- store.Value |> List.map (fun x -> if x.id = c.id then c else x)
                         Ok ()
                 removeCategory =
                     fun id ->
                         calls.Add("remove:" + string id.value)
                         match store.Value |> List.tryFind (fun x -> x.id = id) with
-                        | None -> Error (UnknownCategoryId $"unknown category id '%s{string id.value}'")
+                        | None -> Error (UnknownCategoryIdErr $"unknown category id '%s{string id.value}'")
                         | Some c ->
                             match c.origin with
                             | BuiltInCategory ->
-                                Error (BuiltInNotRemovable $"'%s{c.name}' ships with the app and cannot be removed")
+                                Error (BuiltInNotRemovableErr $"'%s{c.name.value}' ships with the app and cannot be removed")
                             | UserCategory ->
                                 if Set.contains id.value referenced
-                                then Error (CategoryStillReferenced $"'%s{c.name}' is still referenced by materials")
+                                then Error (CategoryStillReferencedErr $"'%s{c.name.value}' is still referenced by materials")
                                 else
                                     store.Value <- store.Value |> List.filter (fun x -> x.id <> id)
                                     Ok ()
@@ -133,7 +133,7 @@ module CategoryEditorWindowTests =
         { categories = proxy; requestClose = ignore }
 
     let private userCategory (id : CategoryId) (name : string) : MaterialCategory =
-        { id = id; name = name; visibility = SelectableOnCreate; origin = UserCategory }
+        { id = id; name = CategoryName name; visibility = SelectableOnCreate; origin = UserCategory }
 
     // ============================ pure control contract ============================
 
@@ -159,7 +159,7 @@ module CategoryEditorWindowTests =
         let m = initCategoryEditor (contextOver proxy) |> updateCategoryEditor BeginAdd
         Assert.Equal(List.length standardCategories + 1, List.length m.editor.rows)
         let added = List.last m.editor.rows
-        Assert.Equal("", added.name)
+        Assert.Equal("", added.name.value)
         Assert.Equal(SelectableOnCreate, added.visibility)
         Assert.Equal(UserCategory, added.origin)
         match m.editor.editingRow with
@@ -175,7 +175,7 @@ module CategoryEditorWindowTests =
         match proxy.listCategories () with
         | Ok l ->
             Assert.Equal(List.length standardCategories + 1, List.length l)
-            Assert.True(l |> List.exists (fun c -> c.name = "Polymer" && c.origin = UserCategory), "the new user category must be persisted")
+            Assert.True(l |> List.exists (fun c -> c.name.value = "Polymer" && c.origin = UserCategory), "the new user category must be persisted")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("add:Polymer", calls)
 
@@ -196,7 +196,7 @@ module CategoryEditorWindowTests =
         match proxy.listCategories () with
         | Ok l ->
             match l |> List.tryFind (fun c -> c.id = userId) with
-            | Some c -> Assert.Equal("Final", c.name)
+            | Some c -> Assert.Equal("Final", c.name.value)
             | None -> Assert.Fail("the renamed category vanished")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("update:Final", calls)
@@ -208,7 +208,7 @@ module CategoryEditorWindowTests =
         match proxy.listCategories () with
         | Ok l ->
             match l |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
-            | Some c -> Assert.Equal("Glazing", c.name)
+            | Some c -> Assert.Equal("Glazing", c.name.value)
             | None -> Assert.Fail("the renamed built-in vanished")
         | Error e -> Assert.Fail($"listCategories failed: %A{e}")
         Assert.Contains("update:Glazing", calls)
@@ -303,7 +303,7 @@ module CategoryEditorWindowTests =
             match proxy.listCategories () with
             | Ok l ->
                 Assert.Equal(before + 1, List.length l)
-                Assert.True(l |> List.exists (fun c -> c.name = "Polymer"), "the added category must be listed")
+                Assert.True(l |> List.exists (fun c -> c.name.value = "Polymer"), "the added category must be listed")
             | Error e -> Assert.Fail($"listCategories failed: %A{e}")
             window.Close())
 
@@ -322,7 +322,7 @@ module CategoryEditorWindowTests =
             match proxy.listCategories () with
             | Ok l ->
                 match l |> List.tryFind (fun c -> c.id = userId) with
-                | Some c -> Assert.Equal("Renamed", c.name)
+                | Some c -> Assert.Equal("Renamed", c.name.value)
                 | None -> Assert.Fail("the renamed category vanished")
             | Error e -> Assert.Fail($"listCategories failed: %A{e}")
             window.Close())

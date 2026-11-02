@@ -82,11 +82,11 @@ type CategoryEditorMsg =
 /// The diagnostic reason carried by any `CategoryError` case (surfaced into the block slot).
 let categoryErrorReason (e : CategoryError) : string =
     match e with
-    | UnknownCategoryId reason
-    | DuplicateCategoryId reason
-    | CategoryStillReferenced reason
-    | BuiltInNotRemovable reason
-    | InvalidCategory reason -> reason
+    | UnknownCategoryIdErr reason
+    | DuplicateCategoryIdErr reason
+    | CategoryStillReferencedErr reason
+    | BuiltInNotRemovableErr reason
+    | InvalidCategoryErr reason -> reason
 
 /// The current catalogue the proxy holds (an empty list if the total listing ever fails).
 let private currentCategories (context : CategoryEditorContext) : MaterialCategory list =
@@ -111,7 +111,7 @@ let private snapshotById (editor : CategoryEditState) (id : CategoryId) : Materi
 
 /// Commit ONE row: a row whose id is new to the snapshot is an add, a row that differs from its
 /// snapshot is a rename, an unchanged row is a no-op. The name is validated through the shared
-/// `validateCategory`, so a blank name surfaces the typed `InvalidCategory` into the block. On a
+/// `MaterialCategory.validate`, so a blank name surfaces the typed `InvalidCategoryErr` into the block. On a
 /// successful proxy write the editor is reloaded so the snapshot tracks the store.
 let private saveRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEditorModel =
     match rowById m.editor id with
@@ -119,8 +119,8 @@ let private saveRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEditor
     | Some row ->
         let intent =
             match snapshotById m.editor id with
-            | None -> validateCategory row |> Result.map (fun () -> Some (AddCategory row))
-            | Some existing when existing <> row -> validateCategory row |> Result.map (fun () -> Some (RenameCategory row))
+            | None -> row.validate |> Result.map (fun () -> Some (AddCategory row))
+            | Some existing when existing <> row -> row.validate |> Result.map (fun () -> Some (RenameCategory row))
             | Some _ -> Ok None
         match intent with
         | Error e -> { m with blockMessage = categoryErrorReason e; pendingRemove = None }
@@ -148,7 +148,7 @@ let private removeRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEdit
     | _ ->
         let name =
             match rowById m.editor id with
-            | Some c -> c.name
+            | Some c -> c.name.value
             | None -> string id.value
         { m with
             pendingRemove = Some id
@@ -160,7 +160,7 @@ let private cancelRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEdit
     let editorResult =
         match snapshotById m.editor id with
         | None -> CategoryEditor.applyCategoryMsg (RemoveCategoryRow id) m.editor
-        | Some original -> CategoryEditor.applyCategoryMsg (SetCategoryName (id, original.name)) m.editor
+        | Some original -> CategoryEditor.applyCategoryMsg (SetCategoryName (id, original.name.value)) m.editor
     match editorResult with
     | Ok editor -> { m with editor = editor; pendingRemove = None; blockMessage = "" }
     | Error _ -> { m with pendingRemove = None; blockMessage = "" }
@@ -264,7 +264,7 @@ let private saveCancelRow (dispatch : CategoryEditorMsg -> unit) : IView =
 let private toRow (c : MaterialCategory) : CategoryControls.CategoryControlsRow =
     {
         categoryId = c.id.uiKey
-        name = ControlCaption c.name
+        name = c.name.caption
         origin =
             match c.origin with
             | BuiltInCategory -> CategoryControls.BuiltInCategoryRow

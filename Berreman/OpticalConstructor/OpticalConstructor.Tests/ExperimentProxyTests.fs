@@ -20,7 +20,7 @@ open OpticalConstructor.Domain.Experiments
 module ExperimentProxyTests =
 
     let private proxy = Experiments.createInMemoryExperiments ()
-    let private el (s : string) : ElementId = Library.elementId s
+    let private el (s : string) : ElementId = Library.ElementId s
 
     /// A placement/orientation summary for a rest-pose element of the given kind.
     let private placementOf (kind : CatalogueKind) : PlacementSummary =
@@ -290,8 +290,8 @@ module ExperimentProxyTests =
         // A store over the real seam refuses to remove the sample whose version an experiment binds …
         let bound = SampleProxy.createInMemory seam
         match bound.removeSample SeedSamples.glassPlate1mm.id with
-        | Error (SampleVersionInUse _) -> ()
-        | other -> Assert.Fail($"expected SampleVersionInUse, got %A{other}")
+        | Error (SampleVersionInUseErr _) -> ()
+        | other -> Assert.Fail($"expected SampleVersionInUseErr, got %A{other}")
         // … while a store over the empty seam removes it freely (the rule is UNLOCKED only by the binding).
         let free = SampleProxy.createInMemory VersionsInUse.empty
         match free.removeSample SeedSamples.glassPlate1mm.id with

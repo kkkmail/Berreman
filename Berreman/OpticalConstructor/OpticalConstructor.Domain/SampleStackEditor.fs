@@ -309,7 +309,7 @@ let private makeRepeatBlock (count : int) (state : SampleStackEditState) : Resul
                     else
                         let before = state.structure.films |> List.take first
                         let after = state.structure.films |> List.skip (first + List.length indices)
-                        let films = before @ [ Repeated { cell = cell; count = count } ] @ after
+                        let films = before @ [ Repeated { cell = cell; count = PeriodCount count } ] @ after
                         Ok { structure = { state.structure with films = films }; selection = Set.empty })
 
 /// Set the repetition count of the `Repeated` group at `groupIndex`. The cell
@@ -322,7 +322,7 @@ let private setRepeatCount (groupIndex : int) (count : int) (state : SampleStack
         | Some (Repeated g) ->
             let films =
                 state.structure.films
-                |> List.mapi (fun i item -> if i = groupIndex then Repeated { g with count = count } else item)
+                |> List.mapi (fun i item -> if i = groupIndex then Repeated { g with count = PeriodCount count } else item)
             Ok { state with structure = { state.structure with films = films } }
         | Some (SingleLayer _) ->
             Error (NotARepeatGroup $"films item %d{groupIndex} is a single layer, not a repeat group")
