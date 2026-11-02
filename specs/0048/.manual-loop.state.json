@@ -2,7 +2,7 @@
   "spec_folder": "C:\\GitHub\\Berreman\\specs\\0048",
   "workflow": "continuous-loop",
   "started_at": "2026-11-02T12:57:14Z",
-  "updated_at": "2026-11-02T16:51:18Z",
+  "updated_at": "2026-11-02T18:14:41Z",
   "rounds": [
     {
       "round_no": 0,
@@ -115,8 +115,22 @@
       "worker_exit_code": 0,
       "verdict": "blocked",
       "detail": "the batch wrote a blocked row"
+    },
+    {
+      "round_no": 9,
+      "started_at": "2026-11-02T17:49:30Z",
+      "finished_at": "2026-11-02T18:14:41Z",
+      "open_before": 37,
+      "open_after": 36,
+      "head_before": "f6940e03eaf8437269a15ccf10a9a7e1a15ea703",
+      "head_after": "fd32ad3e8adf087590ffda7477535328b5cc5b9a",
+      "ledger_rows_before": 28,
+      "ledger_rows_after": 31,
+      "worker_exit_code": 0,
+      "verdict": "progressed",
+      "detail": "open 37 -> 36, ledger +3, head f6940e03 -> fd32ad3e"
     }
   ],
-  "outcome": "AWAITING-OPERATOR",
-  "reason": "batch 8 escalated; see specs/0048/.manual/004-e007-duplicate-name-cascade-question.md; answer it, then relaunch with --blocked-answered"
+  "outcome": null,
+  "reason": null
 }

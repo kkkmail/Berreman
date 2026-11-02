@@ -2307,7 +2307,7 @@ let selectorOffer (model : TableAndElementRotationModel) : SelectorOffer =
 /// ("<kind> #<n>", 1-based, in scene order).
 let private sweepCandidates (model : TableAndElementRotationModel) : ExperimentControls.SweepCandidate list =
     model.elements
-    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.value; label = $"%s{(kindName e.placement.catalogueKind)} #%d{(i + 1)}" })
+    |> List.mapi (fun i e -> { ExperimentControls.SweepCandidate.elementId = e.id.uiKey; label = ControlCaption $"%s{(kindName e.placement.catalogueKind)} #%d{(i + 1)}" })
 
 /// The current draft experiment's readout (spec 028), or "" when the draft is incomplete / its element is
 /// no longer present.
@@ -2843,55 +2843,79 @@ let experimentState (model : TableAndElementRotationModel) : ExperimentControls.
     let capture = draftCapture model
     {
         candidates = sweepCandidates model
-        chosenId = draft.elementId |> Option.map (fun id -> id.value)
+        chosenId = draft.elementId |> Option.map (fun id -> id.uiKey)
         variableChoices = variableChoices
         chosenVariable = draft.variable |> Option.map toVariableChoice
         measurement = toMeasurementChoice (capture |> Option.defaultValue draft.measurement)
         measurementOffers =
             match draft.elementId with
-            | Some id -> captures |> List.map (fun c -> { ExperimentControls.MeasurementOffer.choice = toMeasurementChoice c; label = captureLabel model id c })
+            | Some id -> captures |> List.map (fun c -> { ExperimentControls.MeasurementOffer.choice = toMeasurementChoice c; label = ControlCaption (captureLabel model id c) })
             | None -> []
         sourceWaveLength =
             match draft.variable, boundSourceOf model with
             | Some Experiments.VaryWaveLength, _ | None, _ | Some _, None -> ExperimentControls.NoSourceWaveLength
             | Some _, Some source ->
-                let nm = toNm (operatingWaveLength model draft.sourceWaveLengthOpt)
+                let setting = ExperimentControls.BayNanometers (toNm (operatingWaveLength model draft.sourceWaveLengthOpt))
                 match source.tunableRangeNm with
-                | Some (lo, hi) -> ExperimentControls.TunableSourceWaveLength (nm, lo, hi)
-                | None -> ExperimentControls.FixedSourceWaveLength nm
-        rangeMin = draft.range.min
-        rangeMax = draft.range.max
-        rangePoints = draft.range.points
-        rangeUnitLabel = (match draft.variable with Some v -> v.unitLabel | None -> "°")
-        canAdd = Experiments.canCommit col && (match capture with Some _ -> true | None -> false)
-        isEditing = (match draft.editingId with Some _ -> true | None -> false)
+                | Some (lo, hi) ->
+                    ExperimentControls.TunableSourceWaveLength
+                        (setting, { ExperimentControls.SourceWaveLengthLimits.lowest = ExperimentControls.BayNanometers lo; highest = ExperimentControls.BayNanometers hi })
+                | None -> ExperimentControls.FixedSourceWaveLength setting
+        rangeMin = ExperimentControls.ExperimentRangeEnd draft.range.min
+        rangeMax = ExperimentControls.ExperimentRangeEnd draft.range.max
+        rangePoints = ExperimentControls.ExperimentPointCount draft.range.points
+        rangeUnitLabel = ControlCaption (match draft.variable with Some v -> v.unitLabel | None -> "°")
+        addAvailability =
+            match Experiments.canCommit col, capture with
+            | true, Some _ -> ControlOffered
+            | true, None | false, _ -> ControlWithheld
+        editorMode =
+            match draft.editingId with
+            | Some _ -> ExperimentControls.EditorUpdatesExisting
+            | None -> ExperimentControls.EditorAddsNew
         collection =
             col.experiments
             |> List.map (fun e ->
-                { ExperimentControls.ExperimentRow.id = string e.id.value; description = e.description; isEditing = (draft.editingId = Some e.id) })
-        readout = experimentReadout model
-        enabled = not (List.isEmpty model.elements)
-        series = chart.series |> List.map (fun s -> { ExperimentControls.ChartSeries.name = s.name; points = s.points })
-        xLabel = chart.xLabel
-        yLabel = chart.yLabel
-        description = chart.description
+                {
+                    ExperimentControls.ExperimentRow.id = ConstructorUiKey (string e.id.value)
+                    description = ControlCaption e.description
+                    focus = if draft.editingId = Some e.id then ExperimentControls.LoadedInEditor else ExperimentControls.NotLoadedInEditor
+                })
+        readout =
+            match experimentReadout model with
+            | "" -> None
+            | text -> Some (ControlCaption text)
+        availability =
+            match model.elements with
+            | [] -> ControlWithheld
+            | _ -> ControlOffered
+        series =
+            chart.series
+            |> List.map (fun s ->
+                {
+                    ExperimentControls.ChartSeries.name = ControlCaption s.name
+                    points = s.points |> List.map (fun (x, y) -> { ExperimentControls.ChartPoint.x = x; y = y })
+                })
+        xLabel = ControlCaption chart.xLabel
+        yLabel = ControlCaption chart.yLabel
+        description = ControlCaption chart.description
         psiDelta = None
     }
 
 let private experimentHandlers (dispatch : TableAndElementRotationMsg -> unit) : ExperimentControls.ExperimentControlsHandlers =
     {
-        chooseElement = fun id -> dispatch (ExpChooseElement id)
+        chooseElement = fun id -> dispatch (ExpChooseElement id.value)
         chooseVariable = fun v -> dispatch (ExpChooseVariable v)
         chooseMeasurement = fun m -> dispatch (ExpChooseMeasurement m)
-        setRangeMin = fun v -> dispatch (ExpSetRangeMin v)
-        setRangeMax = fun v -> dispatch (ExpSetRangeMax v)
-        setRangePoints = fun n -> dispatch (ExpSetRangePoints n)
-        setSourceWaveLength = fun nm -> dispatch (ExpSetSourceWaveLength nm)
+        setRangeMin = fun v -> dispatch (ExpSetRangeMin v.value)
+        setRangeMax = fun v -> dispatch (ExpSetRangeMax v.value)
+        setRangePoints = fun n -> dispatch (ExpSetRangePoints n.value)
+        setSourceWaveLength = fun nm -> dispatch (ExpSetSourceWaveLength nm.value)
         addOrUpdate = fun () -> dispatch ExpCommit
         newExperiment = fun () -> dispatch ExpNew
-        editExperiment = fun idStr -> dispatch (ExpEdit idStr)
-        removeExperiment = fun idStr -> dispatch (ExpRemove idStr)
-        viewExperiment = fun idStr -> dispatch (ViewExperiment idStr)
+        editExperiment = fun id -> dispatch (ExpEdit id.value)
+        removeExperiment = fun id -> dispatch (ExpRemove id.value)
+        viewExperiment = fun id -> dispatch (ViewExperiment id.value)
         openChartWindow = fun () -> dispatch OpenExperimentChartWindow
     }
 

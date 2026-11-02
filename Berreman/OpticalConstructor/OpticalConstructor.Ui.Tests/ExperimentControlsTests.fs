@@ -54,10 +54,10 @@ module ExperimentControlsTests =
     [<Fact>]
     let ``the empty Experiments state is disabled with no candidates and no choice`` () =
         let s = ExperimentControls.emptyExperimentControls
-        Assert.False(s.enabled)
+        Assert.Equal(ControlWithheld, s.availability)
         Assert.Empty(s.candidates)
         Assert.Equal(None, s.chosenId)
-        Assert.False(s.canAdd)
+        Assert.Equal(ControlWithheld, s.addAvailability)
         Assert.Empty(s.collection)
 
     [<Fact>]
@@ -72,12 +72,12 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``the variable / measurement codes and labels are the mirror mapping`` () =
-        Assert.Equal("wavelength", ExperimentControls.variableCode ExperimentControls.VaryWaveLength)
-        Assert.Equal("r1", ExperimentControls.variableCode ExperimentControls.VaryR1)
-        Assert.Equal("r2", ExperimentControls.variableCode ExperimentControls.VaryR2)
-        Assert.Equal("t", ExperimentControls.measurementCode ExperimentControls.CaptureT)
-        Assert.Equal("r", ExperimentControls.measurementCode ExperimentControls.CaptureR)
-        Assert.Equal("both", ExperimentControls.measurementCode ExperimentControls.CaptureBoth)
+        Assert.Equal("wavelength", ExperimentControls.VaryWaveLength.uiKey.value)
+        Assert.Equal("r1", ExperimentControls.VaryR1.uiKey.value)
+        Assert.Equal("r2", ExperimentControls.VaryR2.uiKey.value)
+        Assert.Equal("t", ExperimentControls.CaptureT.uiKey.value)
+        Assert.Equal("r", ExperimentControls.CaptureR.uiKey.value)
+        Assert.Equal("both", ExperimentControls.CaptureBoth.uiKey.value)
 
     [<Fact>]
     let ``the ribbon offers every bay including Experiments and Details`` () =
@@ -205,9 +205,9 @@ module ExperimentControlsTests =
         let st = experimentState m
         Assert.Single(st.collection) |> ignore
         let row = List.head st.collection
-        Assert.Contains("Light source", row.description)
-        Assert.True(row.isEditing, "the just-added experiment should be the one being edited")
-        Assert.True(st.isEditing)
+        Assert.Contains("Light source", row.description.value)
+        Assert.Equal(ExperimentControls.LoadedInEditor, row.focus)
+        Assert.Equal(ExperimentControls.EditorUpdatesExisting, st.editorMode)
 
     // ============================ host experimentResult branches ============================
 
@@ -338,7 +338,7 @@ module ExperimentControlsTests =
         Assert.Equal(noAnalyzerTitle, chart.title)
         Assert.Equal(noAnalyzerStatus, chart.description)
         // The Experiments bay surfaces the same status through its state.
-        Assert.Equal(noAnalyzerStatus, (experimentState m1).description)
+        Assert.Equal(noAnalyzerStatus, (experimentState m1).description.value)
 
     [<Fact>]
     let ``a rotate-R1 intensity run with a pre-bound polarizer still yields the Malus curve`` () =
@@ -801,9 +801,15 @@ module ExperimentControlsTests =
                 }
             let state =
                 { ExperimentControls.emptyExperimentControls with
-                    enabled = true
-                    series = [ { ExperimentControls.ChartSeries.name = "I"; points = [ 0.0, 1.0; 1.0, 0.5 ] } ]
-                    xLabel = "x"; yLabel = "y" }
+                    availability = ControlOffered
+                    series =
+                        [
+                            {
+                                ExperimentControls.ChartSeries.name = ControlCaption "I"
+                                points = [ { ExperimentControls.ChartPoint.x = 0.0; y = 1.0 }; { x = 1.0; y = 0.5 } ]
+                            }
+                        ]
+                    xLabel = ControlCaption "x"; yLabel = ControlCaption "y" }
             let window = Window(Width = 420.0, Height = 560.0)
             window.Content <- Component(fun _ -> ExperimentControls.experimentControlsView state handlers)
             window.Show()

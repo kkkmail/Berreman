@@ -166,8 +166,8 @@ module WorkbenchInfoAndCaptureTests =
     let ``a tunable source is set within its limits while R2 varies; a fixed line shows read-only and ignores a setting`` () =
         let tunable = filmOnR2 "src-xe-mono"
         match (experimentState tunable).sourceWaveLength with
-        | ExperimentControls.TunableSourceWaveLength (nm, lo, hi) ->
-            Assert.True(abs (nm - 600.0) < 1e-9 && abs (lo - 190.0) < 1e-9 && abs (hi - 1000.0) < 1e-9)
+        | ExperimentControls.TunableSourceWaveLength (setting, limits) ->
+            Assert.True(abs (setting.value - 600.0) < 1e-9 && abs (limits.lowest.value - 190.0) < 1e-9 && abs (limits.highest.value - 1000.0) < 1e-9)
         | other -> Assert.Fail($"expected a tunable setting, got %A{other}")
         let clamped = updateTableAndElementRotation (ExpSetSourceWaveLength 2000.0) tunable
         match clamped.experimentCollection.draft.sourceWaveLengthOpt with
@@ -175,7 +175,7 @@ module WorkbenchInfoAndCaptureTests =
         | None -> Assert.Fail "the setting must be kept (clamped)"
         let fixedLine = filmOnR2 "src-hene-633"
         match (experimentState fixedLine).sourceWaveLength with
-        | ExperimentControls.FixedSourceWaveLength nm -> Assert.True(abs (nm - 632.8) < 1e-9)
+        | ExperimentControls.FixedSourceWaveLength setting -> Assert.True(abs (setting.value - 632.8) < 1e-9)
         | other -> Assert.Fail($"expected a fixed line, got %A{other}")
         Assert.Equal<TableAndElementRotationModel>(fixedLine, updateTableAndElementRotation (ExpSetSourceWaveLength 500.0) fixedLine)
 
@@ -206,7 +206,7 @@ module WorkbenchInfoAndCaptureTests =
             |> updateTableAndElementRotation (ExpChooseElement (elem 2 m).id.value)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
-        let offers = (experimentState chosen).measurementOffers |> List.map (fun o -> o.label)
+        let offers = (experimentState chosen).measurementOffers |> List.map (fun o -> o.label.value)
         Assert.Contains("Transmitted (T) — intensity", offers)
         Assert.Contains("Reflected (R) — Ψ, Δ (ellipsometer)", offers)
         let chart = experimentResult chosen
@@ -236,11 +236,11 @@ module WorkbenchInfoAndCaptureTests =
                 shown
             let offered =
                 { ExperimentControls.emptyExperimentControls with
-                    enabled = true
-                    candidates = [ { elementId = "s"; label = "Sample #3" } ]
-                    chosenId = Some "s"
+                    availability = ControlOffered
+                    candidates = [ { elementId = ConstructorUiKey "s"; label = ControlCaption "Sample #3" } ]
+                    chosenId = Some (ConstructorUiKey "s")
                     variableChoices = [ ExperimentControls.VaryR2 ]
-                    measurementOffers = [ { choice = ExperimentControls.CaptureT; label = "Transmitted (T) — intensity" } ] }
+                    measurementOffers = [ { choice = ExperimentControls.CaptureT; label = ControlCaption "Transmitted (T) — intensity" } ] }
             Assert.False(visibleIn offered, "no variable chosen yet — the capture step is hidden")
             Assert.True(visibleIn { offered with chosenVariable = Some ExperimentControls.VaryR2 }, "a variable chosen — the capture step shows"))
 

@@ -182,7 +182,7 @@ module ElementMenuTests =
         let st = experimentState m
         Assert.Equal<ExperimentControls.MeasurementChoice list>([ ExperimentControls.CaptureT ], st.measurementOffers |> List.map (fun o -> o.choice))
         // Spec 0046: the offer says what its detector reads.
-        Assert.Equal("Transmitted (T) — intensity", (List.head st.measurementOffers).label)
+        Assert.Equal("Transmitted (T) — intensity", (List.head st.measurementOffers).label.value)
         // Even an explicit Both request runs (and records) T alone.
         let both = m |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
         Assert.Equal<string list>([ "Intensity" ], (experimentResult both).series |> List.map (fun s -> s.name))
@@ -208,7 +208,7 @@ module ElementMenuTests =
         let chosen = noDetector |> updateTableAndElementRotation (ExpChooseElement (elem 1 noDetector).id.value)
         let st = experimentState chosen
         Assert.Empty(st.measurementOffers)
-        Assert.False(st.canAdd, "nothing captures the element's light, so the experiment cannot be added")
+        Assert.Equal(ControlWithheld, st.addAvailability)   // nothing captures the element's light, so it cannot be added
         Assert.Empty((chosen |> updateTableAndElementRotation ExpCommit).experimentCollection.experiments)
 
     // ------------------------------ rendering ------------------------------

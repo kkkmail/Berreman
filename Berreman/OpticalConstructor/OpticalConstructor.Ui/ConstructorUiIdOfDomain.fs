@@ -27,3 +27,8 @@ module ConstructorUiIdOfDomain =
         /// A material-category option of the Material editor.
         static member materialEditorCategoryOption (categoryId : CategoryId) : ConstructorUiId =
             ConstructorUiId $"MaterialCategoryOption_{categoryId.value}"
+
+    type ElementId with
+
+        /// The element as the key of its repeated controls (an Experiments-bay candidate).
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
