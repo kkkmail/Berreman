@@ -81,7 +81,7 @@ module LibraryControlsTests =
     let ``BindValueId sets the selected element's valueId; inert for table or nothing`` () =
         let m = withSampleSelected ()                      // element 2 (a Sample) selected
         let bound = updateTableAndElementRotation (BindValueId glass1mmId) m
-        Assert.Equal(Some glass1mmId, (elem 2 bound).placement.valueId)
+        Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 bound).placement.valueId)
         // Inert when the table is selected.
         let tableSel = { (initMain ()) with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId glass1mmId) tableSel)
@@ -94,7 +94,7 @@ module LibraryControlsTests =
         let m = withSampleSelected ()
         let m1 = updateTableAndElementRotation (BindValueId glass1mmId) m
         let m2 = updateTableAndElementRotation (BindValueId glass2mmId) m1
-        Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
+        Assert.Equal(Some (ElementValueId glass2mmId), (elem 2 m2).placement.valueId)
 
     [<Fact>]
     let ``the ribbon offers the Select bay; the Library workbench left for its window`` () =
@@ -133,7 +133,7 @@ module LibraryControlsTests =
             withSampleSelected ()
             |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
             |> updateTableAndElementRotation ConfirmBindValueId
-        Assert.Equal(Some glass1mmId, (elem 2 m).placement.valueId)
+        Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 m).placement.valueId)
         Assert.Equal(None, m.pendingEntry)
 
     [<Fact>]
@@ -211,7 +211,7 @@ module LibraryControlsTests =
                     Dispatcher.UIThread.RunJobs()
                     window.MouseUp(c.Value, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
-                    Assert.Equal(Some glass1mmId, (elem 2 model).placement.valueId)
+                    Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 model).placement.valueId)
                 else Assert.Fail("the Confirm button has no on-screen position")
             window.Close())
 
@@ -309,7 +309,7 @@ module LibraryControlsTests =
             Assert.Equal(Some glass1mmId, latest.Value.pendingEntry)
             // BIND: click Confirm — the pending entry commits to the selected element's valueId.
             clickIn window ConstructorUiId.libraryConfirmButton.value
-            Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
+            Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 latest.Value).placement.valueId)
             let sampleLeafShown () : bool =
                 match borderWithId window (ConstructorUiId.libraryEntry (ConstructorUiKey glass1mmId)).value with
                 | Some _ -> true
@@ -324,5 +324,5 @@ module LibraryControlsTests =
             Dispatcher.UIThread.RunJobs()
             Assert.True(sampleLeafShown (), "the sample leaf rows did not rebuild after the kind-change back")
             // The first sample kept its binding across the re-renders.
-            Assert.Equal(Some glass1mmId, (elem 2 latest.Value).placement.valueId)
+            Assert.Equal(Some (ElementValueId glass1mmId), (elem 2 latest.Value).placement.valueId)
             window.Close())

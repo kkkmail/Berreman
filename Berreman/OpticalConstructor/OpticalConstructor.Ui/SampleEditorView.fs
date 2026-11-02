@@ -449,9 +449,9 @@ let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleE
     | SetReflectedEmission on ->
         // Turn the reflected group on/off (spec 0040 Part D.2 step 010): the smart setter forbids
         // the both-off state, and `constrainEmission` re-pins a Mirror to EmitReflectedOnly.
-        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withReflected on m.supportedEmission) }
+        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withReflected (if on then Placement.RayGroupOn else Placement.RayGroupOff) m.supportedEmission) }
     | SetTransmittedEmission on ->
-        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withTransmitted on m.supportedEmission) }
+        { m with supportedEmission = constrainEmission m.substrate (Placement.Emission.withTransmitted (if on then Placement.RayGroupOn else Placement.RayGroupOff) m.supportedEmission) }
     | ChooseMaterial id -> { m with chosenMaterial = Some id }
     | RefreshMaterials ->
         // Spec 0038 (019): re-query the material list from the LIVE proxy — a material added

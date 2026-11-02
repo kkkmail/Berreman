@@ -111,12 +111,12 @@ let defaultWaveLength : WaveLength = WaveLength.nm 600.0<nm>
 
 /// The wavelength as the box shows it in `u` (six significant digits, invariant culture).
 let formatIn (u : UnitOfMeasure) (w : WaveLength) : string =
-    (wavelengthToUnit u w).ToString("G6", CultureInfo.InvariantCulture)
+    (wavelengthToUnit u w).value.ToString("G6", CultureInfo.InvariantCulture)
 
 /// Parse a typed wavelength in `u`: a positive finite number, else `None`.
 let parseIn (u : UnitOfMeasure) (text : string) : WaveLength option =
     match Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
-    | true, v when v > 0.0 && not (Double.IsInfinity v) -> Some (toWaveLength u v)
+    | true, v when v > 0.0 && not (Double.IsInfinity v) -> Some (toWaveLength u (UnitMagnitude v))
     | _ -> None
 
 let private metresOf (w : WaveLength option) : float<meter> option = w |> Option.map (fun x -> x.value)
@@ -158,11 +158,11 @@ let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditor
 /// The source Save would store, or the reason it cannot yet.
 let toSource (m : LightSourceEditorModel) : Result<SourcePreset, string> =
     match m.waveLength, m.tuning, m.minimum, m.maximum with
-    | None, _, _, _ -> Error $"enter a positive wavelength in %s{unitAbbrev m.unit}"
+    | None, _, _, _ -> Error $"enter a positive wavelength in %s{m.unit.abbreviation}"
     | Some w, FixedChoice, _, _ -> Ok { id = m.sourceId; name = m.name.Trim(); waveLength = w; tuning = FixedLine; protection = UserManaged }
     | Some w, TunableChoice, Some lo, Some hi ->
         Ok { id = m.sourceId; name = m.name.Trim(); waveLength = w; tuning = TunableBetween (lo, hi); protection = UserManaged }
-    | Some _, TunableChoice, _, _ -> Error $"enter positive tunable limits in %s{unitAbbrev m.unit}"
+    | Some _, TunableChoice, _, _ -> Error $"enter positive tunable limits in %s{m.unit.abbreviation}"
 
 let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorModel) : LightSourceEditorModel =
     match msg with
@@ -318,7 +318,7 @@ let private tuningRows (m : LightSourceEditorModel) (dispatch : LightSourceEdito
                   TextBox.text m.maximumText
                   TextBox.onTextChanged (SetMaximumText >> dispatch)
               ] :> IView
-              TextBlock.create [ TextBlock.text (unitAbbrev m.unit); TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
+              TextBlock.create [ TextBlock.text (m.unit.abbreviation); TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
           ]
       ] :> IView ]
 
@@ -336,17 +336,17 @@ let private waveLengthRow (m : LightSourceEditorModel) (dispatch : LightSourceEd
               ] :> IView ]
             @ (waveLengthUnits
                |> List.map (fun u ->
-                   clickBox (ConstructorUiId.sourceWaveLengthUnit (ConstructorUiKey (unitCode u))).value (unitAbbrev u) (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
+                   clickBox (ConstructorUiId.sourceWaveLengthUnit (ConstructorUiKey (unitCode u))).value u.abbreviation (if u = m.unit then chosenBackground else idleBackground) (fun () -> dispatch (SetUnit u)))))
     ] :> IView
 
 /// The wavelength restated in nm and eV (the units visible-light and EUV work read), or the parse hint.
 let readoutText (m : LightSourceEditorModel) : string =
     match m.waveLength with
     | Some w ->
-        let nm = wavelengthToUnit Nanometer w
-        let ev = wavelengthToUnit ElectronVolt w
+        let nm = (wavelengthToUnit Nanometer w).value
+        let ev = (wavelengthToUnit ElectronVolt w).value
         String.Format(CultureInfo.InvariantCulture, "λ = {0:G6} nm  ·  {1:G6} eV", nm, ev)
-    | None -> $"enter a positive wavelength in %s{unitAbbrev m.unit}"
+    | None -> $"enter a positive wavelength in %s{m.unit.abbreviation}"
 
 let private readoutRow (m : LightSourceEditorModel) : IView =
     TextBlock.create [

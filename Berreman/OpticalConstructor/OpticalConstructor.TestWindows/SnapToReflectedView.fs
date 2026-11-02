@@ -88,8 +88,8 @@ let private elementSelectRadiusPx : float = 50.0
 /// and a detector half a metre past it. The mirror starts selected so the bar acts on it.
 let initSnapToReflected () : SnapToReflectedModel =
     // This test window steers its source freely (spec 0046 locks a fresh source's R1 / R2).
-    let source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = false; r2Locked = false }
-    let mirror = withR2 (Angle.degree 45.0<deg>) { ElementPlacement.create FlatMirror { x = 0.0<meter>; y = 0.0<meter> } with r3Locked = false }
+    let source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = RotationFree; r2Locked = RotationFree }
+    let mirror = withR2 (Angle.degree 45.0<deg>) { ElementPlacement.create FlatMirror { x = 0.0<meter>; y = 0.0<meter> } with r3Locked = RotationFree }
     let detector = ElementPlacement.create Detector { x = 0.0<meter>; y = 0.0<meter> }
     {
         table = Table.defaultTable
@@ -136,15 +136,15 @@ let snapped (m : SnapToReflectedModel) : RayModel.SnappedElement list =
                 // the mirror's emission that it must reflect.
                 ({ placement = placement
                    gap = gap
-                   branch = RayModel.primaryBranch placement } : RayModel.RaySegmentSpec))
-        RayModel.snapChain (RayModel.pointToVector3 source.placementPoint) (r1Axis source) specs
+                   branch = placement.primaryBranch } : RayModel.RaySegmentSpec))
+        RayModel.snapChain source.placementPoint.toVector3 (r1Axis source) specs
     | [] -> []
 
 /// Each element's absolute table-frame position: the source at its placement point, the mirror and
 /// detector at their snapped positions.
 let elementPositions (m : SnapToReflectedModel) : Vector3 list =
     match m.elements with
-    | source :: _ -> RayModel.pointToVector3 source.placementPoint :: (snapped m |> List.map (fun s -> s.position))
+    | source :: _ -> source.placementPoint.toVector3 :: (snapped m |> List.map (fun s -> s.position))
     | [] -> []
 
 /// The first element that REFLECTS the beam (its primary branch is `Reflected`) — DERIVED from the
@@ -152,12 +152,14 @@ let elementPositions (m : SnapToReflectedModel) : Vector3 list =
 /// are oriented relative to that beam. `MaxValue` when nothing reflects (a straight transmitted chain).
 let reflectorIndex (m : SnapToReflectedModel) : int =
     m.elements
-    |> List.tryFindIndex (fun p -> RayModel.primaryBranch p = BeamTree.ReflectedBeam)
+    |> List.tryFindIndex (fun p -> p.primaryBranch = BeamTree.ReflectedBeam)
     |> Option.defaultValue System.Int32.MaxValue
 
 /// The absolute (R2, R3) orienting an element to face the beam in `dir` — now the shared domain helper
-/// (`RayModel.beamOrientation`), used by the Main screen too.
-let beamOrientation (dir : Vector3) : Angle * Angle = RayModel.beamOrientation dir
+/// (`Vector3.beamOrientation`), used by the Main screen too.
+let beamOrientation (dir : Vector3) : Angle * Angle =
+    let o = dir.beamOrientation
+    o.steer, o.tip
 
 /// The placements used to DRAW each element. An element on the REFLECTED beam (after the reflector) is
 /// oriented RELATIVE to that beam: its dialled R2/R3 are ADDED to the beam's own absolute R2/R3, so at
@@ -253,7 +255,7 @@ let updateSnapToReflected (msg : SnapToReflectedMsg) (model : SnapToReflectedMod
     | SnapToReflectedToggleR3Lock ->
         match model.selection with
         | SnapToReflectedTableSelected -> { model with tableR3Locked = not model.tableR3Locked }
-        | ElementSelected i -> mapElement i (fun p -> setR3Locked (not p.r3Locked) p) model
+        | ElementSelected i -> mapElement i (fun p -> setR3Locked p.r3Locked.toggled p) model
         | NothingSelected -> model
     | SnapToReflectedRotSetAxis (axis, v) -> setSelectedAxis axis v model
     | SnapToReflectedRotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
@@ -318,7 +320,7 @@ let private elementMark (m : SnapToReflectedModel) (i : int) (placement : Elemen
     let selected = (m.selection = ElementSelected i)
     let proj = TableScene.project m.view
     let cScr = proj pos
-    let (n1, n2, _) = orientedBasis placement
+    let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis placement
     let half = drawScale * (placement.box.a2 / 2.0 / 1.0<meter>)
     let along (n : Vector3) (len : float) = proj (v3 (pos.x + len * n.x) (pos.y + len * n.y) (pos.z + len * n.z))
     let marker =
@@ -376,7 +378,7 @@ let private rotationState (model : SnapToReflectedModel) : RotationControls.Stat
         let p = List.item i model.elements
         { r1 = BarDegrees p.r1.degrees; r2 = BarDegrees p.r2.degrees; r3 = BarDegrees p.r3.degrees
           r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
-          r3Lock = (if p.r3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
+          r3Lock = (match p.r3Locked with RotationLocked -> RotationControls.AxisLocked | RotationFree -> RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
     | NothingSelected ->
         { r1 = BarDegrees 0.0; r2 = BarDegrees 0.0; r3 = BarDegrees 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Lock = RotationControls.AxisFree; availability = ControlWithheld; confirm = model.rotationConfirm }
 

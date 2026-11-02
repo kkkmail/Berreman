@@ -31,7 +31,7 @@ module PlacementTests =
     [<Fact>]
     let ``AC-A1 a freshly placed unrotated element has N1 along the central ray and N2 along the table normal`` () =
         let p = ElementPlacement.create LinearPolarizer TablePoint.origin
-        let (n1, n2) = orientedNormals p
+        let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis p
         // N1 points along the central ray (+X) ...
         Assert.True(close n1.x centralRayDirection.x && close n1.y centralRayDirection.y && close n1.z centralRayDirection.z,
                     $"N1 = ({n1.x}, {n1.y}, {n1.z})")
@@ -44,20 +44,20 @@ module PlacementTests =
     [<Fact>]
     let ``AC-A2 a new element locks R3 and leaves R1 and R2 unlocked`` () =
         let p = ElementPlacement.create Sample TablePoint.origin
-        Assert.True(p.r3Locked)
-        Assert.False(p.r1Locked)
-        Assert.False(p.r2Locked)
+        Assert.Equal(RotationLocked, p.r3Locked)
+        Assert.Equal(RotationFree, p.r1Locked)
+        Assert.Equal(RotationFree, p.r2Locked)
 
     [<Fact>]
     let ``spec 0046 the light source alone moves freely and starts with every move and rotation locked`` () =
         let source = ElementPlacement.create LightSource TablePoint.origin
-        Assert.Equal(MovesFreely, mobilityOf LightSource)
-        Assert.True(source.r1Locked && source.r2Locked && source.r3Locked)
+        Assert.Equal(MovesFreely, LightSource.mobility)
+        Assert.True([ source.r1Locked; source.r2Locked; source.r3Locked ] |> List.forall (fun lock -> lock = RotationLocked))
         Assert.Equal<MoveLocks>({ xLock = MoveLocked; yLock = MoveLocked; zLock = MoveLocked }, source.moveLocks)
         Assert.Equal(0.0<meter>, source.height)
         for kind in [ LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ] do
             let p = ElementPlacement.create kind TablePoint.origin
-            Assert.Equal(MovesAlongBeam, mobilityOf kind)
+            Assert.Equal(MovesAlongBeam, kind.mobility)
             Assert.Equal<MoveLocks>({ xLock = MoveFree; yLock = MoveFree; zLock = MoveFree }, p.moveLocks)
 
     [<Fact>]
@@ -81,7 +81,7 @@ module PlacementTests =
         let stillZero = withR3 (Angle.degree 30.0<deg>) p
         Assert.True(close stillZero.r3.degrees 0.0, $"locked R3 changed to {stillZero.r3.degrees} deg")
         // Once unlocked, the change applies.
-        let changed = p |> setR3Locked false |> withR3 (Angle.degree 30.0<deg>)
+        let changed = p |> setR3Locked RotationFree |> withR3 (Angle.degree 30.0<deg>)
         Assert.True(close changed.r3.degrees 30.0, $"unlocked R3 = {changed.r3.degrees} deg")
 
     // --- AC-A3: r2 + R2 additivity -----------------------------------------
@@ -99,12 +99,12 @@ module PlacementTests =
     let ``AC-A4 R3 non-zero tips the R1 axis so it is no longer perpendicular to the R2 axis`` () =
         let p = ElementPlacement.create FlatMirror TablePoint.origin
         // With R3 = 0 the R1 axis (face normal) is perpendicular to the R2 axis (table normal).
-        Assert.True(close ((r1Axis p).dot r2Axis) 0.0, "R1 should be perpendicular to R2 at rest")
+        Assert.True(close (((r1Axis p).dot r2Axis).value) 0.0, "R1 should be perpendicular to R2 at rest")
         // Setting R3 != 0 tips N1 out of the table plane: the dot is no longer ~0
         // (the basis is no longer a fixed orthogonal triad — A.4.4). The record is
         // copied directly to prove the geometry math independent of the lock.
         let tilted = { p with r3 = Angle.degree 30.0<deg> }
-        let dotted = (r1Axis tilted).dot r2Axis
+        let dotted = ((r1Axis tilted).dot r2Axis).value
         Assert.True(abs dotted > 1.0e-6, $"expected R1 not perpendicular to R2, got dot = {dotted}")
 
     // --- AC-A5: emission invariant -----------------------------------------
@@ -112,18 +112,18 @@ module PlacementTests =
     [<Fact>]
     let ``AC-A5 emission can never suppress both groups and turning the second off re-enables the first`` () =
         // Start emitting both, then suppress the reflected group: transmitted stays on.
-        let afterReflectedOff = Emission.withReflected false EmitBoth
+        let afterReflectedOff = Emission.withReflected RayGroupOff EmitBoth
         Assert.False(afterReflectedOff.emitsReflected)
         Assert.True(afterReflectedOff.emitsTransmitted)
         // Now turn the SECOND (transmitted) off -> the first (reflected) is re-enabled,
         // never the impossible both-off state.
-        let afterSecondOff = Emission.withTransmitted false afterReflectedOff
+        let afterSecondOff = Emission.withTransmitted RayGroupOff afterReflectedOff
         Assert.True(afterSecondOff.emitsReflected)
         Assert.False(afterSecondOff.emitsTransmitted)
         // Symmetric direction: suppress transmitted first, then reflected.
-        let afterTransmittedOff = Emission.withTransmitted false EmitBoth
+        let afterTransmittedOff = Emission.withTransmitted RayGroupOff EmitBoth
         Assert.False(afterTransmittedOff.emitsTransmitted)
-        let afterSecondOff2 = Emission.withReflected false afterTransmittedOff
+        let afterSecondOff2 = Emission.withReflected RayGroupOff afterTransmittedOff
         Assert.True(afterSecondOff2.emitsTransmitted)
         Assert.False(afterSecondOff2.emitsReflected)
 
@@ -131,19 +131,19 @@ module PlacementTests =
 
     [<Fact>]
     let ``AC-A7 both polarizers map to Polarizer, Detector maps to Detector, and nothing maps to Analyzer`` () =
-        Assert.Equal(BeamTree.Polarizer, toConstructorElement LinearPolarizer)
-        Assert.Equal(BeamTree.Polarizer, toConstructorElement CircularPolarizer)
-        Assert.Equal(BeamTree.Detector, toConstructorElement Detector)
+        Assert.Equal(BeamTree.PolarizerElement, toConstructorElement LinearPolarizer)
+        Assert.Equal(BeamTree.PolarizerElement, toConstructorElement CircularPolarizer)
+        Assert.Equal(BeamTree.DetectorElement, toConstructorElement Detector)
         // Sample maps to the engine Sample case (carrying a placeholder system).
         match toConstructorElement Sample with
-        | BeamTree.Sample _ -> ()
+        | BeamTree.SampleElement _ -> ()
         | other -> failwith $"expected Sample, got {other}"
         // No catalogue kind ever maps to the engine `Analyzer` case (A.5.2).
         let allKinds =
             [ LightSource; LinearPolarizer; CircularPolarizer; Sample; Lens; FlatMirror; CurvedMirror; Detector ]
         for k in allKinds do
             match toConstructorElement k with
-            | BeamTree.Analyzer -> failwith $"catalogue kind {k} must not map to Analyzer"
+            | BeamTree.AnalyzerElement -> failwith $"catalogue kind {k} must not map to Analyzer"
             | _ -> ()
 
     // --- AC-A6: placement round-trip + schema validation -------------------
@@ -161,7 +161,7 @@ module PlacementTests =
 
     let private rootNode : BeamTree.BeamNode =
         {
-            element = BeamTree.Detector
+            element = BeamTree.DetectorElement
             system = vacuumSystem
             incident = light
             children = Map.empty
@@ -179,7 +179,7 @@ module PlacementTests =
         // catalogue kind, valueId = None, emission metadata, display unit.
         let placement =
             ElementPlacement.create CircularPolarizer { x = 0.01<meter>; y = -0.02<meter> }
-            |> setR2Locked false
+            |> setR2Locked RotationFree
             |> withR2 (Angle.degree 12.0<deg>)
         let project : OpticalConstructorProject =
             { beamTree = { root = rootNode }; systems = [ vacuumSystem ]; sources = []; placements = [ placement ]; table = OpticalConstructor.Domain.Table.defaultTable }
@@ -199,8 +199,8 @@ module PlacementTests =
         Assert.True(close (bp.box.b / 1.0<meter>) (opticalDepth / 1.0<meter>), $"box.b = {bp.box.b}")
         // ... the lock flags, catalogue kind, emission, display unit, and the
         // unbound (None) value id all preserved.
-        Assert.True(bp.r3Locked)
-        Assert.False(bp.r2Locked)
+        Assert.Equal(RotationLocked, bp.r3Locked)
+        Assert.Equal(RotationFree, bp.r2Locked)
         Assert.Equal(CircularPolarizer, bp.catalogueKind)
         Assert.Equal(EmitTransmittedOnly, bp.emission)   // spec 0046: a polarizer transmits only
         Assert.Equal(Millimeter, bp.displayUnit)

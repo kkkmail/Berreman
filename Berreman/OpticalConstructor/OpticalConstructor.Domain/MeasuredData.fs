@@ -179,12 +179,12 @@ module MeasuredData =
         | WavelengthPsiDelta, [| ws; ps; ds |] ->
             match tryFloat ws, tryFloat ps, tryFloat ds with
             | Some w, Some p, Some d ->
-                Some { waveLength = toWaveLength Nanometer w; psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = None }
+                Some { waveLength = toWaveLength Nanometer (UnitMagnitude w); psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = None }
             | _ -> None
         | WavelengthPsiDeltaAoi, [| ws; ps; ds; aos |] ->
             match tryFloat ws, tryFloat ps, tryFloat ds, tryFloat aos with
             | Some w, Some p, Some d, Some a ->
-                Some { waveLength = toWaveLength Nanometer w; psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = Some (Angle.degree (a * 1.0<Berreman.Constants.deg>)) }
+                Some { waveLength = toWaveLength Nanometer (UnitMagnitude w); psi = Angle.degree (p * 1.0<Berreman.Constants.deg>); delta = Angle.degree (d * 1.0<Berreman.Constants.deg>); aoiOpt = Some (Angle.degree (a * 1.0<Berreman.Constants.deg>)) }
             | _ -> None
         | _ -> None
 
@@ -253,9 +253,9 @@ module MeasuredData =
         | Ellipsometer, EllipsometricData s ->
             match varied with
             | Some VaryWaveLength ->
-                match s.points |> List.tryFind (fun p -> not (inRange lo hi (wavelengthToUnit Nanometer p.waveLength))) with
+                match s.points |> List.tryFind (fun p -> not (inRange lo hi (wavelengthToUnit Nanometer p.waveLength).value)) with
                 | Some p ->
-                    let nm = wavelengthToUnit Nanometer p.waveLength
+                    let nm = (wavelengthToUnit Nanometer p.waveLength).value
                     Error (DataRangeMismatch $"a measured wavelength {nm} nm lies outside the experiment range [{lo}, {hi}] nm")
                 | None -> Ok series
             | Some VaryR1

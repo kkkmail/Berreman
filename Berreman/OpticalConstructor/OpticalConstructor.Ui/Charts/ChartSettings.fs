@@ -118,7 +118,7 @@ let private toNullable (v : float option) : System.Nullable<float> =
 /// (angle / dimensionless axis): the bound passes through unchanged.
 let private toDisplay (unit : Units.UnitOfMeasure option) (v : float option) : float option =
     match unit, v with
-    | Some u, Some x -> Some (Units.fromMeters u (x * 1.0<meter>))
+    | Some u, Some x -> Some (Units.fromMeters u (x * 1.0<meter>)).value
     | _, vo -> vo
 
 /// Order-normalize a converted axis-bound pair so the renderer always receives

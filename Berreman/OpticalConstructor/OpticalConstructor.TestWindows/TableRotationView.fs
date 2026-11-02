@@ -176,8 +176,8 @@ let private rotate2 (d : float) (m : TableRotationModel) : TableRotationModel = 
 let private rotate3 (d : float) (m : TableRotationModel) : TableRotationModel = if m.r3Locked then m else { m with view = { m.view with r3 = addDeg m.view.r3 d } }
 
 let private zoomBy (notches : int) (m : TableRotationModel) : TableRotationModel =
-    let z = m.view.zoom * (zoomStep ** float notches)
-    { m with view = { m.view with zoom = max zoomMin (min zoomMax z) } }
+    let z = m.view.zoom.value * (zoomStep ** float notches)
+    { m with view = { m.view with zoom = TableZoom (max zoomMin (min zoomMax z)) } }
 
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
     sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
@@ -187,7 +187,7 @@ let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
 /// it never rotates; rotation stays the documented modifier+wheel gesture.
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : TableRotationModel) : TableRotationModel =
     { m with
-        view = { m.view with panX = m.view.panX + (pt.sx - refPt.sx); panY = m.view.panY + (pt.sy - refPt.sy) }
+        view = { m.view with panX = TablePan (m.view.panX.value + (pt.sx - refPt.sx)); panY = TablePan (m.view.panY.value + (pt.sy - refPt.sy)) }
         drag = TableRotationPanning pt }
 
 /// The table is rotatable ONLY when it is selected (Spec 0027, task 006 #1): a rotation request
@@ -216,7 +216,7 @@ let updateTableRotation (msg : TableRotationMsg) (model : TableRotationModel) : 
     | TableRotationRotateR1By d -> rotateIfSelected (rotate1 d) model
     | TableRotationRotateR2By d -> rotateIfSelected (rotate2 d) model
     | TableRotationRotateR3By d -> rotateIfSelected (rotate3 d) model
-    | ResetView -> { model with view = Table.resetView model.view; drag = TableRotationNotPressed }
+    | ResetView -> { model with view = Table.defaultView; drag = TableRotationNotPressed }
     | TableRotationPointerDown pt -> { model with drag = TableRotationPressed pt }
     | TableRotationPointerMove pt ->
         // Once a press moves past the threshold it becomes a pan-drag, then tracks the pointer.
@@ -310,7 +310,7 @@ let private rotationHandlers (dispatch : TableRotationMsg -> unit) : RotationCon
 
 let private controlBar (model : TableRotationModel) (dispatch : TableRotationMsg -> unit) : IView =
     let readout =
-        $"""R1 %.0f{degrees model.view.r1}°   R2 %.0f{degrees model.view.r2}°   R3 %.0f{degrees model.view.r3}°   Zoom %.2f{model.view.zoom}×      Table: %s{(match model.selection with TableRotationTableSelected -> "SELECTED" | TableUnselected -> "not selected")}"""
+        $"""R1 %.0f{degrees model.view.r1}°   R2 %.0f{degrees model.view.r2}°   R3 %.0f{degrees model.view.r3}°   Zoom %.2f{model.view.zoom.value}×      Table: %s{(match model.selection with TableRotationTableSelected -> "SELECTED" | TableUnselected -> "not selected")}"""
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0

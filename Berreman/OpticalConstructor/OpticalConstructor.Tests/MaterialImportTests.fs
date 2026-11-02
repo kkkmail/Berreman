@@ -36,7 +36,7 @@ module MaterialImportTests =
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             // 0.4 µm is a tabulated sample (n = 5.570, k = 0.387).
-            let got = epsAt entry (toWaveLength Micrometer 0.4)
+            let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude 0.4))
             Assert.True(closeC 1e-9 got (nkSquared 5.570 0.387), $"got {got}")
 
     [<Fact>]
@@ -45,7 +45,7 @@ module MaterialImportTests =
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             // 500 nm is a tabulated sample (n = 1.480, k = 0.005).
-            let got = epsAt entry (toWaveLength Nanometer 500.0)
+            let got = epsAt entry (toWaveLength Nanometer (UnitMagnitude 500.0))
             Assert.True(closeC 1e-9 got (nkSquared 1.480 0.005), $"got {got}")
 
     [<Fact>]
@@ -54,7 +54,7 @@ module MaterialImportTests =
         | Error e -> Assert.Fail($"{e}")
         | Ok entry ->
             // 0.55 µm is the midpoint of 0.5 (4.293, 0.045) and 0.6 (3.939, 0.025).
-            let got = epsAt entry (toWaveLength Micrometer 0.55)
+            let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude 0.55))
             Assert.True(closeC 1e-9 got (nkSquared 4.116 0.035), $"got {got}")
 
     /// The imported entry MUST be editable (spec 0033 step 025): a `Some`
@@ -77,7 +77,7 @@ module MaterialImportTests =
         | Ok entry ->
             assertEditableDispersive entry
             for lam in samplesMkm do
-                let got = epsAt entry (toWaveLength Micrometer lam)
+                let got = epsAt entry (toWaveLength Micrometer (UnitMagnitude lam))
                 let want = nkSquared (expectedN lam) 0.0
                 Assert.True(closeC 1e-9 got want, $"{fixture} at {lam} µm: got {got}, want {want}")
 
@@ -104,8 +104,8 @@ module MaterialImportTests =
         | Ok entry ->
             match entry.complexity with
             | Some { eps = EpsWithDispValue (IsotropicDispersive [ segment ]) } ->
-                Assert.Equal(toWaveLength Micrometer 0.3, segment.wavelengthInterval.lower)
-                Assert.Equal(toWaveLength Micrometer 2.5, segment.wavelengthInterval.upper)
+                Assert.Equal(toWaveLength Micrometer (UnitMagnitude 0.3), segment.wavelengthInterval.lower)
+                Assert.Equal(toWaveLength Micrometer (UnitMagnitude 2.5), segment.wavelengthInterval.upper)
             | other -> Assert.Fail($"expected a single isotropic dispersive segment, got {other}")
 
     [<Fact>]
@@ -170,6 +170,6 @@ module MaterialImportTests =
         Assert.Contains("wavelength_nm,n,k", csv)
         match importCsv csv with
         | Ok back ->
-            let w = toWaveLength Nanometer 500.0 // a shared sample of both tables
+            let w = toWaveLength Nanometer (UnitMagnitude 500.0) // a shared sample of both tables
             Assert.True(closeC 1e-6 (epsAt entry w) (epsAt back w), "round-trip n,k at 500 nm")
         | Error e -> Assert.Fail($"{e}")

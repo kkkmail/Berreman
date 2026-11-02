@@ -295,7 +295,7 @@ module DispersionModels =
             xs |> List.mapi (fun i x -> p $"{name}{i}" $"{label}{i + 1}" unit x (fun v -> rebuild (replaceAt i v xs)))
         // The model's abscissa unit and its length-power derivatives (spec 0033
         // comment 009): dimensioned parameters read in these.
-        let un = unitAbbrev (wavelengthUnitOf model)
+        let un = (wavelengthUnitOf model).abbreviation
         let un2 = un + "²"
         let un4 = un + "⁴"
         match model with
@@ -411,7 +411,7 @@ module DispersionModels =
     /// is obtained from the canonical meters via `Units.fromMeters` (the sole
     /// conversion seam, §D.11) — no literal factor appears here.
     let private baseIndex (model : DispersionModel) (w : WaveLength) : Complex =
-        let x = fromMeters (wavelengthUnitOf model) w.value
+        let x = (fromMeters (wavelengthUnitOf model) w.value).value
         match model with
         | Sellmeier c ->
             let lam2 = x * x
@@ -517,10 +517,10 @@ module DispersionModels =
     let private abscissaKindOf (u : UnitOfMeasure) : AbscissaKind =
         match u with
         | Meter | Millimeter | Micrometer | Nanometer | Angstrom ->
-            LinearInX (float (toMeters u 1.0))
+            LinearInX (float (toMeters u (UnitMagnitude 1.0)))
         | ElectronVolt | Wavenumber ->
-            let nanometer = toMeters Nanometer 1.0
-            ReciprocalInX (float nanometer, fromMeters u nanometer)
+            let nanometer = toMeters Nanometer (UnitMagnitude 1.0)
+            ReciprocalInX (float nanometer, (fromMeters u nanometer).value)
 
     /// The zero formula — the k of a transparent medium.
     let private zeroFormula (scale : double) : DispersionFormula =
@@ -691,7 +691,7 @@ module DispersionModels =
     /// segment extrapolates for every wavelength (`Dispersion.fs:346`), so a model
     /// lowered whole needs no real bounds.
     let private nominalInterval : WaveLengthInterval =
-        { lower = toWaveLength Nanometer 0.0; upper = toWaveLength Nanometer 0.0 }
+        { lower = toWaveLength Nanometer (UnitMagnitude 0.0); upper = toWaveLength Nanometer (UnitMagnitude 0.0) }
 
     /// The serializable eps value a model composes to (§D.6 / spec 0033 §B):
     /// `ConstantNK` short-circuits to the non-dispersive constant

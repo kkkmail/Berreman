@@ -31,10 +31,10 @@ module FacetBuckets =
 
     /// One endpoint of a length label. Magnitudes are lengths in NANOMETERS;
     /// the §7.5 unit switch shows nm below 1 µm and µm at or above, the unit
-    /// symbols reused from `Units.unitAbbrev` (the sole home of unit names).
+    /// symbols reused from `UnitOfMeasure.abbreviation` (the sole home of unit names).
     let private lengthPart (v : double) : string * string =
-        if v < 1000.0 then $"%g{v}", Units.unitAbbrev Units.Nanometer
-        else $"%g{v / 1000.0}", Units.unitAbbrev Units.Micrometer
+        if v < 1000.0 then $"%g{v}", Units.Nanometer.abbreviation
+        else $"%g{v / 1000.0}", Units.Micrometer.abbreviation
 
     /// One display bucket of a numeric facet: a half-open `[lower, upper)`
     /// interval carrying the count of population magnitudes inside it, with

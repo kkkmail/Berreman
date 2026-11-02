@@ -248,7 +248,7 @@ module ScrollExtentTests =
                     | Some p -> p.Y
                     | None -> infinity
                 Assert.True(tableBottomInWindow () > window.ClientSize.Height + 1.0, "precondition: the tall Experiments bay pushes the table's bottom off the window")
-                let zoom0 = latest.view.zoom
+                let zoom0 = latest.view.zoom.value
                 // Wheel over the visible strip of the table, near the window's bottom edge, until it stops scrolling.
                 let mutable notches = 0
                 while tableBottomInWindow () > window.ClientSize.Height + 1.0 && notches < 200 do
@@ -256,11 +256,11 @@ module ScrollExtentTests =
                     Dispatcher.UIThread.RunJobs()
                     notches <- notches + 1
                 Assert.True(tableBottomInWindow () <= window.ClientSize.Height + 1.0, $"the wheel never brought the table's bottom into view (offset %g{viewer.Offset.Y} of %g{viewer.Extent.Height - viewer.Viewport.Height})")
-                Assert.Equal(zoom0, latest.view.zoom)                                      // the table did not zoom meanwhile
+                Assert.Equal(zoom0, latest.view.zoom.value)                                      // the table did not zoom meanwhile
                 // Now the table is in view: the next notch zooms it.
                 window.MouseWheel(Point(tableAndElementRotationCanvasWidth / 2.0, window.ClientSize.Height - 10.0), Vector(0.0, -1.0), RawInputModifiers.None)
                 Dispatcher.UIThread.RunJobs()
-                Assert.NotEqual(zoom0, latest.view.zoom)
+                Assert.NotEqual(zoom0, latest.view.zoom.value)
             finally
                 window.Close())
 

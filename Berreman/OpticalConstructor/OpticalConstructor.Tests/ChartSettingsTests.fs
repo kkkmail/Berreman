@@ -59,11 +59,11 @@ module ChartSettingsTests =
     [<Fact>]
     let ``AC-H5 nm to eV unit switch routes through the A10 boundary and stays SI`` () =
         // A 500 nm wavelength, stored canonical SI (meters).
-        let mWl = Units.toMeters Units.Nanometer 500.0
+        let mWl = Units.toMeters Units.Nanometer (Units.UnitMagnitude 500.0)
 
         // Display conversions go through the §A.10 Units seam, NOT a re-implementation.
-        Assert.Equal(Units.evNmProduct / 500.0, Units.fromMeters Units.ElectronVolt mWl, 6)
-        Assert.Equal(500.0, Units.fromMeters Units.Nanometer mWl, 9)
+        Assert.Equal(Units.evNmProduct / 500.0, (Units.fromMeters Units.ElectronVolt mWl).value, 6)
+        Assert.Equal(500.0, (Units.fromMeters Units.Nanometer mWl).value, 9)
 
         // The stored ChartSettings range stays canonical SI regardless of display unit.
         let s = { ChartSettings.defaultValue with xMin = Some (float mWl) }
@@ -73,8 +73,8 @@ module ChartSettingsTests =
     let ``AC-H5 applyToScottPlot converts an SI xMin/xMax override to the axis display unit`` () =
         // A 400..700 nm wavelength window, stored canonical SI (meters) — the trace
         // x-values are plotted in nm, so the axis display unit is Nanometer.
-        let loM = Units.toMeters Units.Nanometer 400.0
-        let hiM = Units.toMeters Units.Nanometer 700.0
+        let loM = Units.toMeters Units.Nanometer (Units.UnitMagnitude 400.0)
+        let hiM = Units.toMeters Units.Nanometer (Units.UnitMagnitude 700.0)
 
         let plot = new ScottPlot.Plot()
         let s =
@@ -101,8 +101,8 @@ module ChartSettingsTests =
         // wavelength (700 nm) is the SMALLER eV value: an ascending stored window
         // converts to a descending display pair. The projection must order-normalize
         // it so the renderer never sees Left > Right (a reversed/empty axis).
-        let loM = Units.toMeters Units.Nanometer 400.0
-        let hiM = Units.toMeters Units.Nanometer 700.0
+        let loM = Units.toMeters Units.Nanometer (Units.UnitMagnitude 400.0)
+        let hiM = Units.toMeters Units.Nanometer (Units.UnitMagnitude 700.0)
 
         let plot = new ScottPlot.Plot()
         let s =
@@ -116,8 +116,8 @@ module ChartSettingsTests =
         // Ascending: Left < Right despite the inverse-unit conversion flipping order.
         Assert.True(limits.Left < limits.Right, "X-axis limits must be ascending after the inverse-unit conversion")
         // The two ends are exactly the converted eV values (700 nm -> low, 400 nm -> high).
-        Assert.Equal(Units.fromMeters Units.ElectronVolt hiM, limits.Left, 6)
-        Assert.Equal(Units.fromMeters Units.ElectronVolt loM, limits.Right, 6)
+        Assert.Equal((Units.fromMeters Units.ElectronVolt hiM).value, limits.Left, 6)
+        Assert.Equal((Units.fromMeters Units.ElectronVolt loM).value, limits.Right, 6)
 
         // Storage stays canonical SI regardless of the axis display unit.
         Assert.Equal(Some (float loM), s.xMin)

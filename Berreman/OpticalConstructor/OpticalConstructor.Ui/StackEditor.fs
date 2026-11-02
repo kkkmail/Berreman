@@ -212,7 +212,7 @@ let defaultNewLayer : Layer =
 let displayThickness (u : UnitOfMeasure) (t : Thickness) : string =
     match t with
     | Thickness.Infinity -> "∞ (substrate)"
-    | Thickness.Thickness m -> $"%g{fromMeters u m} %A{u}"
+    | Thickness.Thickness m -> $"%g{(fromMeters u m).value} %A{u}"
 
 /// Human-facing labels for the stack-editor toolbar rows a view will render
 /// (display metadata only; the view layer is deferred to a later UI-wiring slice).

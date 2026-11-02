@@ -38,7 +38,7 @@ module DispersionModelsTests =
         let model = Sellmeier { b = [ 1.04 ]; c = [ 0.006 ]; wavelengthUnit = Micrometer; thermoOptic = None }
         let f = evaluate model
         for lamUm in [ 0.4; 0.5; 0.6 ] do
-            let w = toWaveLength Micrometer lamUm
+            let w = toWaveLength Micrometer (UnitMagnitude lamUm)
             let lam2 = lamUm * lamUm
             let nExpected = sqrt (1.0 + 1.04 * lam2 / (lam2 - 0.006))
             let got = (f w).value
@@ -438,10 +438,10 @@ module DispersionModelsTests =
         // denominator is 9 − 3B + C = 2.128, so n = n∞ + (3B₀ + C₀)/2.128 =
         // 5.0742287 and k = A·(3 − Eg)²/2.128 = 1.7823699.
         let f = evaluate forouhiBloomerASi
-        let below = (f (toWaveLength ElectronVolt 0.6)).value
+        let below = (f (toWaveLength ElectronVolt (UnitMagnitude 0.6))).value
         Assert.True(abs (below.Real - 3.182) <= 5e-4, $"n(0.6 eV) = {below.Real}, expected 3.182")
         Assert.Equal(0.0, below.Imaginary)
-        let above = (f (toWaveLength ElectronVolt 3.0)).value
+        let above = (f (toWaveLength ElectronVolt (UnitMagnitude 3.0))).value
         Assert.True(abs (above.Real - 5.0742287) <= 1e-6, $"n(3 eV) = {above.Real}, expected 5.0742287")
         Assert.True(abs (above.Imaginary - 1.7823699) <= 1e-6, $"k(3 eV) = {above.Imaginary}, expected 1.7823699")
 
@@ -461,7 +461,7 @@ module DispersionModelsTests =
                 2.0306, 0.86294, 12.953
             ]
         for lamUm, nExpected, kExpected in rows do
-            let got = (f (toWaveLength Micrometer lamUm)).value
+            let got = (f (toWaveLength Micrometer (UnitMagnitude lamUm))).value
             Assert.True(abs (got.Real - nExpected) <= 2e-3, $"λ={lamUm}µm: n = {got.Real}, expected {nExpected}")
             Assert.True(abs (got.Imaginary - kExpected) <= 2e-3, $"λ={lamUm}µm: k = {got.Imaginary}, expected {kExpected}")
 

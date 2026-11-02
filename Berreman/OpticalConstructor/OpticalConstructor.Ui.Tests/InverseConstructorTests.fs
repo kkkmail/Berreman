@@ -79,7 +79,7 @@ module InverseConstructorTests =
         Assert.Equal(InverseConstructor, m.constructorMode)
         let sample = theSample m
         match sample.placement.valueId with
-        | Some entry -> Assert.Fail($"the inverse sample must start UNBOUND, but was bound to %s{entry}")
+        | Some entry -> Assert.Fail($"the inverse sample must start UNBOUND, but was bound to %s{entry.value}")
         | None -> ()
         // No hint ⇒ the forward experiment chart surface is absent.
         Assert.False(experimentChartVisible m, "the chart surface must be absent while the sample is unbound")

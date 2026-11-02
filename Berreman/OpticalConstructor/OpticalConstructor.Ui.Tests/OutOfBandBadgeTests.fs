@@ -55,7 +55,7 @@ module OutOfBandBadgeTests =
             eps =
                 EpsWithDispValue
                     (IsotropicDispersive
-                        [ { wavelengthInterval = { lower = toWaveLength Nanometer 300.0; upper = toWaveLength Nanometer 700.0 }; dispersion = axis } ])
+                        [ { wavelengthInterval = { lower = toWaveLength Nanometer (UnitMagnitude 300.0); upper = toWaveLength Nanometer (UnitMagnitude 700.0) }; dispersion = axis } ])
             magnetic = None
             active = None
         }
@@ -112,7 +112,7 @@ module OutOfBandBadgeTests =
         let flagged : TestElement =
             {
                 id = Library.elementId "sample0"
-                placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some entryId }
+                placement = { ElementPlacement.create Sample TablePoint.origin with valueId = Some (ElementValueId entryId) }
                 zoom = defaultElementZoom
                 beam = BeamLayout.OnMainBeam
             }

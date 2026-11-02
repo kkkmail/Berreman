@@ -24,7 +24,7 @@ module ElementRendererBindingTests =
 
     /// A drawable for `kind` bound to `valueId` (its binding state derived exactly as the host derives it).
     let private drawableOf (kind : CatalogueKind) (valueId : string option) : ElementRenderer.Drawable =
-        let placement = { ElementPlacement.create kind TablePoint.origin with valueId = valueId }
+        let placement = { ElementPlacement.create kind TablePoint.origin with valueId = valueId |> Option.map ElementValueId }
         { placement = placement
           centre = ElementRenderer.centreOfPlacement placement
           zoom = 3.5
@@ -63,7 +63,7 @@ module ElementRendererBindingTests =
     [<Fact>]
     let ``bindingStateOf: valueId gates bindable kinds; lens and mirrors are never bindable`` () =
         let stateOf (kind : CatalogueKind) (valueId : string option) : ElementRenderer.BindingState =
-            ElementRenderer.bindingStateOf { ElementPlacement.create kind TablePoint.origin with valueId = valueId }
+            ElementRenderer.bindingStateOf { ElementPlacement.create kind TablePoint.origin with valueId = valueId |> Option.map ElementValueId }
         // Lens / flat / curved mirror are pure geometry — NotBindable regardless of any value id.
         Assert.Equal(ElementRenderer.NotBindableElement, stateOf Lens None)
         Assert.Equal(ElementRenderer.NotBindableElement, stateOf FlatMirror (Some "ignored"))

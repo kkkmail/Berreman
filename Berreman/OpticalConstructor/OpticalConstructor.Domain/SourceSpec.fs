@@ -2,6 +2,7 @@ namespace OpticalConstructor.Domain
 
 open System
 open System.Numerics
+open System.Text.Json.Serialization
 open Berreman
 open Berreman.Constants
 open Berreman.Geometry
@@ -35,30 +36,48 @@ module SourceSpec =
 
     // --- Planck's law (§E.5 blackbody / standard-illuminant weight tables) ------
 
+    /// The weight of one expanded illumination sample in the incoherent average
+    /// (§E.8): a spectral weight, a cone / Gaussian angular weight, the unpolarized
+    /// 0.5 split, a per-source intensity, or their product.
+    type IlluminationWeight =
+        | IlluminationWeight of float
+
+        member this.value = let (IlluminationWeight w) = this in w
+
+        static member (*) (IlluminationWeight a, IlluminationWeight b) : IlluminationWeight = IlluminationWeight (a * b)
+
     /// Planck spectral radiance B(λ,T) in SI (W·sr⁻¹·m⁻³): the relative spectral
-    /// weight of a blackbody at temperature `tempK` (kelvin) at wavelength
-    /// `lambdaM` (canonical meters). Only the SHAPE matters for a spectral weight,
-    /// so the absolute radiometric scale is irrelevant — the weights are
-    /// re-normalised by the averaging layer (§E.8).
-    let private planck (tempK : float) (lambdaM : float) : float =
+    /// weight of a blackbody at temperature `temp` at wavelength `lambda`. Only the
+    /// SHAPE matters for a spectral weight, so the absolute radiometric scale is
+    /// irrelevant — the weights are re-normalised by the averaging layer (§E.8).
+    let private planck (temp : float<K>) (lambda : float<meter>) : IlluminationWeight =
+        let tempK = temp / 1.0<K>
+        let lambdaM = lambda / 1.0<meter>
         let h  = 6.62607015e-34   // Planck constant, J·s
         let c  = 2.99792458e8     // speed of light, m/s
         let kB = 1.380649e-23     // Boltzmann constant, J/K
-        if lambdaM <= 0.0 || tempK <= 0.0 then 0.0
+        if lambdaM <= 0.0 || tempK <= 0.0 then IlluminationWeight 0.0
         else
             let numerator = 2.0 * h * c * c
             let denominator = (lambdaM ** 5.0) * (exp (h * c / (lambdaM * kB * tempK)) - 1.0)
-            numerator / denominator
+            IlluminationWeight (numerator / denominator)
 
     // --- Discriminated unions (§E.3–E.7, E.9) -----------------------------------
 
-    /// The two CIE standard illuminants in scope (§E.5). `A` is exactly a Planckian
-    /// radiator at 2855.54 K; `D65` is approximated here by a 6504 K Planckian
+    /// The two CIE standard illuminants in scope (§E.5). `PlanckianA` is exactly a Planckian
+    /// radiator at 2855.54 K; `PlanckianD65` is approximated here by a 6504 K Planckian
     /// (the full CIE daylight S0/S1/S2 series is out of [Standard] minimum scope —
-    /// see Gotchas).
+    /// see Gotchas). Renamed apart from `Analytics.Colorimetry.Illuminant`, which
+    /// tabulates D65 (spec 0048 E013); the project file keeps "D65" / "A".
     type StandardIlluminant =
-        | D65
-        | A
+        | [<JsonPropertyName "D65">] PlanckianD65
+        | [<JsonPropertyName "A">] PlanckianA
+
+    /// The sidecar RELATIVE path of a tabulated λ→weight spectrum (§E.5).
+    type SpectrumSidecarPath =
+        | SpectrumSidecarPath of string
+
+        member this.value = let (SpectrumSidecarPath p) = this in p
 
     /// Spectral source profile (§E.5). `LaserLine` reuses the engine `WaveLength`
     /// (`Fields.fs:280`); `ImportedSpectrum` carries a sidecar RELATIVE path to a
@@ -69,7 +88,13 @@ module SourceSpec =
         | Blackbody of double<K>
         | Illuminant of StandardIlluminant
         | LaserLine of WaveLength
-        | ImportedSpectrum of string
+        | ImportedSpectrum of SpectrumSidecarPath
+
+    /// The number of sub-angles a cone fan is sampled at (§E.6).
+    type ConeSampleCount =
+        | ConeSampleCount of int
+
+        member this.value = let (ConeSampleCount n) = this in n
 
     /// Cone / acceptance fan (§E.6). `Angle` is the engine geometry type already
     /// wrapped by `IncidenceAngle` (`Fields.fs:22`). Collimated illumination is the
@@ -77,7 +102,7 @@ module SourceSpec =
     type ConeAcceptance =
         {
             halfAngle : Angle
-            samples : int
+            samples : ConeSampleCount
         }
 
     /// Coherent / incoherent / unpolarized flag (§E.7). `Coherent` maps to the
@@ -117,24 +142,24 @@ module SourceSpec =
         /// and returns its single line wavelength regardless of `range`.
         /// `ImportedSpectrum` is loaded from its sidecar by the storage seam
         /// (FSharp.Data), so the pure sampler treats an unloaded import as empty.
-        static member sample (profile : SpectralProfile) (range : RangedVariable) : (WaveLength * float) list =
+        static member sample (profile : SpectralProfile) (range : RangedVariable) : (WaveLength * IlluminationWeight) list =
             // The §E.3 wavelength axis is sampled directly in the canonical meter
             // base and each point is re-wrapped as a `WaveLength.Nm` whose `.value`
             // reduces back to meters (the `MaterialImport.exportCsv` precedent) —
             // NOT through `Analytics.getWaveLengthValue`, which re-wraps the meter
             // magnitude as a nm scalar and so mis-scales `.value` by `nmToMeter`.
             match profile, range with
-            | LaserLine wl, _ -> [ (wl, 1.0) ]
+            | LaserLine wl, _ -> [ (wl, IlluminationWeight 1.0) ]
             | ImportedSpectrum _, _ -> []
             | _, WaveLengthRange r ->
                 let weightOf =
                     match profile with
-                    | Flat -> fun (_ : WaveLength) -> 1.0
-                    | Blackbody t -> fun (wl : WaveLength) -> planck (float (t / 1.0<K>)) (wl.value / 1.0<meter>)
+                    | Flat -> fun (_ : WaveLength) -> IlluminationWeight 1.0
+                    | Blackbody t -> fun (wl : WaveLength) -> planck t wl.value
                     | Illuminant ill ->
-                        let temp = match ill with | A -> 2855.54 | D65 -> 6504.0
-                        fun (wl : WaveLength) -> planck temp (wl.value / 1.0<meter>)
-                    | LaserLine _ | ImportedSpectrum _ -> fun (_ : WaveLength) -> 1.0  // handled above
+                        let temp = match ill with | PlanckianA -> 2855.54<K> | PlanckianD65 -> 6504.0<K>
+                        fun (wl : WaveLength) -> planck temp wl.value
+                    | LaserLine _ | ImportedSpectrum _ -> fun (_ : WaveLength) -> IlluminationWeight 1.0  // handled above
                 let s = r.startValue.value
                 let e = r.endValue.value
                 let n = max 1 r.numberOfPoints.value   // guard n=0 (matches the cone's `max 1 samples`)
@@ -154,7 +179,7 @@ module SourceSpec =
         /// angles are averaged on the solver's `StokesVector`/intensity OUTPUTS,
         /// never on field amplitudes. `samples <= 1` collapses to the base angle.
         static member sample (cone : ConeAcceptance) (baseAngle : IncidenceAngle) : IncidenceAngle list =
-            let n = max 1 cone.samples
+            let n = max 1 cone.samples.value
             let (Angle half) = cone.halfAngle
             if n = 1 then [ baseAngle ]
             else
@@ -177,12 +202,12 @@ module SourceSpec =
         /// The fan is bounded by the beam `divergence` half-angle and the weights
         /// are normalised to sum 1. Angles feed the same expand/averaging path as
         /// §E.6/§E.8.
-        static member angularSpectrum (beam : GaussianBeamSpec) (w : WaveLength) : (IncidenceAngle * float) list =
+        static member angularSpectrum (beam : GaussianBeamSpec) (w : WaveLength) : (IncidenceAngle * IlluminationWeight) list =
             let n = 64                               // power of 2 for FourierTransform.fft
             let lambda = w.value / 1.0<meter>        // canonical meters
             let w0 = beam.waist / 1.0<meter>         // waist in meters
             let (Angle divHalf) = beam.divergence
-            if w0 <= 0.0 || lambda <= 0.0 then [ IncidenceAngle.normal, 1.0 ]
+            if w0 <= 0.0 || lambda <= 0.0 then [ IncidenceAngle.normal, IlluminationWeight 1.0 ]
             else
                 // Spatial window spanning several waists; σ in createGaussian's
                 // normalised [-0.5,0.5) domain so the physical field profile is
@@ -205,13 +230,25 @@ module SourceSpec =
                     |> List.filter (fun (sinTheta, _) ->
                         abs sinTheta < 1.0 && abs (asin sinTheta) <= divHalf + 1.0e-12)
                 let total = raw |> List.sumBy snd
-                if total <= 0.0 then [ IncidenceAngle.normal, 1.0 ]
+                if total <= 0.0 then [ IncidenceAngle.normal, IlluminationWeight 1.0 ]
                 else
                     raw
                     |> List.map (fun (sinTheta, weight) ->
-                        IncidenceAngle.create (Angle (abs (asin sinTheta))), weight / total)
+                        IncidenceAngle.create (Angle (abs (asin sinTheta))), IlluminationWeight (weight / total))
 
     // --- The source record (§E.1) + projection/expansion (§E.2, E.8) ------------
+
+    /// A source's stable identity within the project (§E.1).
+    type SourceSpecId =
+        | SourceSpecId of string
+
+        member this.value = let (SourceSpecId s) = this in s
+
+    /// A source's optional human-facing name (§E.1).
+    type SourceSpecName =
+        | SourceSpecName of string
+
+        member this.value = let (SourceSpecName s) = this in s
 
     /// The net-new orchestration source record (§E.1). It wraps the canonical
     /// `IncidentLightInfo` (`Fields.fs:338`) as `light` — storing the base
@@ -222,11 +259,11 @@ module SourceSpec =
     /// `IncidentLightInfo` (which has no intensity field). Immutable F# record.
     type SourceSpec =
         {
-            sourceId : string
-            name : string option
+            sourceId : SourceSpecId
+            name : SourceSpecName option
             light : IncidentLightInfo
             displayUnit : UnitOfMeasure
-            intensity : float
+            intensity : IlluminationWeight
             spectralProfile : SpectralProfile option
             cone : ConeAcceptance option
             gaussianBeam : GaussianBeamSpec option
@@ -259,7 +296,7 @@ module SourceSpec =
         /// §E.5 (Flat/Blackbody/Illuminant) is `SpectralProfile.sample`, consumed
         /// by the sweep layer (Part F); the range-free `LaserLine` IS folded in
         /// here by substituting its line wavelength.
-        static member expand (s : SourceSpec) : (IncidentLightInfo * float) list =
+        static member expand (s : SourceSpec) : (IncidentLightInfo * IlluminationWeight) list =
             let baseInfo = SourceSpec.toIncidentLight s
 
             // §E.5 (range-free): a LaserLine fixes the wavelength.
@@ -283,7 +320,7 @@ module SourceSpec =
             // sum to 1) and the unpolarized 0.5/0.5 split. A collimated source (N = 1)
             // reduces to the single base angle at unit weight.
             let beamInfos =
-                let coneWeight = 1.0 / float (List.length angleInfos)
+                let coneWeight = IlluminationWeight (1.0 / float (List.length angleInfos))
                 match s.gaussianBeam with
                 | Some beam ->
                     angleInfos
@@ -301,8 +338,8 @@ module SourceSpec =
                 | Unpolarized ->
                     beamInfos
                     |> List.collect (fun (info, weight) ->
-                        [ { info with polarization = Polarization.s }, weight * 0.5
-                          { info with polarization = Polarization.p }, weight * 0.5 ])
+                        [ { info with polarization = Polarization.s }, weight * IlluminationWeight 0.5
+                          { info with polarization = Polarization.p }, weight * IlluminationWeight 0.5 ])
                 | Coherent | Incoherent -> beamInfos
 
             // §E.2/§E.8: the per-source intensity weight.

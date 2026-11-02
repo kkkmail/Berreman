@@ -68,7 +68,7 @@ module SourceProjectionTests =
             | other -> failwith $"unexpected unit {other}"
         let src = baseSource |> SourceEditorView.update (SourceEditorView.SetWaveLength (u, entered))
         // The produced WaveLength carries the §A.10-converted value ...
-        Assert.Equal((toMeters u entered) / 1.0<meter>, src.light.waveLength.value / 1.0<meter>, 15)
+        Assert.Equal((toMeters u (UnitMagnitude entered)) / 1.0<meter>, src.light.waveLength.value / 1.0<meter>, 15)
         // ... and is the engine `Nm` case (the engine has no Å/mm/eV/cm⁻¹ case);
         // the domain model stores no non-SI unit, only the display label.
         match src.light.waveLength with
@@ -149,6 +149,6 @@ module SourceProjectionTests =
 
     [<Fact>]
     let ``AC-E10 the Source palette entry adds a Source element one-click with no gate`` () =
-        Assert.Equal(ConstructorElement.Source, SourceEditorView.sourcePaletteEntry.element)
+        Assert.Equal(ConstructorElement.SourceElement, SourceEditorView.sourcePaletteEntry.element)
         Assert.False(SourceEditorView.sourcePaletteEntry.requiresConfirmation)
         Assert.False(System.String.IsNullOrWhiteSpace SourceEditorView.sourcePaletteEntry.title)

@@ -227,7 +227,7 @@ module SampleProxyTests =
             Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, constrainEmission Mirror candidate)
         // …and the Sample setter routes through it, so trying to clear R on a mirror is a no-op.
         let mirror = SeedSamples.euvMoSi
-        let clearedR = mirror.supportedEmission |> Placement.Emission.withReflected false
+        let clearedR = mirror.supportedEmission |> Placement.Emission.withReflected Placement.RayGroupOff
         let after = mirror |> withSupportedEmission clearedR
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, after.supportedEmission)
         // A thin film, by contrast, is constrainable like a plate (spec 0046).
@@ -235,18 +235,18 @@ module SampleProxyTests =
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, film.supportedEmission)
 
     [<Fact>]
-    let ``a Plate is constrainable: clearing R via Emission.withReflected false leaves T on`` () =
+    let ``a Plate is constrainable: clearing R via Emission.withReflected Placement.RayGroupOff leaves T on`` () =
         let plate = SeedSamples.glassPlate1mm
         Assert.Equal<Placement.Emission>(Placement.EmitBoth, plate.supportedEmission)
         // The existing Emission setter clears the reflected branch; the both-off state is
         // unrepresentable, so T stays on (EmitTransmittedOnly)…
-        let clearedR = plate.supportedEmission |> Placement.Emission.withReflected false
+        let clearedR = plate.supportedEmission |> Placement.Emission.withReflected Placement.RayGroupOff
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, clearedR)
         // …and a Plate's constraint passes the candidate through unchanged, so the setter takes effect.
         let tOnly = plate |> withSupportedEmission clearedR
         Assert.Equal<Placement.Emission>(Placement.EmitTransmittedOnly, tOnly.supportedEmission)
         // Symmetrically, clearing T through the existing setter constrains the plate to R-only.
-        let rOnly = plate |> withSupportedEmission (plate.supportedEmission |> Placement.Emission.withTransmitted false)
+        let rOnly = plate |> withSupportedEmission (plate.supportedEmission |> Placement.Emission.withTransmitted Placement.RayGroupOff)
         Assert.Equal<Placement.Emission>(Placement.EmitReflectedOnly, rOnly.supportedEmission)
 
     // ============================ the version-creation decision table ============================

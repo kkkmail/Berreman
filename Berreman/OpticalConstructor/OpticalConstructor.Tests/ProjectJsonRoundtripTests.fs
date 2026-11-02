@@ -45,8 +45,8 @@ module ProjectJsonRoundtripTests =
     /// A small but representative project: a sample with a transmitted detector
     /// child (exercises the `Map<BeamBranch, BeamNode>` and the engine stack).
     let private sampleProject (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
-        let detector = node Detector Map.empty Nanometer
-        let root = node (Sample vacuumSystem) (Map.ofList [ BeamBranch.TransmittedBeam, detector ]) defaultUnit
+        let detector = node DetectorElement Map.empty Nanometer
+        let root = node (SampleElement vacuumSystem) (Map.ofList [ BeamBranch.TransmittedBeam, detector ]) defaultUnit
         { beamTree = { root = root }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     let private okOr (r : Result<'a, _>) : 'a =
@@ -103,9 +103,9 @@ module ProjectJsonRoundtripTests =
     /// Plate-substrate system, a mirror Reflected child, a detector Transmitted
     /// child, plus a Plate and a Wedge entry in `systems`.
     let private richProject : OpticalConstructorProject =
-        let mirror = { (node FlatMirror Map.empty Nanometer) with system = plateSystem }
-        let detector = node Detector Map.empty Nanometer
-        let root = { (node (Sample plateSystem) (Map.ofList [ BeamBranch.ReflectedBeam, mirror; BeamBranch.TransmittedBeam, detector ]) Micrometer) with system = plateSystem }
+        let mirror = { (node FlatMirrorElement Map.empty Nanometer) with system = plateSystem }
+        let detector = node DetectorElement Map.empty Nanometer
+        let root = { (node (SampleElement plateSystem) (Map.ofList [ BeamBranch.ReflectedBeam, mirror; BeamBranch.TransmittedBeam, detector ]) Micrometer) with system = plateSystem }
         { beamTree = { root = root }; systems = [ plateSystem; wedgeSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     [<Fact>]
@@ -118,14 +118,14 @@ module ProjectJsonRoundtripTests =
         let back = json |> ProjectJson.deserializeProject |> okOr
         // The Sample root, its Plate substrate, and both branch children survived.
         match back.beamTree.root.element with
-        | Sample _ -> ()
+        | SampleElement _ -> ()
         | other -> failwith $"unexpected root element: {other}"
         match back.beamTree.root.system.substrate with
         | Some (Plate _) -> ()
         | other -> failwith $"unexpected root substrate: {other}"
         Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.ReflectedBeam)
         Assert.True(back.beamTree.root.children.ContainsKey BeamBranch.TransmittedBeam)
-        Assert.Equal(FlatMirror, back.beamTree.root.children.[BeamBranch.ReflectedBeam].element)
+        Assert.Equal(FlatMirrorElement, back.beamTree.root.children.[BeamBranch.ReflectedBeam].element)
         // The systems list (Plate + Wedge) round-trips with the wedge angle preserved.
         Assert.Equal(2, List.length back.systems)
         match back.systems.[1].substrate with

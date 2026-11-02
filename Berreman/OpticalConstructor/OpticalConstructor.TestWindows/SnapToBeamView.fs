@@ -52,7 +52,7 @@ let initSnapToBeam () : SnapToBeamModel =
     {
         table = Table.defaultTable
         view = Table.defaultView
-        source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = false; r2Locked = false; r3Locked = false }
+        source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = RotationFree; r2Locked = RotationFree; r3Locked = RotationFree }
         downstream =
             [ LinearPolarizer, 0.6<meter>
               Sample, 0.6<meter>
@@ -123,7 +123,7 @@ let private stops (m : SnapToBeamModel) : RayModel.RaySegmentSpec list =
 
 /// The downstream elements snapped onto the beam the source currently aims (its oriented N1 = `r1Axis`).
 let snapped (m : SnapToBeamModel) : RayModel.SnappedElement list =
-    RayModel.snapChain (RayModel.pointToVector3 m.source.placementPoint) (r1Axis m.source) (stops m)
+    RayModel.snapChain m.source.placementPoint.toVector3 (r1Axis m.source) (stops m)
 
 /// The cumulative along-ray distances of the downstream elements (for the readout / tests).
 let cumulativeGaps (m : SnapToBeamModel) : float list =
@@ -152,7 +152,7 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
 
 /// The source marker plus a short arrow along the direction it currently emits (its oriented N1).
 let private sourceViews (m : SnapToBeamModel) : IView list =
-    let srcV = RayModel.pointToVector3 m.source.placementPoint
+    let srcV = m.source.placementPoint.toVector3
     let dir = (r1Axis m.source).normalized
     let tip = v3 (srcV.x + 0.35 * dir.x) (srcV.y + 0.35 * dir.y) (srcV.z + 0.35 * dir.z)
     let sScr = projectPt m srcV
@@ -165,7 +165,7 @@ let private sourceViews (m : SnapToBeamModel) : IView list =
 /// The beam polyline (source → each snapped element) and, at each element, a tick perpendicular to the
 /// beam (the flat element face) plus its short code — all of which swing round as the source is rotated.
 let private beamViews (m : SnapToBeamModel) : IView list =
-    let srcV = RayModel.pointToVector3 m.source.placementPoint
+    let srcV = m.source.placementPoint.toVector3
     let snaps = snapped m
     let nodes = srcV :: (snaps |> List.map (fun s -> s.position))
     let beam =

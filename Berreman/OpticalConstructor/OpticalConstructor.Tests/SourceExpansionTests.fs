@@ -47,7 +47,7 @@ module SourceExpansionTests =
         let range = (NumberOfPoints 10).wavelength200to800Range
         let samples = SpectralProfile.sample Flat range
         Assert.Equal(11, List.length samples)
-        Assert.All(samples, fun (_, w) -> Assert.Equal(1.0, w, 12))
+        Assert.All(samples, fun (_, w) -> Assert.Equal(1.0, w.value, 12))
         // Endpoints reduce to canonical meters (200 nm .. 800 nm).
         let (firstWl, _) = List.head samples
         let (lastWl, _) = List.last samples
@@ -59,10 +59,10 @@ module SourceExpansionTests =
         let range = (NumberOfPoints 10).wavelength200to800Range
         let samples = SpectralProfile.sample (Blackbody 5000.0<K>) range
         Assert.Equal(11, List.length samples)
-        Assert.All(samples, fun (_, w) -> Assert.True(w > 0.0, $"expected a positive Planck weight, got {w}"))
+        Assert.All(samples, fun (_, w) -> Assert.True(w.value > 0.0, $"expected a positive Planck weight, got {w.value}"))
         // At 5000 K the Planck peak (~580 nm) is inside the band, so a mid-band
         // sample outweighs the 200 nm UV edge — the profile is not flat.
-        let weights = samples |> List.map snd
+        let weights = samples |> List.map (fun (_, w) -> w.value)
         Assert.True(weights.[5] > weights.[0], "blackbody weight must rise from the UV edge toward the peak")
 
     [<Fact>]
@@ -71,7 +71,7 @@ module SourceExpansionTests =
         match samples with
         | [ (wl, w) ] ->
             Assert.Equal(6.33e-7, wl.value / 1.0<meter>, 15)
-            Assert.Equal(1.0, w, 12)
+            Assert.Equal(1.0, w.value, 12)
         | other -> Assert.Fail($"expected a single laser-line sample, got {List.length other}")
 
     [<Fact>]
@@ -85,7 +85,7 @@ module SourceExpansionTests =
             Assert.Equal(0.5, w0, 12)
             // The pure profile sampler leaves an unloaded import empty — the data
             // arrives from the sidecar (FSharp.Data), never from a `.binz` pickle.
-            Assert.Equal<(WaveLength * float) list>([], SpectralProfile.sample (ImportedSpectrum "spectrum.csv") ((NumberOfPoints 4).wavelength200to800Range))
+            Assert.Equal<(WaveLength * IlluminationWeight) list>([], SpectralProfile.sample (ImportedSpectrum (SpectrumSidecarPath "spectrum.csv")) ((NumberOfPoints 4).wavelength200to800Range))
         | Error e -> Assert.Fail($"expected a parsed spectrum, got {e}")
 
     [<Fact>]
@@ -98,7 +98,7 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E6 a cone fans the base angle into N symmetric sub-angles`` () =
-        let cone = { halfAngle = Angle.degree 10.0<deg>; samples = 5 }
+        let cone = { halfAngle = Angle.degree 10.0<deg>; samples = ConeSampleCount 5 }
         let angles = ConeAcceptance.sample cone IncidenceAngle.normal
         Assert.Equal(5, List.length angles)
         Assert.Equal((Angle.degree -10.0<deg>).value, angles.[0].value, 12)
@@ -107,7 +107,7 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E6 a single-sample cone collapses to the base angle`` () =
-        let cone = { halfAngle = Angle.degree 10.0<deg>; samples = 1 }
+        let cone = { halfAngle = Angle.degree 10.0<deg>; samples = ConeSampleCount 1 }
         Assert.Equal<IncidenceAngle list>([ IncidenceAngle.normal ], ConeAcceptance.sample cone IncidenceAngle.normal)
 
     [<Fact>]
@@ -115,16 +115,16 @@ module SourceExpansionTests =
         let collimated = SourceSpec.expand baseSource
         Assert.Equal(1, List.length collimated)
         // A collimated single sample carries unit weight (intensity 1.0, N = 1).
-        Assert.All(collimated, fun (_, w) -> Assert.Equal(1.0, w, 12))
+        Assert.All(collimated, fun (_, w) -> Assert.Equal(1.0, w.value, 12))
         // A cone fans it into `samples` weighted entries instead.
-        let coned = { baseSource with cone = Some { halfAngle = Angle.degree 5.0<deg>; samples = 7 } }
+        let coned = { baseSource with cone = Some { halfAngle = Angle.degree 5.0<deg>; samples = ConeSampleCount 7 } }
         let conedExpanded = SourceSpec.expand coned
         Assert.Equal(7, List.length conedExpanded)
         // AC-E6: the cone result is AVERAGED, not summed — each of the N sub-angles
         // carries weight 1/N and the per-sample weights sum to 1 (intensity 1.0), so a
         // 7-sample cone does NOT produce 7x the Stokes/intensity of a collimated source.
-        Assert.All(conedExpanded, fun (_, w) -> Assert.Equal(1.0 / 7.0, w, 12))
-        Assert.Equal(1.0, conedExpanded |> List.sumBy snd, 12)
+        Assert.All(conedExpanded, fun (_, w) -> Assert.Equal(1.0 / 7.0, w.value, 12))
+        Assert.Equal(1.0, conedExpanded |> List.sumBy (fun (_, w) -> w.value), 12)
 
     // ---------------------------------------------------------------- AC-E7
 
@@ -135,7 +135,7 @@ module SourceExpansionTests =
         Assert.Equal(2, List.length expanded)
         let pols = expanded |> List.map (fun (info, _) -> info.polarization.value) |> List.sort
         Assert.Equal<float list>([ Polarization.s.value; Polarization.p.value ] |> List.sort, pols)
-        Assert.All(expanded, fun (_, w) -> Assert.Equal(0.5, w, 12))
+        Assert.All(expanded, fun (_, w) -> Assert.Equal(0.5, w.value, 12))
 
     [<Fact>]
     let ``AC-E7 an incoherent source routes through the reused substrate Multiple path`` () =
@@ -158,17 +158,17 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E8 multiple sources combine as a weighted incoherent StokesVector sum`` () =
-        let src1 = { baseSource with sourceId = "a"; intensity = 1.0 }
+        let src1 = { baseSource with sourceId = SourceSpecId "a"; intensity = IlluminationWeight 1.0 }
         let src2 =
             { baseSource with
-                sourceId = "b"
-                intensity = 2.0
+                sourceId = SourceSpecId "b"
+                intensity = IlluminationWeight 2.0
                 light = { baseSource.light with polarization = Polarization.p } }
         let combined = combineSources toStokes [ src1; src2 ]
         // Manual weighted incoherent sum on the StokesVector outputs.
         let manual =
-            scaleStokes 1.0 (toStokes (SourceSpec.toIncidentLight src1))
-            + scaleStokes 2.0 (toStokes (SourceSpec.toIncidentLight src2))
+            scaleStokes (IlluminationWeight 1.0) (toStokes (SourceSpec.toIncidentLight src1))
+            + scaleStokes (IlluminationWeight 2.0) (toStokes (SourceSpec.toIncidentLight src2))
         List.iter2 (fun (a : float) (b : float) -> Assert.Equal(a, b, 12)) (comps combined) (comps manual)
 
     [<Fact>]
@@ -184,7 +184,7 @@ module SourceExpansionTests =
         let spectrum = GaussianBeamSpec.angularSpectrum beam (WaveLength.nm 500.0<nm>)
         Assert.False(List.isEmpty spectrum)
         // Weights normalise to 1 and every angle is within the divergence aperture.
-        Assert.Equal(1.0, spectrum |> List.sumBy snd, 9)
+        Assert.Equal(1.0, spectrum |> List.sumBy (fun (_, w) -> w.value), 9)
         Assert.All(spectrum, fun (a, _) -> Assert.True(a.value <= (Angle.degree 80.0<deg>).value + 1.0e-9))
         // The peak weight sits at the smallest (near-axis) angle.
         let peakAngle = spectrum |> List.maxBy snd |> fst
@@ -200,14 +200,14 @@ module SourceExpansionTests =
         let n = 5
         let coneGaussian =
             { baseSource with
-                cone = Some { halfAngle = Angle.degree 5.0<deg>; samples = n }
+                cone = Some { halfAngle = Angle.degree 5.0<deg>; samples = ConeSampleCount n }
                 gaussianBeam = Some { waist = 1.0e-6<meter>; divergence = Angle.degree 80.0<deg> } }
         let expanded = SourceSpec.expand coneGaussian
         // The expansion fans into N * (Gaussian samples) entries...
         Assert.True(List.length expanded > n, "expected a cone-by-Gaussian fan")
         // ...but the per-source weights sum to the source intensity (1.0), not N.
-        let totalWeight = expanded |> List.sumBy snd
-        Assert.Equal(baseSource.intensity, totalWeight, 9)
+        let totalWeight = expanded |> List.sumBy (fun (_, w) -> w.value)
+        Assert.Equal(baseSource.intensity.value, totalWeight, 9)
         Assert.True(abs (totalWeight - float n) > 0.5, $"weights must total intensity, not N={n} (got {totalWeight})")
 
     [<Fact>]
@@ -216,6 +216,6 @@ module SourceExpansionTests =
         let charAngle (waistM : float<meter>) =
             { waist = waistM; divergence = Angle.degree 80.0<deg> }
             |> fun b -> GaussianBeamSpec.angularSpectrum b w
-            |> List.sumBy (fun (a, weight) -> abs a.value * weight)   // weights sum to 1
+            |> List.sumBy (fun (a, weight) -> abs a.value * weight.value)   // weights sum to 1
         Assert.True(charAngle 2.0e-6<meter> < charAngle 1.0e-6<meter>,
                     "a larger beam waist must produce a smaller mean divergence angle")

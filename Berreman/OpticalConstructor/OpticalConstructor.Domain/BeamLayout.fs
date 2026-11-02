@@ -8,7 +8,7 @@ open OpticalConstructor.Domain.Placement
 /// so every rule is provable headless; the Main workbench only adapts its live model to it.
 ///
 /// The light source is the ray ROOT. The MAIN beam leaves the source and follows each element's primary
-/// branch (`RayModel.primaryBranch` — a mirror reflects it, everything else transmits it). A polarizer,
+/// branch (`ElementPlacement.primaryBranch` — a mirror reflects it, everything else transmits it). A polarizer,
 /// lens or sample that emits BOTH branches also opens a REFLECTED side beam off its front face; an
 /// element hosted on that side beam snaps onto the reflected ray, recursively. On every beam the
 /// elements are ordered by their along-beam coordinate (the placement point's x) and the x differences
@@ -68,8 +68,8 @@ module BeamLayout =
         | RaysFixed _ -> p
         | RaysSwitchable ->
             match branch with
-            | BeamTree.ReflectedBeam -> { p with emission = Emission.withReflected (not p.emission.emitsReflected) p.emission }
-            | BeamTree.TransmittedBeam -> { p with emission = Emission.withTransmitted (not p.emission.emitsTransmitted) p.emission }
+            | BeamTree.ReflectedBeam -> { p with emission = Emission.withReflected (if p.emission.emitsReflected then RayGroupOff else RayGroupOn) p.emission }
+            | BeamTree.TransmittedBeam -> { p with emission = Emission.withTransmitted (if p.emission.emitsTransmitted then RayGroupOff else RayGroupOn) p.emission }
 
     /// The longest an OPEN ray is drawn — a reflected ray with nothing on it yet, or a beam with no detector
     /// at its end — so the ray is visible to attach to. It stops sooner at the first element it meets.
@@ -170,7 +170,7 @@ module BeamLayout =
     /// centre even when the beam leaves laterally shifted (transmitted) or off its front face (reflected).
     let private abreast (point : Vector3) (linePoint : Vector3) (dir : Vector3) : Vector3 =
         let d = dir.normalized
-        add linePoint (scale ((sub point linePoint).dot d) d)
+        add linePoint (scale ((sub point linePoint).dot d).value d)
 
     /// The beam each element actually sits on. A host is honoured when it names a non-root element that
     /// opens a reflected side beam and the hosting does not loop back; otherwise the element falls back to
@@ -233,8 +233,8 @@ module BeamLayout =
                 match span with
                 | None -> None
                 | Some (tNear, tFar) ->
-                    let oc = o.dot axis
-                    let dc = d.dot axis
+                    let oc = (o.dot axis).value
+                    let dc = (d.dot axis).value
                     if abs dc < 1.0e-12 then
                         if abs oc > half then None else Some (tNear, tFar)
                     else
@@ -319,7 +319,7 @@ module BeamLayout =
                         // continuation but receives no light.
                         walk crossing.exit (abreast beamPoint crossing.exit crossing.transmitted) crossing.transmitted x index path Unlit later state'
                     | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
-                        let branch = RayModel.primaryBranch e.placement
+                        let branch = e.placement.primaryBranch
                         let onward = path @ [ { element = e.id; branch = branch } ]
                         let draw', reference', dir', insideRun =
                             match branch with
@@ -373,7 +373,7 @@ module BeamLayout =
                             match p.incoming with
                             | Some d -> RayModel.orientedToBeam d e.placement
                             | None -> e.placement
-                        let (n1, n2, n3) = orientedBasis drawnPlacement
+                        let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis drawnPlacement
                         let half (extent : float<meter>) : float = e.zoom * extent / 2.0 / 1.0<meter>
                         i, { centre = p.centre; axes = [ n1, half e.placement.box.b; n2, half e.placement.box.a1; n3, half e.placement.box.a2 ] }))
             let close (pendingSegment : PendingSegment) : RaySegment =

@@ -21,7 +21,7 @@ module BeamLayoutTests =
     let private close (a : float) (b : float) : bool = abs (a - b) <= tol
 
     let private sub (a : Vector3) (b : Vector3) : Vector3 = Vector3.create (a.x - b.x) (a.y - b.y) (a.z - b.z)
-    let private areParallel (a : Vector3) (b : Vector3) : bool = close (a.normalized.dot b.normalized) 1.0
+    let private areParallel (a : Vector3) (b : Vector3) : bool = close ((a.normalized.dot b.normalized).value) 1.0
     let private dirOf (s : RaySegment) : Vector3 = (sub s.finish s.start).normalized
 
     let private el (id : string) (kind : CatalogueKind) (x : float) : LayoutElement =
@@ -36,7 +36,7 @@ module BeamLayoutTests =
         { e with placement = withR2 (Angle.degree (r2 * 1.0<deg>)) e.placement }
 
     let private tiltedOut (r3 : float) (e : LayoutElement) : LayoutElement =
-        { e with placement = withR3 (Angle.degree (r3 * 1.0<deg>)) { e.placement with r3Locked = false } }
+        { e with placement = withR3 (Angle.degree (r3 * 1.0<deg>)) { e.placement with r3Locked = RotationFree } }
 
     let private onReflectedOf (host : string) (e : LayoutElement) : LayoutElement =
         { e with host = OnReflectedBeamOf (Library.elementId host) }
@@ -68,19 +68,19 @@ module BeamLayoutTests =
         let c = RayModel.crossElement centre d n (h * 1.0<meter>)
         // The entry is on the FRONT face plane and on the incoming line through the centre; the exit on
         // the BACK face plane.
-        Assert.True(close ((sub c.entry centre).dot n) -h, "entry on the front face")
-        Assert.True(close ((sub c.exit centre).dot n) h, "exit on the back face")
+        Assert.True(close (((sub c.entry centre).dot n).value) -h, "entry on the front face")
+        Assert.True(close (((sub c.exit centre).dot n).value) h, "exit on the back face")
         Assert.True(close ((sub c.entry centre).cross d).norm 0.0, "entry on the incoming line through the centre")
         // Inside: Snell with n = 1.0 → 1.5; the run entry → exit follows the inside direction.
-        let theta2 = acos (c.inside.dot n)
-        Assert.True(close (sin theta1) (RayModel.refractiveIndexInside * sin theta2), "Snell's law inside")
+        let theta2 = acos ((c.inside.dot n).value)
+        Assert.True(close (sin theta1) (RayModel.refractiveIndexInside.value * sin theta2), "Snell's law inside")
         Assert.True(areParallel (sub c.exit c.entry) c.inside, "the inside run follows the refracted direction")
         // Out: areParallel to the incoming ray, laterally shifted by t·sin(θ1 − θ2) / cos θ2 (t = 2h).
         Assert.True(areParallel c.transmitted d, "the exit ray is areParallel to the incoming ray")
         let shift = ((sub c.exit centre).cross d).norm
         Assert.True(abs (shift - 2.0 * h * sin (theta1 - theta2) / cos theta2) < 1.0e-12, $"lateral shift {shift}")
         // The reflected ray leaves the entry at the mirror angle: equal angles to the normal.
-        Assert.True(close (c.reflected.dot n) (-(d.dot n)), "angle of reflection = angle of incidence")
+        Assert.True(close ((c.reflected.dot n).value) (-((d.dot n).value)), "angle of reflection = angle of incidence")
 
     [<Fact>]
     let ``a zero-depth element is crossed at its centre and normal incidence goes straight through`` () =

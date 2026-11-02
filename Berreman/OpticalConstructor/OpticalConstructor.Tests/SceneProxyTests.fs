@@ -29,7 +29,7 @@ module SceneProxyTests =
         let source : SceneElement =
             {
                 id = Library.elementId "src"
-                placement = { ElementPlacement.create LightSource TablePoint.origin with valueId = Some "src-600" }
+                placement = { ElementPlacement.create LightSource TablePoint.origin with valueId = Some (ElementValueId "src-600") }
                 zoom = 1.0
                 beam = BeamLayout.OnMainBeam
             }

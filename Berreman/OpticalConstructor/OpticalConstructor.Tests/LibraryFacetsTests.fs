@@ -96,7 +96,7 @@ module LibraryFacetsTests =
         defaultModelChoices |> List.find (fun m -> modelKindCode m = kindCode)
 
     let private nmInterval (lowerNm : float) (upperNm : float) : WaveLengthInterval =
-        { lower = toWaveLength Nanometer lowerNm; upper = toWaveLength Nanometer upperNm }
+        { lower = toWaveLength Nanometer (UnitMagnitude lowerNm); upper = toWaveLength Nanometer (UnitMagnitude upperNm) }
 
     /// A uniaxial two-segment dispersive entry whose axis models lower to all
     /// three storable shapes: Cauchy → real n/k terms, Sellmeier → complex ε

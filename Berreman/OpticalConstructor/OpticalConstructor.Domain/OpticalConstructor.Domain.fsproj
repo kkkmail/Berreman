@@ -204,6 +204,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="Softellect.Sys" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\..\Berreman\Berreman.fsproj" />
         <ProjectReference Include="..\..\Analytics\Analytics.fsproj" />
     </ItemGroup>

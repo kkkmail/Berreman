@@ -1382,7 +1382,7 @@ module LibraryWindowTests =
             clickOn stripWindow (ConstructorUiId.libraryEntry (ConstructorUiKey "det-intensity")).value   // pending
             clickOn stripWindow ConstructorUiId.libraryConfirmButton.value                   // ConfirmBindValueId → the targeted bind
             let stripBound = ((stripModel ()).elements |> List.item 1).placement.valueId
-            Assert.Equal(Some "det-intensity", stripBound)
+            Assert.Equal(Some (ElementValueId "det-intensity"), stripBound)
             stripWindow.Close()
             Dispatcher.UIThread.RunJobs()
             // ---- Path 2: the Choose… verb → the kind-constrained Select-state Library window. ----
@@ -1422,8 +1422,8 @@ module LibraryWindowTests =
             Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
             let windowBound = ((getModel ()).elements |> List.item 1).placement.valueId
             // THE step acceptance: both paths committed the IDENTICAL valueId bind.
-            Assert.Equal(Some "det-intensity", windowBound)
-            Assert.Equal<string option>(stripBound, windowBound)
+            Assert.Equal(Some (ElementValueId "det-intensity"), windowBound)
+            Assert.Equal<ElementValueId option>(stripBound, windowBound)
             (match (getModel ()).activeSelect with
              | None -> ()
              | Some _ -> Assert.Fail "the committed bind must end the Select session")
@@ -1470,7 +1470,7 @@ module LibraryWindowTests =
             clickOn selectWindow ConstructorUiId.librarySelectButton.value
             Dispatcher.UIThread.RunJobs()
             Assert.False(selectWindow.IsVisible, "the Select window closes after its return")
-            Assert.Equal(Some "src-600", ((getModel ()).elements |> List.item 0).placement.valueId)
+            Assert.Equal(Some (ElementValueId "src-600"), ((getModel ()).elements |> List.item 0).placement.valueId)
             Assert.Contains("bound: Monochromatic 600 nm", textOf mainWindow ConstructorUiId.teReadout.value)
             mainWindow.Close()
             Dispatcher.UIThread.RunJobs())

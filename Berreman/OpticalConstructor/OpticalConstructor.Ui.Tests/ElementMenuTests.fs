@@ -230,9 +230,9 @@ module ElementMenuTests =
             match segmentsAt r2 r3 with
             | [ incoming; inside; outgoing ] ->
                 Assert.Equal(BeamLayout.InsideElement, inside.kind)
-                Assert.True(abs ((dirOf incoming).dot (dirOf outgoing) - 1.0) < tol, $"segments 1 and 3 parallel at R2 = %g{r2}, R3 = %g{r3}")
-                Assert.True(abs ((dirOf outgoing).dot centralRayDirection - 1.0) < tol, "the exit beam never rotates with the sample")
-                Assert.True((dirOf inside).dot centralRayDirection < 1.0 - 1.0e-6, "the inside segment is bent")
+                Assert.True(abs (((dirOf incoming).dot (dirOf outgoing)).value - 1.0) < tol, $"segments 1 and 3 parallel at R2 = %g{r2}, R3 = %g{r3}")
+                Assert.True(abs (((dirOf outgoing).dot centralRayDirection).value - 1.0) < tol, "the exit beam never rotates with the sample")
+                Assert.True(((dirOf inside).dot centralRayDirection).value < 1.0 - 1.0e-6, "the inside segment is bent")
             | other -> Assert.Fail($"expected 3 segments, got %d{List.length other}")
 
     // ------------------------------ headless: right click → menu ------------------------------

@@ -91,7 +91,7 @@ module InverseFit =
                     if cols.Length >= 2 then
                         match tryFloat cols.[0], tryFloat cols.[1] with
                         | Some lam, Some value ->
-                            let waveLength = Units.toWaveLength unit lam
+                            let waveLength = Units.toWaveLength unit (Units.UnitMagnitude lam)
                             Some
                                 {
                                     quantity = quantity

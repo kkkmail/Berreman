@@ -181,7 +181,7 @@ module CurvedElements =
 
         // A child node capturing the outgoing beam on a branch. Topology only — the
         // field state is carried by the engine solve (`solveZone`), not the node.
-        let outgoing = { zoneNode with element = Detector; children = Map.empty }
+        let outgoing = { zoneNode with element = DetectorElement; children = Map.empty }
 
         // Reuse the slice-002 smart constructor `BeamNode.attach`, which itself
         // enforces the mirror reflected-only rule; a rejected Transmitted attach on a
@@ -192,11 +192,11 @@ module CurvedElements =
             | Error _ -> parent
 
         match element with
-        | Lens ->
+        | LensElement ->
             zoneNode |> attach BeamBranch.ReflectedBeam |> attach BeamBranch.TransmittedBeam
-        | CurvedMirror | FlatMirror ->
+        | CurvedMirrorElement | FlatMirrorElement ->
             zoneNode |> attach BeamBranch.ReflectedBeam
-        | Source | Polarizer | Sample _ | Analyzer | Detector ->
+        | SourceElement | PolarizerElement | SampleElement _ | AnalyzerElement | DetectorElement ->
             // Not a curved element; §C.6 fans only Lens/CurvedMirror. No fan added.
             zoneNode
 

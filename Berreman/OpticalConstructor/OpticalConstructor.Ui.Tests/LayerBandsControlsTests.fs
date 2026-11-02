@@ -80,7 +80,7 @@ module LayerBandsControlsTests =
         | Ok (Some entry) -> Assert.Contains("layer", entry.fullDescription)
         | other -> Assert.Fail($"expected the multilayer entry, got %A{other}")
         // The bound element carries the multilayer valueId.
-        Assert.Equal(Some multilayerQwId, (elem 2 m).placement.valueId)
+        Assert.Equal(Some (ElementValueId multilayerQwId), (elem 2 m).placement.valueId)
 
     [<Fact>]
     let ``detailsState shows a hint when nothing is selected and nothing bound`` () =

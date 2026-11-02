@@ -83,7 +83,7 @@ let private wheelStepDegrees : float = 5.0
 /// plane and watch the shape renderer open up. The linear polarizer starts selected.
 let initRendererTest () : RendererTestModel =
     let mk (x : float) (kind : CatalogueKind) (sign : int) : ElementRenderer.Drawable =
-        let placement = { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with r3Locked = false }
+        let placement = { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with r3Locked = RotationFree }
         { placement = placement
           centre = ElementRenderer.centreOfPlacement placement
           zoom = 3.5

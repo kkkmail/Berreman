@@ -24,7 +24,7 @@ module MeasuredDataTests =
 
     let private ePoint (w : float) (psi : float) (delta : float) (aoi : float option) : EllipsometricPoint =
         {
-            waveLength = toWaveLength Nanometer w
+            waveLength = toWaveLength Nanometer (UnitMagnitude w)
             psi = Angle.degree (psi * 1.0<Berreman.Constants.deg>)
             delta = Angle.degree (delta * 1.0<Berreman.Constants.deg>)
             aoiOpt = aoi |> Option.map (fun a -> Angle.degree (a * 1.0<Berreman.Constants.deg>))
@@ -97,7 +97,7 @@ module MeasuredDataTests =
         | Ok series ->
             Assert.Equal(2, List.length series.points)
             let second = List.item 1 series.points
-            Assert.Equal(500.0, wavelengthToUnit Nanometer second.waveLength, 6)
+            Assert.Equal(500.0, (wavelengthToUnit Nanometer second.waveLength).value, 6)
             Assert.Equal(30.0, second.psi.degrees, 9)
             Assert.Equal(120.0, second.delta.degrees, 9)
             Assert.True(Option.isNone second.aoiOpt)

@@ -62,7 +62,7 @@ module NkDispersionChartTests =
 
     [<Fact>]
     let ``AC: per-axis n lands on the left axis, k on the right, spanning the requested range`` () =
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 40
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 40)
         let chart = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties Nanometer range
         // Six series in a fixed order: n₁ n₂ n₃ then k₁ k₂ k₃, sharing one x grid.
         Assert.Equal<string list>([ "n₁"; "n₂"; "n₃"; "k₁"; "k₂"; "k₃" ], chart.series |> List.map (fun s -> s.name.value))
@@ -73,7 +73,7 @@ module NkDispersionChartTests =
         Assert.Equal(41, List.length xs)
         Assert.True(abs (List.head xs - 400.0) < 1e-9, $"first x = %g{List.head xs}")
         Assert.True(abs (List.last xs - 800.0) < 1e-9, $"last x = %g{List.last xs}")
-        Assert.Equal<string>(SpectralAxis.axisLabel Nanometer, chart.xLabel.value)
+        Assert.Equal<string>(Nanometer.axisLabel, chart.xLabel.value)
         Assert.Equal(NonAngularXAxis, chart.xAxisKind)
         // The paired style seed carries the axis assignment (the side is STYLE, not data — 018):
         // n₁/n₂/n₃ stay on the LEFT axis, k₁/k₂/k₃ are flipped to the RIGHT.
@@ -85,7 +85,7 @@ module NkDispersionChartTests =
 
     [<Fact>]
     let ``a dispersive entry yields a curve — silicon's n₁ varies across 400…800 nm`` () =
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 40
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 40)
         let chart = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties Nanometer range
         let ys = (seriesNamed chart "n₁").points |> List.map (fun p -> p.y)
         let span = List.max ys - List.min ys
@@ -93,7 +93,7 @@ module NkDispersionChartTests =
 
     [<Fact>]
     let ``a non-dispersive entry yields flat lines through the SAME builder — vacuum n = 1, k = 0 on every axis`` () =
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 40
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 40)
         let chart = NkDispersionChart.nkDispersionChart Biaxial vacuumEntry.properties Nanometer range
         for s in chart.series do
             let ys = s.points |> List.map (fun p -> p.y)
@@ -113,7 +113,7 @@ module NkDispersionChartTests =
                     SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.7 0.0))
                     SetPrincipalIndex (ThirdAxis, ComplexRefractionIndex (Complex.create 1.8 0.0))
                 ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         let chart = NkDispersionChart.nkDispersionChart Biaxial biaxial Nanometer range
         let n1, n2, n3 = firstY chart "n₁", firstY chart "n₂", firstY chart "n₃"
         Assert.True(abs (n1 - 1.6) < 1e-9, $"n₁ = %g{n1}")
@@ -128,7 +128,7 @@ module NkDispersionChartTests =
                     ChooseAnisotropy Isotropic
                     SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.5 0.0))
                 ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         let chart = NkDispersionChart.nkDispersionChart Isotropic iso Nanometer range
         Assert.Equal<string list>([ "n"; "k" ], chart.series |> List.map (fun s -> s.name.value))
         let n = firstY chart "n"
@@ -147,7 +147,7 @@ module NkDispersionChartTests =
                     SetPrincipalIndex (FirstAxis, ComplexRefractionIndex (Complex.create 1.5 0.0))
                     SetPrincipalIndex (SecondAxis, ComplexRefractionIndex (Complex.create 1.7 0.0))
                 ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         let chart = NkDispersionChart.nkDispersionChart Uniaxial uni Nanometer range
         Assert.Equal<string list>([ "n_o"; "n_e"; "k_o"; "k_e" ], chart.series |> List.map (fun s -> s.name.value))
         let no = firstY chart "n_o"
@@ -163,12 +163,12 @@ module NkDispersionChartTests =
 
     [<Fact>]
     let ``the display unit rescales only the x-axis (AC-D7) — the y data is identical in eV and nm`` () =
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         let inNm = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties Nanometer range
         let inEv = NkDispersionChart.nkDispersionChart Biaxial siliconEntry.properties ElectronVolt range
         for name in [ "n₁"; "n₂"; "n₃"; "k₁"; "k₂"; "k₃" ] do
             Assert.Equal<float list>((seriesNamed inNm name).points |> List.map (fun p -> p.y), (seriesNamed inEv name).points |> List.map (fun p -> p.y))
-        Assert.Equal<string>(SpectralAxis.axisLabel ElectronVolt, inEv.xLabel.value)
+        Assert.Equal<string>(ElectronVolt.axisLabel, inEv.xLabel.value)
         // eV ticks descend as the wavelength ascends — a rescale of the SAME grid, not a re-sample.
         let xsEv = (List.head inEv.series).points |> List.map (fun p -> p.x)
         Assert.True(List.head xsEv > List.last xsEv, "eV axis must descend across an ascending-λ grid")
@@ -178,7 +178,7 @@ module NkDispersionChartTests =
     [<Fact>]
     let ``spec 0040 006: the gyration builder emits only the components the class admits — uniaxial-active carries g₁₁, g₃₃`` () =
         let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         // The uniaxial gyration class admits exactly g₁₁ and g₃₃ (`gyrationComponents`).
         let components = gyrationComponents (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }) |> List.map fst
         let chart = NkDispersionChart.gyrationChart components active Nanometer range
@@ -193,7 +193,7 @@ module NkDispersionChartTests =
     [<Fact>]
     let ``spec 0040 006: the gyration builder draws all six components for a coded preset with no stored class`` () =
         let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         // The fallback set — every component, the pre-restriction rendering a coded preset keeps.
         let chart = NkDispersionChart.gyrationChart NkDispersionChart.allGyrationComponents active Nanometer range
         Assert.Equal<string list>([ "g₁₁"; "g₂₂"; "g₃₃"; "g₁₂"; "g₁₃"; "g₂₃" ], chart.series |> List.map (fun s -> s.name.value))
@@ -212,7 +212,7 @@ module NkDispersionChartTests =
                     SetMuGyration (MuValue 0.2)
                     ChooseGyrationAxis AlongZ
                 ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         let chart = NkDispersionChart.muChart GyromagneticMuKind magnetic Nanometer range
         Assert.Equal<string list>([ "μ₁₁"; "μ₂₂"; "μ₃₃"; "g" ], chart.series |> List.map (fun s -> s.name.value))
         // AlongZ (Faraday): μ[0,0] = μ[1,1] = diagonal 1.2, μ[2,2] = parallel 1.1, gyration magnitude 0.2.
@@ -236,7 +236,7 @@ module NkDispersionChartTests =
                     SetMuKind ScalarMuKind
                     SetMuDiagonal (MuValue 1.3)
                 ]
-        let range = SpectralAxis.spectralRange Nanometer 400.0 800.0 8
+        let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
         let chart = NkDispersionChart.muChart ScalarMuKind scalar Nanometer range
         // A scalar μ = μ·I: exactly ONE series carrying the scalar permeability, no gyration curve.
         Assert.Equal<string list>([ "μ" ], chart.series |> List.map (fun s -> s.name.value))

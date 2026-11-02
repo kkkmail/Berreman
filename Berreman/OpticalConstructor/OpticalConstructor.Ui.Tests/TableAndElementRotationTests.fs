@@ -45,10 +45,10 @@ module TableAndElementRotationTests =
         let m = initTableAndElementRotation ()
         Assert.Equal(TableSelected, m.selection)
         Assert.Equal(3, List.length m.elements)
-        Assert.True(close m.view.r1.degrees 0.0 && close m.view.zoom 1.0)
+        Assert.True(close m.view.r1.degrees 0.0 && close m.view.zoom.value 1.0)
         for e in m.elements do
             Assert.True(close (e.placement.placementPoint.y / 1.0<meter>) 0.0)
-            Assert.True(close e.zoom defaultElementZoom && e.placement.r3Locked)
+            Assert.True(close e.zoom defaultElementZoom && e.placement.r3Locked = RotationLocked)
 
     // ===================== Lego constructor (Main scene) =====================
     // The Main screen is the SAME scene as the test window, seeded differently (`initMain`) with an
@@ -66,7 +66,7 @@ module TableAndElementRotationTests =
         Assert.Equal(LightSource, (elem 0 m).placement.catalogueKind)
         Assert.Equal(Detector, (elem 1 m).placement.catalogueKind)
         Assert.False(List.isEmpty m.palette, "the Main scene exposes an add palette")
-        Assert.True(close m.view.zoom 1.0 && close m.view.r1.degrees 0.0, "same table / initial zoom as the test scene")
+        Assert.True(close m.view.zoom.value 1.0 && close m.view.r1.degrees 0.0, "same table / initial zoom as the test scene")
 
     [<Fact>]
     let ``AddElement appends a catalogue element on the beam and selects it (so the bar acts on it)`` () =
@@ -148,7 +148,7 @@ module TableAndElementRotationTests =
         let incoming = ((fst (mainSnap m)).[1]).incoming |> Option.get   // the reflected beam at the detector
         Assert.True(abs incoming.y > 1.0e-3, "the beam at the detector is reflected (bent off +X)")
         // The detector is drawn FACING that reflected beam (its N1 = the incoming direction), as in the test.
-        let (n1, _, _) = orientedBasis (drawnPlacement m 1)
+        let { primaryNormal = n1 } = orientedBasis (drawnPlacement m 1)
         Assert.True(abs (n1.x - incoming.x) < 1.0e-6 && abs (n1.y - incoming.y) < 1.0e-6 && abs (n1.z - incoming.z) < 1.0e-6,
                     $"the detector faces the reflected beam (n1 = {n1.x}, {n1.y}, {n1.z})")
         // Spec 0046: every element but the SOURCE (the ray root) is oriented on its beam — mirrors too,
@@ -316,9 +316,9 @@ module TableAndElementRotationTests =
     [<Fact>]
     let ``plain wheel zooms the table; a drag pans it; a click selects table or element`` () =
         let m0 = initTableAndElementRotation ()
-        Assert.True((updateTableAndElementRotation (Wheel (Set.empty, 1)) m0).view.zoom > 1.0, "plain wheel zooms the table")
+        Assert.True((updateTableAndElementRotation (Wheel (Set.empty, 1)) m0).view.zoom.value > 1.0, "plain wheel zooms the table")
         let dragged = m0 |> updateTableAndElementRotation (PointerDown center) |> updateTableAndElementRotation (PointerMove { sx = center.sx + 120.0; sy = center.sy + 40.0 }) |> updateTableAndElementRotation (PointerUp { sx = center.sx + 120.0; sy = center.sy + 40.0 })
-        Assert.True(close dragged.view.panX 120.0 && close dragged.view.panY 40.0, "a drag pans the table")
+        Assert.True(close dragged.view.panX.value 120.0 && close dragged.view.panY.value 40.0, "a drag pans the table")
         // Click an element vs the empty plate vs off the plate entirely.
         Assert.Equal(ElementSelected 0, (clickAt { sx = center.sx - 100.0; sy = center.sy } m0).selection)   // element 0 at x=-0.5 → screen -100
         Assert.Equal(TableSelected, (clickAt { sx = center.sx; sy = center.sy + 100.0 } m0).selection)        // on the plate (y≈0.5 m), clear of every element
@@ -437,7 +437,7 @@ module TableAndElementRotationTests =
                     w.MouseMove(pt p1, RawInputModifiers.LeftMouseButton)
                     Dispatcher.UIThread.RunJobs()
                     w.MouseUp(pt p1, MouseButton.Left, RawInputModifiers.None))
-            Assert.True(close m.view.panX 140.0 && close m.view.panY 60.0, $"pan = ({m.view.panX}, {m.view.panY})"))
+            Assert.True(close m.view.panX.value 140.0 && close m.view.panY.value 60.0, $"pan = ({m.view.panX.value}, {m.view.panY.value})"))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -528,7 +528,7 @@ module TableAndElementRotationTests =
             Assert.Equal<CatalogueKind list>(
                 [ LinearPolarizer; CircularPolarizer; CircularPolarizer; Sample ],
                 added |> List.map (fun e -> e.placement.catalogueKind))
-            Assert.Equal<string option list>(
-                [ Some SeedEntryIds.polarizerLp; Some SeedEntryIds.polarizerCpLeft; Some SeedEntryIds.polarizerCpRight; None ],
+            Assert.Equal<ElementValueId option list>(
+                [ Some (ElementValueId SeedEntryIds.polarizerLp); Some (ElementValueId SeedEntryIds.polarizerCpLeft); Some (ElementValueId SeedEntryIds.polarizerCpRight); None ],
                 added |> List.map (fun e -> e.placement.valueId))
             window.Close())

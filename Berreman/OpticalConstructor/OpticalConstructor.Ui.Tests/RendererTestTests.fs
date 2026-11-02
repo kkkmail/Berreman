@@ -47,7 +47,7 @@ module RendererTestTests =
     [<Fact>]
     let ``the wheel zooms the table and rotates the selection`` () =
         let m0 = initRendererTest ()   // an element is selected (index 1)
-        Assert.True((updateRendererTest (RendererTestWheel (Set.empty, 1)) m0).view.zoom > m0.view.zoom, "plain wheel zooms in")
+        Assert.True((updateRendererTest (RendererTestWheel (Set.empty, 1)) m0).view.zoom.value > m0.view.zoom.value, "plain wheel zooms in")
         let rotated = updateRendererTest (RendererTestWheel (Set.ofList [ RendererTestModShift ], 1)) m0
         Assert.True((List.item 1 rotated.elements).placement.r1.degrees > 0.0, "Shift+wheel rotated the selected element R1")
         Assert.True(abs (rotated.view.r1.degrees) < 1e-9, "the table view did not rotate while an element was selected")
@@ -61,7 +61,7 @@ module RendererTestTests =
             m0
             |> updateRendererTest (RendererTestPointerDown { sx = 100.0; sy = 100.0 })
             |> updateRendererTest (RendererTestPointerMove { sx = 160.0; sy = 130.0 })
-        Assert.True(abs (dragged.view.panX - 60.0) < 1e-9 && abs (dragged.view.panY - 30.0) < 1e-9, "a drag pans the view")
+        Assert.True(abs (dragged.view.panX.value - 60.0) < 1e-9 && abs (dragged.view.panY.value - 30.0) < 1e-9, "a drag pans the view")
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]

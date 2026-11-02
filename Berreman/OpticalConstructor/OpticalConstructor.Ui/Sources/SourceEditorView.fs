@@ -34,7 +34,7 @@ open OpticalConstructor.Domain.SourceSpec
 /// Build a `WaveLength` from an operator entry in display unit `u` (§E.2). nm/µm
 /// land on `WaveLength.Nm`/`WaveLength.Mkm` natively; Å, mm, eV, cm⁻¹ — which the
 /// engine `WaveLength` cannot represent — reduce to nm via the §A.10 conversions.
-let waveLengthFromInput (u : UnitOfMeasure) (x : float) : WaveLength = toWaveLength u x
+let waveLengthFromInput (u : UnitOfMeasure) (x : float) : WaveLength = toWaveLength u (UnitMagnitude x)
 
 // ---------------------------------------------------------------------------
 // The editor model messages & pure update (Avalonia-free).
@@ -64,7 +64,7 @@ let update (msg : SourceMsg) (s : SourceSpec) : SourceSpec =
         setLight (fun l -> { l with incidenceAngle = IncidenceAngle.create (Angle.degree (d * 1.0<deg>)) }) s
     | SetPolarization p -> setLight (fun l -> { l with polarization = p }) s
     | SetEllipticity e -> setLight (fun l -> { l with ellipticity = Ellipticity.create e }) s
-    | SetIntensity i -> { s with intensity = i }
+    | SetIntensity i -> { s with intensity = IlluminationWeight i }
     | SetDisplayUnit u -> { s with displayUnit = u }
 
 // ---------------------------------------------------------------------------
@@ -108,11 +108,11 @@ let axisRangedVariable (axis : SourceAxis<'T>) : RangedVariable option =
 /// 600 nm s-polarised collimated coherent source at unit intensity, nm display.
 let defaultSource (sourceId : string) : SourceSpec =
     {
-        sourceId = sourceId
+        sourceId = SourceSpecId sourceId
         name = None
         light = IncidentLightInfo.create (WaveLength.nm 600.0<nm>)
         displayUnit = Nanometer
-        intensity = 1.0
+        intensity = IlluminationWeight 1.0
         spectralProfile = None
         cone = None
         gaussianBeam = None
@@ -128,11 +128,11 @@ type PaletteEntry =
         requiresConfirmation : bool
     }
 
-/// The Source palette entry (§E.10): one-click add of a `ConstructorElement.Source`
+/// The Source palette entry (§E.10): one-click add of a `ConstructorElement.SourceElement`
 /// with no confirmation gate, reachable from the palette navigation.
 let sourcePaletteEntry : PaletteEntry =
     {
         title = "Source"
-        element = ConstructorElement.Source
+        element = ConstructorElement.SourceElement
         requiresConfirmation = false
     }

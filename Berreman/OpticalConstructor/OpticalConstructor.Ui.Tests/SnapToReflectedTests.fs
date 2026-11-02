@@ -31,12 +31,12 @@ module SnapToReflectedTests =
     [<Fact>]
     let ``the tracked branch is DERIVED from the element (mirror tracks reflected, others transmitted)`` () =
         let mk (k : CatalogueKind) : ElementPlacement = ElementPlacement.create k TablePoint.origin
-        Assert.Equal(BeamTree.ReflectedBeam, RayModel.primaryBranch (mk FlatMirror))
-        Assert.Equal(BeamTree.ReflectedBeam, RayModel.primaryBranch (mk CurvedMirror))
-        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk LinearPolarizer))
-        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk CircularPolarizer))
-        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk LightSource))
-        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk Detector))
+        Assert.Equal(BeamTree.ReflectedBeam, (mk FlatMirror).primaryBranch)
+        Assert.Equal(BeamTree.ReflectedBeam, (mk CurvedMirror).primaryBranch)
+        Assert.Equal(BeamTree.TransmittedBeam, (mk LinearPolarizer).primaryBranch)
+        Assert.Equal(BeamTree.TransmittedBeam, (mk CircularPolarizer).primaryBranch)
+        Assert.Equal(BeamTree.TransmittedBeam, (mk LightSource).primaryBranch)
+        Assert.Equal(BeamTree.TransmittedBeam, (mk Detector).primaryBranch)
         // The scene figures out (from the flat mirror, index 1) which element reflects — not hardcoded.
         Assert.Equal(1, reflectorIndex (initSnapToReflected ()))
 
@@ -104,7 +104,7 @@ module SnapToReflectedTests =
     /// The detector's DRAWN primary normal N1 (it is element 2, the one on the reflected beam).
     let private detectorDrawN1 (m : SnapToReflectedModel) : Vector3 =
         let p = List.item 2 (drawPlacements m)
-        let (n1, _, _) = orientedBasis p
+        let { primaryNormal = n1 } = orientedBasis p
         n1
 
     /// The reflected beam direction (the mirror's outgoing ray).

@@ -828,11 +828,11 @@ let private zoomAllElements (notches : int) (m : TableAndElementRotationModel) :
     { m with elements = m.elements |> List.map (fun e -> { e with zoom = clamp elementZoomMin elementZoomMax (e.zoom * (zoomStep ** float notches)) }) }
 
 let private zoomTable (notches : int) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
-    { m with view = { m.view with zoom = clamp tableZoomMin tableZoomMax (m.view.zoom * (zoomStep ** float notches)) } }
+    { m with view = { m.view with zoom = TableZoom (clamp tableZoomMin tableZoomMax (m.view.zoom.value * (zoomStep ** float notches))) } }
 
 let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
     { m with
-        view = { m.view with panX = m.view.panX + (pt.sx - refPt.sx); panY = m.view.panY + (pt.sy - refPt.sy) }
+        view = { m.view with panX = TablePan (m.view.panX.value + (pt.sx - refPt.sx)); panY = TablePan (m.view.panY.value + (pt.sy - refPt.sy)) }
         drag = Panning pt }
 
 /// The element's along-beam parameter (its x), in metres.
@@ -842,7 +842,7 @@ let elementX (e : TestElement) : float = e.placement.placementPoint.x / 1.0<mete
 /// SNAPS onto the beam it sits on (`TestElement.beam`) — the main beam, or the reflected ray of a
 /// partially-reflecting element — through the pure `BeamLayout.layout`. On each beam the elements are
 /// ordered by x and consecutive x-distances are the gaps; each element's branch is DERIVED
-/// (`RayModel.primaryBranch` — a flat mirror REFLECTS, a polarizer / sample / lens TRANSMITS) and every
+/// (`ElementPlacement.primaryBranch` — a flat mirror REFLECTS, a polarizer / sample / lens TRANSMITS) and every
 /// element is crossed by the ONE `RayModel.crossElement` law at its drawn depth. Returns each element's
 /// drawn table-frame position BY INDEX and the drawn ray segments. For the free-placement test scene
 /// (`snapChain = false`) it is just each element at its own placement point, so selection / drawing are
@@ -971,7 +971,7 @@ let private cancelActiveSelect (m : TableAndElementRotationModel) : TableAndElem
 let private withBoundSampleEmission (m : TableAndElementRotationModel) (p : ElementPlacement) : ElementPlacement =
     match p.valueId with
     | Some id ->
-        match m.library.tryGetEntry id with
+        match m.library.tryGetEntry id.value with
         | Ok (Some entry) -> { p with emission = Library.placementEmissionForEntry p.emission entry }
         | Ok None | Error _ -> p
     | None -> p
@@ -1057,7 +1057,7 @@ let private addElement (kind : CatalogueKind) (prebind : string option) (m : Tab
             let start, finish = raySpan m BeamLayout.OnMainBeam None
             BeamLayout.OnMainBeam, clamp start finish defaultX
     let placement =
-        { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind }
+        { ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> } with valueId = prebind |> Option.map ElementValueId }
         |> withBoundSampleEmission m
     let e = { id = freshId (); placement = placement; zoom = defaultElementZoom; beam = host }
     let elements' = m.elements @ [ e ]
@@ -1134,7 +1134,7 @@ let private moveSelectedTo (axis : TableAxis) (v : float) (m : TableAndElementRo
         let kind = (List.item i m.elements).placement.catalogueKind
         let moveTo (range : RayPositionControls.PositionRange) : TableAndElementRotationModel =
             mapElement i (fun e -> { e with placement = withPositionOn axis (clampTo range v * 1.0<meter>) e.placement }) m
-        match mobilityOf kind, axis with
+        match kind.mobility, axis with
         | MovesFreely, TableX when i = 0 -> carryRayWithRoot m (moveTo RayPositionControls.UnboundedRange)
         | MovesFreely, _ -> moveTo RayPositionControls.UnboundedRange
         | MovesAlongBeam, TableX -> moveTo (alongBeamRange m i)
@@ -1152,7 +1152,7 @@ let private moveSelectedBy (axis : TableAxis) (d : float) (m : TableAndElementRo
 let private toggleMoveLock (axis : TableAxis) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
     match m.selection with
     | ElementSelected i when i >= 0 && i < List.length m.elements ->
-        match mobilityOf (List.item i m.elements).placement.catalogueKind with
+        match (List.item i m.elements).placement.catalogueKind.mobility with
         | MovesFreely ->
             mapElement i (fun e ->
                 let lock =
@@ -1194,7 +1194,7 @@ let private resetSelectedPosition (m : TableAndElementRotationModel) : TableAndE
 let supportedEmissionOf (m : TableAndElementRotationModel) (p : ElementPlacement) : Emission =
     match p.valueId with
     | Some id ->
-        match m.library.tryGetEntry id with
+        match m.library.tryGetEntry id.value with
         | Ok (Some entry) -> Library.placementEmissionForEntry EmitBoth entry
         | Ok None | Error _ -> EmitBoth
     | None -> EmitBoth
@@ -1296,7 +1296,7 @@ let boundSourceOf (model : TableAndElementRotationModel) : Library.SourcePreset 
     |> List.tryPick (fun e ->
         match e.placement.catalogueKind, e.placement.valueId with
         | LightSource, Some id ->
-            match model.library.tryGetEntry id with
+            match model.library.tryGetEntry id.value with
             | Ok (Some (Library.SourceItem source)) -> Some source
             | Ok (Some _) | Ok None | Error _ -> None
         | (LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror | Detector), _ -> None)
@@ -1347,7 +1347,7 @@ let private measuredElementOf (model : TableAndElementRotationModel) (varied : L
     |> List.tryPick (fun e ->
         match e.placement.valueId with
         | Some id ->
-            match model.library.tryGetEntry id with
+            match model.library.tryGetEntry id.value with
             | Ok (Some (Library.SampleItem _)) -> Some e.id
             | Ok (Some _) | Ok None | Error _ -> None
         | None -> None)
@@ -1371,7 +1371,7 @@ let captureDetectors (model : TableAndElementRotationModel) (varied : Library.El
 let detectorKindOf (model : TableAndElementRotationModel) (j : int) : Library.DetectorKind =
     match (List.item j model.elements).placement.valueId with
     | Some id ->
-        match model.library.tryGetEntry id with
+        match model.library.tryGetEntry id.value with
         | Ok (Some (Library.DetectorItem d)) -> d.kind
         | Ok (Some _) | Ok None | Error _ -> Library.Intensity
     | None -> Library.Intensity
@@ -1388,7 +1388,7 @@ let availableCaptures (model : TableAndElementRotationModel) (varied : Library.E
         |> List.tryPick (fun e ->
             match e.placement.valueId with
             | Some id ->
-                match model.library.tryGetEntry id with
+                match model.library.tryGetEntry id.value with
                 | Ok (Some (Library.SampleItem _)) -> Some e.id
                 | Ok (Some _) | Ok None | Error _ -> None
             | None -> None)
@@ -1458,7 +1458,7 @@ let private buildExperimentSetup (model : TableAndElementRotationModel) : Experi
             label = experimentElementLabel model e.id
             kind = e.placement.catalogueKind
             placement = Experiments.PlacementSummary.ofPlacement e.placement
-            binding = descriptorBinding model e.placement.catalogueKind e.placement.valueId
+            binding = descriptorBinding model e.placement.catalogueKind (e.placement.valueId |> Option.map (fun v -> v.value))
         })
 
 /// Spec 0038 Part L (037): the point count of a validated measured series — the collection builder's
@@ -1488,15 +1488,15 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | ToggleR3Lock ->
         match model.selection with
         | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
-        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR3Locked (not e.placement.r3Locked) e.placement }) model
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR3Locked e.placement.r3Locked.toggled e.placement }) model
         | NothingSelected -> model
     | ToggleR1Lock ->
         match model.selection with
-        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR1Locked (not e.placement.r1Locked) e.placement }) model
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR1Locked e.placement.r1Locked.toggled e.placement }) model
         | TableSelected | NothingSelected -> model
     | ToggleR2Lock ->
         match model.selection with
-        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR2Locked (not e.placement.r2Locked) e.placement }) model
+        | ElementSelected i -> mapElement i (fun e -> { e with placement = setR2Locked e.placement.r2Locked.toggled e.placement }) model
         | TableSelected | NothingSelected -> model
     | RotSetAxis (axis, v) -> setSelectedAxis axis v model
     | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
@@ -1569,7 +1569,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
             // Spec 0040 Part D.3: a bound sample seeds the placed element's emission from its
             // geometry-constrained `supportedEmission` (a Mirror ⇒ reflected-only); a non-sample
             // bind keeps the kind default (`withBoundSampleEmission`).
-            mapElement i (fun e -> { e with placement = withBoundSampleEmission m { e.placement with valueId = Some entryId } })
+            mapElement i (fun e -> { e with placement = withBoundSampleEmission m { e.placement with valueId = Some (ElementValueId entryId) } })
                 { m with pendingEntry = None; selectStatus = None }
         | None ->
             { m with selectStatus = Some "The chosen entry was not bound — its target element is no longer on the table." }
@@ -1794,7 +1794,7 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
 // ---------------------------------------------------------------------------
 
 let tableAndElementRotationElementCorners (e : TestElement) : Vector3 list =
-    let (n1, n2, n3) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let hb = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
@@ -1855,8 +1855,8 @@ let private tableViews (model : TableAndElementRotationModel) : IView list =
     let edges =
         TableView.plateEdges
         |> List.map (fun (a, b) -> line { sx = (toPoint corners.[a]).X; sy = (toPoint corners.[a]).Y } { sx = (toPoint corners.[b]).X; sy = (toPoint corners.[b]).Y } edgeColor (if tableSel then 2.0 else 1.0))
-    let s = projectPt model.view (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-    let d = projectPt model.view (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
+    let s = projectPt model.view RayModel.defaultSourcePoint.toVector3
+    let d = projectPt model.view RayModel.defaultDetectorPoint.toVector3
     let marker (sp : ScreenPoint) (c : Color) : IView =
         Ellipse.create [
             Ellipse.left (sp.sx - 6.0); Ellipse.top (sp.sy - 6.0); Ellipse.width 12.0; Ellipse.height 12.0
@@ -1875,7 +1875,7 @@ let private elementView (i : int) (model : TableAndElementRotationModel) (e : Te
             Line.create [
                 Line.startPoint corners.[a]; Line.endPoint corners.[b]; Line.stroke (brush boxColor); Line.strokeThickness weight
             ] :> IView)
-    let (n1, n2, _) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
@@ -1894,8 +1894,10 @@ let private elementViews (model : TableAndElementRotationModel) : IView list =
 let private rotationState (model : TableAndElementRotationModel) : RotationControls.State =
     // Spec 0046: an element offers R1 / R2 lock toggles too (the light source starts with all three
     // locked); the table locks R3 alone.
-    let offer (locked : bool) : RotationControls.AxisLockOffer =
-        RotationControls.Lockable (if locked then RotationControls.AxisLocked else RotationControls.AxisFree)
+    let offer (lock : RotationLock) : RotationControls.AxisLockOffer =
+        match lock with
+        | RotationLocked -> RotationControls.Lockable RotationControls.AxisLocked
+        | RotationFree -> RotationControls.Lockable RotationControls.AxisFree
     match model.selection with
     | TableSelected ->
         { r1 = BarDegrees model.view.r1.degrees; r2 = BarDegrees model.view.r2.degrees; r3 = BarDegrees model.view.r3.degrees
@@ -1905,7 +1907,7 @@ let private rotationState (model : TableAndElementRotationModel) : RotationContr
         let p = (List.item i model.elements).placement
         { r1 = BarDegrees p.r1.degrees; r2 = BarDegrees p.r2.degrees; r3 = BarDegrees p.r3.degrees
           r1Lock = offer p.r1Locked; r2Lock = offer p.r2Locked
-          r3Lock = (if p.r3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
+          r3Lock = (match p.r3Locked with RotationLocked -> RotationControls.AxisLocked | RotationFree -> RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
     | NothingSelected ->
         { r1 = BarDegrees 0.0; r2 = BarDegrees 0.0; r3 = BarDegrees 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
           r3Lock = RotationControls.AxisFree; availability = ControlWithheld; confirm = model.rotationConfirm }
@@ -1929,7 +1931,7 @@ let kindCode : CatalogueKind -> string = Catalogue.kindCode
 let private readoutText (model : TableAndElementRotationModel) : string =
     match model.selection with
     | TableSelected ->
-        $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom}×"
+        $"Selected: TABLE   R1 %.0f{model.view.r1.degrees}°   R2 %.0f{model.view.r2.degrees}°   R3 %.0f{model.view.r3.degrees}°   zoom %.2f{model.view.zoom.value}×"
     | ElementSelected i ->
         let e = List.item i model.elements
         let p = e.placement
@@ -1937,15 +1939,15 @@ let private readoutText (model : TableAndElementRotationModel) : string =
         let boundName =
             match p.valueId with
             | Some id ->
-                match model.library.tryGetEntry id with
+                match model.library.tryGetEntry id.value with
                 | Ok (Some entry) -> entry.displayName
                 | Ok None | Error _ -> "unbound"
             | None -> "unbound"
         // Spec 0046: name every locked rotation axis (the light source starts with all three locked).
         let lockText =
-            match [ if p.r1Locked then "R1"
-                    if p.r2Locked then "R2"
-                    if p.r3Locked then "R3" ] with
+            match [ if p.r1Locked = RotationLocked then "R1"
+                    if p.r2Locked = RotationLocked then "R2"
+                    if p.r3Locked = RotationLocked then "R3" ] with
             | [] -> "rotations free"
             | locked -> (String.concat " " locked) + " locked"
         $"""Selected: Element %d{i + 1} (%s{kindName p.catalogueKind})   R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{lockText})   zoom %.1f{e.zoom}×   bound: %s{boundName}"""
@@ -2171,7 +2173,7 @@ let private moveBayContent (model : TableAndElementRotationModel) (dispatch : Ta
         match model.selection with
         | ElementSelected i when i >= 0 && i < List.length model.elements ->
             let p = (List.item i model.elements).placement
-            match mobilityOf p.catalogueKind with
+            match p.catalogueKind.mobility with
             | MovesFreely -> Some p
             | MovesAlongBeam -> None
         | ElementSelected _ | TableSelected | NothingSelected -> None
@@ -2237,7 +2239,7 @@ let private libraryState (model : TableAndElementRotationModel) : LibraryControl
         let e = List.item i model.elements
         let kind = e.placement.catalogueKind
         let allowed = allowedEntryIds model kind
-        let boundId = e.placement.valueId
+        let boundId = e.placement.valueId |> Option.map (fun v -> v.value)
         let rows =
             match model.library.libraryTrees () with
             | Ok (tree :: _) -> flattenNode allowed boundId 0 tree.root
@@ -2334,7 +2336,7 @@ let private experimentReadout (model : TableAndElementRotationModel) : string =
 let private boundEntry (model : TableAndElementRotationModel) (e : TestElement) : Library.LibraryEntry option =
     match e.placement.valueId with
     | Some id ->
-        match model.library.tryGetEntry id with
+        match model.library.tryGetEntry id.value with
         | Ok (Some entry) -> Some entry
         | Ok None | Error _ -> None
     | None -> None
@@ -2575,7 +2577,7 @@ let private incidenceDegreesOf (placed : BeamLayout.PlacedElement) (placement : 
     match placed.incoming with
     | Some d ->
         let n = r1Axis (RayModel.orientedToBeam d placement)
-        let c = min 1.0 (abs (n.normalized.dot d.normalized))
+        let c = min 1.0 (abs (n.normalized.dot d.normalized).value)
         min Propagation.r2SweepMaxDegrees (acos c * 180.0 / System.Math.PI)
     | None -> 0.0
 
@@ -2622,7 +2624,7 @@ let chartForRun
     let boundOf (e : TestElement) : Library.LibraryEntry option =
         match e.placement.valueId with
         | Some id ->
-            match model.library.tryGetEntry id with
+            match model.library.tryGetEntry id.value with
             | Ok entry -> entry
             | Error _ -> None
         | None -> None
@@ -3174,7 +3176,7 @@ let private chooseFromLibrary (model : TableAndElementRotationModel) (dispatch :
         {
             kindConstraint = WindowMode.KindConstraint element.placement.catalogueKind
             // Spec 0046: the Library opens with the element's current binding shown as chosen.
-            currentEntryIdOpt = element.placement.valueId
+            currentEntryIdOpt = element.placement.valueId |> Option.map (fun v -> v.value)
             target = WindowMode.TableElementTarget element.id
             onSelected = fun (entry : Library.LibraryEntry) -> dispatch (BindValueIdTo (element.id, entry.entryId))
             onCancelled = fun () -> sessionRef.Value |> Option.iter (fun session -> dispatch (SelectSessionEnded session))
@@ -3660,14 +3662,14 @@ let elementMenuRows (model : TableAndElementRotationModel) (dispatch : TableAndE
             match control with
             | BeamLayout.RaysFixed reason -> [ elementMenuNote $"(%s{reason})" false ]
             | BeamLayout.RaysSwitchable -> []
-        let groups = RayModel.outgoingGroups p
+        let groups = p.outgoingGroups
         let rayRows =
             match p.catalogueKind with
             | LightSource | Detector -> fixedNote
             | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
                 [ elementMenuNote "Rays" true
-                  elementMenuItem ConstructorUiId.elementMenuToggleReflected.value $"%s{check (List.contains RayModel.ReflectedRayGroup groups)} Reflected ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.ReflectedBeam)))
-                  elementMenuItem ConstructorUiId.elementMenuToggleTransmitted.value $"%s{check (List.contains RayModel.TransmittedRayGroup groups)} Transmitted ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.TransmittedBeam))) ]
+                  elementMenuItem ConstructorUiId.elementMenuToggleReflected.value $"%s{check (List.contains ReflectedRayGroup groups)} Reflected ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.ReflectedBeam)))
+                  elementMenuItem ConstructorUiId.elementMenuToggleTransmitted.value $"%s{check (List.contains TransmittedRayGroup groups)} Transmitted ray" switchable (fun () -> dispatch (ToggleElementRay (e.id, BeamTree.TransmittedBeam))) ]
                 @ fixedNote
         let beamRows =
             match i with

@@ -37,6 +37,21 @@ module ProjectJson =
             | "Transmitted" -> OpticalConstructor.Domain.BeamTree.TransmittedBeam
             | other -> raise (JsonException $"unknown beam branch '{other}'")
 
+    /// Keeps a rotation lock on the wire as the schema's boolean, `true` for locked: the
+    /// lock became a union (spec 0048 E013), the stored format did not.
+    type private RotationLockConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.Placement.RotationLock>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.Placement.RotationLocked -> writer.WriteBooleanValue true
+            | OpticalConstructor.Domain.Placement.RotationFree -> writer.WriteBooleanValue false
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetBoolean() with
+            | true -> OpticalConstructor.Domain.Placement.RotationLocked
+            | false -> OpticalConstructor.Domain.Placement.RotationFree
+
     /// Custom converter for the engine's Math.NET complex matrix
     /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
     /// `Eps`/`Mu`/`Rho` -> `ComplexMatrix3x3` -> `ComplexMatrix` wrappers down to
@@ -87,6 +102,7 @@ module ProjectJson =
         let o = JsonSerializerOptions(WriteIndented = true)
         o.Converters.Add(ComplexMatrixConverter())
         o.Converters.Add(BeamBranchConverter())
+        o.Converters.Add(RotationLockConverter())
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()

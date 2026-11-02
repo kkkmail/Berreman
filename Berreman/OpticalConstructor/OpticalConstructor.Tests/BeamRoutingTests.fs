@@ -32,7 +32,7 @@ module BeamRoutingTests =
 
     let private rootNode : BeamNode =
         {
-            element = Sample sampleSystem
+            element = SampleElement sampleSystem
             system = sampleSystem
             incident = light
             children = Map.empty
@@ -43,7 +43,7 @@ module BeamRoutingTests =
 
     [<Fact>]
     let ``AC-A3 solve goes through OpticalSystemSolver and exposes both outgoing beams`` () =
-        let ems = solve rootNode
+        let ems = rootNode.solve
         // Same engine path as a direct OpticalSystemSolver(info, system).solution.emSys.
         let direct = OpticalSystemSolver(light, sampleSystem).solution.emSys
         Assert.Equal(eNorm direct.reflected, eNorm ems.reflected, 12)
@@ -54,7 +54,7 @@ module BeamRoutingTests =
 
     [<Fact>]
     let ``AC-A3 detectors on different branches report independent fields`` () =
-        let ems = solve rootNode
+        let ems = rootNode.solve
         let r = branchEmField BeamBranch.ReflectedBeam ems
         let t = branchEmField BeamBranch.TransmittedBeam ems
         // EmFieldSystem isolates reflected vs transmitted -> the branch states differ.
@@ -62,7 +62,7 @@ module BeamRoutingTests =
 
     [<Fact>]
     let ``AC-B4 child incident equals parent branch field advanced by EmField.propagate`` () =
-        let ems = solve rootNode
+        let ems = rootNode.solve
         let gap : Layer = { properties = OpticalProperties.vacuum; thickness = Thickness.nm 250.0<nm> }
 
         let viaModule = childIncidentField BeamBranch.TransmittedBeam gap ems
@@ -71,7 +71,7 @@ module BeamRoutingTests =
 
     [<Fact>]
     let ``AC-B4 child is solved via BaseOpticalSystemSolver on the propagated EmField`` () =
-        let ems = solve rootNode
+        let ems = rootNode.solve
         let gap : Layer = { properties = OpticalProperties.vacuum; thickness = Thickness.nm 250.0<nm> }
         let childSys : ShortOpticalSystem = { films = []; lower = glass }
 

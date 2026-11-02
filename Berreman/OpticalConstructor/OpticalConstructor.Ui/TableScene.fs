@@ -47,11 +47,11 @@ module TableScene =
 
     /// Zoom the table view by `notches` wheel steps, bounded [0.2, 5].
     let zoomViewBy (notches : int) (view : TableViewState) : TableViewState =
-        { view with zoom = max 0.2 (min 5.0 (view.zoom * (1.1 ** float notches))) }
+        { view with zoom = TableZoom (max 0.2 (min 5.0 (view.zoom.value * (1.1 ** float notches)))) }
 
     /// Pan the table view by a screen-space delta (a drag).
     let panViewBy (dx : float) (dy : float) (view : TableViewState) : TableViewState =
-        { view with panX = view.panX + dx; panY = view.panY + dy }
+        { view with panX = TablePan (view.panX.value + dx); panY = TablePan (view.panY.value + dy) }
 
     // ----- drawing -----
 
@@ -90,8 +90,8 @@ module TableScene =
 
     /// The default central ray (source → detector) plus the source / detector markers.
     let sourceDetectorRayViews (view : TableViewState) : IView list =
-        let s = project view (RayModel.pointToVector3 RayModel.defaultSourcePoint)
-        let d = project view (RayModel.pointToVector3 RayModel.defaultDetectorPoint)
+        let s = project view RayModel.defaultSourcePoint.toVector3
+        let d = project view RayModel.defaultDetectorPoint.toVector3
         let marker (sp : ScreenPoint) (c : Color) : IView =
             Ellipse.create [
                 Ellipse.left (sp.sx - 6.0); Ellipse.top (sp.sy - 6.0); Ellipse.width 12.0; Ellipse.height 12.0

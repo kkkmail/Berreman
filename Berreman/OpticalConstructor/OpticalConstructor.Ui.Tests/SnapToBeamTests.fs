@@ -13,7 +13,7 @@ open OpticalConstructor.TestWindows.SnapToBeamView
 module SnapToBeamTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
-    let private sourceX (m : SnapToBeamModel) : float = (RayModel.pointToVector3 m.source.placementPoint).x
+    let private sourceX (m : SnapToBeamModel) : float = (m.source.placementPoint.toVector3).x
 
     [<Fact>]
     let ``at rest the elements snap onto the +X central ray at their cumulative gaps`` () =
@@ -30,7 +30,7 @@ module SnapToBeamTests =
     let ``rotating the source re-aims the beam and the elements snap to it (same distance, new direction)`` () =
         let m = updateSnapToBeam (RotateSourceBy 30.0) (initSnapToBeam ())
         Assert.True(close (sourceR2Degrees m) 30.0)
-        let srcV = RayModel.pointToVector3 m.source.placementPoint
+        let srcV = m.source.placementPoint.toVector3
         let snaps = snapped m
         let cum = cumulativeGaps m
         List.zip snaps cum

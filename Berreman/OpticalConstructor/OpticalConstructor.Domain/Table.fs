@@ -35,11 +35,22 @@ module Table =
     /// The default plate thickness in canonical meters (C.1.1): `0.10 m`.
     let defaultThickness : float<meter> = 0.10<meter>
 
-    /// The neutral default zoom multiplier of the top-down view (C.2.1): `1.0`. The
-    /// top-down layout (`ConstructorTable.fs`) maps canonical meters to drawing units
-    /// at a base pixels-per-meter; zoom multiplies it, so `1.0` is "fit at the base
-    /// scale" — a sensible straight-top-down default.
-    let defaultZoom : float = 1.0
+    /// The top-down view's zoom multiplier (C.2.1): the layout maps canonical meters to
+    /// drawing units at a base pixels-per-meter, and the zoom multiplies it.
+    type TableZoom =
+        | TableZoom of float
+
+        member this.value = let (TableZoom z) = this in z
+
+    /// The top-down view's pan offset along one screen axis, in drawing units (C.2.1).
+    type TablePan =
+        | TablePan of float
+
+        member this.value = let (TablePan p) = this in p
+
+    /// The neutral default zoom multiplier of the top-down view (C.2.1): `1.0`, "fit at
+    /// the base scale" — a sensible straight-top-down default.
+    let defaultZoom : TableZoom = TableZoom 1.0
 
     /// The optical table plate (C.1.1 / C.1.2). Width, length, and thickness are held
     /// in canonical SI meters (constraint 0.2); `displayUnit` is display metadata only
@@ -89,9 +100,9 @@ module Table =
             r1 : Angle
             r2 : Angle
             r3 : Angle
-            panX : float
-            panY : float
-            zoom : float
+            panX : TablePan
+            panY : TablePan
+            zoom : TableZoom
         }
 
         /// The default view (C.2.1): straight top-down — all three rotations `(0, 0, 0)`,
@@ -101,14 +112,10 @@ module Table =
                 r1 = Angle.zero
                 r2 = Angle.zero
                 r3 = Angle.zero
-                panX = 0.0
-                panY = 0.0
+                panX = TablePan 0.0
+                panY = TablePan 0.0
                 zoom = defaultZoom
             }
 
     /// The default top-down view state (C.2.1).
     let defaultView : TableViewState = TableViewState.topDown
-
-    /// Reset the view to the straight-top-down default (C.2.5): orientation `(0, 0, 0)`,
-    /// no pan, the default zoom. Reset discards any pan/zoom/rotation the user dialled.
-    let resetView (_ : TableViewState) : TableViewState = TableViewState.topDown

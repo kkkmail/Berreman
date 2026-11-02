@@ -55,7 +55,7 @@ module SourceAndDetectorMoveTests =
     [<Fact>]
     let ``the light source starts with every move and every rotation locked, so nothing moves it`` () =
         let p = (elem 0 (initMain ())).placement
-        Assert.True(p.r1Locked && p.r2Locked && p.r3Locked, "every rotation starts locked")
+        Assert.True(p.r1Locked = RotationLocked && p.r2Locked = RotationLocked && p.r3Locked = RotationLocked, "every rotation starts locked")
         Assert.Equal<MoveLocks>({ xLock = MoveLocked; yLock = MoveLocked; zLock = MoveLocked }, p.moveLocks)
         let m = sourceSelected ()
         let tried =
@@ -72,7 +72,7 @@ module SourceAndDetectorMoveTests =
     [<Fact>]
     let ``every other element keeps the old defaults: R3 locked, R1 / R2 and its moves free`` () =
         let p = (elem 2 (updateTableAndElementRotation (AddElement Sample) (initMain ()))).placement
-        Assert.True(p.r3Locked && not p.r1Locked && not p.r2Locked)
+        Assert.True(p.r3Locked = RotationLocked && p.r1Locked = RotationFree && p.r2Locked = RotationFree)
         Assert.Equal<MoveLocks>({ xLock = MoveFree; yLock = MoveFree; zLock = MoveFree }, p.moveLocks)
 
     [<Fact>]
@@ -139,7 +139,7 @@ module SourceAndDetectorMoveTests =
         let m = sourceSelected () |> updateTableAndElementRotation ToggleR2Lock |> updateTableAndElementRotation (RotateR2By 15.0)
         Assert.True(close (elem 0 m).placement.r2.degrees 15.0)
         Assert.True(abs ((snappedCentres m).[1]).y > 1.0e-3, "the detector follows the steered beam off the x axis")
-        Assert.False((elem 0 (updateTableAndElementRotation ToggleR1Lock m)).placement.r1Locked)
+        Assert.False((elem 0 (updateTableAndElementRotation ToggleR1Lock m)).placement.r1Locked = RotationLocked)
         let t = { initMain () with selection = TableSelected }
         Assert.Equal<TableAndElementRotationModel>(t, updateTableAndElementRotation ToggleR1Lock t)
         Assert.Equal<TableAndElementRotationModel>(t, updateTableAndElementRotation ToggleR2Lock t)

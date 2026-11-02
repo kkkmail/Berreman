@@ -59,7 +59,7 @@ module SpectralImport =
                         | Some lam, Some weight ->
                             // Canonical meters via the sole Units seam, re-wrapped
                             // as a Nm WaveLength (its .value reduces back to meters).
-                            let nm = (toMeters unit lam) / nmToMeter
+                            let nm = (toMeters unit (UnitMagnitude lam)) / nmToMeter
                             Some (WaveLength.Nm nm, weight)
                         | _ -> None
                     else None)

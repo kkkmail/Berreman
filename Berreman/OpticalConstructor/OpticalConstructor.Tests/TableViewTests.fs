@@ -31,7 +31,7 @@ module TableViewTests =
     [<Fact>]
     let ``at the default top-down view a plane point projects to scale + Y-flip about the centre`` () =
         let p = vec 0.3 0.2 0.0
-        let s = ppm * Table.defaultView.zoom
+        let s = ppm * Table.defaultView.zoom.value
         let projected = TableView.project ppm center Table.defaultView p
         Assert.True(close projected.sx (center.sx + s * 0.3), $"sx = {projected.sx}")
         // Screen Y runs DOWN, so +Y maps above the centre (smaller sy).
@@ -49,7 +49,7 @@ module TableViewTests =
     [<Fact>]
     let ``R1 spins the +X axis toward screen up`` () =
         // A 90 deg in-plane spin sends +X (right) to +Y (up): screen x back to centre, y above.
-        let s = ppm * Table.defaultView.zoom
+        let s = ppm * Table.defaultView.zoom.value
         let projected = TableView.project ppm center (viewWith 90.0 0.0 0.0) (vec 1.0 0.0 0.0)
         Assert.True(close projected.sx center.sx, $"sx = {projected.sx}")
         Assert.True(close projected.sy (center.sy - s * 1.0), $"sy = {projected.sy}")

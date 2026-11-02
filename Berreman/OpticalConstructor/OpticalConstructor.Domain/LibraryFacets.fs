@@ -424,7 +424,7 @@ module LibraryFacets =
     /// a semi-infinite layer has no bucketable magnitude.
     let private thicknessNm (layer : SampleLayer) : double option =
         match layer.thickness with
-        | Thickness.Thickness meters -> Some (fromMeters Nanometer meters)
+        | Thickness.Thickness meters -> Some (fromMeters Nanometer meters).value
         | Thickness.Infinity -> None
 
     // =======================================================================

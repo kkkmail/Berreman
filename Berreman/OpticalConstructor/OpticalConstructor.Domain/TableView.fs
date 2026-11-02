@@ -68,10 +68,10 @@ module TableView =
     /// exactly `center + (s·x, -s·y)` — the straight top-down layout.
     let project (pixelsPerMeter : float) (center : ScreenPoint) (view : TableViewState) (p : Vector3) : ScreenPoint =
         let r = rotate view p
-        let s = pixelsPerMeter * view.zoom
+        let s = pixelsPerMeter * view.zoom.value
         {
-            sx = center.sx + view.panX + s * r.x
-            sy = center.sy + view.panY - s * r.y
+            sx = center.sx + view.panX.value + s * r.x
+            sy = center.sy + view.panY.value - s * r.y
         }
 
     /// The eight corners of the optical-table plate as a 3-D box centred at the table origin:
@@ -143,9 +143,9 @@ module TableView =
         let det = a * d - b * cc
         if abs det < 1.0e-12 then None
         else
-            let s = pixelsPerMeter * view.zoom
-            let xr = (pt.sx - center.sx - view.panX) / s
-            let yr = -(pt.sy - center.sy - view.panY) / s
+            let s = pixelsPerMeter * view.zoom.value
+            let xr = (pt.sx - center.sx - view.panX.value) / s
+            let yr = -(pt.sy - center.sy - view.panY.value) / s
             let x = (d * xr - b * yr) / det
             let y = (-cc * xr + a * yr) / det
             Some { x = x * 1.0<meter>; y = y * 1.0<meter> }

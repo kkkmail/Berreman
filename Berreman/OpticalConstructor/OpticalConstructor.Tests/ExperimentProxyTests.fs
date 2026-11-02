@@ -82,8 +82,8 @@ module ExperimentProxyTests =
         Assert.Equal(CaptureTransmitted, MeasurementMode.ofEmission EmitTransmittedOnly)
         Assert.Equal(CaptureBoth, MeasurementMode.ofEmission EmitBoth)
         // A freshly-placed mirror emits reflected only, so a varied mirror defaults to R (not hard-coded).
-        Assert.Equal(CaptureReflected, MeasurementMode.ofEmission (defaultEmission FlatMirror))
-        Assert.Equal(CaptureBoth, MeasurementMode.ofEmission (defaultEmission Sample))
+        Assert.Equal(CaptureReflected, MeasurementMode.ofEmission (FlatMirror.defaultEmission))
+        Assert.Equal(CaptureBoth, MeasurementMode.ofEmission (Sample.defaultEmission))
 
     // ============================ the editable collection (choose / commit / edit / remove) ============================
 

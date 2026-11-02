@@ -87,7 +87,7 @@ let fieldDepthSeries
 
     let points =
         profile
-        |> List.map (fun p -> (Units.fromMeters depthUnit p.depth, p.electricFieldSquared))
+        |> List.map (fun p -> ((Units.fromMeters depthUnit p.depth).value, p.electricFieldSquared))
         |> Array.ofList
     { name = "|E|^2"; points = points }
 

@@ -155,7 +155,7 @@ let private normalsViews (project : Vector3 -> ScreenPoint) (selected : bool) (e
     match e.normals with
     | HideNormals -> []
     | ShowNormals ->
-        let (n1, n2, _) = orientedBasis e.placement
+        let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis e.placement
         let c = e.centre
         let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
         let centre = project c
@@ -205,7 +205,7 @@ let private capSurface (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : V
 
 /// A flat element as a 3-D CYLINDER (axis = teal N1): two FLAT caps joined by the side rails.
 let private cylinderViews (cfg : RendererControls.RendererControlsState) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
-    let (n1, n2, n3) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis e.placement
     let c = e.centre
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
     let r = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
@@ -219,7 +219,7 @@ let private cylinderViews (cfg : RendererControls.RendererControlsState) (projec
 /// A lens — the cylinder with two SPHERICAL caps that FIT THE BOUNDING BOX (biconvex apexes out to the box
 /// faces for a converging sign, biconcave rims at the faces for diverging).
 let private lensViews (cfg : RendererControls.RendererControlsState) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
-    let (n1, n2, n3) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis e.placement
     let c = e.centre
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
     let r = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
@@ -236,7 +236,7 @@ let private lensViews (cfg : RendererControls.RendererControlsState) (project : 
 /// A curved mirror — a cylinder with ONE spherical reflective cap (concave for converging, convex for
 /// diverging) plus a flat back, kept inside the bounding box.
 let private mirrorViews (cfg : RendererControls.RendererControlsState) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
-    let (n1, n2, n3) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis e.placement
     let c = e.centre
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
     let r = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
@@ -262,7 +262,7 @@ let private codeLabel (project : Vector3 -> ScreenPoint) (selected : bool) (e : 
 
 /// The element's oriented bounding box corners (for the wireframe renderer), table-frame metres.
 let elementCorners (e : Drawable) : Vector3 list =
-    let (n1, n2, n3) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis e.placement
     let c = e.centre
     let hb = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
     let h1 = e.zoom * (e.placement.box.a1 / 2.0 / 1.0<meter>)

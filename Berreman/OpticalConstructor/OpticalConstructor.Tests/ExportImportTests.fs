@@ -152,7 +152,7 @@ module ExportImportTests =
         { element = element; system = vacuumSystem; incident = light; children = children; defaultUnit = defaultUnit }
 
     let private sampleProject (defaultUnit : UnitOfMeasure) : OpticalConstructorProject =
-        { beamTree = { root = node (Sample vacuumSystem) Map.empty defaultUnit }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
+        { beamTree = { root = node (SampleElement vacuumSystem) Map.empty defaultUnit }; systems = [ vacuumSystem ]; sources = []; placements = []; table = OpticalConstructor.Domain.Table.defaultTable }
 
     [<Fact>]
     let ``AC-I11 appendRevision twice yields two numbered snapshots and diffRevisions returns a ProjectDiff`` () =

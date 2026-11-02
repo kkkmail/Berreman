@@ -280,7 +280,7 @@ module MaterialEditorWindowTests =
     let ``AddSegment appends, segment edits target by index, and a bad index is a typed error`` () =
         let st = applied [ SetDispersion DispersiveSegments; AddSegment ]
         Assert.Equal(2, List.length st.segments)
-        let interval = { lower = toWaveLength Nanometer 700.0; upper = toWaveLength Nanometer 1000.0 }
+        let interval = { lower = toWaveLength Nanometer (UnitMagnitude 700.0); upper = toWaveLength Nanometer (UnitMagnitude 1000.0) }
         let edited = applyOk (SetSegmentInterval (1, interval)) st
         Assert.Equal<WaveLengthInterval>(interval, edited.segments.[1].interval)
         match applyMaterialComplexityMsg (SetSegmentInterval (5, interval)) st with

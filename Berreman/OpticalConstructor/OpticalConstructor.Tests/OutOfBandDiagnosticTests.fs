@@ -19,7 +19,7 @@ open Xunit
 module OutOfBandDiagnosticTests =
 
     /// A `WaveLength` from a nm scalar through the sole `Units` seam.
-    let private nm (x : float) : WaveLength = toWaveLength Nanometer x
+    let private nm (x : float) : WaveLength = toWaveLength Nanometer (UnitMagnitude x)
 
     /// A wavelength interval from nm endpoints.
     let private band (lo : float) (hi : float) : WaveLengthInterval = { lower = nm lo; upper = nm hi }

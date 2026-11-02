@@ -41,13 +41,13 @@ module ElementRotationTests =
         for e in m.elements do
             Assert.True(close (e.placement.placementPoint.y / 1.0<meter>) 0.0, "elements sit on the central ray (y = 0)")
             Assert.True(close e.zoom defaultElementZoom)
-            Assert.True(e.placement.r3Locked && not e.placement.r1Locked && not e.placement.r2Locked)
+            Assert.True(e.placement.r3Locked = RotationLocked && e.placement.r1Locked = RotationFree && e.placement.r2Locked = RotationFree)
             Assert.True(close (deg e.placement.r1) 0.0 && close (deg e.placement.r2) 0.0 && close (deg e.placement.r3) 0.0)
 
     [<Fact>]
     let ``a fresh element's rest pose has N1 along the central ray and N2 along the table normal`` () =
         // The spec-correct rest pose (AC-A1), read straight off the test element via orientedBasis.
-        let (n1, n2, _) = orientedBasis (elem 1 (ElementRotationView.initElementRotation ())).placement
+        let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis (elem 1 (ElementRotationView.initElementRotation ())).placement
         Assert.True(close n1.x 1.0 && close n1.y 0.0 && close n1.z 0.0, $"N1 = ({n1.x}, {n1.y}, {n1.z})")
         Assert.True(close n2.x 0.0 && close n2.y 0.0 && close n2.z 1.0, $"N2 = ({n2.x}, {n2.y}, {n2.z})")
 
@@ -157,12 +157,12 @@ module ElementRotationTests =
             |> ElementRotationView.updateElementRotation (ElementRotationPointerMove { sx = 460.0; sy = 360.0 })
             |> ElementRotationView.updateElementRotation (ElementRotationPointerUp { sx = 460.0; sy = 360.0 })
         Assert.Equal(2, dragged.selected)
-        Assert.True(close dragged.view.panX 150.0 && close dragged.view.panY 80.0, $"pan = ({dragged.view.panX}, {dragged.view.panY})")
+        Assert.True(close dragged.view.panX.value 150.0 && close dragged.view.panY.value 80.0, $"pan = ({dragged.view.panX.value}, {dragged.view.panY.value})")
 
     [<Fact>]
     let ``plain wheel zooms the table view, not the elements`` () =
         let m = ElementRotationView.updateElementRotation (ElementRotationWheel (Set.empty, 1)) (ElementRotationView.initElementRotation ())
-        Assert.True(m.view.zoom > 1.0, $"table zoom = {m.view.zoom}")
+        Assert.True(m.view.zoom.value > 1.0, $"table zoom = {m.view.zoom.value}")
         Assert.True(close (elem 1 m).zoom defaultElementZoom, "the per-element zoom is unchanged by a table-zoom wheel")
 
     [<Fact>]

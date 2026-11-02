@@ -182,8 +182,8 @@ module OutOfBandDiagnostic =
         | Some VaryWaveLength ->
             SweptWavelengths
                 {
-                    lower = toWaveLength Nanometer range.min
-                    upper = toWaveLength Nanometer range.max
+                    lower = toWaveLength Nanometer (UnitMagnitude range.min)
+                    upper = toWaveLength Nanometer (UnitMagnitude range.max)
                 }
         | Some VaryR1
         | Some VaryR2
@@ -202,8 +202,8 @@ module OutOfBandDiagnostic =
     /// through the sole `Units` conversion seam. A degenerate interval (a fixed
     /// single λ) reads as one value, not "x–x".
     let nmRangeLabel (interval : WaveLengthInterval) : string =
-        let lo = wavelengthToUnit Nanometer interval.lower
-        let hi = wavelengthToUnit Nanometer interval.upper
+        let lo = (wavelengthToUnit Nanometer interval.lower).value
+        let hi = (wavelengthToUnit Nanometer interval.upper).value
         if lo = hi then $"%g{lo} nm"
         else $"%g{lo}–%g{hi} nm"
 

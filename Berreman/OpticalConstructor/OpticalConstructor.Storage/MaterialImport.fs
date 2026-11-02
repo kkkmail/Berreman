@@ -107,7 +107,7 @@ module MaterialImport =
             if t.Length > 0 && (Char.IsDigit t.[0] || t.[0] = '-' || t.[0] = '.') then
                 let f = parseFloats t
                 if f.Length >= 2 then
-                    let lamMeters = (toMeters unit f.[0]) / 1.0<meter>
+                    let lamMeters = (toMeters unit (UnitMagnitude f.[0])) / 1.0<meter>
                     Some (lamMeters, f.[1], (if f.Length >= 3 then f.[2] else 0.0))
                 else None
             else None)
@@ -125,7 +125,7 @@ module MaterialImport =
 
     /// Metres per µm — the refractiveindex.info coefficient tabulation unit —
     /// derived through the sole `Units` seam (§D.11), never a literal factor.
-    let private micrometerScale : float<meter> = toMeters Micrometer 1.0
+    let private micrometerScale : float<meter> = toMeters Micrometer (UnitMagnitude 1.0)
 
     /// The k of a transparent analytic formula: the empty (zero) formula.
     let private zeroK : DispersionFormula =
@@ -356,9 +356,9 @@ module MaterialImport =
                 t.StartsWith "wavelength_range:" || t.StartsWith "range:")
             |> Option.map (fun l -> parseFloats (l.Substring(l.IndexOf(':') + 1)))
         match bounds with
-        | Some f when f.Length >= 2 -> { lower = toWaveLength Micrometer f.[0]; upper = toWaveLength Micrometer f.[1] }
+        | Some f when f.Length >= 2 -> { lower = toWaveLength Micrometer (UnitMagnitude f.[0]); upper = toWaveLength Micrometer (UnitMagnitude f.[1]) }
         | _ ->
-            let nominal = toWaveLength Micrometer 0.0
+            let nominal = toWaveLength Micrometer (UnitMagnitude 0.0)
             { lower = nominal; upper = nominal }
 
     /// The display family of a supported formula number (entry description).
@@ -444,7 +444,7 @@ module MaterialImport =
                         match tryFloat cols.[0], tryFloat cols.[1] with
                         | Some lam, Some n ->
                             let k = if cols.Length >= 3 then (tryFloat cols.[2] |> Option.defaultValue 0.0) else 0.0
-                            Some ((toMeters unit lam) / 1.0<meter>, n, k)
+                            Some ((toMeters unit (UnitMagnitude lam)) / 1.0<meter>, n, k)
                         | _ -> None
                     else None)
                 |> Array.ofSeq
@@ -469,6 +469,6 @@ module MaterialImport =
             let m = s + (e - s) * (float i) / (float n)
             let w = WaveLength.Nm(m / nmToMeter)
             let nComplex = Complex.Sqrt (entry.properties.epsWithDisp.getEps w).[0, 0]
-            let nm = wavelengthToUnit Nanometer w
+            let nm = (wavelengthToUnit Nanometer w).value
             sb.AppendLine(String.Format(inv, "{0:G},{1:G},{2:G}", nm, nComplex.Real, nComplex.Imaginary)) |> ignore
         sb.ToString()

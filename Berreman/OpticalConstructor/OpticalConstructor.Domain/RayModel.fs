@@ -3,6 +3,7 @@ namespace OpticalConstructor.Domain
 open System
 open Berreman.Constants
 open Berreman.Geometry
+open Berreman.MaterialProperties
 open OpticalConstructor.Domain.Placement
 
 /// Ray model, snapping & schematic tracing (Spec 0026 Part B). This is a NET-NEW,
@@ -19,7 +20,7 @@ open OpticalConstructor.Domain.Placement
 /// `BeamTree.BeamBranch` (`Reflected` / `Transmitted`, BeamTree.fs:21) is the branch
 /// the drawn RRG / TRG correspond to (B.7.1). The module carries NO Avalonia type
 /// (constraint 0.3): every rule below is provable headless. The quantitative result
-/// at each element still comes from the existing beam-tree solver (BeamTree.fs:91);
+/// at each element still comes from the existing beam-tree solver (`BeamNode.solve`);
 /// this is the visual layer only (B.0).
 ///
 /// Positions are held as `Placement.Vector3` whose components are canonical SI
@@ -33,19 +34,21 @@ module RayModel =
     /// element's clear face: `bundle_radius = 0.4 × (face_extent / 2)` (B.1.2). The
     /// 0.4 is a schematic-legibility choice (a clear aperture is ≈2–3× the beam, so
     /// 0.4 keeps all eight side rays clearly inside the face).
+    [<Literal>]
     let bundleRadiusFraction : float = 0.4
 
     /// A ray group is one central ray plus EIGHT side rays (B.1.1). At normal
     /// incidence the eight land as equidistant points 45° apart on a circle (the
     /// "rifle-target" pattern), with the CR striking the centre.
+    [<Literal>]
     let sideRayCount : int = 8
 
     /// Schematic refractive index OUTSIDE an element (B.6.1 / constraint 0.5).
-    let refractiveIndexOutside : float = 1.0
+    let refractiveIndexOutside : RefractionIndex = RefractionIndex 1.0
 
     /// Schematic refractive index INSIDE an element (B.6.1 / constraint 0.5). The
     /// schematic bends rays with these two indices only — it is NOT physical-grade.
-    let refractiveIndexInside : float = 1.5
+    let refractiveIndexInside : RefractionIndex = RefractionIndex 1.5
 
     /// The default along-CR distance between the light source and the detector in a
     /// fresh project (B.4.1): exactly 2.0 m, measured along the central ray.
@@ -65,13 +68,9 @@ module RayModel =
     let private sub (a : Vector3) (b : Vector3) : Vector3 =
         Vector3.create (a.x - b.x) (a.y - b.y) (a.z - b.z)
 
-    let private scale (s : float) (a : Vector3) : Vector3 =
+    let private scale (factor : VectorScalar) (a : Vector3) : Vector3 =
+        let s = factor.value
         Vector3.create (s * a.x) (s * a.y) (s * a.z)
-
-    /// Lift a 2-D table placement point (canonical meters) into the table plane
-    /// (z = 0). The placement point is the box centre (A.2 / Placement.fs).
-    let pointToVector3 (p : TablePoint) : Vector3 =
-        Vector3.create (p.x / 1.0<meter>) (p.y / 1.0<meter>) 0.0
 
     // --- The central ray and its 3-D geometry --------------------------------
 
@@ -87,21 +86,7 @@ module RayModel =
         /// The point reached by travelling `distance` along the ray (canonical
         /// meters). Distances along rays are SI meters (constraint 0.2).
         member r.pointAt (distance : float<meter>) : Vector3 =
-            add r.origin (scale (distance / 1.0<meter>) r.direction.normalized)
-
-    /// The two orthonormal vectors spanning the cross-section perpendicular to
-    /// `direction` (B.1.1). `inPlane` is perpendicular to the direction within the
-    /// table plane; `outOfPlane` completes the right-handed frame (the table normal
-    /// for an in-plane ray). The eight side rays of a bundle lie on the unit circle
-    /// these two span — that is the "rifle-target" cross-section.
-    let crossSectionBasis (direction : Vector3) : Vector3 * Vector3 =
-        let d = direction.normalized
-        let inPlane =
-            let candidate = Vector3.create (-d.y) d.x 0.0
-            if candidate.norm < 1.0e-12 then Vector3.create 0.0 1.0 0.0
-            else candidate.normalized
-        let outOfPlane = (d.cross inPlane).normalized
-        (inPlane, outOfPlane)
+            add r.origin (scale (VectorScalar (distance / 1.0<meter>)) r.direction.normalized)
 
     // --- The eight-ray bundle (B.1) ------------------------------------------
 
@@ -128,89 +113,14 @@ module RayModel =
     /// later-slice concern (B.1.1).
     let bundleAt (center : Vector3) (direction : Vector3) (faceExtent : float<meter>) : RayBundle =
         let r = (bundleRadius faceExtent) / 1.0<meter>
-        let (u, v) = crossSectionBasis direction
+        let section = direction.crossSection
         let sides =
             [ for k in 0 .. sideRayCount - 1 ->
                 let theta = float k * (2.0 * Math.PI / float sideRayCount)
-                add center (add (scale (r * cos theta) u) (scale (r * sin theta) v)) ]
+                add center (add (scale (VectorScalar (r * cos theta)) section.inPlane) (scale (VectorScalar (r * sin theta)) section.outOfPlane)) ]
         { center = center; sideRays = sides }
 
-    // --- Incident / reflected / transmitted groups (B.2) ---------------------
-
-    /// A drawn ray group (B.2.1). The INCIDENT group (IRG) falls on an element and
-    /// is the frame against which the element's rotations are measured (A.4.3). The
-    /// REFLECTED (RRG) and TRANSMITTED (TRG) groups leave the element and correspond
-    /// to the engine `Reflected` / `Transmitted` branches (BeamTree.fs:21, B.7.1).
-    type RayGroupKind =
-        | Incident
-        | ReflectedRayGroup
-        | TransmittedRayGroup
-
-    /// The OUTGOING groups an element with this `emission` produces (B.2.1). Every
-    /// element except a mirror produces both an RRG and a TRG; a mirror produces an
-    /// RRG only. This follows the A.7 emission metadata exactly (R-7).
-    let emittedGroups (emission : Emission) : RayGroupKind list =
-        match emission with
-        | EmitReflectedOnly -> [ ReflectedRayGroup ]
-        | EmitTransmittedOnly -> [ TransmittedRayGroup ]
-        | EmitBoth -> [ ReflectedRayGroup; TransmittedRayGroup ]
-
-    /// The outgoing groups DRAWN leaving an element (B.2.1 / B.2.2 / B.7.1). A
-    /// detector TERMINATES the group it receives — no group is drawn leaving it
-    /// (B.2.2). A mirror PRODUCES an RRG and ONLY an RRG, UNCONDITIONALLY: the draw
-    /// layer enforces that kind-invariant STRUCTURALLY — the mirror arm returns
-    /// `[ Reflected ]` independent of the per-element `emission` toggle entirely. So a
-    /// mirror never draws a TRG even when toggled to `EmitBoth`
-    /// (`Emission.withTransmitted true`), AND never draws the empty set even when
-    /// toggled to `EmitTransmittedOnly` (`Emission.withReflected false`) — both states
-    /// representable on the plain `ElementPlacement` record. This mirrors the engine,
-    /// where `BeamNode.attach` takes a `Reflected` attach on a mirror unconditionally
-    /// and rejects a `Transmitted` one with `Error MirrorBranchMustBeReflected`
-    /// (BeamTree.fs:74-77, `isMirror` :64-67): the draw layer can thus neither invent
-    /// the branch the engine refuses to route nor SUPPRESS the mandatory reflected
-    /// branch B.2.1 requires (B.7.1). Every other element draws exactly the groups its
-    /// A.7 emission metadata emits.
-    let outgoingGroups (p : ElementPlacement) : RayGroupKind list =
-        match p.catalogueKind with
-        | Detector -> []
-        | FlatMirror | CurvedMirror -> [ ReflectedRayGroup ]
-        // Spec 0046 (operator): a lens and every polarizer carry the transmitted branch only —
-        // structurally, as a mirror carries the reflected one, whatever the per-element emission says.
-        | Lens | LinearPolarizer | CircularPolarizer -> [ TransmittedRayGroup ]
-        | LightSource
-        | Sample -> emittedGroups p.emission
-
-    /// The engine beam-tree branch a drawn outgoing group corresponds to (B.7.1):
-    /// `Reflected` → `BeamTree.Reflected`, `Transmitted` → `BeamTree.Transmitted`.
-    /// The incident group is not an engine branch (`None`). The drawing MUST NOT
-    /// invent a branch the engine does not compute.
-    let toBeamBranch (kind : RayGroupKind) : BeamTree.BeamBranch option =
-        match kind with
-        | ReflectedRayGroup -> Some BeamTree.ReflectedBeam
-        | TransmittedRayGroup -> Some BeamTree.TransmittedBeam
-        | Incident -> None
-
-    /// The SINGLE outgoing branch the downstream chain follows past an element on one beam (B.3) —
-    /// DERIVED from what the element emits (`outgoingGroups`, i.e. its kind + A.7 emission), never
-    /// hardcoded: a mirror tracks the REFLECTED beam (its only outgoing group); every transmissive element
-    /// — and the terminal detector — tracks the TRANSMITTED beam. So a snap chain "knows" to reflect off a
-    /// flat mirror and pass through a polarizer without the caller telling it which. (A beam splitter that
-    /// emits BOTH would fork the tree; the linear chain follows the transmitted beam where it exists.)
-    let primaryBranch (p : ElementPlacement) : BeamTree.BeamBranch =
-        let groups = outgoingGroups p
-        if List.contains TransmittedRayGroup groups then BeamTree.TransmittedBeam
-        elif List.contains ReflectedRayGroup groups then BeamTree.ReflectedBeam
-        else BeamTree.TransmittedBeam     // a detector emits nothing; its (unused) branch is transmitted
-
-    /// The absolute `(R2, R3)` that orient a rest element's primary normal N1 (the +X central-ray
-    /// direction) along `dir` — so an element with these angles FACES the beam travelling in `dir`. With
-    /// the rest basis (N1 = +X, table normal = +Z) the oriented normal is
-    /// `(cosR3·cosR2, cosR3·sinR2, sinR3)`, hence `R2 = atan2(dir.y, dir.x)`, `R3 = asin(dir.z)`. Used to
-    /// auto-orient an element to the (possibly reflected) beam it sits on: add the element's own dialled
-    /// R2/R3 on top, so at dialled 0 it faces the beam and a dialled value tilts it relative to the beam.
-    let beamOrientation (dir : Vector3) : Angle * Angle =
-        let d = dir.normalized
-        Angle (atan2 d.y d.x), Angle (asin (max -1.0 (min 1.0 d.z)))
+    // --- Orientation on the beam (A.4.3) -------------------------------------
 
     /// The placement an element takes ON its beam (A.4.3 — R2 / R3 are measured FROM the incident ray,
     /// not from a fixed table axis): its dialled R2 / R3 added to the incoming beam's own absolute
@@ -219,8 +129,8 @@ module RayModel =
     /// crosses (`faceNormal` / `crossElement`), for every element kind — so the ray can never meet a
     /// surface other than the drawn one.
     let orientedToBeam (incoming : Vector3) (p : ElementPlacement) : ElementPlacement =
-        let beamR2, beamR3 = beamOrientation incoming
-        { p with r2 = beamR2 + p.r2; r3 = beamR3 + p.r3 }
+        let beam = incoming.beamOrientation
+        { p with r2 = beam.steer + p.r2; r3 = beam.tip + p.r3 }
 
     // --- Schematic Snell tracing (B.6) ---------------------------------------
 
@@ -241,21 +151,21 @@ module RayModel =
         let d = incoming.normalized
         let n = surfaceNormal.normalized
         let dn = d.dot n
-        (sub d (scale (2.0 * dn) n)).normalized
+        (sub d (scale (VectorScalar 2.0 * dn) n)).normalized
 
     /// Refract a unit direction crossing a surface, going from index `n1` to `n2`
     /// (Snell's law, vector form — B.6.1). Returns `None` on total internal
     /// reflection (never reached for the schematic's n1 = 1.0 < n2 = 1.5). The
     /// surface normal is oriented against the incoming ray internally, so the caller
     /// may pass either face orientation.
-    let refract (n1 : float) (n2 : float) (incoming : Vector3) (surfaceNormal : Vector3) : Vector3 option =
+    let refract (n1 : RefractionIndex) (n2 : RefractionIndex) (incoming : Vector3) (surfaceNormal : Vector3) : Vector3 option =
         let d = incoming.normalized
         let nn = surfaceNormal.normalized
         let cosiRaw = -(d.dot nn)
-        let (n, cosi) = if cosiRaw < 0.0 then (scale (-1.0) nn, -cosiRaw) else (nn, cosiRaw)
-        let eta = n1 / n2
-        let k = 1.0 - eta * eta * (1.0 - cosi * cosi)
-        if k < 0.0 then None
+        let (n, cosi) = if cosiRaw < VectorScalar.zero then (scale (VectorScalar -1.0) nn, -cosiRaw) else (nn, cosiRaw)
+        let eta = VectorScalar (n1.value / n2.value)
+        let k = VectorScalar 1.0 - eta * eta * (VectorScalar 1.0 - cosi * cosi)
+        if k < VectorScalar.zero then None
         else Some ((add (scale eta d) (scale (eta * cosi - sqrt k) n)).normalized)
 
     /// How a ray crosses an element (spec 0046) — the ONE crossing law every element kind obeys, for
@@ -278,13 +188,14 @@ module RayModel =
 
     /// The `|cos|` below which a ray is treated as grazing the faces: its entry point would run off to
     /// infinity, so the element is crossed as a thin one instead.
+    [<Literal>]
     let private grazingCosine : float = 1.0e-6
 
     /// The face normal oriented ALONG the propagation `d` (so `d · n` is the incidence cosine and the
     /// front face is the one at −halfDepth from the centre).
     let private alongPropagation (d : Vector3) (normal : Vector3) : Vector3 =
         let n0 = normal.normalized
-        if d.dot n0 < 0.0 then scale (-1.0) n0 else n0
+        if d.dot n0 < VectorScalar.zero then scale (VectorScalar -1.0) n0 else n0
 
     /// Cross an element whose face normal is `normal` (either orientation), centred at `centre`, with
     /// faces `halfDepth` either side of it, by a ray travelling `incoming` along the line through
@@ -301,12 +212,12 @@ module RayModel =
             | None -> d
         let h = halfDepth / 1.0<meter>
         let entry, exit =
-            if h <= 0.0 || cosI < grazingCosine then linePoint, linePoint
+            if h <= 0.0 || cosI < VectorScalar grazingCosine then linePoint, linePoint
             else
-                let frontFaceCentre = sub centre (scale h n)
+                let frontFaceCentre = sub centre (scale (VectorScalar h) n)
                 let entry = add linePoint (scale ((sub frontFaceCentre linePoint).dot n / cosI) d)
-                let cosT = max grazingCosine (inside.dot n)
-                entry, add entry (scale (2.0 * h / cosT) inside)
+                let cosT = max (VectorScalar grazingCosine) (inside.dot n)
+                entry, add entry (scale (VectorScalar (2.0 * h) / cosT) inside)
         { entry = entry; inside = inside; exit = exit; transmitted = d; reflected = reflect d n }
 
     /// Cross an element by a ray travelling `incoming` through its `centre` (spec 0046) — the element
@@ -318,7 +229,7 @@ module RayModel =
     /// pivot-at-incident-face option): half its depth further along its face normal, on the side the
     /// light travels to.
     let centreBehindIncidentFace (frontFaceCentre : Vector3) (incoming : Vector3) (normal : Vector3) (halfDepth : float<meter>) : Vector3 =
-        add frontFaceCentre (scale (halfDepth / 1.0<meter>) (alongPropagation incoming.normalized normal))
+        add frontFaceCentre (scale (VectorScalar (halfDepth / 1.0<meter>)) (alongPropagation incoming.normalized normal))
 
     /// The OUTGOING tracked-ray direction past an element on `branch`, given the
     /// `incoming` ray direction (B.3.2 / B.6.1, spec 0046 `crossElement`). The
@@ -383,7 +294,7 @@ module RayModel =
             | [] -> List.rev acc
             | stop :: rest ->
                 let d = dir.normalized
-                let elementPos = add pos (scale (stop.gap / 1.0<meter>) d)
+                let elementPos = add pos (scale (VectorScalar (stop.gap / 1.0<meter>)) d)
                 let outDir = outgoingDirection stop.branch d stop.placement
                 let snapped =
                     { placement = stop.placement; position = elementPos; incoming = d; outgoing = outDir }
@@ -406,9 +317,9 @@ module RayModel =
         static member create (stops : RaySegmentSpec list) : RayChain =
             { source = defaultSourcePoint; initialDirection = centralRayDirection; stops = stops }
 
-    /// Snap a `RayChain` into absolute geometry (B.3.1).
-    let snap (chain : RayChain) : SnappedElement list =
-        snapChain (pointToVector3 chain.source) chain.initialDirection chain.stops
+        /// The chain snapped into absolute geometry (B.3.1).
+        member chain.snap : SnappedElement list =
+            snapChain chain.source.toVector3 chain.initialDirection chain.stops
 
     /// Move the light source to `p` (B.4.2). The downstream elements re-snap to the
     /// ray on the next `snap`, preserving their along-ray distances.
@@ -421,13 +332,19 @@ module RayModel =
 
     // --- Orphaned elements (B.5) ---------------------------------------------
 
+    /// Which reflected / transmitted branch ray an element sits on (B.5).
+    type BranchRayNumber =
+        | BranchRayNumber of int
+
+        member this.value = let (BranchRayNumber n) = this in n
+
     /// An identifier for a tracked ray an element can sit on (B.5). The central ray
     /// is always present; the reflected / transmitted branch rays carry an id so a
     /// specific branch can be removed or restored.
     type RayId =
         | CentralRay
-        | ReflectedBranch of int
-        | TransmittedBranch of int
+        | ReflectedBranch of BranchRayNumber
+        | TransmittedBranch of BranchRayNumber
 
     /// An element together with the ray it is attached to (B.5). `ray = None` means
     /// the element is ORPHANED — left without a ray.
@@ -468,7 +385,7 @@ module RayModel =
             match e.ray with
             | Some _ -> e
             | None ->
-                if distancePointToRay (pointToVector3 e.placement.placementPoint) ray <= maxDistance
+                if distancePointToRay e.placement.placementPoint.toVector3 ray <= maxDistance
                 then { e with ray = Some rayId }
                 else e)
 

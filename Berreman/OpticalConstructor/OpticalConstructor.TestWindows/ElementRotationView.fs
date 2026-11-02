@@ -238,7 +238,7 @@ let updateElementRotation (msg : ElementRotationMsg) (model : ElementRotationMod
     | ElementRotationRotateR1By d -> rotate1 d model
     | ElementRotationRotateR2By d -> rotate2 d model
     | ElementRotationRotateR3By d -> rotate3 d model
-    | ElementRotationToggleR3Lock -> editSelectedPlacement (fun p -> setR3Locked (not p.r3Locked) p) model
+    | ElementRotationToggleR3Lock -> editSelectedPlacement (fun p -> setR3Locked p.r3Locked.toggled p) model
     | ElementRotationRotSetAxis (axis, v) -> setSelectedAxis axis v model
     | ElementRotationRotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
     | ElementRotationRotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
@@ -287,7 +287,7 @@ let updateElementRotation (msg : ElementRotationMsg) (model : ElementRotationMod
 /// The eight corners of the element's oriented bounding box (front face along +N1 first, then the
 /// back face), centred at the placement point and magnified by the element's draw zoom.
 let elementRotationElementCorners (e : TestElement) : Vector3 list =
-    let (n1, n2, n3) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2; thirdAxis = n3 } = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let hb = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)    // half-depth along N1
@@ -353,7 +353,7 @@ let private elementView (i : int) (model : ElementRotationModel) (e : TestElemen
                 Line.stroke (brush boxColor)
                 Line.strokeThickness weight
             ] :> IView)
-    let (n1, n2, _) = orientedBasis e.placement
+    let { primaryNormal = n1; secondaryNormal = n2 } = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
     let half = e.zoom * (e.placement.box.a2 / 2.0 / 1.0<meter>)
@@ -406,7 +406,7 @@ let private rotationState (model : ElementRotationModel) : RotationControls.Stat
         r3 = BarDegrees p.r3.degrees
         r1Lock = RotationControls.NotLockable
         r2Lock = RotationControls.NotLockable
-        r3Lock = (if p.r3Locked then RotationControls.AxisLocked else RotationControls.AxisFree)
+        r3Lock = (match p.r3Locked with RotationLocked -> RotationControls.AxisLocked | RotationFree -> RotationControls.AxisFree)
         availability = ControlOffered
         confirm = model.rotationConfirm
     }
@@ -415,7 +415,7 @@ let private controlBar (model : ElementRotationModel) (dispatch : ElementRotatio
     let e = selectedElement model
     let p = e.placement
     let readout =
-        $"""Element %d{model.selected + 1}/%d{List.length model.elements} (%s{kindName p.catalogueKind}):  R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(if p.r3Locked then "R3 locked" else "R3 free")})   zoom %.1f{e.zoom}×"""
+        $"""Element %d{model.selected + 1}/%d{List.length model.elements} (%s{kindName p.catalogueKind}):  R1 %.0f{p.r1.degrees}°   R2 %.0f{p.r2.degrees}°   R3 %.0f{p.r3.degrees}° (%s{(match p.r3Locked with RotationLocked -> "R3 locked" | RotationFree -> "R3 free")})   zoom %.1f{e.zoom}×"""
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0

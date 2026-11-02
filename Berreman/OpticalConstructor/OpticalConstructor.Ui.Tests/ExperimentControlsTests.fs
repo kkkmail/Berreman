@@ -345,7 +345,7 @@ module ExperimentControlsTests =
         // The step-018 add path pre-binds the polarizer, so the analyzer resolves from the BOUND
         // entry — the surface that used to lean on the silent fallback keeps its curve.
         let m = initMain () |> updateTableAndElementRotation (AddElement LinearPolarizer)
-        Assert.Equal(Some SeedEntryIds.polarizerLp, (elem 2 m).placement.valueId)
+        Assert.Equal(Some (ElementValueId SeedEntryIds.polarizerLp), (elem 2 m).placement.valueId)
         let chart = experimentResult (m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
         Assert.Single(chart.series) |> ignore
         Assert.Equal("Rotating analyzer (Malus)", chart.title.value)

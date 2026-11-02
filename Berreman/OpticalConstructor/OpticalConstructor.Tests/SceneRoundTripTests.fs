@@ -29,13 +29,13 @@ module SceneRoundTripTests =
 
     let private sourceEl : TestElement =
         { TestElement.id = Library.elementId "src"
-          placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some "src-600" }
+          placement = { ElementPlacement.create LightSource { x = -0.75<meter>; y = 0.10<meter> } with valueId = Some (ElementValueId "src-600") }
           zoom = 1.5
           beam = BeamLayout.OnMainBeam }
 
     let private polarizerEl : TestElement =
         { TestElement.id = Library.elementId "pol"
-          placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some "pol-lp" }
+          placement = { ElementPlacement.create LinearPolarizer { x = 0.0<meter>; y = 0.0<meter> } with valueId = Some (ElementValueId "pol-lp") }
           zoom = 3.25
           beam = BeamLayout.OnMainBeam }
 
@@ -50,7 +50,7 @@ module SceneRoundTripTests =
     /// A NON-default table view (pan + zoom dialled off the straight top-down default), so the
     /// captured / restored view state is distinguishable from a fresh model's.
     let private dialledView : Table.TableViewState =
-        { Table.defaultView with panX = 12.5; panY = -7.25; zoom = 1.875 }
+        { Table.defaultView with panX = Table.TablePan 12.5; panY = Table.TablePan -7.25; zoom = Table.TableZoom 1.875 }
 
     /// The live workbench model under capture: deterministic elements, the dialled view, snap-to-beam
     /// on. Built off `initMain ()` (windowless — the Main scene's pure model constructor) so every
@@ -101,8 +101,8 @@ module SceneRoundTripTests =
             [ LightSource; LinearPolarizer; Detector ],
             restored.elements |> List.map (fun e -> e.placement.catalogueKind))
         // ... bindings (the Library `valueId`) ...
-        Assert.Equal<string option list>(
-            [ Some "src-600"; Some "pol-lp"; None ],
+        Assert.Equal<ElementValueId option list>(
+            [ Some (ElementValueId "src-600"); Some (ElementValueId "pol-lp"); None ],
             restored.elements |> List.map (fun e -> e.placement.valueId))
         // ... full placements + draw zoom (the whole `TestElement`, in order) ...
         Assert.Equal<TestElement list>([ sourceEl; polarizerEl; detectorEl ], restored.elements)

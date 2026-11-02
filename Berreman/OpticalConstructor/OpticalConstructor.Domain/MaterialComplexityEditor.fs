@@ -228,7 +228,7 @@ let defaultGyrationComponent : RhoValue = RhoValue 1.5e-6
 let private constantFormula (value : float) : DispersionFormula =
     {
         terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
-        wavelengthScale = toMeters Nanometer 1.0
+        wavelengthScale = toMeters Nanometer (UnitMagnitude 1.0)
     }
 
 /// The default dispersive gyration component: the constant active magnitude as a
@@ -320,7 +320,7 @@ let modelKindLabel (model : DispersionModel) : string =
 let defaultSegment : EditSegment =
     let model = List.head defaultModelChoices
     {
-        interval = { lower = toWaveLength Nanometer 400.0; upper = toWaveLength Nanometer 700.0 }
+        interval = { lower = toWaveLength Nanometer (UnitMagnitude 400.0); upper = toWaveLength Nanometer (UnitMagnitude 700.0) }
         model1 = model
         model2 = model
         model3 = model

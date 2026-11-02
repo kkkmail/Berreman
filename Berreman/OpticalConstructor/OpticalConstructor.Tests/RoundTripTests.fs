@@ -33,7 +33,7 @@ module RoundTripTests =
     let private project : OpticalConstructorProject =
         let root =
             {
-                element = Sample vacuumSystem
+                element = SampleElement vacuumSystem
                 system = vacuumSystem
                 incident = light
                 children = Map.empty

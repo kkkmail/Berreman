@@ -217,7 +217,7 @@ let private materialErrorReason (e : MaterialError) : string =
 
 /// The live preview's fixed spectral window: the visible band in canonical meters (the
 /// display unit is nm; AC-D7 — the unit never changes the sampled range).
-let previewRange : Range<WaveLength> = SpectralAxis.spectralRange Nanometer 400.0 700.0 60
+let previewRange : Range<WaveLength> = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 700.0) (NumberOfPoints 60)
 
 /// What the preview charts: the derived complexity's engine properties in edit mode, the
 /// entry's own preset properties in view-only mode, nothing while the ladder is underivable.
@@ -823,8 +823,8 @@ let private segmentAxisView (dispatch : MaterialEditorMsg -> unit) (segmentIndex
 /// PRINCIPAL AXIS of the anisotropy (spec 0033 comment 009) — a model picker + unit-labelled
 /// coefficient boxes.
 let private segmentView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) (segmentIndex : int) (segment : EditSegment) : IView =
-    let lowerNm = wavelengthToUnit Nanometer segment.interval.lower
-    let upperNm = wavelengthToUnit Nanometer segment.interval.upper
+    let lowerNm = (wavelengthToUnit Nanometer segment.interval.lower).value
+    let upperNm = (wavelengthToUnit Nanometer segment.interval.upper).value
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -835,9 +835,9 @@ let private segmentView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg 
                     WrapPanel.children [
                         labelBlock $"Segment {segmentIndex} —"
                         labelled "λ from (nm):" (numberBox (ConstructorUiId.segmentLowerBox (ConstructorUiPosition segmentIndex)).value 70.0 lowerNm (fun v ->
-                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = toWaveLength Nanometer v; upper = segment.interval.upper })))))
+                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = toWaveLength Nanometer (UnitMagnitude v); upper = segment.interval.upper })))))
                         labelled "to (nm):" (numberBox (ConstructorUiId.segmentUpperBox (ConstructorUiPosition segmentIndex)).value 70.0 upperNm (fun v ->
-                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer v })))))
+                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer (UnitMagnitude v) })))))
                         verbButton (ConstructorUiId.segmentRemoveButton (ConstructorUiPosition segmentIndex)).value "Remove" (List.length m.editor.segments > 1) (fun () ->
                             dispatch (EditorMsg (RemoveSegment segmentIndex)))
                     ]

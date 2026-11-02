@@ -40,8 +40,8 @@ open OpticalConstructor.Controls.ExperimentChart
 /// wavelengths (the `s + (e − s)·i/n` meter grid `SpectralAxis.axisTicks` walks — a display-unit x is
 /// a pure rescale of the same grid position, never a re-sample, AC-D7).
 let private grid (u : UnitOfMeasure) (range : Range<WaveLength>) : float list * WaveLength list =
-    let xs = SpectralAxis.axisTicks u range
-    let ws = SpectralAxis.axisTicks Nanometer range |> List.map (fun nm -> WaveLength.Nm (nm * 1.0<nm>))
+    let xs = SpectralAxis.axisTicks u range |> List.map (fun x -> x.value)
+    let ws = SpectralAxis.axisTicks Nanometer range |> List.map (fun nm -> WaveLength.Nm (nm.value * 1.0<nm>))
     xs, ws
 
 /// A single mid-band wavelength used to CLASSIFY a view-only preset's optional aspects (whether its
@@ -93,7 +93,7 @@ let nkDispersionChart (anisotropy : Anisotropy) (o : OpticalPropertiesWithDisp) 
     let kSeries = sampled |> List.map (fun (_, kName, d) -> curve kName (d |> List.map (fun c -> c.Imaginary)))
     {
         series = nSeries @ kSeries
-        xLabel = ControlCaption (SpectralAxis.axisLabel u)
+        xLabel = ControlCaption u.axisLabel
         yLabel = ControlCaption "n"
         title = ControlCaption "n / k dispersion"
         description = ControlCaption "n on the left axis, k on the right, per principal axis the anisotropy distinguishes (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
@@ -149,7 +149,7 @@ let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWi
         }
     {
         series = components |> List.map series
-        xLabel = ControlCaption (SpectralAxis.axisLabel u)
+        xLabel = ControlCaption u.axisLabel
         yLabel = ControlCaption "g"
         title = ControlCaption "Gyration components"
         description = ControlCaption "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength, per the entry's symmetry class."
@@ -205,7 +205,7 @@ let muChart (muKind : MuKind) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure
             ]
     {
         series = series
-        xLabel = ControlCaption (SpectralAxis.axisLabel u)
+        xLabel = ControlCaption u.axisLabel
         yLabel = ControlCaption "μ"
         title = ControlCaption "Polder μ components"
         description = ControlCaption "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength; a scalar μ draws its single component."
