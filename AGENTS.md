@@ -288,8 +288,10 @@ etc. are single-case DUs, not raw `double`s. Match that everywhere you add code.
   `Softellect.*` assembly). When two collide, the one in the LOWER assembly keeps
   its name. A third-party namesake (FSharp.Core, the BCL, Avalonia) is a warning
   under the rule's `T` code, never enforced. `[<RequireQualifiedAccess>]` is not
-  how a collision is resolved; the UiIds module is an open item of the ledger
-  (`specs/0048/.manual/002`).
+  how a collision is resolved, and nothing authorizes a duplicate among our names:
+  rename one (inside one assembly, the writer chooses which). An Elmish surface's
+  names carry the surface (`RotationControlsState`, `rotationControlsView`), as
+  STL's VNC viewer's do (`VncMainModel`, `mainView`) (spec 0048 `.manual/002` R2).
 - **A closed set's wire/disk tag is an integer** (STL spec 0193 round 058,
   enforced as `ELEV017`): a multi-case union's `value` member returns an `int`
   (1-based, 0 left as the unset sentinel), never a string; its name is rendered by
@@ -313,6 +315,21 @@ etc. are single-case DUs, not raw `double`s. Match that everywhere you add code.
 - **Tuples:** at most three elements, and never two positions of the same type
   (`ELEV011`) — make it a record. A function that maps a two-case union to a
   `bool` is deleted in favour of matching on the union (`ELEV012`).
+- **Large numerical data stays fast; everything small is elevated** (operator
+  ruling, spec 0048 `.manual/002` R3; STL spec 0219 `.manual/010` and `012`).
+  - A type whose fields or generic arguments ARE bulk numbers keeps its fast
+    representation and is marked `[<NumericCarrier("<reason>")>]`. Examples: the
+    MathNet vectors and matrices and our wrappers over them, FFT buffers, sweep
+    and spectrum arrays, measured series, a fit's parameter vector.
+  - A call into a third-party numeric library (MathNet, Alglib) is marked on
+    its own declaration: `[<ElevationBoundary(nameof InteropBoundary, "<reason>")>]`.
+  - A scalar with a meaning, a count, an index or a small tuple is elevated.
+  - The test: a value stays a carrier's element only when wrapping it would cost
+    a conversion inside a kernel loop or a copy of a large array.
+  - A mark goes on the declaration, never on a module.
+- **A process entry point** (`main : string[] -> int`) is marked
+  `[<ElevationBoundary(nameof IoBoundary, "the process entry point - argv in, exit code out, per the .NET contract")>]`
+  (STL spec 0229 `.manual/005` Q5).
 
 The compiler is the enforcement mechanism: if a public signature type-checks, it
 is guaranteed to carry only elevated types. The ELEV analyzers enforce the rest.
@@ -323,9 +340,11 @@ The rules above are checked by STL's **`Softellect.Analyzers`** (the ELEV rules)
 consumed as a package: `Elevation/Run-ElevationGate.ps1` loads the version the
 root `Directory.Build.targets` pins into `fsharp-analyzers` (installed at the
 `FSharp.Analyzers.SDK` version that package depends on) and runs it over the F#
-product projects of `Berreman.slnx`. The test projects and the vendored
-MathNetNumerics are out of scope. What the rules apply to is the root
-`.elevation-analyzers.json`; edit that file, never the analyzers.
+product projects of `Berreman.slnx`, the TestWindows heads and the App
+included. The test projects and the vendored MathNetNumerics are out of scope.
+What the rules apply to is the root `.elevation-analyzers.json`; edit that file,
+never the analyzers. **Where any document, STL's included, disagrees with the
+analyzers, the analyzers win** (operator, spec 0048 `.manual/002` R6).
 
 | Code | Rule | In one line |
 |---|---|---|
@@ -349,17 +368,26 @@ MathNetNumerics are out of scope. What the rules apply to is the root
 | ELEV021–024 | the wire guard | no plain bytes on a wire outside a carrier |
 
 A `P` suffix (`ELEV003P`) is the same rule on a private signature; a `T` suffix is
-a third-party namesake, never enforced. A genuine IO boundary is marked
-`[<ElevationBoundary>]` and a type that holds primitives on purpose
-`[<NumericCarrier>]` (both `Softellect.Sys`, matched by name).
+a third-party namesake, never enforced. A genuine seam is marked on its own
+declaration with `[<ElevationBoundary(nameof IoBoundary, "<reason>")>]` (or
+`InteropBoundary`, `StorageBoundary`, `ContractBoundary`), and a type that holds
+bulk numbers on purpose with `[<NumericCarrier("<reason>")>]`. Both are
+`Softellect.Sys` types, matched by name.
 
 The gates are `elevation` (the projects a step touches, plus their dependents)
 and `elevation-full` (every project). **ELEV004 is excluded in the gate command,
 not in the rules**, as in STL. The tree's findings when the gates were set up are
-recorded in `Elevation/elevation-known-findings.json` and laid out in the ledger
-`specs/0048/.manual/002`: a recorded finding does not fail the gate, a new one
-does, and so does a recorded one that is gone. **Fix a finding and delete its
-entry in the same change; never add an entry and never re-record the list.**
+recorded in `Elevation/elevation-known-findings.json`: a recorded finding does
+not fail the gate, a new one does, and so does a recorded one that is gone. **Fix
+a finding and delete its entry in the same change; never add an entry and never
+re-record the list.**
+
+The cleanup is the ELEV ledger `specs/0048/.manual/002-elevation-ledger.jsonl`,
+one row per unit of work, built from that list the way STL builds its elevation
+ledgers. Its plan, with the operator's rulings, is `002-elevation-plan.md`
+beside it. A row closes in the change that clears its last file, and nothing is
+deferred. A row that cannot be closed as ruled is marked `blocked` with its
+question.
 
 ---
 
@@ -418,8 +446,15 @@ click harder.
   - *Avalonia:* set `AutomationProperties.AutomationId` and
     `AutomationProperties.Name` on every interactive/test-relevant control.
   - *WinForms:* set a stable `Name` plus `AccessibleName` / `AccessibleRole`.
-- **Centralize IDs** in one F# constants module (`[<Literal>]` strings); never
-  scatter duplicate ID strings through the codebase.
+- **Centralize IDs on one elevated id type** (spec 0048 `.manual/002` R1; STL's
+  `Vnc/ViewerCore/VncViewerUiIds.fs`):
+  - a single-case union over the string with `.value`;
+  - every fixed id is a uniquely named `static member` of it;
+  - a repeated control's id is a static member over an elevated parameter;
+  - the control receives it through one member on the type.
+
+  Never scatter id strings through the codebase, and never use a module of
+  `[<Literal>]`s or `[<RequireQualifiedAccess>]`.
 - **Three test layers, in this order:** (1) domain/model unit tests for behavior;
   (2) `Avalonia.Headless` tests for UI structure, input, layout, and rendered
   frames (the `ui-smoke` gate opens the host and renders one frame per view);

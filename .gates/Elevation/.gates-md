@@ -15,6 +15,7 @@ projects are out of scope.
 ELEV004 is excluded in the gate command, not in the rules. A finding recorded
 in the known-findings list does not fail either gate; a new one does, and so
 does a recorded one that is no longer found, so a fix removes its entry in
-the same step. The list is the ledger `specs/0048/.manual/002`; it only
-shrinks. Both gates require `build`: the analyzers read each project's
-references as built. Set up in `specs/0048/.manual/001`.
+the same step. The list only shrinks; the work that empties it is the ELEV
+ledger `specs/0048/.manual/002-elevation-ledger.jsonl` and its plan
+`002-elevation-plan.md`. Both gates require `build`: the analyzers read each
+project's references as built. Set up in `specs/0048/.manual/001`.
