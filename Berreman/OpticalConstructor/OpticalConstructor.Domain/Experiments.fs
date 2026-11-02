@@ -482,7 +482,7 @@ module Experiments =
     /// The in-memory mock proxy (spec §3 / Q7): closes over the seed templates, no IO, deterministic for
     /// tests. A real disk-backed `create` would live in `OpticalConstructor.Storage`, leaving the
     /// bay / logic unchanged.
-    let createInMemory () : ExperimentProxy =
+    let createInMemoryExperiments () : ExperimentProxy =
         let seeds = seedExperiments
         {
             listExperiments = fun () -> Ok seeds

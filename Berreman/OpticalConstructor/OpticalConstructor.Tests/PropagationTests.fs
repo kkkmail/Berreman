@@ -201,7 +201,7 @@ module PropagationTests =
         // The samples in `seedEntries` ARE the named `SeedSamples` values, in order (spec 0033
         // step 002 — the id literals live only in `SeedSamples`).
         Assert.Equal<SampleId list>(
-            SeedSamples.all |> List.map (fun s -> s.id),
+            SeedSamples.allSeedSamples |> List.map (fun s -> s.id),
             seededSamples |> List.map (fun s -> s.id))
 
     [<Fact>]

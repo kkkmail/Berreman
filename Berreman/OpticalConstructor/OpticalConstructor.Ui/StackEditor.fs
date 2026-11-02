@@ -167,7 +167,7 @@ type StackMsg =
     | RotateLayer of int * Rotation
     | SetIncidentMedium of OpticalProperties
     | SetExitMedium of OpticalProperties
-    | SetSubstrate of SubstrateChoice
+    | SetStackSubstrate of SubstrateChoice
     /// §J.4 drag-drop: replace the material of the layer at `index` with the
     /// dragged material's RESOLVED `OpticalProperties` (thickness unchanged).
     | SetLayerMaterial of index : int * properties : OpticalProperties
@@ -183,7 +183,7 @@ let applyStackMsg (msg : StackMsg) (sys : OpticalSystem) : OpticalSystem =
     | RotateLayer (i, r) -> rotateLayer i r sys
     | SetIncidentMedium p -> setIncidentMedium p sys
     | SetExitMedium p -> setExitMedium p sys
-    | SetSubstrate c -> applySubstrate c sys
+    | SetStackSubstrate c -> applySubstrate c sys
     | SetLayerMaterial (i, p) -> setLayerMaterial i p sys
 
 /// §J.4 — turn a material dropped on the layer row at `index` into the `StackMsg`

@@ -168,7 +168,7 @@ module EmbeddedChartTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the embedded n/k chart renders one frame with n on the left and k on the right (non-dispersive)`` () =
         HeadlessSession.run (fun () ->
-            let chart = chartOf (builtInProps MaterialIds.vacuum)
+            let chart = chartOf (builtInProps MaterialIds.vacuumMaterial)
             let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
             match avaUnder window hostId with
             | Some ava -> assertNkDualAxis "vacuum" ava

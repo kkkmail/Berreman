@@ -151,7 +151,7 @@ module SchematicGeometryTests =
 
         // The viewport reads the segment direction straight from the solved field —
         // SystemView3D.beamDirection takes the solved ems as input and never solves.
-        match SystemView3D.beamDirection BeamBranch.Reflected ems, ems.reflected.normal with
+        match SystemView3D.beamDirection BeamBranch.ReflectedBeam ems, ems.reflected.normal with
         | Some dir, Some n ->
             Assert.Equal(n.x, dir.x, 12)
             Assert.Equal(n.y, dir.y, 12)
@@ -164,13 +164,13 @@ module SchematicGeometryTests =
         let segments = SystemView3D.beamSegments { x = 0.0; y = 0.0; z = 0.0 } ems
         // Both branches are rendered, each tagged with its branch.
         let branches = segments |> List.map (fun s -> s.branch)
-        Assert.Contains(BeamBranch.Reflected, branches)
-        Assert.Contains(BeamBranch.Transmitted, branches)
+        Assert.Contains(BeamBranch.ReflectedBeam, branches)
+        Assert.Contains(BeamBranch.TransmittedBeam, branches)
         // The reflected and transmitted directions differ (the solved routing is
         // read per branch, not a single shared ray).
         let dirOf b = segments |> List.find (fun s -> s.branch = b) |> fun s -> s.direction
-        let r = dirOf BeamBranch.Reflected
-        let t = dirOf BeamBranch.Transmitted
+        let r = dirOf BeamBranch.ReflectedBeam
+        let t = dirOf BeamBranch.TransmittedBeam
         Assert.True(abs (r.z - t.z) > 1e-9 || abs (r.x - t.x) > 1e-9 || abs (r.y - t.y) > 1e-9)
 
     [<Fact>]
@@ -192,9 +192,9 @@ module SchematicGeometryTests =
         let detector =
             { sampleNode with element = Detector; system = { sampleSystem with films = [] }; children = Map.empty }
         let sampleWithDetector =
-            { sampleNode with children = Map.ofList [ BeamBranch.Transmitted, detector ] }
+            { sampleNode with children = Map.ofList [ BeamBranch.TransmittedBeam, detector ] }
         let sourceNode =
-            { sampleNode with element = Source; children = Map.ofList [ BeamBranch.Transmitted, sampleWithDetector ] }
+            { sampleNode with element = Source; children = Map.ofList [ BeamBranch.TransmittedBeam, sampleWithDetector ] }
         let tree : BeamTree = { root = sourceNode }
 
         let placed = SystemView3D.placeElements SystemView3D.defaultPixelsPerMeter tree

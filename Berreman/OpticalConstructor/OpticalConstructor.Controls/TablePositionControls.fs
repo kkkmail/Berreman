@@ -62,7 +62,7 @@ module TablePositionControls =
         }
 
     /// The position the bar displays.
-    type State =
+    type TablePositionControlsState =
         {
             x : AxisState
             y : AxisState
@@ -76,7 +76,7 @@ module TablePositionControls =
             $"at x = {this.x.position.signedText} m, y = {this.y.position.signedText} m, z = {this.z.position.signedText} m"
 
     /// What the bar does. The host owns the selection, the clamps and the locks.
-    type Handlers =
+    type TablePositionControlsHandlers =
         {
             moveBy : Axis -> BarMeters -> unit      // nudge along an axis by N metres (the − / + buttons)
             setPosition : Axis -> BarMeters -> unit // set an axis to exactly N metres (the field)
@@ -106,7 +106,7 @@ module TablePositionControls =
             Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
         ] :> IView
 
-    let private field (handlers : Handlers) (axis : Axis) (value : BarMeters) (availability : ControlAvailability) : IView =
+    let private field (handlers : TablePositionControlsHandlers) (axis : Axis) (value : BarMeters) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
             match src with
             | :? TextBox as tb when not (isNull tb.Text) -> BarMeters.tryCreate tb.Text |> Option.iter (handlers.setPosition axis)
@@ -121,7 +121,7 @@ module TablePositionControls =
         ] :> IView
 
     /// One axis row: its label, − / +, the field, "m", and the Lock / Unlock toggle.
-    let private axisRow (handlers : Handlers) (availability : ControlAvailability) (axis : Axis) (axisState : AxisState) : IView =
+    let private axisRow (handlers : TablePositionControlsHandlers) (availability : ControlAvailability) (axis : Axis) (axisState : AxisState) : IView =
         let free, lockCaption =
             match axisState.lock with
             | RotationControls.AxisFree -> availability, ControlCaption $"Lock {axis.name}"
@@ -145,7 +145,7 @@ module TablePositionControls =
     /// selection and locks.
     /// Spec 0046: a DockPanel (the axis rows docked left, the Reset + readout column filling the rest) so
     /// the readout WRAPS in a narrow window instead of running off its right edge.
-    let view (state : State) (handlers : Handlers) : IView =
+    let tablePositionControlsView (state : TablePositionControlsState) (handlers : TablePositionControlsHandlers) : IView =
         DockPanel.create [
             DockPanel.margin (Thickness 8.0)
             DockPanel.isEnabled state.availability.isEnabled

@@ -104,7 +104,7 @@ type Msg =
 // update (pure, Avalonia-free).
 // ---------------------------------------------------------------------------
 
-let update (msg : Msg) (model : Model) : Model =
+let updateSynthesisFit (msg : Msg) (model : Model) : Model =
     match msg with
     | SetMethod m -> { model with method = m }
     | SetTargets ts -> { model with targets = ts }
@@ -158,7 +158,7 @@ let update (msg : Msg) (model : Model) : Model =
 // init.
 // ---------------------------------------------------------------------------
 
-let init
+let initSynthesisFit
     (workingSystem : OpticalSystem)
     (parameters : DesignParameter list)
     (initial : float[])

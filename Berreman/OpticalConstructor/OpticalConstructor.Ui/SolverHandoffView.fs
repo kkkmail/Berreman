@@ -147,7 +147,7 @@ type SolverHandoffContext =
 /// Reference-compared — the context carries function fields (no structural equality) and the screen is
 /// read-only (no state change beyond the one-shot close), so the Elmish equality gate is satisfied.
 [<ReferenceEquality>]
-type Model =
+type SolverHandoffModel =
     {
         context : SolverHandoffContext
         collectionName : ExperimentCollectionStore.CollectionName
@@ -156,7 +156,7 @@ type Model =
 
 /// Build the model from the context — validate every received experiment ONCE at init (the whole
 /// computation the screen runs).
-let init (context : SolverHandoffContext) : Model =
+let initSolverHandoff (context : SolverHandoffContext) : SolverHandoffModel =
     {
         context = context
         collectionName = context.collection.name
@@ -164,10 +164,10 @@ let init (context : SolverHandoffContext) : Model =
     }
 
 /// The only message the read-only terminal screen dispatches: the window-level Close.
-type Msg =
+type SolverHandoffMsg =
     | RequestClose
 
-let update (msg : Msg) (m : Model) : Model =
+let updateSolverHandoff (msg : SolverHandoffMsg) (m : SolverHandoffModel) : SolverHandoffModel =
     match msg with
     | RequestClose -> m.context.requestClose (); m
 
@@ -253,7 +253,7 @@ let private summaryEntry (row : HandoffRow) : IView =
     |> Avalonia.FuncUI.DSL.View.withKey ("SolverHandoffRow_" + idStr)
     :> IView
 
-let private summaryList (m : Model) : IView =
+let private summaryList (m : SolverHandoffModel) : IView =
     let children : IView list =
         match m.rows with
         | [] -> [ TextBlock.create [ TextBlock.text "(the received collection holds no experiments)"; TextBlock.foreground (brush mutedColor) ] :> IView ]
@@ -264,7 +264,7 @@ let private summaryList (m : Model) : IView =
         StackPanel.children children
     ] :> IView
 
-let private closeButton (dispatch : Msg -> unit) : IView =
+let private closeButton (dispatch : SolverHandoffMsg -> unit) : IView =
     Border.create [
         automationId ConstructorUiId.solverHandoffCloseButton.value
         Border.background (brush (color 226 226 226))
@@ -279,7 +279,7 @@ let private closeButton (dispatch : Msg -> unit) : IView =
 
 /// The whole terminal screen: a header naming the received collection, the fixed solver-comes-later
 /// message, the scrollable per-experiment summary list, and a Close row.
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let solverHandoffView (m : SolverHandoffModel) (dispatch : SolverHandoffMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [

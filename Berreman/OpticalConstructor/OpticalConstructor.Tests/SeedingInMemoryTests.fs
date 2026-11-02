@@ -48,7 +48,7 @@ module SeedingInMemoryTests =
         | Error e -> Assert.Fail($"listMaterials failed: %A{e}")
 
         match stores.samples.listSamples IncludeInactive with
-        | Ok samps -> Assert.Equal(List.length SeedSamples.all, List.length samps)
+        | Ok samps -> Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samps)
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
 
         // The library-entry store has no "list all" verb; union `entriesForKind` over the kinds the
@@ -88,7 +88,7 @@ module SeedingInMemoryTests =
 
         // Materials / samples / library entries resolve by their fixed ids, to the same seed instances.
         builtInEntries |> List.iter (fun m -> assertResolves $"material '{m.name}'" m (stores.materials.tryGetMaterial m.id))
-        SeedSamples.all |> List.iter (fun s -> assertResolves $"sample '{s.name}'" s (stores.samples.tryGetSample s.id))
+        SeedSamples.allSeedSamples |> List.iter (fun s -> assertResolves $"sample '{s.name}'" s (stores.samples.tryGetSample s.id))
         seedEntries |> List.iter (fun e -> assertResolves $"entry '{e.entryId}'" e (stores.libraryEntries.tryGetEntry e.entryId))
 
     [<Fact>]

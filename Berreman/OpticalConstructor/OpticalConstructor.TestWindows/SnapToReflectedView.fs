@@ -29,43 +29,43 @@ open OpticalConstructor.Ui
 // Wheel gestures: rotate the selection (Shift/Ctrl+Shift/Alt) or zoom the table (plain/Ctrl).
 // ---------------------------------------------------------------------------
 
-type WheelModifier =
-    | ModCtrl
-    | ModShift
-    | ModAlt
+type SnapToReflectedWheelModifier =
+    | SnapToReflectedModCtrl
+    | SnapToReflectedModShift
+    | SnapToReflectedModAlt
 
-type WheelAction =
-    | RotateSel1
-    | RotateSel2
-    | RotateSel3
-    | ZoomTable
-    | NoWheelAction
+type SnapToReflectedWheelAction =
+    | SnapToReflectedRotateSel1
+    | SnapToReflectedRotateSel2
+    | SnapToReflectedRotateSel3
+    | SnapToReflectedZoomTable
+    | SnapToReflectedNoWheelAction
 
-let wheelAction (mods : Set<WheelModifier>) : WheelAction =
+let snapToReflectedWheelAction (mods : Set<SnapToReflectedWheelModifier>) : SnapToReflectedWheelAction =
     let has m = Set.contains m mods
-    match has ModCtrl, has ModShift, has ModAlt with
-    | false, true, false -> RotateSel1
-    | true, true, false -> RotateSel2
-    | false, false, true -> RotateSel3
-    | false, false, false -> ZoomTable
-    | true, false, false -> ZoomTable
-    | _ -> NoWheelAction
+    match has SnapToReflectedModCtrl, has SnapToReflectedModShift, has SnapToReflectedModAlt with
+    | false, true, false -> SnapToReflectedRotateSel1
+    | true, true, false -> SnapToReflectedRotateSel2
+    | false, false, true -> SnapToReflectedRotateSel3
+    | false, false, false -> SnapToReflectedZoomTable
+    | true, false, false -> SnapToReflectedZoomTable
+    | _ -> SnapToReflectedNoWheelAction
 
 // ---------------------------------------------------------------------------
 // Pure model.
 // ---------------------------------------------------------------------------
 
 type Selection =
-    | TableSelected
+    | SnapToReflectedTableSelected
     | ElementSelected of int
     | NothingSelected
 
-type DragState =
-    | NotPressed
-    | Pressed of ScreenPoint
-    | Panning of ScreenPoint
+type SnapToReflectedDragState =
+    | SnapToReflectedNotPressed
+    | SnapToReflectedPressed of ScreenPoint
+    | SnapToReflectedPanning of ScreenPoint
 
-type Model =
+type SnapToReflectedModel =
     {
         table : OpticalTable
         view : TableViewState
@@ -75,7 +75,7 @@ type Model =
         /// The along-ray gaps of the downstream stops: [ source→mirror ; mirror→detector ].
         gaps : float<meter> list
         selection : Selection
-        drag : DragState
+        drag : SnapToReflectedDragState
         tableR3Locked : bool
         rotationConfirm : RotationControls.ResetConfirm
     }
@@ -86,7 +86,7 @@ let private elementSelectRadiusPx : float = 50.0
 
 /// Source on the left, a flat mirror at the table centre tilted R2 = 45° (R3 unlocked so R3 also steers),
 /// and a detector half a metre past it. The mirror starts selected so the bar acts on it.
-let init () : Model =
+let initSnapToReflected () : SnapToReflectedModel =
     // This test window steers its source freely (spec 0046 locks a fresh source's R1 / R2).
     let source = { ElementPlacement.create LightSource RayModel.defaultSourcePoint with r1Locked = false; r2Locked = false }
     let mirror = withR2 (Angle.degree 45.0<deg>) { ElementPlacement.create FlatMirror { x = 0.0<meter>; y = 0.0<meter> } with r3Locked = false }
@@ -97,25 +97,25 @@ let init () : Model =
         elements = [ source; mirror; detector ]
         gaps = [ 1.0<meter>; 0.5<meter> ]
         selection = ElementSelected 1
-        drag = NotPressed
+        drag = SnapToReflectedNotPressed
         tableR3Locked = false
         rotationConfirm = RotationControls.NoConfirm
     }
 
-type Msg =
-    | RotateR1By of float
-    | RotateR2By of float
-    | RotateR3By of float
-    | ToggleR3Lock
-    | RotSetAxis of RotationControls.RotationAxis * float
-    | RotRequestReset
-    | RotRequestResetAll
-    | RotConfirm
-    | RotCancel
-    | PointerDown of ScreenPoint
-    | PointerMove of ScreenPoint
-    | PointerUp of ScreenPoint
-    | Wheel of Set<WheelModifier> * int
+type SnapToReflectedMsg =
+    | SnapToReflectedRotateR1By of float
+    | SnapToReflectedRotateR2By of float
+    | SnapToReflectedRotateR3By of float
+    | SnapToReflectedToggleR3Lock
+    | SnapToReflectedRotSetAxis of RotationControls.RotationAxis * float
+    | SnapToReflectedRotRequestReset
+    | SnapToReflectedRotRequestResetAll
+    | SnapToReflectedRotConfirm
+    | SnapToReflectedRotCancel
+    | SnapToReflectedPointerDown of ScreenPoint
+    | SnapToReflectedPointerMove of ScreenPoint
+    | SnapToReflectedPointerUp of ScreenPoint
+    | SnapToReflectedWheel of Set<SnapToReflectedWheelModifier> * int
 
 // ---------------------------------------------------------------------------
 // The reflected snap (the spec law this screen demonstrates).
@@ -125,7 +125,7 @@ type Msg =
 /// (`BeamTree.Transmitted`). `snapChain` turns the beam by reflection off the mirror's oriented face,
 /// so the detector lands on the reflected ray. Rotating the mirror R2/R3 changes the face normal (and
 /// the reflected direction); R1 spins about the face normal and does not change it.
-let snapped (m : Model) : RayModel.SnappedElement list =
+let snapped (m : SnapToReflectedModel) : RayModel.SnappedElement list =
     match m.elements with
     | source :: stops ->
         let specs =
@@ -142,7 +142,7 @@ let snapped (m : Model) : RayModel.SnappedElement list =
 
 /// Each element's absolute table-frame position: the source at its placement point, the mirror and
 /// detector at their snapped positions.
-let elementPositions (m : Model) : Vector3 list =
+let elementPositions (m : SnapToReflectedModel) : Vector3 list =
     match m.elements with
     | source :: _ -> RayModel.pointToVector3 source.placementPoint :: (snapped m |> List.map (fun s -> s.position))
     | [] -> []
@@ -150,9 +150,9 @@ let elementPositions (m : Model) : Vector3 list =
 /// The first element that REFLECTS the beam (its primary branch is `Reflected`) — DERIVED from the
 /// elements, not hardcoded. Elements AFTER it are on the reflected beam (here the flat mirror), so they
 /// are oriented relative to that beam. `MaxValue` when nothing reflects (a straight transmitted chain).
-let reflectorIndex (m : Model) : int =
+let reflectorIndex (m : SnapToReflectedModel) : int =
     m.elements
-    |> List.tryFindIndex (fun p -> RayModel.primaryBranch p = BeamTree.Reflected)
+    |> List.tryFindIndex (fun p -> RayModel.primaryBranch p = BeamTree.ReflectedBeam)
     |> Option.defaultValue System.Int32.MaxValue
 
 /// The absolute (R2, R3) orienting an element to face the beam in `dir` — now the shared domain helper
@@ -166,7 +166,7 @@ let beamOrientation (dir : Vector3) : Angle * Angle = RayModel.beamOrientation d
 /// absolute values we adjust R2/R3 to achieve that"). The source and the mirror keep their absolute
 /// orientation — the mirror's R2 = 45 DEFINES the reflection. R1 of the mirror does not move the beam, so
 /// the downstream orientation is unaffected by it.
-let drawPlacements (m : Model) : ElementPlacement list =
+let drawPlacements (m : SnapToReflectedModel) : ElementPlacement list =
     let snaps = snapped m |> List.mapi (fun stopIndex s -> stopIndex + 1, s) |> Map.ofList
     let reflector = reflectorIndex m
     m.elements
@@ -183,37 +183,37 @@ let drawPlacements (m : Model) : ElementPlacement list =
 // Pure update.
 // ---------------------------------------------------------------------------
 
-let normalizeDegrees (d : float) : float =
+let snapToReflectedNormalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
 
-let private bumpAngle (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d) * 1.0<deg>)
+let private bumpAngle (a : Angle) (d : float) : Angle = Angle.degree (snapToReflectedNormalizeDegrees (a.degrees + d) * 1.0<deg>)
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float = sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
-let private mapElement (i : int) (f : ElementPlacement -> ElementPlacement) (m : Model) : Model =
+let private mapElement (i : int) (f : ElementPlacement -> ElementPlacement) (m : SnapToReflectedModel) : SnapToReflectedModel =
     { m with elements = m.elements |> List.mapi (fun j p -> if j = i then f p else p) }
 
-let private rotateView (axis : int) (deg : float) (m : Model) : Model =
+let private rotateView (axis : int) (deg : float) (m : SnapToReflectedModel) : SnapToReflectedModel =
     if axis = 3 && m.tableR3Locked then m
     else { m with view = TableScene.rotateViewBy axis deg m.view }
 
-let private rotateElement (axis : int) (deg : float) (i : int) (m : Model) : Model =
+let private rotateElement (axis : int) (deg : float) (i : int) (m : SnapToReflectedModel) : SnapToReflectedModel =
     mapElement i (fun p ->
         match axis with
         | 1 -> withR1 (bumpAngle p.r1 deg) p
         | 2 -> withR2 (bumpAngle p.r2 deg) p
         | _ -> withR3 (bumpAngle p.r3 deg) p) m
 
-let private rotateSelected (axis : int) (deg : float) (m : Model) : Model =
+let private rotateSelected (axis : int) (deg : float) (m : SnapToReflectedModel) : SnapToReflectedModel =
     match m.selection with
-    | TableSelected -> rotateView axis deg m
+    | SnapToReflectedTableSelected -> rotateView axis deg m
     | ElementSelected i -> rotateElement axis deg i m
     | NothingSelected -> m
 
-let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : Model) : Model =
-    { m with view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) m.view; drag = Panning pt }
+let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (m : SnapToReflectedModel) : SnapToReflectedModel =
+    { m with view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) m.view; drag = SnapToReflectedPanning pt }
 
-let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
+let private selectionAt (pt : ScreenPoint) (m : SnapToReflectedModel) : Selection =
     let nearest =
         elementPositions m
         |> List.mapi (fun i pos -> i, dist pt (TableScene.project m.view pos))
@@ -221,12 +221,12 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
         |> List.tryHead
     match nearest with
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
-    | _ -> if TableScene.tableHit m.view m.table pt then TableSelected else NothingSelected
+    | _ -> if TableScene.tableHit m.view m.table pt then SnapToReflectedTableSelected else NothingSelected
 
-let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (m : Model) : Model =
-    let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
+let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (m : SnapToReflectedModel) : SnapToReflectedModel =
+    let a = Angle.degree (snapToReflectedNormalizeDegrees v * 1.0<deg>)
     match m.selection with
-    | TableSelected ->
+    | SnapToReflectedTableSelected ->
         match axis with
         | RotationControls.R1 -> { m with view = { m.view with r1 = a } }
         | RotationControls.R2 -> { m with view = { m.view with r2 = a } }
@@ -235,53 +235,53 @@ let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (
         mapElement i (fun p -> (match axis with RotationControls.R1 -> withR1 a | RotationControls.R2 -> withR2 a | RotationControls.R3 -> withR3 a) p) m
     | NothingSelected -> m
 
-let private resetViewRotations (m : Model) : Model = { m with view = { m.view with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
+let private resetViewRotations (m : SnapToReflectedModel) : SnapToReflectedModel = { m with view = { m.view with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
 let private resetPlacementRotations (p : ElementPlacement) : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
-let private resetSelectionRotations (m : Model) : Model =
+let private resetSelectionRotations (m : SnapToReflectedModel) : SnapToReflectedModel =
     match m.selection with
-    | TableSelected -> resetViewRotations m
+    | SnapToReflectedTableSelected -> resetViewRotations m
     | ElementSelected i -> mapElement i resetPlacementRotations m
     | NothingSelected -> m
-let private resetAllRotations (m : Model) : Model =
+let private resetAllRotations (m : SnapToReflectedModel) : SnapToReflectedModel =
     { (resetViewRotations m) with elements = m.elements |> List.map resetPlacementRotations }
 
-let update (msg : Msg) (model : Model) : Model =
+let updateSnapToReflected (msg : SnapToReflectedMsg) (model : SnapToReflectedModel) : SnapToReflectedModel =
     match msg with
-    | RotateR1By d -> rotateSelected 1 d model
-    | RotateR2By d -> rotateSelected 2 d model
-    | RotateR3By d -> rotateSelected 3 d model
-    | ToggleR3Lock ->
+    | SnapToReflectedRotateR1By d -> rotateSelected 1 d model
+    | SnapToReflectedRotateR2By d -> rotateSelected 2 d model
+    | SnapToReflectedRotateR3By d -> rotateSelected 3 d model
+    | SnapToReflectedToggleR3Lock ->
         match model.selection with
-        | TableSelected -> { model with tableR3Locked = not model.tableR3Locked }
+        | SnapToReflectedTableSelected -> { model with tableR3Locked = not model.tableR3Locked }
         | ElementSelected i -> mapElement i (fun p -> setR3Locked (not p.r3Locked) p) model
         | NothingSelected -> model
-    | RotSetAxis (axis, v) -> setSelectedAxis axis v model
-    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
-    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
-    | RotConfirm ->
+    | SnapToReflectedRotSetAxis (axis, v) -> setSelectedAxis axis v model
+    | SnapToReflectedRotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | SnapToReflectedRotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | SnapToReflectedRotConfirm ->
         let m =
             match model.rotationConfirm with
             | RotationControls.ConfirmReset -> resetSelectionRotations model
             | RotationControls.ConfirmResetAll -> resetAllRotations model
             | RotationControls.NoConfirm -> model
         { m with rotationConfirm = RotationControls.NoConfirm }
-    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
-    | PointerDown pt -> { model with drag = Pressed pt }
-    | PointerMove pt ->
+    | SnapToReflectedRotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
+    | SnapToReflectedPointerDown pt -> { model with drag = SnapToReflectedPressed pt }
+    | SnapToReflectedPointerMove pt ->
         match model.drag with
-        | NotPressed -> model
-        | Pressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
-        | Panning last -> panFrom last pt model
-    | PointerUp _ ->
-        let selection = match model.drag with Pressed start -> selectionAt start model | _ -> model.selection
-        { model with selection = selection; drag = NotPressed }
-    | Wheel (mods, notches) ->
-        match wheelAction mods with
-        | RotateSel1 -> rotateSelected 1 (wheelStepDegrees * float notches) model
-        | RotateSel2 -> rotateSelected 2 (wheelStepDegrees * float notches) model
-        | RotateSel3 -> rotateSelected 3 (wheelStepDegrees * float notches) model
-        | ZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
-        | NoWheelAction -> model
+        | SnapToReflectedNotPressed -> model
+        | SnapToReflectedPressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
+        | SnapToReflectedPanning last -> panFrom last pt model
+    | SnapToReflectedPointerUp _ ->
+        let selection = match model.drag with SnapToReflectedPressed start -> selectionAt start model | _ -> model.selection
+        { model with selection = selection; drag = SnapToReflectedNotPressed }
+    | SnapToReflectedWheel (mods, notches) ->
+        match snapToReflectedWheelAction mods with
+        | SnapToReflectedRotateSel1 -> rotateSelected 1 (wheelStepDegrees * float notches) model
+        | SnapToReflectedRotateSel2 -> rotateSelected 2 (wheelStepDegrees * float notches) model
+        | SnapToReflectedRotateSel3 -> rotateSelected 3 (wheelStepDegrees * float notches) model
+        | SnapToReflectedZoomTable -> { model with view = TableScene.zoomViewBy notches model.view }
+        | SnapToReflectedNoWheelAction -> model
 
 // ---------------------------------------------------------------------------
 // Colours + the FuncUI view.
@@ -314,7 +314,7 @@ let private roleColor (k : CatalogueKind) : Color =
 
 /// One element drawn at its (possibly snapped) position: a marker, its N1 (blue) and N2 (yellow)
 /// normals, a face tick for the mirror, and its code.
-let private elementMark (m : Model) (i : int) (placement : ElementPlacement) (pos : Vector3) : IView list =
+let private elementMark (m : SnapToReflectedModel) (i : int) (placement : ElementPlacement) (pos : Vector3) : IView list =
     let selected = (m.selection = ElementSelected i)
     let proj = TableScene.project m.view
     let cScr = proj pos
@@ -348,15 +348,15 @@ let private elementMark (m : Model) (i : int) (placement : ElementPlacement) (po
         ] :> IView
     faceTick @ [ marker ] @ normals @ [ label ]
 
-let private sceneViews (m : Model) : IView list =
+let private sceneViews (m : SnapToReflectedModel) : IView list =
     let positions = elementPositions m
     let placements = drawPlacements m
     let proj = TableScene.project m.view
     let beam = positions |> List.pairwise |> List.map (fun (a, b) -> line (proj a) (proj b) rayColor 2.5)
     let elements = List.mapi2 (fun i p pos -> elementMark m i p pos) placements positions |> List.concat
-    TableScene.plateViews m.view m.table (m.selection = TableSelected) @ beam @ elements
+    TableScene.plateViews m.view m.table (m.selection = SnapToReflectedTableSelected) @ beam @ elements
 
-let private tableCanvas (model : Model) : IView =
+let private tableCanvas (model : SnapToReflectedModel) : IView =
     Canvas.create [
         Canvas.name ConstructorUiId.snapReflectedCanvas.value
         Canvas.width TableScene.canvasWidth
@@ -366,9 +366,9 @@ let private tableCanvas (model : Model) : IView =
         Canvas.children (sceneViews model)
     ] :> IView
 
-let private rotationState (model : Model) : RotationControls.State =
+let private rotationState (model : SnapToReflectedModel) : RotationControls.State =
     match model.selection with
-    | TableSelected ->
+    | SnapToReflectedTableSelected ->
         { r1 = BarDegrees model.view.r1.degrees; r2 = BarDegrees model.view.r2.degrees; r3 = BarDegrees model.view.r3.degrees
           r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
           r3Lock = (if model.tableR3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
@@ -380,22 +380,22 @@ let private rotationState (model : Model) : RotationControls.State =
     | NothingSelected ->
         { r1 = BarDegrees 0.0; r2 = BarDegrees 0.0; r3 = BarDegrees 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Lock = RotationControls.AxisFree; availability = ControlWithheld; confirm = model.rotationConfirm }
 
-let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+let private rotationHandlers (dispatch : SnapToReflectedMsg -> unit) : RotationControls.Handlers =
     {
-        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d.value | RotationControls.R2 -> RotateR2By d.value | RotationControls.R3 -> RotateR3By d.value)
-        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v.value))
-        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
-        requestReset = fun () -> dispatch RotRequestReset
-        requestResetAll = fun () -> dispatch RotRequestResetAll
-        confirm = fun () -> dispatch RotConfirm
-        cancel = fun () -> dispatch RotCancel
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> SnapToReflectedRotateR1By d.value | RotationControls.R2 -> SnapToReflectedRotateR2By d.value | RotationControls.R3 -> SnapToReflectedRotateR3By d.value)
+        setAngle = fun axis v -> dispatch (SnapToReflectedRotSetAxis (axis, v.value))
+        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch SnapToReflectedToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
+        requestReset = fun () -> dispatch SnapToReflectedRotRequestReset
+        requestResetAll = fun () -> dispatch SnapToReflectedRotRequestResetAll
+        confirm = fun () -> dispatch SnapToReflectedRotConfirm
+        cancel = fun () -> dispatch SnapToReflectedRotCancel
     }
 
-let private readoutText (m : Model) : string =
+let private readoutText (m : SnapToReflectedModel) : string =
     let mirror = List.item 1 m.elements
     $"Mirror  R1 %.0f{mirror.r1.degrees}°   R2 %.0f{mirror.r2.degrees}°   R3 %.0f{mirror.r3.degrees}°   ·   the detector is snapped to the REFLECTED beam (rotate R2/R3 to steer it; R1 does nothing)"
 
-let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
+let private controlBar (model : SnapToReflectedModel) (dispatch : SnapToReflectedMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0
@@ -410,25 +410,25 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
-    [ if km.HasFlag KeyModifiers.Control then ModCtrl
-      if km.HasFlag KeyModifiers.Shift then ModShift
-      if km.HasFlag KeyModifiers.Alt then ModAlt ]
+let private wheelModifiers (km : KeyModifiers) : Set<SnapToReflectedWheelModifier> =
+    [ if km.HasFlag KeyModifiers.Control then SnapToReflectedModCtrl
+      if km.HasFlag KeyModifiers.Shift then SnapToReflectedModShift
+      if km.HasFlag KeyModifiers.Alt then SnapToReflectedModAlt ]
     |> Set.ofList
 
-let view (model : Model) (dispatch : Msg -> unit) : IView =
+let snapToReflectedView (model : SnapToReflectedModel) (dispatch : SnapToReflectedMsg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.snapReflectedCanvas.value e
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]
             Border.create [
                 Border.background (brush (color 250 250 250))
-                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
-                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
+                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (SnapToReflectedPointerDown (toScreen e)))
+                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (SnapToReflectedPointerMove (toScreen e)))
+                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (SnapToReflectedPointerUp (toScreen e)))
                 Border.onPointerWheelChanged (fun e ->
                     e.Handled <- true
-                    dispatch (Wheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
+                    dispatch (SnapToReflectedWheel (wheelModifiers e.KeyModifiers, (if e.Delta.Y >= 0.0 then 1 else -1))))
                 Border.child (tableCanvas model)
             ]
         ]

@@ -165,9 +165,9 @@ module WireUiCompositionTests =
             // One frame per bay, on the real window (the whole ribbon surface — a bay whose
             // content throws fails the sweep here). Spec 0038 steps 013/015: neither workbench
             // tab is in the roster any more.
-            Assert.DoesNotContain("Materials", BayNames.all)
-            Assert.DoesNotContain("Library", BayNames.all)
-            for bay in BayNames.all do
+            Assert.DoesNotContain("Materials", BayNames.allBayNames)
+            Assert.DoesNotContain("Library", BayNames.allBayNames)
+            for bay in BayNames.allBayNames do
                 clickOn window (ConstructorUiId.ribbonTab (ConstructorUiKey bay)).value
                 Assert.True(window.IsVisible, $"the %s{bay} bay must render one frame without throwing")
             // Selector: the kind-constrained binding surface mounts (its ids are unconditional).

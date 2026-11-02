@@ -60,7 +60,7 @@ module MaterialLibrary =
         let glass200 : MaterialId = Guid.Parse "077d0db9-a2e2-45da-a76f-5ddedfcf0dc5" |> MaterialId
         let uniaxialCrystal : MaterialId = Guid.Parse "749465a5-fece-4d8d-9ea9-c626613614be" |> MaterialId
         let biaxialCrystal : MaterialId = Guid.Parse "4381fb35-662c-4dc9-80a4-c1a88125f5e5" |> MaterialId
-        let vacuum : MaterialId = Guid.Parse "4355ad6d-b743-4ca9-8365-7ce9f585a7a0" |> MaterialId
+        let vacuumMaterial : MaterialId = Guid.Parse "4355ad6d-b743-4ca9-8365-7ce9f585a7a0" |> MaterialId
         let euvMolybdenum : MaterialId = Guid.Parse "cff60a4d-6c57-4a99-84ae-42533351de2c" |> MaterialId
         let euvSilicon : MaterialId = Guid.Parse "43075352-cb2a-41ed-b53b-76e7166ece57" |> MaterialId
         let activeCrystal : MaterialId = Guid.Parse "a8dfa59c-2e95-4e3a-bfa6-b7e7e12ef58f" |> MaterialId
@@ -112,7 +112,7 @@ module MaterialLibrary =
         let metal : CategoryId = Guid.Parse "3b5c7d9e-2f4a-5b6c-9d8e-0f1a2b3c4d5e" |> CategoryId
         let semiconductor : CategoryId = Guid.Parse "4c6d8e0f-3a5b-6c7d-ae9f-1a2b3c4d5e6f" |> CategoryId
         let crystal : CategoryId = Guid.Parse "5d7e9f1a-4b6c-7d8e-bf0a-2b3c4d5e6f70" |> CategoryId
-        let vacuum : CategoryId = Guid.Parse "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081" |> CategoryId
+        let vacuumCategory : CategoryId = Guid.Parse "6e8fa02b-5c7d-8e9f-c01b-3c4d5e6f7081" |> CategoryId
 
     /// The seeded built-in category catalogue (spec 0035 step 001). Glass/Metal/Semiconductor/
     /// Crystal are `SelectableOnCreate` creation targets; `Vacuum` is `HiddenOnCreate` — it
@@ -124,7 +124,7 @@ module MaterialLibrary =
             { id = CategoryIds.metal; name = "Metal"; visibility = SelectableOnCreate; origin = BuiltInCategory }
             { id = CategoryIds.semiconductor; name = "Semiconductor"; visibility = SelectableOnCreate; origin = BuiltInCategory }
             { id = CategoryIds.crystal; name = "Crystal"; visibility = SelectableOnCreate; origin = BuiltInCategory }
-            { id = CategoryIds.vacuum; name = "Vacuum"; visibility = HiddenOnCreate; origin = BuiltInCategory }
+            { id = CategoryIds.vacuumCategory; name = "Vacuum"; visibility = HiddenOnCreate; origin = BuiltInCategory }
         ]
 
     /// Resolve a category record by its id through the seeded catalogue (spec 0035 step 001): the
@@ -538,9 +538,9 @@ module MaterialLibrary =
                 complexity = Some biaxialCrystalComplexity
             }
             {
-                id = MaterialIds.vacuum
+                id = MaterialIds.vacuumMaterial
                 name = "Vacuum"
-                category = CategoryIds.vacuum
+                category = CategoryIds.vacuumCategory
                 description = Some "Vacuum (n = 1) — the spacer material of the structural multilayer stacks."
                 properties = vacuumComplexity.toProperties
                 complexity = Some vacuumComplexity

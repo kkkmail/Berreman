@@ -143,17 +143,17 @@ module RayModel =
     /// to the engine `Reflected` / `Transmitted` branches (BeamTree.fs:21, B.7.1).
     type RayGroupKind =
         | Incident
-        | Reflected
-        | Transmitted
+        | ReflectedRayGroup
+        | TransmittedRayGroup
 
     /// The OUTGOING groups an element with this `emission` produces (B.2.1). Every
     /// element except a mirror produces both an RRG and a TRG; a mirror produces an
     /// RRG only. This follows the A.7 emission metadata exactly (R-7).
     let emittedGroups (emission : Emission) : RayGroupKind list =
         match emission with
-        | EmitReflectedOnly -> [ Reflected ]
-        | EmitTransmittedOnly -> [ Transmitted ]
-        | EmitBoth -> [ Reflected; Transmitted ]
+        | EmitReflectedOnly -> [ ReflectedRayGroup ]
+        | EmitTransmittedOnly -> [ TransmittedRayGroup ]
+        | EmitBoth -> [ ReflectedRayGroup; TransmittedRayGroup ]
 
     /// The outgoing groups DRAWN leaving an element (B.2.1 / B.2.2 / B.7.1). A
     /// detector TERMINATES the group it receives — no group is drawn leaving it
@@ -173,10 +173,10 @@ module RayModel =
     let outgoingGroups (p : ElementPlacement) : RayGroupKind list =
         match p.catalogueKind with
         | Detector -> []
-        | FlatMirror | CurvedMirror -> [ Reflected ]
+        | FlatMirror | CurvedMirror -> [ ReflectedRayGroup ]
         // Spec 0046 (operator): a lens and every polarizer carry the transmitted branch only —
         // structurally, as a mirror carries the reflected one, whatever the per-element emission says.
-        | Lens | LinearPolarizer | CircularPolarizer -> [ Transmitted ]
+        | Lens | LinearPolarizer | CircularPolarizer -> [ TransmittedRayGroup ]
         | LightSource
         | Sample -> emittedGroups p.emission
 
@@ -186,8 +186,8 @@ module RayModel =
     /// invent a branch the engine does not compute.
     let toBeamBranch (kind : RayGroupKind) : BeamTree.BeamBranch option =
         match kind with
-        | Reflected -> Some BeamTree.Reflected
-        | Transmitted -> Some BeamTree.Transmitted
+        | ReflectedRayGroup -> Some BeamTree.ReflectedBeam
+        | TransmittedRayGroup -> Some BeamTree.TransmittedBeam
         | Incident -> None
 
     /// The SINGLE outgoing branch the downstream chain follows past an element on one beam (B.3) —
@@ -198,9 +198,9 @@ module RayModel =
     /// emits BOTH would fork the tree; the linear chain follows the transmitted beam where it exists.)
     let primaryBranch (p : ElementPlacement) : BeamTree.BeamBranch =
         let groups = outgoingGroups p
-        if List.contains Transmitted groups then BeamTree.Transmitted
-        elif List.contains Reflected groups then BeamTree.Reflected
-        else BeamTree.Transmitted     // a detector emits nothing; its (unused) branch is transmitted
+        if List.contains TransmittedRayGroup groups then BeamTree.TransmittedBeam
+        elif List.contains ReflectedRayGroup groups then BeamTree.ReflectedBeam
+        else BeamTree.TransmittedBeam     // a detector emits nothing; its (unused) branch is transmitted
 
     /// The absolute `(R2, R3)` that orient a rest element's primary normal N1 (the +X central-ray
     /// direction) along `dir` — so an element with these angles FACES the beam travelling in `dir`. With
@@ -330,8 +330,8 @@ module RayModel =
     let outgoingDirection (branch : BeamTree.BeamBranch) (incoming : Vector3) (p : ElementPlacement) : Vector3 =
         let crossing = crossElement (Vector3.create 0.0 0.0 0.0) incoming (faceNormal incoming p) 0.0<meter>
         match branch with
-        | BeamTree.Reflected -> crossing.reflected
-        | BeamTree.Transmitted -> crossing.transmitted
+        | BeamTree.ReflectedBeam -> crossing.reflected
+        | BeamTree.TransmittedBeam -> crossing.transmitted
 
     // --- Default light-source / detector placement (B.4) ---------------------
 

@@ -19,8 +19,8 @@ module BeamTree =
     /// The two attachment points of a non-mirror element (§A.4 / B.2). A simple
     /// comparable DU so it can key a child-attachment `Map`.
     type BeamBranch =
-        | Reflected
-        | Transmitted
+        | ReflectedBeam
+        | TransmittedBeam
 
     /// NET-NEW validation error DU (§B.3 / R-11). Mirror nodes carry the
     /// reflected branch ONLY; attaching on `Transmitted` is rejected with a
@@ -73,7 +73,7 @@ module BeamTree =
         /// non-mirror, succeed. Immutable: a new parent node is returned.
         static member attach (branch : BeamBranch) (child : BeamNode) (parent : BeamNode) : Result<BeamNode, BeamTreeError> =
             match parent.isMirror, branch with
-            | true, Transmitted -> Error MirrorBranchMustBeReflected
+            | true, TransmittedBeam -> Error MirrorBranchMustBeReflected
             | _ -> Ok { parent with children = parent.children |> Map.add branch child }
 
     /// The beam tree orchestration aggregate: a tree rooted at a single
@@ -97,8 +97,8 @@ module BeamTree =
     /// report independent results.
     let branchEmField (branch : BeamBranch) (ems : EmFieldSystem) : EmField =
         match branch with
-        | Reflected -> ems.reflected
-        | Transmitted -> ems.transmitted
+        | ReflectedBeam -> ems.reflected
+        | TransmittedBeam -> ems.transmitted
 
     /// The incident field driving a child attached on `branch` (§B.4 / AC-B4):
     /// the parent's branch field advanced across the intervening element/gap

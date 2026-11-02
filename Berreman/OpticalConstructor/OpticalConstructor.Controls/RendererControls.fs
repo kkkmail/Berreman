@@ -62,7 +62,7 @@ module RendererControls =
     let clamp01 (x : float) : float = max 0.0 (min 1.0 x)
 
     /// The renderer config the screen draws with — the on-screen knobs, all serializable.
-    type State =
+    type RendererControlsState =
         {
             kind : RendererKind
             rails : int
@@ -73,7 +73,7 @@ module RendererControls =
             lineOpacity : float
         }
 
-    let defaultState : State =
+    let defaultState : RendererControlsState =
         {
             kind = Wireframe
             rails = defaultRails
@@ -85,19 +85,19 @@ module RendererControls =
         }
 
     // Pure updaters, so a host's `update` just delegates (and the values always stay valid).
-    let swap (s : State) : State = { s with kind = nextRenderer s.kind }
-    let withRails (n : int) (s : State) : State = { s with rails = snapRails n }
-    let withRailsIndex (i : int) (s : State) : State = { s with rails = railsAtIndex i }
-    let withCircles (n : int) (s : State) : State = { s with circles = max capCirclesMin (min capCirclesMax n) }
-    let withRadials (n : int) (s : State) : State = { s with radials = snapRadials n }
-    let withRadialsIndex (i : int) (s : State) : State = { s with radials = radialsAtIndex i }
-    let withRailOpacity (v : float) (s : State) : State = { s with railOpacity = clamp01 v }
-    let withFaceOpacity (v : float) (s : State) : State = { s with faceOpacity = clamp01 v }
-    let withLineOpacity (v : float) (s : State) : State = { s with lineOpacity = clamp01 v }
+    let swap (s : RendererControlsState) : RendererControlsState = { s with kind = nextRenderer s.kind }
+    let withRails (n : int) (s : RendererControlsState) : RendererControlsState = { s with rails = snapRails n }
+    let withRailsIndex (i : int) (s : RendererControlsState) : RendererControlsState = { s with rails = railsAtIndex i }
+    let withCircles (n : int) (s : RendererControlsState) : RendererControlsState = { s with circles = max capCirclesMin (min capCirclesMax n) }
+    let withRadials (n : int) (s : RendererControlsState) : RendererControlsState = { s with radials = snapRadials n }
+    let withRadialsIndex (i : int) (s : RendererControlsState) : RendererControlsState = { s with radials = radialsAtIndex i }
+    let withRailOpacity (v : float) (s : RendererControlsState) : RendererControlsState = { s with railOpacity = clamp01 v }
+    let withFaceOpacity (v : float) (s : RendererControlsState) : RendererControlsState = { s with faceOpacity = clamp01 v }
+    let withLineOpacity (v : float) (s : RendererControlsState) : RendererControlsState = { s with lineOpacity = clamp01 v }
 
     /// The behaviour the bar drives — a record of functions injected by the host (the functional-proxy
     /// seam; a test substitutes stubs).
-    type Handlers =
+    type RendererControlsHandlers =
         {
             swap : unit -> unit
             setRailsIndex : int -> unit
@@ -189,7 +189,7 @@ module RendererControls =
 
     /// The renderer control — swap + the cap / rail / transparency knobs, as a compact self-contained
     /// unit (a Bay's content). The yellow / blue normals are never transparency-controlled.
-    let view (state : State) (handlers : Handlers) : IView =
+    let rendererControlsView (state : RendererControlsState) (handlers : RendererControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 6.0

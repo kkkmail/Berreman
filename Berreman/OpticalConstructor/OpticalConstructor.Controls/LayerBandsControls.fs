@@ -26,13 +26,13 @@ module LayerBandsControls =
 
     /// The bay's pure state: a "what it is" headline and the bands to draw (empty when nothing is selected
     /// or the selected element has no layered sample bound).
-    type State =
+    type LayerBandsControlsState =
         {
             title : string
             bands : Band list
         }
 
-    let empty : State =
+    let emptyLayerBandsControls : LayerBandsControlsState =
         {
             title = ""
             bands = []
@@ -84,7 +84,7 @@ module LayerBandsControls =
     /// The Layer-Bands view — a titled vertical stack of bands (in a `ScrollViewer` for tall stacks). When
     /// there are no bands it shows just the title (the host supplies a hint title for the empty / no-layers
     /// case), so the view is always renderable.
-    let view (state : State) : IView =
+    let layerBandsControlsView (state : LayerBandsControlsState) : IView =
         let maxWeight =
             match state.bands with
             | [] -> 1.0

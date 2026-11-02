@@ -85,7 +85,7 @@ module SeedingProxyTests =
         // Each channel received EXACTLY its seed list — same count, same instances, in order.
         assertPushedInOrder "categories" standardCategories r.categories
         assertPushedInOrder "materials" builtInEntries r.materials
-        assertPushedInOrder "samples" SeedSamples.all r.samples
+        assertPushedInOrder "samples" SeedSamples.allSeedSamples r.samples
         assertPushedInOrder "entries" seedEntries r.entries
 
         // The global tape proves the cross-channel order: all categories, then all materials, then all
@@ -94,7 +94,7 @@ module SeedingProxyTests =
             [
                 yield! List.replicate (List.length standardCategories) CategoryChannel
                 yield! List.replicate (List.length builtInEntries) MaterialChannel
-                yield! List.replicate (List.length SeedSamples.all) SampleChannel
+                yield! List.replicate (List.length SeedSamples.allSeedSamples) SampleChannel
                 yield! List.replicate (List.length seedEntries) EntryChannel
             ]
         Assert.Equal<Channel list>(expectedOrder, List.ofSeq r.order)

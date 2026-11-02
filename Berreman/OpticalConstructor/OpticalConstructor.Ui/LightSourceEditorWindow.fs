@@ -15,9 +15,9 @@ open OpticalConstructor.Domain.Library
 type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorView.SourceEditorIntent) as this =
     inherit HostWindow()
 
-    let mutable dispatch : LightSourceEditorView.Msg -> unit = ignore
+    let mutable dispatch : LightSourceEditorView.LightSourceEditorMsg -> unit = ignore
     // The latest model, mirrored on every step — the `OnClosing` chrome gate reads dirtiness off it.
-    let mutable latestModel : LightSourceEditorView.Model option = None
+    let mutable latestModel : LightSourceEditorView.LightSourceEditorModel option = None
 
     do
         this.Title <-
@@ -35,12 +35,12 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
                 sources = sources
                 requestClose = fun () -> this.Close()
             }
-        let initModel = LightSourceEditorView.init context intent
+        let initModel = LightSourceEditorView.initLightSourceEditor context intent
         latestModel <- Some initModel
         Program.mkProgram
             (fun () -> initModel, Cmd.ofEffect (fun d -> dispatch <- d))
-            (fun msg m -> let next = LightSourceEditorView.update msg m in latestModel <- Some next; next, Cmd.none)
-            LightSourceEditorView.view
+            (fun msg m -> let next = LightSourceEditorView.updateLightSourceEditor msg m in latestModel <- Some next; next, Cmd.none)
+            LightSourceEditorView.lightSourceEditorView
         |> Program.withHost this
         |> Program.run
 
@@ -48,8 +48,8 @@ type LightSourceEditorWindow(sources : SourceProxy, intent : LightSourceEditorVi
     /// dirty editor must NOT close through the chrome; false when the close may proceed.
     member _.ChromeCloseIntercepted() : bool =
         match latestModel with
-        | Some m when LightSourceEditorView.isDirty m ->
-            dispatch LightSourceEditorView.CancelClicked
+        | Some m when LightSourceEditorView.isLightSourceEditorDirty m ->
+            dispatch LightSourceEditorView.LightSourceCancelClicked
             true
         | _ -> false
 

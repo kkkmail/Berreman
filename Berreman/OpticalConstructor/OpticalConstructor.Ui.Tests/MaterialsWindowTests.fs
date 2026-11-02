@@ -195,10 +195,10 @@ module MaterialsWindowTests =
             }
         calls, context
 
-    let private freshModel () : ResizeArray<string> * MW.Model =
+    let private freshModel () : ResizeArray<string> * MW.MaterialsWindowModel =
         let materials, _, categories = freshStores ()
         let calls, context = stubContext materials categories
-        calls, MW.init context Browse
+        calls, MW.initMaterialsWindow context Browse
 
     /// A recording Select-session context (spec 0038 step 016): `onSelected` tags the chosen
     /// material id, `onCancelled` tags the cancel — the window guarantees exactly one fires.
@@ -221,7 +221,7 @@ module MaterialsWindowTests =
         | Ok () -> ()
         | Error e -> Assert.Fail($"rename failed: %A{e}")
 
-    let private filteredIds (m : MW.Model) : MaterialId list =
+    let private filteredIds (m : MW.MaterialsWindowModel) : MaterialId list =
         MW.filteredEntries m |> List.map (fun e -> e.id)
 
     // ============================ pure: ids contract ============================
@@ -277,18 +277,18 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``the committed text filter narrows the corpus and echoes as the box draft`` () =
         let _, m = freshModel ()
-        let narrowed = MW.update (MW.CommitTextFilter "glass") m
+        let narrowed = MW.updateMaterialsWindow (MW.CommitTextFilter "glass") m
         Assert.Equal(4, List.length (MW.filteredEntries narrowed))
         Assert.Contains(MaterialIds.glass152, filteredIds narrowed)
         Assert.DoesNotContain(MaterialIds.silicon, filteredIds narrowed)
         Assert.Equal("glass", (MW.facetedState narrowed).filterDraft)
-        let restored = MW.update (MW.CommitTextFilter "") narrowed
+        let restored = MW.updateMaterialsWindow (MW.CommitTextFilter "") narrowed
         Assert.Equal(12, List.length (MW.filteredEntries restored))
 
     [<Fact>]
     let ``applying a facet constraint narrows the corpus and takes a removable breadcrumb chip with its after-count`` () =
         let _, m = freshModel ()
-        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
+        let constrained = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
         Assert.Equal(4, List.length (MW.filteredEntries constrained))
         Assert.Contains(MaterialIds.langasite, filteredIds constrained)
         let chips = (MW.facetedState constrained).breadcrumbs
@@ -297,11 +297,11 @@ module MaterialsWindowTests =
         Assert.Equal("Category: Crystal", (List.head chips).label)
         Assert.Equal(4, (List.head chips).afterCount)
         // Facet constraints AND the text filter compose: no glass is a crystal.
-        let composed = MW.update (MW.CommitTextFilter "glass") constrained
+        let composed = MW.updateMaterialsWindow (MW.CommitTextFilter "glass") constrained
         Assert.Empty(MW.filteredEntries composed)
         Assert.Equal(0, (MW.facetedState composed).resultCount)
         // Removing the chip restores (the text filter stays applied).
-        let removed = MW.update (MW.RemoveFacet materialCategoryKey) composed
+        let removed = MW.updateMaterialsWindow (MW.RemoveFacet materialCategoryKey) composed
         Assert.Equal(4, List.length (MW.filteredEntries removed))
         Assert.Empty((MW.facetedState removed).breadcrumbs)
 
@@ -310,8 +310,8 @@ module MaterialsWindowTests =
         let _, m = freshModel ()
         let replaced =
             m
-            |> MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"))
-            |> MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Glass"))
+            |> MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"))
+            |> MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Glass"))
         let chips = (MW.facetedState replaced).breadcrumbs
         Assert.Equal(1, List.length chips)
         Assert.Equal("Category: Glass", (List.head chips).label)
@@ -322,8 +322,8 @@ module MaterialsWindowTests =
     let ``a category renamed through the proxy re-labels the category facet in the next projection`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
-        let m = MW.init context Browse
-        let valueKeysOf (state : FacetedTreeControls.State) : string list =
+        let m = MW.initMaterialsWindow context Browse
+        let valueKeysOf (state : FacetedTreeControls.FacetedTreeControlsState) : string list =
             state.offers
             |> List.find (fun g -> g.code = materialCategoryKey.value)
             |> fun g -> g.values |> List.map (fun v -> v.code)
@@ -339,15 +339,15 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``facets vanish from the offers when constrained or inapplicable to the whole filtered population`` () =
         let _, m = freshModel ()
-        let offerCodes (model : MW.Model) : string list =
+        let offerCodes (model : MW.MaterialsWindowModel) : string list =
             (MW.facetedState model).offers |> List.map (fun g -> g.code)
         // A constrained facet leaves the offers (its chip is the removal surface).
-        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
+        let constrained = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
         Assert.DoesNotContain(materialCategoryKey.value, offerCodes constrained)
         // A facet inapplicable to every filtered item vanishes entirely: constant materials
         // carry no dispersive-eps segments, so the dispersion-model facet is gone — while
         // transparency (constant materials with value trees) stays offered.
-        let constant = MW.update (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Constant")) m
+        let constant = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Constant")) m
         Assert.DoesNotContain(materialDispersionModelKey.value, offerCodes constant)
         Assert.Contains(materialTransparencyKey.value, offerCodes constant)
 
@@ -357,13 +357,13 @@ module MaterialsWindowTests =
     let ``Remove is confirm-gated: request arms with the id, cancel disarms, nothing is removed; no selection is inert`` () =
         let _, m = freshModel ()
         // No selection → the request is inert.
-        Assert.Equal(MW.NoPendingRemove, (MW.update MW.RequestRemoveSelected m).removeGate)
+        Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow MW.RequestRemoveSelected m).removeGate)
         let armed =
             m
-            |> MW.update (MW.SelectEntry MaterialIds.glass200)
-            |> MW.update MW.RequestRemoveSelected
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200)
+            |> MW.updateMaterialsWindow MW.RequestRemoveSelected
         Assert.Equal(MW.PendingRemove MaterialIds.glass200, armed.removeGate)
-        let cancelled = MW.update MW.CancelRemove armed
+        let cancelled = MW.updateMaterialsWindow MW.CancelRemove armed
         Assert.Equal(MW.NoPendingRemove, cancelled.removeGate)
         Assert.Equal(12, List.length (MW.filteredEntries cancelled))
 
@@ -372,10 +372,10 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
         let refused =
-            MW.init context Browse
-            |> MW.update (MW.SelectEntry MaterialIds.glass152)
-            |> MW.update MW.RequestRemoveSelected
-            |> MW.update MW.ConfirmRemove
+            MW.initMaterialsWindow context Browse
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152)
+            |> MW.updateMaterialsWindow MW.RequestRemoveSelected
+            |> MW.updateMaterialsWindow MW.ConfirmRemove
         match refused.lastError with
         | Some (MaterialStillReferenced reason) ->
             Assert.Contains("still referenced", reason)
@@ -393,10 +393,10 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
         let removed =
-            MW.init context Browse
-            |> MW.update (MW.SelectEntry MaterialIds.glass200)
-            |> MW.update MW.RequestRemoveSelected
-            |> MW.update MW.ConfirmRemove
+            MW.initMaterialsWindow context Browse
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200)
+            |> MW.updateMaterialsWindow MW.RequestRemoveSelected
+            |> MW.updateMaterialsWindow MW.ConfirmRemove
         match removed.lastError with
         | None -> ()
         | Some e -> Assert.Fail($"expected no error, got %A{e}")
@@ -410,12 +410,12 @@ module MaterialsWindowTests =
     let ``a query or selection change disarms a pending remove`` () =
         let armed () =
             let _, m = freshModel ()
-            m |> MW.update (MW.SelectEntry MaterialIds.glass152) |> MW.update MW.RequestRemoveSelected
-        Assert.Equal(MW.NoPendingRemove, (MW.update (MW.CommitTextFilter "si") (armed ())).removeGate)
-        Assert.Equal(MW.NoPendingRemove, (MW.update (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Dispersive")) (armed ())).removeGate)
-        Assert.Equal(MW.NoPendingRemove, (MW.update (MW.RemoveFacet materialDispersionKey) (armed ())).removeGate)
+            m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) |> MW.updateMaterialsWindow MW.RequestRemoveSelected
+        Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.CommitTextFilter "si") (armed ())).removeGate)
+        Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.ApplyFacetValue (materialDispersionKey, DiscreteKey "Dispersive")) (armed ())).removeGate)
+        Assert.Equal(MW.NoPendingRemove, (MW.updateMaterialsWindow (MW.RemoveFacet materialDispersionKey) (armed ())).removeGate)
         // A re-selection re-targets the verbs AND disarms.
-        let retargeted = MW.update (MW.SelectEntry MaterialIds.silicon) (armed ())
+        let retargeted = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) (armed ())
         Assert.Equal(Some MaterialIds.silicon, retargeted.selectedId)
         Assert.Equal(MW.NoPendingRemove, retargeted.removeGate)
 
@@ -424,18 +424,18 @@ module MaterialsWindowTests =
         let _, m = freshModel ()
         let refused =
             m
-            |> MW.update (MW.SelectEntry MaterialIds.glass152)
-            |> MW.update MW.RequestRemoveSelected
-            |> MW.update MW.ConfirmRemove
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152)
+            |> MW.updateMaterialsWindow MW.RequestRemoveSelected
+            |> MW.updateMaterialsWindow MW.ConfirmRemove
         match refused.lastError with
         | Some (MaterialStillReferenced _) -> ()
         | other -> Assert.Fail($"expected MaterialStillReferenced, got %A{other}")
-        let cancelled = MW.update MW.CancelRemove refused
+        let cancelled = MW.updateMaterialsWindow MW.CancelRemove refused
         Assert.Equal(MW.NoPendingRemove, cancelled.removeGate)
         match cancelled.lastError with
         | Some _ -> ()
         | None -> Assert.Fail "the refusal must stay visible after a mere cancel"
-        Assert.Equal(None, (MW.update (MW.CommitTextFilter "si") cancelled).lastError)
+        Assert.Equal(None, (MW.updateMaterialsWindow (MW.CommitTextFilter "si") cancelled).lastError)
 
     [<Fact>]
     let ``Add mints a fresh upfront id per dispatch and reaches the launcher`` () =
@@ -443,8 +443,8 @@ module MaterialsWindowTests =
         // entity's Guid AT the window-open dispatch, so every Add opens its own
         // registry-keyed editor (the recorded call carries the minted id).
         let calls, m = freshModel ()
-        MW.update MW.AddMaterial m |> ignore
-        MW.update MW.AddMaterial m |> ignore
+        MW.updateMaterialsWindow MW.AddMaterial m |> ignore
+        MW.updateMaterialsWindow MW.AddMaterial m |> ignore
         match calls |> Seq.filter (fun c -> c.StartsWith "material-add:") |> List.ofSeq with
         | [ a; b ] -> Assert.NotEqual<string>(a, b)
         | other -> Assert.Fail($"expected two material Adds, got %A{other}")
@@ -453,24 +453,24 @@ module MaterialsWindowTests =
     let ``Edit reaches the launcher only for an EDITABLE selection and Categories is a pure launch`` () =
         let calls, m = freshModel ()
         // Edit on an editable selection carries the resolved entry.
-        m |> MW.update (MW.SelectEntry MaterialIds.glass152) |> MW.update MW.EditSelected |> ignore
+        m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) |> MW.updateMaterialsWindow MW.EditSelected |> ignore
         Assert.Equal<string list>([ "material-edit:Transparent glass (n = 1.52)" ], List.ofSeq calls)
         calls.Clear()
         // A view-only engine preset (complexity = None) offers no Edit — the dispatch is inert.
-        m |> MW.update (MW.SelectEntry MaterialIds.silicon) |> MW.update MW.EditSelected |> ignore
+        m |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) |> MW.updateMaterialsWindow MW.EditSelected |> ignore
         // No selection is inert too.
-        MW.update MW.EditSelected m |> ignore
+        MW.updateMaterialsWindow MW.EditSelected m |> ignore
         Assert.Empty(calls)
         // Categories… is a pure launch: the model is unchanged and the launcher records it.
-        let after = MW.update MW.OpenCategories m
-        Assert.Equal<MW.Model>(m, after)
+        let after = MW.updateMaterialsWindow MW.OpenCategories m
+        Assert.Equal<MW.MaterialsWindowModel>(m, after)
         Assert.Equal<string list>([ "categories-open" ], List.ofSeq calls)
 
     [<Fact>]
     let ``the view panel target follows the selection and the Edit affordance follows the step-013 complexity`` () =
         let _, m = freshModel ()
         Assert.Equal<MaterialEntry option>(None, MW.selectedEntry m)
-        let glass = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        let glass = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
         match MW.selectedEntry glass with
         | Some entry -> Assert.Equal("Transparent glass (n = 1.52)", entry.name)
         | None -> Assert.Fail "the selected glass entry must resolve"
@@ -478,7 +478,7 @@ module MaterialsWindowTests =
         | Some _ -> ()
         | None -> Assert.Fail "glass152 carries the edit model and must offer Edit"
         // Silicon is a coded engine preset: selectable (the panel shows it) but NOT editable.
-        let silicon = MW.update (MW.SelectEntry MaterialIds.silicon) m
+        let silicon = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.silicon) m
         match MW.selectedEntry silicon, MW.editableSelection silicon with
         | Some _, None -> ()
         | other -> Assert.Fail($"expected a selectable but non-editable preset, got %A{other}")
@@ -492,9 +492,9 @@ module MaterialsWindowTests =
         let _, m = freshModel ()
         let caseInsensitive (a : string) (b : string) : int =
             System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
-        let treeFacetLabels (model : MW.Model) : string list =
+        let treeFacetLabels (model : MW.MaterialsWindowModel) : string list =
             (MW.facetedState model).tree |> List.tail |> List.map (fun n -> n.label)
-        let firstOfferCode (model : MW.Model) : string =
+        let firstOfferCode (model : MW.MaterialsWindowModel) : string =
             (MW.facetedState model).offers |> List.head |> fun g -> g.code
         // The tree's facet groups read alphabetically — NOT in the category-first representation
         // order (Category would otherwise lead, not Anisotropy).
@@ -503,17 +503,17 @@ module MaterialsWindowTests =
         Assert.Equal(materialCategoryKey.value, firstOfferCode m)
         // The physics reshuffle reorders the OFFERS (Anisotropy now leads) but leaves the tree
         // alphabetical and identical.
-        let reshaped = MW.update (MW.ChooseRepresentation "by-physics") m
+        let reshaped = MW.updateMaterialsWindow (MW.ChooseRepresentation "by-physics") m
         Assert.Equal("by-physics", (MW.facetedState reshaped).activeRepresentation)
         Assert.Equal(materialAnisotropyKey.value, firstOfferCode reshaped)
         Assert.Equal<string list>(byCategoryTree, treeFacetLabels reshaped)
         // Search order ≠ representation order: applying a constraint after the reshuffle keeps its
         // chip and count regardless of the active representation.
-        let constrained = MW.update (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) reshaped
+        let constrained = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) reshaped
         Assert.Equal(1, List.length (MW.facetedState constrained).breadcrumbs)
         Assert.Equal(4, (MW.facetedState constrained).resultCount)
         // An unknown code is inert.
-        Assert.Equal<MW.Model>(constrained, MW.update (MW.ChooseRepresentation "no-such") constrained)
+        Assert.Equal<MW.MaterialsWindowModel>(constrained, MW.updateMaterialsWindow (MW.ChooseRepresentation "no-such") constrained)
 
     [<Fact>]
     let ``the projected tree lists entry leaves and facet branches in case-insensitive alphabetical label order`` () =
@@ -591,10 +591,10 @@ module MaterialsWindowTests =
         Assert.Equal(Some MaterialIds.glass152, MW.entryIdOfNodeCode leafCode)
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("facet:" + materialCategoryKey.value))
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("branch:" + materialCategoryKey.value + ":Glass"))
-        let dispatched = ResizeArray<MW.Msg>()
+        let dispatched = ResizeArray<MW.MaterialsWindowMsg>()
         let handlers = MW.facetedHandlers dispatched.Add
         handlers.selectNode leafCode
-        Assert.Equal<MW.Msg list>([ MW.SelectEntryNode (MaterialIds.glass152, leafCode) ], List.ofSeq dispatched)
+        Assert.Equal<MW.MaterialsWindowMsg list>([ MW.SelectEntryNode (MaterialIds.glass152, leafCode) ], List.ofSeq dispatched)
 
     [<Fact>]
     let ``selecting a material THROUGH a facet branch highlights that branch row, not the corpus-group copy`` () =
@@ -603,7 +603,7 @@ module MaterialsWindowTests =
         // row. The projected `selectedCode` must now be the EXACT clicked node code.
         let _, m = freshModel ()
         let leafCode = "branch:" + materialCategoryKey.value + ":Glass:" + MW.entryNodeCode MaterialIds.glass152
-        let selected = MW.update (MW.SelectEntryNode (MaterialIds.glass152, leafCode)) m
+        let selected = MW.updateMaterialsWindow (MW.SelectEntryNode (MaterialIds.glass152, leafCode)) m
         let state = MW.facetedState selected
         // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<guid>` code.
         Assert.Equal(leafCode, state.selectedCode)
@@ -611,7 +611,7 @@ module MaterialsWindowTests =
         // The domain selection still resolves (the view panel / verbs target the material).
         Assert.Equal(Some MaterialIds.glass152, selected.selectedId)
         // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
-        let viaId = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        let viaId = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
         Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState viaId).selectedCode)
 
     [<Fact>]
@@ -619,7 +619,7 @@ module MaterialsWindowTests =
         // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
         // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
         let _, m = freshModel ()
-        let entriesOf (model : MW.Model) : FacetedTreeControls.TreeNode = List.head (MW.facetedState model).tree
+        let entriesOf (model : MW.MaterialsWindowModel) : FacetedTreeControls.TreeNode = List.head (MW.facetedState model).tree
         // First open: EVERY top-level node (the entries group and every facet group) is CollapsedNode.
         let opened = MW.facetedState m
         for node in opened.tree do
@@ -627,12 +627,12 @@ module MaterialsWindowTests =
         // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
         Assert.Equal(12, List.length (entriesOf m).children)
         // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
-        let expanded = MW.update (MW.ToggleNode "entries") m
+        let expanded = MW.updateMaterialsWindow (MW.ToggleNode "entries") m
         Assert.True(expanded.expandedNodes.isExpanded "entries")
         Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
         Assert.Equal(12, List.length (entriesOf expanded).children)
         // A second toggle collapses it again (persisted, so it survives an unrelated re-projection).
-        let collapsed = MW.update (MW.ToggleNode "entries") expanded
+        let collapsed = MW.updateMaterialsWindow (MW.ToggleNode "entries") expanded
         Assert.False(collapsed.expandedNodes.isExpanded "entries")
         Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
 
@@ -642,17 +642,17 @@ module MaterialsWindowTests =
         // projects it from the Model's already-tracked selection (nothing selected → empty string).
         let _, m = freshModel ()
         Assert.Equal("", (MW.facetedState m).selectedCode)
-        let selected = MW.update (MW.SelectEntry MaterialIds.glass152) m
+        let selected = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
         Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState selected).selectedCode)
         // A re-selection re-targets the highlight in the same projection.
-        let retargeted = MW.update (MW.SelectEntry MaterialIds.glass200) selected
+        let retargeted = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200) selected
         Assert.Equal(MW.entryNodeCode MaterialIds.glass200, (MW.facetedState retargeted).selectedCode)
 
     [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
-        let m = MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse
+        let m = MW.initMaterialsWindow { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse
         let gated = MW.facetedState m
         Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
         // A gated pass projects NO tree at all — the whole point is skipping the heavy render —
@@ -660,7 +660,7 @@ module MaterialsWindowTests =
         Assert.Empty(gated.tree)
         Assert.Equal(12, gated.resultCount)
         Assert.NotEmpty(gated.offers)
-        let shown = MW.facetedState (MW.update MW.RequestTreeBuild m)
+        let shown = MW.facetedState (MW.updateMaterialsWindow MW.RequestTreeBuild m)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, shown.materialization)
         Assert.NotEmpty(shown.tree)
 
@@ -670,14 +670,14 @@ module MaterialsWindowTests =
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "branch:material-category:Crystal")
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entries")
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entry:not-a-guid")
-        let dispatched = ResizeArray<MW.Msg>()
+        let dispatched = ResizeArray<MW.MaterialsWindowMsg>()
         let handlers = MW.facetedHandlers dispatched.Add
         handlers.selectNode (MW.entryNodeCode MaterialIds.glass152)
         handlers.selectNode "branch:material-category:Crystal"
         handlers.selectNode "entries"
         // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
         // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
-        Assert.Equal<MW.Msg list>(
+        Assert.Equal<MW.MaterialsWindowMsg list>(
             [ MW.SelectEntryNode (MaterialIds.glass152, MW.entryNodeCode MaterialIds.glass152) ],
             List.ofSeq dispatched)
         // The offer click lifts its tokens back to elevated engine values at the boundary.
@@ -689,9 +689,9 @@ module MaterialsWindowTests =
     /// Mount the REAL Main workbench MVU loop headless (the MainConstructorWindow shape with
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (materials : MaterialProxy) (samples : SampleProxy) (categories : CategoryProxy) : HostWindow =
-        let model0 = Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        let model0 = Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) Scene.update Scene.mainView
+        Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
         |> Program.withHost window
         |> Program.run
         window.Show()
@@ -901,9 +901,9 @@ module MaterialsWindowTests =
             // composition — the FacetedTreeControlsTests mounting precedent).
             let window = HostWindow(Width = 900.0, Height = 760.0)
             Program.mkSimple
-                (fun () -> MW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse)
-                MW.update
-                MW.view
+                (fun () -> MW.initMaterialsWindow { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse)
+                MW.updateMaterialsWindow
+                MW.materialsWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()
@@ -928,7 +928,7 @@ module MaterialsWindowTests =
             // Mount the REAL MVU loop directly (NOT the auto-expanding helper) so the first render
             // is the collapsed default.
             let window = HostWindow(Width = 900.0, Height = 760.0)
-            Program.mkSimple (fun () -> MW.init context Browse) MW.update MW.view
+            Program.mkSimple (fun () -> MW.initMaterialsWindow context Browse) MW.updateMaterialsWindow MW.materialsWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()
@@ -978,11 +978,11 @@ module MaterialsWindowTests =
 
     /// A fresh SELECT-state model over recording stubs (targeting one sample-layer slot —
     /// the step-019 picking shape).
-    let private freshSelectModel () : ResizeArray<string> * ResizeArray<string> * MW.Model =
+    let private freshSelectModel () : ResizeArray<string> * ResizeArray<string> * MW.MaterialsWindowModel =
         let materials, _, categories = freshStores ()
         let calls, context = stubContext materials categories
         let events, selectCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
-        events, calls, MW.init context (Select selectCtx)
+        events, calls, MW.initMaterialsWindow context (Select selectCtx)
 
     [<Fact>]
     let ``Select state keeps the WHOLE material corpus — the kind constraint is structural, no breadcrumb chip`` () =
@@ -998,43 +998,43 @@ module MaterialsWindowTests =
     [<Fact>]
     let ``ConfirmSelect returns the HIGHLIGHTED material through onSelected and closes — no highlight is inert`` () =
         let events, calls, m = freshSelectModel ()
-        Assert.Equal<MW.Model>(m, MW.update MW.ConfirmSelect m)
+        Assert.Equal<MW.MaterialsWindowModel>(m, MW.updateMaterialsWindow MW.ConfirmSelect m)
         Assert.Empty(events)
         let resolved =
             m
-            |> MW.update (MW.SelectEntry MaterialIds.glass152)
-            |> MW.update MW.ConfirmSelect
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152)
+            |> MW.updateMaterialsWindow MW.ConfirmSelect
         Assert.Equal<string list>([ $"selected:{MaterialIds.glass152.value}" ], List.ofSeq events)
         Assert.Contains("close-requested", calls)
         Assert.Equal<LibraryWindowMode<MaterialEntry>>(Browse, resolved.mode)
         // A dismissal after the resolve is a no-op — onSelected and onCancelled never both fire.
-        MW.update MW.SelectDismissed resolved |> ignore
+        MW.updateMaterialsWindow MW.SelectDismissed resolved |> ignore
         Assert.Equal<string list>([ $"selected:{MaterialIds.glass152.value}" ], List.ofSeq events)
         // Browse-mode Confirm/Cancel are inert (the pair does not exist there).
         let _, browse = freshModel ()
-        Assert.Equal<MW.Model>(browse, MW.update MW.ConfirmSelect browse)
-        Assert.Equal<MW.Model>(browse, MW.update MW.CancelSelect browse)
+        Assert.Equal<MW.MaterialsWindowModel>(browse, MW.updateMaterialsWindow MW.ConfirmSelect browse)
+        Assert.Equal<MW.MaterialsWindowModel>(browse, MW.updateMaterialsWindow MW.CancelSelect browse)
 
     [<Fact>]
     let ``CancelSelect cancels once and a re-target supersedes the first session`` () =
         let events, calls, m = freshSelectModel ()
-        let cancelled = MW.update MW.CancelSelect m
+        let cancelled = MW.updateMaterialsWindow MW.CancelSelect m
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         Assert.Contains("close-requested", calls)
-        MW.update MW.SelectDismissed cancelled |> ignore
+        MW.updateMaterialsWindow MW.SelectDismissed cancelled |> ignore
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         // Re-target: the superseded session cancels, the highlight clears, the new session
         // resolves through the NEW context (a second Choose closes the first, logically).
         let events1, _, m1 = freshSelectModel ()
-        let highlighted = MW.update (MW.SelectEntry MaterialIds.glass152) m1
+        let highlighted = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m1
         let events2, retargetCtx = selectContext Sample (SampleLayerTarget (AtSingleLayer 1))
-        let retargeted = MW.update (MW.RetargetSelect retargetCtx) highlighted
+        let retargeted = MW.updateMaterialsWindow (MW.RetargetSelect retargetCtx) highlighted
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events1)
         Assert.Empty(events2)
         Assert.Equal<MaterialId option>(None, retargeted.selectedId)
         retargeted
-        |> MW.update (MW.SelectEntry MaterialIds.glass200)
-        |> MW.update MW.ConfirmSelect
+        |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200)
+        |> MW.updateMaterialsWindow MW.ConfirmSelect
         |> ignore
         Assert.Equal<string list>([ $"selected:{MaterialIds.glass200.value}" ], List.ofSeq events2)
 
@@ -1052,7 +1052,7 @@ module MaterialsWindowTests =
     /// Mount the REAL Sample-editor MVU loop headless WITH a captured dispatch, so a Materials
     /// Select window's onSelected can dispatch the TARGETED `BindMaterialToLayer` into the live
     /// editor loop (the step-019 picking shape, driven end-to-end here).
-    let private mountEditorWithDispatch (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorView.SampleEditorIntent) : HostWindow * (SampleEditorView.Msg -> unit) =
+    let private mountEditorWithDispatch (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorView.SampleEditorIntent) : HostWindow * (SampleEditorView.SampleEditorMsg -> unit) =
         let materialList =
             match materials.listMaterials ActiveOnly with
             | Ok entries -> entries
@@ -1065,11 +1065,11 @@ module MaterialsWindowTests =
                 requestClose = fun () -> ()
             }
         let window = HostWindow(Width = 1100.0, Height = 760.0)
-        let mutable dispatchRef : SampleEditorView.Msg -> unit = ignore
+        let mutable dispatchRef : SampleEditorView.SampleEditorMsg -> unit = ignore
         Program.mkProgram
-            (fun () -> SampleEditorView.init context materialList intent, Cmd.ofEffect (fun d -> dispatchRef <- d))
-            (fun msg m -> SampleEditorView.update msg m, Cmd.none)
-            SampleEditorView.view
+            (fun () -> SampleEditorView.initSampleEditor context materialList intent, Cmd.ofEffect (fun d -> dispatchRef <- d))
+            (fun msg m -> SampleEditorView.updateSampleEditor msg m, Cmd.none)
+            SampleEditorView.sampleEditorView
         |> Program.withHost window
         |> Program.run
         window.Show()
@@ -1150,7 +1150,7 @@ module MaterialsWindowTests =
             let sceneMaterials = MaterialProxy.createInMemory (samplesReferencing sceneSamples) VersionsInUse.empty
             let sceneCategories = CategoryProxy.createInMemory (materialsReferencingCategory sceneMaterials)
             let model0 =
-                Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) sceneMaterials sceneSamples sceneCategories
+                Scene.initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) sceneMaterials sceneSamples sceneCategories
             let session : Scene.SelectSession =
                 {
                     target = elementId "det"
@@ -1159,7 +1159,7 @@ module MaterialsWindowTests =
             let mainWindow = HostWindow(Width = 980.0, Height = 1050.0)
             Program.mkSimple
                 (fun () -> { model0 with selection = Scene.ElementSelected 1; activeSelect = Some session })
-                Scene.update
+                Scene.updateTableAndElementRotation
                 Scene.mainView
             |> Program.withHost mainWindow
             |> Program.run
@@ -1259,10 +1259,10 @@ module MaterialsWindowTests =
         let _, context = stubContext materials categories
         // Mark an UNREFERENCED material (glass200) inactive through the window's own verbs.
         let retired =
-            MW.init context Browse
-            |> MW.update (MW.SelectEntry MaterialIds.glass200)
-            |> MW.update MW.RequestMarkInactive
-            |> MW.update MW.ConfirmLifecycle
+            MW.initMaterialsWindow context Browse
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200)
+            |> MW.updateMaterialsWindow MW.RequestMarkInactive
+            |> MW.updateMaterialsWindow MW.ConfirmLifecycle
         Assert.Equal(MW.NoPendingLifecycle, retired.lifecycleGate)
         // Default scope EXCLUDES it (pickers / facet counts), and the badge count is 1.
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds retired)
@@ -1273,7 +1273,7 @@ module MaterialsWindowTests =
         | Ok (Some entry) -> Assert.Equal(MaterialIds.glass200, entry.id)
         | other -> Assert.Fail($"the retired material's version must still resolve, got %A{other}")
         // The toggle reveals it, badged, in the tree.
-        let shown = MW.update MW.ToggleShowInactive retired
+        let shown = MW.updateMaterialsWindow MW.ToggleShowInactive retired
         Assert.Equal(IncludeInactive, shown.showInactive)
         Assert.Contains(MaterialIds.glass200, filteredIds shown)
         Assert.Equal(12, (MW.facetedState shown).resultCount)
@@ -1283,36 +1283,36 @@ module MaterialsWindowTests =
             |> fun entries -> entries.children |> List.find (fun n -> n.code = MW.entryNodeCode MaterialIds.glass200)
         Assert.Contains("inactive", leaf.label)
         // A second toggle hides them again.
-        Assert.Equal(ActiveOnly, (MW.update MW.ToggleShowInactive shown).showInactive)
+        Assert.Equal(ActiveOnly, (MW.updateMaterialsWindow MW.ToggleShowInactive shown).showInactive)
 
     [<Fact>]
     let ``lifecycle verbs follow the selection's live-retired state, are confirm-gated, and a vanished id surfaces a typed refusal`` () =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
-        let m = MW.init context Browse
+        let m = MW.initMaterialsWindow context Browse
         // No selection → no lifecycle verbs.
         Assert.Empty(MW.offeredLifecycleActions m)
         // An ACTIVE selection offers Mark inactive + Supersede…
-        let selected = MW.update (MW.SelectEntry MaterialIds.glass200) m
+        let selected = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200) m
         Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], MW.offeredLifecycleActions selected)
         // Confirm-gated: Request arms with the id, a query change disarms.
-        let armed = MW.update MW.RequestMarkInactive selected
+        let armed = MW.updateMaterialsWindow MW.RequestMarkInactive selected
         Assert.Equal(MW.PendingLifecycle (MaterialIds.glass200, MW.MarkInactiveAction), armed.lifecycleGate)
-        Assert.Equal(MW.NoPendingLifecycle, (MW.update (MW.CommitTextFilter "x") armed).lifecycleGate)
+        Assert.Equal(MW.NoPendingLifecycle, (MW.updateMaterialsWindow (MW.CommitTextFilter "x") armed).lifecycleGate)
         // Confirm retires it; the SAME selection now offers Mark active alone.
-        let retired = MW.update MW.ConfirmLifecycle armed
+        let retired = MW.updateMaterialsWindow MW.ConfirmLifecycle armed
         Assert.Equal<MW.LifecycleAction list>([ MW.MarkActiveAction ], MW.offeredLifecycleActions retired)
         // Mark active revives it (back in the active listing).
-        let revived = retired |> MW.update MW.RequestMarkActive |> MW.update MW.ConfirmLifecycle
+        let revived = retired |> MW.updateMaterialsWindow MW.RequestMarkActive |> MW.updateMaterialsWindow MW.ConfirmLifecycle
         Assert.Contains(MaterialIds.glass200, filteredIds revived)
         Assert.Equal<MW.LifecycleAction list>([ MW.MarkInactiveAction; MW.SupersedeAction ], MW.offeredLifecycleActions revived)
         // A vanished id: arm, remove the material behind the window's back, then confirm → the
         // typed store refusal surfaces inline and nothing is silently swallowed.
-        let armedAgain = revived |> MW.update MW.RequestSupersede
+        let armedAgain = revived |> MW.updateMaterialsWindow MW.RequestSupersede
         match materials.removeMaterial MaterialIds.glass200 with
         | Ok () -> ()
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
-        let refused = MW.update MW.ConfirmLifecycle armedAgain
+        let refused = MW.updateMaterialsWindow MW.ConfirmLifecycle armedAgain
         match refused.lastError with
         | Some (UnknownMaterialId reason) -> Assert.Contains("unknown material id", reason)
         | other -> Assert.Fail($"expected UnknownMaterialId, got %A{other}")
@@ -1322,10 +1322,10 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         let _, context = stubContext materials categories
         let superseded =
-            MW.init context Browse
-            |> MW.update (MW.SelectEntry MaterialIds.glass200)
-            |> MW.update MW.RequestSupersede
-            |> MW.update MW.ConfirmLifecycle
+            MW.initMaterialsWindow context Browse
+            |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200)
+            |> MW.updateMaterialsWindow MW.RequestSupersede
+            |> MW.updateMaterialsWindow MW.ConfirmLifecycle
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds superseded)
         // Still resolvable by version (superseded behaves as inactive — steps 021/022).
         match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
@@ -1337,15 +1337,15 @@ module MaterialsWindowTests =
         let materials, _, categories = freshStores ()
         // Retire glass200 through a Browse window over the SHARED store…
         let _, browseCtx = stubContext materials categories
-        MW.init browseCtx Browse
-        |> MW.update (MW.SelectEntry MaterialIds.glass200)
-        |> MW.update MW.RequestMarkInactive
-        |> MW.update MW.ConfirmLifecycle
+        MW.initMaterialsWindow browseCtx Browse
+        |> MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200)
+        |> MW.updateMaterialsWindow MW.RequestMarkInactive
+        |> MW.updateMaterialsWindow MW.ConfirmLifecycle
         |> ignore
         // …a Select-state window over the SAME store no longer offers it (Select forces ActiveOnly).
         let _, selectCtx = stubContext materials categories
         let events, selection = selectContext Sample (SampleLayerTarget (AtSingleLayer 0))
-        let selectModel = MW.init selectCtx (Select selection)
+        let selectModel = MW.initMaterialsWindow selectCtx (Select selection)
         ignore events
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds selectModel)
         Assert.Equal(11, (MW.facetedState selectModel).resultCount)
@@ -1359,7 +1359,7 @@ module MaterialsWindowTests =
         let id, _, v2, materials = twoVersionMaterials ()
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         let _, context = stubContext materials categories
-        let selected = MW.init context Browse |> MW.update (MW.SelectEntry id)
+        let selected = MW.initMaterialsWindow context Browse |> MW.updateMaterialsWindow (MW.SelectEntry id)
         // Both versions are enumerated (ascending), and the default view is the LATEST.
         Assert.Equal<int list>([ 1; 2 ], MW.selectedVersions selected |> List.map (fun (v, _) -> v.value))
         Assert.Equal<VersionNumber option>(None, selected.viewedVersion)
@@ -1368,10 +1368,10 @@ module MaterialsWindowTests =
         | Some entry -> Assert.Equal(v2.name, entry.name)
         | None -> Assert.Fail "the latest version must remain editable"
         // Viewing an OLDER version records it; the latest is not "older".
-        let older = MW.update (MW.ViewVersion (VersionNumber 1)) selected
+        let older = MW.updateMaterialsWindow (MW.ViewVersion (VersionNumber 1)) selected
         Assert.Equal<VersionNumber option>(Some (VersionNumber 1), older.viewedVersion)
         // A new selection resets the view back to the latest.
-        Assert.Equal<VersionNumber option>(None, (MW.update (MW.SelectEntry id) older).viewedVersion)
+        Assert.Equal<VersionNumber option>(None, (MW.updateMaterialsWindow (MW.SelectEntry id) older).viewedVersion)
 
     // ============================ step 023 — lifecycle (headless) ============================
 
@@ -1411,7 +1411,7 @@ module MaterialsWindowTests =
             // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree
             // mounting precedent) so the version-row clicks drive the pure update.
             let window = HostWindow(Width = 900.0, Height = 760.0)
-            Program.mkSimple (fun () -> MW.init context Browse) MW.update MW.view
+            Program.mkSimple (fun () -> MW.initMaterialsWindow context Browse) MW.updateMaterialsWindow MW.materialsWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()

@@ -47,7 +47,7 @@ type CategoryEditorContext =
 /// — the context carries function fields (no structural equality) and `update` returns a fresh
 /// record anyway, so the Elmish equality gate re-renders on every dispatch.
 [<ReferenceEquality>]
-type Model =
+type CategoryEditorModel =
     {
         context : CategoryEditorContext
         editor : CategoryEditState
@@ -59,11 +59,11 @@ type Model =
         blockMessage : string
     }
 
-type Msg =
+type CategoryEditorMsg =
     /// Begin an inline add — the step-4 `BeginAddCategory` (mints the id, a blank row).
     | BeginAdd
     /// A row's inline name box changed — the step-4 `SetCategoryName (id, newName)`.
-    | SetName of categoryId : CategoryId * name : string
+    | SetCategoryEditorName of categoryId : CategoryId * name : string
     /// Commit the row's add (new id) or rename (existing id) through the matching proxy verb.
     | SaveRow of categoryId : CategoryId
     /// The confirm-gated remove (arm, then confirm) — dispatches `removeCategory` on confirm.
@@ -97,7 +97,7 @@ let private currentCategories (context : CategoryEditorContext) : MaterialCatego
 /// Re-open the editor over the proxy's current catalogue — the diff baseline tracks the store, so
 /// a committed add/rename/remove is reflected and a later Save of the same row is a no-op, not a
 /// duplicate. Clears the confirm arm and the block.
-let private reload (m : Model) : Model =
+let private reload (m : CategoryEditorModel) : CategoryEditorModel =
     { m with
         editor = CategoryEditor.init (currentCategories m.context)
         pendingRemove = None
@@ -113,7 +113,7 @@ let private snapshotById (editor : CategoryEditState) (id : CategoryId) : Materi
 /// snapshot is a rename, an unchanged row is a no-op. The name is validated through the shared
 /// `validateCategory`, so a blank name surfaces the typed `InvalidCategory` into the block. On a
 /// successful proxy write the editor is reloaded so the snapshot tracks the store.
-let private saveRow (m : Model) (id : CategoryId) : Model =
+let private saveRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEditorModel =
     match rowById m.editor id with
     | None -> { m with pendingRemove = None }
     | Some row ->
@@ -139,7 +139,7 @@ let private saveRow (m : Model) (id : CategoryId) : Model =
 /// confirm prompt); a second click on the SAME row dispatches `removeCategory`. The store's typed
 /// refusal (`CategoryStillReferenced` / `BuiltInNotRemovable`) is surfaced into the block and the
 /// store is left unchanged; a successful remove reloads the editor.
-let private removeRow (m : Model) (id : CategoryId) : Model =
+let private removeRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEditorModel =
     match m.pendingRemove with
     | Some armed when armed = id ->
         match m.context.categories.removeCategory id with
@@ -156,7 +156,7 @@ let private removeRow (m : Model) (id : CategoryId) : Model =
 
 /// Discard a row's in-progress edit: a freshly-added, unsaved row (absent from the snapshot) is
 /// dropped from the working set; an existing row's name is reset to its persisted value.
-let private cancelRow (m : Model) (id : CategoryId) : Model =
+let private cancelRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEditorModel =
     let editorResult =
         match snapshotById m.editor id with
         | None -> CategoryEditor.applyCategoryMsg (RemoveCategoryRow id) m.editor
@@ -168,7 +168,7 @@ let private cancelRow (m : Model) (id : CategoryId) : Model =
 /// The window-level Save: flush every staged add/rename/remove through the step-4 `commit` diff
 /// (validated there), dispatching each intent to the matching proxy verb and stopping on the first
 /// refusal (surfaced into the block, the window stays open). On a clean flush the window closes.
-let private commitAll (m : Model) : Model =
+let private commitAll (m : CategoryEditorModel) : CategoryEditorModel =
     match CategoryEditor.commit m.editor with
     | Error e -> { m with blockMessage = categoryErrorReason e }
     | Ok intents ->
@@ -190,7 +190,7 @@ let private commitAll (m : Model) : Model =
 // init / update (pure — IO only through the context's proxy fields).
 // ---------------------------------------------------------------------------
 
-let init (context : CategoryEditorContext) : Model =
+let initCategoryEditor (context : CategoryEditorContext) : CategoryEditorModel =
     {
         context = context
         editor = CategoryEditor.init (currentCategories context)
@@ -198,13 +198,13 @@ let init (context : CategoryEditorContext) : Model =
         blockMessage = ""
     }
 
-let update (msg : Msg) (m : Model) : Model =
+let updateCategoryEditor (msg : CategoryEditorMsg) (m : CategoryEditorModel) : CategoryEditorModel =
     match msg with
     | BeginAdd ->
         match CategoryEditor.applyCategoryMsg BeginAddCategory m.editor with
         | Ok editor -> { m with editor = editor; pendingRemove = None; blockMessage = "" }
         | Error e -> { m with blockMessage = categoryErrorReason e }
-    | SetName (id, name) ->
+    | SetCategoryEditorName (id, name) ->
         match CategoryEditor.applyCategoryMsg (SetCategoryName (id, name)) m.editor with
         | Ok editor -> { m with editor = editor; pendingRemove = None; blockMessage = "" }
         | Error _ -> m
@@ -249,7 +249,7 @@ let private actionButton (autoId : string) (label : string) (background : Color)
         Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box autoId))
     ] :> IView
 
-let private saveCancelRow (dispatch : Msg -> unit) : IView =
+let private saveCancelRow (dispatch : CategoryEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
@@ -262,14 +262,14 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
 /// Flatten one working `MaterialCategory` into the domain-free `CategoryControls.Row` (the id in
 /// its string form; `isBuiltIn` marks a `BuiltInCategory` — its Remove verb is omitted by the
 /// control, and the store enforces the actual block).
-let private toRow (c : MaterialCategory) : CategoryControls.Row =
+let private toRow (c : MaterialCategory) : CategoryControls.CategoryControlsRow =
     {
         categoryId = string c.id.value
         name = c.name
         isBuiltIn = (c.origin = BuiltInCategory)
     }
 
-let private toState (m : Model) : CategoryControls.State =
+let private toState (m : CategoryEditorModel) : CategoryControls.CategoryControlsState =
     {
         rows = m.editor.rows |> List.map toRow
         blockMessage = m.blockMessage
@@ -284,8 +284,8 @@ let private toCategoryId (s : string) : CategoryId option =
 
 /// The behaviour injected into `CategoryControls` (the functional-proxy seam): each verb parses
 /// the row id and dispatches the matching `Msg`.
-let private handlers (dispatch : Msg -> unit) : CategoryControls.Handlers =
-    let withId (toMsg : CategoryId -> Msg) (s : string) : unit =
+let private handlers (dispatch : CategoryEditorMsg -> unit) : CategoryControls.CategoryControlsHandlers =
+    let withId (toMsg : CategoryId -> CategoryEditorMsg) (s : string) : unit =
         match toCategoryId s with
         | Some id -> dispatch (toMsg id)
         | None -> ()
@@ -293,7 +293,7 @@ let private handlers (dispatch : Msg -> unit) : CategoryControls.Handlers =
         addCategory = fun () -> dispatch BeginAdd
         setCategoryName = fun s name ->
             match toCategoryId s with
-            | Some id -> dispatch (SetName (id, name))
+            | Some id -> dispatch (SetCategoryEditorName (id, name))
             | None -> ()
         saveCategory = withId SaveRow
         removeCategory = withId RemoveRow
@@ -302,7 +302,7 @@ let private handlers (dispatch : Msg -> unit) : CategoryControls.Handlers =
 
 /// The whole editor: the step-5 `CategoryControls` surface (Add verb, editable list, inline block
 /// slot) filling the centre, with the window-level Save/Cancel row pinned to the bottom.
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let categoryEditorView (m : CategoryEditorModel) (dispatch : CategoryEditorMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [
@@ -312,7 +312,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
             ]
             Border.create [
                 Border.padding (Thickness 8.0)
-                Border.child (CategoryControls.view (toState m) (handlers dispatch))
+                Border.child (CategoryControls.categoryControlsView (toState m) (handlers dispatch))
             ]
         ]
     ] :> IView

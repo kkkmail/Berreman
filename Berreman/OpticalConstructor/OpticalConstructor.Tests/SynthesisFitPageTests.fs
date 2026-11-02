@@ -151,18 +151,18 @@ module SynthesisFitPageTests =
     [<Fact>]
     let ``AC-G7 Cancel is distinct from Start and Revert restores the pre-fit system`` () =
         let (baseSystem, parameters, initial, targets, _, _) = fittedProblem ()
-        let model0 = SynthesisFitPage.init baseSystem parameters initial targets LevenbergMarquardt "C:/work"
+        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt "C:/work"
 
         // Start is one-click and non-destructive: snapshots the pre-fit system and
         // does NOT overwrite the working system.
-        let started = SynthesisFitPage.update SynthesisFitPage.StartFit model0
+        let started = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.StartFit model0
         Assert.True(started.running)
         Assert.Equal<OpticalSystem>(model0.workingSystem, started.workingSystem)
         Assert.Equal(Some model0.workingSystem, started.preFit)
 
         // Cancel is a DISTINCT message from Start; it sets the cooperative flag the
         // G.9 loop observes, and is not the same control as Start.
-        let cancelled = SynthesisFitPage.update SynthesisFitPage.CancelFit started
+        let cancelled = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.CancelFit started
         Assert.True(cancelled.cancelRequested)
         Assert.NotEqual<SynthesisFitPage.Msg>(SynthesisFitPage.StartFit, SynthesisFitPage.CancelFit)
 
@@ -170,16 +170,16 @@ module SynthesisFitPageTests =
         // explicit confirm (Accept is gated, Start is not).
         let candidateSystem = mkSystem 250.0<nm>
         let report = (let (_, _, _, _, _, r) = fittedProblem () in r)
-        let completed = SynthesisFitPage.update (SynthesisFitPage.FitCompleted(candidateSystem, report)) cancelled
+        let completed = SynthesisFitPage.updateSynthesisFit (SynthesisFitPage.FitCompleted(candidateSystem, report)) cancelled
         Assert.False(completed.running)
-        let requested = SynthesisFitPage.update SynthesisFitPage.RequestAccept completed
+        let requested = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.RequestAccept completed
         Assert.True((SynthesisFitPage.acceptConfirmationPrompt requested).IsSome)   // confirm gate
         Assert.Equal<OpticalSystem>(model0.workingSystem, requested.workingSystem)  // not yet replaced
-        let confirmed = SynthesisFitPage.update SynthesisFitPage.ConfirmAccept requested
+        let confirmed = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.ConfirmAccept requested
         Assert.Equal<OpticalSystem>(candidateSystem, confirmed.workingSystem)       // now replaced
 
         // Revert restores the pre-fit working system.
-        let reverted = SynthesisFitPage.update SynthesisFitPage.Revert confirmed
+        let reverted = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.Revert confirmed
         Assert.Equal<OpticalSystem>(model0.workingSystem, reverted.workingSystem)
 
     [<Fact>]
@@ -212,14 +212,14 @@ module SynthesisFitPageTests =
     [<Fact>]
     let ``AC-G8 the fit-vs-measured overlay refreshes from the model on completion without a manual reload`` () =
         let (baseSystem, parameters, initial, targets, refined, report) = fittedProblem ()
-        let model0 = SynthesisFitPage.init baseSystem parameters initial targets LevenbergMarquardt "C:/work"
+        let model0 = SynthesisFitPage.initSynthesisFit baseSystem parameters initial targets LevenbergMarquardt "C:/work"
 
         // No candidate yet: no overlay.
         Assert.True((SynthesisFitPage.comparisonOverlay model0).IsNone)
 
         // Start then complete — the overlay refreshes WITHOUT any extra reload message.
-        let running = SynthesisFitPage.update SynthesisFitPage.StartFit model0
-        let completed = SynthesisFitPage.update (SynthesisFitPage.FitCompleted(refined, report)) running
+        let running = SynthesisFitPage.updateSynthesisFit SynthesisFitPage.StartFit model0
+        let completed = SynthesisFitPage.updateSynthesisFit (SynthesisFitPage.FitCompleted(refined, report)) running
 
         match SynthesisFitPage.comparisonOverlay completed with
         | Some (infos, funcs) ->

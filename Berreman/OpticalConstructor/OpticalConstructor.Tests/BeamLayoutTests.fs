@@ -139,8 +139,8 @@ module BeamLayoutTests =
         | Some dir -> Assert.True(close dir.x 0.0 && close (abs dir.y) 1.0, $"the detector is on the reflected ray ({dir.x}, {dir.y})")
         | None -> Assert.Fail("the detector must receive a beam")
         Assert.Equal<PathStep list>(
-            [ { element = Library.elementId "src"; branch = BeamTree.Transmitted }
-              { element = Library.elementId "m"; branch = BeamTree.Reflected } ],
+            [ { element = Library.elementId "src"; branch = BeamTree.TransmittedBeam }
+              { element = Library.elementId "m"; branch = BeamTree.ReflectedBeam } ],
             det.path)
 
     // --- reflected side beams ------------------------------------------------------------------
@@ -156,9 +156,9 @@ module BeamLayoutTests =
         | Some dir -> Assert.True(areParallel dir crossing.reflected, "the detector receives the sample's reflected ray")
         | None -> Assert.Fail("the reflected detector must receive a beam")
         Assert.True(close ((sub rdet.centre crossing.entry).cross crossing.reflected).norm 0.0, "its centre is on the reflected ray")
-        Assert.Contains({ element = Library.elementId "s"; branch = BeamTree.Reflected }, rdet.path)
+        Assert.Contains({ element = Library.elementId "s"; branch = BeamTree.ReflectedBeam }, rdet.path)
         // The main detector still receives the TRANSMITTED beam.
-        Assert.Contains({ element = Library.elementId "s"; branch = BeamTree.Transmitted }, (placedOf "det" scene).path)
+        Assert.Contains({ element = Library.elementId "s"; branch = BeamTree.TransmittedBeam }, (placedOf "det" scene).path)
 
     [<Fact>]
     let ``a reflected ray with nothing on it is still drawn, open-ended, so there is something to attach to`` () =
@@ -299,7 +299,7 @@ module BeamLayoutTests =
             Assert.True(s.finish.x <= -0.025 + tol && s.start.x <= -0.025 + tol, $"a ray reaches x = {max s.start.x s.finish.x}, behind the first detector")
         // Only the lit detector captures.
         let detectors = [ Library.elementId "det2"; Library.elementId "det" ]
-        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.Transmitted ], detectedBranches scene detectors (Library.elementId "s") (Library.elementId "s"))
+        Assert.Equal<BeamTree.BeamBranch list>([ BeamTree.TransmittedBeam ], detectedBranches scene detectors (Library.elementId "s") (Library.elementId "s"))
         Assert.Empty(detectedBranches scene [ Library.elementId "det" ] (Library.elementId "s") (Library.elementId "s"))
 
     [<Fact>]
@@ -363,20 +363,20 @@ module BeamLayoutTests =
     [<Fact>]
     let ``the ray switches keep both-off unrepresentable and leave mirrors, sources, detectors and reflect-only samples fixed`` () =
         let both = (el "s" Sample 0.0).placement
-        let rOff = toggleRay BeamTree.Reflected EmitBoth both
+        let rOff = toggleRay BeamTree.ReflectedBeam EmitBoth both
         Assert.Equal(EmitTransmittedOnly, rOff.emission)
         // Switching off the LAST ray turns the other one back on.
-        Assert.Equal(EmitReflectedOnly, (toggleRay BeamTree.Transmitted EmitBoth rOff).emission)
-        Assert.Equal(EmitBoth, (toggleRay BeamTree.Reflected EmitBoth rOff).emission)
+        Assert.Equal(EmitReflectedOnly, (toggleRay BeamTree.TransmittedBeam EmitBoth rOff).emission)
+        Assert.Equal(EmitBoth, (toggleRay BeamTree.ReflectedBeam EmitBoth rOff).emission)
         for kind in [ FlatMirror; CurvedMirror; Lens; LinearPolarizer; CircularPolarizer; LightSource; Detector ] do
             let p = (el "x" kind 0.0).placement
-            Assert.Equal(p, toggleRay BeamTree.Reflected EmitBoth p)
+            Assert.Equal(p, toggleRay BeamTree.ReflectedBeam EmitBoth p)
             match rayControlOf EmitBoth p with
             | RaysFixed _ -> ()
             | RaysSwitchable -> Assert.Fail($"%A{kind} rays must be fixed")
         // A sample bound to a ThinFilm is observable in reflection only.
         let film = { (el "s" Sample 0.0).placement with emission = EmitReflectedOnly }
-        Assert.Equal(film, toggleRay BeamTree.Transmitted EmitReflectedOnly film)
+        Assert.Equal(film, toggleRay BeamTree.TransmittedBeam EmitReflectedOnly film)
 
     // --- what the experiments can capture ---------------------------------------------------------
 

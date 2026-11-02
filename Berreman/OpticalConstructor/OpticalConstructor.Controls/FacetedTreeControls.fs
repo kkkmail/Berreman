@@ -110,7 +110,7 @@ module FacetedTreeControls =
 
     /// The control's pure, serializable state — everything the render needs, projected in by the
     /// host on every change (the host owns the engine; the control owns nothing).
-    type State =
+    type FacetedTreeControlsState =
         {
             /// The built tree's top-level nodes (empty until the host materializes one).
             tree : TreeNode list
@@ -136,7 +136,7 @@ module FacetedTreeControls =
             selectedCode : string
         }
 
-    let empty : State =
+    let emptyFacetedTreeControls : FacetedTreeControlsState =
         {
             tree = []
             breadcrumbs = []
@@ -152,7 +152,7 @@ module FacetedTreeControls =
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs). Every
     /// argument is a `State`-supplied stable token (or, for the text boxes, the raw box text) —
     /// the host maps tokens back to its domain values and re-projects a new `State`.
-    type Handlers =
+    type FacetedTreeControlsHandlers =
         {
             /// Apply the offered value as a constraint: the offer group's `code`, the value's `code`.
             applyConstraint : string -> string -> unit
@@ -242,7 +242,7 @@ module FacetedTreeControls =
 
     /// The filter row: a label and the text-filter box. The box shows the host's committed draft
     /// and commits on Enter / blur only.
-    let private filterRow (state : State) (handlers : Handlers) : IView =
+    let private filterRow (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
@@ -262,7 +262,7 @@ module FacetedTreeControls =
     /// active one highlighted.
     /// Spec 0046: a DockPanel, not a horizontal StackPanel — a horizontal stack hands its children an
     /// unbounded width, so the WrapPanel never wrapped and its options ran off the window's right edge.
-    let private representationRow (state : State) (handlers : Handlers) : IView =
+    let private representationRow (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         DockPanel.create [
             DockPanel.children [
                 TextBlock.create [ TextBlock.dock Dock.Left; TextBlock.margin (Thickness(0.0, 0.0, 6.0, 0.0)); TextBlock.text "View by:"; TextBlock.verticalAlignment VerticalAlignment.Center ]
@@ -284,7 +284,7 @@ module FacetedTreeControls =
     /// The breadcrumb strip: the applied constraints in application order, each a removable chip
     /// reading `label (afterCount) ×` — clicking a chip REMOVES its constraint. Chips render
     /// highlighted (they are applied state, not offers).
-    let private breadcrumbStripView (state : State) (handlers : Handlers) : IView =
+    let private breadcrumbStripView (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         WrapPanel.create [
             automationId<WrapPanel> ConstructorUiId.facetBreadcrumbStrip.value
             WrapPanel.orientation Orientation.Horizontal
@@ -299,7 +299,7 @@ module FacetedTreeControls =
         ] :> IView
 
     /// The live result count under everything applied.
-    let private resultCountRow (state : State) : IView =
+    let private resultCountRow (state : FacetedTreeControlsState) : IView =
         TextBlock.create [
             automationId<TextBlock> ConstructorUiId.facetResultCount.value
             TextBlock.text $"%d{state.resultCount} results"
@@ -308,7 +308,7 @@ module FacetedTreeControls =
     /// One offer group: the facet title, its offered values as clickable count-previewed boxes,
     /// and — for numeric groups — the manual min–max box, committing its RAW text on Enter / blur
     /// only (the host parses; an unparseable or empty commit is the host's no-op).
-    let private offerGroupView (handlers : Handlers) (group : OfferGroup) : IView =
+    let private offerGroupView (handlers : FacetedTreeControlsHandlers) (group : OfferGroup) : IView =
         let rangeBox : IView list =
             match group.manualRange with
             | NoManualRange -> []
@@ -347,7 +347,7 @@ module FacetedTreeControls =
         keyedGroup :> IView
 
     /// The offers panel: one row per offer group, facets in display order.
-    let private offersPanelView (state : State) (handlers : Handlers) : IView =
+    let private offersPanelView (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         StackPanel.create [
             automationId<StackPanel> ConstructorUiId.facetOffersPanel.value
             StackPanel.orientation Orientation.Vertical
@@ -372,7 +372,7 @@ module FacetedTreeControls =
     /// cue) so exactly that row reads distinct while every other stays idle. Re-subscribe the
     /// pointer handler when the code OR the selection flag changes so a reused, restyled box cannot
     /// keep a stale handler (the `clickBox` discipline).
-    let rec private nodeRows (handlers : Handlers) (selectedCode : string) (depth : int) (node : TreeNode) : IView list =
+    let rec private nodeRows (handlers : FacetedTreeControlsHandlers) (selectedCode : string) (depth : int) (node : TreeNode) : IView list =
         let isSelected = node.code = selectedCode
         let label =
             Border.create [
@@ -431,7 +431,7 @@ module FacetedTreeControls =
     /// gated, the explicit Show/Search button INSTEAD (zero node rows are generated, whatever
     /// `tree` holds). The two alternatives carry DIFFERENT keys, so the swap recreates cleanly
     /// instead of patching one styled subtree into the other.
-    let private treeArea (state : State) (handlers : Handlers) : IView =
+    let private treeArea (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         match state.materialization with
         | TreeGated ->
             clickBox ConstructorUiId.facetShowTreeButton.value "Show / Search" false (fun () -> handlers.requestBuild ())
@@ -448,7 +448,7 @@ module FacetedTreeControls =
     /// The faceted-tree surface — filter box, representation picker, breadcrumb strip, live
     /// result count, offer groups, and the tree (or its Show/Search gate), top to bottom, all in
     /// ONE ScrollViewer (the tree may span pages).
-    let view (state : State) (handlers : Handlers) : IView =
+    let facetedTreeControlsView (state : FacetedTreeControlsState) (handlers : FacetedTreeControlsHandlers) : IView =
         ScrollViewer.create [
             automationId<ScrollViewer> ConstructorUiId.facetScroll.value
             ScrollViewer.content (

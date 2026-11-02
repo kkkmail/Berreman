@@ -193,9 +193,9 @@ module CurvedElements =
 
         match element with
         | Lens ->
-            zoneNode |> attach BeamBranch.Reflected |> attach BeamBranch.Transmitted
+            zoneNode |> attach BeamBranch.ReflectedBeam |> attach BeamBranch.TransmittedBeam
         | CurvedMirror | FlatMirror ->
-            zoneNode |> attach BeamBranch.Reflected
+            zoneNode |> attach BeamBranch.ReflectedBeam
         | Source | Polarizer | Sample _ | Analyzer | Detector ->
             // Not a curved element; §C.6 fans only Lens/CurvedMirror. No fan added.
             zoneNode

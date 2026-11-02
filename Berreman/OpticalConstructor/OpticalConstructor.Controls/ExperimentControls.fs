@@ -109,7 +109,7 @@ module ExperimentControls =
         }
 
     /// The bay's pure, serializable state.
-    type State =
+    type ExperimentControlsState =
         {
             /// The present elements, each offered as a candidate element-to-vary.
             candidates : SweepCandidate list
@@ -157,7 +157,7 @@ module ExperimentControls =
             psiDelta : (float * float) option
         }
 
-    let empty : State =
+    let emptyExperimentControls : ExperimentControlsState =
         {
             candidates = []
             chosenId = None
@@ -183,7 +183,7 @@ module ExperimentControls =
         }
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs).
-    type Handlers =
+    type ExperimentControlsHandlers =
         {
             /// Pick which present element to vary (by its id).
             chooseElement : string -> unit
@@ -391,7 +391,7 @@ module ExperimentControls =
         |> List.choose id
 
     /// The inline chart Canvas (axes + gridlines + series polylines + axis labels).
-    let private chartCanvas (state : State) : IView =
+    let private chartCanvas (state : ExperimentControlsState) : IView =
         let xr, yr = dataRange state.series
         let children =
             gridLines ()
@@ -406,7 +406,7 @@ module ExperimentControls =
 
     /// The result block under the editor: the ellipsometer single-point Ψ/Δ text when present, plus the
     /// inline chart (double-click opens the pop-out window) and the prose description.
-    let private resultBlock (state : State) (handlers : Handlers) : IView list =
+    let private resultBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
         // Both sub-blocks come and go with the state (variable membership in the bay's child list), so
         // every item is KEYED: when the Ψ/Δ readout toggles and the chart items shift a slot, FuncUI
         // recreates them instead of cross-patching one styled control into another.
@@ -452,7 +452,7 @@ module ExperimentControls =
         psiBlock @ chartBlock
 
     /// The element-selection row (step 1 of the editor).
-    let private elementRow (state : State) (handlers : Handlers) : IView =
+    let private elementRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         WrapPanel.create [
             WrapPanel.name ConstructorUiId.experimentCandidates.value
             WrapPanel.orientation Orientation.Horizontal
@@ -473,7 +473,7 @@ module ExperimentControls =
     /// The variable-selection row (step 2). ALL variable boxes are always present (stable names) and only
     /// the ones the chosen element permits are shown — see `optionBoxV` for why the set is toggled by
     /// visibility rather than by adding / removing boxes.
-    let private variableRow (state : State) (handlers : Handlers) : IView =
+    let private variableRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let hasChoices = not (List.isEmpty state.variableChoices)
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
@@ -505,7 +505,7 @@ module ExperimentControls =
     /// captures they offer are shown, each labelled by what its detector reads (`measurementOffers`); every
     /// box stays at its stable slot and only its visibility flips (the `variableRow` discipline); with none,
     /// a hint says why. The whole row appears only once something to vary is chosen.
-    let private measurementRow (state : State) (handlers : Handlers) : IView =
+    let private measurementRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
         let offerOf (m : MeasurementChoice) : MeasurementOffer option = state.measurementOffers |> List.tryFind (fun o -> o.choice = m)
         let noneOffered = List.isEmpty state.measurementOffers
@@ -564,7 +564,7 @@ module ExperimentControls =
     /// The range inputs (step 3b): min / max (in the variable's unit) and the point count. Always present
     /// (its visibility toggles with whether a variable is chosen) so the bay's child list length stays
     /// stable — a varying list length would shift named controls onto one another's slots (see `optionBoxV`).
-    let private rangeRow (state : State) (handlers : Handlers) : IView =
+    let private rangeRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let hasVariable = match state.chosenVariable with Some _ -> true | None -> false
         let commitFloat (onCommit : float -> unit) (src : obj) : unit =
             match src with
@@ -591,7 +591,7 @@ module ExperimentControls =
     /// Spec 0046: the source-wavelength row — always present (stable slots), shown while the run's source
     /// wavelength is not the varied quantity: a fixed line read only, a tunable source's setting editable
     /// (the host clamps it to the source's limits).
-    let private sourceWaveLengthRow (state : State) (handlers : Handlers) : IView =
+    let private sourceWaveLengthRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let shown, editable, valueText, note =
             match state.sourceWaveLength with
             | NoSourceWaveLength -> false, false, "", ""
@@ -635,7 +635,7 @@ module ExperimentControls =
         ] :> IView
 
     /// The Add / Update + New action row.
-    let private actionRow (state : State) (handlers : Handlers) : IView =
+    let private actionRow (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
@@ -663,7 +663,7 @@ module ExperimentControls =
     /// double-click = View), then a "View" action (open the chart window for this experiment) and a Remove.
     /// The row is KEYED by its experiment id, so removing an item recreates the rows that shift slots
     /// instead of patching one row's controls into another's.
-    let private collectionRow (handlers : Handlers) (r : ExperimentRow) : IView =
+    let private collectionRow (handlers : ExperimentControlsHandlers) (r : ExperimentRow) : IView =
         let row =
             StackPanel.create [
                 StackPanel.orientation Orientation.Horizontal
@@ -693,7 +693,7 @@ module ExperimentControls =
         row :> IView
 
     /// The collection block: a heading and the added-experiment rows (or a hint when empty).
-    let private collectionBlock (state : State) (handlers : Handlers) : IView list =
+    let private collectionBlock (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView list =
         [
             heading "Experiments:"
             (match state.collection with
@@ -708,7 +708,7 @@ module ExperimentControls =
 
     /// The Experiments bay — a multi-step editor (choose element → variable → capture → range → Add) and
     /// the persistent collection of added experiments, with the inline chart of the current editor's run.
-    let view (state : State) (handlers : Handlers) : IView =
+    let experimentControlsView (state : ExperimentControlsState) (handlers : ExperimentControlsHandlers) : IView =
         let readoutText =
             if state.readout = "" then "Experiment: (choose an element, a variable to vary, and click Add)"
             else state.readout

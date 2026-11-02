@@ -184,7 +184,7 @@ module SampleStore =
         /// composition root keeps calling this unchanged): seeds `SeedSamples.all` (the SampleItem
         /// entries of `seedEntries`) as version 1 active.
         static member createInMemory (versionsInUse : VersionsInUse) : SampleProxy =
-            SampleProxy.createInMemoryStore SeedSamples.all versionsInUse
+            SampleProxy.createInMemoryStore SeedSamples.allSeedSamples versionsInUse
 
         /// The EMPTY versioned in-memory sample store (spec 0038 step 042): a BLANK store the seeding
         /// pipeline (`SeedingProxy`) fills through `saveSample`. Same versioning/remove behaviour as

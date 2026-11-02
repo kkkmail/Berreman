@@ -167,7 +167,7 @@ type MaterialsWindowContext =
 /// The window's pure model. The engine inputs (corpus, live facet defs) are NOT cached here —
 /// every projection re-queries the context's proxies, so a verb's write (or another window's)
 /// shows in the same render pass.
-type Model =
+type MaterialsWindowModel =
     {
         context : MaterialsWindowContext
         /// Browse (the ordinary window) or Select (spec 0038 step 016): the SAME window with
@@ -214,7 +214,7 @@ type Model =
         lastError : MaterialError option
     }
 
-let init (context : MaterialsWindowContext) (mode : LibraryWindowMode<MaterialEntry>) : Model =
+let initMaterialsWindow (context : MaterialsWindowContext) (mode : LibraryWindowMode<MaterialEntry>) : MaterialsWindowModel =
     {
         context = context
         mode = mode
@@ -232,7 +232,7 @@ let init (context : MaterialsWindowContext) (mode : LibraryWindowMode<MaterialEn
         lastError = None
     }
 
-type Msg =
+type MaterialsWindowMsg =
     /// Apply the offered value as this facet's (single-key) constraint — an offered-value
     /// click; re-applying a constrained facet REPLACES its selection.
     | ApplyFacetValue of AttributeKey * DiscreteKey
@@ -345,12 +345,12 @@ type private ProjectionInputs =
 /// retired entry is never a valid pick target — Select ALWAYS excludes inactive/superseded), else
 /// the window's `showInactive` toggle. The default `ActiveOnly` keeps offers, facet counts and
 /// Select byte-for-byte the step-021 behaviour.
-let effectiveScope (m : Model) : InactiveVisibility =
+let effectiveScope (m : MaterialsWindowModel) : InactiveVisibility =
     match m.mode with
     | Select _ -> ActiveOnly
     | Browse -> m.showInactive
 
-let private projectionInputs (m : Model) : ProjectionInputs =
+let private projectionInputs (m : MaterialsWindowModel) : ProjectionInputs =
     let textDef = textFilterDef materialTextFilterKey "Text" (fun (e : MaterialEntry) -> e.name) m.textFilter
     let defs = textDef :: liveMaterialFacets m.context.categories
     let textApplied =
@@ -373,13 +373,13 @@ let private projectionInputs (m : Model) : ProjectionInputs =
 
 /// The result set under everything applied (text filter AND facet constraints) — public so
 /// narrowing is unit-testable without a window.
-let filteredEntries (m : Model) : MaterialEntry list =
+let filteredEntries (m : MaterialsWindowModel) : MaterialEntry list =
     let inputs = projectionInputs m
     Facets.filter inputs.defs inputs.appliedAll inputs.corpus
 
 /// The selected entry resolved through the LIVE store (a removed entry's selection resolves to
 /// nothing, so its panel vanishes with its row).
-let selectedEntry (m : Model) : MaterialEntry option =
+let selectedEntry (m : MaterialsWindowModel) : MaterialEntry option =
     match m.selectedId with
     | Some id ->
         match m.context.materials.tryGetMaterial id with
@@ -392,7 +392,7 @@ let selectedEntry (m : Model) : MaterialEntry option =
 /// `MaterialsControls` discipline). Since spec 0040 step 004 every entry carries
 /// `complexity = Some`, so the gate is `MaterialComplexityEditor.isEditableComplexity`: a
 /// coded preset whose eps is an opaque evaluated closure (Silicon / Langasite) stays view-only.
-let editableSelection (m : Model) : MaterialEntry option =
+let editableSelection (m : MaterialsWindowModel) : MaterialEntry option =
     match selectedEntry m with
     | Some entry ->
         match entry.complexity with
@@ -408,7 +408,7 @@ let editableSelection (m : Model) : MaterialEntry option =
 /// The ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass). A
 /// material present in `IncludeInactive` but NOT here has a retired latest version; that is how the
 /// window distinguishes an inactive entry to badge it and to offer Mark active.
-let private activeMaterialIds (m : Model) : Set<MaterialId> =
+let private activeMaterialIds (m : MaterialsWindowModel) : Set<MaterialId> =
     match m.context.materials.listMaterials ActiveOnly with
     | Ok entries -> entries |> List.map (fun e -> e.id) |> Set.ofList
     | Error _ -> Set.empty
@@ -416,7 +416,7 @@ let private activeMaterialIds (m : Model) : Set<MaterialId> =
 /// The selected entry's lifecycle (spec 0038 step 023): `ActiveEntry` when its latest version is
 /// in the active set, `InactiveEntry` when it resolves but its latest is retired, `None` when no
 /// entry is selected or the id no longer resolves.
-let selectedLifecycle (m : Model) : EntryLifecycle option =
+let selectedLifecycle (m : MaterialsWindowModel) : EntryLifecycle option =
     match m.selectedId with
     | None -> None
     | Some id ->
@@ -431,7 +431,7 @@ let selectedLifecycle (m : Model) : EntryLifecycle option =
 /// no resolvable entry — or any Select-mode selection — offers none. Materials carry no protection
 /// (`MaterialEntry` has no `EntryProtection`; the store has no built-in guard), so EVERY material
 /// is lifecycle-eligible here (unlike the Library window's protected presets).
-let offeredLifecycleActions (m : Model) : LifecycleAction list =
+let offeredLifecycleActions (m : MaterialsWindowModel) : LifecycleAction list =
     match m.mode with
     | Select _ -> []
     | Browse ->
@@ -443,7 +443,7 @@ let offeredLifecycleActions (m : Model) : LifecycleAction list =
 /// The number of materials whose latest version is retired (spec 0038 step 023) — the visible
 /// count badge on the show-inactive toggle. Read over the whole store (not the filtered corpus) so
 /// the badge is a stable "N retired exist" hint whether the toggle is on or off.
-let inactiveCount (m : Model) : int =
+let inactiveCount (m : MaterialsWindowModel) : int =
     let active = activeMaterialIds m
     match m.context.materials.listMaterials IncludeInactive with
     | Ok all -> all |> List.filter (fun e -> not (Set.contains e.id active)) |> List.length
@@ -473,7 +473,7 @@ let selectedVersionsOf (materials : MaterialProxy) (id : MaterialId) : (VersionN
     loop VersionNumber.first []
 
 /// The selected entry's versions (empty when nothing is selected or the id no longer resolves).
-let selectedVersions (m : Model) : (VersionNumber * MaterialEntry) list =
+let selectedVersions (m : MaterialsWindowModel) : (VersionNumber * MaterialEntry) list =
     match m.selectedId with
     | Some id -> selectedVersionsOf m.context.materials id
     | None -> []
@@ -526,17 +526,17 @@ let entryNode (id : MaterialId) : string = (ConstructorUiId.facetTreeNode (Const
 /// A query / selection change also disarms a pending remove confirmation and clears the inline
 /// message — a stale confirm or refusal never outlives the state it referred to (the retired
 /// bay's disarm discipline).
-let private disarmed (m : Model) : Model =
+let private disarmed (m : MaterialsWindowModel) : MaterialsWindowModel =
     { m with removeGate = NoPendingRemove; lifecycleGate = NoPendingLifecycle; lastError = None }
 
 /// Arm the lifecycle confirm gate on the current selection (spec 0038 step 023) — clears the
 /// remove gate and the inline message so at most one confirm is ever pending. No selection is inert.
-let private requestLifecycle (action : LifecycleAction) (m : Model) : Model =
+let private requestLifecycle (action : LifecycleAction) (m : MaterialsWindowModel) : MaterialsWindowModel =
     match m.selectedId with
     | Some id -> { m with lifecycleGate = PendingLifecycle (id, action); removeGate = NoPendingRemove; lastError = None }
     | None -> m
 
-let update (msg : Msg) (m : Model) : Model =
+let updateMaterialsWindow (msg : MaterialsWindowMsg) (m : MaterialsWindowModel) : MaterialsWindowModel =
     match msg with
     | ApplyFacetValue (key, value) ->
         // Single-key selection per facet: re-applying a constrained facet REPLACES its chip
@@ -727,7 +727,7 @@ let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : Facet
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, tree, previews), so
 /// a verb's write — or a category rename through the shared proxy — shows in the same pass.
-let facetedState (m : Model) : FacetedTreeControls.State =
+let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeControlsState =
     let inputs = projectionInputs m
     let filtered = Facets.filter inputs.defs inputs.appliedAll inputs.corpus
     let resultCount = List.length filtered
@@ -891,7 +891,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
 /// control boundary. Only an `entry:` node code selects (branches/headings are grouping
 /// display; the offers are the apply surface); `applyManualRange` is unreachable — the material
 /// catalogue offers no numeric facet, so no manual range box is ever generated.
-let facetedHandlers (dispatch : Msg -> unit) : FacetedTreeControls.Handlers =
+let facetedHandlers (dispatch : MaterialsWindowMsg -> unit) : FacetedTreeControls.FacetedTreeControlsHandlers =
     {
         applyConstraint = fun groupCode valueCode -> dispatch (ApplyFacetValue (AttributeKey groupCode, DiscreteKey valueCode))
         removeConstraint = fun chipCode -> dispatch (RemoveFacet (AttributeKey chipCode))
@@ -979,7 +979,7 @@ let private targetText (target : SelectionTarget) : string =
 /// 'Close' cancels — above the pre-applied kind constraint shown as a FIXED banner: it is not a
 /// breadcrumb chip and offers no remove affordance (the material corpus satisfies it
 /// structurally — see the module doc). Absent in Browse mode.
-let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
+let private selectModeRows (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView list =
     match m.mode with
     | Browse -> []
     | Select context ->
@@ -1000,7 +1000,7 @@ let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
           |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.materialsSelectConstraint.value) :> IView ]
 
 /// One lifecycle verb box (spec 0038 step 023), by its action.
-let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) : IView =
+let private lifecycleButton (dispatch : MaterialsWindowMsg -> unit) (action : LifecycleAction) : IView =
     match action with
     | MarkInactiveAction -> verbButton ConstructorUiId.materialsMarkInactiveButton.value "Mark inactive" (fun () -> dispatch RequestMarkInactive)
     | MarkActiveAction -> verbButton ConstructorUiId.materialsMarkActiveButton.value "Mark active" (fun () -> dispatch RequestMarkActive)
@@ -1010,7 +1010,7 @@ let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) 
 /// engine preset loses the verb — removed, not greyed); Remove only while an entry is selected; the
 /// lifecycle verbs from `offeredLifecycleActions` (Mark inactive + Supersede… for an active
 /// selection, Mark active for a retired one — spec 0038 step 023).
-let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private verbsRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
@@ -1028,7 +1028,7 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
 /// visible count badge — `Show inactive (N)` while hidden, `Hide inactive (N)` while shown.
 /// Browse-mode only (Select always lists `ActiveOnly`).
-let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
+let private toggleRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView list =
     match m.mode with
     | Select _ -> []
     | Browse ->
@@ -1040,7 +1040,7 @@ let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
         [ verbButton ConstructorUiId.materialsShowInactiveToggle.value label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a remove is armed.
-let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+let private confirmRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView list =
     match m.removeGate with
     | NoPendingRemove -> []
     | PendingRemove id ->
@@ -1064,7 +1064,7 @@ let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
 /// The inline lifecycle confirmation (spec 0038 step 023) — present only while a lifecycle verb is
 /// armed. The prompt NAMES the entry and the transition (the verb the user pressed); Confirm runs
 /// the matching proxy verb, Cancel disarms.
-let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+let private lifecycleConfirmRow (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView list =
     match m.lifecycleGate with
     | NoPendingLifecycle -> []
     | PendingLifecycle (id, action) ->
@@ -1092,7 +1092,7 @@ let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView lis
 
 /// The inline store-refusal message. Every `MaterialError` case carries its diagnostic reason;
 /// `MaterialStillReferenced`'s NAMES the referencing samples — never a cascade, never a dialog.
-let private messageRow (m : Model) : IView list =
+let private messageRow (m : MaterialsWindowModel) : IView list =
     match m.lastError with
     | None -> []
     | Some err ->
@@ -1115,7 +1115,7 @@ let private messageRow (m : Model) : IView list =
 /// `(latest)` and the currently-viewed one marked `▸`. Clicking a row shows THAT version in the
 /// panel — the latest editable through the Edit verb, an older one view-only. Absent when the
 /// selection resolves to a single version (the common case in the live store until step 25).
-let private versionsRow (m : Model) (versions : (VersionNumber * MaterialEntry) list) (latest : VersionNumber) (shown : VersionNumber) (dispatch : Msg -> unit) : IView list =
+let private versionsRow (m : MaterialsWindowModel) (versions : (VersionNumber * MaterialEntry) list) (latest : VersionNumber) (shown : VersionNumber) (dispatch : MaterialsWindowMsg -> unit) : IView list =
     match versions with
     | [] | [ _ ] -> []
     | _ ->
@@ -1142,7 +1142,7 @@ let private versionsRow (m : Model) (versions : (VersionNumber * MaterialEntry) 
 /// the library always edits the latest); selecting an OLDER version shows it VIEW-ONLY (a
 /// `viewOnlyNote`, no Save path — older versions have no editor). Resolved through the proxy at
 /// render time, so a removed entry's panel vanishes with its row.
-let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
+let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView list =
     match selectedEntry m with
     | None -> []
     | Some latestEntry ->
@@ -1204,7 +1204,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
 /// The window surface: the faceted tree (filter, representation picker, breadcrumbs, live
 /// count, offers, tree) fills the window beside the right-hand panel carrying the verbs, the
 /// inline confirm gate, the typed refusal message, and the selected entry's view panel.
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let materialsWindowView (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [
@@ -1231,7 +1231,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
             Border.create [
                 automationId<Border> ConstructorUiId.materialsFacetTreeHost.value
                 Border.padding (Thickness 8.0)
-                Border.child (FacetedTreeControls.view (facetedState m) (facetedHandlers dispatch))
+                Border.child (FacetedTreeControls.facetedTreeControlsView (facetedState m) (facetedHandlers dispatch))
             ]
         ]
     ] :> IView

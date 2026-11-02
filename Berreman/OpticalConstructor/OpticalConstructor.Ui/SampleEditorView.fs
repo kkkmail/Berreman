@@ -118,7 +118,7 @@ type SampleEditSnapshot = string * string * SubstrateKind * Placement.Emission *
 /// record anyway — so the Elmish equality gate sees every dispatch as a change and re-renders,
 /// which is exactly this window's contract.
 [<ReferenceEquality>]
-type Model =
+type SampleEditorModel =
     {
         context : SampleEditorContext
         target : EditorTarget
@@ -152,10 +152,10 @@ type Model =
         status : string option
     }
 
-type Msg =
+type SampleEditorMsg =
     | SetName of string
     | SetDescription of string
-    | SetSubstrate of SubstrateKind
+    | SetSampleSubstrate of SubstrateKind
     /// Spec 0040 (D.2 step 010): the R / T emission checkboxes. Each carries the box's NEW
     /// checked state; the update arm routes it through `Emission.withReflected` /
     /// `withTransmitted` then re-imposes the geometry constraint, so "both off" is impossible
@@ -273,7 +273,7 @@ let private parseFloat (s : string) : float option =
     | true, v -> Some v
     | _ -> None
 
-let private chosenEntry (m : Model) : MaterialEntry option =
+let private chosenEntry (m : SampleEditorModel) : MaterialEntry option =
     match m.chosenMaterial with
     | Some id -> m.materials |> List.tryFind (fun e -> e.id = id)
     | None -> None
@@ -281,7 +281,7 @@ let private chosenEntry (m : Model) : MaterialEntry option =
 /// The QWOT-derived physical thickness, when the entry text parses to a positive wavelength
 /// (nm) and a material is chosen to take n from. `None` otherwise — the readout shows a dash
 /// and the set-thickness verb falls back to the plain nm entry.
-let qwotDerived (m : Model) : Thickness option =
+let qwotDerived (m : SampleEditorModel) : Thickness option =
     match chosenEntry m, parseFloat m.qwotText with
     | Some entry, Some lambdaNm when lambdaNm > 0.0 ->
         let n = refractionIndexAt entry (WaveLength.nm (lambdaNm * 1.0<nm>))
@@ -296,7 +296,7 @@ let thicknessLabel (t : Thickness) : string =
 
 /// The flattened film count — each `Repeated` group expands to count × cell (the structure
 /// readout the "2-layer selection repeated K times shows 2*K films" acceptance observes).
-let filmsCount (m : Model) : int =
+let filmsCount (m : SampleEditorModel) : int =
     m.editor.structure.expandedFilms |> List.length
 
 /// A `SubstrateKind` facet option's stable code (the derived UiIds key).
@@ -332,12 +332,12 @@ let private orientationLabel (o : CrystalOrientation) : string =
 /// supported emission (spec 0040 Part D.2 step 010 — an R/T change dirties the editor) and the
 /// stack structure, all plain records/DUs. The transient entry texts, the selection, the
 /// collapsed-group set and the re-queried material list are pure UI / read state and excluded.
-let private currentEdit (m : Model) : SampleEditSnapshot =
+let private currentEdit (m : SampleEditorModel) : SampleEditSnapshot =
     (m.name, m.description, m.substrate, m.supportedEmission, m.editor.structure)
 
 /// Whether the editor carries unsaved changes: the current edit slice differs structurally from
 /// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
-let isDirty (m : Model) : bool =
+let isDirty (m : SampleEditorModel) : bool =
     m.initialEdit <> currentEdit m
 
 // ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ let private emptyStructure : SampleStructure =
         lower = None
     }
 
-let init (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : Model =
+let initSampleEditor (context : SampleEditorContext) (materials : MaterialEntry list) (intent : SampleEditorIntent) : SampleEditorModel =
     let target, name, description, substrate, structure, emission =
         // Both NEW intents carry the id minted AT WINDOW OPEN as a NewUnsaved target (spec 0038
         // step 008); the seeded multilayer path opens onto the Domain starter period (spec 0035
@@ -392,7 +392,7 @@ let init (context : SampleEditorContext) (materials : MaterialEntry list) (inten
     }
 
 /// The sample the model currently denotes, under the given id (Save chooses the id by target).
-let toSample (id : SampleId) (m : Model) : Sample =
+let toSample (id : SampleId) (m : SampleEditorModel) : Sample =
     {
         id = id
         name = m.name
@@ -427,16 +427,16 @@ let private materialErrorReason (e : MaterialError) : string =
     | InvalidMaterial reason -> reason
 
 /// Route one step-21 editor message; a typed rejection surfaces its reason as the status.
-let private applyStack (msg : SampleStackMsg) (m : Model) : Model =
+let private applyStack (msg : SampleStackMsg) (m : SampleEditorModel) : SampleEditorModel =
     match applySampleStackMsg msg m.editor with
     | Ok editor -> { m with editor = editor; status = None }
     | Error e -> { m with status = Some (stackErrorReason e) }
 
-let update (msg : Msg) (m : Model) : Model =
+let updateSampleEditor (msg : SampleEditorMsg) (m : SampleEditorModel) : SampleEditorModel =
     match msg with
     | SetName s -> { m with name = s }
     | SetDescription s -> { m with description = s }
-    | SetSubstrate kind ->
+    | SetSampleSubstrate kind ->
         // Re-impose the new geometry's emission constraint (spec 0040 Part D.2 step 010): flipping
         // to Mirror re-pins R-only, so the R-fixed-on invariant stays true and the model stays
         // consistent with what `toSample` persists. Spec 0046: leaving Mirror restores the new
@@ -701,7 +701,7 @@ let private labelBlock (label : string) : IView =
 
 // -- the identity / facet rows -------------------------------------------------------------
 
-let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private nameRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -718,7 +718,7 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
 
 /// Spec 0046: the description box FILLS the row beside its docked label (a fixed 620 px box ran off the
 /// edge of a window narrower than the label plus the box).
-let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private descriptionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Left; Border.margin (thickOf 0.0 0.0 6.0 0.0); Border.child (labelBlock "Description:") ]
@@ -730,7 +730,7 @@ let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private substrateRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -738,14 +738,14 @@ let private substrateRow (m : Model) (dispatch : Msg -> unit) : IView =
             labelBlock "Geometry:"
             :: ([ ThinFilm; Plate; Mirror ]
                 |> List.map (fun kind ->
-                    clickBox (ConstructorUiId.sampleSubstrateKind (ConstructorUiKey (substrateCode kind))).value (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSubstrate kind)))))
+                    clickBox (ConstructorUiId.sampleSubstrateKind (ConstructorUiKey (substrateCode kind))).value (substrateLabel kind) (m.substrate = kind) (fun () -> dispatch (SetSampleSubstrate kind)))))
     ] :> IView
 
 /// One emission group checkbox (spec 0040 Part D.2 step 010). `isChecked` is bound ONE-WAY from
 /// the model; the dispatch rides `Button.onClick`, which fires only on USER activation (pointer /
 /// keyboard), never on the render's programmatic `IsChecked` set — so there is no FuncUI feedback
 /// loop. A disabled box (the Mirror R box) dispatches nothing.
-let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enabled : bool) (toMsg : bool -> Msg) (dispatch : Msg -> unit) : IView =
+let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enabled : bool) (toMsg : bool -> SampleEditorMsg) (dispatch : SampleEditorMsg -> unit) : IView =
     CheckBox.create [
         automationId autoId
         // Reach `isEnabled` (InputElement) and `isChecked` (ToggleButton) through the in-scope
@@ -762,7 +762,7 @@ let private emissionCheck (autoId : string) (label : string) (isOn : bool) (enab
 /// emits. A `ThinFilm` or a `Plate` exposes BOTH the R and T checkboxes so the user constrains emission
 /// to R-only or T-only (the `Emission` smart setters keep "both off" unrepresentable); a `Mirror` shows R
 /// fixed on + disabled and renders NO T box (a mirror is observed in reflection alone).
-let private emissionRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private emissionRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     let reflectedOn = m.supportedEmission.emitsReflected
     let transmittedOn = m.supportedEmission.emitsTransmitted
     let reflectedEnabled =
@@ -792,7 +792,7 @@ let private emissionRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// `onSelected` bakes the TARGETED `BindMaterialToLayer` — the vanished-row no-op lives in its
 /// arm — and BOTH outcomes re-query the material list (`RefreshMaterials`): a Select window
 /// returning is one of the two re-query triggers, however the session ended.
-let private chooseMaterialForLayer (m : Model) (dispatch : Msg -> unit) (position : LayerPosition) (owner : Window) : unit =
+let private chooseMaterialForLayer (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (owner : Window) : unit =
     let selectContext : SelectionContext<MaterialEntry> =
         {
             // The sample-layer pick's fixed kind (the step-016 banner names it); the material
@@ -814,7 +814,7 @@ let private chooseMaterialForLayer (m : Model) (dispatch : Msg -> unit) (positio
 /// clickable. The owner window for a modal Select open is resolved from the click's own visual
 /// tree at dispatch time (the step-017 precedent); the subscription re-patches on the id — the
 /// closure's only other captures (the context seam, dispatch) are render-stable.
-let private chooseMaterialVerb (m : Model) (dispatch : Msg -> unit) (position : LayerPosition) (chooseId : string) : IView =
+let private chooseMaterialVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (chooseId : string) : IView =
     Border.create [
         automationId chooseId
         Border.background (brush idleBackground)
@@ -841,7 +841,7 @@ let private chooseMaterialVerb (m : Model) (dispatch : Msg -> unit) (position : 
 /// substrate slot carries its OWN pick verb. The substrate has no positional identity, so the
 /// return routes through the captured dispatch (`BindMaterialToSubstrate`) — a closed editor
 /// makes it a no-op. Both outcomes re-query the material list (`RefreshMaterials`).
-let private chooseMaterialForSubstrate (m : Model) (dispatch : Msg -> unit) (owner : Window) : unit =
+let private chooseMaterialForSubstrate (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (owner : Window) : unit =
     let selectContext : SelectionContext<MaterialEntry> =
         {
             // The sample substrate pick's fixed kind (the step-016 banner names it); the material
@@ -864,7 +864,7 @@ let private chooseMaterialForSubstrate (m : Model) (dispatch : Msg -> unit) (own
 /// choose a substrate material. The owner window for a modal Select open is resolved from the
 /// click's own visual tree at dispatch time (the `chooseMaterialVerb` precedent). Styled as a
 /// toolbar verb; it reuses the `setSubstrateButton` id.
-let private setSubstrateVerb (m : Model) (dispatch : Msg -> unit) : IView =
+let private setSubstrateVerb (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     Border.create [
         automationId ConstructorUiId.setSubstrateButton.value
         Border.background (brush idleBackground)
@@ -887,9 +887,9 @@ let private setSubstrateVerb (m : Model) (dispatch : Msg -> unit) : IView =
 
 /// One layer's inline orientation editor (φ/θ/ψ in degrees) — rendered ONLY when the layer's
 /// material is anisotropic; an unparsable entry dispatches nothing.
-let private orientationEditorView (dispatch : Msg -> unit) (position : LayerPosition) (orientationId : string) (orientation : CrystalOrientation) : IView =
+let private orientationEditorView (dispatch : SampleEditorMsg -> unit) (position : LayerPosition) (orientationId : string) (orientation : CrystalOrientation) : IView =
     let phi, theta, psi = orientationDegrees orientation
-    let angleBox (label : string) (current : float) (toMsg : float -> Msg) : IView list =
+    let angleBox (label : string) (current : float) (toMsg : float -> SampleEditorMsg) : IView list =
         [
             labelBlock label
             TextBox.create [
@@ -917,8 +917,8 @@ let private orientationEditorView (dispatch : Msg -> unit) (position : LayerPosi
 /// multi-select, the material name, the thickness readout cell, the orientation summary, and
 /// — for anisotropic materials only — the inline orientation editor.
 let private layerRowView
-    (m : Model)
-    (dispatch : Msg -> unit)
+    (m : SampleEditorModel)
+    (dispatch : SampleEditorMsg -> unit)
     (position : LayerPosition)
     (rowId : string)
     (thicknessId : string)
@@ -973,7 +973,7 @@ let private layerRowView
 
 /// A period group's ONE collapsible super-row: the rotating-triangle expander, the cell
 /// summary, and the inline repeat-count stepper (whole periods through `SetRepeatCount`).
-let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int) (group : PeriodGroup) : IView =
+let private groupRowView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) (groupIndex : int) (group : PeriodGroup) : IView =
     let collapsed = Set.contains groupIndex m.collapsedGroups
     let triangle =
         TextBlock.create [
@@ -1014,7 +1014,7 @@ let private groupRowView (m : Model) (dispatch : Msg -> unit) (groupIndex : int)
             ])
     ] :> IView
 
-let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
+let private stackRows (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView list =
     // Each layer row is paired with its Choose material… verb in one horizontal slot (spec
     // 0038 step 019) — the verb sits beside the row, outside its toggling Border.
     let rowWithChooser (row : IView) (position : LayerPosition) (chooseId : string) : IView =
@@ -1044,7 +1044,7 @@ let private stackRows (m : Model) (dispatch : Msg -> unit) : IView list =
             superRow :: cellRows)
     |> List.concat
 
-let private filmsCountRow (m : Model) : IView =
+let private filmsCountRow (m : SampleEditorModel) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -1061,16 +1061,16 @@ let private filmsCountRow (m : Model) : IView =
 
 // -- the bulk toolbar / QWOT / status / actions ----------------------------------------------
 
-let private hasSelection (m : Model) : bool =
+let private hasSelection (m : SampleEditorModel) : bool =
     not (Set.isEmpty m.editor.selection)
 
-let private hasChosenMaterial (m : Model) : bool =
+let private hasChosenMaterial (m : SampleEditorModel) : bool =
     match m.chosenMaterial with
     | Some _ -> true
     | None -> false
 
 /// A material's display name by id (a placeholder when the id is unresolved).
-let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
+let private nameOfMaterialId (m : SampleEditorModel) (id : MaterialId) : string =
     match m.materials |> List.tryFind (fun e -> e.id = id) with
     | Some e -> e.name
     | None -> $"unknown ({id.value})"
@@ -1082,7 +1082,7 @@ let private nameOfMaterialId (m : Model) (id : MaterialId) : string =
 /// so a film-less Plate can pick a substrate material without a film row); the
 /// lower half-space keeps its `hasChosenMaterial`-gated Set-from-chosen button.
 /// Clear is always available.
-let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private halfSpacesRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     let substrateText =
         match m.editor.structure.substrate with
         | Some layer -> $"{nameOfMaterialId m layer.materialId.materialId} ({thicknessLabel layer.thickness})"
@@ -1127,7 +1127,7 @@ let private halfSpacesRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// entry with its fold-count stepper (the mandated `RepeatCountStepper`). A WRAP panel: the
 /// headless font metrics run a single row past the window edge, and an off-screen verb cannot
 /// be clicked.
-let private selectionToolbar (m : Model) (dispatch : Msg -> unit) : IView =
+let private selectionToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children [
@@ -1145,7 +1145,7 @@ let private selectionToolbar (m : Model) (dispatch : Msg -> unit) : IView =
 /// Edit verbs over the selection: thickness (nm), material, and the toolbar orientation entry.
 /// A WRAP panel (same off-screen-verb reason as the selection toolbar); each label+box pair is
 /// one wrap item so a wrap never splits a label from its entry.
-let private editToolbar (m : Model) (dispatch : Msg -> unit) : IView =
+let private editToolbar (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     let labelled (label : string) (entry : IView) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
@@ -1182,7 +1182,7 @@ let private editToolbar (m : Model) (dispatch : Msg -> unit) : IView =
 
 /// The optional QWOT entry: λ (nm) → the read-only derived t = λ/(4n) in canonical metres
 /// (n from the chosen material at λ); Set-thickness applies it while it is valid.
-let private qwotRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private qwotRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     // spec 0033 gap G14.1: render the derived thickness in display nanometres (the unit
     // every other thickness readout uses), not raw metres.
     let derivedLabel =
@@ -1209,7 +1209,7 @@ let private qwotRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-let private statusRow (m : Model) : IView =
+let private statusRow (m : SampleEditorModel) : IView =
     TextBlock.create [
         TextBlock.name ConstructorUiId.sampleEditorStatus.value
         TextBlock.foreground (brush errorColor)
@@ -1219,7 +1219,7 @@ let private statusRow (m : Model) : IView =
             | None -> "")
     ] :> IView
 
-let private saveCancelRow (dispatch : Msg -> unit) : IView =
+let private saveCancelRow (dispatch : SampleEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
@@ -1232,7 +1232,7 @@ let private saveCancelRow (dispatch : Msg -> unit) : IView =
 /// The unsaved-edit exit confirm surface (spec 0038 step 033): shown in place of the Save/Cancel
 /// row while a dirty editor is being closed. Discard changes (negative styling) closes without
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
-let private exitConfirmRow (dispatch : Msg -> unit) : IView =
+let private exitConfirmRow (dispatch : SampleEditorMsg -> unit) : IView =
     StackPanel.create [
         automationId ConstructorUiId.sampleEditorExitConfirm.value
         StackPanel.orientation Orientation.Horizontal
@@ -1251,7 +1251,7 @@ let private exitConfirmRow (dispatch : Msg -> unit) : IView =
 
 /// The bottom action area: the normal Save/Cancel row, or — while `exit = ConfirmingDiscard` —
 /// the discard confirm surface (spec 0038 step 033).
-let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private actionsRow (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     match m.exit with
     | Editing -> saveCancelRow dispatch
     | ConfirmingDiscard -> exitConfirmRow dispatch
@@ -1260,7 +1260,7 @@ let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// material… verbs — spec 0038 step 019); the bulk toolbars, QWOT row, status line and the
 /// Save/Cancel row pinned to the bottom; the stack table (with the expanded-films readout)
 /// filling the centre.
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let sampleEditorView (m : SampleEditorModel) (dispatch : SampleEditorMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [

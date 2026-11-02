@@ -68,8 +68,8 @@ module BeamLayout =
         | RaysFixed _ -> p
         | RaysSwitchable ->
             match branch with
-            | BeamTree.Reflected -> { p with emission = Emission.withReflected (not p.emission.emitsReflected) p.emission }
-            | BeamTree.Transmitted -> { p with emission = Emission.withTransmitted (not p.emission.emitsTransmitted) p.emission }
+            | BeamTree.ReflectedBeam -> { p with emission = Emission.withReflected (not p.emission.emitsReflected) p.emission }
+            | BeamTree.TransmittedBeam -> { p with emission = Emission.withTransmitted (not p.emission.emitsTransmitted) p.emission }
 
     /// The longest an OPEN ray is drawn — a reflected ray with nothing on it yet, or a beam with no detector
     /// at its end — so the ray is visible to attach to. It stops sooner at the first element it meets.
@@ -323,12 +323,12 @@ module BeamLayout =
                         let onward = path @ [ { element = e.id; branch = branch } ]
                         let draw', reference', dir', insideRun =
                             match branch with
-                            | BeamTree.Transmitted ->
+                            | BeamTree.TransmittedBeam ->
                                 let inside =
                                     if crossing.entry = crossing.exit then []
                                     else [ ClosedRun { start = crossing.entry; finish = crossing.exit; kind = InsideElement } ]
                                 crossing.exit, abreast beamPoint crossing.exit crossing.transmitted, crossing.transmitted, inside
-                            | BeamTree.Reflected ->
+                            | BeamTree.ReflectedBeam ->
                                 crossing.entry, abreast beamPoint crossing.entry crossing.reflected, crossing.reflected, []
                         let state'' = { state' with segments = drawn insideRun @ state'.segments }
                         let afterSide =
@@ -345,7 +345,7 @@ module BeamLayout =
                                     crossing.reflected
                                     x
                                     index
-                                    (path @ [ { element = e.id; branch = BeamTree.Reflected } ])
+                                    (path @ [ { element = e.id; branch = BeamTree.ReflectedBeam } ])
                                     light
                                     sideMembers
                                     { state'' with rays = rays }
@@ -359,7 +359,7 @@ module BeamLayout =
             let rootPlaced = { id = root.id; centre = rootCentre; incoming = None; beam = OnMainBeam; path = []; light = Lit }
             let mainMembers = membersOf OnMainBeam
             let final =
-                walk rootFace rootCentre rootDir (along root.placement) 0 [ { element = root.id; branch = BeamTree.Transmitted } ] Lit mainMembers
+                walk rootFace rootCentre rootDir (along root.placement) 0 [ { element = root.id; branch = BeamTree.TransmittedBeam } ] Lit mainMembers
                     { placed = Map.ofList [ 0, rootPlaced ]; segments = []; rays = [ litRay OnMainBeam mainMembers ] }
 
             // Every placed element's DRAWN box (oriented on its beam, the root by its own aim), by index.
@@ -467,7 +467,7 @@ module BeamLayout =
     /// The capture modes the detected branches allow: a transmitted detector offers T, a reflected one R,
     /// both offer T, R and Both; none offers nothing.
     let capturesFor (branches : BeamTree.BeamBranch list) : Experiments.MeasurementMode list =
-        match List.contains BeamTree.Transmitted branches, List.contains BeamTree.Reflected branches with
+        match List.contains BeamTree.TransmittedBeam branches, List.contains BeamTree.ReflectedBeam branches with
         | true, true -> [ Experiments.CaptureTransmitted; Experiments.CaptureReflected; Experiments.CaptureBoth ]
         | true, false -> [ Experiments.CaptureTransmitted ]
         | false, true -> [ Experiments.CaptureReflected ]

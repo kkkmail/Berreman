@@ -191,16 +191,16 @@ module LibraryWindowTests =
             }
         calls, context
 
-    let private freshModel () : ResizeArray<string> * LW.Model =
+    let private freshModel () : ResizeArray<string> * LW.LibraryWindowModel =
         let library, samples, materials = freshStores ()
         let calls, context = stubContext library samples materials
-        calls, LW.init context Browse
+        calls, LW.initLibraryWindow context Browse
 
     /// A fresh model PLUS its live stores (for tests that mutate behind the window's back).
-    let private freshModelWithStores () : SampleProxy * LW.Model =
+    let private freshModelWithStores () : SampleProxy * LW.LibraryWindowModel =
         let library, samples, materials = freshStores ()
         let _, context = stubContext library samples materials
-        samples, LW.init context Browse
+        samples, LW.initLibraryWindow context Browse
 
     /// A recording Select-session context (spec 0038 step 016): `onSelected` tags the chosen
     /// entry id, `onCancelled` tags the cancel — the window guarantees exactly one fires.
@@ -218,19 +218,19 @@ module LibraryWindowTests =
 
     /// A fresh SELECT-state model over recording stubs: the session events, the context calls
     /// (incl. "close-requested"), and the model.
-    let private freshSelectModel (kind : CatalogueKind) (target : SelectionTarget) : ResizeArray<string> * ResizeArray<string> * LW.Model =
+    let private freshSelectModel (kind : CatalogueKind) (target : SelectionTarget) : ResizeArray<string> * ResizeArray<string> * LW.LibraryWindowModel =
         let library, samples, materials = freshStores ()
         let calls, context = stubContext library samples materials
         let events, selectCtx = selectContext kind target
-        events, calls, LW.init context (Select selectCtx)
+        events, calls, LW.initLibraryWindow context (Select selectCtx)
 
-    let private filteredEntryIds (m : LW.Model) : string list =
+    let private filteredEntryIds (m : LW.LibraryWindowModel) : string list =
         LW.filteredEntries m |> List.map (fun e -> e.entryId)
 
     let private glassFilm600EntryId : string = string SeedSamples.glassFilm600.id.value
 
     /// The kind-facet constraint helper (a single discrete key).
-    let private kindConstraint (kind : string) : LW.Msg =
+    let private kindConstraint (kind : string) : LW.LibraryWindowMsg =
         LW.ApplyFacetConstraint (entryKindFacetKey, DiscreteSelection (Set.singleton (DiscreteKey kind)))
 
     // ============================ pure: ids contract ============================
@@ -286,13 +286,13 @@ module LibraryWindowTests =
             kindNode.children |> List.map (fun b -> b.label, b.countOpt)
         // Every kind, with its count, in the engine's structural branch order.
         Assert.Equal<(string * int option) list>(
-            [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some (List.length SeedSources.all) ],
+            [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some (List.length SeedSources.allSeedSources) ],
             branches)
         // The kind facet is offered FIRST (the by-kind representation's head) with count-previews.
         let kindOffer = state.offers |> List.head
         Assert.Equal(entryKindFacetKey.value, kindOffer.code)
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.all ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.allSeedSources ],
             kindOffer.values |> List.map (fun v -> v.code, v.previewCount))
 
     [<Fact>]
@@ -378,7 +378,7 @@ module LibraryWindowTests =
         // row. The projected `selectedCode` must now be the EXACT clicked node code.
         let _, m = freshModel ()
         let leafCode = "branch:" + entryKindFacetKey.value + ":Source:" + LW.entryNodeCode "src-600"
-        let selected = LW.update (LW.SelectEntryNode ("src-600", leafCode)) m
+        let selected = LW.updateLibraryWindow (LW.SelectEntryNode ("src-600", leafCode)) m
         let state = LW.facetedState selected
         // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<id>` code.
         Assert.Equal(leafCode, state.selectedCode)
@@ -386,7 +386,7 @@ module LibraryWindowTests =
         // The domain selection still resolves (the view panel / verbs target the entry).
         Assert.Equal<string option>(Some "src-600", selected.selectedEntryId)
         // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
-        let viaId = LW.update (LW.SelectEntry "src-600") m
+        let viaId = LW.updateLibraryWindow (LW.SelectEntry "src-600") m
         Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState viaId).selectedCode)
 
     [<Fact>]
@@ -394,7 +394,7 @@ module LibraryWindowTests =
         // Spec 0040 step 002: every top-level node opens CollapsedNode; the disclosure chevron's
         // ToggleNode records the code expanded (its children then render) and a second toggle collapses.
         let _, m = freshModel ()
-        let entriesOf (model : LW.Model) : FacetedTreeControls.TreeNode = List.head (LW.facetedState model).tree
+        let entriesOf (model : LW.LibraryWindowModel) : FacetedTreeControls.TreeNode = List.head (LW.facetedState model).tree
         // First open: EVERY top-level node (the entries group and every facet group) is CollapsedNode.
         let opened = LW.facetedState m
         for node in opened.tree do
@@ -402,16 +402,16 @@ module LibraryWindowTests =
         // The children are still PROJECTED (collapse is a render concern) — only the flag changes.
         Assert.Equal(seededCorpus, List.length (entriesOf m).children)
         // Toggling "entries" records it expanded and the projected node flips to ExpandedNode.
-        let expanded = LW.update (LW.ToggleNode "entries") m
+        let expanded = LW.updateLibraryWindow (LW.ToggleNode "entries") m
         Assert.True(expanded.expandedNodes.isExpanded "entries")
         Assert.Equal(FacetedTreeControls.ExpandedNode, (entriesOf expanded).expansion)
         // A facet group toggles INDEPENDENTLY while entries stays expanded (the set holds both).
-        let bothOpen = LW.update (LW.ToggleNode ("facet:" + entryKindFacetKey.value)) expanded
+        let bothOpen = LW.updateLibraryWindow (LW.ToggleNode ("facet:" + entryKindFacetKey.value)) expanded
         Assert.True(bothOpen.expandedNodes.isExpanded "entries")
         let kindNode = (LW.facetedState bothOpen).tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
         Assert.Equal(FacetedTreeControls.ExpandedNode, kindNode.expansion)
         // A second toggle collapses entries again (persisted).
-        let collapsed = LW.update (LW.ToggleNode "entries") bothOpen
+        let collapsed = LW.updateLibraryWindow (LW.ToggleNode "entries") bothOpen
         Assert.False(collapsed.expandedNodes.isExpanded "entries")
         Assert.Equal(FacetedTreeControls.CollapsedNode, (entriesOf collapsed).expansion)
 
@@ -421,27 +421,27 @@ module LibraryWindowTests =
         // projects it from the Model's already-tracked selection (nothing selected → empty string).
         let _, m = freshModel ()
         Assert.Equal("", (LW.facetedState m).selectedCode)
-        let selected = LW.update (LW.SelectEntry "src-600") m
+        let selected = LW.updateLibraryWindow (LW.SelectEntry "src-600") m
         Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState selected).selectedCode)
         // A re-selection re-targets the highlight in the same projection.
-        let retargeted = LW.update (LW.SelectEntry "pol-lp") selected
+        let retargeted = LW.updateLibraryWindow (LW.SelectEntry "pol-lp") selected
         Assert.Equal(LW.entryNodeCode "pol-lp", (LW.facetedState retargeted).selectedCode)
 
     [<Fact>]
     let ``the committed text filter narrows the corpus over display names and echoes as the box draft`` () =
         let _, m = freshModel ()
-        let narrowed = LW.update (LW.CommitTextFilter "glass") m
+        let narrowed = LW.updateLibraryWindow (LW.CommitTextFilter "glass") m
         Assert.Equal(6, List.length (LW.filteredEntries narrowed))
         Assert.Contains(glassFilm600EntryId, filteredEntryIds narrowed)
         Assert.DoesNotContain("src-600", filteredEntryIds narrowed)
         Assert.Equal("glass", (LW.facetedState narrowed).filterDraft)
-        let restored = LW.update (LW.CommitTextFilter "") narrowed
+        let restored = LW.updateLibraryWindow (LW.CommitTextFilter "") narrowed
         Assert.Equal(seededCorpus, List.length (LW.filteredEntries restored))
 
     [<Fact>]
     let ``applying the kind facet narrows the corpus and takes a removable breadcrumb chip with its after-count`` () =
         let _, m = freshModel ()
-        let constrained = LW.update (kindConstraint "Polarizer") m
+        let constrained = LW.updateLibraryWindow (kindConstraint "Polarizer") m
         Assert.Equal(3, List.length (LW.filteredEntries constrained))
         Assert.Contains("pol-lp", filteredEntryIds constrained)
         let chips = (LW.facetedState constrained).breadcrumbs
@@ -449,25 +449,25 @@ module LibraryWindowTests =
         Assert.Equal(entryKindFacetKey.value, (List.head chips).code)
         Assert.Equal("Kind: Polarizer", (List.head chips).label)
         Assert.Equal(3, (List.head chips).afterCount)
-        let removed = LW.update (LW.RemoveFacet entryKindFacetKey) constrained
+        let removed = LW.updateLibraryWindow (LW.RemoveFacet entryKindFacetKey) constrained
         Assert.Equal(seededCorpus, List.length (LW.filteredEntries removed))
         Assert.Empty((LW.facetedState removed).breadcrumbs)
 
     [<Fact>]
     let ``the polarizer-category facet rides polarizer populations only and the sample facets ride the sample subtree`` () =
         let _, m = freshModel ()
-        let offerCodes (model : LW.Model) : string list =
+        let offerCodes (model : LW.LibraryWindowModel) : string list =
             (LW.facetedState model).offers |> List.map (fun g -> g.code)
         // Over the whole corpus both facet families are offered (polarizers and samples exist).
         Assert.Contains(polarizerCategoryFacetKey.value, offerCodes m)
         Assert.Contains(sampleFilmMaterialKey.value, offerCodes m)
         // Over polarizers only: the polarizer facet stays, every sample facet vanishes.
-        let polarizers = LW.update (kindConstraint "Polarizer") m
+        let polarizers = LW.updateLibraryWindow (kindConstraint "Polarizer") m
         Assert.Contains(polarizerCategoryFacetKey.value, offerCodes polarizers)
         Assert.DoesNotContain(sampleFilmMaterialKey.value, offerCodes polarizers)
         Assert.DoesNotContain(sampleFilmThicknessKey.value, offerCodes polarizers)
         // Over a polarizer-free population the polarizer facet vanishes entirely.
-        let sources = LW.update (kindConstraint "Source") m
+        let sources = LW.updateLibraryWindow (kindConstraint "Source") m
         Assert.DoesNotContain(polarizerCategoryFacetKey.value, offerCodes sources)
         Assert.DoesNotContain(sampleFilmMaterialKey.value, offerCodes sources)
         // The polarizer facet offers the seeded categories with previews (1 LP, 2 CP).
@@ -481,7 +481,7 @@ module LibraryWindowTests =
     let ``a lifted sample facet narrows to the samples carrying the constituent — any film layer matches`` () =
         let _, m = freshModel ()
         let constrained =
-            LW.update (LW.ApplyFacetConstraint (sampleFilmMaterialKey, DiscreteSelection (Set.singleton (DiscreteKey "Transparent glass (n = 1.52)")))) m
+            LW.updateLibraryWindow (LW.ApplyFacetConstraint (sampleFilmMaterialKey, DiscreteSelection (Set.singleton (DiscreteKey "Transparent glass (n = 1.52)")))) m
         // glassFilm200 (single film) and multilayerQw (period cell + closing layer) carry
         // glass152 films; every other entry — incl. the plates whose SUBSTRATE is glass152 and
         // every preset — leaves the result set.
@@ -506,7 +506,7 @@ module LibraryWindowTests =
         // count (the step-010 pin, now through the window's own handler boundary).
         let bucket = List.head thicknessOffer.values
         let mutable current = m
-        let handlers = LW.facetedHandlers (fun msg -> current <- LW.update msg current)
+        let handlers = LW.facetedHandlers (fun msg -> current <- LW.updateLibraryWindow msg current)
         handlers.applyConstraint sampleFilmThicknessKey.value bucket.code
         Assert.Equal(bucket.previewCount, List.length (LW.filteredEntries current))
         // The chip is removable and carries the bucket-shaped range label.
@@ -533,7 +533,7 @@ module LibraryWindowTests =
     let ``a manual min–max entry applies as an ordinary constraint chip and an unparseable commit is a no-op`` () =
         let _, m = freshModel ()
         let mutable current = m
-        let handlers = LW.facetedHandlers (fun msg -> current <- LW.update msg current)
+        let handlers = LW.facetedHandlers (fun msg -> current <- LW.updateLibraryWindow msg current)
         // "160-260" nm: only the 200 nm glass film's layer lands inside the half-open range.
         handlers.applyManualRange sampleFilmThicknessKey.value "160-260"
         Assert.Equal<string list>(
@@ -544,7 +544,7 @@ module LibraryWindowTests =
         let before = current
         handlers.applyManualRange sampleFilmThicknessKey.value "not-a-range"
         handlers.applyManualRange sampleFilmThicknessKey.value ""
-        Assert.Equal<LW.Model>(before, current)
+        Assert.Equal<LW.LibraryWindowModel>(before, current)
         // A single value parses as the degenerate exact-value range (never asserted against a
         // store magnitude — thicknesses round-trip through meters a few ulp off, step 011).
         Assert.Equal<NumericRange option>(Some { lower = 42.0; upper = 42.0 }, LW.parseManualRange "42")
@@ -580,14 +580,14 @@ module LibraryWindowTests =
         // entity's Guid AT the window-open dispatch, so every Add opens its own registry-keyed
         // editor (the recorded call carries the minted id).
         let calls, m = freshModel ()
-        LW.update LW.AddSample m |> ignore
-        LW.update LW.AddSample m |> ignore
+        LW.updateLibraryWindow LW.AddSample m |> ignore
+        LW.updateLibraryWindow LW.AddSample m |> ignore
         match calls |> Seq.filter (fun c -> c.StartsWith "sample-add:") |> List.ofSeq with
         | [ a; b ] -> Assert.NotEqual<string>(a, b)
         | other -> Assert.Fail($"expected two sample Adds, got %A{other}")
         calls.Clear()
         // Make-multilayer is the DISTINCT seeded-period creation path (spec 0035 step 014).
-        LW.update LW.MakeMultilayer m |> ignore
+        LW.updateLibraryWindow LW.MakeMultilayer m |> ignore
         match List.ofSeq calls with
         | [ one ] -> Assert.StartsWith("sample-multilayer:", one)
         | other -> Assert.Fail($"expected one Make-multilayer, got %A{other}")
@@ -595,12 +595,12 @@ module LibraryWindowTests =
     [<Fact>]
     let ``Edit reaches the launcher only for a SAMPLE selection — presets and no selection are inert`` () =
         let calls, m = freshModel ()
-        m |> LW.update (LW.SelectEntry glassFilm600EntryId) |> LW.update LW.EditSelected |> ignore
+        m |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId) |> LW.updateLibraryWindow LW.EditSelected |> ignore
         Assert.Equal<string list>([ "sample-edit:Glass thin film (n=1.75, 600 nm)" ], List.ofSeq calls)
         calls.Clear()
         // A preset has no editor — the verb is absent and the dispatch inert.
-        m |> LW.update (LW.SelectEntry "pol-lp") |> LW.update LW.EditSelected |> ignore
-        LW.update LW.EditSelected m |> ignore
+        m |> LW.updateLibraryWindow (LW.SelectEntry "pol-lp") |> LW.updateLibraryWindow LW.EditSelected |> ignore
+        LW.updateLibraryWindow LW.EditSelected m |> ignore
         Assert.Empty(calls)
 
     [<Fact>]
@@ -608,8 +608,8 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         let refused =
             m
-            |> LW.update (LW.SelectEntry "src-600")
-            |> LW.update LW.RequestRemoveSelected
+            |> LW.updateLibraryWindow (LW.SelectEntry "src-600")
+            |> LW.updateLibraryWindow LW.RequestRemoveSelected
         // The typed reason NAMES the entry; the confirm gate never arms.
         match refused.lastError with
         | Some (LW.ProtectedEntryRefused reason) ->
@@ -624,18 +624,18 @@ module LibraryWindowTests =
         | Ok all -> Assert.Equal(11, List.length all)
         | Error e -> Assert.Fail($"listSamples failed: %A{e}")
         // A confirm after the refusal is inert too — there is no armed gate to fire.
-        Assert.Equal<LW.Model>(refused, LW.update LW.ConfirmRemove refused)
+        Assert.Equal<LW.LibraryWindowModel>(refused, LW.updateLibraryWindow LW.ConfirmRemove refused)
 
     [<Fact>]
     let ``Remove on a sample is confirm-gated: request arms with the id, cancel disarms, nothing is removed; no selection is inert`` () =
         let _, m = freshModel ()
-        Assert.Equal<LW.Model>(m, LW.update LW.RequestRemoveSelected m)
+        Assert.Equal<LW.LibraryWindowModel>(m, LW.updateLibraryWindow LW.RequestRemoveSelected m)
         let armed =
             m
-            |> LW.update (LW.SelectEntry glassFilm600EntryId)
-            |> LW.update LW.RequestRemoveSelected
+            |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow LW.RequestRemoveSelected
         Assert.Equal(LW.PendingRemove SeedSamples.glassFilm600.id, armed.removeGate)
-        let cancelled = LW.update LW.CancelRemove armed
+        let cancelled = LW.updateLibraryWindow LW.CancelRemove armed
         Assert.Equal(LW.NoPendingRemove, cancelled.removeGate)
         Assert.Equal(seededCorpus, List.length (LW.filteredEntries cancelled))
 
@@ -644,9 +644,9 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         let removed =
             m
-            |> LW.update (LW.SelectEntry glassFilm600EntryId)
-            |> LW.update LW.RequestRemoveSelected
-            |> LW.update LW.ConfirmRemove
+            |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow LW.RequestRemoveSelected
+            |> LW.updateLibraryWindow LW.ConfirmRemove
         match removed.lastError with
         | None -> ()
         | Some e -> Assert.Fail($"expected no error, got %A{e}")
@@ -661,14 +661,14 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         let armed =
             m
-            |> LW.update (LW.SelectEntry glassFilm600EntryId)
-            |> LW.update LW.RequestRemoveSelected
+            |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow LW.RequestRemoveSelected
         // The sample disappears through the SHARED store (another window's remove)…
         match samples.removeSample SeedSamples.glassFilm600.id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
         // …so the armed confirm meets the typed UnknownSampleId block, surfaced inline.
-        let refused = LW.update LW.ConfirmRemove armed
+        let refused = LW.updateLibraryWindow LW.ConfirmRemove armed
         match refused.lastError with
         | Some (LW.SampleRemoveRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
         | other -> Assert.Fail($"expected SampleRemoveRefused UnknownSampleId, got %A{other}")
@@ -679,35 +679,35 @@ module LibraryWindowTests =
     let ``a query or selection change disarms a pending remove and clears the refusal`` () =
         let armed () =
             let _, m = freshModel ()
-            m |> LW.update (LW.SelectEntry glassFilm600EntryId) |> LW.update LW.RequestRemoveSelected
-        Assert.Equal(LW.NoPendingRemove, (LW.update (LW.CommitTextFilter "film") (armed ())).removeGate)
-        Assert.Equal(LW.NoPendingRemove, (LW.update (kindConstraint "Sample") (armed ())).removeGate)
-        Assert.Equal(LW.NoPendingRemove, (LW.update (LW.RemoveFacet entryKindFacetKey) (armed ())).removeGate)
-        let retargeted = LW.update (LW.SelectEntry "src-600") (armed ())
+            m |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId) |> LW.updateLibraryWindow LW.RequestRemoveSelected
+        Assert.Equal(LW.NoPendingRemove, (LW.updateLibraryWindow (LW.CommitTextFilter "film") (armed ())).removeGate)
+        Assert.Equal(LW.NoPendingRemove, (LW.updateLibraryWindow (kindConstraint "Sample") (armed ())).removeGate)
+        Assert.Equal(LW.NoPendingRemove, (LW.updateLibraryWindow (LW.RemoveFacet entryKindFacetKey) (armed ())).removeGate)
+        let retargeted = LW.updateLibraryWindow (LW.SelectEntry "src-600") (armed ())
         Assert.Equal(Some "src-600", retargeted.selectedEntryId)
         Assert.Equal(LW.NoPendingRemove, retargeted.removeGate)
         // The typed protected refusal clears on the next query edit (not on a mere cancel).
         let refused =
             let _, m = freshModel ()
-            m |> LW.update (LW.SelectEntry "src-600") |> LW.update LW.RequestRemoveSelected
+            m |> LW.updateLibraryWindow (LW.SelectEntry "src-600") |> LW.updateLibraryWindow LW.RequestRemoveSelected
         match refused.lastError with
         | Some (LW.ProtectedEntryRefused _) -> ()
         | other -> Assert.Fail($"expected ProtectedEntryRefused, got %A{other}")
-        Assert.Equal(None, (LW.update (LW.CommitTextFilter "si") refused).lastError)
+        Assert.Equal(None, (LW.updateLibraryWindow (LW.CommitTextFilter "si") refused).lastError)
 
     [<Fact>]
     let ``only an entry node code selects — branches and headings are grouping display`` () =
         Assert.Equal(Some "src-600", LW.entryIdOfNodeCode (LW.entryNodeCode "src-600"))
         Assert.Equal<string option>(None, LW.entryIdOfNodeCode "branch:entry-kind:Sample")
         Assert.Equal<string option>(None, LW.entryIdOfNodeCode "entries")
-        let dispatched = ResizeArray<LW.Msg>()
+        let dispatched = ResizeArray<LW.LibraryWindowMsg>()
         let handlers = LW.facetedHandlers dispatched.Add
         handlers.selectNode (LW.entryNodeCode "src-600")
         handlers.selectNode "branch:entry-kind:Sample"
         handlers.selectNode "entries"
         // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
         // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
-        Assert.Equal<LW.Msg list>([ LW.SelectEntryNode ("src-600", LW.entryNodeCode "src-600") ], List.ofSeq dispatched)
+        Assert.Equal<LW.LibraryWindowMsg list>([ LW.SelectEntryNode ("src-600", LW.entryNodeCode "src-600") ], List.ofSeq dispatched)
         // A discrete offer click lifts its tokens back to elevated engine values at the boundary.
         handlers.applyConstraint entryKindFacetKey.value "Polarizer"
         Assert.Equal(kindConstraint "Polarizer", dispatched.[1])
@@ -717,7 +717,7 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         Assert.Equal<LibraryEntry option>(None, LW.selectedEntry m)
         // A preset selection: shown, protected, NOT editable.
-        let source = LW.update (LW.SelectEntry "src-600") m
+        let source = LW.updateLibraryWindow (LW.SelectEntry "src-600") m
         match LW.selectedEntry source with
         | Some entry ->
             Assert.Equal("Monochromatic 600 nm", entry.displayName)
@@ -725,7 +725,7 @@ module LibraryWindowTests =
         | None -> Assert.Fail "the selected source entry must resolve"
         Assert.Equal<Sample option>(None, LW.editableSample source)
         // A sample selection: shown AND editable.
-        let sample = LW.update (LW.SelectEntry glassFilm600EntryId) m
+        let sample = LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId) m
         match LW.editableSample sample with
         | Some s -> Assert.Equal(SeedSamples.glassFilm600.id, s.id)
         | None -> Assert.Fail "the selected sample must offer Edit"
@@ -739,13 +739,13 @@ module LibraryWindowTests =
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
         let library, samples, materials = freshStores ()
         let _, context = stubContext library samples materials
-        let m = LW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse
+        let m = LW.initLibraryWindow { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse
         let gated = LW.facetedState m
         Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
         Assert.Empty(gated.tree)
         Assert.Equal(seededCorpus, gated.resultCount)
         Assert.NotEmpty(gated.offers)
-        let shown = LW.facetedState (LW.update LW.RequestTreeBuild m)
+        let shown = LW.facetedState (LW.updateLibraryWindow LW.RequestTreeBuild m)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, shown.materialization)
         Assert.NotEmpty(shown.tree)
 
@@ -755,9 +755,9 @@ module LibraryWindowTests =
     /// injectable stores), for the strip-button acceptance.
     let private mountMain (library : LibraryProxy) (samples : SampleProxy) (materials : MaterialProxy) : HostWindow =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        let model0 = Scene.initMainWith library (Experiments.createInMemory ()) materials samples categories
+        let model0 = Scene.initMainWith library (Experiments.createInMemoryExperiments ()) materials samples categories
         let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) Scene.update Scene.mainView
+        Program.mkSimple (fun () -> model0) Scene.updateTableAndElementRotation Scene.mainView
         |> Program.withHost window
         |> Program.run
         window.Show()
@@ -829,7 +829,7 @@ module LibraryWindowTests =
             // facet to reveal its branches.
             expandEntries window
             expandNode window ("facet:" + entryKindFacetKey.value)
-            for kind, count in [ "Sample", 11; "Source", List.length SeedSources.all; "Detector", 2; "Polarizer", 3 ] do
+            for kind, count in [ "Sample", 11; "Source", List.length SeedSources.allSeedSources; "Detector", 2; "Polarizer", 3 ] do
                 let branchId = (ConstructorUiId.facetTreeNode (ConstructorUiKey ("branch:" + entryKindFacetKey.value + ":" + kind))).value
                 Assert.True(isPresent window branchId, $"the by-kind tree must list the %s{kind} branch")
                 Assert.Equal($"%s{kind} (%d{count})", textOf window branchId)
@@ -977,9 +977,9 @@ module LibraryWindowTests =
             // composition — the FacetedTreeControlsTests mounting precedent).
             let window = HostWindow(Width = 900.0, Height = 760.0)
             Program.mkSimple
-                (fun () -> LW.init { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse)
-                LW.update
-                LW.view
+                (fun () -> LW.initLibraryWindow { context with treeAutoBuildThreshold = TreeAutoBuildThreshold 1 } Browse)
+                LW.updateLibraryWindow
+                LW.libraryWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()
@@ -1013,7 +1013,7 @@ module LibraryWindowTests =
             // Mount the REAL MVU loop directly (NOT the auto-expanding helper) so the first render
             // is the collapsed default.
             let window = HostWindow(Width = 900.0, Height = 760.0)
-            Program.mkSimple (fun () -> LW.init context Browse) LW.update LW.view
+            Program.mkSimple (fun () -> LW.initLibraryWindow context Browse) LW.updateLibraryWindow LW.libraryWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()
@@ -1079,7 +1079,7 @@ module LibraryWindowTests =
         Assert.Equal<string list>([ "pol-lp" ], filteredEntryIds lp)
         // The selection resolves through the CONSTRAINED corpus: an out-of-constraint id
         // resolves to nothing (Select can never return an entry outside its constraint).
-        let stray = LW.update (LW.SelectEntry "src-600") lp
+        let stray = LW.updateLibraryWindow (LW.SelectEntry "src-600") lp
         Assert.Equal<LibraryEntry option>(None, LW.selectedEntry stray)
         // Browse mode is byte-for-byte the ordinary window corpus.
         let _, browse = freshModel ()
@@ -1089,40 +1089,40 @@ module LibraryWindowTests =
     let ``ConfirmSelect returns the HIGHLIGHTED entry through onSelected and closes — no highlight is inert`` () =
         let events, calls, m = freshSelectModel Detector (TableElementTarget (elementId "det"))
         // No highlight → inert: no callback, no close, the model unchanged.
-        Assert.Equal<LW.Model>(m, LW.update LW.ConfirmSelect m)
+        Assert.Equal<LW.LibraryWindowModel>(m, LW.updateLibraryWindow LW.ConfirmSelect m)
         Assert.Empty(events)
         // Highlight an in-constraint entry, then Select: onSelected carries THAT entry, the
         // close request follows, and the mode flips to Browse (the resolved session cannot be
         // cancelled again by the host's dismissal hook).
         let resolved =
             m
-            |> LW.update (LW.SelectEntry "det-intensity")
-            |> LW.update LW.ConfirmSelect
+            |> LW.updateLibraryWindow (LW.SelectEntry "det-intensity")
+            |> LW.updateLibraryWindow LW.ConfirmSelect
         Assert.Equal<string list>([ "selected:det-intensity" ], List.ofSeq events)
         Assert.Contains("close-requested", calls)
         Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, resolved.mode)
-        Assert.Equal<LW.Model>(resolved, LW.update LW.SelectDismissed resolved)
+        Assert.Equal<LW.LibraryWindowModel>(resolved, LW.updateLibraryWindow LW.SelectDismissed resolved)
         Assert.Equal<string list>([ "selected:det-intensity" ], List.ofSeq events)
         // Browse-mode Confirm/Cancel are inert (the pair does not exist there).
         let _, browse = freshModel ()
-        Assert.Equal<LW.Model>(browse, LW.update LW.ConfirmSelect browse)
-        Assert.Equal<LW.Model>(browse, LW.update LW.CancelSelect browse)
+        Assert.Equal<LW.LibraryWindowModel>(browse, LW.updateLibraryWindow LW.ConfirmSelect browse)
+        Assert.Equal<LW.LibraryWindowModel>(browse, LW.updateLibraryWindow LW.CancelSelect browse)
 
     [<Fact>]
     let ``CancelSelect and the host dismissal cancel a pending session exactly once`` () =
         // The Close verb: onCancelled, then the close request.
         let events, calls, m = freshSelectModel Detector (TableElementTarget (elementId "det"))
-        let cancelled = LW.update LW.CancelSelect m
+        let cancelled = LW.updateLibraryWindow LW.CancelSelect m
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         Assert.Contains("close-requested", calls)
         Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, cancelled.mode)
         // A dismissal AFTER the cancel is a no-op — never a second onCancelled.
-        LW.update LW.SelectDismissed cancelled |> ignore
+        LW.updateLibraryWindow LW.SelectDismissed cancelled |> ignore
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         // The host dismissal alone (title-bar X / a staleness Close()): onCancelled once,
         // WITHOUT a close request (the window is already closing).
         let events2, calls2, m2 = freshSelectModel Detector (TableElementTarget (elementId "det"))
-        let dismissed = LW.update LW.SelectDismissed m2
+        let dismissed = LW.updateLibraryWindow LW.SelectDismissed m2
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events2)
         Assert.DoesNotContain("close-requested", calls2)
         Assert.Equal<LibraryWindowMode<LibraryEntry>>(Browse, dismissed.mode)
@@ -1130,12 +1130,12 @@ module LibraryWindowTests =
     [<Fact>]
     let ``RetargetSelect cancels the superseded session, re-points the constraint and target, and clears the highlight`` () =
         let events, _, m = freshSelectModel LinearPolarizer (TableElementTarget (elementId "el-1"))
-        let highlighted = LW.update (LW.SelectEntry "pol-lp") m
+        let highlighted = LW.updateLibraryWindow (LW.SelectEntry "pol-lp") m
         // A second Select open re-targets the live single instance: the FIRST session is
         // cancelled (a second Choose closes the first, logically) and the window now serves
         // the new constraint/target with a fresh highlight.
         let events2, retargetCtx = selectContext Detector (TableElementTarget (elementId "det"))
-        let retargeted = LW.update (LW.RetargetSelect retargetCtx) highlighted
+        let retargeted = LW.updateLibraryWindow (LW.RetargetSelect retargetCtx) highlighted
         Assert.Equal<string list>([ "cancelled" ], List.ofSeq events)
         Assert.Empty(events2)
         Assert.Equal<string option>(None, retargeted.selectedEntryId)
@@ -1144,8 +1144,8 @@ module LibraryWindowTests =
             filteredEntryIds retargeted |> List.sort)
         // The re-pointed session then resolves through the NEW context.
         retargeted
-        |> LW.update (LW.SelectEntry "det-ellipsometer")
-        |> LW.update LW.ConfirmSelect
+        |> LW.updateLibraryWindow (LW.SelectEntry "det-ellipsometer")
+        |> LW.updateLibraryWindow LW.ConfirmSelect
         |> ignore
         Assert.Equal<string list>([ "selected:det-ellipsometer" ], List.ofSeq events2)
 
@@ -1164,12 +1164,12 @@ module LibraryWindowTests =
     /// Mount the REAL Main workbench MVU loop headless WITH a captured dispatch (the
     /// `Cmd.ofEffect` capture the window hosts themselves use), so a Select window's
     /// onSelected can dispatch the TARGETED bind into the live scene loop.
-    let private mountMainWithDispatch (model0 : Scene.Model) : HostWindow * (Scene.Msg -> unit) =
+    let private mountMainWithDispatch (model0 : Scene.TableAndElementRotationModel) : HostWindow * (Scene.TableAndElementRotationMsg -> unit) =
         let window = HostWindow(Width = 980.0, Height = 1050.0)
-        let mutable dispatchRef : Scene.Msg -> unit = ignore
+        let mutable dispatchRef : Scene.TableAndElementRotationMsg -> unit = ignore
         Program.mkProgram
             (fun () -> model0, Cmd.ofEffect (fun d -> dispatchRef <- d))
-            (fun msg m -> Scene.update msg m, Cmd.none)
+            (fun msg m -> Scene.updateTableAndElementRotation msg m, Cmd.none)
             Scene.mainView
         |> Program.withHost window
         |> Program.run
@@ -1177,10 +1177,10 @@ module LibraryWindowTests =
         Dispatcher.UIThread.RunJobs()
         window, (fun msg -> dispatchRef msg)
 
-    let private freshMainModel () : Scene.Model =
+    let private freshMainModel () : Scene.TableAndElementRotationModel =
         let library, samples, materials = freshStores ()
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        Scene.initMainWith library (Experiments.createInMemory ()) materials samples categories
+        Scene.initMainWith library (Experiments.createInMemoryExperiments ()) materials samples categories
 
     /// Click the shared table canvas at canvas-local coordinates (the pointer gestures live on
     /// the wrapping Border and read positions relative to the NAMED canvas).
@@ -1323,14 +1323,14 @@ module LibraryWindowTests =
     /// model (the LibraryControlsTests drive pattern): the step-017 acceptance compares the
     /// model-level valueId the two bind paths land, so the readout text is not enough here.
     /// `latest` is the dispatch chain's source of truth; `state` only feeds the re-render.
-    let private mountMainExposed (model0 : Scene.Model) : Window * (Scene.Msg -> unit) * (unit -> Scene.Model) =
-        let latest : Scene.Model ref = ref model0
-        let dispatchRef : (Scene.Msg -> unit) ref = ref ignore
+    let private mountMainExposed (model0 : Scene.TableAndElementRotationModel) : Window * (Scene.TableAndElementRotationMsg -> unit) * (unit -> Scene.TableAndElementRotationModel) =
+        let latest : Scene.TableAndElementRotationModel ref = ref model0
+        let dispatchRef : (Scene.TableAndElementRotationMsg -> unit) ref = ref ignore
         let comp =
             Avalonia.FuncUI.Component(fun ctx ->
                 let state = ctx.useState model0
-                let dispatch (msg : Scene.Msg) =
-                    let m = Scene.update msg latest.Value
+                let dispatch (msg : Scene.TableAndElementRotationMsg) =
+                    let m = Scene.updateTableAndElementRotation msg latest.Value
                     latest.Value <- m
                     state.Set m
                 dispatchRef.Value <- dispatch
@@ -1342,7 +1342,7 @@ module LibraryWindowTests =
 
     /// The Main scene over fresh stores with the detector element selected (2 detector entries
     /// < the default threshold 5 — the under-threshold fixture) and the Select bay shown.
-    let private detectorSelectorModel () : Scene.Model =
+    let private detectorSelectorModel () : Scene.TableAndElementRotationModel =
         { freshMainModel () with selection = Scene.ElementSelected 1; ribbon = Scene.BayNames.selector }
 
     [<Fact>]
@@ -1351,7 +1351,7 @@ module LibraryWindowTests =
         HeadlessSession.run (fun () ->
             // A Sample element is selected: the 11 seeded sample entries sit at/above the
             // default QuickPickThreshold 5, so the bay offers the Choose… verb ALONE.
-            let model0 = Scene.update (Scene.AddElement Sample) (freshMainModel ())
+            let model0 = Scene.updateTableAndElementRotation (Scene.AddElement Sample) (freshMainModel ())
             let window, _, getModel = mountMainExposed { model0 with ribbon = Scene.BayNames.selector }
             Assert.Equal<Scene.SelectorOffer>(Scene.ChooseAlone, Scene.selectorOffer (getModel ()))
             Assert.True(isPresent window Scene.WorkbenchIds.chooseButton, "Choose… must be offered for the over-threshold kind")
@@ -1557,10 +1557,10 @@ module LibraryWindowTests =
     let ``no lifecycle verbs on a protected preset; a sample offers Mark inactive and Supersede`` () =
         let _, m = freshModel ()
         // A protected preset (ProtectedBuiltIn) offers NONE (removed, not greyed).
-        let preset = LW.update (LW.SelectEntry "src-600") m
+        let preset = LW.updateLibraryWindow (LW.SelectEntry "src-600") m
         Assert.Empty(LW.offeredLifecycleActions preset)
         // A UserManaged sample offers Mark inactive + Supersede…
-        let sample = LW.update (LW.SelectEntry glassFilm600EntryId) m
+        let sample = LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId) m
         Assert.Equal<LW.LifecycleAction list>([ LW.MarkInactiveAction; LW.SupersedeAction ], LW.offeredLifecycleActions sample)
 
     [<Fact>]
@@ -1568,9 +1568,9 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         let retired =
             m
-            |> LW.update (LW.SelectEntry glassFilm600EntryId)
-            |> LW.update LW.RequestMarkInactive
-            |> LW.update LW.ConfirmLifecycle
+            |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow LW.RequestMarkInactive
+            |> LW.updateLibraryWindow LW.ConfirmLifecycle
         Assert.Equal(LW.NoPendingLifecycle, retired.lifecycleGate)
         // Default scope EXCLUDES the retired sample (one fewer); the badge count is 1.
         Assert.DoesNotContain(glassFilm600EntryId, filteredEntryIds retired)
@@ -1581,7 +1581,7 @@ module LibraryWindowTests =
         | Ok (Some sample) -> Assert.Equal(SeedSamples.glassFilm600.id, sample.id)
         | other -> Assert.Fail($"the retired sample's version must still resolve, got %A{other}")
         // The toggle reveals it, badged, in the tree.
-        let shown = LW.update LW.ToggleShowInactive retired
+        let shown = LW.updateLibraryWindow LW.ToggleShowInactive retired
         Assert.Equal(IncludeInactive, shown.showInactive)
         Assert.Contains(glassFilm600EntryId, filteredEntryIds shown)
         Assert.Equal(seededCorpus, (LW.facetedState shown).resultCount)
@@ -1602,16 +1602,16 @@ module LibraryWindowTests =
         let samples, m = freshModelWithStores ()
         let armed =
             m
-            |> LW.update (LW.SelectEntry glassFilm600EntryId)
-            |> LW.update LW.RequestSupersede
+            |> LW.updateLibraryWindow (LW.SelectEntry glassFilm600EntryId)
+            |> LW.updateLibraryWindow LW.RequestSupersede
         Assert.Equal(LW.PendingLifecycle (SeedSamples.glassFilm600.id, LW.SupersedeAction), armed.lifecycleGate)
         // A query change disarms.
-        Assert.Equal(LW.NoPendingLifecycle, (LW.update (LW.CommitTextFilter "x") armed).lifecycleGate)
+        Assert.Equal(LW.NoPendingLifecycle, (LW.updateLibraryWindow (LW.CommitTextFilter "x") armed).lifecycleGate)
         // The sample vanishes behind the window's back, then Confirm meets the typed store block.
         match samples.removeSample SeedSamples.glassFilm600.id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"the out-of-band remove must succeed, got %A{e}")
-        let refused = LW.update LW.ConfirmLifecycle armed
+        let refused = LW.updateLibraryWindow LW.ConfirmLifecycle armed
         match refused.lastError with
         | Some (LW.SampleLifecycleRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
         | other -> Assert.Fail($"expected SampleLifecycleRefused UnknownSampleId, got %A{other}")
@@ -1623,7 +1623,7 @@ module LibraryWindowTests =
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let _, context = stubContext library samples materials
         let entryId = string id.value
-        let selected = LW.init context Browse |> LW.update (LW.SelectEntry entryId)
+        let selected = LW.initLibraryWindow context Browse |> LW.updateLibraryWindow (LW.SelectEntry entryId)
         Assert.Equal<int list>([ 1; 2 ], LW.selectedVersions selected |> List.map (fun (v, _) -> v.value))
         Assert.Equal<VersionNumber option>(None, selected.viewedVersion)
         // The Edit affordance targets the LATEST sample (v2).
@@ -1631,9 +1631,9 @@ module LibraryWindowTests =
         | Some sample -> Assert.Equal(v2.name, sample.name)
         | None -> Assert.Fail "the latest version must remain editable"
         // Viewing an OLDER version records it; a new selection resets to the latest.
-        let older = LW.update (LW.ViewVersion (VersionNumber 1)) selected
+        let older = LW.updateLibraryWindow (LW.ViewVersion (VersionNumber 1)) selected
         Assert.Equal<VersionNumber option>(Some (VersionNumber 1), older.viewedVersion)
-        Assert.Equal<VersionNumber option>(None, (LW.update (LW.SelectEntry entryId) older).viewedVersion)
+        Assert.Equal<VersionNumber option>(None, (LW.updateLibraryWindow (LW.SelectEntry entryId) older).viewedVersion)
 
     // ============================ step 023 — lifecycle (headless) ============================
 
@@ -1694,7 +1694,7 @@ module LibraryWindowTests =
             // Mount the REAL MVU loop (the window minus its launcher composition — the gated-tree
             // mounting precedent) so the version-row clicks drive the pure update.
             let window = HostWindow(Width = 900.0, Height = 760.0)
-            Program.mkSimple (fun () -> LW.init context Browse) LW.update LW.view
+            Program.mkSimple (fun () -> LW.initLibraryWindow context Browse) LW.updateLibraryWindow LW.libraryWindowView
             |> Program.withHost window
             |> Program.run
             window.Show()

@@ -53,7 +53,7 @@ let private classifyWavelength : WaveLength = WaveLength.Nm 550.0<nm>
 /// bounds then fit each axis independently (018 `dataBounds`).
 let private rightAxisSeries (indices : int list) (chart : ExperimentChart) : ChartStyle.ChartStyleState =
     indices
-    |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide i ChartStyle.RightAxis st) (ChartStyle.defaultState chart)
+    |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide i ChartStyle.RightAxis st) (ChartStyle.defaultChartStyleState chart)
 
 /// Spec 0038 comment 007: the principal-axis n/k slots a given anisotropy DISTINGUISHES, each a
 /// (tensor diagonal index, n-series name, k-series name) triple — so the chart draws ONLY the curves
@@ -153,7 +153,7 @@ let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWi
 
 /// The gyration chart's style seed: every g component on the LEFT axis (a single shared scale).
 let gyrationStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
-    ChartStyle.defaultState chart
+    ChartStyle.defaultChartStyleState chart
 
 /// The series name of the Polder gyration magnitude (the one μ series flipped to the RIGHT axis) —
 /// ONE constant shared by `muChart` (which emits it for a gyromagnetic tensor) and `muStyle` (which

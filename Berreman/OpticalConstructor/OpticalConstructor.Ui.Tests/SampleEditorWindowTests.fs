@@ -211,7 +211,7 @@ module SampleEditorWindowTests =
                     films =
                         [
                             SingleLayer (layerOf MaterialIds.glass152 100.0)
-                            SingleLayer (layerOf MaterialIds.vacuum 50.0)
+                            SingleLayer (layerOf MaterialIds.vacuumMaterial 50.0)
                             SingleLayer (layerOf MaterialIds.glass152 100.0)
                         ]
                     substrate = None
@@ -232,10 +232,10 @@ module SampleEditorWindowTests =
     let private threeFilmMirror () : Sample =
         { threeFilmSample () with substrate = Mirror; supportedEmission = defaultSupportedEmission Mirror }
 
-    let private newModel () : Model =
+    let private newModel () : SampleEditorModel =
         let _, context = recordingContext ()
         // The Add-open shape (spec 0038 step 008): the id is minted AT WINDOW OPEN.
-        init context builtInEntries (NewBlankSample (newSampleId ()))
+        initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))
 
     // ============================ pure control contract ============================
 
@@ -275,7 +275,7 @@ module SampleEditorWindowTests =
         // NewUnsaved entry — the SAME id the launcher's registry keys the window by.
         let minted = newSampleId ()
         let _, context = recordingContext ()
-        let m = init context builtInEntries (NewBlankSample minted)
+        let m = initSampleEditor context builtInEntries (NewBlankSample minted)
         Assert.Equal("", m.name)
         Assert.Equal("", m.description)
         Assert.Equal(ThinFilm, m.substrate)
@@ -291,7 +291,7 @@ module SampleEditorWindowTests =
     let ``an existing sample seeds the editor and save targets its id`` () =
         let sample = threeFilmSample ()
         let _, context = recordingContext ()
-        let m = init context builtInEntries (EditSample sample)
+        let m = initSampleEditor context builtInEntries (EditSample sample)
         Assert.Equal(sample.name, m.name)
         Assert.Equal(sample.description, m.description)
         Assert.Equal(sample.substrate, m.substrate)
@@ -302,7 +302,7 @@ module SampleEditorWindowTests =
     let ``Make-multilayer opens a NEW sample seeded with a foldable 2-layer period, distinct from the blank Add`` () =
         let _, context = recordingContext ()
         let minted = newSampleId ()
-        let seeded = init context builtInEntries (NewSeededMultilayer minted)
+        let seeded = initSampleEditor context builtInEntries (NewSeededMultilayer minted)
         // A NEW sample under the id minted at open (Save routes addSample on the NewUnsaved
         // freshness — spec 0038 step 008), NOT an existing one to update in place.
         Assert.Equal({ sampleId = minted; freshness = WindowLauncher.NewUnsaved }, seeded.target)
@@ -315,15 +315,15 @@ module SampleEditorWindowTests =
             Assert.True(g.count >= 1, "the starter period repeats at least once")
         | films -> Assert.Fail($"expected one Repeated 2-layer period, got %A{films}")
         // The blank Add path opens onto NOTHING — the two NEW intents are genuinely distinct.
-        Assert.Empty((init context builtInEntries (NewBlankSample (newSampleId ()))).editor.structure.films)
+        Assert.Empty((initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))).editor.structure.films)
 
     [<Fact>]
     let ``toSample builds the sample from the model under the given id`` () =
         let m =
             newModel ()
-            |> update (SetName "Built")
-            |> update (SetDescription "built by test")
-            |> update (SetSubstrate Plate)
+            |> updateSampleEditor (SetName "Built")
+            |> updateSampleEditor (SetDescription "built by test")
+            |> updateSampleEditor (SetSampleSubstrate Plate)
         let id = newSampleId ()
         let s = toSample id m
         Assert.Equal(id, s.id)
@@ -335,15 +335,15 @@ module SampleEditorWindowTests =
     [<Fact>]
     let ``clicking a layer row toggles it in and out of the multi-selection`` () =
         let _, context = recordingContext ()
-        let m = init context builtInEntries (EditSample (threeFilmSample ()))
-        let selected = m |> update (ToggleLayer (AtSingleLayer 0)) |> update (ToggleLayer (AtSingleLayer 1))
+        let m = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
+        let selected = m |> updateSampleEditor (ToggleLayer (AtSingleLayer 0)) |> updateSampleEditor (ToggleLayer (AtSingleLayer 1))
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 0; AtSingleLayer 1 ], selected.editor.selection)
-        let toggledOff = selected |> update (ToggleLayer (AtSingleLayer 0))
+        let toggledOff = selected |> updateSampleEditor (ToggleLayer (AtSingleLayer 0))
         Assert.Equal<Set<LayerPosition>>(Set.ofList [ AtSingleLayer 1 ], toggledOff.editor.selection)
 
     [<Fact>]
     let ``AddLayer appends a layer of the chosen material with the default thickness`` () =
-        let m = newModel () |> update (ChooseMaterial MaterialIds.glass175) |> update AddLayerClicked
+        let m = newModel () |> updateSampleEditor (ChooseMaterial MaterialIds.glass175) |> updateSampleEditor AddLayerClicked
         match m.editor.structure.films with
         | [ SingleLayer l ] ->
             Assert.Equal(MaterialIds.glass175, l.materialId.materialId)
@@ -354,24 +354,24 @@ module SampleEditorWindowTests =
     [<Fact>]
     let ``the fold-count stepper steps and clamps at 1`` () =
         let m = newModel ()
-        Assert.Equal(3, (m |> update (FoldCountBy 1)).foldCount)
-        Assert.Equal(1, (m |> update (FoldCountBy -5)).foldCount)
+        Assert.Equal(3, (m |> updateSampleEditor (FoldCountBy 1)).foldCount)
+        Assert.Equal(1, (m |> updateSampleEditor (FoldCountBy -5)).foldCount)
 
     [<Fact>]
     let ``a rejected repeat operation surfaces the typed error's reason as the status`` () =
         // MakeRepeatBlock with nothing selected → SelectionNotFoldable.
-        let m = newModel () |> update MakeRepeatBlockClicked
+        let m = newModel () |> updateSampleEditor MakeRepeatBlockClicked
         match m.status with
         | Some reason -> Assert.Contains("selected", reason)
         | None -> Assert.Fail("expected a status reason for the empty-selection fold")
         // Stepping a group's count below 1 → InvalidRepeatCount, count unchanged.
         let _, context = recordingContext ()
         let grouped =
-            init context builtInEntries (EditSample (threeFilmSample ()))
-            |> update (ToggleLayer (AtSingleLayer 0))
-            |> update (ToggleLayer (AtSingleLayer 1))
-            |> update MakeRepeatBlockClicked
-        let below = grouped |> update (GroupCountBy (0, -2))
+            initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
+            |> updateSampleEditor (ToggleLayer (AtSingleLayer 0))
+            |> updateSampleEditor (ToggleLayer (AtSingleLayer 1))
+            |> updateSampleEditor MakeRepeatBlockClicked
+        let below = grouped |> updateSampleEditor (GroupCountBy (0, -2))
         match below.status with
         | Some reason -> Assert.Contains("at least 1", reason)
         | None -> Assert.Fail("expected a status reason for the count-below-1 step")
@@ -382,7 +382,7 @@ module SampleEditorWindowTests =
     [<Fact>]
     let ``isAnisotropicEntry separates the anisotropic built-ins from the isotropic ones`` () =
         Assert.False(isAnisotropicEntry (builtIn MaterialIds.glass152))
-        Assert.False(isAnisotropicEntry (builtIn MaterialIds.vacuum))
+        Assert.False(isAnisotropicEntry (builtIn MaterialIds.vacuumMaterial))
         Assert.False(isAnisotropicEntry (builtIn MaterialIds.silicon))
         Assert.False(isAnisotropicEntry (builtIn MaterialIds.euvMolybdenum))
         Assert.True(isAnisotropicEntry (builtIn MaterialIds.uniaxialCrystal))
@@ -397,11 +397,11 @@ module SampleEditorWindowTests =
         | Thickness meters -> Assert.True(close (float meters) (600.0 / (4.0 * 1.52) * 1.0e-9), $"t = %A{meters} m")
         | Infinity -> Assert.Fail("QWOT must derive a finite thickness")
         // The derivation needs a chosen material and a parsable positive wavelength.
-        let m = newModel () |> update (SetQwotText "600")
+        let m = newModel () |> updateSampleEditor (SetQwotText "600")
         match qwotDerived m with
         | Some _ -> Assert.Fail("no material chosen — nothing to take n from")
         | None -> ()
-        let chosen = m |> update (ChooseMaterial MaterialIds.glass152)
+        let chosen = m |> updateSampleEditor (ChooseMaterial MaterialIds.glass152)
         match qwotDerived chosen with
         | Some (Thickness meters) -> Assert.True(close (float meters) (600.0 / (4.0 * 1.52) * 1.0e-9))
         | Some Infinity | None -> Assert.Fail("expected the derived QWOT thickness")
@@ -416,54 +416,54 @@ module SampleEditorWindowTests =
         // NewUnsaved → saveSample under the UPFRONT-minted id (spec 0038 steps 008/022 — the mint
         // happened at window open; the store inserts version 1), then close.
         let calls, context = recordingContext ()
-        init context builtInEntries (NewBlankSample (newSampleId ()))
-        |> update (SetName "Fresh")
-        |> update SaveClicked
+        initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))
+        |> updateSampleEditor (SetName "Fresh")
+        |> updateSampleEditor SaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Fresh"; "close" ], List.ofSeq calls)
         // Existing → the SAME saveSample (the store runs the decision rule), then close.
         let calls2, context2 = recordingContext ()
-        init context2 builtInEntries (EditSample (threeFilmSample ()))
-        |> update (SetName "Edited")
-        |> update SaveClicked
+        initSampleEditor context2 builtInEntries (EditSample (threeFilmSample ()))
+        |> updateSampleEditor (SetName "Edited")
+        |> updateSampleEditor SaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Edited"; "close" ], List.ofSeq calls2)
         // Cancel on a DIRTY editor no longer closes silently (spec 0038 step 033): it shows the
         // discard confirm and reaches neither saveSample nor requestClose; Discard then closes.
         let calls3, context3 = recordingContext ()
         let confirming =
-            init context3 builtInEntries (EditSample (threeFilmSample ()))
-            |> update (SetName "Discarded")
-            |> update CancelClicked
+            initSampleEditor context3 builtInEntries (EditSample (threeFilmSample ()))
+            |> updateSampleEditor (SetName "Discarded")
+            |> updateSampleEditor CancelClicked
         Assert.Empty(calls3)
         match confirming.exit with
         | ConfirmingDiscard -> ()
         | Editing -> Assert.Fail("a dirty Cancel must show the discard confirm, not close")
-        update DiscardConfirmed confirming |> ignore
+        updateSampleEditor DiscardConfirmed confirming |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls3)
 
     [<Fact>]
     let ``spec 0038 (033): a pristine editor closes silently, a dirty one gates Cancel behind the discard confirm`` () =
         // Pristine: a freshly opened blank sample is not dirty and Cancel closes silently.
         let calls, context = recordingContext ()
-        let fresh = init context builtInEntries (NewBlankSample (newSampleId ()))
+        let fresh = initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))
         Assert.False(isDirty fresh, "a freshly opened editor is pristine")
-        let afterCancel = update CancelClicked fresh
+        let afterCancel = updateSampleEditor CancelClicked fresh
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
         Assert.Equal(Editing, afterCancel.exit)
         // Dirty: a name edit makes it dirty; Cancel shows the confirm and reaches nothing.
         let calls2, context2 = recordingContext ()
-        let edited = init context2 builtInEntries (NewBlankSample (newSampleId ())) |> update (SetName "X")
+        let edited = initSampleEditor context2 builtInEntries (NewBlankSample (newSampleId ())) |> updateSampleEditor (SetName "X")
         Assert.True(isDirty edited, "a name edit makes the editor dirty")
-        let confirming = update CancelClicked edited
+        let confirming = updateSampleEditor CancelClicked edited
         Assert.Equal(ConfirmingDiscard, confirming.exit)
         Assert.Empty(calls2)
         // Keep editing dismisses the confirm without closing.
-        let kept = update KeepEditing confirming
+        let kept = updateSampleEditor KeepEditing confirming
         Assert.Equal(Editing, kept.exit)
         Assert.Empty(calls2)
         // Discard closes without ever reaching saveSample.
-        update DiscardConfirmed confirming |> ignore
+        updateSampleEditor DiscardConfirmed confirming |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls2)
 
     [<Fact>]
@@ -471,13 +471,13 @@ module SampleEditorWindowTests =
         // A NewSeededMultilayer opens onto the Domain starter period but is NOT a user edit — it
         // opens pristine and closes silently.
         let calls, context = recordingContext ()
-        let seeded = init context builtInEntries (NewSeededMultilayer (newSampleId ()))
+        let seeded = initSampleEditor context builtInEntries (NewSeededMultilayer (newSampleId ()))
         Assert.False(isDirty seeded, "a seeded starter is not a user edit")
         // A stack structural edit (add a layer) dirties it; the selection alone would not.
-        let dirtied = update AddLayerClicked seeded
+        let dirtied = updateSampleEditor AddLayerClicked seeded
         Assert.True(isDirty dirtied, "adding a layer changes the stack structure — dirty")
         // Cancel then gates behind the confirm rather than closing.
-        let confirming = update CancelClicked dirtied
+        let confirming = updateSampleEditor CancelClicked dirtied
         Assert.Equal(ConfirmingDiscard, confirming.exit)
         Assert.Empty(calls)
 
@@ -503,7 +503,7 @@ module SampleEditorWindowTests =
                 openMaterialsSelect = fun _ _ -> ()
                 requestClose = fun () -> closes.Add "close"
             }
-        let m = init context builtInEntries (NewBlankSample (newSampleId ())) |> update SaveClicked
+        let m = initSampleEditor context builtInEntries (NewBlankSample (newSampleId ())) |> updateSampleEditor SaveClicked
         Assert.Empty(closes)
         match m.status with
         | Some reason -> Assert.Equal("the name is blank", reason)
@@ -525,7 +525,7 @@ module SampleEditorWindowTests =
             match materials.listMaterials ActiveOnly with
             | Ok entries -> entries
             | Error e -> failwith $"listMaterials failed: %A{e}"
-        let m = init context opened (NewBlankSample (newSampleId ()))
+        let m = initSampleEditor context opened (NewBlankSample (newSampleId ()))
         // Another window writes through the SHARED store while this editor is open (no live
         // notification reaches the editor — out of scope).
         let added = { builtIn MaterialIds.glass152 with id = newMaterialId (); name = "Added elsewhere" }
@@ -536,7 +536,7 @@ module SampleEditorWindowTests =
         // The re-query (a Select-session return or a window activation dispatches it)
         // surfaces the write; a pending status is left alone (RefreshMaterials rides the same
         // return as a possible vanished-row message).
-        let refreshed = update RefreshMaterials { m with status = Some "pending" }
+        let refreshed = updateSampleEditor RefreshMaterials { m with status = Some "pending" }
         Assert.True(refreshed.materials |> List.exists (fun e -> e.id = added.id), "RefreshMaterials must surface the added material")
         Assert.Equal<string option>(Some "pending", refreshed.status)
 
@@ -545,11 +545,11 @@ module SampleEditorWindowTests =
         // Step 019: the Select-flow pick is the toolbar bulk verbs' one remaining
         // chosen-material source now that the inline picker is gone.
         let _, context = recordingContext ()
-        let m = init context builtInEntries (EditSample (threeFilmSample ()))
-        let bound = update (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
+        let m = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
+        let bound = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
         Assert.Equal<MaterialId option>(Some MaterialIds.glass175, bound.chosenMaterial)
         // The vanished-row return stays a strict no-op plus the status line.
-        let vanished = update (BindMaterialToLayer (AtSingleLayer 7, MaterialIds.glass175)) m
+        let vanished = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 7, MaterialIds.glass175)) m
         Assert.Equal<MaterialId option>(None, vanished.chosenMaterial)
 
     // ========== step 010 — the supported-emission R/T constraint (pure) ==========
@@ -557,31 +557,31 @@ module SampleEditorWindowTests =
     [<Fact>]
     let ``a Plate editor toggles T off leaving R on and marks the editor dirty`` () =
         let _, context = recordingContext ()
-        let m = init context builtInEntries (EditSample (threeFilmPlate ()))
+        let m = initSampleEditor context builtInEntries (EditSample (threeFilmPlate ()))
         // A freshly opened Plate editor is pristine and emits BOTH groups by default.
         Assert.False(isDirty m, "a freshly opened editor is pristine")
         Assert.True(m.supportedEmission.emitsReflected, "a Plate defaults to emitting the reflected group")
         Assert.True(m.supportedEmission.emitsTransmitted, "a Plate defaults to emitting the transmitted group")
         // Turning T off leaves R on (never neither) and dirties the editor.
-        let tOff = update (SetTransmittedEmission false) m
+        let tOff = updateSampleEditor (SetTransmittedEmission false) m
         Assert.True(tOff.supportedEmission.emitsReflected, "R stays on when T is cleared")
         Assert.False(tOff.supportedEmission.emitsTransmitted, "T is now off")
         Assert.True(isDirty tOff, "an emission change marks the editor dirty")
         // Symmetrically, a Plate can be constrained to T-only (clear R while T is on).
-        let rOff = update (SetReflectedEmission false) m
+        let rOff = updateSampleEditor (SetReflectedEmission false) m
         Assert.False(rOff.supportedEmission.emitsReflected, "R is now off")
         Assert.True(rOff.supportedEmission.emitsTransmitted, "T stays on when R is cleared")
 
     [<Fact>]
     let ``clearing both emission groups is impossible on a Plate`` () =
         let _, context = recordingContext ()
-        let m = init context builtInEntries (EditSample (threeFilmPlate ()))
+        let m = initSampleEditor context builtInEntries (EditSample (threeFilmPlate ()))
         // Clear R (T forced on), then clear the last remaining group: R is forced back on — the
         // both-off state is unrepresentable through the smart setters.
-        let rOff = update (SetReflectedEmission false) m
+        let rOff = updateSampleEditor (SetReflectedEmission false) m
         Assert.False(rOff.supportedEmission.emitsReflected)
         Assert.True(rOff.supportedEmission.emitsTransmitted, "clearing R forces T on")
-        let lastCleared = update (SetTransmittedEmission false) rOff
+        let lastCleared = updateSampleEditor (SetTransmittedEmission false) rOff
         Assert.True(lastCleared.supportedEmission.emitsReflected, "clearing the last group forces the other back on")
         Assert.False(lastCleared.supportedEmission.emitsTransmitted)
 
@@ -589,41 +589,41 @@ module SampleEditorWindowTests =
     let ``a Mirror editor pins R on under any emission message and a geometry flip re-imposes it`` () =
         let _, context = recordingContext ()
         // Spec 0046: a Mirror is EmitReflectedOnly at open — R on, T off.
-        let m = init context builtInEntries (EditSample (threeFilmMirror ()))
+        let m = initSampleEditor context builtInEntries (EditSample (threeFilmMirror ()))
         Assert.True(m.supportedEmission.emitsReflected)
         Assert.False(m.supportedEmission.emitsTransmitted)
         // A stray T-on or R-off message cannot escape the Mirror constraint.
-        let tryGainT = update (SetTransmittedEmission true) m
+        let tryGainT = updateSampleEditor (SetTransmittedEmission true) m
         Assert.True(tryGainT.supportedEmission.emitsReflected)
         Assert.False(tryGainT.supportedEmission.emitsTransmitted, "a Mirror can never gain a transmitted branch")
-        let tryClearR = update (SetReflectedEmission false) m
+        let tryClearR = updateSampleEditor (SetReflectedEmission false) m
         Assert.True(tryClearR.supportedEmission.emitsReflected, "a Mirror's reflected branch is unclearable")
         // A Plate constrained to T-only, then flipped to Mirror, re-pins R-only ...
-        let plate = init context builtInEntries (EditSample (threeFilmPlate ()))
-        let tOnly = update (SetReflectedEmission false) plate
+        let plate = initSampleEditor context builtInEntries (EditSample (threeFilmPlate ()))
+        let tOnly = updateSampleEditor (SetReflectedEmission false) plate
         Assert.True(tOnly.supportedEmission.emitsTransmitted && not tOnly.supportedEmission.emitsReflected, "the Plate is T-only")
-        let flipped = update (SetSubstrate Mirror) tOnly
+        let flipped = updateSampleEditor (SetSampleSubstrate Mirror) tOnly
         Assert.True(flipped.supportedEmission.emitsReflected, "flipping to Mirror re-pins the reflected branch on")
         Assert.False(flipped.supportedEmission.emitsTransmitted, "flipping to Mirror clears the transmitted branch")
         // ... and leaving Mirror for a ThinFilm restores both branches (a thin film reflects AND transmits).
-        let film = update (SetSubstrate ThinFilm) flipped
+        let film = updateSampleEditor (SetSampleSubstrate ThinFilm) flipped
         Assert.True(film.supportedEmission.emitsReflected && film.supportedEmission.emitsTransmitted, "a ThinFilm emits both")
         // A ThinFilm is constrainable like a Plate.
-        let thin = init context builtInEntries (EditSample (threeFilmSample ()))
+        let thin = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
         Assert.True(thin.supportedEmission.emitsReflected && thin.supportedEmission.emitsTransmitted, "a ThinFilm opens emitting both")
-        let thinTOnly = update (SetReflectedEmission false) thin
+        let thinTOnly = updateSampleEditor (SetReflectedEmission false) thin
         Assert.True(thinTOnly.supportedEmission.emitsTransmitted && not thinTOnly.supportedEmission.emitsReflected, "a ThinFilm can be T-only")
 
     [<Fact>]
     let ``toSample carries the edited supported emission and init seeds it from the sample`` () =
         let _, context = recordingContext ()
         // An edited Plate sample's emission is seeded into the model and preserved through toSample.
-        let m = init context builtInEntries (EditSample (threeFilmPlate ()))
-        let tOnly = update (SetReflectedEmission false) m
+        let m = initSampleEditor context builtInEntries (EditSample (threeFilmPlate ()))
+        let tOnly = updateSampleEditor (SetReflectedEmission false) m
         let saved = toSample (newSampleId ()) tOnly
         Assert.True(saved.supportedEmission.emitsTransmitted && not saved.supportedEmission.emitsReflected, "toSample carries the T-only choice")
         // A Mirror always saves EmitReflectedOnly, whatever messages arrived (spec 0046).
-        let mirror = init context builtInEntries (EditSample (threeFilmMirror ())) |> update (SetTransmittedEmission true)
+        let mirror = initSampleEditor context builtInEntries (EditSample (threeFilmMirror ())) |> updateSampleEditor (SetTransmittedEmission true)
         let savedMirror = toSample (newSampleId ()) mirror
         Assert.True(savedMirror.supportedEmission.emitsReflected && not savedMirror.supportedEmission.emitsTransmitted, "a Mirror saves reflected-only")
 
@@ -649,7 +649,7 @@ module SampleEditorWindowTests =
     /// Mount the REAL Sample-editor MVU loop headless WITH a captured dispatch (the window
     /// host's own `Cmd.ofEffect` shape) — for the tests that need a model-level message (the
     /// unchanged by-MaterialId ChooseMaterial contract) beside the id-driven clicks.
-    let private mountEditorLoop (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorIntent) : HostWindow * (Msg -> unit) =
+    let private mountEditorLoop (materials : MaterialProxy) (samples : SampleProxy) (intent : SampleEditorIntent) : HostWindow * (SampleEditorMsg -> unit) =
         let entries =
             match materials.listMaterials ActiveOnly with
             | Ok list -> list
@@ -662,11 +662,11 @@ module SampleEditorWindowTests =
                 requestClose = fun () -> ()
             }
         let window = HostWindow(Width = 1080.0, Height = 900.0)
-        let mutable dispatchRef : Msg -> unit = ignore
+        let mutable dispatchRef : SampleEditorMsg -> unit = ignore
         Program.mkProgram
-            (fun () -> init context entries intent, Cmd.ofEffect (fun d -> dispatchRef <- d))
-            (fun msg m -> update msg m, Cmd.none)
-            view
+            (fun () -> initSampleEditor context entries intent, Cmd.ofEffect (fun d -> dispatchRef <- d))
+            (fun msg m -> updateSampleEditor msg m, Cmd.none)
+            sampleEditorView
         |> Program.withHost window
         |> Program.run
         window.Show()
@@ -1201,11 +1201,11 @@ module SampleEditorWindowTests =
     let ``BindMaterialToLayer re-materials exactly the targeted position and preserves the user selection`` () =
         let _, context = recordingContext ()
         let m =
-            init context builtInEntries (EditSample (threeFilmSample ()))
-            |> update (ToggleLayer (AtSingleLayer 2))
+            initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
+            |> updateSampleEditor (ToggleLayer (AtSingleLayer 2))
         // The Materials window's Select session returns vacuum for row 1 — NOT the selection.
-        let bound = update (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
-        let materialAt (i : int) (model : Model) : MaterialId =
+        let bound = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 1, MaterialIds.glass175)) m
+        let materialAt (i : int) (model : SampleEditorModel) : MaterialId =
             match List.item i model.editor.structure.films with
             | SingleLayer layer -> layer.materialId.materialId
             | Repeated _ -> failwith $"films item %d{i} is unexpectedly a repeat group"
@@ -1222,15 +1222,15 @@ module SampleEditorWindowTests =
         let _, context = recordingContext ()
         // A blank NEW sample has no row 0 — the deleted-row race the targeted return must
         // survive (spec 0038 step 016; step 019 wires the Choose material… verb).
-        let m = init context builtInEntries (NewBlankSample (newSampleId ()))
-        let vanished = update (BindMaterialToLayer (AtSingleLayer 0, MaterialIds.glass152)) m
+        let m = initSampleEditor context builtInEntries (NewBlankSample (newSampleId ()))
+        let vanished = updateSampleEditor (BindMaterialToLayer (AtSingleLayer 0, MaterialIds.glass152)) m
         Assert.Equal<SampleStructure>(m.editor.structure, vanished.editor.structure)
         match vanished.status with
         | Some text -> Assert.Contains("no longer in the stack", text)
         | None -> Assert.Fail "the vanished row must surface the status line"
         // A cell-slot position of a non-group item is equally vanished (total, typed, no throw).
-        let three = init context builtInEntries (EditSample (threeFilmSample ()))
-        let cellMiss = update (BindMaterialToLayer (AtCellLayer (0, 0), MaterialIds.glass152)) three
+        let three = initSampleEditor context builtInEntries (EditSample (threeFilmSample ()))
+        let cellMiss = updateSampleEditor (BindMaterialToLayer (AtCellLayer (0, 0), MaterialIds.glass152)) three
         Assert.Equal<SampleStructure>(three.editor.structure, cellMiss.editor.structure)
         match cellMiss.status with
         | Some text -> Assert.Contains("no longer in the stack", text)
@@ -1254,11 +1254,11 @@ module SampleEditorWindowTests =
     [<Fact>]
     let ``BindMaterialToSubstrate sets the substrate plate to the picked material and records it as chosen`` () =
         let _, context = recordingContext ()
-        let m = init context builtInEntries (EditSample (filmlessPlate ()))
+        let m = initSampleEditor context builtInEntries (EditSample (filmlessPlate ()))
         // The bare plate opens with no substrate plate.
         Assert.Equal<SampleLayer option>(None, m.editor.structure.substrate)
         // The substrate Select session returns 1.75 glass for the substrate slot.
-        let bound = update (BindMaterialToSubstrate MaterialIds.glass175) m
+        let bound = updateSampleEditor (BindMaterialToSubstrate MaterialIds.glass175) m
         match bound.editor.structure.substrate with
         | Some layer -> Assert.Equal(MaterialIds.glass175, layer.materialId.materialId)
         | None -> Assert.Fail "the substrate plate must be set to the picked material"

@@ -239,7 +239,7 @@ module EnvironmentRoundTripTests =
     let ``the serialized envelope stamps the pinned schemaVersion`` () =
         let json = serialize sample |> okOr
         use doc = JsonDocument.Parse json
-        Assert.Equal(schemaVersion, doc.RootElement.GetProperty("schemaVersion").GetString())
+        Assert.Equal(userEnvironmentSchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetString())
 
     [<Fact>]
     let ``a schemaVersion mismatch is a typed SchemaValidationError, never a migration`` () =
@@ -269,7 +269,7 @@ module EnvironmentRoundTripTests =
     [<Fact>]
     let ``validate reports at least one message for an invalid document`` () =
         use doc = JsonDocument.Parse "{ \"theme\": \"Dark\" }"
-        match validate doc.RootElement with
+        match validateUserEnvironment doc.RootElement with
         | Error (SchemaValidationError messages) -> Assert.NotEmpty messages
         | other -> Assert.Fail($"expected SchemaValidationError with messages, got %A{other}")
 

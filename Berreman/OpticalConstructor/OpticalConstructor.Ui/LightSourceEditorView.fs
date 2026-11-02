@@ -46,9 +46,9 @@ type TuningChoice =
 
 /// Whether the editor is editing normally or showing the unsaved-edit exit confirm (the Sample editor's
 /// two-case gate).
-type ExitPrompt =
-    | Editing
-    | ConfirmingDiscard
+type LightSourceEditorExitPrompt =
+    | LightSourceEditing
+    | LightSourceConfirmingDiscard
 
 /// The slice Save persists, compared for dirtiness: the name, the wavelength in metres (`None` while the typed
 /// value does not parse), the tuning choice and the tunable limits in metres.
@@ -56,7 +56,7 @@ type SourceEditSnapshot = string * float<meter> option * TuningChoice * float<me
 
 /// The editor's model. `waveLengthText` is the raw box text; `waveLength` is what it parses to in `unit`
 /// (kept unchanged when only the unit changes, so switching units never moves the value).
-type Model =
+type LightSourceEditorModel =
     {
         context : SourceEditorContext
         sourceId : string
@@ -72,12 +72,12 @@ type Model =
         maximum : WaveLength option
         unit : UnitOfMeasure
         initialEdit : SourceEditSnapshot
-        exit : ExitPrompt
+        exit : LightSourceEditorExitPrompt
         status : string option
     }
 
-type Msg =
-    | SetName of string
+type LightSourceEditorMsg =
+    | SetLightSourceName of string
     | SetWaveLengthText of string
     /// Spec 0046: fixed line or tunable, and the tunable limits' texts.
     | SetTuning of TuningChoice
@@ -85,12 +85,12 @@ type Msg =
     | SetMaximumText of string
     /// Show (and type) the wavelength in another unit — the value itself is unchanged.
     | SetUnit of UnitOfMeasure
-    | SaveClicked
+    | LightSourceSaveClicked
     /// Requested exit (the Cancel button, or the window chrome through `OnClosing`): a pristine editor
     /// closes, a dirty one shows the discard confirm.
-    | CancelClicked
-    | DiscardConfirmed
-    | KeepEditing
+    | LightSourceCancelClicked
+    | LightSourceDiscardConfirmed
+    | LightSourceKeepEditing
 
 /// The wavelength units the editor offers, in display order.
 let waveLengthUnits : UnitOfMeasure list = [ Nanometer; Micrometer; Angstrom; ElectronVolt; Wavenumber ]
@@ -121,13 +121,13 @@ let parseIn (u : UnitOfMeasure) (text : string) : WaveLength option =
 
 let private metresOf (w : WaveLength option) : float<meter> option = w |> Option.map (fun x -> x.value)
 
-let private currentEdit (m : Model) : SourceEditSnapshot =
+let private currentEdit (m : LightSourceEditorModel) : SourceEditSnapshot =
     (m.name, metresOf m.waveLength, m.tuning, metresOf m.minimum, metresOf m.maximum)
 
 /// Whether the editor carries unsaved changes (the edit slice differs from the one captured at load).
-let isDirty (m : Model) : bool = m.initialEdit <> currentEdit m
+let isLightSourceEditorDirty (m : LightSourceEditorModel) : bool = m.initialEdit <> currentEdit m
 
-let init (context : SourceEditorContext) (intent : SourceEditorIntent) : Model =
+let initLightSourceEditor (context : SourceEditorContext) (intent : SourceEditorIntent) : LightSourceEditorModel =
     let sourceId, freshness, name, waveLength, tuning =
         match intent with
         | NewSource mintedId -> mintedId, WindowLauncher.NewUnsaved, "", defaultWaveLength, FixedLine
@@ -151,12 +151,12 @@ let init (context : SourceEditorContext) (intent : SourceEditorIntent) : Model =
         maximum = Some maximum
         unit = Nanometer
         initialEdit = (name, Some waveLength.value, choice, Some minimum.value, Some maximum.value)
-        exit = Editing
+        exit = LightSourceEditing
         status = None
     }
 
 /// The source Save would store, or the reason it cannot yet.
-let toSource (m : Model) : Result<SourcePreset, string> =
+let toSource (m : LightSourceEditorModel) : Result<SourcePreset, string> =
     match m.waveLength, m.tuning, m.minimum, m.maximum with
     | None, _, _, _ -> Error $"enter a positive wavelength in %s{unitAbbrev m.unit}"
     | Some w, FixedChoice, _, _ -> Ok { id = m.sourceId; name = m.name.Trim(); waveLength = w; tuning = FixedLine; protection = UserManaged }
@@ -164,9 +164,9 @@ let toSource (m : Model) : Result<SourcePreset, string> =
         Ok { id = m.sourceId; name = m.name.Trim(); waveLength = w; tuning = TunableBetween (lo, hi); protection = UserManaged }
     | Some _, TunableChoice, _, _ -> Error $"enter positive tunable limits in %s{unitAbbrev m.unit}"
 
-let update (msg : Msg) (m : Model) : Model =
+let updateLightSourceEditor (msg : LightSourceEditorMsg) (m : LightSourceEditorModel) : LightSourceEditorModel =
     match msg with
-    | SetName s -> { m with name = s }
+    | SetLightSourceName s -> { m with name = s }
     | SetWaveLengthText t ->
         // The box echoes every re-render of the formatted value; text equal to the current value's own
         // formatting keeps the stored value exactly (no rounding drift from a unit switch).
@@ -200,7 +200,7 @@ let update (msg : Msg) (m : Model) : Model =
             minimum = minimum
             maximumText = maximumText
             maximum = maximum }
-    | SaveClicked ->
+    | LightSourceSaveClicked ->
         match toSource m with
         | Ok source ->
             match m.context.sources.saveSource source with
@@ -209,15 +209,15 @@ let update (msg : Msg) (m : Model) : Model =
                 { m with status = None }
             | Error e -> { m with status = Some e.reason }
         | Error reason -> { m with status = Some reason }
-    | CancelClicked ->
-        if isDirty m then { m with exit = ConfirmingDiscard }
+    | LightSourceCancelClicked ->
+        if isLightSourceEditorDirty m then { m with exit = LightSourceConfirmingDiscard }
         else
             m.context.requestClose ()
             m
-    | DiscardConfirmed ->
+    | LightSourceDiscardConfirmed ->
         m.context.requestClose ()
         m
-    | KeepEditing -> { m with exit = Editing }
+    | LightSourceKeepEditing -> { m with exit = LightSourceEditing }
 
 // ---------------------------------------------------------------------------
 // The FuncUI view (the Sample editor's look: idle / chosen boxes, Save / Cancel action pair).
@@ -271,7 +271,7 @@ let private actionButton (autoId : string) (label : string) (background : Color)
 let private labelBlock (text : string) : IView =
     TextBlock.create [ TextBlock.text text; TextBlock.width 90.0; TextBlock.verticalAlignment VerticalAlignment.Center ] :> IView
 
-let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private nameRow (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -281,14 +281,14 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
                 TextBox.name ConstructorUiId.sourceNameBox.value
                 TextBox.width 320.0
                 TextBox.text m.name
-                TextBox.onTextChanged (SetName >> dispatch)
+                TextBox.onTextChanged (SetLightSourceName >> dispatch)
             ] :> IView
         ]
     ] :> IView
 
 /// Spec 0046: the fixed-line / tunable choice and — for a tunable source — its limits (in the editor's
 /// unit). The limits row is always present and only its visibility flips (stable named fields).
-let private tuningRows (m : Model) (dispatch : Msg -> unit) : IView list =
+let private tuningRows (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView list =
     let tunable = (m.tuning = TunableChoice)
     [ StackPanel.create [
           StackPanel.orientation Orientation.Horizontal
@@ -322,7 +322,7 @@ let private tuningRows (m : Model) (dispatch : Msg -> unit) : IView list =
           ]
       ] :> IView ]
 
-let private waveLengthRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private waveLengthRow (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -340,7 +340,7 @@ let private waveLengthRow (m : Model) (dispatch : Msg -> unit) : IView =
     ] :> IView
 
 /// The wavelength restated in nm and eV (the units visible-light and EUV work read), or the parse hint.
-let readoutText (m : Model) : string =
+let readoutText (m : LightSourceEditorModel) : string =
     match m.waveLength with
     | Some w ->
         let nm = wavelengthToUnit Nanometer w
@@ -348,7 +348,7 @@ let readoutText (m : Model) : string =
         String.Format(CultureInfo.InvariantCulture, "λ = {0:G6} nm  ·  {1:G6} eV", nm, ev)
     | None -> $"enter a positive wavelength in %s{unitAbbrev m.unit}"
 
-let private readoutRow (m : Model) : IView =
+let private readoutRow (m : LightSourceEditorModel) : IView =
     TextBlock.create [
         TextBlock.name ConstructorUiId.sourceWaveLengthReadout.value
         TextBlock.margin (Thickness(96.0, 0.0, 0.0, 0.0))
@@ -364,24 +364,24 @@ let private noteRow () : IView =
         TextBlock.text "A light source is monochromatic. A fixed line always runs at its wavelength; a tunable source runs at its setting unless an experiment varies its wavelength (within the limits) or sets another value."
     ] :> IView
 
-let private statusRow (m : Model) : IView =
+let private statusRow (m : LightSourceEditorModel) : IView =
     TextBlock.create [
         TextBlock.name ConstructorUiId.sourceEditorStatus.value
         TextBlock.foreground (brush errorColor)
         TextBlock.text (m.status |> Option.defaultValue "")
     ] :> IView
 
-let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private actionsRow (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView =
     match m.exit with
-    | Editing ->
+    | LightSourceEditing ->
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.children [
-                actionButton ConstructorUiId.sourceSaveButton.value "Save" saveBackground (fun () -> dispatch SaveClicked)
-                actionButton ConstructorUiId.sourceCancelButton.value "Cancel" cancelBackground (fun () -> dispatch CancelClicked)
+                actionButton ConstructorUiId.sourceSaveButton.value "Save" saveBackground (fun () -> dispatch LightSourceSaveClicked)
+                actionButton ConstructorUiId.sourceCancelButton.value "Cancel" cancelBackground (fun () -> dispatch LightSourceCancelClicked)
             ]
         ] :> IView
-    | ConfirmingDiscard ->
+    | LightSourceConfirmingDiscard ->
         StackPanel.create [
             automationId<StackPanel> ConstructorUiId.sourceExitConfirm.value
             StackPanel.orientation Orientation.Horizontal
@@ -392,12 +392,12 @@ let private actionsRow (m : Model) (dispatch : Msg -> unit) : IView =
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(0.0, 0.0, 12.0, 0.0))
                 ] :> IView
-                actionButton ConstructorUiId.sourceDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
-                actionButton ConstructorUiId.sourceKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+                actionButton ConstructorUiId.sourceDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch LightSourceDiscardConfirmed)
+                actionButton ConstructorUiId.sourceKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch LightSourceKeepEditing)
             ]
         ] :> IView
 
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let lightSourceEditorView (m : LightSourceEditorModel) (dispatch : LightSourceEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 8.0

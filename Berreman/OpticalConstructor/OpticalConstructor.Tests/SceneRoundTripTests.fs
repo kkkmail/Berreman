@@ -55,7 +55,7 @@ module SceneRoundTripTests =
     /// The live workbench model under capture: deterministic elements, the dialled view, snap-to-beam
     /// on. Built off `initMain ()` (windowless — the Main scene's pure model constructor) so every
     /// injected proxy / palette field is present; only the scene-owned fields are overridden.
-    let private sourceModel () : Model =
+    let private sourceModel () : TableAndElementRotationModel =
         { initMain () with
             elements = [ sourceEl; polarizerEl; detectorEl ]
             view = dialledView
@@ -90,7 +90,7 @@ module SceneRoundTripTests =
         // restore onto a DIFFERENT base model (the static test scene: other elements, free
         // placement, empty palette) — proving the round-trip reproduces the source scene rather
         // than leaving a no-op.
-        let restored = restoreScene loaded (init ())
+        let restored = restoreScene loaded (initTableAndElementRotation ())
 
         // element ids ...
         Assert.Equal<string list>(

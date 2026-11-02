@@ -25,7 +25,7 @@ module CategoryControls =
     /// no domain types). `categoryId` is the category's stable id in its string form; `isBuiltIn` marks
     /// a `BuiltInCategory` row — its name box stays editable, but its Remove verb is removed (only a
     /// `UserCategory` may be deleted; the store enforces the actual block).
-    type Row =
+    type CategoryControlsRow =
         {
             categoryId : string
             name : string
@@ -33,16 +33,16 @@ module CategoryControls =
         }
 
     /// The bay's pure, serializable state.
-    type State =
+    type CategoryControlsState =
         {
             /// The rows the host flattened from the editor's working set — rendered as given.
-            rows : Row list
+            rows : CategoryControlsRow list
             /// The inline block message (`CategoryStillReferenced` / `BuiltInNotRemovable`), or "" when
             /// no block is surfaced — the slot renders only while a message is present.
             blockMessage : string
         }
 
-    let empty : State =
+    let emptyCategoryControls : CategoryControlsState =
         {
             rows = []
             blockMessage = ""
@@ -50,7 +50,7 @@ module CategoryControls =
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs). The per-row verbs
     /// take the row's category id — the host maps them onto the `CategoryEditor` messages / `commit`.
-    type Handlers =
+    type CategoryControlsHandlers =
         {
             /// Begin an inline add (a fresh, blank-named row) — the editor's `BeginAddCategory`.
             addCategory : unit -> unit
@@ -106,7 +106,7 @@ module CategoryControls =
     /// One category row — an inline name box (editable for EVERY row, including built-ins), a Save
     /// (rename) verb and a Cancel verb, and a Remove verb for a `UserCategory` only (a built-in OMITS
     /// Remove — removed from the row, not greyed).
-    let private rowView (handlers : Handlers) (r : Row) : IView =
+    let private rowView (handlers : CategoryControlsHandlers) (r : CategoryControlsRow) : IView =
         let nameBox =
             TextBox.create [
                 textBoxAutoId (ConstructorUiId.categoryRowNameBox (ConstructorUiKey r.categoryId)).value
@@ -138,7 +138,7 @@ module CategoryControls =
         row :> IView
 
     /// The category list: a NAMED vertical stack of the host's rows, rendered as given.
-    let private listView (state : State) (handlers : Handlers) : IView =
+    let private listView (state : CategoryControlsState) (handlers : CategoryControlsHandlers) : IView =
         ScrollViewer.create [
             ScrollViewer.maxHeight 260.0
             ScrollViewer.content (
@@ -152,7 +152,7 @@ module CategoryControls =
     /// The inline block-message slot — the store's typed refusal (`CategoryStillReferenced` /
     /// `BuiltInNotRemovable`), shown only while a message is present (the `LibraryControls.confirmPanel`
     /// precedent — no message means the control is absent, not an empty box).
-    let private blockMessagePanel (state : State) : IView list =
+    let private blockMessagePanel (state : CategoryControlsState) : IView list =
         if state.blockMessage = "" then []
         else
             [
@@ -175,7 +175,7 @@ module CategoryControls =
 
     /// The Category-manager surface — an Add verb, the editable category list, and (when the store
     /// refuses an edit) the inline block-message slot, top to bottom.
-    let view (state : State) (handlers : Handlers) : IView =
+    let categoryControlsView (state : CategoryControlsState) (handlers : CategoryControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0

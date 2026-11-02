@@ -28,7 +28,7 @@ module CategoryControlsTests =
     let private userRowId : string = "9a1f0c33-user-category"
     let private builtInRowId : string = "2a4b6c8d-glass-builtin"
 
-    let private knownRows : CategoryControls.Row list =
+    let private knownRows : CategoryControls.CategoryControlsRow list =
         [
             { categoryId = userRowId; name = "My Category"; isBuiltIn = false }
             { categoryId = builtInRowId; name = "Glass"; isBuiltIn = true }
@@ -36,7 +36,7 @@ module CategoryControlsTests =
 
     /// The known State the structure test mounts: both rows plus a surfaced block message (so the
     /// `CategoryBlockMessage` slot renders).
-    let private knownState : CategoryControls.State =
+    let private knownState : CategoryControls.CategoryControlsState =
         {
             rows = knownRows
             blockMessage = "This category is still referenced by 2 materials and cannot be removed."
@@ -44,9 +44,9 @@ module CategoryControlsTests =
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch appends
     /// a tag, so a click's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * CategoryControls.Handlers =
+    let private recorder () : ResizeArray<string> * CategoryControls.CategoryControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : CategoryControls.Handlers =
+        let handlers : CategoryControls.CategoryControlsHandlers =
             {
                 addCategory = fun () -> calls.Add("add")
                 setCategoryName = fun id name -> calls.Add($"name:%s{id}=%s{name}")
@@ -60,7 +60,7 @@ module CategoryControlsTests =
 
     [<Fact>]
     let ``the empty Category state has no rows and no block message`` () =
-        let s = CategoryControls.empty
+        let s = CategoryControls.emptyCategoryControls
         Assert.Empty(s.rows)
         Assert.Equal("", s.blockMessage)
 
@@ -107,7 +107,7 @@ module CategoryControlsTests =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
             let window = Window(Width = 640.0, Height = 480.0)
-            window.Content <- Component(fun _ -> CategoryControls.view knownState handlers)
+            window.Content <- Component(fun _ -> CategoryControls.categoryControlsView knownState handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The singleton controls exist over the known State.

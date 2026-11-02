@@ -75,7 +75,7 @@ module SampleProxyTests =
         match (freshProxy ()).listSamples ActiveOnly with
         | Ok samples ->
             Assert.NotEmpty samples
-            Assert.Equal(List.length SeedSamples.all, List.length samples)
+            Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
             let ids = samples |> List.map (fun s -> s.id)
             Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
         | Error err -> Assert.Fail($"%A{err}")
@@ -83,7 +83,7 @@ module SampleProxyTests =
     [<Fact>]
     let ``searchSamples with the empty query matches every seeded sample`` () =
         match (freshProxy ()).searchSamples SampleQuery.empty with
-        | Ok samples -> Assert.Equal(List.length SeedSamples.all, List.length samples)
+        | Ok samples -> Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
         | Error err -> Assert.Fail($"%A{err}")
 
     [<Fact>]
@@ -103,7 +103,7 @@ module SampleProxyTests =
             Assert.NotEmpty plates
             Assert.All(plates, fun s -> Assert.Equal(Plate, s.substrate))
             Assert.Equal(
-                SeedSamples.all |> List.filter (fun s -> s.substrate = Plate) |> List.length,
+                SeedSamples.allSeedSamples |> List.filter (fun s -> s.substrate = Plate) |> List.length,
                 List.length plates)
         | Error err -> Assert.Fail($"%A{err}")
         // "langasite" matches only the dispersive langasite-on-silicon seed, a thin film.
@@ -145,7 +145,7 @@ module SampleProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listSamples ActiveOnly with
         | Ok samples ->
-            Assert.Equal(List.length SeedSamples.all + 1, List.length samples)
+            Assert.Equal(List.length SeedSamples.allSeedSamples + 1, List.length samples)
             Assert.Contains(sample.id, samples |> List.map (fun s -> s.id))
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.resolveVersion (v1Id sample.id) with
@@ -215,7 +215,7 @@ module SampleProxyTests =
         for s in [ SeedSamples.glassFilm600; SeedSamples.glassFilm200; SeedSamples.multilayerQw; SeedSamples.glassPlate1mm ] do
             Assert.Equal<Placement.Emission>(Placement.EmitBoth, s.supportedEmission)
         // Every seed carrying R-only is a Mirror.
-        for s in SeedSamples.all do
+        for s in SeedSamples.allSeedSamples do
             match s.supportedEmission with
             | Placement.EmitReflectedOnly -> Assert.Equal(Mirror, s.substrate)
             | Placement.EmitBoth | Placement.EmitTransmittedOnly -> ()
@@ -316,7 +316,7 @@ module SampleProxyTests =
         | Error err -> Assert.Fail($"%A{err}")
         match proxy.listSamples ActiveOnly with
         | Ok samples ->
-            Assert.Equal(List.length SeedSamples.all, List.length samples)
+            Assert.Equal(List.length SeedSamples.allSeedSamples, List.length samples)
             let plateEntries = samples |> List.filter (fun s -> s.id = plate.id)
             Assert.Equal(1, List.length plateEntries)
             Assert.Equal(otherStructure.structure, plateEntries.Head.structure)

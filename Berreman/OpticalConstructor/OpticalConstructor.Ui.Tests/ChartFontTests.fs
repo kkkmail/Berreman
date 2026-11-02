@@ -22,7 +22,7 @@ module ChartFontTests =
 
     [<Fact>]
     let ``the default state selects the header and carries per-target sizes`` () =
-        let s = ChartFont.defaultState
+        let s = ChartFont.defaultChartFontState
         Assert.Equal(ChartFont.Title, s.selected)
         Assert.Equal(s.title, ChartFont.selectedSize s)
         // Each target has its own size; they are not all forced equal.
@@ -30,17 +30,17 @@ module ChartFontTests =
 
     [<Fact>]
     let ``withSelected changes only the selection, not any size`` () =
-        let s0 = ChartFont.defaultState
-        let s1 = ChartFont.withSelected ChartFont.Legend s0
-        Assert.Equal(ChartFont.Legend, s1.selected)
+        let s0 = ChartFont.defaultChartFontState
+        let s1 = ChartFont.withSelected ChartFont.LegendFont s0
+        Assert.Equal(ChartFont.LegendFont, s1.selected)
         Assert.Equal(s0.title, s1.title)
         Assert.Equal(s0.legend, s1.legend)
         // The readout now reports the legend's size.
-        Assert.Equal(ChartFont.sizeOf ChartFont.Legend s0, ChartFont.selectedSize s1)
+        Assert.Equal(ChartFont.sizeOf ChartFont.LegendFont s0, ChartFont.selectedSize s1)
 
     [<Fact>]
     let ``bumpSelected changes ONLY the selected target's size`` () =
-        let s0 = ChartFont.withSelected ChartFont.TickLabels ChartFont.defaultState
+        let s0 = ChartFont.withSelected ChartFont.TickLabels ChartFont.defaultChartFontState
         let before = ChartFont.sizeOf ChartFont.TickLabels s0
         let s1 = ChartFont.bumpSelected 1.0 s0
         Assert.Equal(before + 1.0, ChartFont.sizeOf ChartFont.TickLabels s1)
@@ -52,21 +52,21 @@ module ChartFontTests =
     [<Fact>]
     let ``bumpSelected clamps to the size band`` () =
         // Drive the selected size below the floor and above the ceiling.
-        let low = List.fold (fun s _ -> ChartFont.bumpSelected -1.0 s) ChartFont.defaultState [ 1 .. 100 ]
+        let low = List.fold (fun s _ -> ChartFont.bumpSelected -1.0 s) ChartFont.defaultChartFontState [ 1 .. 100 ]
         Assert.Equal(ChartFont.minSize, ChartFont.selectedSize low)
-        let high = List.fold (fun s _ -> ChartFont.bumpSelected 1.0 s) ChartFont.defaultState [ 1 .. 100 ]
+        let high = List.fold (fun s _ -> ChartFont.bumpSelected 1.0 s) ChartFont.defaultChartFontState [ 1 .. 100 ]
         Assert.Equal(ChartFont.maxSize, ChartFont.selectedSize high)
 
     [<Fact>]
     let ``withSize clamps and sets exactly the named target`` () =
-        let s = ChartFont.withSize ChartFont.AxisLabels 1000.0 ChartFont.defaultState
+        let s = ChartFont.withSize ChartFont.AxisLabels 1000.0 ChartFont.defaultChartFontState
         Assert.Equal(ChartFont.maxSize, ChartFont.sizeOf ChartFont.AxisLabels s)
-        let s2 = ChartFont.withSize ChartFont.AxisLabels 18.0 ChartFont.defaultState
+        let s2 = ChartFont.withSize ChartFont.AxisLabels 18.0 ChartFont.defaultChartFontState
         Assert.Equal(18.0, ChartFont.sizeOf ChartFont.AxisLabels s2)
 
     [<Fact>]
     let ``the readout names the selected target and its size`` () =
-        let s = ChartFont.withSelected ChartFont.TickLabels ChartFont.defaultState
+        let s = ChartFont.withSelected ChartFont.TickLabels ChartFont.defaultChartFontState
         let text = ChartFont.readout s
         Assert.Contains("Tick labels", text)
         Assert.Contains("pt", text)

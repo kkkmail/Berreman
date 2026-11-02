@@ -40,7 +40,7 @@ module LibraryFacetsTests =
 
     let private siliconEntry = entryOf MaterialIds.silicon
     let private langasiteEntry = entryOf MaterialIds.langasite
-    let private vacuumEntry = entryOf MaterialIds.vacuum
+    let private vacuumEntry = entryOf MaterialIds.vacuumMaterial
     let private glass152Entry = entryOf MaterialIds.glass152
     let private glass150Entry = entryOf MaterialIds.glass150
     let private euvMolybdenumEntry = entryOf MaterialIds.euvMolybdenum
@@ -527,7 +527,7 @@ module LibraryFacetsTests =
         let tree = buildTree (Representation [ entryKindFacetKey ]) libraryDefs [] seedEntries
         let node = List.exactlyOne tree.facets
         Assert.Equal<(string * int) list>(
-            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.all ],
+            [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.allSeedSources ],
             branchSummary node)
 
     [<Fact>]

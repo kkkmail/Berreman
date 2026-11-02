@@ -111,8 +111,8 @@ module ExportImportTests =
                     // and the Vacuum entry's name resolves to CategoryIds.vacuum (a HiddenOnCreate category).
                     let glass = imported |> List.find (fun e -> e.id = MaterialIds.glass152)
                     Assert.Equal(CategoryIds.glass, glass.category)
-                    let vacuum = imported |> List.find (fun e -> e.id = MaterialIds.vacuum)
-                    Assert.Equal(CategoryIds.vacuum, vacuum.category)
+                    let vacuum = imported |> List.find (fun e -> e.id = MaterialIds.vacuumMaterial)
+                    Assert.Equal(CategoryIds.vacuumCategory, vacuum.category)
         finally
             if File.Exists path then File.Delete path
 

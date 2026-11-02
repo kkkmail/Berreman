@@ -90,7 +90,7 @@ module OutOfBandBadgeTests =
     /// A Main-scene model with a bound-sample element reaching a 300–700 nm dispersive material, whose
     /// Experiments-bay draft sweeps `variable` over 200–800 nm. Returns the model plus the flagged
     /// element's index (it is appended after the seeded source/detector).
-    let private flaggedScene (variable : VariableParameter option) : Model * int =
+    let private flaggedScene (variable : VariableParameter option) : TableAndElementRotationModel * int =
         let matId = newMaterialId ()
         let entry = dispersiveMaterial matId
         let sample = dispersiveSample matId
@@ -108,7 +108,7 @@ module OutOfBandBadgeTests =
                 libraryTrees = fun () -> Ok []
                 tryGetEntry = fun id -> Ok (if id = entryId then Some (SampleItem sample) else None)
             }
-        let baseModel = initMainWith libStub (Experiments.createInMemory ()) materials samples categories
+        let baseModel = initMainWith libStub (Experiments.createInMemoryExperiments ()) materials samples categories
         let flagged : TestElement =
             {
                 id = Library.elementId "sample0"
@@ -124,7 +124,7 @@ module OutOfBandBadgeTests =
         model, List.length baseModel.elements
 
     /// Whether element `e` raises an out-of-band warning under model `m`.
-    let private isFlagged (m : Model) (e : TestElement) : bool =
+    let private isFlagged (m : TableAndElementRotationModel) (e : TestElement) : bool =
         match outOfBandWarningFor m e with
         | Some _ -> true
         | None -> false
@@ -167,7 +167,7 @@ module OutOfBandBadgeTests =
             // on a canvas the same way the main workbench overlays them, and prove the control + tooltip.
             let badges = outOfBandBadges model
             Assert.NotEmpty(badges)
-            let window = Window(Width = canvasWidth, Height = canvasHeight)
+            let window = Window(Width = tableAndElementRotationCanvasWidth, Height = tableAndElementRotationCanvasHeight)
             window.Content <- Component(fun _ -> Canvas.create [ Canvas.children badges ] :> IView)
             window.Show()
             Dispatcher.UIThread.RunJobs()

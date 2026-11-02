@@ -17,11 +17,11 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// bound entry → "what it is" title + collapsed "×N" bands), plus the seven-bay ribbon.
 module LayerBandsControlsTests =
 
-    let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
 
     /// Select the element at index `i`, then bind it to a Library entry id (the immediate `BindValueId` path).
-    let private bind (i : int) (entryId : string) (m : Model) : Model =
-        { m with selection = ElementSelected i } |> update (BindValueId entryId)
+    let private bind (i : int) (entryId : string) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
+        { m with selection = ElementSelected i } |> updateTableAndElementRotation (BindValueId entryId)
 
     /// The Guid-string entry id of the seeded 41-layer multilayer these tests bind (referenced
     /// programmatically — the id literal lives only in `Library.SeedSamples`, spec 0033 step 002).
@@ -31,7 +31,7 @@ module LayerBandsControlsTests =
 
     [<Fact>]
     let ``the empty LayerBands state has no bands and an empty title`` () =
-        let s = LayerBandsControls.empty
+        let s = LayerBandsControls.emptyLayerBandsControls
         Assert.Empty(s.bands)
         Assert.Equal("", s.title)
 
@@ -50,13 +50,13 @@ module LayerBandsControlsTests =
         // workbench now) and spec 0038 (015) removed the Library (samples) workbench bay the
         // same way (the Library WINDOW), so Details is the last bay, still immediately after
         // Experiments.
-        Assert.Equal(Some BayNames.details, List.tryLast BayNames.all)
-        Assert.DoesNotContain("Materials", BayNames.all)
-        Assert.DoesNotContain("Library", BayNames.all)
+        Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
+        Assert.DoesNotContain("Materials", BayNames.allBayNames)
+        Assert.DoesNotContain("Library", BayNames.allBayNames)
         let m = initMain ()
         let bays = mainBays m ignore
         let names = bays |> List.map (fun b -> b.name)
-        Assert.Equal<string list>(BayNames.all, names)
+        Assert.Equal<string list>(BayNames.allBayNames, names)
         // Details comes immediately after Experiments.
         let idxExp = List.findIndex ((=) BayNames.experiments) names
         let idxDet = List.findIndex ((=) BayNames.details) names
@@ -69,7 +69,7 @@ module LayerBandsControlsTests =
         // A Sample bound to the 41-layer quarter-wave multilayer ⇒ two collapsed bands (glass ×21, vacuum ×20).
         let m =
             initMain ()
-            |> update (AddElement Sample)             // index 2
+            |> updateTableAndElementRotation (AddElement Sample)             // index 2
             |> bind 2 multilayerQwId
         let bays = mainBays m ignore
         Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
@@ -95,7 +95,7 @@ module LayerBandsControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the LayerBands view renders a titled stack of bands`` () =
         HeadlessSession.run (fun () ->
-            let state : LayerBandsControls.State =
+            let state : LayerBandsControls.LayerBandsControlsState =
                 {
                     title = "A three-band test stack."
                     bands =
@@ -106,7 +106,7 @@ module LayerBandsControlsTests =
                         ]
                 }
             let window = Window(Width = 420.0, Height = 480.0)
-            window.Content <- Component(fun _ -> LayerBandsControls.view state)
+            window.Content <- Component(fun _ -> LayerBandsControls.layerBandsControlsView state)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let named (name : string) : bool =
@@ -124,7 +124,7 @@ module LayerBandsControlsTests =
     let ``the empty LayerBands view renders just the title, no bands`` () =
         HeadlessSession.run (fun () ->
             let window = Window(Width = 420.0, Height = 320.0)
-            window.Content <- Component(fun _ -> LayerBandsControls.view { LayerBandsControls.empty with title = "Nothing here." })
+            window.Content <- Component(fun _ -> LayerBandsControls.layerBandsControlsView { LayerBandsControls.emptyLayerBandsControls with title = "Nothing here." })
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let bandPresent () : bool =
@@ -140,11 +140,11 @@ module LayerBandsControlsTests =
             // Add a Sample, bind it to the multilayer, show the Details bay.
             let mutable model =
                 initMain ()
-                |> update (AddElement Sample)               // index 2, selected
-                |> update (BindValueId multilayerQwId)
-                |> update (SelectBay BayNames.details)
-            let dispatch (msg : Msg) = model <- update msg model
-            let window = Window(Width = 980.0, Height = canvasHeight + 360.0)
+                |> updateTableAndElementRotation (AddElement Sample)               // index 2, selected
+                |> updateTableAndElementRotation (BindValueId multilayerQwId)
+                |> updateTableAndElementRotation (SelectBay BayNames.details)
+            let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
+            let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()

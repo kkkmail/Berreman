@@ -24,7 +24,7 @@ module ElementPaletteControls =
             label : ControlCaption
         }
 
-    type State =
+    type ElementPaletteControlsState =
         {
             /// The addable kinds, in display order (each becomes a "+ label" button).
             addItems : AddItem list
@@ -32,7 +32,7 @@ module ElementPaletteControls =
             removeAvailability : ControlAvailability
         }
 
-    type Handlers =
+    type ElementPaletteControlsHandlers =
         {
             /// Add the entry with this id (the host maps the id back to its catalogue kind).
             add : ConstructorUiKey -> unit
@@ -74,7 +74,7 @@ module ElementPaletteControls =
         button :> IView
 
     /// The palette bar — a wrapping row of "+ label" add buttons followed by "Remove selected".
-    let view (state : State) (handlers : Handlers) : IView =
+    let elementPaletteControlsView (state : ElementPaletteControlsState) (handlers : ElementPaletteControlsHandlers) : IView =
         let addButtons =
             state.addItems
             |> List.map (fun item -> clickBox (ConstructorUiId.paletteAddButton item.id) (ControlCaption $"+ {item.label.value}") ControlOffered (fun () -> handlers.add item.id))

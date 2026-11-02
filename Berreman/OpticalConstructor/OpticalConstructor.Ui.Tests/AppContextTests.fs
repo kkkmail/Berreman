@@ -79,7 +79,7 @@ module AppContextTests =
 
     /// A workbench surface composed FROM the app scope — what `MainConstructorWindow` runs (the two
     /// experiment proxies thread by record update, spec 0038 Part L step 037).
-    let private surfaceOf (context : AppContext) : Model =
+    let private surfaceOf (context : AppContext) : TableAndElementRotationModel =
         { initMainWith context.library context.experiments context.materials context.samples context.categories with
             experimentData = context.experimentData
             experimentCollections = context.experimentCollections }

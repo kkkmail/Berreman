@@ -29,7 +29,7 @@ module NkDispersionChartTests =
 
     /// Vacuum — a NON-dispersive built-in (n = 1, k = 0 at every wavelength).
     let private vacuumEntry : MaterialEntry =
-        builtInEntries |> List.find (fun e -> e.id = MaterialIds.vacuum)
+        builtInEntries |> List.find (fun e -> e.id = MaterialIds.vacuumMaterial)
 
     let private applyOk (msg : MaterialComplexityMsg) (s : MaterialComplexityEditState) : MaterialComplexityEditState =
         match applyMaterialComplexityMsg msg s with

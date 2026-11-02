@@ -49,7 +49,7 @@ module SolverHandoffWindowTests =
     // ---- fixtures: build real experiments (with captured setups) through the inverse model ----------
 
     /// Locate the seeded inverse endpoints by kind (the InverseConstructorTests precedent).
-    let private endpoints (m : Model) : TestElement * TestElement * TestElement =
+    let private endpoints (m : TableAndElementRotationModel) : TestElement * TestElement * TestElement =
         let byKind (k : Placement.CatalogueKind) : TestElement = m.elements |> List.find (fun e -> e.placement.catalogueKind = k)
         byKind Placement.LightSource, byKind Placement.Sample, byKind Placement.Detector
 
@@ -62,19 +62,19 @@ module SolverHandoffWindowTests =
         let samples = SampleProxy.createInMemory VersionsInUse.empty
         let materials = MaterialProxy.createInMemory (samplesReferencing samples) VersionsInUse.empty
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        let m0 = initInverse (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        let m0 = initInverse (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
         let src, sample, det = endpoints m0
-        let bindOne (elementId : Library.ElementId) (entryOpt : string option) (m : Model) : Model =
+        let bindOne (elementId : Library.ElementId) (entryOpt : string option) (m : TableAndElementRotationModel) : TableAndElementRotationModel =
             match entryOpt with
-            | Some entryId -> update (BindValueIdTo (elementId, entryId)) m
+            | Some entryId -> updateTableAndElementRotation (BindValueIdTo (elementId, entryId)) m
             | None -> m
         let committed =
             m0
             |> bindOne src.id srcBind
             |> bindOne det.id detBind
-            |> update (ExpChooseElement sample.id.value)
-            |> update (ExpChooseVariable ExperimentControls.VaryR2)
-            |> update ExpCommit
+            |> updateTableAndElementRotation (ExpChooseElement sample.id.value)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation ExpCommit
         committed.library, List.head committed.experimentCollection.experiments
 
     let private withId (n : int) (exp : Experiments.Experiment) : Experiments.Experiment =
@@ -216,7 +216,7 @@ module SolverHandoffWindowTests =
         let proxy =
             mockIntensityByPath (Map.ofList [ "good.csv", Ok (intensitySeries [ 0.0, 1.0; 89.0, 0.2 ])
                                               "oor.csv", Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]) ])
-        let model : SolverHandoffView.Model = SolverHandoffView.init (contextOf library proxy experiments)
+        let model : SolverHandoffView.SolverHandoffModel = SolverHandoffView.initSolverHandoff (contextOf library proxy experiments)
         Assert.Equal("run-A", model.collectionName.value)
         Assert.Equal(3, List.length model.rows)
         let statusById (n : int) : SolverHandoffView.ExperimentHandoffStatus =

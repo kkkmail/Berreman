@@ -24,7 +24,7 @@ module CategoryProxyTests =
 
     /// A `HiddenOnCreate` built-in — the removal test proves a `BuiltInCategory` is refused.
     let private vacuum : MaterialCategory =
-        standardCategories |> List.find (fun c -> c.id = CategoryIds.vacuum)
+        standardCategories |> List.find (fun c -> c.id = CategoryIds.vacuumCategory)
 
     /// A fresh USER category under a MINTED id (not in the seeded catalogue): the add/update/remove
     /// happy paths and the referenced-block scenario hang off this.

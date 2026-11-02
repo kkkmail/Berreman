@@ -41,7 +41,7 @@ module Ribbon =
         }
 
     /// The ribbon's state: the bays to offer and which one is selected (by name).
-    type State =
+    type RibbonState =
         {
             bays : Bay list
             selected : string
@@ -82,7 +82,7 @@ module Ribbon =
 
     /// The bay currently shown — the selected one, falling back to the first bay if the selected name is
     /// not present (so the ribbon always renders something while bays are added / removed).
-    let activeBay (state : State) : Bay option =
+    let activeBay (state : RibbonState) : Bay option =
         match state.bays |> List.tryFind (fun b -> b.name = state.selected) with
         | Some b -> Some b
         | None -> List.tryHead state.bays
@@ -96,7 +96,7 @@ module Ribbon =
     /// one — so a pane is only ever patched against its own previous self. A `FullSurface` bay renders NO
     /// in-ribbon pane: the ribbon shows only its tab and the HOST fills the surface below this strip with the
     /// bay's content. `onSelect` is the host's "show this bay" seam.
-    let view (state : State) (onSelect : string -> unit) : IView =
+    let ribbonView (state : RibbonState) (onSelect : string -> unit) : IView =
         let activeName = activeBay state |> Option.map (fun b -> b.name) |> Option.defaultValue ""
         let tabs =
             state.bays

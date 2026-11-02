@@ -87,9 +87,9 @@ type MaterialEditorContext =
 /// Whether the editor is editing normally or showing the unsaved-edit exit confirm surface
 /// (spec 0038 step 033). A named two-case DU, never a naked `bool`: a dirty editor being closed
 /// through Cancel or the window chrome flips to `ConfirmingDiscard`, which offers Discard / Keep.
-type ExitPrompt =
-    | Editing
-    | ConfirmingDiscard
+type MaterialEditorExitPrompt =
+    | MaterialEditing
+    | MaterialConfirmingDiscard
 
 /// The structurally-comparable slice of the model Save persists — the identity facets and the
 /// ladder edit state (spec 0038 step 033's dirtiness snapshot). Every component is a plain
@@ -103,7 +103,7 @@ type MaterialEditSnapshot = string * string * CategoryId * MaterialComplexityEdi
 /// cases (no structural equality), and `update` returns a fresh record anyway — so the Elmish
 /// equality gate sees every dispatch as a change and re-renders.
 [<ReferenceEquality>]
-type Model =
+type MaterialEditorModel =
     {
         context : MaterialEditorContext
         target : EditorTarget
@@ -125,27 +125,27 @@ type Model =
         /// structurally unequal to the current edit slice (no dirty flag maintained).
         initialEdit : MaterialEditSnapshot
         /// Spec 0038 (033): normal editing vs the unsaved-edit exit confirm surface.
-        exit : ExitPrompt
+        exit : MaterialEditorExitPrompt
         /// The last typed-error reason (or proxy rejection) surfaced to the user.
         status : string option
     }
 
-type Msg =
-    | SetName of string
+type MaterialEditorMsg =
+    | SetMaterialName of string
     | SetDescription of string
     | ChooseCategory of CategoryId
     /// One ladder edit, routed through the pure Domain apply.
     | EditorMsg of MaterialComplexityMsg
     /// Spec 0038 (032): flip one preview curve's visibility, by its `ConstructorUiId.previewSeriesToggle` key.
     | ToggleSeriesVisibility of key : string
-    | SaveClicked
+    | MaterialSaveClicked
     /// Requested exit (the Cancel button, or the window chrome routed through `OnClosing`):
     /// closes a pristine editor silently, shows the discard confirm on a dirty one (spec 0038 step 033).
-    | CancelClicked
+    | MaterialCancelClicked
     /// Spec 0038 (033): the confirm surface's Discard changes — close without saving.
-    | DiscardConfirmed
+    | MaterialDiscardConfirmed
     /// Spec 0038 (033): the confirm surface's Keep editing — dismiss the confirm, stay in the editor.
-    | KeepEditing
+    | MaterialKeepEditing
 
 // ---------------------------------------------------------------------------
 // Pure helpers.
@@ -173,7 +173,7 @@ let categoryCode (category : CategoryId) : string =
 /// `CategoryProxy` (`listCategories`, re-read at render), EXCLUDING every `HiddenOnCreate` category
 /// (Vacuum) — those categorise seed entries but are not user-selectable creation targets, so they
 /// are REMOVED from the picker, not greyed. A store listing error yields no options (never a throw).
-let selectableCategories (m : Model) : MaterialCategory list =
+let selectableCategories (m : MaterialEditorModel) : MaterialCategory list =
     match m.context.categories.listCategories () with
     | Ok cats -> cats |> List.filter (fun c -> c.visibility <> HiddenOnCreate)
     | Error _ -> []
@@ -221,7 +221,7 @@ let previewRange : Range<WaveLength> = SpectralAxis.spectralRange Nanometer 400.
 
 /// What the preview charts: the derived complexity's engine properties in edit mode, the
 /// entry's own preset properties in view-only mode, nothing while the ladder is underivable.
-let private previewProperties (m : Model) : OpticalPropertiesWithDisp option =
+let private previewProperties (m : MaterialEditorModel) : OpticalPropertiesWithDisp option =
     match m.mode with
     | ViewOnlyMaterial _ -> m.presetProperties
     | EditableMaterial ->
@@ -234,7 +234,7 @@ let private previewProperties (m : Model) : OpticalPropertiesWithDisp option =
 /// activity tree (mirroring `NkDispersionChart.anisotropyOfEntry`); a coded preset with no stored
 /// tree keeps every component (the pre-restriction rendering). Public so the window tests verify the
 /// threading without a rendered frame.
-let previewGyrationComponents (m : Model) : GyrationComponent list =
+let previewGyrationComponents (m : MaterialEditorModel) : GyrationComponent list =
     match m.mode with
     | EditableMaterial -> gyrationComponents m.editor.gyration |> List.map fst
     | ViewOnlyMaterial _ ->
@@ -245,7 +245,7 @@ let previewGyrationComponents (m : Model) : GyrationComponent list =
 /// The Polder-μ kind the preview draws (spec 0040 step 006): in edit mode the editor's `MuKind`; a
 /// view-only entry reads it off its stored `complexity` magnetic tree; a coded preset with no stored
 /// tree keeps the full gyromagnetic rendering. Public so the window tests verify the threading.
-let previewMuKind (m : Model) : MuKind =
+let previewMuKind (m : MaterialEditorModel) : MuKind =
     match m.mode with
     | EditableMaterial -> m.editor.muKind
     | ViewOnlyMaterial _ ->
@@ -279,7 +279,7 @@ let private epsCaseLabel (eps : EpsWithDispValue) : string =
 /// The derived-model readout: the eps case, the optional aspects, and a structural digest —
 /// two states with the SAME summary denote the SAME derived complexity (the lossless-uncheck
 /// acceptance observes this text); an underivable ladder shows the typed reason instead.
-let complexitySummary (m : Model) : string =
+let complexitySummary (m : MaterialEditorModel) : string =
     match m.mode with
     | ViewOnlyMaterial _ -> "view-only engine preset"
     | EditableMaterial ->
@@ -295,19 +295,19 @@ let complexitySummary (m : Model) : string =
 /// The current edit slice compared for dirtiness (spec 0038 step 033): the identity facets and
 /// the ladder edit state, all plain records/DUs. A view-only entry never mutates these, so it is
 /// never dirty and always closes silently.
-let private currentEdit (m : Model) : MaterialEditSnapshot =
+let private currentEdit (m : MaterialEditorModel) : MaterialEditSnapshot =
     (m.name, m.description, m.category, m.editor)
 
 /// Whether the editor carries unsaved changes: the current edit slice differs structurally from
 /// the slice captured at load. No dirty flag is maintained (spec 0038 step 033).
-let isDirty (m : Model) : bool =
+let isMaterialEditorDirty (m : MaterialEditorModel) : bool =
     m.initialEdit <> currentEdit m
 
 // ---------------------------------------------------------------------------
 // init / update (pure — IO only through the context's proxy fields).
 // ---------------------------------------------------------------------------
 
-let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Model =
+let initMaterialEditor (context : MaterialEditorContext) (intent : MaterialEditorIntent) : MaterialEditorModel =
     let built =
         match intent with
         | NewMaterial mintedId ->
@@ -326,7 +326,7 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                 viewOnlyComplexity = None
                 hiddenSeries = Set.empty
                 initialEdit = ("", "", CategoryIds.glass, defaultState)
-                exit = Editing
+                exit = MaterialEditing
                 status = None
             }
         | EditMaterial entry ->
@@ -343,7 +343,7 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
                     viewOnlyComplexity = None
                     hiddenSeries = Set.empty
                     initialEdit = ("", "", CategoryIds.glass, defaultState)
-                    exit = Editing
+                    exit = MaterialEditing
                     status = None
                 }
             // Since spec 0040 step 004 every entry carries `complexity = Some`, so
@@ -376,9 +376,9 @@ let init (context : MaterialEditorContext) (intent : MaterialEditorIntent) : Mod
     // pristine and closes silently (spec 0038 step 033).
     { built with initialEdit = currentEdit built }
 
-let update (msg : Msg) (m : Model) : Model =
+let updateMaterialEditor (msg : MaterialEditorMsg) (m : MaterialEditorModel) : MaterialEditorModel =
     match msg with
-    | SetName s -> { m with name = s }
+    | SetMaterialName s -> { m with name = s }
     | SetDescription s -> { m with description = s }
     | ChooseCategory category -> { m with category = category }
     | EditorMsg editorMsg ->
@@ -395,7 +395,7 @@ let update (msg : Msg) (m : Model) : Model =
         let hidden =
             if Set.contains key m.hiddenSeries then Set.remove key m.hiddenSeries else Set.add key m.hiddenSeries
         { m with hiddenSeries = hidden }
-    | SaveClicked ->
+    | MaterialSaveClicked ->
         match m.mode with
         | ViewOnlyMaterial reason -> { m with status = Some reason }
         | EditableMaterial ->
@@ -422,21 +422,21 @@ let update (msg : Msg) (m : Model) : Model =
                     m.context.requestClose ()
                     { m with status = None }
                 | Error e -> { m with status = Some (materialErrorReason e) }
-    | CancelClicked ->
+    | MaterialCancelClicked ->
         // Spec 0038 (033): a dirty editor MUST NOT close silently — show the discard confirm;
         // a pristine one closes as today. The window chrome (`OnClosing`) routes here too, so
         // both exits are equally gated.
-        if isDirty m then { m with exit = ConfirmingDiscard }
+        if isMaterialEditorDirty m then { m with exit = MaterialConfirmingDiscard }
         else
             m.context.requestClose ()
             m
-    | DiscardConfirmed ->
+    | MaterialDiscardConfirmed ->
         // Close WITHOUT saving — the discard confirm's negative action (spec 0038 step 033).
         m.context.requestClose ()
         m
-    | KeepEditing ->
+    | MaterialKeepEditing ->
         // Dismiss the confirm and stay in the editor (spec 0038 step 033).
-        { m with exit = Editing }
+        { m with exit = MaterialEditing }
 
 // ---------------------------------------------------------------------------
 // The FuncUI view. Styling matches the sibling editors' idle/chosen boxes; every control in
@@ -566,7 +566,7 @@ let private coeffNumberBox (autoId : string) (width : float) (value : float) (on
 
 // -- the identity rows -----------------------------------------------------------------------
 
-let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private nameRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -576,12 +576,12 @@ let private nameRow (m : Model) (dispatch : Msg -> unit) : IView =
                 TextBox.name ConstructorUiId.materialNameBox.value
                 TextBox.width 340.0
                 TextBox.text m.name
-                TextBox.onTextChanged (SetName >> dispatch)
+                TextBox.onTextChanged (SetMaterialName >> dispatch)
             ] :> IView
         ]
     ] :> IView
 
-let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private descriptionRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 6.0
@@ -602,7 +602,7 @@ let private descriptionRow (m : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private categoryRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -626,7 +626,7 @@ let private categoryRow (m : Model) (dispatch : Msg -> unit) : IView =
 
 // -- the ladder ------------------------------------------------------------------------------
 
-let private anisotropyRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private anisotropyRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -653,7 +653,7 @@ let private anisotropyRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// and is REMOVED, not greyed (Part F). The optional activity / magnetic aspects follow; the
 /// activity toggle is REMOVED when the anisotropy choice offers no rotating gyration class
 /// (`availableGyrationClasses`).
-let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private togglesRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     let absorbing = m.editor.transparency = Absorbing
     let dispersive = m.editor.dispersion = DispersiveSegments
     let active = m.editor.activity = ActivityOn
@@ -691,7 +691,7 @@ let private togglesRow (m : Model) (dispatch : Msg -> unit) : IView =
 
 /// The constant principal-index fields (the non-dispersive rung): 1 / 2 / 3 boxes per the
 /// anisotropy choice, plus the k boxes while the absorbing rung is unlocked.
-let private indexFieldsRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private indexFieldsRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     let slots =
         match m.editor.anisotropy with
         | Isotropic -> [ (1, FirstAxis, m.editor.index1, "n₁:") ]
@@ -770,7 +770,7 @@ let private componentFormulaView (editorId : string) (boxId : string -> string) 
 /// comment 009): one unit-labelled box per editable coefficient (`DispersionModels.modelParameters`,
 /// which now covers the raw `SumOfTerms` term data too), each edit rebuilding that axis's model
 /// through `SetSegmentAxisModel`.
-let private segmentParamsView (dispatch : Msg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (isFirst : bool) (axisCode : string) (model : DispersionModel) : IView =
+let private segmentParamsView (dispatch : MaterialEditorMsg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (isFirst : bool) (axisCode : string) (model : DispersionModel) : IView =
     let laterAxisOpt = if isFirst then None else Some (ConstructorUiKey axisCode)
     let boxes =
         modelParameters model
@@ -795,7 +795,7 @@ let private axisSlotsOf (anisotropy : Anisotropy) : (PrincipalAxisSlot * string 
     | Biaxial -> [ (FirstAxis, "X:", "x"); (SecondAxis, "Y:", "y"); (ThirdAxis, "Z:", "z") ]
 
 /// One principal axis's model picker + coefficient boxes within a segment (spec 0033 comment 009).
-let private segmentAxisView (dispatch : Msg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (axisLabel : string) (axisCode : string) (model : DispersionModel) : IView =
+let private segmentAxisView (dispatch : MaterialEditorMsg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (axisLabel : string) (axisCode : string) (model : DispersionModel) : IView =
     let isFirst = (slot = FirstAxis)
     let laterAxisOpt = if isFirst then None else Some (ConstructorUiKey axisCode)
     let currentCode = modelKindCode model
@@ -822,7 +822,7 @@ let private segmentAxisView (dispatch : Msg -> unit) (segmentIndex : int) (slot 
 /// One dispersion segment's editor: the shared wavelengthInterval bounds (nm), then — PER
 /// PRINCIPAL AXIS of the anisotropy (spec 0033 comment 009) — a model picker + unit-labelled
 /// coefficient boxes.
-let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int) (segment : EditSegment) : IView =
+let private segmentView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) (segmentIndex : int) (segment : EditSegment) : IView =
     let lowerNm = wavelengthToUnit Nanometer segment.interval.lower
     let upperNm = wavelengthToUnit Nanometer segment.interval.upper
     StackPanel.create [
@@ -850,7 +850,7 @@ let private segmentView (m : Model) (dispatch : Msg -> unit) (segmentIndex : int
 
 /// The per-segment dispersion editor (the dispersive rung): each segment's bounds + model
 /// picker, then the mandated add-segment verb.
-let private segmentsPanel (m : Model) (dispatch : Msg -> unit) : IView =
+let private segmentsPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -865,7 +865,7 @@ let private segmentsPanel (m : Model) (dispatch : Msg -> unit) : IView =
 /// constant `coeffNumberBox`es; under `DispersiveComponents` one dispersion-formula
 /// editor per symmetry-allowed component of `gyrationDispersion` (class-synced with
 /// `gyration`, so the component set matches the class picker either way).
-let private gyrationComponentsSection (m : Model) (dispatch : Msg -> unit) : IView =
+let private gyrationComponentsSection (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     match m.editor.activityDispersion with
     | ConstantComponents ->
         WrapPanel.create [
@@ -897,7 +897,7 @@ let private gyrationComponentsSection (m : Model) (dispatch : Msg -> unit) : IVi
 
 /// The symmetry-class gyration panel (the activity rung): the class picker CONSTRAINED by the
 /// anisotropy choice, the Constant/Dispersive component sub-toggle, and the handedness switch.
-let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
+let private gyrationPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     let currentCode = gyrationClassCode m.editor.gyration
     let dispersive = m.editor.activityDispersion = DispersiveComponents
     StackPanel.create [
@@ -943,7 +943,7 @@ let private gyrationPanel (m : Model) (dispatch : Msg -> unit) : IView =
 /// under Dispersive — one dispersion-formula editor per Polder component (always the full
 /// tensor, as the engine's `MuWithDispValue` has no scalar case); the magnetization-axis
 /// picker follows whenever the tensor is the full gyromagnetic one.
-let private muPanel (m : Model) (dispatch : Msg -> unit) : IView =
+let private muPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     let kind = m.editor.muKind
     let dispersive = m.editor.magneticDispersion = DispersiveComponents
     let (MuValue muDiagonal) = m.editor.polder.muDiagonal
@@ -1036,7 +1036,7 @@ let applyHidden (hidden : Set<string>) (tabCode : string) (chart : ExperimentCha
 /// (`EmbeddedChart`, degrading to a placeholder rather than throwing headlessly); the toggles flip
 /// `hiddenSeries`, which `applyHidden` lowers onto the chart's style. `tabCode` namespaces the
 /// per-series toggle ids so a curve name shared across tabs never collides.
-let private chartTab (tabId : string) (tabCode : string) (header : string) (hostId : string) (m : Model) (dispatch : Msg -> unit) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : IView =
+let private chartTab (tabId : string) (tabCode : string) (header : string) (hostId : string) (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : IView =
     let toggles : IView =
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
@@ -1065,7 +1065,7 @@ let private chartTab (tabId : string) (tabCode : string) (header : string) (host
 /// per-tab legend always answer what is being drawn. In edit mode the optional tabs track the ladder
 /// toggles; a view-only preset (no ladder) is classified from its assembled tensors instead. Returns
 /// the pane view and the gain-warning text over the n/k tab's sampled k curves.
-let private previewPane (m : Model) (dispatch : Msg -> unit) : IView * string =
+let private previewPane (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView * string =
     match previewProperties m with
     | None ->
         let placeholder =
@@ -1142,7 +1142,7 @@ let private twoPane (leftPane : IView) (rightPane : IView) : IView =
 // -- readouts / actions ------------------------------------------------------------------------
 
 /// Spec 0046: the summary WRAPS beside its docked label (a horizontal stack ran it off the pane's edge).
-let private summaryRow (m : Model) : IView =
+let private summaryRow (m : MaterialEditorModel) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Left; Border.margin (thickOf 0.0 0.0 6.0 0.0); Border.child (labelBlock "Derived model:") ]
@@ -1162,7 +1162,7 @@ let private gainWarningRow (warning : string) : IView =
         TextBlock.text warning
     ] :> IView
 
-let private statusRow (m : Model) : IView =
+let private statusRow (m : MaterialEditorModel) : IView =
     TextBlock.create [
         TextBlock.name ConstructorUiId.materialEditorStatus.value
         TextBlock.foreground (brush errorColor)
@@ -1172,19 +1172,19 @@ let private statusRow (m : Model) : IView =
             | None -> "")
     ] :> IView
 
-let private saveCancelRow (dispatch : Msg -> unit) (withSave : bool) : IView =
+let private saveCancelRow (dispatch : MaterialEditorMsg -> unit) (withSave : bool) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Horizontal
         StackPanel.spacing 0.0
         StackPanel.children (
-            (if withSave then [ actionButton ConstructorUiId.materialEditorSaveButton.value "Save" saveBackground (fun () -> dispatch SaveClicked) ] else [])
-            @ [ actionButton ConstructorUiId.materialEditorCancelButton.value (if withSave then "Cancel" else "Close") cancelBackground (fun () -> dispatch CancelClicked) ])
+            (if withSave then [ actionButton ConstructorUiId.materialEditorSaveButton.value "Save" saveBackground (fun () -> dispatch MaterialSaveClicked) ] else [])
+            @ [ actionButton ConstructorUiId.materialEditorCancelButton.value (if withSave then "Cancel" else "Close") cancelBackground (fun () -> dispatch MaterialCancelClicked) ])
     ] :> IView
 
 /// The unsaved-edit exit confirm surface (spec 0038 step 033): shown in place of the Save/Cancel
 /// row while a dirty editor is being closed. Discard changes (negative styling) closes without
 /// saving; Keep editing (positive styling) returns to the editor — one row, distinct styling.
-let private exitConfirmRow (dispatch : Msg -> unit) : IView =
+let private exitConfirmRow (dispatch : MaterialEditorMsg -> unit) : IView =
     StackPanel.create [
         automationId ConstructorUiId.materialEditorExitConfirm.value
         StackPanel.orientation Orientation.Horizontal
@@ -1196,17 +1196,17 @@ let private exitConfirmRow (dispatch : Msg -> unit) : IView =
                 TextBlock.verticalAlignment VerticalAlignment.Center
                 TextBlock.margin (thickOf 0.0 0.0 12.0 0.0)
             ] :> IView
-            actionButton ConstructorUiId.materialEditorDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch DiscardConfirmed)
-            actionButton ConstructorUiId.materialEditorKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch KeepEditing)
+            actionButton ConstructorUiId.materialEditorDiscardButton.value "Discard changes" cancelBackground (fun () -> dispatch MaterialDiscardConfirmed)
+            actionButton ConstructorUiId.materialEditorKeepEditingButton.value "Keep editing" saveBackground (fun () -> dispatch MaterialKeepEditing)
         ]
     ] :> IView
 
 /// The bottom action area: the normal Save/Cancel (or Close) row, or — while `exit =
 /// ConfirmingDiscard` — the discard confirm surface (spec 0038 step 033).
-let private actionsRow (m : Model) (dispatch : Msg -> unit) (withSave : bool) : IView =
+let private actionsRow (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) (withSave : bool) : IView =
     match m.exit with
-    | Editing -> saveCancelRow dispatch withSave
-    | ConfirmingDiscard -> exitConfirmRow dispatch
+    | MaterialEditing -> saveCancelRow dispatch withSave
+    | MaterialConfirmingDiscard -> exitConfirmRow dispatch
 
 /// The whole editor — a two-pane vertical split (spec 0038 step 032). Edit mode: LEFT pane = the
 /// identity rows + the progressive ladder inside a `ScrollViewer`, with the derived-model / gain /
@@ -1214,7 +1214,7 @@ let private actionsRow (m : Model) (dispatch : Msg -> unit) (withSave : bool) : 
 /// preview (per-axis n/k always, Gyration when active, μ when magnetic). View-only mode (an entry
 /// whose physics is not data): the identity header + the WHY note (scrolling) with a Close action,
 /// beside the same tabbed preview — NO ladder, NO Save.
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let materialEditorView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
     let previewView, warning = previewPane m dispatch
     let scrolling (content : IView) : IView =
         Border.create [

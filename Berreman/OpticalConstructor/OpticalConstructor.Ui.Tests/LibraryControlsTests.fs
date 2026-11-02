@@ -18,7 +18,7 @@ open OpticalConstructor.Ui.TableAndElementRotationView
 /// element's `valueId`. The control stays `LibraryControls` — only the bay label changed.
 module LibraryControlsTests =
 
-    let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
+    let private elem (i : int) (m : TableAndElementRotationModel) : TestElement = List.item i m.elements
 
     /// The Guid-string entry ids of the seeded samples these tests bind (the Selector valueId seam
     /// carries the Guid string form since spec 0033 step 002 — referenced programmatically, never as
@@ -48,13 +48,13 @@ module LibraryControlsTests =
     // ============================ host libraryState (pure) ============================
 
     /// Build the model with a single Sample element selected (so the Select bay shows samples).
-    let private withSampleSelected () : Model =
-        initMain () |> update (AddElement Sample)   // appends a Sample at index 2, selects it
+    let private withSampleSelected () : TableAndElementRotationModel =
+        initMain () |> updateTableAndElementRotation (AddElement Sample)   // appends a Sample at index 2, selects it
 
     /// Spec 0038 (017): the quick-pick strip is threshold-gated now, and the 11 seeded sample
     /// entries sit AT/ABOVE the default threshold 5 (Choose… alone). These tests pin the STRIP
     /// mechanics — unchanged below the threshold — so their fixtures open the gate wide.
-    let private withWideQuickPick (m : Model) : Model =
+    let private withWideQuickPick (m : TableAndElementRotationModel) : TableAndElementRotationModel =
         { m with quickPickThreshold = WorkbenchSettings.QuickPickThreshold 100 }
 
     [<Fact>]
@@ -80,20 +80,20 @@ module LibraryControlsTests =
     [<Fact>]
     let ``BindValueId sets the selected element's valueId; inert for table or nothing`` () =
         let m = withSampleSelected ()                      // element 2 (a Sample) selected
-        let bound = update (BindValueId glass1mmId) m
+        let bound = updateTableAndElementRotation (BindValueId glass1mmId) m
         Assert.Equal(Some glass1mmId, (elem 2 bound).placement.valueId)
         // Inert when the table is selected.
         let tableSel = { (initMain ()) with selection = TableSelected }
-        Assert.Equal<Model>(tableSel, update (BindValueId glass1mmId) tableSel)
+        Assert.Equal<TableAndElementRotationModel>(tableSel, updateTableAndElementRotation (BindValueId glass1mmId) tableSel)
         // Inert when nothing is selected.
         let nothingSel = { (initMain ()) with selection = NothingSelected }
-        Assert.Equal<Model>(nothingSel, update (BindValueId glass1mmId) nothingSel)
+        Assert.Equal<TableAndElementRotationModel>(nothingSel, updateTableAndElementRotation (BindValueId glass1mmId) nothingSel)
 
     [<Fact>]
     let ``binding then rebinding overwrites the valueId`` () =
         let m = withSampleSelected ()
-        let m1 = update (BindValueId glass1mmId) m
-        let m2 = update (BindValueId glass2mmId) m1
+        let m1 = updateTableAndElementRotation (BindValueId glass1mmId) m
+        let m2 = updateTableAndElementRotation (BindValueId glass2mmId) m1
         Assert.Equal(Some glass2mmId, (elem 2 m2).placement.valueId)
 
     [<Fact>]
@@ -107,22 +107,22 @@ module LibraryControlsTests =
         // Spec 0046 (operator): the label is the verb "Select" (was "Selector"); likewise "Rotate".
         Assert.Equal("Select", BayNames.selector)
         Assert.Equal("Rotate", BayNames.rotation)
-        Assert.Contains(BayNames.selector, BayNames.all)
-        Assert.DoesNotContain("Library", BayNames.all)
+        Assert.Contains(BayNames.selector, BayNames.allBayNames)
+        Assert.DoesNotContain("Library", BayNames.allBayNames)
         // Spec 0046: Add comes first.
         Assert.Equal<string list>(
             [ BayNames.add; BayNames.rotation; BayNames.move; BayNames.render; BayNames.selector ],
-            BayNames.all |> List.truncate 5)
+            BayNames.allBayNames |> List.truncate 5)
         let m = initMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
+        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
 
     // ============================ Spec 0027 (026) confirm-gated bind (pure) ============================
 
     [<Fact>]
     let ``RequestBindValueId sets a pending entry WITHOUT binding the valueId`` () =
         let m = withSampleSelected ()                          // element 2 (a Sample) selected
-        let pending = update (RequestBindValueId glass1mmId) m
+        let pending = updateTableAndElementRotation (RequestBindValueId glass1mmId) m
         // The pending choice is recorded, but no valueId is bound yet.
         Assert.Equal(Some glass1mmId, pending.pendingEntry)
         Assert.Equal(None, (elem 2 pending).placement.valueId)
@@ -131,8 +131,8 @@ module LibraryControlsTests =
     let ``ConfirmBindValueId commits the pending entry to the selected element's valueId and clears pending`` () =
         let m =
             withSampleSelected ()
-            |> update (RequestBindValueId glass1mmId)
-            |> update ConfirmBindValueId
+            |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
+            |> updateTableAndElementRotation ConfirmBindValueId
         Assert.Equal(Some glass1mmId, (elem 2 m).placement.valueId)
         Assert.Equal(None, m.pendingEntry)
 
@@ -140,19 +140,19 @@ module LibraryControlsTests =
     let ``CancelBindValueId clears the pending entry and does NOT bind`` () =
         let m =
             withSampleSelected ()
-            |> update (RequestBindValueId glass1mmId)
-            |> update CancelBindValueId
+            |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
+            |> updateTableAndElementRotation CancelBindValueId
         Assert.Equal(None, m.pendingEntry)
         Assert.Equal(None, (elem 2 m).placement.valueId)
 
     [<Fact>]
     let ``a confirm with no pending entry binds nothing`` () =
-        let m = withSampleSelected () |> update ConfirmBindValueId
+        let m = withSampleSelected () |> updateTableAndElementRotation ConfirmBindValueId
         Assert.Equal(None, (elem 2 m).placement.valueId)
 
     [<Fact>]
     let ``libraryState surfaces the pending entry's name and FULL description before confirm`` () =
-        let m = withSampleSelected () |> update (RequestBindValueId multilayerQwId)
+        let m = withSampleSelected () |> updateTableAndElementRotation (RequestBindValueId multilayerQwId)
         // The host's libraryState fills the pending fields from the proxy; mirror that resolution here.
         match m.library.tryGetEntry multilayerQwId with
         | Ok (Some entry) ->
@@ -173,10 +173,10 @@ module LibraryControlsTests =
             let mutable model =
                 withSampleSelected ()
                 |> withWideQuickPick
-                |> update (SelectBay BayNames.selector)
-                |> update (RequestBindValueId glass1mmId)
-            let dispatch (msg : Msg) = model <- update msg model
-            let window = Window(Width = 980.0, Height = canvasHeight + 320.0)
+                |> updateTableAndElementRotation (SelectBay BayNames.selector)
+                |> updateTableAndElementRotation (RequestBindValueId glass1mmId)
+            let dispatch (msg : TableAndElementRotationMsg) = model <- updateTableAndElementRotation msg model
+            let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 320.0)
             window.Content <- Component(fun _ -> mainView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -254,16 +254,16 @@ module LibraryControlsTests =
                 { label = label; depth = 0; entryId = id; isBound = false }
             let fullRows = [ rowFor "alpha" "Alpha"; rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
             let shiftedRows = [ rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
-            let stateFor (rows : LibraryControls.Row list) : LibraryControls.State =
+            let stateFor (rows : LibraryControls.Row list) : LibraryControls.LibraryControlsState =
                 { LibraryControls.empty with rows = rows; kindLabel = "Sample"; enabled = true }
-            let handlers : LibraryControls.Handlers =
+            let handlers : LibraryControls.LibraryControlsHandlers =
                 { selectEntry = ignore; confirmEntry = ignore; cancelEntry = ignore }
             let setRows : (LibraryControls.Row list -> unit) ref = ref (fun _ -> ())
             let host =
                 Component(fun ctx ->
                     let rows = ctx.useState fullRows
                     setRows.Value <- rows.Set
-                    LibraryControls.view (stateFor rows.Current) handlers)
+                    LibraryControls.libraryControlsView (stateFor rows.Current) handlers)
             let window = Window(Width = 640.0, Height = 480.0, Content = host)
             window.Show()
             Dispatcher.UIThread.RunJobs()
@@ -288,20 +288,20 @@ module LibraryControlsTests =
         // then change the selected element's KIND twice — rows collapse for a polarizer and rebuild for
         // a fresh sample — with every step re-rendering through the FuncUI patch path.
         HeadlessSession.run (fun () ->
-            let seed = withSampleSelected () |> withWideQuickPick |> update (SelectBay BayNames.selector)
-            let latest : Model ref = ref seed
-            let dispatchRef : (Msg -> unit) ref = ref ignore
+            let seed = withSampleSelected () |> withWideQuickPick |> updateTableAndElementRotation (SelectBay BayNames.selector)
+            let latest : TableAndElementRotationModel ref = ref seed
+            let dispatchRef : (TableAndElementRotationMsg -> unit) ref = ref ignore
             let comp =
                 Component(fun ctx ->
                     let st = ctx.useState seed
                     latest.Value <- st.Current
-                    let dispatch (msg : Msg) =
-                        let m = update msg st.Current
+                    let dispatch (msg : TableAndElementRotationMsg) =
+                        let m = updateTableAndElementRotation msg st.Current
                         latest.Value <- m
                         st.Set m
                     dispatchRef.Value <- dispatch
                     mainView st.Current dispatch)
-            let window = Window(Width = 980.0, Height = canvasHeight + 360.0, Content = comp)
+            let window = Window(Width = 980.0, Height = tableAndElementRotationCanvasHeight + 360.0, Content = comp)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // SELECT: click a leaf entry — the pending confirm panel renders on the patched tree.

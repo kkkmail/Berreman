@@ -22,7 +22,7 @@ module SampleLibraryControls =
 
     /// One row the host pre-flattens from its samples search (Controls carries no domain types).
     /// `sampleId` is the sample's stable id in its string form.
-    type Row =
+    type SampleLibraryControlsRow =
         {
             sampleId : string
             label : string
@@ -40,7 +40,7 @@ module SampleLibraryControls =
     /// The bay's pure, serializable state. The search text and the substrate selection mirror the
     /// domain `SampleQuery` seam (text + substrate) without importing it; the host re-runs its
     /// search and hands back new `rows` whenever they change.
-    type State =
+    type SampleLibraryControlsState =
         {
             /// The live search text (the host filters; the control only echoes and dispatches).
             searchText : string
@@ -49,12 +49,12 @@ module SampleLibraryControls =
             /// The selected substrate option's `code`.
             selectedSubstrate : string
             /// The rows the host's search produced — rendered as given, never re-filtered here.
-            rows : Row list
+            rows : SampleLibraryControlsRow list
             /// The selected row's sample id, if any (the Edit / Remove / View verbs' target).
             selectedId : string option
         }
 
-    let empty : State =
+    let emptySampleLibraryControls : SampleLibraryControlsState =
         {
             searchText = ""
             substrateOptions = []
@@ -65,7 +65,7 @@ module SampleLibraryControls =
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs). The verbs
     /// take no argument — the host owns the selection (`selectedId`) the verb applies to.
-    type Handlers =
+    type SampleLibraryControlsHandlers =
         {
             /// The search text changed — the host re-runs its search seam.
             setSearchText : string -> unit
@@ -85,7 +85,7 @@ module SampleLibraryControls =
 
     /// The row the current selection points at; `None` when nothing is selected or the host's
     /// filter no longer lists the selected id (the row-targeted verbs then disable).
-    let selectedRow (state : State) : Row option =
+    let selectedRow (state : SampleLibraryControlsState) : SampleLibraryControlsRow option =
         match state.selectedId with
         | Some id -> state.rows |> List.tryFind (fun r -> r.sampleId = id)
         | None -> None
@@ -152,7 +152,7 @@ module SampleLibraryControls =
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the materials workbench's search field).
-    let private searchRow (state : State) (handlers : Handlers) : IView =
+    let private searchRow (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
@@ -169,7 +169,7 @@ module SampleLibraryControls =
 
     /// The substrate facet selector: a titled, NAMED WrapPanel (the UiIds container id) of
     /// clickable option boxes, the selected code highlighted.
-    let private substrateRow (state : State) (handlers : Handlers) : IView =
+    let private substrateRow (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
@@ -187,11 +187,11 @@ module SampleLibraryControls =
         ] :> IView
 
     /// One listed sample row — clickable (selects it), highlighted when it is the selection.
-    let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
+    let private rowView (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) (r : SampleLibraryControlsRow) : IView =
         clickBox (ConstructorUiId.sampleRow (ConstructorUiKey r.sampleId)).value r.label (state.selectedId = Some r.sampleId) (fun () -> handlers.selectSample r.sampleId)
 
     /// The samples list: a NAMED vertical stack of the host's rows, rendered as given.
-    let private listView (state : State) (handlers : Handlers) : IView =
+    let private listView (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) : IView =
         ScrollViewer.create [
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
@@ -204,7 +204,7 @@ module SampleLibraryControls =
 
     /// The verb row. Add and Make-multilayer are creation entry points and always apply; Edit /
     /// Remove / View act on the selection and disable while nothing (listed) is selected.
-    let private verbRow (state : State) (handlers : Handlers) : IView =
+    let private verbRow (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) : IView =
         let hasSelection =
             match selectedRow state with
             | Some _ -> true
@@ -223,7 +223,7 @@ module SampleLibraryControls =
 
     /// The samples workbench surface — search box, the substrate facet selector, the samples
     /// list, and the Add / Edit / Remove / View / Make-multilayer verbs, top to bottom.
-    let view (state : State) (handlers : Handlers) : IView =
+    let sampleLibraryControlsView (state : SampleLibraryControlsState) (handlers : SampleLibraryControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0

@@ -42,35 +42,35 @@ open OpticalConstructor.Ui
 // gestures are net-new, on the previously-unused Ctrl+Alt / Ctrl+Alt+Shift combinations).
 // ---------------------------------------------------------------------------
 
-type WheelModifier =
-    | ModCtrl
-    | ModShift
-    | ModAlt
+type ElementRotationWheelModifier =
+    | ElementRotationModCtrl
+    | ElementRotationModShift
+    | ElementRotationModAlt
 
-type WheelAction =
+type ElementRotationWheelAction =
     | RotateSelectedR1
     | RotateSelectedR2
     | RotateSelectedR3
     | ZoomSelected
     | ZoomAll
-    | ZoomTable
-    | NoWheelAction
+    | ElementRotationZoomTable
+    | ElementRotationNoWheelAction
 
 /// `Shift`→R1, `Ctrl+Shift`→R2, `Alt`→R3 (the documented element-rotation gestures);
 /// `Ctrl+Alt`→zoom the selected element, `Ctrl+Alt+Shift`→zoom all elements; a plain or `Ctrl`
 /// wheel zooms the TABLE (task 006 #2 — the table is now pan/zoomable like the table test);
 /// anything else (e.g. `Shift+Alt`) → nothing.
-let wheelAction (mods : Set<WheelModifier>) : WheelAction =
+let elementRotationWheelAction (mods : Set<ElementRotationWheelModifier>) : ElementRotationWheelAction =
     let has m = Set.contains m mods
-    match has ModCtrl, has ModShift, has ModAlt with
+    match has ElementRotationModCtrl, has ElementRotationModShift, has ElementRotationModAlt with
     | false, true, false -> RotateSelectedR1
     | true, true, false -> RotateSelectedR2
     | false, false, true -> RotateSelectedR3
     | true, false, true -> ZoomSelected
     | true, true, true -> ZoomAll
-    | false, false, false -> ZoomTable
-    | true, false, false -> ZoomTable
-    | _ -> NoWheelAction
+    | false, false, false -> ElementRotationZoomTable
+    | true, false, false -> ElementRotationZoomTable
+    | _ -> ElementRotationNoWheelAction
 
 // ---------------------------------------------------------------------------
 // Pure model.
@@ -86,12 +86,12 @@ type TestElement =
 
 /// A left-button gesture in progress. `Pressed` is a click candidate; once it moves past the
 /// threshold it becomes `Panning` and the drag pans the table (#2 — standard click-and-drag).
-type DragState =
-    | NotPressed
-    | Pressed of ScreenPoint
-    | Panning of ScreenPoint
+type ElementRotationDragState =
+    | ElementRotationNotPressed
+    | ElementRotationPressed of ScreenPoint
+    | ElementRotationPanning of ScreenPoint
 
-type Model =
+type ElementRotationModel =
     {
         table : OpticalTable
         /// The table view (#2): pan + zoom are live (like the table test), but it is never rotated
@@ -100,7 +100,7 @@ type Model =
         view : TableViewState
         elements : TestElement list
         selected : int
-        drag : DragState
+        drag : ElementRotationDragState
         /// Which reset (if any) the rotation-controls bar is awaiting confirmation for (task 008).
         rotationConfirm : RotationControls.ResetConfirm
     }
@@ -111,7 +111,7 @@ let defaultElementZoom : float = 5.0
 
 /// Three optical elements on the central ray, at spec-correct positions (y = 0, on the beam),
 /// each fresh (rest pose, R3 locked) at the default 5× draw zoom. The middle one is selected.
-let init () : Model =
+let initElementRotation () : ElementRotationModel =
     let mk (x : float) (kind : CatalogueKind) : TestElement =
         { placement = ElementPlacement.create kind { x = x * 1.0<meter>; y = 0.0<meter> }; zoom = defaultElementZoom }
     {
@@ -119,100 +119,100 @@ let init () : Model =
         view = Table.defaultView
         elements = [ mk -0.5 LinearPolarizer; mk 0.0 Sample; mk 0.5 FlatMirror ]
         selected = 1
-        drag = NotPressed
+        drag = ElementRotationNotPressed
         rotationConfirm = RotationControls.NoConfirm
     }
 
-type Msg =
+type ElementRotationMsg =
     /// Rotate the SELECTED element about Rk by signed degrees (the buttons; lock-respecting).
-    | RotateR1By of float
-    | RotateR2By of float
-    | RotateR3By of float
+    | ElementRotationRotateR1By of float
+    | ElementRotationRotateR2By of float
+    | ElementRotationRotateR3By of float
     /// Lock / unlock the selected element's R3 (spec A.4.5).
-    | ToggleR3Lock
+    | ElementRotationToggleR3Lock
     /// Rotation-controls bar (task 008): set an axis to an exact angle, and confirmation-gated
     /// Reset (the selected element's rotations) / Reset All (every element's rotations).
-    | RotSetAxis of RotationControls.RotationAxis * float
-    | RotRequestReset
-    | RotRequestResetAll
-    | RotConfirm
-    | RotCancel
+    | ElementRotationRotSetAxis of RotationControls.RotationAxis * float
+    | ElementRotationRotRequestReset
+    | ElementRotationRotRequestResetAll
+    | ElementRotationRotConfirm
+    | ElementRotationRotCancel
     /// Zoom (visual magnification) the selected element / all elements by wheel notches.
     | ZoomSelectedBy of int
     | ZoomAllBy of int
     /// Raw left-button gesture messages (click selects the nearest element; a drag is inert).
-    | PointerDown of ScreenPoint
-    | PointerMove of ScreenPoint
-    | PointerUp of ScreenPoint
+    | ElementRotationPointerDown of ScreenPoint
+    | ElementRotationPointerMove of ScreenPoint
+    | ElementRotationPointerUp of ScreenPoint
     /// A wheel notch with its modifiers — resolved against `wheelAction`.
-    | Wheel of Set<WheelModifier> * int
+    | ElementRotationWheel of Set<ElementRotationWheelModifier> * int
 
 // ---------------------------------------------------------------------------
 // Constants.
 // ---------------------------------------------------------------------------
 
-let buttonStepDegrees (shiftHeld : bool) : float = if shiftHeld then 5.0 else 15.0
-let wheelStepDegrees : float = 5.0
+let elementRotationButtonStepDegrees (shiftHeld : bool) : float = if shiftHeld then 5.0 else 15.0
+let elementRotationWheelStepDegrees : float = 5.0
 let private zoomStep : float = 1.1
 let private zoomMin : float = 1.0
 let private zoomMax : float = 50.0
 let private dragThresholdPx : float = 3.0
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let canvasWidth : float = TableScene.canvasWidth
-let canvasHeight : float = TableScene.canvasHeight
+let elementRotationCanvasWidth : float = TableScene.canvasWidth
+let elementRotationCanvasHeight : float = TableScene.canvasHeight
 
 // ---------------------------------------------------------------------------
 // Pure update. Angles wrap mod 360.
 // ---------------------------------------------------------------------------
 
-let normalizeDegrees (d : float) : float =
+let elementRotationNormalizeDegrees (d : float) : float =
     let m = d % 360.0
     if m < 0.0 then m + 360.0 else m
 
-let private addDeg (a : Angle) (d : float) : Angle = Angle.degree (normalizeDegrees (a.degrees + d) * 1.0<deg>)
+let private addDeg (a : Angle) (d : float) : Angle = Angle.degree (elementRotationNormalizeDegrees (a.degrees + d) * 1.0<deg>)
 
 let private clampZoom (z : float) : float = max zoomMin (min zoomMax z)
 
 let private dist (a : ScreenPoint) (b : ScreenPoint) : float =
     sqrt ((a.sx - b.sx) ** 2.0 + (a.sy - b.sy) ** 2.0)
 
-let private mapSelected (f : TestElement -> TestElement) (model : Model) : Model =
+let private mapSelected (f : TestElement -> TestElement) (model : ElementRotationModel) : ElementRotationModel =
     { model with elements = model.elements |> List.mapi (fun i e -> if i = model.selected then f e else e) }
 
-let private editSelectedPlacement (f : ElementPlacement -> ElementPlacement) (model : Model) : Model =
+let private editSelectedPlacement (f : ElementPlacement -> ElementPlacement) (model : ElementRotationModel) : ElementRotationModel =
     mapSelected (fun e -> { e with placement = f e.placement }) model
 
-let private rotate1 (deg : float) (model : Model) : Model = editSelectedPlacement (fun p -> withR1 (addDeg p.r1 deg) p) model
-let private rotate2 (deg : float) (model : Model) : Model = editSelectedPlacement (fun p -> withR2 (addDeg p.r2 deg) p) model
-let private rotate3 (deg : float) (model : Model) : Model = editSelectedPlacement (fun p -> withR3 (addDeg p.r3 deg) p) model
+let private rotate1 (deg : float) (model : ElementRotationModel) : ElementRotationModel = editSelectedPlacement (fun p -> withR1 (addDeg p.r1 deg) p) model
+let private rotate2 (deg : float) (model : ElementRotationModel) : ElementRotationModel = editSelectedPlacement (fun p -> withR2 (addDeg p.r2 deg) p) model
+let private rotate3 (deg : float) (model : ElementRotationModel) : ElementRotationModel = editSelectedPlacement (fun p -> withR3 (addDeg p.r3 deg) p) model
 
 /// Set the selected element's axis to an exact angle (lock-respecting for R3, task 008).
-let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (model : Model) : Model =
-    let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
+let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (model : ElementRotationModel) : ElementRotationModel =
+    let a = Angle.degree (elementRotationNormalizeDegrees v * 1.0<deg>)
     editSelectedPlacement (fun p -> match axis with RotationControls.R1 -> withR1 a p | RotationControls.R2 -> withR2 a p | RotationControls.R3 -> withR3 a p) model
 
 /// Reset rotations only — bypassing locks, keeping zoom / position (task 008 Reset).
 let private resetPlacementRotations (p : ElementPlacement) : ElementPlacement = { p with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero }
-let private resetSelectedRotations (model : Model) : Model = editSelectedPlacement resetPlacementRotations model
-let private resetAllRotations (model : Model) : Model =
+let private resetSelectedRotations (model : ElementRotationModel) : ElementRotationModel = editSelectedPlacement resetPlacementRotations model
+let private resetAllRotations (model : ElementRotationModel) : ElementRotationModel =
     { model with elements = model.elements |> List.map (fun e -> { e with placement = resetPlacementRotations e.placement }) }
 
-let private zoomSelectedBy (notches : int) (model : Model) : Model =
+let private zoomSelectedBy (notches : int) (model : ElementRotationModel) : ElementRotationModel =
     mapSelected (fun e -> { e with zoom = clampZoom (e.zoom * (zoomStep ** float notches)) }) model
 
-let private zoomAllBy (notches : int) (model : Model) : Model =
+let private zoomAllBy (notches : int) (model : ElementRotationModel) : ElementRotationModel =
     { model with elements = model.elements |> List.map (fun e -> { e with zoom = clampZoom (e.zoom * (zoomStep ** float notches)) }) }
 
 /// Pan the table by the screen delta (#2) — a pure screen-space translation of the view, via TableScene.
-let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (model : Model) : Model =
+let private panFrom (refPt : ScreenPoint) (pt : ScreenPoint) (model : ElementRotationModel) : ElementRotationModel =
     { model with
         view = TableScene.panViewBy (pt.sx - refPt.sx) (pt.sy - refPt.sy) model.view
-        drag = Panning pt }
+        drag = ElementRotationPanning pt }
 
 /// Zoom the table view (#2), bounded [0.2, 5] like the table test (distinct from the per-element draw
 /// zoom), via the shared `TableScene`.
-let private zoomTableBy (notches : int) (model : Model) : Model =
+let private zoomTableBy (notches : int) (model : ElementRotationModel) : ElementRotationModel =
     { model with view = TableScene.zoomViewBy notches model.view }
 
 /// The projected centre of an element (its placement point) under the current view, for click
@@ -223,7 +223,7 @@ let private projectedCenter (view : TableViewState) (e : TestElement) : ScreenPo
 
 /// The index of the element whose projected centre is nearest the click (there are always a few
 /// elements, so a click always selects one — no deselect, unlike the table test).
-let nearestElement (pt : ScreenPoint) (model : Model) : int option =
+let nearestElement (pt : ScreenPoint) (model : ElementRotationModel) : int option =
     match model.elements with
     | [] -> None
     | _ ->
@@ -233,51 +233,51 @@ let nearestElement (pt : ScreenPoint) (model : Model) : int option =
         |> fst
         |> Some
 
-let update (msg : Msg) (model : Model) : Model =
+let updateElementRotation (msg : ElementRotationMsg) (model : ElementRotationModel) : ElementRotationModel =
     match msg with
-    | RotateR1By d -> rotate1 d model
-    | RotateR2By d -> rotate2 d model
-    | RotateR3By d -> rotate3 d model
-    | ToggleR3Lock -> editSelectedPlacement (fun p -> setR3Locked (not p.r3Locked) p) model
-    | RotSetAxis (axis, v) -> setSelectedAxis axis v model
-    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
-    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
-    | RotConfirm ->
+    | ElementRotationRotateR1By d -> rotate1 d model
+    | ElementRotationRotateR2By d -> rotate2 d model
+    | ElementRotationRotateR3By d -> rotate3 d model
+    | ElementRotationToggleR3Lock -> editSelectedPlacement (fun p -> setR3Locked (not p.r3Locked) p) model
+    | ElementRotationRotSetAxis (axis, v) -> setSelectedAxis axis v model
+    | ElementRotationRotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | ElementRotationRotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | ElementRotationRotConfirm ->
         let m =
             match model.rotationConfirm with
             | RotationControls.ConfirmReset -> resetSelectedRotations model
             | RotationControls.ConfirmResetAll -> resetAllRotations model
             | RotationControls.NoConfirm -> model
         { m with rotationConfirm = RotationControls.NoConfirm }
-    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
+    | ElementRotationRotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
     | ZoomSelectedBy n -> zoomSelectedBy n model
     | ZoomAllBy n -> zoomAllBy n model
-    | PointerDown pt -> { model with drag = Pressed pt }
-    | PointerMove pt ->
+    | ElementRotationPointerDown pt -> { model with drag = ElementRotationPressed pt }
+    | ElementRotationPointerMove pt ->
         // A press that moves past the threshold becomes a pan-drag, then tracks the pointer.
         match model.drag with
-        | NotPressed -> model
-        | Pressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
-        | Panning last -> panFrom last pt model
-    | PointerUp _ ->
+        | ElementRotationNotPressed -> model
+        | ElementRotationPressed start -> if dist start pt < dragThresholdPx then model else panFrom start pt model
+        | ElementRotationPanning last -> panFrom last pt model
+    | ElementRotationPointerUp _ ->
         // A clean click (no drag) selects the nearest element; a pan-drag does not change selection.
         let model' =
             match model.drag with
-            | Pressed start ->
+            | ElementRotationPressed start ->
                 match nearestElement start model with
                 | Some i -> { model with selected = i }
                 | None -> model
             | _ -> model
-        { model' with drag = NotPressed }
-    | Wheel (mods, notches) ->
-        match wheelAction mods with
-        | RotateSelectedR1 -> rotate1 (wheelStepDegrees * float notches) model
-        | RotateSelectedR2 -> rotate2 (wheelStepDegrees * float notches) model
-        | RotateSelectedR3 -> rotate3 (wheelStepDegrees * float notches) model
+        { model' with drag = ElementRotationNotPressed }
+    | ElementRotationWheel (mods, notches) ->
+        match elementRotationWheelAction mods with
+        | RotateSelectedR1 -> rotate1 (elementRotationWheelStepDegrees * float notches) model
+        | RotateSelectedR2 -> rotate2 (elementRotationWheelStepDegrees * float notches) model
+        | RotateSelectedR3 -> rotate3 (elementRotationWheelStepDegrees * float notches) model
         | ZoomSelected -> zoomSelectedBy notches model
         | ZoomAll -> zoomAllBy notches model
-        | ZoomTable -> zoomTableBy notches model
-        | NoWheelAction -> model
+        | ElementRotationZoomTable -> zoomTableBy notches model
+        | ElementRotationNoWheelAction -> model
 
 // ---------------------------------------------------------------------------
 // Element geometry (pure): the oriented 3-D box and the N1/N2 axis markers, in table-frame
@@ -286,7 +286,7 @@ let update (msg : Msg) (model : Model) : Model =
 
 /// The eight corners of the element's oriented bounding box (front face along +N1 first, then the
 /// back face), centred at the placement point and magnified by the element's draw zoom.
-let elementCorners (e : TestElement) : Vector3 list =
+let elementRotationElementCorners (e : TestElement) : Vector3 list =
     let (n1, n2, n3) = orientedBasis e.placement
     let cx = e.placement.placementPoint.x / 1.0<meter>
     let cy = e.placement.placementPoint.y / 1.0<meter>
@@ -333,15 +333,15 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
 /// The top-down table under the current (pannable / zoomable) view — the shared `TableScene` plate +
 /// central ray + source / detector markers. The table is not separately selectable in this test, so the
 /// plate is drawn unhighlighted.
-let private tableViews (model : Model) : IView list =
+let private tableViews (model : ElementRotationModel) : IView list =
     TableScene.plateViews model.view model.table false
     @ TableScene.sourceDetectorRayViews model.view
 
 /// One element: its oriented box (12 edges), the N1 (beam-facing) axis and the N2 (roll) marker.
 /// The selected element is drawn heavier and in the selection colour.
-let private elementView (i : int) (model : Model) (e : TestElement) : IView list =
+let private elementView (i : int) (model : ElementRotationModel) (e : TestElement) : IView list =
     let selected = (i = model.selected)
-    let corners = elementCorners e |> List.map (projectPt model.view >> toPoint) |> List.toArray
+    let corners = elementRotationElementCorners e |> List.map (projectPt model.view >> toPoint) |> List.toArray
     let boxColor = if selected then selectedColor else elementColor
     let weight = if selected then 2.5 else 1.0
     let edges =
@@ -365,22 +365,22 @@ let private elementView (i : int) (model : Model) (e : TestElement) : IView list
     let n2Axis = line centreScr (along n2 (-(1.3 * half))) n2Color (if selected then 3.0 else 2.0)
     edges @ [ n1Axis; n2Axis ]
 
-let private elementViews (model : Model) : IView list =
+let private elementViews (model : ElementRotationModel) : IView list =
     model.elements |> List.mapi (fun i e -> elementView i model e) |> List.concat
 
 // ---------------------------------------------------------------------------
 // Controls + readout.
 // ---------------------------------------------------------------------------
 
-let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+let private rotationHandlers (dispatch : ElementRotationMsg -> unit) : RotationControls.Handlers =
     {
-        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d.value | RotationControls.R2 -> RotateR2By d.value | RotationControls.R3 -> RotateR3By d.value)
-        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v.value))
-        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
-        requestReset = fun () -> dispatch RotRequestReset
-        requestResetAll = fun () -> dispatch RotRequestResetAll
-        confirm = fun () -> dispatch RotConfirm
-        cancel = fun () -> dispatch RotCancel
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> ElementRotationRotateR1By d.value | RotationControls.R2 -> ElementRotationRotateR2By d.value | RotationControls.R3 -> ElementRotationRotateR3By d.value)
+        setAngle = fun axis v -> dispatch (ElementRotationRotSetAxis (axis, v.value))
+        toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ElementRotationToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
+        requestReset = fun () -> dispatch ElementRotationRotRequestReset
+        requestResetAll = fun () -> dispatch ElementRotationRotRequestResetAll
+        confirm = fun () -> dispatch ElementRotationRotConfirm
+        cancel = fun () -> dispatch ElementRotationRotCancel
     }
 
 let private kindName (k : CatalogueKind) : string =
@@ -394,11 +394,11 @@ let private kindName (k : CatalogueKind) : string =
     | CurvedMirror -> "Curved mirror"
     | Detector -> "Detector"
 
-let private selectedElement (model : Model) : TestElement = List.item model.selected model.elements
+let private selectedElement (model : ElementRotationModel) : TestElement = List.item model.selected model.elements
 
 /// The shared rotation-controls bar's state for the SELECTED element. An element is always
 /// selected here, so the bar is always enabled.
-let private rotationState (model : Model) : RotationControls.State =
+let private rotationState (model : ElementRotationModel) : RotationControls.State =
     let p = (selectedElement model).placement
     {
         r1 = BarDegrees p.r1.degrees
@@ -411,7 +411,7 @@ let private rotationState (model : Model) : RotationControls.State =
         confirm = model.rotationConfirm
     }
 
-let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
+let private controlBar (model : ElementRotationModel) (dispatch : ElementRotationMsg -> unit) : IView =
     let e = selectedElement model
     let p = e.placement
     let readout =
@@ -433,24 +433,24 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-let private wheelModifiers (km : KeyModifiers) : Set<WheelModifier> =
-    [ if km.HasFlag KeyModifiers.Control then ModCtrl
-      if km.HasFlag KeyModifiers.Shift then ModShift
-      if km.HasFlag KeyModifiers.Alt then ModAlt ]
+let private wheelModifiers (km : KeyModifiers) : Set<ElementRotationWheelModifier> =
+    [ if km.HasFlag KeyModifiers.Control then ElementRotationModCtrl
+      if km.HasFlag KeyModifiers.Shift then ElementRotationModShift
+      if km.HasFlag KeyModifiers.Alt then ElementRotationModAlt ]
     |> Set.ofList
 
-let private tableCanvas (model : Model) : IView =
+let private tableCanvas (model : ElementRotationModel) : IView =
     Canvas.create [
         Canvas.name ConstructorUiId.elementRotationCanvas.value
-        Canvas.width canvasWidth
-        Canvas.height canvasHeight
+        Canvas.width elementRotationCanvasWidth
+        Canvas.height elementRotationCanvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
         Canvas.children (tableViews model @ elementViews model)
     ] :> IView
 
 /// The whole element-rotation test surface.
-let view (model : Model) (dispatch : Msg -> unit) : IView =
+let elementRotationView (model : ElementRotationModel) (dispatch : ElementRotationMsg -> unit) : IView =
     let toScreen (e : PointerEventArgs) : ScreenPoint = SceneInput.canvasPoint ConstructorUiId.elementRotationCanvas.value e
     DockPanel.create [
         DockPanel.children [
@@ -460,13 +460,13 @@ let view (model : Model) (dispatch : Msg -> unit) : IView =
             ]
             Border.create [
                 Border.background (brush (color 250 250 250))
-                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (PointerDown (toScreen e)))
-                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (PointerMove (toScreen e)))
-                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (PointerUp (toScreen e)))
+                Border.onPointerPressed (fun e -> e.Handled <- true; dispatch (ElementRotationPointerDown (toScreen e)))
+                Border.onPointerMoved (fun e -> e.Handled <- true; dispatch (ElementRotationPointerMove (toScreen e)))
+                Border.onPointerReleased (fun e -> e.Handled <- true; dispatch (ElementRotationPointerUp (toScreen e)))
                 Border.onPointerWheelChanged (fun e ->
                     e.Handled <- true
                     let notches = if e.Delta.Y >= 0.0 then 1 else -1
-                    dispatch (Wheel (wheelModifiers e.KeyModifiers, notches)))
+                    dispatch (ElementRotationWheel (wheelModifiers e.KeyModifiers, notches)))
                 Border.child (tableCanvas model)
             ]
         ]

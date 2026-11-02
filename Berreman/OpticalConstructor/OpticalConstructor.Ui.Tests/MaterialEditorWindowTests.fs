@@ -139,10 +139,10 @@ module MaterialEditorWindowTests =
     let private modelOfKind (code : string) : DispersionModel =
         defaultModelChoices |> List.find (fun m -> modelKindCode m = code)
 
-    let private newModel () : Model =
+    let private newModel () : MaterialEditorModel =
         let _, _, context = recordingContext ()
         // The Add-open shape (spec 0038 step 008): the id is minted AT WINDOW OPEN.
-        init context (NewMaterial (newMaterialId ()))
+        initMaterialEditor context (NewMaterial (newMaterialId ()))
 
     // -- spec 0038 (032): the tabbed preview's embedded-chart probes (the EmbeddedChartTests precedent) --
 
@@ -491,7 +491,7 @@ module MaterialEditorWindowTests =
         // NewUnsaved entry — the SAME id the launcher's registry keys the window by.
         let minted = newMaterialId ()
         let _, _, newContext = recordingContext ()
-        let m = init newContext (NewMaterial minted)
+        let m = initMaterialEditor newContext (NewMaterial minted)
         Assert.Equal({ materialId = minted; freshness = WindowLauncher.NewUnsaved }, m.target)
         Assert.Equal(EditableMaterial, m.mode)
         Assert.Equal("", m.name)
@@ -499,7 +499,7 @@ module MaterialEditorWindowTests =
         // An existing editable entry seeds the ladder from its complexity.
         let glass = builtIn MaterialIds.glass152
         let _, _, context = recordingContext ()
-        let existing = init context (EditMaterial glass)
+        let existing = initMaterialEditor context (EditMaterial glass)
         Assert.Equal({ materialId = glass.id; freshness = WindowLauncher.Persisted }, existing.target)
         Assert.Equal(glass.name, existing.name)
         Assert.Equal(EditableMaterial, existing.mode)
@@ -507,7 +507,7 @@ module MaterialEditorWindowTests =
         | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity existing.editor)
         | None -> Assert.Fail("glass must carry an edit model")
         // A complexity-less entry (engine-coded physics) opens view-only.
-        let silicon = init context (EditMaterial (builtIn MaterialIds.silicon))
+        let silicon = initMaterialEditor context (EditMaterial (builtIn MaterialIds.silicon))
         match silicon.mode with
         | ViewOnlyMaterial _ -> ()
         | EditableMaterial -> Assert.Fail("silicon (complexity = None) must open view-only")
@@ -520,9 +520,9 @@ module MaterialEditorWindowTests =
         // then close.
         let calls, saved, context = recordingContext ()
         let minted = newMaterialId ()
-        init context (NewMaterial minted)
-        |> update (SetName "Fresh")
-        |> update SaveClicked
+        initMaterialEditor context (NewMaterial minted)
+        |> updateMaterialEditor (SetMaterialName "Fresh")
+        |> updateMaterialEditor MaterialSaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Fresh"; "close" ], List.ofSeq calls)
         Assert.Equal(minted, saved.[0].id)
@@ -537,9 +537,9 @@ module MaterialEditorWindowTests =
         // then close.
         let calls2, saved2, context2 = recordingContext ()
         let glass = builtIn MaterialIds.glass152
-        init context2 (EditMaterial glass)
-        |> update (SetName "Edited")
-        |> update SaveClicked
+        initMaterialEditor context2 (EditMaterial glass)
+        |> updateMaterialEditor (SetMaterialName "Edited")
+        |> updateMaterialEditor MaterialSaveClicked
         |> ignore
         Assert.Equal<string list>([ "save:Edited"; "close" ], List.ofSeq calls2)
         Assert.Equal(glass.id, saved2.[0].id)
@@ -548,14 +548,14 @@ module MaterialEditorWindowTests =
         // WITHOUT saving.
         let calls3, saved3, context3 = recordingContext ()
         let confirming =
-            init context3 (EditMaterial glass)
-            |> update (SetName "Discarded")
-            |> update CancelClicked
+            initMaterialEditor context3 (EditMaterial glass)
+            |> updateMaterialEditor (SetMaterialName "Discarded")
+            |> updateMaterialEditor MaterialCancelClicked
         Assert.Empty(calls3)
         match confirming.exit with
-        | ConfirmingDiscard -> ()
-        | Editing -> Assert.Fail("a dirty Cancel must show the discard confirm, not close")
-        update DiscardConfirmed confirming |> ignore
+        | MaterialConfirmingDiscard -> ()
+        | MaterialEditing -> Assert.Fail("a dirty Cancel must show the discard confirm, not close")
+        updateMaterialEditor MaterialDiscardConfirmed confirming |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls3)
         Assert.Empty(saved3)
 
@@ -575,7 +575,7 @@ module MaterialEditorWindowTests =
                 removeMaterial = fun _ -> Ok ()
             }
         let context : MaterialEditorContext = { materials = failing; categories = CategoryProxy.createInMemory (fun _ -> []); requestClose = fun () -> closes.Add "close" }
-        let m = init context (NewMaterial (newMaterialId ())) |> update SaveClicked
+        let m = initMaterialEditor context (NewMaterial (newMaterialId ())) |> updateMaterialEditor MaterialSaveClicked
         Assert.Empty(closes)
         match m.status with
         | Some reason -> Assert.Equal("the name is blank", reason)
@@ -587,9 +587,9 @@ module MaterialEditorWindowTests =
         let key = (ConstructorUiId.previewSeriesToggle (ConstructorUiKey "nk") (ConstructorUiKey "n₁")).value
         let m0 = newModel ()
         Assert.False(Set.contains key m0.hiddenSeries, "nothing is hidden on a fresh model")
-        let hiddenModel = update (ToggleSeriesVisibility key) m0
+        let hiddenModel = updateMaterialEditor (ToggleSeriesVisibility key) m0
         Assert.True(Set.contains key hiddenModel.hiddenSeries, "toggling on records the key in hiddenSeries")
-        let shownModel = update (ToggleSeriesVisibility key) hiddenModel
+        let shownModel = updateMaterialEditor (ToggleSeriesVisibility key) hiddenModel
         Assert.False(Set.contains key shownModel.hiddenSeries, "toggling the same key again removes it")
         // Lowering — applyHidden flips EXACTLY the toggled curve invisible on the chart's style seed. The
         // n/k chart's series are n₁ n₂ n₃ (indices 0..2) then k₁ k₂ k₃ (3..5), so n₁ is index 0.
@@ -1023,19 +1023,19 @@ module MaterialEditorWindowTests =
         // ChooseAnisotropy Uniaxial then SetActivity ActivityOn snaps the class to UniaxialActive.
         let m =
             newModel ()
-            |> update (EditorMsg (ChooseAnisotropy Uniaxial))
-            |> update (EditorMsg (SetActivity ActivityOn))
+            |> updateMaterialEditor (EditorMsg (ChooseAnisotropy Uniaxial))
+            |> updateMaterialEditor (EditorMsg (SetActivity ActivityOn))
         Assert.Equal<GyrationComponent list>([ G11; G33 ], previewGyrationComponents m)
 
     [<Fact>]
     let ``spec 0040 006: an editable scalar-magnetic entry threads ScalarMuKind, a gyromagnetic one GyromagneticMuKind`` () =
         // The default μ kind is scalar; turning magnetic on alone keeps it scalar.
-        let scalar = newModel () |> update (EditorMsg (SetMagnetic MagneticOn))
+        let scalar = newModel () |> updateMaterialEditor (EditorMsg (SetMagnetic MagneticOn))
         Assert.Equal(ScalarMuKind, previewMuKind scalar)
         let gyromagnetic =
             newModel ()
-            |> update (EditorMsg (SetMagnetic MagneticOn))
-            |> update (EditorMsg (SetMuKind GyromagneticMuKind))
+            |> updateMaterialEditor (EditorMsg (SetMagnetic MagneticOn))
+            |> updateMaterialEditor (EditorMsg (SetMuKind GyromagneticMuKind))
         Assert.Equal(GyromagneticMuKind, previewMuKind gyromagnetic)
 
     [<Fact>]
@@ -1043,7 +1043,7 @@ module MaterialEditorWindowTests =
         // Langasite opens VIEW-ONLY (its ε is an opaque evaluated closure) yet its stored complexity
         // tree carries a UniaxialActive gyration class — so the preview restricts to g₁₁ / g₃₃.
         let _, _, context = recordingContext ()
-        let m = init context (EditMaterial (builtIn MaterialIds.langasite))
+        let m = initMaterialEditor context (EditMaterial (builtIn MaterialIds.langasite))
         match m.mode with
         | ViewOnlyMaterial _ -> ()
         | EditableMaterial -> Assert.Fail("Langasite must open view-only")
@@ -1055,7 +1055,7 @@ module MaterialEditorWindowTests =
         // preview keeps the full six-component gyration and the full gyromagnetic μ rendering.
         let _, _, context = recordingContext ()
         let codedPreset = { builtIn MaterialIds.silicon with complexity = None }
-        let m = init context (EditMaterial codedPreset)
+        let m = initMaterialEditor context (EditMaterial codedPreset)
         match m.mode with
         | ViewOnlyMaterial _ -> ()
         | EditableMaterial -> Assert.Fail("a complexity-less entry must open view-only")
@@ -1068,24 +1068,24 @@ module MaterialEditorWindowTests =
     let ``spec 0038 (033): a pristine editor closes silently, a dirty one gates Cancel behind the discard confirm`` () =
         // Pristine: a freshly opened editor is not dirty and Cancel closes silently as before.
         let calls, _, context = recordingContext ()
-        let fresh = init context (NewMaterial (newMaterialId ()))
-        Assert.False(isDirty fresh, "a freshly opened editor is pristine")
-        let afterCancel = update CancelClicked fresh
+        let fresh = initMaterialEditor context (NewMaterial (newMaterialId ()))
+        Assert.False(isMaterialEditorDirty fresh, "a freshly opened editor is pristine")
+        let afterCancel = updateMaterialEditor MaterialCancelClicked fresh
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
-        Assert.Equal(Editing, afterCancel.exit)
+        Assert.Equal(MaterialEditing, afterCancel.exit)
         // Dirty: a name edit makes it dirty; Cancel shows the confirm and reaches nothing.
         let calls2, saved2, context2 = recordingContext ()
-        let edited = init context2 (NewMaterial (newMaterialId ())) |> update (SetName "X")
-        Assert.True(isDirty edited, "a name edit makes the editor dirty")
-        let confirming = update CancelClicked edited
-        Assert.Equal(ConfirmingDiscard, confirming.exit)
+        let edited = initMaterialEditor context2 (NewMaterial (newMaterialId ())) |> updateMaterialEditor (SetMaterialName "X")
+        Assert.True(isMaterialEditorDirty edited, "a name edit makes the editor dirty")
+        let confirming = updateMaterialEditor MaterialCancelClicked edited
+        Assert.Equal(MaterialConfirmingDiscard, confirming.exit)
         Assert.Empty(calls2)
         // Keep editing dismisses the confirm without closing.
-        let kept = update KeepEditing confirming
-        Assert.Equal(Editing, kept.exit)
+        let kept = updateMaterialEditor MaterialKeepEditing confirming
+        Assert.Equal(MaterialEditing, kept.exit)
         Assert.Empty(calls2)
         // Discard closes without ever reaching the write-seam.
-        update DiscardConfirmed confirming |> ignore
+        updateMaterialEditor MaterialDiscardConfirmed confirming |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls2)
         Assert.Empty(saved2)
 
@@ -1095,13 +1095,13 @@ module MaterialEditorWindowTests =
         // dirtiness, so Cancel then closes silently.
         let calls, _, context = recordingContext ()
         let glass = builtIn MaterialIds.glass152
-        let m = init context (EditMaterial glass)
-        Assert.False(isDirty m, "an unedited existing entry is pristine")
-        let renamed = update (SetName "Other") m
-        Assert.True(isDirty renamed)
-        let reverted = update (SetName glass.name) renamed
-        Assert.False(isDirty reverted, "restoring the captured name clears dirtiness")
-        update CancelClicked reverted |> ignore
+        let m = initMaterialEditor context (EditMaterial glass)
+        Assert.False(isMaterialEditorDirty m, "an unedited existing entry is pristine")
+        let renamed = updateMaterialEditor (SetMaterialName "Other") m
+        Assert.True(isMaterialEditorDirty renamed)
+        let reverted = updateMaterialEditor (SetMaterialName glass.name) renamed
+        Assert.False(isMaterialEditorDirty reverted, "restoring the captured name clears dirtiness")
+        updateMaterialEditor MaterialCancelClicked reverted |> ignore
         Assert.Equal<string list>([ "close" ], List.ofSeq calls)
 
     [<Fact>]

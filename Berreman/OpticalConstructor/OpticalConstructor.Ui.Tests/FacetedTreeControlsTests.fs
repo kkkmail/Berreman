@@ -89,7 +89,7 @@ module FacetedTreeControlsTests =
     /// and a numeric offer group (the numeric one offering the manual min–max box), two named
     /// representations with one active, a committed filter draft, a live result count, and the
     /// tree materialized.
-    let private knownState : FacetedTreeControls.State =
+    let private knownState : FacetedTreeControls.FacetedTreeControlsState =
         {
             tree = knownTree
             breadcrumbs =
@@ -130,9 +130,9 @@ module FacetedTreeControlsTests =
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
     /// appends a tag, so a click's / commit's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * FacetedTreeControls.Handlers =
+    let private recorder () : ResizeArray<string> * FacetedTreeControls.FacetedTreeControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : FacetedTreeControls.Handlers =
+        let handlers : FacetedTreeControls.FacetedTreeControlsHandlers =
             {
                 applyConstraint = fun group value -> calls.Add($"apply:%s{group}=%s{value}")
                 removeConstraint = fun chip -> calls.Add("remove:" + chip)
@@ -149,7 +149,7 @@ module FacetedTreeControlsTests =
 
     [<Fact>]
     let ``the empty FacetedTree state has nothing applied, nothing offered, no tree, and is materialized`` () =
-        let s = FacetedTreeControls.empty
+        let s = FacetedTreeControls.emptyFacetedTreeControls
         Assert.Empty(s.tree)
         Assert.Empty(s.breadcrumbs)
         Assert.Empty(s.offers)
@@ -237,9 +237,9 @@ module FacetedTreeControlsTests =
                 Dispatcher.UIThread.RunJobs()
             else Assert.Fail($"%s{id} has no on-screen position")
 
-    let private mount (state : FacetedTreeControls.State) (handlers : FacetedTreeControls.Handlers) : Window =
+    let private mount (state : FacetedTreeControls.FacetedTreeControlsState) (handlers : FacetedTreeControls.FacetedTreeControlsHandlers) : Window =
         let window = Window(Width = 760.0, Height = 700.0)
-        window.Content <- Component(fun _ -> FacetedTreeControls.view state handlers)
+        window.Content <- Component(fun _ -> FacetedTreeControls.facetedTreeControlsView state handlers)
         window.Show()
         Dispatcher.UIThread.RunJobs()
         window

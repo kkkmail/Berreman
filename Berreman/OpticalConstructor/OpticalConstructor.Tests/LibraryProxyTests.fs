@@ -144,7 +144,7 @@ module LibraryProxyTests =
         // order, before/after any single layers — the same `List.replicate count cell |> List.concat`
         // shape as `RepeatBuilder.expand`.
         let a = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.glass152; thickness = Thickness.nm 100.0<nm>; orientation = PrimaryAxes }
-        let b = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.vacuum; thickness = Thickness.nm 150.0<nm>; orientation = PrimaryAxes }
+        let b = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.vacuumMaterial; thickness = Thickness.nm 150.0<nm>; orientation = PrimaryAxes }
         let c = { materialId = MaterialLibrary.MaterialVersionId.firstOf MaterialLibrary.MaterialIds.silicon; thickness = Thickness.nm 25.0<nm>; orientation = PrimaryAxes }
         let structure =
             {
@@ -161,8 +161,8 @@ module LibraryProxyTests =
         // Spec 0033 step 002 acceptance: `Sample.id` is a Guid-backed `SampleId`; it crosses the
         // Selector valueId seam as its Guid STRING form (`entryId`) and `tryGetEntry` resolves that
         // string back to the SAME sample.
-        Assert.NotEmpty SeedSamples.all
-        for s in SeedSamples.all do
+        Assert.NotEmpty SeedSamples.allSeedSamples
+        for s in SeedSamples.allSeedSamples do
             let entryId = (SampleItem s).entryId
             Assert.Equal(string s.id.value, entryId)
             match proxy.tryGetEntry entryId with
@@ -201,9 +201,9 @@ module LibraryProxyTests =
     let ``the seeded sample ids are distinct, non-empty Guids`` () =
         // The seeds parse fixed literal Guids (never Guid.NewGuid), so every id is distinct and no
         // seed carries the empty Guid (a Guid.Parse typo would surface here).
-        let ids = SeedSamples.all |> List.map (fun s -> s.id)
+        let ids = SeedSamples.allSeedSamples |> List.map (fun s -> s.id)
         Assert.Equal(List.length ids, ids |> List.distinct |> List.length)
-        Assert.All(SeedSamples.all, fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
+        Assert.All(SeedSamples.allSeedSamples, fun s -> Assert.NotEqual(System.Guid.Empty, s.id.value))
 
     [<Fact>]
     let ``a STUB proxy of the same shape drives the same kind-constraint logic`` () =

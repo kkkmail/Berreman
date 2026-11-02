@@ -18,6 +18,6 @@ type SnapToReflectedWindow() as this =
         this.Width <- TableScene.canvasWidth
         this.Height <- TableScene.canvasHeight + 110.0
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
-        Program.mkSimple SnapToReflectedView.init SnapToReflectedView.update SnapToReflectedView.view
+        Program.mkSimple SnapToReflectedView.initSnapToReflected SnapToReflectedView.updateSnapToReflected SnapToReflectedView.snapToReflectedView
         |> Program.withHost this
         |> Program.run

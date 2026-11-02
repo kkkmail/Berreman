@@ -34,6 +34,6 @@ type SolverHandoffWindow(library : Library.LibraryProxy, experimentData : Experi
                 collection = collection
                 requestClose = fun () -> this.Close()
             }
-        Program.mkSimple (fun () -> SolverHandoffView.init context) SolverHandoffView.update SolverHandoffView.view
+        Program.mkSimple (fun () -> SolverHandoffView.initSolverHandoff context) SolverHandoffView.updateSolverHandoff SolverHandoffView.solverHandoffView
         |> Program.withHost this
         |> Program.run

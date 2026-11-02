@@ -91,7 +91,7 @@ type AppContext =
         let sources = Library.SourceProxy.createInMemory ()
         {
             library = Library.liveLibrary (Library.createInMemory ()) samples sources
-            experiments = Experiments.createInMemory ()
+            experiments = Experiments.createInMemoryExperiments ()
             materials = materials
             samples = samples
             sources = sources

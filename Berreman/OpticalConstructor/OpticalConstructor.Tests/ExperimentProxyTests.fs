@@ -19,7 +19,7 @@ open OpticalConstructor.Domain.Experiments
 /// `boundVersions` / `versionsInUseSeam` builders wired into the versioned sample store's used-version rule.
 module ExperimentProxyTests =
 
-    let private proxy = Experiments.createInMemory ()
+    let private proxy = Experiments.createInMemoryExperiments ()
     let private el (s : string) : ElementId = Library.elementId s
 
     /// A placement/orientation summary for a rest-pose element of the given kind.

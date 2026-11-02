@@ -18,9 +18,9 @@ module SnapToReflectedTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
 
-    let private mirrorSnap (m : Model) : RayModel.SnappedElement = snapped m |> List.head
-    let private detectorSnap (m : Model) : RayModel.SnappedElement = snapped m |> List.item 1
-    let private mirrorR1Degrees (m : Model) : float = (List.item 1 m.elements).r1.degrees
+    let private mirrorSnap (m : SnapToReflectedModel) : RayModel.SnappedElement = snapped m |> List.head
+    let private detectorSnap (m : SnapToReflectedModel) : RayModel.SnappedElement = snapped m |> List.item 1
+    let private mirrorR1Degrees (m : SnapToReflectedModel) : float = (List.item 1 m.elements).r1.degrees
 
     let private separation (a : RayModel.SnappedElement) (b : RayModel.SnappedElement) : float =
         let dx = a.position.x - b.position.x
@@ -31,25 +31,25 @@ module SnapToReflectedTests =
     [<Fact>]
     let ``the tracked branch is DERIVED from the element (mirror tracks reflected, others transmitted)`` () =
         let mk (k : CatalogueKind) : ElementPlacement = ElementPlacement.create k TablePoint.origin
-        Assert.Equal(BeamTree.Reflected, RayModel.primaryBranch (mk FlatMirror))
-        Assert.Equal(BeamTree.Reflected, RayModel.primaryBranch (mk CurvedMirror))
-        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk LinearPolarizer))
-        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk CircularPolarizer))
-        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk LightSource))
-        Assert.Equal(BeamTree.Transmitted, RayModel.primaryBranch (mk Detector))
+        Assert.Equal(BeamTree.ReflectedBeam, RayModel.primaryBranch (mk FlatMirror))
+        Assert.Equal(BeamTree.ReflectedBeam, RayModel.primaryBranch (mk CurvedMirror))
+        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk LinearPolarizer))
+        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk CircularPolarizer))
+        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk LightSource))
+        Assert.Equal(BeamTree.TransmittedBeam, RayModel.primaryBranch (mk Detector))
         // The scene figures out (from the flat mirror, index 1) which element reflects — not hardcoded.
-        Assert.Equal(1, reflectorIndex (init ()))
+        Assert.Equal(1, reflectorIndex (initSnapToReflected ()))
 
     [<Fact>]
     let ``the scene is source, flat mirror at R2 = 45, detector`` () =
-        let m = init ()
+        let m = initSnapToReflected ()
         let kinds = m.elements |> List.map (fun e -> e.catalogueKind)
         Assert.True((kinds = [ LightSource; FlatMirror; Detector ]), "scene is source, flat mirror, detector")
         Assert.True(close (List.item 1 m.elements).r2.degrees 45.0, "mirror seeded at R2 = 45")
 
     [<Fact>]
     let ``at R2 = 45 the light is reflected (not transmitted) and the detector snaps onto the reflected ray`` () =
-        let m = init ()
+        let m = initSnapToReflected ()
         let mir = mirrorSnap m
         // The beam arrives travelling +X and leaves travelling -Y: it is REFLECTED 90°, not passed through.
         Assert.True(close mir.incoming.x 1.0 && close mir.incoming.y 0.0, "incident travels +X")
@@ -68,24 +68,24 @@ module SnapToReflectedTests =
 
     [<Fact>]
     let ``rotating the mirror over R2 re-aims the reflected beam and moves the snapped detector`` () =
-        let baseM = init ()
-        let turned = update (RotateR2By 20.0) baseM
+        let baseM = initSnapToReflected ()
+        let turned = updateSnapToReflected (SnapToReflectedRotateR2By 20.0) baseM
         Assert.True(close (List.item 1 turned.elements).r2.degrees 65.0, "mirror R2 = 45 + 20")
         let moved = separation (detectorSnap baseM) (detectorSnap turned)
         Assert.True(moved > 1.0e-3, $"R2 moved the snapped detector (Δ = {moved})")
 
     [<Fact>]
     let ``rotating the mirror over R3 re-aims the reflected beam and moves the snapped detector`` () =
-        let baseM = init ()
-        let turned = update (RotateR3By 20.0) baseM
+        let baseM = initSnapToReflected ()
+        let turned = updateSnapToReflected (SnapToReflectedRotateR3By 20.0) baseM
         Assert.True(close (List.item 1 turned.elements).r3.degrees 20.0, "mirror R3 = 20 (R3 is unlocked in this scene)")
         let moved = separation (detectorSnap baseM) (detectorSnap turned)
         Assert.True(moved > 1.0e-3, $"R3 moved the snapped detector (Δ = {moved})")
 
     [<Fact>]
     let ``rotating the mirror over R1 does NOT affect the beam — the detector stays put`` () =
-        let baseM = init ()
-        let spun = update (RotateR1By 35.0) baseM
+        let baseM = initSnapToReflected ()
+        let spun = updateSnapToReflected (SnapToReflectedRotateR1By 35.0) baseM
         Assert.True(close (mirrorR1Degrees spun) 35.0, "the mirror's R1 really did change")
         // R1 is the spin about the face normal (`Placement.r1Axis` depends only on R2/R3), so the reflected
         // direction — and therefore the snapped detector — is unchanged.
@@ -102,36 +102,36 @@ module SnapToReflectedTests =
     let private dot (a : Vector3) (b : Vector3) : float = a.x * b.x + a.y * b.y + a.z * b.z
 
     /// The detector's DRAWN primary normal N1 (it is element 2, the one on the reflected beam).
-    let private detectorDrawN1 (m : Model) : Vector3 =
+    let private detectorDrawN1 (m : SnapToReflectedModel) : Vector3 =
         let p = List.item 2 (drawPlacements m)
         let (n1, _, _) = orientedBasis p
         n1
 
     /// The reflected beam direction (the mirror's outgoing ray).
-    let private reflectedDir (m : Model) : Vector3 = (snapped m |> List.head).outgoing
+    let private reflectedDir (m : SnapToReflectedModel) : Vector3 = (snapped m |> List.head).outgoing
 
     [<Fact>]
     let ``the detector on the reflected beam faces it at rest (R2/R3 relative to the beam)`` () =
-        let m = init ()
+        let m = initSnapToReflected ()
         Assert.True(closeVec (detectorDrawN1 m) (reflectedDir m), "the detector (dialled 0) faces the reflected beam")
         // At mirror R2 = 45 the reflected beam is −Y, so the detector faces −Y.
         Assert.True(close (detectorDrawN1 m).x 0.0 && close (detectorDrawN1 m).y -1.0, "the detector faces −Y")
 
     [<Fact>]
     let ``rotating the mirror R2 keeps the detector facing the new reflected beam`` () =
-        let m = update (RotateR2By 25.0) (init ())     // the mirror is selected by default
+        let m = updateSnapToReflected (SnapToReflectedRotateR2By 25.0) (initSnapToReflected ())     // the mirror is selected by default
         Assert.True(closeVec (detectorDrawN1 m) (reflectedDir m), "the detector re-aims to the new reflected beam")
 
     [<Fact>]
     let ``rotating the mirror R1 leaves the detector orientation unchanged`` () =
-        let baseM = init ()
-        let spun = update (RotateR1By 35.0) baseM
+        let baseM = initSnapToReflected ()
+        let spun = updateSnapToReflected (SnapToReflectedRotateR1By 35.0) baseM
         Assert.True(closeVec (detectorDrawN1 baseM) (detectorDrawN1 spun),
                     "R1 of the mirror does not move the beam, so the detector orientation is unchanged")
 
     [<Fact>]
     let ``the detector's own dialled R2 tilts it relative to the beam, not the table`` () =
-        let m = { (init ()) with selection = ElementSelected 2 } |> update (RotateR2By 30.0)   // dial the DETECTOR
+        let m = { (initSnapToReflected ()) with selection = ElementSelected 2 } |> updateSnapToReflected (SnapToReflectedRotateR2By 30.0)   // dial the DETECTOR
         let n1 = detectorDrawN1 m
         let beam = reflectedDir m
         Assert.False(closeVec n1 beam, "the detector is now tilted off the beam")

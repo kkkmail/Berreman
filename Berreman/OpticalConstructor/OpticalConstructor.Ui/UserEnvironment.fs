@@ -261,7 +261,7 @@ let defaults : EnvironmentSettings =
 /// The single shipped env-schema version, pinned with `const` in the schema. A
 /// differing value fails validation and so falls back to defaults (no migration).
 [<Literal>]
-let schemaVersion = "1.0"
+let userEnvironmentSchemaVersion = "1.0"
 
 /// The build-copied env schema content item, loaded beside the assembly at runtime
 /// (the fsproj copies it to the output root). Mirrors the slice-003 project-schema
@@ -285,7 +285,7 @@ let private envSchema : Result<JsonSchema, StorageError> Lazy =
 /// Validate a parsed document against the env schema (§J.6 item 1) via
 /// `JsonSchema.Net`. On any evaluation failure returns `SchemaValidationError`
 /// with the library's messages; the caller MUST NOT bind on `Error`.
-let validate (element : JsonElement) : Result<unit, StorageError> =
+let validateUserEnvironment (element : JsonElement) : Result<unit, StorageError> =
     match envSchema.Value with
     | Error e -> Error e
     | Ok schema ->
@@ -307,7 +307,7 @@ let serialize (settings : EnvironmentSettings) : Result<string, StorageError> =
     try
         let node = JsonSerializer.SerializeToNode(settings, ProjectJson.options)
         let envelope = node.AsObject()
-        envelope.["schemaVersion"] <- JsonValue.Create(schemaVersion)
+        envelope.["schemaVersion"] <- JsonValue.Create(userEnvironmentSchemaVersion)
         Ok(envelope.ToJsonString(ProjectJson.options))
     with e -> Error(JsonParseError e.Message)
 
@@ -323,7 +323,7 @@ let deserialize (json : string) : Result<EnvironmentSettings, StorageError> =
     | Error e -> Error e
     | Ok doc ->
         use doc = doc
-        match validate doc.RootElement with
+        match validateUserEnvironment doc.RootElement with
         | Error e -> Error e
         | Ok () ->
             try Ok(doc.RootElement.Deserialize<EnvironmentSettings>(ProjectJson.options))

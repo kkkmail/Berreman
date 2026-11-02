@@ -30,7 +30,7 @@ module ExperimentChart =
         }
 
     /// The empty chart (no experiment built / no run to show).
-    let empty : ExperimentChart =
+    let emptyExperimentChart : ExperimentChart =
         { series = []; xLabel = ""; yLabel = ""; title = ""; description = ""; angular = false }
 
     /// The x-values to export / draw: the union of every series' x-coordinates, in ascending order. (The
@@ -73,7 +73,7 @@ module ChartFont =
         | Title
         | AxisLabels
         | TickLabels
-        | Legend
+        | LegendFont
 
         /// A human-readable label (the selector item text and the size readout prefix).
         member this.label : string =
@@ -81,10 +81,10 @@ module ChartFont =
             | Title -> "Header"
             | AxisLabels -> "Axis labels"
             | TickLabels -> "Tick labels"
-            | Legend -> "Legend"
+            | LegendFont -> "Legend"
 
     /// The four selectable targets, in display order.
-    let allTargets : ChartFontTarget list = [ Title; AxisLabels; TickLabels; Legend ]
+    let allTargets : ChartFontTarget list = [ Title; AxisLabels; TickLabels; LegendFont ]
 
     /// The per-target font sizes (points) plus which target the Font +/- currently acts on.
     type ChartFontState =
@@ -101,7 +101,7 @@ module ChartFont =
     let maxSize : float = 40.0
 
     /// The default sizes (a readable header, slightly smaller axis labels / legend, smaller tick labels).
-    let defaultState : ChartFontState =
+    let defaultChartFontState : ChartFontState =
         { title = 16.0; axisLabels = 13.0; tickLabels = 11.0; legend = 12.0; selected = Title }
 
     /// The current size of a given target.
@@ -110,7 +110,7 @@ module ChartFont =
         | Title -> s.title
         | AxisLabels -> s.axisLabels
         | TickLabels -> s.tickLabels
-        | Legend -> s.legend
+        | LegendFont -> s.legend
 
     /// The size of the currently-selected target (what the readout shows and Font +/- changes).
     let selectedSize (s : ChartFontState) : float = sizeOf s.selected s
@@ -128,7 +128,7 @@ module ChartFont =
         | Title -> { s with title = v }
         | AxisLabels -> { s with axisLabels = v }
         | TickLabels -> { s with tickLabels = v }
-        | Legend -> { s with legend = v }
+        | LegendFont -> { s with legend = v }
 
     /// Change the SELECTED target's size by `delta` points (clamped). Font + is +1, Font − is −1.
     let bumpSelected (delta : float) (s : ChartFontState) : ChartFontState =
@@ -319,7 +319,7 @@ module ChartStyle =
     /// The initial style for a chart: all three axes auto-fit to the data (general format; every series
     /// starts on the LEFT axis, so the right axis seeds to the unit fallback), the legend visible at the
     /// upper-right, one default-styled series per curve, and the default font sizes.
-    let defaultState (chart : ExperimentChart) : ChartStyleState =
+    let defaultChartStyleState (chart : ExperimentChart) : ChartStyleState =
         let bounds = dataBounds (chart.series |> List.map (fun s -> s, LeftAxis))
         let axis (lo, hi) = { auto = true; min = lo; max = hi; format = GeneralFormat }
         let seriesStyles =
@@ -328,7 +328,7 @@ module ChartStyle =
                 { visible = true; thickness = 1.5; colorHex = List.item (i % List.length defaultColors) defaultColors; showMarkers = false; axisSide = LeftAxis })
         {
             selected = (match chart.series with [] -> Header | _ -> Series 0)
-            font = ChartFont.defaultState
+            font = ChartFont.defaultChartFontState
             xAxis = axis bounds.x
             yAxisLeft = axis bounds.yLeft
             yAxisRight = axis bounds.yRight

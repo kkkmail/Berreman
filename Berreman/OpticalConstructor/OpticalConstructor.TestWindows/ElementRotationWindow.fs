@@ -11,9 +11,9 @@ type ElementRotationWindow() as this =
 
     do
         this.Title <- "Test — Optical Element Rotations"
-        this.Width <- ElementRotationView.canvasWidth
-        this.Height <- ElementRotationView.canvasHeight + 84.0
+        this.Width <- ElementRotationView.elementRotationCanvasWidth
+        this.Height <- ElementRotationView.elementRotationCanvasHeight + 84.0
         OpticalConstructor.Controls.WindowFit.keepOnScreen this
-        Program.mkSimple ElementRotationView.init ElementRotationView.update ElementRotationView.view
+        Program.mkSimple ElementRotationView.initElementRotation ElementRotationView.updateElementRotation ElementRotationView.elementRotationView
         |> Program.withHost this
         |> Program.run

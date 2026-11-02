@@ -21,6 +21,22 @@ module ProjectJson =
     [<Literal>]
     let schemaVersion = "1.0"
 
+    /// Keeps `BeamBranch` on the wire as the schema's `"Reflected"` / `"Transmitted"`: the cases were
+    /// renamed apart from the engine's `RT` (spec 0048 `.manual/005`), the stored format was not.
+    type private BeamBranchConverter() =
+        inherit JsonConverter<OpticalConstructor.Domain.BeamTree.BeamBranch>()
+
+        override _.Write(writer, value, _options) =
+            match value with
+            | OpticalConstructor.Domain.BeamTree.ReflectedBeam -> writer.WriteStringValue "Reflected"
+            | OpticalConstructor.Domain.BeamTree.TransmittedBeam -> writer.WriteStringValue "Transmitted"
+
+        override _.Read(reader, _typeToConvert, _options) =
+            match reader.GetString() with
+            | "Reflected" -> OpticalConstructor.Domain.BeamTree.ReflectedBeam
+            | "Transmitted" -> OpticalConstructor.Domain.BeamTree.TransmittedBeam
+            | other -> raise (JsonException $"unknown beam branch '{other}'")
+
     /// Custom converter for the engine's Math.NET complex matrix
     /// (`Matrix<Complex>`). FSharp.SystemTextJson unwraps the single-case
     /// `Eps`/`Mu`/`Rho` -> `ComplexMatrix3x3` -> `ComplexMatrix` wrappers down to
@@ -70,6 +86,7 @@ module ProjectJson =
     let options : JsonSerializerOptions =
         let o = JsonSerializerOptions(WriteIndented = true)
         o.Converters.Add(ComplexMatrixConverter())
+        o.Converters.Add(BeamBranchConverter())
         let fsharpOptions =
             JsonFSharpOptions
                 .Default()

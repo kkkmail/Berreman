@@ -25,7 +25,7 @@ module MaterialsControlsTests =
 
     /// A known flattened row set: two editable materials and one view-only (no edit model — the
     /// spec-0033 step-013 `complexity = None` shape the host flattens to `ViewOnly`).
-    let private knownRows : MaterialsControls.Row list =
+    let private knownRows : MaterialsControls.MaterialsControlsRow list =
         [
             { materialId = "bk7"; label = "BK7 glass"; editability = MaterialsControls.Editable }
             { materialId = "gold"; label = "Gold"; editability = MaterialsControls.Editable }
@@ -34,7 +34,7 @@ module MaterialsControlsTests =
 
     /// The known State the structure tests mount: both facets populated, an EDITABLE row selected
     /// (so every verb — including Edit — is present).
-    let private knownState : MaterialsControls.State =
+    let private knownState : MaterialsControls.MaterialsControlsState =
         {
             searchText = ""
             categoryOptions =
@@ -57,9 +57,9 @@ module MaterialsControlsTests =
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
     /// appends a tag, so a click's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * MaterialsControls.Handlers =
+    let private recorder () : ResizeArray<string> * MaterialsControls.MaterialsControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : MaterialsControls.Handlers =
+        let handlers : MaterialsControls.MaterialsControlsHandlers =
             {
                 setSearchText = fun t -> calls.Add("search:" + t)
                 selectCategory = fun c -> calls.Add("category:" + c)
@@ -76,7 +76,7 @@ module MaterialsControlsTests =
 
     [<Fact>]
     let ``the empty Materials state has no rows, no selection, an empty search and no facet options`` () =
-        let s = MaterialsControls.empty
+        let s = MaterialsControls.emptyMaterialsControls
         Assert.Equal("", s.searchText)
         Assert.Empty(s.rows)
         Assert.Empty(s.categoryOptions)
@@ -151,7 +151,7 @@ module MaterialsControlsTests =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> MaterialsControls.view knownState handlers)
+            window.Content <- Component(fun _ -> MaterialsControls.materialsControlsView knownState handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Every slice-mandated control exists over the known State.
@@ -187,7 +187,7 @@ module MaterialsControlsTests =
             let _, handlers = recorder ()
             let state = { knownState with selectedId = Some "silicon" }   // the view-only row
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> MaterialsControls.view state handlers)
+            window.Content <- Component(fun _ -> MaterialsControls.materialsControlsView state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // REMOVED means absent from the tree entirely — a greyed/hidden button would still be found.

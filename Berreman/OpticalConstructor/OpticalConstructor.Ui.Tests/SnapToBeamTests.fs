@@ -13,11 +13,11 @@ open OpticalConstructor.TestWindows.SnapToBeamView
 module SnapToBeamTests =
 
     let private close (a : float) (b : float) : bool = abs (a - b) <= 1.0e-9
-    let private sourceX (m : Model) : float = (RayModel.pointToVector3 m.source.placementPoint).x
+    let private sourceX (m : SnapToBeamModel) : float = (RayModel.pointToVector3 m.source.placementPoint).x
 
     [<Fact>]
     let ``at rest the elements snap onto the +X central ray at their cumulative gaps`` () =
-        let m = init ()
+        let m = initSnapToBeam ()
         let snaps = snapped m
         let cum = cumulativeGaps m
         Assert.Equal(List.length cum, List.length snaps)
@@ -28,7 +28,7 @@ module SnapToBeamTests =
 
     [<Fact>]
     let ``rotating the source re-aims the beam and the elements snap to it (same distance, new direction)`` () =
-        let m = update (RotateSourceBy 30.0) (init ())
+        let m = updateSnapToBeam (RotateSourceBy 30.0) (initSnapToBeam ())
         Assert.True(close (sourceR2Degrees m) 30.0)
         let srcV = RayModel.pointToVector3 m.source.placementPoint
         let snaps = snapped m
@@ -43,8 +43,8 @@ module SnapToBeamTests =
 
     [<Fact>]
     let ``Reset returns the source to R2 = 0 and the elements back onto the central ray`` () =
-        let turned = update (RotateSourceBy 40.0) (init ())
-        let reset = update ResetSource turned
+        let turned = updateSnapToBeam (RotateSourceBy 40.0) (initSnapToBeam ())
+        let reset = updateSnapToBeam ResetSource turned
         Assert.True(close (sourceR2Degrees reset) 0.0)
         Assert.True(snapped reset |> List.forall (fun s -> close s.position.y 0.0), "all back on the central ray")
 

@@ -29,10 +29,10 @@ module RayPositionControlsTests =
     [<Trait("Category", "ui-smoke")>]
     let ``the element-movement screen mounts the shared ray-position control`` () =
         HeadlessSession.run (fun () ->
-            let mutable model = ElementMovementView.init ()
-            let dispatch (m : ElementMovementView.Msg) = model <- ElementMovementView.update m model
+            let mutable model = ElementMovementView.initElementMovement ()
+            let dispatch (m : ElementMovementView.ElementMovementMsg) = model <- ElementMovementView.updateElementMovement m model
             let window = Window(Width = 820.0, Height = 660.0)
-            window.Content <- Component(fun _ -> ElementMovementView.view model dispatch)
+            window.Content <- Component(fun _ -> ElementMovementView.elementMovementView model dispatch)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // The clickable boxes carry an `AutomationProperties.AutomationId` (spec 0038 sweep); the

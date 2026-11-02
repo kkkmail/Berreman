@@ -26,13 +26,13 @@ open OpticalConstructor.Controls
 open OpticalConstructor.Ui
 
 // The canvas geometry / projection are the ONE shared optical-table scene (`TableScene`).
-let canvasWidth : float = TableScene.canvasWidth
-let canvasHeight : float = TableScene.canvasHeight
+let snapToBeamCanvasWidth : float = TableScene.canvasWidth
+let snapToBeamCanvasHeight : float = TableScene.canvasHeight
 let stepDegrees : float = 5.0
 let bigStepDegrees : float = 15.0
 let private drawZoom : float = 5.0
 
-type Model =
+type SnapToBeamModel =
     {
         table : OpticalTable
         view : TableViewState        // fixed top-down (snap test, not table rotation)
@@ -48,7 +48,7 @@ type Model =
 
 /// A light source on the left of the table plus a polarizer, a sample and a detector spaced along the
 /// beam (the gaps sum to ~1.8 m, well inside the 2.0 m table).
-let init () : Model =
+let initSnapToBeam () : SnapToBeamModel =
     {
         table = Table.defaultTable
         view = Table.defaultView
@@ -61,18 +61,18 @@ let init () : Model =
         rotationConfirm = RotationControls.NoConfirm
     }
 
-type Msg =
+type SnapToBeamMsg =
     | RotateSourceBy of float                     // degrees about the source's R2 (the steer; kept for the wheel)
     | RotateSourceAxisBy of int * float           // degrees about the source's axis 1/2/3
     | SetSourceAxis of int * float                // set the source's axis 1/2/3 to exactly N degrees
     | ToggleSourceR3Lock
-    | RotRequestReset
-    | RotRequestResetAll
-    | RotConfirm
-    | RotCancel
+    | SnapToBeamRotRequestReset
+    | SnapToBeamRotRequestResetAll
+    | SnapToBeamRotConfirm
+    | SnapToBeamRotCancel
     | ResetSource                                 // reset ALL source rotations to zero
 
-let sourceR2Degrees (m : Model) : float = m.source.r2.degrees
+let sourceR2Degrees (m : SnapToBeamModel) : float = m.source.r2.degrees
 
 let private bumpAxis (axis : int) (deg : float) (p : ElementPlacement) : ElementPlacement =
     match axis with
@@ -86,10 +86,10 @@ let private setAxis (axis : int) (deg : float) (p : ElementPlacement) : ElementP
     | 2 -> withR2 (Angle.degree (deg * 1.0<deg>)) p
     | _ -> withR3 (Angle.degree (deg * 1.0<deg>)) p
 
-let private resetSourceRotations (m : Model) : Model =
+let private resetSourceRotations (m : SnapToBeamModel) : SnapToBeamModel =
     { m with source = { m.source with r1 = Angle.zero; r2 = Angle.zero; r3 = Angle.zero } }
 
-let update (msg : Msg) (model : Model) : Model =
+let updateSnapToBeam (msg : SnapToBeamMsg) (model : SnapToBeamModel) : SnapToBeamModel =
     match msg with
     | RotateSourceBy d -> { model with source = withR2 (model.source.r2 + Angle.degree (d * 1.0<deg>)) model.source }
     | RotateSourceAxisBy (axis, d) ->
@@ -99,34 +99,34 @@ let update (msg : Msg) (model : Model) : Model =
         if axis = 3 && model.sourceR3Locked then model
         else { model with source = setAxis axis v model.source }
     | ToggleSourceR3Lock -> { model with sourceR3Locked = not model.sourceR3Locked }
-    | RotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
-    | RotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
-    | RotConfirm ->
+    | SnapToBeamRotRequestReset -> { model with rotationConfirm = RotationControls.ConfirmReset }
+    | SnapToBeamRotRequestResetAll -> { model with rotationConfirm = RotationControls.ConfirmResetAll }
+    | SnapToBeamRotConfirm ->
         let m =
             match model.rotationConfirm with
             | RotationControls.ConfirmReset | RotationControls.ConfirmResetAll -> resetSourceRotations model
             | RotationControls.NoConfirm -> model
         { m with rotationConfirm = RotationControls.NoConfirm }
-    | RotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
+    | SnapToBeamRotCancel -> { model with rotationConfirm = RotationControls.NoConfirm }
     | ResetSource -> resetSourceRotations model
 
 // ---------------------------------------------------------------------------
 // Snapping the chain onto the beam (the spec law this screen demonstrates).
 // ---------------------------------------------------------------------------
 
-let private stops (m : Model) : RayModel.RaySegmentSpec list =
+let private stops (m : SnapToBeamModel) : RayModel.RaySegmentSpec list =
     m.downstream
     |> List.map (fun (kind, gap) ->
         ({ placement = ElementPlacement.create kind { x = 0.0<meter>; y = 0.0<meter> }
            gap = gap
-           branch = BeamTree.Transmitted } : RayModel.RaySegmentSpec))
+           branch = BeamTree.TransmittedBeam } : RayModel.RaySegmentSpec))
 
 /// The downstream elements snapped onto the beam the source currently aims (its oriented N1 = `r1Axis`).
-let snapped (m : Model) : RayModel.SnappedElement list =
+let snapped (m : SnapToBeamModel) : RayModel.SnappedElement list =
     RayModel.snapChain (RayModel.pointToVector3 m.source.placementPoint) (r1Axis m.source) (stops m)
 
 /// The cumulative along-ray distances of the downstream elements (for the readout / tests).
-let cumulativeGaps (m : Model) : float list =
+let cumulativeGaps (m : SnapToBeamModel) : float list =
     m.downstream |> List.map (fun (_, g) -> g / 1.0<meter>) |> List.scan (+) 0.0 |> List.tail
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ let private elementColor = color 70 130 200
 let private codeColor = color 20 20 30
 
 let private v3 (x : float) (y : float) (z : float) : Vector3 = Vector3.create x y z
-let private projectPt (m : Model) (p : Vector3) : ScreenPoint = TableScene.project m.view p
+let private projectPt (m : SnapToBeamModel) (p : Vector3) : ScreenPoint = TableScene.project m.view p
 
 let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : IView =
     Line.create [
@@ -151,7 +151,7 @@ let private line (a : ScreenPoint) (b : ScreenPoint) (c : Color) (w : float) : I
     ] :> IView
 
 /// The source marker plus a short arrow along the direction it currently emits (its oriented N1).
-let private sourceViews (m : Model) : IView list =
+let private sourceViews (m : SnapToBeamModel) : IView list =
     let srcV = RayModel.pointToVector3 m.source.placementPoint
     let dir = (r1Axis m.source).normalized
     let tip = v3 (srcV.x + 0.35 * dir.x) (srcV.y + 0.35 * dir.y) (srcV.z + 0.35 * dir.z)
@@ -164,7 +164,7 @@ let private sourceViews (m : Model) : IView list =
 
 /// The beam polyline (source → each snapped element) and, at each element, a tick perpendicular to the
 /// beam (the flat element face) plus its short code — all of which swing round as the source is rotated.
-let private beamViews (m : Model) : IView list =
+let private beamViews (m : SnapToBeamModel) : IView list =
     let srcV = RayModel.pointToVector3 m.source.placementPoint
     let snaps = snapped m
     let nodes = srcV :: (snaps |> List.map (fun s -> s.position))
@@ -192,41 +192,41 @@ let private beamViews (m : Model) : IView list =
               ] :> IView ])
     beam @ elementMarks
 
-let private tableCanvas (model : Model) : IView =
+let private tableCanvas (model : SnapToBeamModel) : IView =
     Canvas.create [
         Canvas.name ConstructorUiId.snapToBeamCanvas.value
-        Canvas.width canvasWidth
-        Canvas.height canvasHeight
+        Canvas.width snapToBeamCanvasWidth
+        Canvas.height snapToBeamCanvasHeight
         Canvas.horizontalAlignment HorizontalAlignment.Left
         Canvas.verticalAlignment VerticalAlignment.Top
         Canvas.children (TableScene.plateViews model.view model.table false @ beamViews model @ sourceViews model)
     ] :> IView
 
-let private readoutText (m : Model) : string =
+let private readoutText (m : SnapToBeamModel) : string =
     let dists = cumulativeGaps m |> List.map (fun x -> $"%.1f{x}") |> String.concat ", "
     $"Source R2 = %+.0f{(sourceR2Degrees m)}°   ·   %d{(List.length m.downstream)} elements snapped to the beam at %s{dists} m"
 
 /// The shared rotation bar, acting on the SOURCE. Its R2 is the steer that swings the beam; R1 spins the
 /// source (no beam change) and R3 tips the beam out of the table plane.
-let private rotationState (model : Model) : RotationControls.State =
+let private rotationState (model : SnapToBeamModel) : RotationControls.State =
     {
         r1 = BarDegrees model.source.r1.degrees; r2 = BarDegrees model.source.r2.degrees; r3 = BarDegrees model.source.r3.degrees
         r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
         r3Lock = (if model.sourceR3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm
     }
 
-let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
+let private rotationHandlers (dispatch : SnapToBeamMsg -> unit) : RotationControls.Handlers =
     {
         rotate = fun axis d -> dispatch (RotateSourceAxisBy ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), d.value))
         setAngle = fun axis v -> dispatch (SetSourceAxis ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), v.value))
         toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleSourceR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
-        requestReset = fun () -> dispatch RotRequestReset
-        requestResetAll = fun () -> dispatch RotRequestResetAll
-        confirm = fun () -> dispatch RotConfirm
-        cancel = fun () -> dispatch RotCancel
+        requestReset = fun () -> dispatch SnapToBeamRotRequestReset
+        requestResetAll = fun () -> dispatch SnapToBeamRotRequestResetAll
+        confirm = fun () -> dispatch SnapToBeamRotConfirm
+        cancel = fun () -> dispatch SnapToBeamRotCancel
     }
 
-let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
+let private controlBar (model : SnapToBeamModel) (dispatch : SnapToBeamMsg -> unit) : IView =
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 6.0
@@ -241,7 +241,7 @@ let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
         ]
     ] :> IView
 
-let view (model : Model) (dispatch : Msg -> unit) : IView =
+let snapToBeamView (model : SnapToBeamModel) (dispatch : SnapToBeamMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [ Border.dock Dock.Top; Border.child (controlBar model dispatch) ]

@@ -76,20 +76,20 @@ module MainWorkbenchTests =
     /// The Main-scene model over the given stores (mock Library/Experiments proxies as in App).
     /// The category store (spec 0035 step 009) is composed here from the materials store — its
     /// `materialsReferencingCategory` lookup — exactly as the App root does.
-    let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : Model =
+    let private mainWith (materials : MaterialProxy) (samples : SampleProxy) : TableAndElementRotationModel =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
-        initMainWith (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        initMainWith (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
 
-    let private freshMain () : Model =
+    let private freshMain () : TableAndElementRotationModel =
         let materials, samples = freshStores ()
         mainWith materials samples
 
     /// Mount the REAL Main-screen MVU loop over `model0` in a headless `HostWindow`, so a click
     /// dispatches through `update` and the view re-renders in the same pass (the
     /// `MainConstructorWindow` shape, with injectable stores / launchers).
-    let private mountMain (model0 : Model) : HostWindow =
+    let private mountMain (model0 : TableAndElementRotationModel) : HostWindow =
         let window = HostWindow(Width = 980.0, Height = 1050.0)
-        Program.mkSimple (fun () -> model0) update mainView
+        Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView
         |> Program.withHost window
         |> Program.run
         window.Show()
@@ -121,13 +121,13 @@ module MainWorkbenchTests =
         // Spec 0038 steps 013/015: the Materials bay left the ribbon at step 013 and the
         // Library (samples workbench) bay leaves with step 015 — both workbenches are
         // single-instance WINDOWS now, and no full-surface bay remains.
-        Assert.DoesNotContain("Materials", BayNames.all)
-        Assert.DoesNotContain("Library", BayNames.all)
-        Assert.Contains(BayNames.selector, BayNames.all)
-        Assert.Equal(Some BayNames.details, List.tryLast BayNames.all)
+        Assert.DoesNotContain("Materials", BayNames.allBayNames)
+        Assert.DoesNotContain("Library", BayNames.allBayNames)
+        Assert.Contains(BayNames.selector, BayNames.allBayNames)
+        Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         let m = freshMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.all, bays |> List.map (fun b -> b.name))
+        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
         for bay in bays do
             Assert.Equal(Ribbon.InRibbonPane, bay.mode)
 
@@ -146,11 +146,11 @@ module MainWorkbenchTests =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         let ctx : MaterialEditorView.MaterialEditorContext =
             { materials = materials; categories = categories; requestClose = ignore }
-        let em = MaterialEditorView.init ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
+        let em = MaterialEditorView.initMaterialEditor ctx (MaterialEditorView.NewMaterial (newMaterialId ()))
         let before = MaterialEditorView.selectableCategories em
         // The four SelectableOnCreate built-ins are offered; Vacuum (HiddenOnCreate) is excluded.
         Assert.Contains(before, fun (c : MaterialCategory) -> c.id = CategoryIds.glass)
-        Assert.DoesNotContain(before, fun (c : MaterialCategory) -> c.id = CategoryIds.vacuum)
+        Assert.DoesNotContain(before, fun (c : MaterialCategory) -> c.id = CategoryIds.vacuumCategory)
         // A rename through the shared proxy re-labels the picker on its next read.
         renameGlass categories "Glazing"
         let after = MaterialEditorView.selectableCategories em
@@ -164,15 +164,15 @@ module MainWorkbenchTests =
         let calls, launchers = recordingLaunchers ()
         let m = { freshMain () with launchers = launchers }
         // The Materials-window request (spec 0038 step 013): a pure launch over the model's stores.
-        let afterMaterials = update OpenMaterialsWindow m
+        let afterMaterials = updateTableAndElementRotation OpenMaterialsWindow m
         Assert.Equal<string list>([ "materials-window" ], List.ofSeq calls)
-        Assert.Equal<Model>(m, afterMaterials)
+        Assert.Equal<TableAndElementRotationModel>(m, afterMaterials)
         // The Library-window request (spec 0038 step 015): likewise pure — the retired samples
         // workbench bay's verbs live in the window's own model now.
         calls.Clear()
-        let afterLibrary = update OpenLibraryWindow m
+        let afterLibrary = updateTableAndElementRotation OpenLibraryWindow m
         Assert.Equal<string list>([ "library-window" ], List.ofSeq calls)
-        Assert.Equal<Model>(m, afterLibrary)
+        Assert.Equal<TableAndElementRotationModel>(m, afterLibrary)
 
     // ============================ pure: the Details-bay band projection ============================
 

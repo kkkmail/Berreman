@@ -163,7 +163,7 @@ module ChartPlot =
 type ChartWindow(chart : ExperimentChart) as this =
     inherit Window()
 
-    let mutable style = ChartStyle.defaultState chart
+    let mutable style = ChartStyle.defaultChartStyleState chart
     let mutable polar = false
     let seriesCount = List.length chart.series
     let seriesName (i : int) : string = match List.tryItem i chart.series with Some s -> s.name | None -> $"series %d{i}"
@@ -370,7 +370,7 @@ type ChartWindow(chart : ExperimentChart) as this =
                 TextBlock(Text = "Legend", FontWeight = FontWeight.Bold, Margin = Thickness(0.0, 0.0, 0.0, 6.0)) :> Control
                 visBox :> Control
                 row [ smallLabel "Placement:"; (placeBox :> Control) ] :> Control
-                fontRow ChartFont.Legend (fun d -> style <- ChartStyle.bumpFont ChartFont.Legend d style) :> Control
+                fontRow ChartFont.LegendFont (fun d -> style <- ChartStyle.bumpFont ChartFont.LegendFont d style) :> Control
             ]
 
         let seriesPanel (i : int) : Control list =

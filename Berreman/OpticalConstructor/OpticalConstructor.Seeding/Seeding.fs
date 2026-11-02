@@ -63,7 +63,7 @@ module Seeding =
 
         pushEach proxy.saveCategory standardCategories
         |> Result.bind (fun () -> pushEach proxy.saveMaterial builtInEntries)
-        |> Result.bind (fun () -> pushEach proxy.saveSample SeedSamples.all)
+        |> Result.bind (fun () -> pushEach proxy.saveSample SeedSamples.allSeedSamples)
         |> Result.bind (fun () -> pushEach proxy.saveLibraryEntry seedEntries)
 
     /// The four EMPTY in-memory stores the seed pipeline fills, bundled with the `SeedingProxy` that

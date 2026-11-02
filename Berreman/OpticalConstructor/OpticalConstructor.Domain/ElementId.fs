@@ -606,7 +606,7 @@ module Library =
                             cell =
                                 [
                                     { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                    { materialId = MaterialVersionId.firstOf MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                    { materialId = MaterialVersionId.firstOf MaterialIds.vacuumMaterial; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                 ]
                             count = 1
                         }
@@ -685,7 +685,7 @@ module Library =
                                         cell =
                                             [
                                                 { materialId = MaterialVersionId.firstOf MaterialIds.glass152; thickness = qwGlassThickness; orientation = PrimaryAxes }
-                                                { materialId = MaterialVersionId.firstOf MaterialIds.vacuum; thickness = qwVacuumThickness; orientation = PrimaryAxes }
+                                                { materialId = MaterialVersionId.firstOf MaterialIds.vacuumMaterial; thickness = qwVacuumThickness; orientation = PrimaryAxes }
                                             ]
                                         count = 20
                                     }
@@ -771,7 +771,7 @@ module Library =
             }
 
         /// All seeded samples in Library display order (the order `seedEntries` lists them).
-        let all : Sample list =
+        let allSeedSamples : Sample list =
             [
                 glassPlate1mm; glassPlate2mm; glassFilm600; glassVacuum; glassFilm200
                 multilayerQw; euvMoSi; uniaxial; biaxial; activeCrystal; langasiteSilicon
@@ -843,7 +843,7 @@ module Library =
             ]
 
         /// Every seeded source, in Library display order.
-        let all : SourcePreset list = reference600 :: lasers @ lithography @ tunables
+        let allSeedSources : SourcePreset list = reference600 :: lasers @ lithography @ tunables
 
     /// The seeded Library entries (spec §2a "Seeded entries"): samples (glass plate → second
     /// thickness → thin film → a quarter-wave multilayer placeholder), the two detectors, one ideal
@@ -854,7 +854,7 @@ module Library =
     /// `UserManaged` (editable examples). The three ideals are `ComputedIdeal` behaviour data that
     /// still synthesizes through `Propagation.inputStokes` / `analyzerMueller` exactly as before.
     let seedEntries : LibraryEntry list =
-        (SeedSamples.all |> List.map SampleItem)
+        (SeedSamples.allSeedSamples |> List.map SampleItem)
         @ [
             DetectorItem { id = "det-intensity"; name = "Intensity detector"; kind = Intensity; protection = ProtectedBuiltIn }
             DetectorItem { id = "det-ellipsometer"; name = "Ellipsometer"; kind = Ellipsometer; protection = ProtectedBuiltIn }
@@ -863,7 +863,7 @@ module Library =
             PolarizerItem { id = "pol-cp-right"; name = "Ideal circular polarizer (right)"; behavior = ComputedIdeal IdealCircularRight; category = CpCategory; protection = ProtectedBuiltIn }
         ]
         // Spec 0046: the seeded sources — the 600 nm reference, the lasers, the lithography sources.
-        @ (SeedSources.all |> List.map SourceItem)
+        @ (SeedSources.allSeedSources |> List.map SourceItem)
 
     /// A grouping-tree leaf for a seeded sample: references the sample VALUE programmatically
     /// (spec 0033 step 002 — the id literal lives only in `SeedSamples`), carrying its Guid-string

@@ -147,7 +147,7 @@ let beamDirection (branch : BeamBranch) (ems : EmFieldSystem) : Vec3 option =
 /// rendered beam path is the engine's already-solved routing. A degenerate branch
 /// (no `normal`) is dropped. `ems` is the solved input — no re-solve happens here.
 let beamSegments (origin : Vec3) (ems : EmFieldSystem) : BeamSegment list =
-    [ Reflected; Transmitted ]
+    [ ReflectedBeam; TransmittedBeam ]
     |> List.choose (fun branch ->
         beamDirection branch ems
         |> Option.map (fun dir -> { branch = branch; origin = origin; direction = dir }))

@@ -104,25 +104,25 @@ module ScrollExtentTests =
         let categories = CategoryProxy.createInMemory (materialsReferencingCategory materials)
         materials, samples, categories, Library.liveLibrary (Library.createInMemory ()) samples (SourceProxy.createInMemory ())
 
-    let private constructorWindow (model0 : Model) : Window =
+    let private constructorWindow (model0 : TableAndElementRotationModel) : Window =
         let window = HostWindow()
-        Program.mkSimple (fun () -> model0) update mainView |> Program.withHost window |> Program.run
+        Program.mkSimple (fun () -> model0) updateTableAndElementRotation mainView |> Program.withHost window |> Program.run
         window :> Window
 
     /// Main with a polarizer whose R1 run is collected AND being edited — the tallest Experiments bay (editor,
     /// chart, description, collection row, export, collection builder) above the table.
-    let private filledExperiments () : Model =
-        let m = initMain () |> update (AddElement Placement.LinearPolarizer)
+    let private filledExperiments () : TableAndElementRotationModel =
+        let m = initMain () |> updateTableAndElementRotation (AddElement Placement.LinearPolarizer)
         let pid = (List.item 2 m.elements).id.value
-        m |> update (ExpChooseElement pid) |> update ExpCommit |> update (ExpChooseElement pid) |> update (SelectBay BayNames.experiments)
+        m |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation ExpCommit |> updateTableAndElementRotation (ExpChooseElement pid) |> updateTableAndElementRotation (SelectBay BayNames.experiments)
 
     // ------------------------------ the law, window by window ------------------------------
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``Main: every bay leaves the whole page reachable — the table below a tall bay included`` () =
-        for bay in BayNames.all do
-            assertReachable $"Main/%s{bay}" (fun () -> constructorWindow ({ initMain () with selection = ElementSelected 0 } |> update (SelectBay bay)))
+        for bay in BayNames.allBayNames do
+            assertReachable $"Main/%s{bay}" (fun () -> constructorWindow ({ initMain () with selection = ElementSelected 0 } |> updateTableAndElementRotation (SelectBay bay)))
         assertReachable "Main/Experiments (collected + chart)" (fun () -> constructorWindow (filledExperiments ()))
 
     [<Fact>]
@@ -130,7 +130,7 @@ module ScrollExtentTests =
         let materials, samples, categories, library = stores ()
         assertReachable "Inverse/Experiments" (fun () ->
             constructorWindow
-                { initInverse library (Experiments.createInMemory ()) materials samples categories with
+                { initInverse library (Experiments.createInMemoryExperiments ()) materials samples categories with
                     ribbon = BayNames.experiments
                     experimentCollection = (filledExperiments ()).experimentCollection })
 
@@ -222,8 +222,8 @@ module ScrollExtentTests =
         HeadlessSession.run (fun () ->
             let model0 = filledExperiments ()
             let mutable latest = model0
-            let window = HostWindow(Width = canvasWidth, Height = 600.0)
-            Program.mkSimple (fun () -> model0) (fun msg m -> let next = update msg m in latest <- next; next) mainView
+            let window = HostWindow(Width = tableAndElementRotationCanvasWidth, Height = 600.0)
+            Program.mkSimple (fun () -> model0) (fun msg m -> let next = updateTableAndElementRotation msg m in latest <- next; next) mainView
             |> Program.withHost window
             |> Program.run
             window.Show()
@@ -240,13 +240,13 @@ module ScrollExtentTests =
                 // Wheel over the visible strip of the table, near the window's bottom edge, until it stops scrolling.
                 let mutable notches = 0
                 while tableBottomInWindow () > window.ClientSize.Height + 1.0 && notches < 200 do
-                    window.MouseWheel(Point(canvasWidth / 2.0, window.ClientSize.Height - 10.0), Vector(0.0, -1.0), RawInputModifiers.None)
+                    window.MouseWheel(Point(tableAndElementRotationCanvasWidth / 2.0, window.ClientSize.Height - 10.0), Vector(0.0, -1.0), RawInputModifiers.None)
                     Dispatcher.UIThread.RunJobs()
                     notches <- notches + 1
                 Assert.True(tableBottomInWindow () <= window.ClientSize.Height + 1.0, $"the wheel never brought the table's bottom into view (offset %g{viewer.Offset.Y} of %g{viewer.Extent.Height - viewer.Viewport.Height})")
                 Assert.Equal(zoom0, latest.view.zoom)                                      // the table did not zoom meanwhile
                 // Now the table is in view: the next notch zooms it.
-                window.MouseWheel(Point(canvasWidth / 2.0, window.ClientSize.Height - 10.0), Vector(0.0, -1.0), RawInputModifiers.None)
+                window.MouseWheel(Point(tableAndElementRotationCanvasWidth / 2.0, window.ClientSize.Height - 10.0), Vector(0.0, -1.0), RawInputModifiers.None)
                 Dispatcher.UIThread.RunJobs()
                 Assert.NotEqual(zoom0, latest.view.zoom)
             finally
@@ -258,9 +258,9 @@ module ScrollExtentTests =
     let ``the Main window opens on Add; the Attach data file section belongs to the Inverse window alone`` () =
         let materials, samples, categories, library = stores ()
         Assert.Equal(BayNames.add, (initMain ()).ribbon)
-        Assert.Equal(BayNames.add, (initInverse library (Experiments.createInMemory ()) materials samples categories).ribbon)
+        Assert.Equal(BayNames.add, (initInverse library (Experiments.createInMemoryExperiments ()) materials samples categories).ribbon)
         HeadlessSession.run (fun () ->
-            let texts (model0 : Model) : string list =
+            let texts (model0 : TableAndElementRotationModel) : string list =
                 let window = constructorWindow model0
                 window.Width <- 1000.0
                 window.Height <- 1100.0
@@ -272,7 +272,7 @@ module ScrollExtentTests =
             Assert.DoesNotContain("Attach data file…", forward)
             Assert.DoesNotContain("Data files:", forward)
             let inverse =
-                let m = { initInverse library (Experiments.createInMemory ()) materials samples categories with ribbon = BayNames.experiments }
+                let m = { initInverse library (Experiments.createInMemoryExperiments ()) materials samples categories with ribbon = BayNames.experiments }
                 texts { m with experimentCollection = (filledExperiments ()).experimentCollection }
             Assert.Contains("Data files:", inverse)
             Assert.Contains("Attach data file…", inverse))

@@ -37,7 +37,7 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
     // synchronous in this constructor) — the host's Closed hook and the public Retarget seam
     // dispatch through it into the pure update.
-    let mutable dispatch : LibraryWindowView.Msg -> unit = ignore
+    let mutable dispatch : LibraryWindowView.LibraryWindowMsg -> unit = ignore
 
     do
         this.Title <- "Library"
@@ -88,9 +88,9 @@ type LibraryWindow(library : LibraryProxy, samples : SampleProxy, sources : Sour
                 requestClose = this.Close
             }
         Program.mkProgram
-            (fun () -> LibraryWindowView.init context (defaultArg mode Browse), Cmd.ofEffect (fun d -> dispatch <- d))
-            (fun msg m -> LibraryWindowView.update msg m, Cmd.none)
-            LibraryWindowView.view
+            (fun () -> LibraryWindowView.initLibraryWindow context (defaultArg mode Browse), Cmd.ofEffect (fun d -> dispatch <- d))
+            (fun msg m -> LibraryWindowView.updateLibraryWindow msg m, Cmd.none)
+            LibraryWindowView.libraryWindowView
         |> Program.withHost this
         |> Program.run
         // ANY close path funnels here (title-bar X, a staleness Close(), the Select/Close

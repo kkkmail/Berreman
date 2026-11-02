@@ -25,7 +25,7 @@ module SampleLibraryControlsTests =
 
     /// A known flattened row set the host's search produced: a plate, a multilayer thin film, and
     /// a wedge (one per domain `SubstrateKind`, as the host would flatten them).
-    let private knownRows : SampleLibraryControls.Row list =
+    let private knownRows : SampleLibraryControls.SampleLibraryControlsRow list =
         [
             { sampleId = "glass-plate"; label = "Glass plate" }
             { sampleId = "multilayer-qw"; label = "Quarter-wave multilayer" }
@@ -34,7 +34,7 @@ module SampleLibraryControlsTests =
 
     /// The known State the structure tests mount: the substrate facet populated (the host includes
     /// its own "all" option) and a row selected, so every row-targeted verb is live.
-    let private knownState : SampleLibraryControls.State =
+    let private knownState : SampleLibraryControls.SampleLibraryControlsState =
         {
             searchText = ""
             substrateOptions =
@@ -51,9 +51,9 @@ module SampleLibraryControlsTests =
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
     /// appends a tag, so a click's MATCHING handler is observable.
-    let private recorder () : ResizeArray<string> * SampleLibraryControls.Handlers =
+    let private recorder () : ResizeArray<string> * SampleLibraryControls.SampleLibraryControlsHandlers =
         let calls = ResizeArray<string>()
-        let handlers : SampleLibraryControls.Handlers =
+        let handlers : SampleLibraryControls.SampleLibraryControlsHandlers =
             {
                 setSearchText = fun t -> calls.Add("search:" + t)
                 selectSubstrate = fun s -> calls.Add("substrate:" + s)
@@ -70,7 +70,7 @@ module SampleLibraryControlsTests =
 
     [<Fact>]
     let ``the empty Samples state has no rows, no selection, an empty search and no facet options`` () =
-        let s = SampleLibraryControls.empty
+        let s = SampleLibraryControls.emptySampleLibraryControls
         Assert.Equal("", s.searchText)
         Assert.Empty(s.rows)
         Assert.Empty(s.substrateOptions)
@@ -142,7 +142,7 @@ module SampleLibraryControlsTests =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> SampleLibraryControls.view knownState handlers)
+            window.Content <- Component(fun _ -> SampleLibraryControls.sampleLibraryControlsView knownState handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             // Every slice-mandated control exists over the known State.
@@ -179,7 +179,7 @@ module SampleLibraryControlsTests =
             let calls, handlers = recorder ()
             let state = { knownState with selectedId = None }
             let window = Window(Width = 640.0, Height = 560.0)
-            window.Content <- Component(fun _ -> SampleLibraryControls.view state handlers)
+            window.Content <- Component(fun _ -> SampleLibraryControls.sampleLibraryControlsView state handlers)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let count (tag : string) : int = calls |> Seq.filter ((=) tag) |> Seq.length

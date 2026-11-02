@@ -73,7 +73,7 @@ module FsxAcceptanceTests =
             categories = categories
             sources = sources
             library = liveLibrary (Library.createInMemory ()) samples sources
-            export = ExperimentExport.createInMemory ()
+            export = ExperimentExport.createInMemoryExperimentExport ()
         }
 
     let private ok (r : Result<unit, 'Error>) : unit =
@@ -126,14 +126,14 @@ module FsxAcceptanceTests =
 
     /// Mount the Main workbench through a re-rendering FuncUI Component (the `LibraryWindowTests` drive
     /// pattern): the window, a dispatch, and the latest model.
-    let private mount (model0 : Model) : Window * (Msg -> unit) * (unit -> Model) =
-        let latest : Model ref = ref model0
-        let dispatchRef : (Msg -> unit) ref = ref ignore
+    let private mount (model0 : TableAndElementRotationModel) : Window * (TableAndElementRotationMsg -> unit) * (unit -> TableAndElementRotationModel) =
+        let latest : TableAndElementRotationModel ref = ref model0
+        let dispatchRef : (TableAndElementRotationMsg -> unit) ref = ref ignore
         let comp =
             Avalonia.FuncUI.Component(fun ctx ->
                 let state = ctx.useState model0
-                let dispatch (msg : Msg) =
-                    let m = update msg latest.Value
+                let dispatch (msg : TableAndElementRotationMsg) =
+                    let m = updateTableAndElementRotation msg latest.Value
                     latest.Value <- m
                     state.Set m
                 dispatchRef.Value <- dispatch
@@ -169,10 +169,10 @@ module FsxAcceptanceTests =
     /// exports the run through the export proxy into the in-memory store. Capture Both: a detector on the
     /// sample's transmitted beam and one on its reflected ray. Returns the exported run.
     let private runOnTable (b : Bench) (run : TableRun) : ExperimentExport.ExportedRun =
-        let apply (msgs : Msg list) (m : Model) : Model = msgs |> List.fold (fun acc msg -> update msg acc) m
-        let idAt (i : int) (m : Model) : Library.ElementId = (List.item i m.elements).id
+        let apply (msgs : TableAndElementRotationMsg list) (m : TableAndElementRotationModel) : TableAndElementRotationModel = msgs |> List.fold (fun acc msg -> updateTableAndElementRotation msg acc) m
+        let idAt (i : int) (m : TableAndElementRotationModel) : Library.ElementId = (List.item i m.elements).id
         let table =
-            { initMainWith b.library (Experiments.createInMemory ()) b.materials b.samples b.categories with
+            { initMainWith b.library (Experiments.createInMemoryExperiments ()) b.materials b.samples b.categories with
                 sources = b.sources
                 experimentExport = b.export.proxy }
             |> apply
@@ -184,10 +184,10 @@ module FsxAcceptanceTests =
                   // The sample (index 3), tilted to the script's incidence; bound below.
                   AddElement CatalogueKind.Sample
                   RotSetAxis (RotationControls.R2, run.incidenceDegrees) ]
-            |> fun m -> update (BindValueIdTo (idAt 3 m, run.sampleEntry)) m
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 3 m, run.sampleEntry)) m
             // A second detector (index 4): it goes to the first free ray — the sample's reflected ray.
-            |> update (AddElement Detector)
-            |> fun m -> update (BindValueIdTo (idAt 4 m, SeedEntryIds.detectorIntensity)) m
+            |> updateTableAndElementRotation (AddElement Detector)
+            |> fun m -> updateTableAndElementRotation (BindValueIdTo (idAt 4 m, SeedEntryIds.detectorIntensity)) m
         let varied =
             match run.variable with
             | ExperimentControls.VaryWaveLength -> "src"

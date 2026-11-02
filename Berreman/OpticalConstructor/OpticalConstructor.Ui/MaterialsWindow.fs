@@ -32,7 +32,7 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mod
     // The Elmish dispatch, captured by the init Cmd the moment the loop starts (Program.run is
     // synchronous in this constructor) — the host's Closed hook and the public Retarget seam
     // dispatch through it into the pure update.
-    let mutable dispatch : MaterialsWindowView.Msg -> unit = ignore
+    let mutable dispatch : MaterialsWindowView.MaterialsWindowMsg -> unit = ignore
 
     do
         this.Title <- "Materials"
@@ -74,9 +74,9 @@ type MaterialsWindow(materials : MaterialProxy, categories : CategoryProxy, ?mod
                 requestClose = this.Close
             }
         Program.mkProgram
-            (fun () -> MaterialsWindowView.init context (defaultArg mode Browse), Cmd.ofEffect (fun d -> dispatch <- d))
-            (fun msg m -> MaterialsWindowView.update msg m, Cmd.none)
-            MaterialsWindowView.view
+            (fun () -> MaterialsWindowView.initMaterialsWindow context (defaultArg mode Browse), Cmd.ofEffect (fun d -> dispatch <- d))
+            (fun msg m -> MaterialsWindowView.updateMaterialsWindow msg m, Cmd.none)
+            MaterialsWindowView.materialsWindowView
         |> Program.withHost this
         |> Program.run
         // ANY close path funnels here (title-bar X, a staleness Close(), the Select/Close

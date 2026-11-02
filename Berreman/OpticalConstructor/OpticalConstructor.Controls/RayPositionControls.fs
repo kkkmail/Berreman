@@ -57,7 +57,7 @@ module RayPositionControls =
 
     /// The current along-ray position the bar displays. `position` is in metres along the beam (0 = the
     /// host's chosen origin, e.g. table centre); `range` is the clamp the host applies.
-    type State =
+    type RayPositionControlsState =
         {
             position : BarMeters
             range : PositionRange
@@ -75,7 +75,7 @@ module RayPositionControls =
             $"x = {this.position.signedText} m along the beam ({rangeText})"
 
     /// What the bar does. The host owns the selection and the clamping.
-    type Handlers =
+    type RayPositionControlsHandlers =
         {
             moveBy : BarMeters -> unit          // nudge the position by N metres (the − / + buttons)
             setPosition : BarMeters -> unit     // set the position to exactly N metres (the field)
@@ -112,7 +112,7 @@ module RayPositionControls =
             Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
         ] :> IView
 
-    let private stepButton (handlers : Handlers) (direction : StepDirection) (availability : ControlAvailability) : IView =
+    let private stepButton (handlers : RayPositionControlsHandlers) (direction : StepDirection) (availability : ControlAvailability) : IView =
         let id, caption =
             match direction with
             | StepDecrease -> ConstructorUiId.rayPositionMinusButton, ControlCaption "−"
@@ -120,7 +120,7 @@ module RayPositionControls =
         clickBox id caption availability (fun e ->
             handlers.moveBy ((stepMeters e.KeyModifiers).inDirection direction))
 
-    let private field (handlers : Handlers) (value : BarMeters) (availability : ControlAvailability) : IView =
+    let private field (handlers : RayPositionControlsHandlers) (value : BarMeters) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
             match src with
             | :? TextBox as tb when not (isNull tb.Text) -> BarMeters.tryCreate tb.Text |> Option.iter handlers.setPosition
@@ -136,7 +136,7 @@ module RayPositionControls =
 
     /// The bar — a PURE projection of `state`/`handlers` (like `RotationControls.view`), so it always
     /// reflects the host's CURRENT selection / position and never freezes stale props.
-    let view (state : State) (handlers : Handlers) : IView =
+    let rayPositionControlsView (state : RayPositionControlsState) (handlers : RayPositionControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0

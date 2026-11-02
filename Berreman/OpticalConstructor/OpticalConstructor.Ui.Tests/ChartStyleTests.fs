@@ -15,7 +15,7 @@ module ChartStyleTests =
 
     /// A wavelength-style chart: x 400…800, y 0…1, one series.
     let private wlChart : ExperimentChart =
-        { ExperimentChart.empty with
+        { ExperimentChart.emptyExperimentChart with
             series = [ { name = "Intensity"; points = [ 400.0, 0.2; 600.0, 0.9; 800.0, 0.4 ] } ]
             xLabel = "Wavelength (nm)"
             angular = false }
@@ -61,7 +61,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``the default state fits the axes to the data per side and auto is on`` () =
-        let s = defaultState wlChart
+        let s = defaultChartStyleState wlChart
         Assert.True(s.xAxis.auto)
         Assert.True(s.yAxisLeft.auto)
         Assert.True(s.yAxisRight.auto)
@@ -94,7 +94,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``bumpAxisDecimals steps the digit count and never below zero`` () =
-        let s = { defaultState wlChart with xAxis = { (defaultState wlChart).xAxis with format = FixedFormat 2 } }
+        let s = { defaultChartStyleState wlChart with xAxis = { (defaultChartStyleState wlChart).xAxis with format = FixedFormat 2 } }
         let up = bumpAxisDecimals AxisX 1 s
         Assert.Equal(3, up.xAxis.format.decimals)
         let downLots = List.fold (fun st _ -> bumpAxisDecimals AxisX -1 st) s [ 1 .. 10 ]
@@ -104,7 +104,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``setting an axis min or max turns Auto off`` () =
-        let s = defaultState wlChart
+        let s = defaultChartStyleState wlChart
         Assert.True(s.xAxis.auto)
         let s1 = setAxisMin AxisX 450.0 s
         Assert.False(s1.xAxis.auto)
@@ -115,7 +115,7 @@ module ChartStyleTests =
     [<Fact>]
     let ``the tri-state axis mutators edit X, left Y and right Y independently`` () =
         let s =
-            defaultState wlChart
+            defaultChartStyleState wlChart
             |> setAxisMin AxisX 450.0
             |> setAxisMin (AxisY LeftAxis) 0.1
             |> setAxisMax (AxisY RightAxis) 9.0
@@ -136,7 +136,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``legend visibility and placement round-trip`` () =
-        let s = defaultState wlChart |> setLegendVisible false |> setLegendPlacement LowerLeft
+        let s = defaultChartStyleState wlChart |> setLegendVisible false |> setLegendPlacement LowerLeft
         Assert.False(s.legend.visible)
         Assert.Equal(LowerLeft, s.legend.placement)
         Assert.Equal(9, List.length allPlacements)
@@ -144,7 +144,7 @@ module ChartStyleTests =
     // ============================ series look ============================
 
     let private twoSeries : ExperimentChart =
-        { ExperimentChart.empty with
+        { ExperimentChart.emptyExperimentChart with
             series =
                 [ { name = "T"; points = [ 0.0, 1.0; 90.0, 0.5 ] }
                   { name = "R"; points = [ 0.0, 0.1; 90.0, 0.4 ] } ]
@@ -152,7 +152,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``a series' thickness, colour, markers and visibility are independently editable`` () =
-        let s0 = defaultState twoSeries
+        let s0 = defaultChartStyleState twoSeries
         let s =
             s0
             |> bumpSeriesThickness 1 0.5
@@ -170,7 +170,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``series thickness is clamped to the allowed band`` () =
-        let s0 = defaultState twoSeries
+        let s0 = defaultChartStyleState twoSeries
         let thick = List.fold (fun st _ -> bumpSeriesThickness 0 1.0 st) s0 [ 1 .. 50 ]
         Assert.Equal(maxThickness, (seriesStyleOf 0 thick).thickness)
         let thin = List.fold (fun st _ -> bumpSeriesThickness 0 -1.0 st) s0 [ 1 .. 50 ]
@@ -180,7 +180,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``series default to the left axis and setSeriesAxisSide reassigns one side only`` () =
-        let s0 = defaultState twoSeries
+        let s0 = defaultChartStyleState twoSeries
         Assert.Equal(LeftAxis, (seriesStyleOf 0 s0).axisSide)
         Assert.Equal(LeftAxis, (seriesStyleOf 1 s0).axisSide)
         let s = setSeriesAxisSide 1 RightAxis s0
@@ -206,16 +206,16 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``selectElement changes the selection only`` () =
-        let s = defaultState twoSeries |> selectElement Legend
+        let s = defaultChartStyleState twoSeries |> selectElement Legend
         Assert.Equal(Legend, s.selected)
 
     [<Fact>]
     let ``bumpFont resizes the named target only`` () =
-        let s0 = defaultState twoSeries
+        let s0 = defaultChartStyleState twoSeries
         let before = ChartFont.sizeOf ChartFont.Title s0.font
         let s = bumpFont ChartFont.Title 2.0 s0
         Assert.Equal(before + 2.0, ChartFont.sizeOf ChartFont.Title s.font)
-        Assert.Equal(ChartFont.sizeOf ChartFont.Legend s0.font, ChartFont.sizeOf ChartFont.Legend s.font)
+        Assert.Equal(ChartFont.sizeOf ChartFont.LegendFont s0.font, ChartFont.sizeOf ChartFont.LegendFont s.font)
 
     // ============================ polar ============================
 
@@ -231,7 +231,7 @@ module ChartStyleTests =
 
     [<Fact>]
     let ``polarRadius is the largest visible |y| (with a positive fallback)`` () =
-        let s = defaultState twoSeries
+        let s = defaultChartStyleState twoSeries
         Assert.Equal(1.0, polarRadius s twoSeries.series)   // max |y| across both series = 1.0
         // Hiding the series that carries the max shrinks the radius.
         let s2 = setSeriesVisible 0 false s

@@ -71,7 +71,7 @@ module RibbonPaneTests =
         let window = HostWindow(Width = 640.0, Height = 480.0)
         let update (name : string) (_ : string) : string = name
         let view (selected : string) (dispatch : string -> unit) : IView =
-            Ribbon.view ({ bays = bays; selected = selected } : Ribbon.State) dispatch
+            Ribbon.ribbonView ({ bays = bays; selected = selected } : Ribbon.RibbonState) dispatch
         Program.mkSimple (fun () -> initial) update view
         |> Program.withHost window
         |> Program.run

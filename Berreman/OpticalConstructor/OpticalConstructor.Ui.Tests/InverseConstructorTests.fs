@@ -31,17 +31,17 @@ module InverseConstructorTests =
         materials, samples, categories
 
     /// A fresh inverse Main model over isolated stores (default experiment proxies).
-    let private inverse () : Model =
+    let private inverse () : TableAndElementRotationModel =
         let materials, samples, categories = freshStores ()
-        initInverse (Library.createInMemory ()) (Experiments.createInMemory ()) materials samples categories
+        initInverse (Library.createInMemory ()) (Experiments.createInMemoryExperiments ()) materials samples categories
 
     /// The seeded 200 nm glass-film sample entry id (bound as the inverse HINT).
     let private glassFilm200Id : string = (Library.SampleItem Library.SeedSamples.glassFilm200).entryId
 
-    let private theSample (m : Model) : TestElement =
+    let private theSample (m : TableAndElementRotationModel) : TestElement =
         m.elements |> List.find (fun e -> e.placement.catalogueKind = Placement.Sample)
 
-    let private theDetector (m : Model) : TestElement =
+    let private theDetector (m : TableAndElementRotationModel) : TestElement =
         m.elements |> List.find (fun e -> e.placement.catalogueKind = Placement.Detector)
 
     // ---- mock ExperimentDataProxy shapes ------------------------------------------------------------
@@ -61,14 +61,14 @@ module InverseConstructorTests =
 
     /// An inverse model whose data proxy is the given mock, with ONE committed intensity experiment
     /// (the sample varied over R2 — an intensity sweep; the detector defaults to Intensity).
-    let private withIntensityExperiment (proxy : ExperimentData.ExperimentDataProxy) : Model * Experiments.ExperimentId =
+    let private withIntensityExperiment (proxy : ExperimentData.ExperimentDataProxy) : TableAndElementRotationModel * Experiments.ExperimentId =
         let m0 = { inverse () with experimentData = proxy }
         let sample = theSample m0
         let m1 =
             m0
-            |> update (ExpChooseElement sample.id.value)
-            |> update (ExpChooseVariable ExperimentControls.VaryR2)
-            |> update ExpCommit
+            |> updateTableAndElementRotation (ExpChooseElement sample.id.value)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation ExpCommit
         m1, (List.head m1.experimentCollection.experiments).id
 
     // ================================ inverse init + hint gate ================================
@@ -96,13 +96,13 @@ module InverseConstructorTests =
         // A draft that varies the sample over R2 (an intensity sweep that re-solves the sample).
         let m1 =
             m0
-            |> update (ExpChooseElement sample.id.value)
-            |> update (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation (ExpChooseElement sample.id.value)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
         // No hint (sample unbound) ⇒ the chart surface is gated off, even with a full draft.
         Assert.False(experimentChartVisible m1)
         Assert.Empty((experimentState m1).series)
         // Bind a HINT sample through the SAME targeted bind path the Library Select state uses.
-        let m2 = m1 |> update (BindValueIdTo (sample.id, glassFilm200Id))
+        let m2 = m1 |> updateTableAndElementRotation (BindValueIdTo (sample.id, glassFilm200Id))
         Assert.True(experimentChartVisible m2, "a bound hint sample must restore the chart surface")
         Assert.NotEmpty((experimentResult m2).series)
 
@@ -112,7 +112,7 @@ module InverseConstructorTests =
     let ``attaching a valid intensity file records a typed Loaded status and the attachment`` () =
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 45.0, 0.6; 89.0, 0.2 ]))
         let m, expId = withIntensityExperiment proxy
-        let m1 = m |> update (AttachDataFileTo (expId, Experiments.DataFilePath "measured.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "measured.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId.value with
         | Some (DataFileValidated 3) -> ()
         | other -> Assert.Fail($"expected DataFileValidated 3, got %A{other}")
@@ -124,7 +124,7 @@ module InverseConstructorTests =
     let ``attaching a malformed intensity file records a typed parse-error status`` () =
         let proxy = mockIntensity (Error (MeasuredData.MalformedDataFile "row 3 is not a valid X,Y pair"))
         let m, expId = withIntensityExperiment proxy
-        let m1 = m |> update (AttachDataFileTo (expId, Experiments.DataFilePath "bad.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "bad.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId.value with
         | Some (DataFileParseError reason) -> Assert.Contains("row 3", reason)
         | other -> Assert.Fail($"expected DataFileParseError, got %A{other}")
@@ -134,7 +134,7 @@ module InverseConstructorTests =
         // The R2 experiment's range is 0…89°; an abscissa of 200 is a LOUD range mismatch.
         let proxy = mockIntensity (Ok (intensitySeries [ 0.0, 1.0; 200.0, 0.5 ]))
         let m, expId = withIntensityExperiment proxy
-        let m1 = m |> update (AttachDataFileTo (expId, Experiments.DataFilePath "oor.csv"))
+        let m1 = m |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "oor.csv"))
         match m1.experimentDataStatus |> Map.tryFind expId.value with
         | Some (DataFileValidationError reason) -> Assert.Contains("outside the experiment range", reason)
         | other -> Assert.Fail($"expected DataFileValidationError, got %A{other}")
@@ -152,12 +152,12 @@ module InverseConstructorTests =
         let detector = theDetector m0
         let m1 =
             m0
-            |> update (BindValueIdTo (detector.id, "det-ellipsometer"))
-            |> update (ExpChooseElement sample.id.value)
-            |> update (ExpChooseVariable ExperimentControls.VaryR2)
-            |> update ExpCommit
+            |> updateTableAndElementRotation (BindValueIdTo (detector.id, "det-ellipsometer"))
+            |> updateTableAndElementRotation (ExpChooseElement sample.id.value)
+            |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+            |> updateTableAndElementRotation ExpCommit
         let expId = (List.head m1.experimentCollection.experiments).id
-        let m2 = m1 |> update (AttachDataFileTo (expId, Experiments.DataFilePath "ellipso.csv"))
+        let m2 = m1 |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "ellipso.csv"))
         match m2.experimentDataStatus |> Map.tryFind expId.value with
         | Some (DataFileValidated 2) -> ()
         | other -> Assert.Fail($"expected DataFileValidated 2 from the ellipsometric path, got %A{other}")
@@ -171,14 +171,14 @@ module InverseConstructorTests =
         let mBuilt, expId = withIntensityExperiment proxy
         let mSaved =
             mBuilt
-            |> update (AttachDataFileTo (expId, Experiments.DataFilePath "run.csv"))
-            |> update (CollectionSetName "run-A")
-            |> update CollectionSave
+            |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "run.csv"))
+            |> updateTableAndElementRotation (CollectionSetName "run-A")
+            |> updateTableAndElementRotation CollectionSave
         // list: the saved name appears.
         Assert.Contains("run-A", mSaved.savedCollections |> List.map (fun n -> n.value))
         // load into a FRESH inverse model sharing the SAME (stateful) collection proxy.
         let mFresh = { inverse () with experimentCollections = mSaved.experimentCollections }
-        let mLoaded = mFresh |> update (CollectionLoad "run-A")
+        let mLoaded = mFresh |> updateTableAndElementRotation (CollectionLoad "run-A")
         Assert.Equal(1, List.length mLoaded.experimentCollection.experiments)
         // the experiments round-trip value-identically (setup + varied + attachment).
         Assert.Equal<Experiments.Experiment list>(mSaved.experimentCollection.experiments, mLoaded.experimentCollection.experiments)
@@ -187,7 +187,7 @@ module InverseConstructorTests =
 
     [<Fact>]
     let ``saving a collection with a blank name reports a typed status and stores nothing`` () =
-        let m1 = inverse () |> update (CollectionSetName "   ") |> update CollectionSave
+        let m1 = inverse () |> updateTableAndElementRotation (CollectionSetName "   ") |> updateTableAndElementRotation CollectionSave
         match m1.collectionStatus with
         | Some text -> Assert.Contains("Save failed", text)
         | None -> Assert.Fail("a blank collection name must surface a typed save-failed status")
@@ -196,7 +196,7 @@ module InverseConstructorTests =
     [<Fact>]
     let ``loading an unknown collection reports a typed status and leaves the live collection alone`` () =
         let m0 = inverse ()
-        let m1 = m0 |> update (CollectionLoad "no-such-collection")
+        let m1 = m0 |> updateTableAndElementRotation (CollectionLoad "no-such-collection")
         match m1.collectionStatus with
         | Some text -> Assert.Contains("No collection named", text)
         | None -> Assert.Fail("an unknown collection load must surface a typed status")
@@ -212,16 +212,16 @@ module InverseConstructorTests =
             let sample = theSample m0
             let expId0Model =
                 m0
-                |> update (ExpChooseElement sample.id.value)
-                |> update (ExpChooseVariable ExperimentControls.VaryR2)
-                |> update ExpCommit
+                |> updateTableAndElementRotation (ExpChooseElement sample.id.value)
+                |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
+                |> updateTableAndElementRotation ExpCommit
             let expId = (List.head expId0Model.experimentCollection.experiments).id
             let seed =
                 expId0Model
-                |> update (AttachDataFileTo (expId, Experiments.DataFilePath "m.csv"))
-                |> update (CollectionSetName "run-A")
-                |> update CollectionSave
-                |> update (SelectBay BayNames.experiments)
+                |> updateTableAndElementRotation (AttachDataFileTo (expId, Experiments.DataFilePath "m.csv"))
+                |> updateTableAndElementRotation (CollectionSetName "run-A")
+                |> updateTableAndElementRotation CollectionSave
+                |> updateTableAndElementRotation (SelectBay BayNames.experiments)
             let window = Window(Width = 1000.0, Height = 980.0)
             window.Content <- Component(fun _ -> mainView seed ignore)
             window.Show()

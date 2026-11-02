@@ -31,7 +31,7 @@ module SourceLibraryTests =
 
     [<Fact>]
     let ``the seeded sources are protected, uniquely identified, and cover the lasers and the lithography lines`` () =
-        let all = SeedSources.all
+        let all = SeedSources.allSeedSources
         Assert.Equal(List.length all, all |> List.map (fun s -> s.id) |> List.distinct |> List.length)
         Assert.All(all, fun s -> Assert.Equal<EntryProtection>(ProtectedBuiltIn, s.protection))
         Assert.All(all, fun s -> Assert.True(nm s.waveLength > 0.0, $"%s{s.name} has a positive wavelength"))
@@ -62,7 +62,7 @@ module SourceLibraryTests =
                 | Leaf _ -> None
             | Ok [] | Error _ -> None
         match sourcesGroup with
-        | Some group -> Assert.Equal<string list>(SeedSources.all |> List.map (fun s -> s.id), leaves group)
+        | Some group -> Assert.Equal<string list>(SeedSources.allSeedSources |> List.map (fun s -> s.id), leaves group)
         | None -> Assert.Fail "the seeded tree must carry a Sources group"
 
     // ------------------------------ the user-sources store ------------------------------
@@ -107,7 +107,7 @@ module SourceLibraryTests =
         let mine = userSource "src-user-krf" "My KrF line" 248.0
         Assert.Equal(Ok (), sources.saveSource mine)
         match live.entriesForKind LightSource with
-        | Ok entries -> Assert.Equal<string list>((SeedSources.all |> List.map (fun s -> s.id)) @ [ mine.id ], sourceIds entries)
+        | Ok entries -> Assert.Equal<string list>((SeedSources.allSeedSources |> List.map (fun s -> s.id)) @ [ mine.id ], sourceIds entries)
         | Error e -> Assert.Fail($"%A{e}")
         Assert.Equal(Ok (Some (SourceItem mine)), live.tryGetEntry mine.id)
         // The seeded presets still resolve; a removed user source no longer does.

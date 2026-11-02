@@ -62,8 +62,8 @@ module RayModelTests =
     let ``AC-B2 a mirror draws an RRG and no TRG, a non-mirror with both emissions draws both, and a detector terminates`` () =
         let mirror = ElementPlacement.create FlatMirror TablePoint.origin
         let mirrorGroups = outgoingGroups mirror
-        Assert.Contains(Reflected, mirrorGroups)
-        Assert.DoesNotContain(Transmitted, mirrorGroups)
+        Assert.Contains(ReflectedRayGroup, mirrorGroups)
+        Assert.DoesNotContain(TransmittedRayGroup, mirrorGroups)
         // The mirror kind-invariant is STRUCTURAL, not a function of the per-element
         // emission toggle: a mirror whose emission is forced to EmitBoth
         // (Emission.withTransmitted true on its default EmitReflectedOnly) STILL draws
@@ -74,8 +74,8 @@ module RayModelTests =
         let mirrorBoth = { mirror with emission = Emission.withTransmitted true mirror.emission }
         Assert.Equal(EmitBoth, mirrorBoth.emission)   // precondition: the phantom-TRG emission state IS representable
         let mirrorBothGroups = outgoingGroups mirrorBoth
-        Assert.Contains(Reflected, mirrorBothGroups)
-        Assert.DoesNotContain(Transmitted, mirrorBothGroups)
+        Assert.Contains(ReflectedRayGroup, mirrorBothGroups)
+        Assert.DoesNotContain(TransmittedRayGroup, mirrorBothGroups)
         // The MIRROR-IMAGE corner of the same structural rule: a mirror whose emission
         // is forced to EmitTransmittedOnly (Emission.withReflected false on its default
         // EmitReflectedOnly) must STILL draw exactly [ Reflected ] -- NON-EMPTY, no TRG.
@@ -88,25 +88,25 @@ module RayModelTests =
         let mirrorTransmittedGroups = outgoingGroups mirrorTransmitted
         Assert.NotEmpty(mirrorTransmittedGroups)
         Assert.Equal(1, List.length mirrorTransmittedGroups)            // exactly one group ...
-        Assert.Equal(Reflected, List.head mirrorTransmittedGroups)      // ... and it is the RRG
-        Assert.DoesNotContain(Transmitted, mirrorTransmittedGroups)
+        Assert.Equal(ReflectedRayGroup, List.head mirrorTransmittedGroups)      // ... and it is the RRG
+        Assert.DoesNotContain(TransmittedRayGroup, mirrorTransmittedGroups)
         // A non-mirror element emitting both (a sample) draws both groups.
         let sample = ElementPlacement.create Sample TablePoint.origin
         let polarizerGroups = outgoingGroups sample
-        Assert.Contains(Reflected, polarizerGroups)
-        Assert.Contains(Transmitted, polarizerGroups)
+        Assert.Contains(ReflectedRayGroup, polarizerGroups)
+        Assert.Contains(TransmittedRayGroup, polarizerGroups)
         // Spec 0046 (operator): every POLARIZER carries the transmitted group only — structurally, like a
         // lens: even forced to EmitBoth it draws the TRG alone.
         let polarizer = ElementPlacement.create LinearPolarizer TablePoint.origin
         Assert.Equal(EmitTransmittedOnly, polarizer.emission)
-        Assert.Equal<RayGroupKind list>([ Transmitted ], outgoingGroups { polarizer with emission = EmitBoth })
+        Assert.Equal<RayGroupKind list>([ TransmittedRayGroup ], outgoingGroups { polarizer with emission = EmitBoth })
         // Spec 0046 (operator): a LENS carries the transmitted group only — structurally, the mirror
         // rule's counterpart: even forced to EmitBoth it draws the TRG alone.
         let lens = ElementPlacement.create Lens TablePoint.origin
         Assert.Equal(EmitTransmittedOnly, lens.emission)
         let lensBoth = { lens with emission = EmitBoth }
         let lensGroups = outgoingGroups lensBoth
-        Assert.Equal<RayGroupKind list>([ Transmitted ], lensGroups)
+        Assert.Equal<RayGroupKind list>([ TransmittedRayGroup ], lensGroups)
         // Every drawn outgoing group corresponds to an engine branch (B.7.1) ...
         for g in mirrorGroups @ mirrorBothGroups @ mirrorTransmittedGroups @ polarizerGroups @ lensGroups do
             match toBeamBranch g with
@@ -115,7 +115,7 @@ module RayModelTests =
         // ... and a mirror never produces the engine Transmitted branch
         // (consistent with BeamNode.attach rejecting Transmitted on a mirror).
         for g in mirrorGroups @ mirrorBothGroups @ mirrorTransmittedGroups do
-            Assert.True(toBeamBranch g <> Some BeamTree.Transmitted, "a mirror must not draw a transmitted group")
+            Assert.True(toBeamBranch g <> Some BeamTree.TransmittedBeam, "a mirror must not draw a transmitted group")
         // A detector terminates the group it receives: nothing leaves it (B.2.2).
         let detector = ElementPlacement.create Detector TablePoint.origin
         Assert.Empty(outgoingGroups detector)
@@ -130,9 +130,9 @@ module RayModelTests =
         // its reflected branch. The two downstream elements sit square to their beam
         // (R2 = 0) so only the mirror's tilt steers the chain.
         let stopsFor (mirror : ElementPlacement) : RaySegmentSpec list =
-            [ { placement = mirror;   gap = 0.5<meter>; branch = BeamTree.Reflected }
-              { placement = lens;     gap = 0.3<meter>; branch = BeamTree.Transmitted }
-              { placement = detector; gap = 0.4<meter>; branch = BeamTree.Transmitted } ]
+            [ { placement = mirror;   gap = 0.5<meter>; branch = BeamTree.ReflectedBeam }
+              { placement = lens;     gap = 0.3<meter>; branch = BeamTree.TransmittedBeam }
+              { placement = detector; gap = 0.4<meter>; branch = BeamTree.TransmittedBeam } ]
         let source = Vector3.create 0.0 0.0 0.0
         let mirror0 = ElementPlacement.create FlatMirror TablePoint.origin |> withR2 (Angle.degree 30.0<deg>)
         let mirror1 = mirror0 |> withR2 (Angle.degree 45.0<deg>)
@@ -163,8 +163,8 @@ module RayModelTests =
         let e1 = ElementPlacement.create Lens TablePoint.origin
         let e2 = ElementPlacement.create Sample TablePoint.origin
         let stops =
-            [ { placement = e1; gap = 0.4<meter>; branch = BeamTree.Transmitted }
-              { placement = e2; gap = 0.7<meter>; branch = BeamTree.Transmitted } ]
+            [ { placement = e1; gap = 0.4<meter>; branch = BeamTree.TransmittedBeam }
+              { placement = e2; gap = 0.7<meter>; branch = BeamTree.TransmittedBeam } ]
         let chain = RayChain.create stops
         let moved = moveSource { x = 0.3<meter>; y = 0.5<meter> } chain
         let resetChain = resetSource moved
@@ -234,10 +234,10 @@ module RayModelTests =
         Assert.True(close lhs rhs, $"Snell mismatch: {lhs} vs {rhs}")
         // Spec 0046: refracting back out of the parallel back face, the transmitted ray
         // leaves PARALLEL to the incoming one — the tilt never steers the transmitted beam.
-        let outDir = (outgoingDirection BeamTree.Transmitted incoming tilted).normalized
+        let outDir = (outgoingDirection BeamTree.TransmittedBeam incoming tilted).normalized
         Assert.True(close (outDir.dot incoming.normalized) 1.0, "the transmitted ray must leave parallel to the incoming ray")
         Assert.True(close (crossing.transmitted.dot incoming.normalized) 1.0, "the crossing's exit direction must be the incoming direction")
         // A square (normal-incidence) element does not bend the ray at all.
         let square = ElementPlacement.create Sample TablePoint.origin
-        let outSquare = (outgoingDirection BeamTree.Transmitted incoming square).normalized
+        let outSquare = (outgoingDirection BeamTree.TransmittedBeam incoming square).normalized
         Assert.True(close (outSquare.dot incoming.normalized) 1.0, "normal incidence must pass straight through")

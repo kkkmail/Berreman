@@ -204,7 +204,7 @@ let private capSurface (project : Vector3 -> ScreenPoint) (n1 : Vector3) (n2 : V
     @ [ for i in 0 .. radials - 1 -> meridian (2.0 * System.Math.PI * float i / float radials) ]
 
 /// A flat element as a 3-D CYLINDER (axis = teal N1): two FLAT caps joined by the side rails.
-let private cylinderViews (cfg : RendererControls.State) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
+let private cylinderViews (cfg : RendererControls.RendererControlsState) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
     let (n1, n2, n3) = orientedBasis e.placement
     let c = e.centre
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
@@ -218,7 +218,7 @@ let private cylinderViews (cfg : RendererControls.State) (project : Vector3 -> S
 
 /// A lens — the cylinder with two SPHERICAL caps that FIT THE BOUNDING BOX (biconvex apexes out to the box
 /// faces for a converging sign, biconcave rims at the faces for diverging).
-let private lensViews (cfg : RendererControls.State) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
+let private lensViews (cfg : RendererControls.RendererControlsState) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
     let (n1, n2, n3) = orientedBasis e.placement
     let c = e.centre
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
@@ -235,7 +235,7 @@ let private lensViews (cfg : RendererControls.State) (project : Vector3 -> Scree
 
 /// A curved mirror — a cylinder with ONE spherical reflective cap (concave for converging, convex for
 /// diverging) plus a flat back, kept inside the bounding box.
-let private mirrorViews (cfg : RendererControls.State) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
+let private mirrorViews (cfg : RendererControls.RendererControlsState) (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView list =
     let (n1, n2, n3) = orientedBasis e.placement
     let c = e.centre
     let halfLen = e.zoom * (e.placement.box.b / 2.0 / 1.0<meter>)
@@ -300,7 +300,7 @@ let wireframeRenderer : ElementRenderer =
     }
 
 /// The nicer look — cylinders / spherical caps coloured by nature, with the element code.
-let shapeRenderer (cfg : RendererControls.State) : ElementRenderer =
+let shapeRenderer (cfg : RendererControls.RendererControlsState) : ElementRenderer =
     {
         name = "Shapes + codes"
         draw =
@@ -314,7 +314,7 @@ let shapeRenderer (cfg : RendererControls.State) : ElementRenderer =
     }
 
 /// Recover the draw function from the serializable renderer DU + config.
-let rendererOf (cfg : RendererControls.State) : ElementRenderer =
+let rendererOf (cfg : RendererControls.RendererControlsState) : ElementRenderer =
     match cfg.kind with
     | RendererControls.Wireframe -> wireframeRenderer
     | RendererControls.Shapes -> shapeRenderer cfg

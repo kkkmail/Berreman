@@ -30,7 +30,7 @@ module MaterialsControls =
 
     /// One row the host pre-flattens from its materials search (Controls carries no domain types).
     /// `materialId` is the material's stable id in its string form.
-    type Row =
+    type MaterialsControlsRow =
         {
             materialId : string
             label : string
@@ -48,7 +48,7 @@ module MaterialsControls =
     /// The bay's pure, serializable state. The search text and the two facet selections mirror the
     /// domain `MaterialQuery` seam (text + category + dispersion) without importing it; the host
     /// re-runs its search and hands back new `rows` whenever they change.
-    type State =
+    type MaterialsControlsState =
         {
             /// The live search text (the host filters; the control only echoes and dispatches).
             searchText : string
@@ -61,12 +61,12 @@ module MaterialsControls =
             /// The selected dispersion option's `code`.
             selectedDispersion : string
             /// The rows the host's search produced — rendered as given, never re-filtered here.
-            rows : Row list
+            rows : MaterialsControlsRow list
             /// The selected row's material id, if any (the Edit / Remove / View verbs' target).
             selectedId : string option
         }
 
-    let empty : State =
+    let emptyMaterialsControls : MaterialsControlsState =
         {
             searchText = ""
             categoryOptions = []
@@ -79,7 +79,7 @@ module MaterialsControls =
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs). The verbs take
     /// no argument — the host owns the selection (`selectedId`) the verb applies to.
-    type Handlers =
+    type MaterialsControlsHandlers =
         {
             /// The search text changed — the host re-runs its search seam.
             setSearchText : string -> unit
@@ -98,7 +98,7 @@ module MaterialsControls =
 
     /// The row the current selection points at; `None` when nothing is selected or the host's
     /// filter no longer lists the selected id (the row-targeted verbs then disable).
-    let selectedRow (state : State) : Row option =
+    let selectedRow (state : MaterialsControlsState) : MaterialsControlsRow option =
         match state.selectedId with
         | Some id -> state.rows |> List.tryFind (fun r -> r.materialId = id)
         | None -> None
@@ -167,7 +167,7 @@ module MaterialsControls =
 
     /// The search row: a label and the live search box (the host filters on every text change —
     /// the same idiom as the Ui materials panel's search field).
-    let private searchRow (state : State) (handlers : Handlers) : IView =
+    let private searchRow (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
@@ -201,11 +201,11 @@ module MaterialsControls =
         ] :> IView
 
     /// One listed material row — clickable (selects it), highlighted when it is the selection.
-    let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
+    let private rowView (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) (r : MaterialsControlsRow) : IView =
         clickBox (ConstructorUiId.materialRow (ConstructorUiKey r.materialId)).value r.label (state.selectedId = Some r.materialId) (fun () -> handlers.selectMaterial r.materialId)
 
     /// The materials list: a NAMED vertical stack of the host's rows, rendered as given.
-    let private listView (state : State) (handlers : Handlers) : IView =
+    let private listView (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) : IView =
         ScrollViewer.create [
             ScrollViewer.maxHeight 220.0
             ScrollViewer.content (
@@ -219,7 +219,7 @@ module MaterialsControls =
     /// The verb row. Add always applies; Remove / View need a listed selection; Edit additionally
     /// needs the selection to be `Editable` — a `ViewOnly` selection REMOVES the Edit verb from the
     /// row (no Edit affordance at all, per the slice), it does not grey it out.
-    let private verbRow (state : State) (handlers : Handlers) : IView =
+    let private verbRow (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) : IView =
         let selected = selectedRow state
         let hasSelection =
             match selected with
@@ -244,7 +244,7 @@ module MaterialsControls =
 
     /// The materials workbench surface — search box, the two facet selectors, the materials list,
     /// and the Add / Edit / Remove / View verbs, top to bottom.
-    let view (state : State) (handlers : Handlers) : IView =
+    let materialsControlsView (state : MaterialsControlsState) (handlers : MaterialsControlsHandlers) : IView =
         StackPanel.create [
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0

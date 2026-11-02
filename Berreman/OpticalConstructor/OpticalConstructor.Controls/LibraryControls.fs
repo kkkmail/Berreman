@@ -33,7 +33,7 @@ module LibraryControls =
         }
 
     /// The bay's pure, serializable state.
-    type State =
+    type LibraryControlsState =
         {
             /// The chosen tree representation, flattened to selectable leaf rows + group headers.
             rows : Row list
@@ -51,7 +51,7 @@ module LibraryControls =
             pendingDescription : string
         }
 
-    let empty : State =
+    let empty : LibraryControlsState =
         {
             rows = []
             kindLabel = ""
@@ -63,7 +63,7 @@ module LibraryControls =
         }
 
     /// Behaviour injected by the host (the functional-proxy seam; tests pass stubs).
-    type Handlers =
+    type LibraryControlsHandlers =
         {
             /// Spec 0027 (026): SELECT this entry id as the pending choice (does NOT bind yet — it shows
             /// the entry's full description and offers Confirm / Cancel).
@@ -141,7 +141,7 @@ module LibraryControls =
             |> Avalonia.FuncUI.DSL.View.withKey $"LibraryHeader_%d{depth}_%s{label}"
         header :> IView
 
-    let private rowView (state : State) (handlers : Handlers) (r : Row) : IView =
+    let private rowView (state : LibraryControlsState) (handlers : LibraryControlsHandlers) (r : Row) : IView =
         if r.entryId = "" then headerRow r.label r.depth
         else
             let highlight =
@@ -172,7 +172,7 @@ module LibraryControls =
 
     /// The pending-bind confirm panel: the pending entry's name, its FULL description, and Confirm / Cancel
     /// (shown only while an entry is pending — i.e. selected but not yet committed).
-    let private confirmPanel (state : State) (handlers : Handlers) : IView list =
+    let private confirmPanel (state : LibraryControlsState) (handlers : LibraryControlsHandlers) : IView list =
         match state.pendingEntryId, state.pendingName with
         | Some _, Some name ->
             [
@@ -211,7 +211,7 @@ module LibraryControls =
 
     /// The Library bay — the constrained-kind label, the bound-entry readout, the kind-constrained tree of
     /// selectable entries, and (once an entry is picked) the confirm panel showing its full description.
-    let view (state : State) (handlers : Handlers) : IView =
+    let libraryControlsView (state : LibraryControlsState) (handlers : LibraryControlsHandlers) : IView =
         let kindText = if state.kindLabel = "" then "Showing: (select an element)" else $"Showing: %s{state.kindLabel}"
         let boundText =
             match state.boundName with

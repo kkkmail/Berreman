@@ -199,7 +199,7 @@ type LibraryWindowContext =
 /// The window's pure model. The engine inputs (corpus, facet defs) are NOT cached here — every
 /// projection re-queries the context's proxies, so a verb's write (or another window's) shows
 /// in the same render pass.
-type Model =
+type LibraryWindowModel =
     {
         context : LibraryWindowContext
         /// Browse (the ordinary window) or Select (spec 0038 step 016): the SAME window
@@ -252,7 +252,7 @@ type Model =
     }
 
 /// The window's model as it opens, before a Select session's current entry is shown (`init`).
-let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : Model =
+let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
     {
         context = context
         mode = mode
@@ -270,7 +270,7 @@ let private initModel (context : LibraryWindowContext) (mode : LibraryWindowMode
         lastError = None
     }
 
-type Msg =
+type LibraryWindowMsg =
     /// Apply the selection as this facet's (single) constraint — an offered-value or bucket
     /// click, or a parsed manual min–max entry; re-applying a constrained facet REPLACES its
     /// selection.
@@ -376,12 +376,12 @@ let liveEntries (context : LibraryWindowContext) (scope : InactiveVisibility) : 
 /// The scope the corpus lists samples at (spec 0038 step 023): `ActiveOnly` in Select mode (a
 /// retired sample is never a valid pick target), else the window's `showInactive` toggle. The
 /// default `ActiveOnly` keeps offers, facet counts and Select byte-for-byte the step-022 behaviour.
-let effectiveScope (m : Model) : InactiveVisibility =
+let effectiveScope (m : LibraryWindowModel) : InactiveVisibility =
     match m.mode with
     | Select _ -> ActiveOnly
     | Browse -> m.showInactive
 
-let constrainedEntries (m : Model) : LibraryEntry list =
+let constrainedEntries (m : LibraryWindowModel) : LibraryEntry list =
     let entries = liveEntries m.context (effectiveScope m)
     match m.mode with
     | Browse -> entries
@@ -402,7 +402,7 @@ type private ProjectionInputs =
         corpus : LibraryEntry list
     }
 
-let private projectionInputs (m : Model) : ProjectionInputs =
+let private projectionInputs (m : LibraryWindowModel) : ProjectionInputs =
     let materialCorpus =
         match m.context.materials.listMaterials ActiveOnly with
         | Ok entries -> entries
@@ -422,14 +422,14 @@ let private projectionInputs (m : Model) : ProjectionInputs =
 
 /// The result set under everything applied (text filter AND facet constraints) — public so
 /// narrowing is unit-testable without a window.
-let filteredEntries (m : Model) : LibraryEntry list =
+let filteredEntries (m : LibraryWindowModel) : LibraryEntry list =
     let inputs = projectionInputs m
     Facets.filter inputs.defs inputs.appliedAll inputs.corpus
 
 /// The selected entry resolved through the LIVE (and, in Select state, kind-constrained)
 /// corpus — a removed sample's selection resolves to nothing, so its panel vanishes with its
 /// row, and a Select session can only ever return an entry inside its constraint.
-let selectedEntry (m : Model) : LibraryEntry option =
+let selectedEntry (m : LibraryWindowModel) : LibraryEntry option =
     match m.selectedEntryId with
     | Some id -> constrainedEntries m |> List.tryFind (fun e -> e.entryId = id)
     | None -> None
@@ -437,14 +437,14 @@ let selectedEntry (m : Model) : LibraryEntry option =
 /// The selected entry as an editable SAMPLE — the Edit verb's target. Only samples have an
 /// editor; a preset selection offers NO Edit affordance (removed, not greyed — the
 /// `MaterialsControls` discipline).
-let editableSample (m : Model) : Sample option =
+let editableSample (m : LibraryWindowModel) : Sample option =
     match selectedEntry m with
     | Some (SampleItem sample) -> Some sample
     | Some (SourceItem _ | DetectorItem _ | PolarizerItem _) | None -> None
 
 /// Spec 0046: the selected entry as an editable USER light source — the Edit verb's other target. A
 /// protected seeded source has no editor (its Edit is absent, like any preset's).
-let editableSource (m : Model) : SourcePreset option =
+let editableSource (m : LibraryWindowModel) : SourcePreset option =
     match selectedEntry m with
     | Some (SourceItem source) ->
         match source.protection with
@@ -461,7 +461,7 @@ let editableSource (m : Model) : SourcePreset option =
 /// The sample ids whose LATEST version is active (the `ActiveOnly` listing — read live every pass).
 /// A sample present in `IncludeInactive` but NOT here has a retired latest version; that is how the
 /// window distinguishes an inactive sample to badge it and to offer Mark active.
-let private activeSampleIds (m : Model) : Set<SampleId> =
+let private activeSampleIds (m : LibraryWindowModel) : Set<SampleId> =
     match m.context.samples.listSamples ActiveOnly with
     | Ok samples -> samples |> List.map (fun s -> s.id) |> Set.ofList
     | Error _ -> Set.empty
@@ -469,7 +469,7 @@ let private activeSampleIds (m : Model) : Set<SampleId> =
 /// A selected SAMPLE's lifecycle (spec 0038 step 023): `ActiveEntry` when its latest version is in
 /// the active set, `InactiveEntry` when it resolves but its latest is retired, `None` when it no
 /// longer resolves.
-let sampleLifecycle (m : Model) (id : SampleId) : EntryLifecycle option =
+let sampleLifecycle (m : LibraryWindowModel) (id : SampleId) : EntryLifecycle option =
     match m.context.samples.tryGetSample id with
     | Ok (Some _) ->
         if Set.contains id (activeSampleIds m) then Some ActiveEntry else Some InactiveEntry
@@ -480,7 +480,7 @@ let sampleLifecycle (m : Model) (id : SampleId) : EntryLifecycle option =
 /// presets) offer NONE (removed, not greyed — requirement 2); a `UserManaged` non-sample has no
 /// version store, so none either; a selected SAMPLE offers Mark inactive + Supersede… when active,
 /// Mark active when retired. Any Select-mode selection offers none.
-let offeredLifecycleActions (m : Model) : LifecycleAction list =
+let offeredLifecycleActions (m : LibraryWindowModel) : LifecycleAction list =
     match m.mode with
     | Select _ -> []
     | Browse ->
@@ -501,7 +501,7 @@ let offeredLifecycleActions (m : Model) : LifecycleAction list =
 /// The number of samples whose latest version is retired (spec 0038 step 023) — the visible count
 /// badge on the show-inactive toggle. Read over the whole samples store (not the filtered corpus),
 /// so the badge is a stable "N retired exist" hint whether the toggle is on or off.
-let inactiveCount (m : Model) : int =
+let inactiveCount (m : LibraryWindowModel) : int =
     let active = activeSampleIds m
     match m.context.samples.listSamples IncludeInactive with
     | Ok all -> all |> List.filter (fun s -> not (Set.contains s.id active)) |> List.length
@@ -534,7 +534,7 @@ let selectedVersionsOf (samples : SampleProxy) (id : SampleId) : (VersionNumber 
     loop VersionNumber.first []
 
 /// The selected SAMPLE's versions (empty for a preset, no selection, or a vanished id).
-let selectedVersions (m : Model) : (VersionNumber * Sample) list =
+let selectedVersions (m : LibraryWindowModel) : (VersionNumber * Sample) list =
     match editableSample m with
     | Some sample -> selectedVersionsOf m.context.samples sample.id
     | None -> []
@@ -624,7 +624,7 @@ let entryNode (entryId : string) : string = (ConstructorUiId.facetTreeNode (Cons
 /// Spec 0046: a Select session opens with the entry its target is bound to now shown as CHOSEN — selected,
 /// highlighted, and the entries group expanded so its row is visible. Nothing to show (no binding, or one
 /// outside the session's kind) leaves the model as it is.
-let private showCurrentEntry (m : Model) : Model =
+let private showCurrentEntry (m : LibraryWindowModel) : LibraryWindowModel =
     match m.mode with
     | Select session ->
         match session.currentEntryIdOpt with
@@ -635,7 +635,7 @@ let private showCurrentEntry (m : Model) : Model =
     | Browse -> m
 
 /// The window's model as it opens — in a Select session, with the target's current entry shown as chosen.
-let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : Model =
+let initLibraryWindow (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry>) : LibraryWindowModel =
     showCurrentEntry (initModel context mode)
 
 // ---------------------------------------------------------------------------
@@ -645,18 +645,18 @@ let init (context : LibraryWindowContext) (mode : LibraryWindowMode<LibraryEntry
 /// A query / selection change also disarms a pending remove confirmation and clears the inline
 /// message — a stale confirm or refusal never outlives the state it referred to (the retired
 /// bay's disarm discipline).
-let private disarmed (m : Model) : Model =
+let private disarmed (m : LibraryWindowModel) : LibraryWindowModel =
     { m with removeGate = NoPendingRemove; lifecycleGate = NoPendingLifecycle; lastError = None }
 
 /// Arm the lifecycle confirm gate on the selected SAMPLE (spec 0038 step 023) — clears the remove
 /// gate and the inline message so at most one confirm is ever pending. A non-sample or empty
 /// selection is inert (its verbs never render).
-let private requestLifecycle (action : LifecycleAction) (m : Model) : Model =
+let private requestLifecycle (action : LifecycleAction) (m : LibraryWindowModel) : LibraryWindowModel =
     match editableSample m with
     | Some sample -> { m with lifecycleGate = PendingLifecycle (sample.id, action); removeGate = NoPendingRemove; lastError = None }
     | None -> m
 
-let update (msg : Msg) (m : Model) : Model =
+let updateLibraryWindow (msg : LibraryWindowMsg) (m : LibraryWindowModel) : LibraryWindowModel =
     match msg with
     | ApplyFacetConstraint (key, selection) ->
         // Single selection per facet: re-applying a constrained facet REPLACES its chip
@@ -879,7 +879,7 @@ let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : Facet
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, buckets, tree,
 /// previews), so a verb's write — this window's or another's — shows in the same pass.
-let facetedState (m : Model) : FacetedTreeControls.State =
+let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeControlsState =
     let inputs = projectionInputs m
     let filtered = Facets.filter inputs.defs inputs.appliedAll inputs.corpus
     let resultCount = List.length filtered
@@ -1081,7 +1081,7 @@ let facetedState (m : Model) : FacetedTreeControls.State =
 /// display; the offers are the apply surface); the film-thickness group's tokens parse as
 /// numeric ranges (a bucket's `numericRangeCode`, or the manual box's raw "lo-hi" text) — an
 /// unparseable token is the documented no-op.
-let facetedHandlers (dispatch : Msg -> unit) : FacetedTreeControls.Handlers =
+let facetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeControls.FacetedTreeControlsHandlers =
     {
         applyConstraint =
             fun groupCode valueCode ->
@@ -1181,7 +1181,7 @@ let private targetText (target : SelectionTarget) : string =
 /// 'Close' cancels — above the pre-applied kind constraint shown as a FIXED banner: it is not a
 /// breadcrumb chip and offers no remove affordance (the constraint lives at the corpus seam).
 /// Absent in Browse mode — everything else IS the ordinary window.
-let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
+let private selectModeRows (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match m.mode with
     | Browse -> []
     | Select context ->
@@ -1202,7 +1202,7 @@ let private selectModeRows (m : Model) (dispatch : Msg -> unit) : IView list =
           |> Avalonia.FuncUI.DSL.View.withKey ConstructorUiId.librarySelectConstraint.value) :> IView ]
 
 /// One lifecycle verb box (spec 0038 step 023), by its action.
-let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) : IView =
+let private lifecycleButton (dispatch : LibraryWindowMsg -> unit) (action : LifecycleAction) : IView =
     match action with
     | MarkInactiveAction -> verbButton ConstructorUiId.libraryMarkInactiveButton.value "Mark inactive" (fun () -> dispatch RequestMarkInactive)
     | MarkActiveAction -> verbButton ConstructorUiId.libraryMarkActiveButton.value "Mark active" (fun () -> dispatch RequestMarkActive)
@@ -1214,7 +1214,7 @@ let private lifecycleButton (dispatch : Msg -> unit) (action : LifecycleAction) 
 /// (a protected entry's Remove REFUSES with the typed reason instead of arming the gate); the
 /// lifecycle verbs from `offeredLifecycleActions` (only for a UserManaged sample — a protected
 /// preset exposes NONE, spec 0038 step 023).
-let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
+let private verbsRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView =
     WrapPanel.create [
         WrapPanel.orientation Orientation.Horizontal
         WrapPanel.children (
@@ -1235,7 +1235,7 @@ let private verbsRow (m : Model) (dispatch : Msg -> unit) : IView =
 /// The show-inactive/superseded toggle row (spec 0038 step 023): a keyed verb box carrying the
 /// visible count badge — `Show inactive (N)` while hidden, `Hide inactive (N)` while shown.
 /// Browse-mode only (Select always lists `ActiveOnly`).
-let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
+let private toggleRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match m.mode with
     | Select _ -> []
     | Browse ->
@@ -1247,7 +1247,7 @@ let private toggleRow (m : Model) (dispatch : Msg -> unit) : IView list =
         [ verbButton ConstructorUiId.libraryShowInactiveToggle.value label (fun () -> dispatch ToggleShowInactive) ]
 
 /// The inline remove confirmation — present only while a sample remove is armed.
-let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+let private confirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     let prompt =
         match m.removeGate with
         | NoPendingRemove -> None
@@ -1278,7 +1278,7 @@ let private confirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
 /// The inline lifecycle confirmation (spec 0038 step 023) — present only while a lifecycle verb is
 /// armed. The prompt NAMES the sample and the transition (the verb the user pressed); Confirm runs
 /// the matching proxy verb, Cancel disarms.
-let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView list =
+let private lifecycleConfirmRow (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match m.lifecycleGate with
     | NoPendingLifecycle -> []
     | PendingLifecycle (id, action) ->
@@ -1306,7 +1306,7 @@ let private lifecycleConfirmRow (m : Model) (dispatch : Msg -> unit) : IView lis
 
 /// The inline typed-refusal message. Every case carries its diagnostic reason — never a
 /// cascade, never a dialog.
-let private messageRow (m : Model) : IView list =
+let private messageRow (m : LibraryWindowModel) : IView list =
     match m.lastError with
     | None -> []
     | Some err ->
@@ -1334,7 +1334,7 @@ let private messageRow (m : Model) : IView list =
 /// marked `(latest)` and the currently-viewed one marked `▸`. Clicking a row shows THAT version in
 /// the panel — the latest editable through the Edit verb, an older one view-only. Absent for a
 /// preset or a single-version sample (the common case in the live store until step 25).
-let private versionsRow (versions : (VersionNumber * Sample) list) (latest : VersionNumber) (shown : VersionNumber) (dispatch : Msg -> unit) : IView list =
+let private versionsRow (versions : (VersionNumber * Sample) list) (latest : VersionNumber) (shown : VersionNumber) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match versions with
     | [] | [ _ ] -> []
     | _ ->
@@ -1362,7 +1362,7 @@ let private versionsRow (versions : (VersionNumber * Sample) list) (latest : Ver
 /// VIEW-ONLY (a `viewOnlyNote`, no Save path — older versions have no editor). Resolved through the
 /// live corpus at render time, so a removed sample's panel vanishes with its row. The retired bay's
 /// View verb is subsumed by selection.
-let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
+let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView list =
     match selectedEntry m with
     | None -> []
     | Some entry ->
@@ -1427,7 +1427,7 @@ let private viewPanel (m : Model) (dispatch : Msg -> unit) : IView list =
 /// state — the Select/Close pair and the fixed-constraint banner FIRST (step 016), then the
 /// ordinary verbs, the inline confirm gate, the typed refusal message, and the selected
 /// entry's view panel.
-let view (m : Model) (dispatch : Msg -> unit) : IView =
+let libraryWindowView (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> unit) : IView =
     DockPanel.create [
         DockPanel.children [
             Border.create [
@@ -1454,7 +1454,7 @@ let view (m : Model) (dispatch : Msg -> unit) : IView =
             Border.create [
                 automationId<Border> ConstructorUiId.libraryFacetTreeHost.value
                 Border.padding (Thickness 8.0)
-                Border.child (FacetedTreeControls.view (facetedState m) (facetedHandlers dispatch))
+                Border.child (FacetedTreeControls.facetedTreeControlsView (facetedState m) (facetedHandlers dispatch))
             ]
         ]
     ] :> IView

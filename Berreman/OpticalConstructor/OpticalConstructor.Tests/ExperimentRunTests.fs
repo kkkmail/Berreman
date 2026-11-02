@@ -61,7 +61,7 @@ module ExperimentRunTests =
         let _, longRows = ExperimentExportFile.tableOf ragged
         Assert.Equal(3, Array.length longRows)
         // The in-memory store refuses a run with no series.
-        let store = ExperimentExport.createInMemory ()
+        let store = ExperimentExport.createInMemoryExperimentExport ()
         match store.proxy.exportRun (run []) with
         | Error (ExperimentExport.NothingToExport _) -> ()
         | other -> Assert.Fail($"expected NothingToExport, got %A{other}")

@@ -89,13 +89,13 @@ module LauncherIds =
 /// collection proxies (STORE_XDUO_0006 / 0005) onto the seed by record update, so every constructor
 /// window the launcher or the strip opens shares the ONE collection store built in `AppContext.create`.
 module private ConstructorScene =
-    let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.Model) : unit =
-        window.Width <- TableAndElementRotationView.canvasWidth
-        window.Height <- TableAndElementRotationView.canvasHeight + 210.0
+    let mount (window : HostWindow) (seed : unit -> TableAndElementRotationView.TableAndElementRotationModel) : unit =
+        window.Width <- TableAndElementRotationView.tableAndElementRotationCanvasWidth
+        window.Height <- TableAndElementRotationView.tableAndElementRotationCanvasHeight + 210.0
         // Spec 0046: never larger than the screen it opens on — on a laptop the design height can exceed
         // the working area, which put the bottom of the scrolling page (the table) off-screen.
         OpticalConstructor.Controls.WindowFit.keepOnScreen window
-        Program.mkSimple seed TableAndElementRotationView.update TableAndElementRotationView.mainView
+        Program.mkSimple seed TableAndElementRotationView.updateTableAndElementRotation TableAndElementRotationView.mainView
         |> Program.withHost window
         |> Program.run
 

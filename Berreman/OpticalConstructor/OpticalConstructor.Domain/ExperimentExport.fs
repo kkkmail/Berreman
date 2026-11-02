@@ -51,7 +51,7 @@ module ExperimentExport =
         }
 
     /// A fresh, empty in-memory export store. A run with no series is refused (`NothingToExport`).
-    let createInMemory () : ExperimentExportStore =
+    let createInMemoryExperimentExport () : ExperimentExportStore =
         let store = ref ([] : ExportedRun list)
         let exportRun (run : ExportedRun) : Result<unit, ExportError> =
             match run.series with

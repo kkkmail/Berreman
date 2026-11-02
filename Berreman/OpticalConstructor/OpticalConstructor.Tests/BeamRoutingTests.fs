@@ -55,8 +55,8 @@ module BeamRoutingTests =
     [<Fact>]
     let ``AC-A3 detectors on different branches report independent fields`` () =
         let ems = solve rootNode
-        let r = branchEmField BeamBranch.Reflected ems
-        let t = branchEmField BeamBranch.Transmitted ems
+        let r = branchEmField BeamBranch.ReflectedBeam ems
+        let t = branchEmField BeamBranch.TransmittedBeam ems
         // EmFieldSystem isolates reflected vs transmitted -> the branch states differ.
         Assert.True(abs (eNorm r - eNorm t) > 1e-9, $"reflected {eNorm r} vs transmitted {eNorm t}")
 
@@ -65,8 +65,8 @@ module BeamRoutingTests =
         let ems = solve rootNode
         let gap : Layer = { properties = OpticalProperties.vacuum; thickness = Thickness.nm 250.0<nm> }
 
-        let viaModule = childIncidentField BeamBranch.Transmitted gap ems
-        let manual = (branchEmField BeamBranch.Transmitted ems).propagate gap
+        let viaModule = childIncidentField BeamBranch.TransmittedBeam gap ems
+        let manual = (branchEmField BeamBranch.TransmittedBeam ems).propagate gap
         Assert.Equal(eNorm manual, eNorm viaModule, 12)
 
     [<Fact>]
@@ -75,7 +75,7 @@ module BeamRoutingTests =
         let gap : Layer = { properties = OpticalProperties.vacuum; thickness = Thickness.nm 250.0<nm> }
         let childSys : ShortOpticalSystem = { films = []; lower = glass }
 
-        let childEms = routeAndSolve BeamBranch.Transmitted gap ems childSys
+        let childEms = routeAndSolve BeamBranch.TransmittedBeam gap ems childSys
         let directChild =
-            BaseOpticalSystemSolver(childIncidentField BeamBranch.Transmitted gap ems, childSys).emSys
+            BaseOpticalSystemSolver(childIncidentField BeamBranch.TransmittedBeam gap ems, childSys).emSys
         Assert.Equal(eNorm directChild.transmitted, eNorm childEms.transmitted, 12)

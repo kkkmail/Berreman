@@ -26,7 +26,7 @@ module GroupsLibrary =
     /// The single shipped groups-schema version, pinned with `const` in the schema. A differing
     /// value fails validation and so falls back to the empty library (no migration).
     [<Literal>]
-    let schemaVersion = "1.0"
+    let groupsLibrarySchemaVersion = "1.0"
 
     /// The build-copied groups schema content item, loaded beside the assembly at runtime (the
     /// fsproj copies `schema/...groups.schema.json` preserving this relative path). Mirrors the
@@ -55,7 +55,7 @@ module GroupsLibrary =
     /// (R-4 / the validate-on-load seam the spec names by line) so a NESTED groups-file violation —
     /// e.g. a malformed member placement deep in the document — keeps its `results.Details` instance
     /// location instead of collapsing to a generic top-level message.
-    let validate (element : JsonElement) : Result<unit, StorageError> =
+    let validateGroupsLibrary (element : JsonElement) : Result<unit, StorageError> =
         match schema.Value with
         | Error e -> Error e
         | Ok schema ->
@@ -74,7 +74,7 @@ module GroupsLibrary =
         try
             let node = JsonSerializer.SerializeToNode(library, ProjectJson.options)
             let envelope = node.AsObject()
-            envelope.["schemaVersion"] <- JsonValue.Create(schemaVersion)
+            envelope.["schemaVersion"] <- JsonValue.Create(groupsLibrarySchemaVersion)
             Ok(envelope.ToJsonString(ProjectJson.options))
         with e -> Error(JsonParseError e.Message)
 
@@ -90,7 +90,7 @@ module GroupsLibrary =
         | Error e -> Error e
         | Ok doc ->
             use doc = doc
-            match validate doc.RootElement with
+            match validateGroupsLibrary doc.RootElement with
             | Error e -> Error e
             | Ok () ->
                 try Ok(doc.RootElement.Deserialize<Groups.GroupsLibrary>(ProjectJson.options))
