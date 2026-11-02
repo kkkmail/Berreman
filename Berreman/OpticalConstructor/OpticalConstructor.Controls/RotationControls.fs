@@ -33,6 +33,9 @@ type ControlCaption =
 
     member this.value = let (ControlCaption c) = this in c
 
+    /// This text as the key that tells its control apart from its siblings (a chart series' toggle).
+    member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
 /// Which way a − / + step button moves its value.
 type StepDirection =
     | StepDecrease

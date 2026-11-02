@@ -120,6 +120,13 @@ module ExperimentControls =
             y : float
         }
 
+        /// This angular point (x the angle in degrees, y the radius) on the cartesian plane: the pure
+        /// counterpart of ScottPlot's `PolarAxis.GetCoordinates` (spec 0027/030). The chart window draws
+        /// through ScottPlot's own, so its polar grid lines up with the plotted points.
+        member this.polarXY : ChartPoint =
+            let t = this.x * System.Math.PI / 180.0
+            { x = this.y * cos t; y = this.y * sin t }
+
     /// One drawn chart series: a display name (legend) and its points.
     type ChartSeries =
         {

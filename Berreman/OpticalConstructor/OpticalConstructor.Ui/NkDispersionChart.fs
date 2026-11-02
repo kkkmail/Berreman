@@ -53,7 +53,7 @@ let private classifyWavelength : WaveLength = WaveLength.Nm 550.0<nm>
 /// bounds then fit each axis independently (018 `dataBounds`).
 let private rightAxisSeries (indices : int list) (chart : ExperimentChart) : ChartStyle.ChartStyleState =
     indices
-    |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide i ChartStyle.RightAxis st) (ChartStyle.defaultChartStyleState chart)
+    |> List.fold (fun st i -> ChartStyle.setSeriesAxisSide (ChartStyle.ChartSeriesIndex i) ChartStyle.RightAxis st) (ChartStyle.defaultChartStyleState chart)
 
 /// Spec 0038 comment 007: the principal-axis n/k slots a given anisotropy DISTINGUISHES, each a
 /// (tensor diagonal index, n-series name, k-series name) triple — so the chart draws ONLY the curves
@@ -87,15 +87,17 @@ let nkDispersionChart (anisotropy : Anisotropy) (o : OpticalPropertiesWithDisp) 
     let sqrtDiag (i : int) : Complex list =
         ws |> List.map (fun w -> Complex.Sqrt ((o.epsWithDisp.getEps w).[i, i]))
     let sampled = nkAxisSpec anisotropy |> List.map (fun (i, nName, kName) -> nName, kName, sqrtDiag i)
-    let nSeries = sampled |> List.map (fun (nName, _, d) -> { name = nName; points = List.zip xs (d |> List.map (fun c -> c.Real)) })
-    let kSeries = sampled |> List.map (fun (_, kName, d) -> { name = kName; points = List.zip xs (d |> List.map (fun c -> c.Imaginary)) })
+    let curve (name : string) (ys : float list) : ExperimentControls.ChartSeries =
+        { ExperimentControls.ChartSeries.name = ControlCaption name; points = List.map2 (fun x y -> { ExperimentControls.ChartPoint.x = x; y = y }) xs ys }
+    let nSeries = sampled |> List.map (fun (nName, _, d) -> curve nName (d |> List.map (fun c -> c.Real)))
+    let kSeries = sampled |> List.map (fun (_, kName, d) -> curve kName (d |> List.map (fun c -> c.Imaginary)))
     {
         series = nSeries @ kSeries
-        xLabel = SpectralAxis.axisLabel u
-        yLabel = "n"
-        title = "n / k dispersion"
-        description = "n on the left axis, k on the right, per principal axis the anisotropy distinguishes (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
-        angular = false
+        xLabel = ControlCaption (SpectralAxis.axisLabel u)
+        yLabel = ControlCaption "n"
+        title = ControlCaption "n / k dispersion"
+        description = ControlCaption "n on the left axis, k on the right, per principal axis the anisotropy distinguishes (nᵢ = Re[√εᵢᵢ], kᵢ = Im[√εᵢᵢ]); a non-dispersive material draws flat lines."
+        xAxisKind = NonAngularXAxis
     }
 
 /// The n/k chart's paired style seed for a given anisotropy: the n series (the first half — one per
@@ -139,16 +141,19 @@ let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationC
 let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let rhos = ws |> List.map (fun w -> o.rhoWithDisp.getRho w)
-    let series (comp : GyrationComponent) : ChartSeries =
+    let series (comp : GyrationComponent) : ExperimentControls.ChartSeries =
         let i, j = gyrationSlot comp
-        { name = gyrationComponentLabel comp; points = List.zip xs (rhos |> List.map (fun r -> r.[i, j].Imaginary)) }
+        {
+            ExperimentControls.ChartSeries.name = ControlCaption (gyrationComponentLabel comp)
+            points = List.map2 (fun x y -> { ExperimentControls.ChartPoint.x = x; y = y }) xs (rhos |> List.map (fun r -> r.[i, j].Imaginary))
+        }
     {
         series = components |> List.map series
-        xLabel = SpectralAxis.axisLabel u
-        yLabel = "g"
-        title = "Gyration components"
-        description = "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength, per the entry's symmetry class."
-        angular = false
+        xLabel = ControlCaption (SpectralAxis.axisLabel u)
+        yLabel = ControlCaption "g"
+        title = ControlCaption "Gyration components"
+        description = ControlCaption "Optical-activity gyration tensor components g₍ᵢⱼ₎ = Im[ρᵢⱼ] vs wavelength, per the entry's symmetry class."
+        xAxisKind = NonAngularXAxis
     }
 
 /// The gyration chart's style seed: every g component on the LEFT axis (a single shared scale).
@@ -181,8 +186,10 @@ let muKindOfComplexity (complexity : MaterialComplexity) : MuKind =
 let muChart (muKind : MuKind) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure) (range : Range<WaveLength>) : ExperimentChart =
     let xs, ws = grid u range
     let mus = ws |> List.map (fun w -> o.muWithDisp.getMu w)
-    let diagSeries (name : string) (i : int) : ChartSeries =
-        { name = name; points = List.zip xs (mus |> List.map (fun m -> m.[i, i].Real)) }
+    let curve (name : string) (ys : float list) : ExperimentControls.ChartSeries =
+        { ExperimentControls.ChartSeries.name = ControlCaption name; points = List.map2 (fun x y -> { ExperimentControls.ChartPoint.x = x; y = y }) xs ys }
+    let diagSeries (name : string) (i : int) : ExperimentControls.ChartSeries =
+        curve name (mus |> List.map (fun m -> m.[i, i].Real))
     let gyrationMag (m : Mu) : float =
         let im (i : int) (j : int) : float = m.[i, j].Imaginary
         sqrt (im 0 1 * im 0 1 + im 0 2 * im 0 2 + im 1 2 * im 1 2)
@@ -194,15 +201,15 @@ let muChart (muKind : MuKind) (o : OpticalPropertiesWithDisp) (u : UnitOfMeasure
                 diagSeries "μ₁₁" 0
                 diagSeries "μ₂₂" 1
                 diagSeries "μ₃₃" 2
-                { name = muGyrationSeriesName; points = List.zip xs (mus |> List.map gyrationMag) }
+                curve muGyrationSeriesName (mus |> List.map gyrationMag)
             ]
     {
         series = series
-        xLabel = SpectralAxis.axisLabel u
-        yLabel = "μ"
-        title = "Polder μ components"
-        description = "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength; a scalar μ draws its single component."
-        angular = false
+        xLabel = ControlCaption (SpectralAxis.axisLabel u)
+        yLabel = ControlCaption "μ"
+        title = ControlCaption "Polder μ components"
+        description = ControlCaption "Polder permeability diagonal μᵢᵢ (left axis) and the gyration magnitude (right axis) vs wavelength; a scalar μ draws its single component."
+        xAxisKind = NonAngularXAxis
     }
 
 /// The Polder-μ chart's style seed: every diagonal μ component on the LEFT axis, the gyration
@@ -212,7 +219,7 @@ let muStyle (chart : ExperimentChart) : ChartStyle.ChartStyleState =
     let gyrationIndices =
         chart.series
         |> List.mapi (fun i s -> i, s.name)
-        |> List.choose (fun (i, name) -> if name = muGyrationSeriesName then Some i else None)
+        |> List.choose (fun (i, name) -> if name.value = muGyrationSeriesName then Some i else None)
     rightAxisSeries gyrationIndices chart
 
 /// Whether the entry's ASSEMBLED engine ρ carries any gyration at the classify wavelength — used to

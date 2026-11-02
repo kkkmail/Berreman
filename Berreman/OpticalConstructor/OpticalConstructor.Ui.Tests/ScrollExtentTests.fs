@@ -152,8 +152,20 @@ module ScrollExtentTests =
     let ``the chart and solver-handoff windows leave everything reachable`` () =
         let _, _, _, library = stores ()
         let chart : ExperimentChart.ExperimentChart =
-            { series = [ { ExperimentChart.ChartSeries.name = "Ψ"; points = [ 0.0, 10.0; 1.0, 12.0 ] } ]
-              xLabel = "x"; yLabel = "y"; title = "t"; description = "d"; angular = true }
+            {
+                series =
+                    [
+                        {
+                            ExperimentControls.ChartSeries.name = ControlCaption "Ψ"
+                            points = [ { ExperimentControls.ChartPoint.x = 0.0; y = 10.0 }; { x = 1.0; y = 12.0 } ]
+                        }
+                    ]
+                xLabel = ControlCaption "x"
+                yLabel = ControlCaption "y"
+                title = ControlCaption "t"
+                description = ControlCaption "d"
+                xAxisKind = ExperimentChart.AngularXAxis
+            }
         let noData : ExperimentData.ExperimentDataProxy =
             { tryLoadIntensity = fun _ -> Error (MeasuredData.MalformedDataFile "none")
               tryLoadEllipsometric = fun _ -> Error (MeasuredData.MalformedDataFile "none") }

@@ -183,12 +183,12 @@ module WorkbenchInfoAndCaptureTests =
     let ``the run uses the source's wavelength: a tunable source set to 632.8 nm equals the HeNe line`` () =
         let tuned = filmOnR2 "src-xe-mono" |> updateTableAndElementRotation (ExpSetSourceWaveLength 632.8)
         let line = filmOnR2 "src-hene-633"
-        let points (m : TableAndElementRotationModel) : (float * float) list = (List.head (experimentResult m).series).points
-        List.zip (points tuned) (points line)
-        |> List.iter (fun ((_, a), (_, b)) -> Assert.True(abs (a - b) < 1e-12, $"%g{a} vs %g{b}"))
+        let ys (m : TableAndElementRotationModel) : float list = (List.head (experimentResult m).series).points |> List.map (fun p -> p.y)
+        List.zip (ys tuned) (ys line)
+        |> List.iter (fun (a, b) -> Assert.True(abs (a - b) < 1e-12, $"%g{a} vs %g{b}"))
         // ... and it differs from the 600 nm default (the wavelength really is used).
         let default600 = filmOnR2 "src-600"
-        Assert.True(List.exists2 (fun (_, a) (_, b) -> abs (a - b) > 1e-6) (points line) (points default600))
+        Assert.True(List.exists2 (fun a b -> abs (a - b) > 1e-6) (ys line) (ys default600))
 
     // ------------------------------ 6–7: the detector decides; the capture step waits ------------------------------
 
@@ -210,7 +210,7 @@ module WorkbenchInfoAndCaptureTests =
         Assert.Contains("Transmitted (T) — intensity", offers)
         Assert.Contains("Reflected (R) — Ψ, Δ (ellipsometer)", offers)
         let chart = experimentResult chosen
-        Assert.Equal<string list>([ "Intensity (T)"; "Ψ (R)"; "Δ (R)" ], chart.series |> List.map (fun s -> s.name))
+        Assert.Equal<string list>([ "Intensity (T)"; "Ψ (R)"; "Δ (R)" ], chart.series |> List.map (fun s -> s.name.value))
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
@@ -274,11 +274,11 @@ module WorkbenchInfoAndCaptureTests =
             |> updateTableAndElementRotation (ExpChooseElement (elem 3 m).id.value)
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
-        let ys = (List.head (experimentResult run).series).points |> List.map snd
+        let ys = (List.head (experimentResult run).series).points |> List.map (fun p -> p.y)
         Assert.True(List.forall (fun y -> abs y < 1e-9) ys, $"crossed polarizers must pass nothing, max %g{List.max ys}")
         // Parallel instead: the film's own transmittance comes through.
         let parallel' = run |> fun r -> { r with selection = ElementSelected 4 } |> updateTableAndElementRotation (RotSetAxis (RotationControls.R1, 0.0))
-        Assert.True((List.head (experimentResult parallel').series).points |> List.exists (fun (_, y) -> y > 0.5))
+        Assert.True((List.head (experimentResult parallel').series).points |> List.exists (fun p -> p.y > 0.5))
 
     // ------------------------------ the source editor's tunable mode ------------------------------
 

@@ -1247,11 +1247,14 @@ let private exportDraftRun (model : TableAndElementRotationModel) : TableAndElem
     let chart = draftChartHook model
     let run : ExperimentExport.ExportedRun =
         {
-            title = chart.title
-            xLabel = chart.xLabel
-            yLabel = chart.yLabel
-            description = chart.description
-            series = chart.series |> List.map (fun series -> { ExperimentExport.ExportedSeries.name = series.name; points = series.points })
+            title = chart.title.value
+            xLabel = chart.xLabel.value
+            yLabel = chart.yLabel.value
+            description = chart.description.value
+            series =
+                chart.series
+                |> List.map (fun series ->
+                    { ExperimentExport.ExportedSeries.name = series.name.value; points = series.points |> List.map (fun p -> p.x, p.y) })
         }
     match model.experimentExport.exportRun run with
     | Ok () -> { model with exportStatus = Some $"Exported %d{List.length run.series} series (%s{run.title})." }
@@ -2528,8 +2531,11 @@ let private materialErrorText (err : MaterialLibrary.MaterialError) : string =
         $"Cannot run: material library error (%s{reason})."
 
 /// A `ChartSeries` from named (x, y) points.
-let private series (name : string) (points : (float * float) list) : ExperimentChart.ChartSeries =
-    { name = name; points = points }
+let private series (name : string) (points : (float * float) list) : ExperimentControls.ChartSeries =
+    {
+        ExperimentControls.ChartSeries.name = ControlCaption name
+        points = points |> List.map (fun (x, y) -> { ExperimentControls.ChartPoint.x = x; y = y })
+    }
 
 /// The scene branches an experiment captures, each with a short tag for its series name (spec 028).
 let private branchesFor (m : Experiments.MeasurementMode) : (BeamTree.BeamBranch * string) list =
@@ -2717,14 +2723,19 @@ let chartForRun
     match variable, kinds, captured with
     | _, _, [] -> ExperimentChart.emptyExperimentChart
     | Experiments.VaryR1, [ Library.Intensity ], _ when noPolarizerOnPath ->
-        { ExperimentChart.emptyExperimentChart with title = noAnalyzerTitle; description = noAnalyzerStatus }
+        { ExperimentChart.emptyExperimentChart with title = ControlCaption noAnalyzerTitle; description = ControlCaption noAnalyzerStatus }
     | _ when not variedIsBound && variedElement.placement.catalogueKind <> LightSource -> ExperimentChart.emptyExperimentChart
     | _ ->
         let built =
             captured
             |> List.map (fun (tag, j) -> tag, j, buildersFor (List.item j layout.elements).path)
         match built |> List.tryPick (fun (_, _, b) -> match b with Error e -> Some e | Ok _ -> None) with
-        | Some reason -> { ExperimentChart.emptyExperimentChart with title = "Sample materials failed to resolve"; description = reason }
+        | Some reason ->
+            {
+                ExperimentChart.emptyExperimentChart with
+                    title = ControlCaption "Sample materials failed to resolve"
+                    description = ControlCaption reason
+            }
         | None ->
             let seriesList =
                 built
@@ -2741,12 +2752,15 @@ let chartForRun
                         [ series (seriesName measurement tag "Ψ") (pd (fun v -> v.psi))
                           series (seriesName measurement tag "Δ") (pd (fun v -> v.delta)) ])
             {
-                series = seriesList
-                xLabel = xLabel
-                yLabel = yLabel
-                title = title
-                description = description
-                angular = (match variable with Experiments.VaryR1 | Experiments.VaryR2 -> true | Experiments.VaryWaveLength -> false)
+                ExperimentChart.ExperimentChart.series = seriesList
+                xLabel = ControlCaption xLabel
+                yLabel = ControlCaption yLabel
+                title = ControlCaption title
+                description = ControlCaption description
+                xAxisKind =
+                    match variable with
+                    | Experiments.VaryR1 | Experiments.VaryR2 -> ExperimentChart.AngularXAxis
+                    | Experiments.VaryWaveLength -> ExperimentChart.NonAngularXAxis
             }
 
 /// The chart for an EXPLICIT experiment configuration at the source's own wavelength setting (`chartForRun`
@@ -2889,16 +2903,10 @@ let experimentState (model : TableAndElementRotationModel) : ExperimentControls.
             match model.elements with
             | [] -> ControlWithheld
             | _ -> ControlOffered
-        series =
-            chart.series
-            |> List.map (fun s ->
-                {
-                    ExperimentControls.ChartSeries.name = ControlCaption s.name
-                    points = s.points |> List.map (fun (x, y) -> { ExperimentControls.ChartPoint.x = x; y = y })
-                })
-        xLabel = ControlCaption chart.xLabel
-        yLabel = ControlCaption chart.yLabel
-        description = ControlCaption chart.description
+        series = chart.series
+        xLabel = chart.xLabel
+        yLabel = chart.yLabel
+        description = chart.description
         psiDelta = None
     }
 

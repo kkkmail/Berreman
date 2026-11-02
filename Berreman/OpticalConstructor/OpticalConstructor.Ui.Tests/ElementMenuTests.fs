@@ -185,7 +185,7 @@ module ElementMenuTests =
         Assert.Equal("Transmitted (T) — intensity", (List.head st.measurementOffers).label.value)
         // Even an explicit Both request runs (and records) T alone.
         let both = m |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
-        Assert.Equal<string list>([ "Intensity" ], (experimentResult both).series |> List.map (fun s -> s.name))
+        Assert.Equal<string list>([ "Intensity" ], (experimentResult both).series |> List.map (fun s -> s.name.value))
         let committed = both |> updateTableAndElementRotation ExpCommit
         Assert.Equal(Experiments.CaptureTransmitted, (List.head committed.experimentCollection.experiments).measurement)
 

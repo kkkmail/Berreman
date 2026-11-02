@@ -233,16 +233,16 @@ module ExperimentControlsTests =
         let chart = experimentResult (withChosenPolarizer ())
         Assert.Single(chart.series) |> ignore
         Assert.NotEmpty((List.head chart.series).points)
-        Assert.Equal("Rotation R1 (°)", chart.xLabel)
-        Assert.Equal("Intensity (S₀)", chart.yLabel)
+        Assert.Equal("Rotation R1 (°)", chart.xLabel.value)
+        Assert.Equal("Intensity (S₀)", chart.yLabel.value)
 
     [<Fact>]
     let ``a VaryR2 intensity experiment yields one incidence series with x running to 89`` () =
         let chart = experimentResult (withChosenSample ExperimentControls.VaryR2)
         Assert.Single(chart.series) |> ignore
-        let xs = (List.head chart.series).points |> List.map fst
+        let xs = (List.head chart.series).points |> List.map (fun p -> p.x)
         Assert.NotEmpty(xs)
-        Assert.Equal("Incidence angle R2 (°)", chart.xLabel)
+        Assert.Equal("Incidence angle R2 (°)", chart.xLabel.value)
         Assert.True(abs (89.0 - List.last xs) < 1e-6, $"last x = %g{List.last xs}, expected 89")
         Assert.True((xs = List.sort xs), "incidence x-values must be sorted ascending")
 
@@ -254,10 +254,10 @@ module ExperimentControlsTests =
             |> updateTableAndElementRotation (ExpSetRangeMax 700.0)
         let chart = experimentResult m
         Assert.Single(chart.series) |> ignore
-        let xs = (List.head chart.series).points |> List.map fst
+        let xs = (List.head chart.series).points |> List.map (fun p -> p.x)
         Assert.True(abs (300.0 - List.head xs) < 1e-6)
         Assert.True(abs (700.0 - List.last xs) < 1e-6)
-        Assert.Equal("Wavelength (nm)", chart.xLabel)
+        Assert.Equal("Wavelength (nm)", chart.xLabel.value)
 
     [<Fact>]
     let ``capturing BOTH branches yields two series (T and R)`` () =
@@ -273,7 +273,7 @@ module ExperimentControlsTests =
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureBoth)
         let chart = experimentResult m
         Assert.Equal(2, List.length chart.series)
-        Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], chart.series |> List.map (fun s -> s.name))
+        Assert.Equal<string list>([ "Intensity (T)"; "Intensity (R)" ], chart.series |> List.map (fun s -> s.name.value))
 
     [<Fact>]
     let ``an ellipsometer VaryR2 experiment yields two series (Psi and Delta)`` () =
@@ -283,7 +283,7 @@ module ExperimentControlsTests =
             |> updateTableAndElementRotation (ExpChooseVariable ExperimentControls.VaryR2)
             |> updateTableAndElementRotation (ExpChooseMeasurement ExperimentControls.CaptureT)
         let chart = experimentResult m
-        Assert.Equal<string list>([ "Ψ"; "Δ" ], chart.series |> List.map (fun s -> s.name))
+        Assert.Equal<string list>([ "Ψ"; "Δ" ], chart.series |> List.map (fun s -> s.name.value))
 
     [<Fact>]
     let ``a VaryR2 experiment with no bound sample yields an empty chart`` () =
@@ -335,8 +335,8 @@ module ExperimentControlsTests =
         let m1 = m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m))     // a sample defaults to VaryR1
         let chart = experimentResult m1
         Assert.Empty(chart.series)
-        Assert.Equal(noAnalyzerTitle, chart.title)
-        Assert.Equal(noAnalyzerStatus, chart.description)
+        Assert.Equal(noAnalyzerTitle, chart.title.value)
+        Assert.Equal(noAnalyzerStatus, chart.description.value)
         // The Experiments bay surfaces the same status through its state.
         Assert.Equal(noAnalyzerStatus, (experimentState m1).description.value)
 
@@ -348,9 +348,16 @@ module ExperimentControlsTests =
         Assert.Equal(Some SeedEntryIds.polarizerLp, (elem 2 m).placement.valueId)
         let chart = experimentResult (m |> updateTableAndElementRotation (ExpChooseElement (idOf 2 m)))
         Assert.Single(chart.series) |> ignore
-        Assert.Equal("Rotating analyzer (Malus)", chart.title)
+        Assert.Equal("Rotating analyzer (Malus)", chart.title.value)
 
     // ============================ ExperimentChart CSV (unchanged data model) ============================
+
+    /// A named chart series over (x, y) points.
+    let private curve (name : string) (points : (float * float) list) : ExperimentControls.ChartSeries =
+        {
+            ExperimentControls.ChartSeries.name = ControlCaption name
+            points = points |> List.map (fun (x, y) -> { ExperimentControls.ChartPoint.x = x; y = y })
+        }
 
     [<Fact>]
     let ``ExperimentChart toCsv writes a header and one row per x for two series`` () =
@@ -358,10 +365,10 @@ module ExperimentControlsTests =
             { ExperimentChart.emptyExperimentChart with
                 series =
                     [
-                        { ExperimentChart.ChartSeries.name = "Ψ"; points = [ 0.0, 10.0; 1.0, 11.0 ] }
-                        { ExperimentChart.ChartSeries.name = "Δ"; points = [ 0.0, 20.0; 1.0, 21.0 ] }
+                        curve "Ψ" [ 0.0, 10.0; 1.0, 11.0 ]
+                        curve "Δ" [ 0.0, 20.0; 1.0, 21.0 ]
                     ] }
-        let lines = (ExperimentChart.toCsv chart).Split('\n')
+        let lines = chart.toCsv.Split('\n')
         Assert.Equal("x,Ψ,Δ", lines.[0])
         Assert.Equal(3, lines.Length)
         Assert.Equal("0,10,20", lines.[1])
@@ -369,7 +376,7 @@ module ExperimentControlsTests =
 
     [<Fact>]
     let ``ExperimentChart toCsv of the empty chart is just the header`` () =
-        Assert.Equal("x", ExperimentChart.toCsv ExperimentChart.emptyExperimentChart)
+        Assert.Equal("x", ExperimentChart.emptyExperimentChart.toCsv)
 
     // ============================ ChartWindow ids ============================
 
@@ -390,23 +397,23 @@ module ExperimentControlsTests =
     /// A small sample chart with two series, axis labels, a title, and a description.
     let private sampleChart : ExperimentChart.ExperimentChart =
         {
-            series =
+            ExperimentChart.ExperimentChart.series =
                 [
-                    { ExperimentChart.ChartSeries.name = "Ψ"; points = [ 0.0, 10.0; 1.0, 12.0; 2.0, 9.0 ] }
-                    { ExperimentChart.ChartSeries.name = "Δ"; points = [ 0.0, 20.0; 1.0, 18.0; 2.0, 22.0 ] }
+                    curve "Ψ" [ 0.0, 10.0; 1.0, 12.0; 2.0, 9.0 ]
+                    curve "Δ" [ 0.0, 20.0; 1.0, 18.0; 2.0, 22.0 ]
                 ]
-            xLabel = "Incidence angle R2 (°)"
-            yLabel = "Ψ, Δ (°)"
-            title = "Ellipsometric Ψ/Δ vs incidence"
-            description = "A two-series ellipsometer sweep used by the pop-out chart-window smoke test."
-            angular = true
+            xLabel = ControlCaption "Incidence angle R2 (°)"
+            yLabel = ControlCaption "Ψ, Δ (°)"
+            title = ControlCaption "Ellipsometric Ψ/Δ vs incidence"
+            description = ControlCaption "A two-series ellipsometer sweep used by the pop-out chart-window smoke test."
+            xAxisKind = ExperimentChart.AngularXAxis
         }
 
     [<Fact>]
     [<Trait("Category", "ui-smoke")>]
     let ``the ChartWindow opens with the element picker, properties panel and polar toggle`` () =
         HeadlessSession.run (fun () ->
-            let window = ChartWindow(sampleChart)     // angular = true ⇒ the polar toggle is offered
+            let window = ChartWindow(sampleChart)     // an angular x-axis ⇒ the polar toggle is offered
             try window.Show() with _ -> ()
             try Dispatcher.UIThread.RunJobs() with _ -> ()
             let hasNamed (name : string) : bool =

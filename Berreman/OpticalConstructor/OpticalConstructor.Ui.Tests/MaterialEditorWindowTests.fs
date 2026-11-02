@@ -179,7 +179,7 @@ module MaterialEditorWindowTests =
     /// `defaultState` would shadow the `MaterialComplexityEditor.defaultState` used throughout (the
     /// attempt-02 trap). `ChartStyle` is a top-level module in `OpticalConstructor.Controls`.
     let private seriesVisibleAt (i : int) (style : OpticalConstructor.Controls.ChartStyle.ChartStyleState) : bool =
-        (OpticalConstructor.Controls.ChartStyle.seriesStyleOf i style).visible
+        (OpticalConstructor.Controls.ChartStyle.seriesStyleOf (OpticalConstructor.Controls.ChartStyle.ChartSeriesIndex i) style).visible.isDrawn
 
     // ============================ pure control contract ============================
 

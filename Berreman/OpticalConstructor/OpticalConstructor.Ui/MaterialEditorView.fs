@@ -260,8 +260,8 @@ let private gainWarningOf (chartOpt : ExperimentChart option) : string =
     | None -> ""
     | Some chart ->
         chart.series
-        |> List.filter (fun s -> s.name.StartsWith "k")
-        |> List.tryPick (fun s -> s.points |> List.tryPick (fun (_, k) -> imaginaryIndexGainWarning k))
+        |> List.filter (fun s -> s.name.value.StartsWith "k")
+        |> List.tryPick (fun s -> s.points |> List.tryPick (fun p -> imaginaryIndexGainWarning p.y))
         |> Option.defaultValue ""
 
 let private epsCaseLabel (eps : EpsWithDispValue) : string =
@@ -1028,8 +1028,8 @@ let private muPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> u
 /// a test asserts `applyHidden` flips the toggled curve's exact index, rather than re-deriving it.
 let applyHidden (hidden : Set<string>) (tabCode : string) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : ChartStyle.ChartStyleState =
     chart.series
-    |> List.mapi (fun i s -> i, (ConstructorUiId.previewSeriesToggle (ConstructorUiKey tabCode) (ConstructorUiKey s.name)).value)
-    |> List.fold (fun st (i, key) -> if Set.contains key hidden then ChartStyle.setSeriesVisible i false st else st) style
+    |> List.mapi (fun i s -> ChartStyle.ChartSeriesIndex i, (ConstructorUiId.previewSeriesToggle (ConstructorUiKey tabCode) s.name.uiKey).value)
+    |> List.fold (fun st (i, key) -> if Set.contains key hidden then ChartStyle.setSeriesVisible i ChartStyle.HiddenOnChart st else st) style
 
 /// One preview tab: a row of per-series show/hide toggles pinned above the embedded dual-axis chart,
 /// which fills the rest of the tab. The chart embeds the ONE shared ScottPlot control under `hostId`
@@ -1043,8 +1043,8 @@ let private chartTab (tabId : string) (tabCode : string) (header : string) (host
             WrapPanel.children (
                 chart.series
                 |> List.map (fun s ->
-                    let key = (ConstructorUiId.previewSeriesToggle (ConstructorUiKey tabCode) (ConstructorUiKey s.name)).value
-                    clickBox key s.name (not (Set.contains key m.hiddenSeries)) (fun () ->
+                    let key = (ConstructorUiId.previewSeriesToggle (ConstructorUiKey tabCode) s.name.uiKey).value
+                    clickBox key s.name.value (not (Set.contains key m.hiddenSeries)) (fun () ->
                         dispatch (ToggleSeriesVisibility key))))
         ] :> IView
     let host = OpticalConstructor.Controls.EmbeddedChart.create hostId chart (applyHidden m.hiddenSeries tabCode chart style)
