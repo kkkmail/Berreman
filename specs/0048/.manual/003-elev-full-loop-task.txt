@@ -1,0 +1,184 @@
+0048 - the whole tree ELEV-green (ELEV004 excepted): drive the ELEV ledger as a continuous loop.
+
+(The operator's task file. Drafted by the agent on 2026-11-02 at the operator's
+request, from 002-elevation-plan.md, on the model of STL specs/0229/.manual/006.
+ELEV comes first: the arc is not powered up until this loop has closed E044.)
+
+
+BEFORE LAUNCHING (operator)
+
+  002-elevation-plan.md section 2 is answered (R1-R7, operator, 2026-11-01).
+
+  STL's current slow ring, 10.1.402.136, must be in the local feed
+  C:/GitHub/Packages: Softellect.Sys.10.1.402.136.nupkg and
+  Softellect.Analyzers.10.1.402.136.nupkg. On 2026-11-02 this machine's feed
+  stopped at 10.1.401.89, and a restore of OpticalConstructor.Storage failed with
+  NU1102 on Softellect.Sys >= 10.1.402.120. Building STL's slow ring at its
+  current version is the operator's step, outside this loop (AGENTS.md: never
+  bump STL from here).
+
+  The working tree must be clean: this file and .manual/common.manual-user-md are
+  committed. The branch is 0048. Berreman/Berreman/.version-update-lock is
+  present. The tool server on 127.0.0.1:7351 serves C:\GitHub\Berreman.
+
+
+WHAT IS ALREADY DECIDED
+
+  specs/0048/.manual/002-elevation-plan.md      the plan, the rulings R1-R7,
+                                                 the census, the rows, how a row
+                                                 closes
+  specs/0048/.manual/002-elevation-ledger.jsonl  THE QUEUE: 44 rows, E001-E044
+
+  002 section 2 binds as ruled. AGENTS.md binds every edit. Where a row's own
+  `task`, `gates` or `done_when` differs from 002, 002 binds. The queue was built
+  once by tools/build_elev_ledger.py and its text is not edited, beyond what
+  closing a row writes (`state`, `closedIn`, `note`).
+
+  Where 002 and the code disagree, that is a blocked row (WHEN TO STOP), never a
+  reinterpretation.
+
+  Two words, two files. 002 calls the queue "the ledger". In the manual loop's
+  vocabulary the ledger is specs/0048/.manual-history (the NDJSON round log,
+  common.manual-system-md section 6), and 002-elevation-ledger.jsonl is the
+  queue.
+
+
+BATCH ZERO - the bootstrap
+
+  The queue already exists. Do NOT build a second one and do NOT regenerate it
+  (002 section 5, "Never regenerate the ledger"). Batch zero only declares the
+  loop:
+
+  - Verify the count:
+      python -m ai_strategy_generator.manual.queue_count specs/0048/.manual/002-elevation-ledger.jsonl
+    It prints 44.
+  - Write specs/0048/.manual-loop.json:
+      workflow            continuous-loop
+      task_file           specs/0048/.manual/003-elev-full-loop-task.txt
+      queue_file          specs/0048/.manual/002-elevation-ledger.jsonl
+      open_count_command  the command above
+      batch_size          1
+      max_rounds          60
+      worker_timeout_sec  14400
+      worker_idle_sec     3600
+  - Start specs/0048/.manual-history with its rows, and commit the manifest and
+    the ledger together, subject 0048-manual.
+
+  Batch zero closes no row and runs no gate.
+
+
+EVERY BATCH
+
+  Close exactly ONE row, in id order. Never skip ahead: each tier is typed
+  against the ones before it (002 section 3, dependency order), and a lower
+  assembly keeps a colliding name (R2).
+
+  An elevate row: 002 section 5 is the procedure.
+  1. Read the row, the rulings in its `rulings` (002 section 2), and AGENTS.md.
+  2. Do the work, across every project in `compiled_by` and every project that
+     references them, test projects included. A caller moves to the new name and
+     never re-wraps.
+  3. Delete or lower the known-findings entries the work cleared, in
+     Elevation/elevation-known-findings.json, including those it cleared outside
+     the row's files. Never add one, never re-record the list.
+  4. Pass the gates (002 section 5):
+     - build, with zero warnings from our code;
+     - elevation (scoped, before the commit: it reads the working tree);
+     - elevation-full instead, when the row renames across projects;
+     - the test gates in the row's `gates`, selected by class on what the batch
+       touched. unit-tests runs by class only, never whole.
+     Counts never regress, and no number any test asserts changes.
+  5. Write the note, flip the row (`state` done, `closedIn` the batch's round
+     label, e.g. batch-007), and append the ledger rows.
+  6. Commit.
+
+  E001, E002, E043 and E044: 002 section 6, which binds over the row's own
+  `task`.
+
+  The row's note carries what 002 section 5 lists, in that order:
+  - the counts before and after;
+  - every [<ElevationBoundary>] and [<NumericCarrier>] added, with its reason;
+  - every stored-format change (also a line of
+    specs/0048/.manual/stored-format-changes.md);
+  - every declaration deleted;
+  - every public rename in a package of `packages` (also a row of
+    specs/0048/.manual/renames.tsv).
+
+  Write the ledger rows in the SAME commit as the queue row. They are two halves
+  of one state; if they can disagree, the next session resumes from a lie.
+  Commit through the commit tool the override names, subject 0048-manual.
+
+
+EXPECTED RED - none
+
+  Every finding still open is recorded in the known-findings list, so the scoped
+  elevation gate is green over a project whose rows are still open. Nothing may
+  go red. A row that leaves a gate red is not done.
+
+  The whole BerremanTests run (about 30 minutes) is not part of the loop. It is
+  the operator's by-hand pass after E044, as 002 section 5 makes it the spec's
+  final step.
+
+
+WALLS
+
+  002 section 2 binds; 002 is the plan. Do not change a ruling to fit the code.
+
+  STL and ASG are read-only: never edit, build, pack or bump them. No spec folder
+  but specs/0048 is edited.
+
+  .elevation-analyzers.json and the analyzers are never edited. ELEV004 stays
+  excluded in the command (R7) and is not worked.
+
+  MathNetNumerics/, BerremanRunner/, BerremanModelGenerator/, *.nb and the root
+  .docx files are not touched. Temp/, !Temp/, specs_copy/ and legacy/ are
+  tracked: no scratch there. Scratch goes in specs/0048/.artifacts/.
+
+  The version lock stays: no bump in the loop. E002 moves only the
+  Softellect.Sys pin (R4).
+
+  Git is read-only. Commit through the commit tool the override names.
+
+  AGENTS.md binds every edit:
+  - F# style;
+  - elevation discipline;
+  - comment discipline;
+  - no comments in .fsproj;
+  - Release only;
+  - x64;
+  - LF line endings;
+  - no BOM in a new file;
+  - .ps1 files ASCII.
+
+  There are no deferrals. Work that cannot be finished is a blocked row.
+
+
+TIME
+
+  One row per batch: up to four hours of wall clock and one hour of silence.
+  The heaviest rows:
+  - E036: TableAndElementRotationView.fs, 298 findings (R1, R2);
+  - E006: UiIds.fs, 218 findings (R1, R2).
+  A solution rebuild, an elevation-full run (about four minutes, longer under
+  load) and ui-tests (about three minutes) can each be silent for a long
+  stretch. Silence is not a hang.
+
+
+WHEN TO STOP
+
+  If 002 turns out to be wrong about the code - a signature, a claim about what
+  calls what, a ruling that cannot be applied as written - mark the row
+  `blocked`, write the numbered question file, append a `blocked` ledger row
+  naming it, commit, and stop. Do not adjust the plan or the ruling to fit what
+  you found.
+
+  If a restore fails with NU1102 on a Softellect.* package, the local feed lacks
+  STL's slow ring (BEFORE LAUNCHING): escalate the same way and stop.
+
+  If a gate will not go green after one genuine fix attempt (and one re-run of a
+  suspected flake), escalate. A batch that reports done on a red gate is worse
+  than a batch that stops.
+
+  E044 is the loop's own stop: the tree ELEV-green outside ELEV004, the
+  known-findings list empty, the three lists checked, and the spec handed to the
+  operator's by-hand pass (the whole BerremanTests run) before the arc.
