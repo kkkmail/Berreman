@@ -15,7 +15,9 @@ BEFORE LAUNCHING (operator)
   stopped at 10.1.401.89, and a restore of OpticalConstructor.Storage failed with
   NU1102 on Softellect.Sys >= 10.1.402.120. Building STL's slow ring at its
   current version is the operator's step, outside this loop (AGENTS.md: never
-  bump STL from here).
+  bump STL from here). Done 2026-11-02: STL's SoftellectPackages.slnx built at
+  10.1.402.136 (STL branch 0239, every lock present, no bump); the feed holds
+  both packages and Berreman.slnx restores.
 
   The working tree must be clean: this file and .manual/common.manual-user-md are
   committed. The branch is 0048. Berreman/Berreman/.version-update-lock is
@@ -114,6 +116,10 @@ EXPECTED RED - none
   Every finding still open is recorded in the known-findings list, so the scoped
   elevation gate is green over a project whose rows are still open. Nothing may
   go red. A row that leaves a gate red is not done.
+
+  One expected warning, E001 only: the tree pins Softellect.Sys 10.1.402.120,
+  which no feed holds, so every restore resolves 10.1.402.136 instead and warns
+  NU1603. E002 moves the pin to 136 (R4) and must leave no NU1603 behind.
 
   The whole BerremanTests run (about 30 minutes) is not part of the loop. It is
   the operator's by-hand pass after E044, as 002 section 5 makes it the spec's
