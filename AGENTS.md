@@ -351,7 +351,7 @@ analyzers, the analyzers win** (operator, spec 0048 `.manual/002` R6).
 | ELEV001 | NoCallSiteRewrap | no wrapping a bare local as you pass it |
 | ELEV002 | NoRawDuRender | render a DU through its own member, never `%A` / `%O` / `%s` |
 | ELEV003 | NoPrimitivesOutsideBoundary | no bare primitive in a signature outside a marked boundary |
-| ELEV004 | DotValueAtBoundaryOnly | `.value` only at the IO boundary (not gated yet) |
+| ELEV004 | DotValueAtBoundaryOnly | `.value` only at the IO boundary (measured, not gated: R7) |
 | ELEV005 | NoWrapUnwrapRoundTrip | no `(T x.value)` |
 | ELEV006 | NoBidirectionalConversion | `A.toB` with `B.toA` is one entity: collapse it |
 | ELEV007 | NoBoxIntoObjSink | no elevated value boxed into an `obj` sink |

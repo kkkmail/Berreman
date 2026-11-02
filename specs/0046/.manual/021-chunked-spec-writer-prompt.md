@@ -123,12 +123,13 @@ with them, before any of `020`'s phases.
     - a change in a low project analyzes everything that references it: about 2.5–4.5 min when Domain or the solver
       changes, under a minute for a leaf;
     - `elevation-full` is 4–5 min.
-- **`.user-md/Berreman/arc-runner.user-md` is stale.** Workers read it as their second prompt, and it says:
-  - "There is no UI";
-  - "no top-level CLAUDE.MD style guide";
-  - only the `build` + `unit-tests` gates.
-
-  Refresh it before the arc (`AGENTS.md` is the style guide now; the gates are the seven under `.gates/`).
+- **`.user-md/Berreman/arc-runner.user-md` is current** (refreshed 2026-11-01). Workers read it as their second
+  prompt. It names:
+  - `AGENTS.md` as the style guide;
+  - MTP and its filters;
+  - the seven gates under `.gates/`;
+  - the ELEV ledger and how a step closes a row;
+  - the standing rulings, the first of which is that nothing is deferred.
 - **Branch:** the arc runs on `0048`, or on its own branch from it.
 
 ## 4. Pointers (paste into the spec-writer's Pointers)
@@ -286,6 +287,14 @@ BINDING RULES (every section)
    - behaviour is tested in Domain first, structure in Avalonia.Headless.
 11. Build machines have no OneDrive (020 §G). No test, fixture or kit lives under Documents; test kits
     and databases go under the test run's output directory.
+12. NOTHING IS DEFERRED, in PART A or in PART B (operator, 2026-11-01; STL spec 0229 .manual/006).
+   - A step finishes its whole brief. It leaves no stub, no TODO, no "later" or "follow-up", and no
+     known-findings entry it could have closed.
+   - No brief hands part of its own work to a later step, and no section ends with an open ledger row
+     of its own.
+   - Work that cannot be finished as written is a blocked step, or a blocked ledger row, naming the
+     question, and the arc stops there.
+   - The OUT OF SCOPE list below is the operator's decision, not a deferral.
 
 SUGGESTED SECTIONS
 You own the final plan. Each section is at most about forty steps, and dependencies point backward.
