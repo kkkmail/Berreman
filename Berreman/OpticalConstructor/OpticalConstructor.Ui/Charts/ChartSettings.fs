@@ -11,8 +11,7 @@
 /// Spec 0033 (017): the renderer-neutral chart model (`ExperimentChart` / `ChartStyle`) and its
 /// ScottPlot seam (`ChartWindow` / `ChartRender`) are the ONE shared model, now hosted in
 /// `OpticalConstructor.Controls` where this project can reach them. This module stays the Ui-side
-/// §H.1 settings record over that seam — it delegates the shared renderer mappings (see
-/// `scottPlotColor`) and introduces NO third settings type.
+/// §H.1 settings record over that seam and introduces NO third settings type.
 module OpticalConstructor.Ui.Charts.ChartSettings
 
 open Berreman.Constants
@@ -100,12 +99,6 @@ let scottPlotLinePattern (style : LineStyle) : ScottPlot.LinePattern =
     | SolidLine -> ScottPlot.LinePattern.Solid
     | DashedLine -> ScottPlot.LinePattern.Dashed
     | DottedLine -> ScottPlot.LinePattern.Dotted
-
-/// Parse a hex color string ("#rrggbb") into ScottPlot's `Color` — delegated to the shared
-/// `ChartRender` mapping beside the one chart model (spec 0033/017), so the hex→colour parse
-/// lives in exactly one place solution-wide.
-let scottPlotColor (hex : string) : ScottPlot.Color =
-    OpticalConstructor.Controls.ChartRender.colorOf hex
 
 /// Map `AxisScale` to Plotly's `AxisType` (`Log10` → genuine log axis).
 let plotlyAxisType (scale : AxisScale) : StyleParam.AxisType =

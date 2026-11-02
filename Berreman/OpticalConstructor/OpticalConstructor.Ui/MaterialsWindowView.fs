@@ -722,7 +722,7 @@ let private chipLabel (defs : AttributeDef<MaterialEntry> list) (applied : Appli
 let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : FacetedTreeControls.TreeNode list =
     nodes
     |> List.sortWith (fun (a : FacetedTreeControls.TreeNode) (b : FacetedTreeControls.TreeNode) ->
-        System.String.Compare(a.label, b.label, System.StringComparison.OrdinalIgnoreCase))
+        System.String.Compare(a.label.value, b.label.value, System.StringComparison.OrdinalIgnoreCase))
 
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, tree, previews), so
@@ -745,8 +745,8 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
     // corpus group, under distinct codes so the tree stays uniquely keyed).
     let entryLeafNode (leafCode : string) (entry : MaterialEntry) : FacetedTreeControls.TreeNode =
         {
-            code = leafCode
-            label = (if isEntryInactive activeIds entry then entry.name + inactiveBadge else entry.name)
+            code = ConstructorUiKey leafCode
+            label = ControlCaption (if isEntryInactive activeIds entry then entry.name + inactiveBadge else entry.name)
             countOpt = None
             expansion = expansionOf leafCode
             children = []
@@ -777,9 +777,9 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
         Facets.breadcrumbCounts inputs.defs m.appliedFacets searched
         |> List.map (fun bc ->
             ({
-                code = bc.applied.key.value
-                label = chipLabel inputs.defs bc.applied
-                afterCount = bc.afterCount.value
+                code = bc.applied.key.uiKey
+                label = ControlCaption (chipLabel inputs.defs bc.applied)
+                afterCount = bc.afterCount.facetCount
              } : FacetedTreeControls.BreadcrumbChip))
     // Offers: every UNCONSTRAINED facet, in representation order, its values count-previewed
     // over everything already applied; a facet inapplicable to (or valueless over) the whole
@@ -795,17 +795,17 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
             | values ->
                 Some
                     ({
-                        code = def.key.value
-                        title = def.name
+                        code = def.key.uiKey
+                        title = ControlCaption def.name
                         values =
                             values
                             |> List.map (fun k ->
                                 let candidate : AppliedConstraint =
                                     { key = def.key; selection = DiscreteSelection (Set.singleton k) }
                                 ({
-                                    code = k.value
-                                    label = k.value
-                                    previewCount = (Facets.countFor inputs.defs inputs.appliedAll candidate inputs.corpus).value
+                                    code = k.uiKey
+                                    label = k.caption
+                                    previewCount = (Facets.countFor inputs.defs inputs.appliedAll candidate inputs.corpus).facetCount
                                  } : FacetedTreeControls.OfferedValue))
                         manualRange = FacetedTreeControls.NoManualRange
                      } : FacetedTreeControls.OfferGroup))
@@ -818,9 +818,9 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
         | FacetedTreeControls.TreeMaterialized ->
             let entriesNode : FacetedTreeControls.TreeNode =
                 {
-                    code = "entries"
-                    label = "Materials"
-                    countOpt = Some resultCount
+                    code = ConstructorUiKey "entries"
+                    label = ControlCaption "Materials"
+                    countOpt = Some (FacetedTreeControls.FacetItemCount resultCount)
                     expansion = expansionOf "entries"
                     children =
                         filtered
@@ -841,9 +841,9 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
                         |> List.map (fun (branch, members) ->
                             let branchCode = "branch:" + facet.key.value + ":" + branch.value.label
                             ({
-                                code = branchCode
-                                label = branch.label
-                                countOpt = Some branch.count.value
+                                code = ConstructorUiKey branchCode
+                                label = ControlCaption branch.label
+                                countOpt = Some branch.count.facetCount
                                 expansion = expansionOf branchCode
                                 // The branch expands to its member entries as selectable leaves
                                 // (path-shaped codes keep them tree-unique), alphabetical by label.
@@ -862,9 +862,9 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
                         |> List.distinct
                         |> List.length
                     ({
-                        code = "facet:" + facet.key.value
-                        label = facet.name
-                        countOpt = Some groupCount
+                        code = ConstructorUiKey ("facet:" + facet.key.value)
+                        label = ControlCaption facet.name
+                        countOpt = Some (FacetedTreeControls.FacetItemCount groupCount)
                         expansion = expansionOf ("facet:" + facet.key.value)
                         children = branchNodes
                      } : FacetedTreeControls.TreeNode))
@@ -876,15 +876,18 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
         offers = offers
         representations =
             offeredRepresentations
-            |> List.map (fun r -> ({ code = r.code; label = r.label } : FacetedTreeControls.NamedRepresentation))
-        activeRepresentation = m.representation.code
-        filterDraft = m.textFilter.value
-        resultCount = resultCount
+            |> List.map (fun r -> ({ code = ConstructorUiKey r.code; label = ControlCaption r.label } : FacetOption))
+        activeRepresentationOpt = Some (ConstructorUiKey m.representation.code)
+        filterDraft = m.textFilter.caption
+        resultCount = FacetedTreeControls.FacetItemCount resultCount
         materialization = materialization
         // The EXACT selected node code (spec 0040 step 003) — the control highlights the row whose
         // code matches, so a material picked through a facet branch highlights that branch row, not
         // the corpus-group copy. The Model tracks the clicked code; "" = nothing selected.
-        selectedCode = m.selectedNodeCode
+        selectedCodeOpt =
+            match m.selectedNodeCode with
+            | "" -> None
+            | code -> Some (ConstructorUiKey code)
     }
 
 /// The control's behaviour seam: every token is lifted back to its domain value HERE, at the
@@ -893,17 +896,21 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
 /// catalogue offers no numeric facet, so no manual range box is ever generated.
 let facetedHandlers (dispatch : MaterialsWindowMsg -> unit) : FacetedTreeControls.FacetedTreeControlsHandlers =
     {
-        applyConstraint = fun groupCode valueCode -> dispatch (ApplyFacetValue (AttributeKey groupCode, DiscreteKey valueCode))
-        removeConstraint = fun chipCode -> dispatch (RemoveFacet (AttributeKey chipCode))
-        commitTextFilter = fun text -> dispatch (CommitTextFilter text)
-        chooseRepresentation = fun code -> dispatch (ChooseRepresentation code)
+        applyConstraint =
+            fun group value ->
+                match AttributeKey.tryCreate group.value, DiscreteKey.tryCreate value.value with
+                | Some key, Some discrete -> dispatch (ApplyFacetValue (key, discrete))
+                | _ -> ()
+        removeConstraint = fun chip -> AttributeKey.tryCreate chip.value |> Option.iter (RemoveFacet >> dispatch)
+        commitTextFilter = fun text -> dispatch (CommitTextFilter text.value)
+        chooseRepresentation = fun code -> dispatch (ChooseRepresentation code.value)
         requestBuild = fun () -> dispatch RequestTreeBuild
         selectNode =
             fun code ->
-                match entryIdOfNodeCode code with
-                | Some id -> dispatch (SelectEntryNode (id, code))
+                match entryIdOfNodeCode code.value with
+                | Some id -> dispatch (SelectEntryNode (id, code.value))
                 | None -> ()
-        toggleNode = fun code -> dispatch (ToggleNode code)
+        toggleNode = fun code -> dispatch (ToggleNode code.value)
         applyManualRange = fun _ _ -> ()
     }
 
@@ -1197,7 +1204,7 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
                             ] :> IView ]
                           @ viewOnlyNote
                           @ versionsRow m versions latestVersion shownVersion dispatch
-                          @ [ EmbeddedChart.create ConstructorUiId.materialsViewPanelNkChart.value chart (NkDispersionChart.nkDispersionStyle (NkDispersionChart.anisotropyOfEntry shownEntry) chart) ])
+                          @ [ EmbeddedChart.embeddedChartView ConstructorUiId.materialsViewPanelNkChart chart (NkDispersionChart.nkDispersionStyle (NkDispersionChart.anisotropyOfEntry shownEntry) chart) ])
                   ])
           ] :> IView ]
 

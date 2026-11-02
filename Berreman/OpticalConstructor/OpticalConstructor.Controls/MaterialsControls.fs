@@ -8,8 +8,9 @@ open Avalonia.Media
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
-/// One option of a workbench list's facet selector (a materials category or dispersion, a samples
-/// substrate): the stable `code` the host maps back to its domain facet, and the option box's label.
+/// One option of a workbench list's facet selector or picker (a materials category or dispersion, a
+/// samples substrate, a faceted tree's representation): the stable `code` the host maps back to its
+/// domain value, and the option box's label.
 type FacetOption =
     {
         code : ConstructorUiKey

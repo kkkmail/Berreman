@@ -36,29 +36,29 @@ module FacetedTreeControlsTests =
     let private knownTree : FacetedTreeControls.TreeNode list =
         [
             {
-                code = "kind"
-                label = "Kind"
+                code = ConstructorUiKey "kind"
+                label = ControlCaption "Kind"
                 countOpt = None
                 expansion = FacetedTreeControls.ExpandedNode
                 children =
                     [
                         {
-                            code = "kind/sample"
-                            label = "Samples"
-                            countOpt = Some 2
+                            code = ConstructorUiKey "kind/sample"
+                            label = ControlCaption "Samples"
+                            countOpt = Some (FacetedTreeControls.FacetItemCount 2)
                             expansion = FacetedTreeControls.ExpandedNode
                             children =
                                 [
                                     {
-                                        code = "kind/sample/quartz"
-                                        label = "Quartz plate"
+                                        code = ConstructorUiKey "kind/sample/quartz"
+                                        label = ControlCaption "Quartz plate"
                                         countOpt = None
                                         expansion = FacetedTreeControls.ExpandedNode
                                         children = []
                                     }
                                     {
-                                        code = "kind/sample/mica"
-                                        label = "Mica wedge"
+                                        code = ConstructorUiKey "kind/sample/mica"
+                                        label = ControlCaption "Mica wedge"
                                         countOpt = None
                                         expansion = FacetedTreeControls.ExpandedNode
                                         children = []
@@ -66,15 +66,15 @@ module FacetedTreeControlsTests =
                                 ]
                         }
                         {
-                            code = "kind/polarizer"
-                            label = "Polarizers"
-                            countOpt = Some 1
+                            code = ConstructorUiKey "kind/polarizer"
+                            label = ControlCaption "Polarizers"
+                            countOpt = Some (FacetedTreeControls.FacetItemCount 1)
                             expansion = FacetedTreeControls.CollapsedNode
                             children =
                                 [
                                     {
-                                        code = "kind/polarizer/lp"
-                                        label = "LP sheet"
+                                        code = ConstructorUiKey "kind/polarizer/lp"
+                                        label = ControlCaption "LP sheet"
                                         countOpt = None
                                         expansion = FacetedTreeControls.ExpandedNode
                                         children = []
@@ -94,38 +94,38 @@ module FacetedTreeControlsTests =
             tree = knownTree
             breadcrumbs =
                 [
-                    { code = "anisotropy"; label = "Anisotropy: Uniaxial"; afterCount = 12 }
-                    { code = "text-filter"; label = "Text: quartz"; afterCount = 3 }
+                    { code = ConstructorUiKey "anisotropy"; label = ControlCaption "Anisotropy: Uniaxial"; afterCount = FacetedTreeControls.FacetItemCount 12 }
+                    { code = ConstructorUiKey "text-filter"; label = ControlCaption "Text: quartz"; afterCount = FacetedTreeControls.FacetItemCount 3 }
                 ]
             offers =
                 [
                     {
-                        code = "category"
-                        title = "Category"
+                        code = ConstructorUiKey "category"
+                        title = ControlCaption "Category"
                         values =
                             [
-                                { code = "glass"; label = "Glass"; previewCount = 2 }
-                                { code = "metal"; label = "Metal"; previewCount = 1 }
+                                { code = ConstructorUiKey "glass"; label = ControlCaption "Glass"; previewCount = FacetedTreeControls.FacetItemCount 2 }
+                                { code = ConstructorUiKey "metal"; label = ControlCaption "Metal"; previewCount = FacetedTreeControls.FacetItemCount 1 }
                             ]
                         manualRange = FacetedTreeControls.NoManualRange
                     }
                     {
-                        code = "thickness"
-                        title = "Film thickness"
-                        values = [ { code = "b10-20"; label = "10-20 nm"; previewCount = 2 } ]
+                        code = ConstructorUiKey "thickness"
+                        title = ControlCaption "Film thickness"
+                        values = [ { code = ConstructorUiKey "b10-20"; label = ControlCaption "10-20 nm"; previewCount = FacetedTreeControls.FacetItemCount 2 } ]
                         manualRange = FacetedTreeControls.ManualRangeOffered
                     }
                 ]
             representations =
                 [
-                    { code = "by-kind"; label = "By kind" }
-                    { code = "by-material"; label = "By material" }
+                    { code = ConstructorUiKey "by-kind"; label = ControlCaption "By kind" }
+                    { code = ConstructorUiKey "by-material"; label = ControlCaption "By material" }
                 ]
-            activeRepresentation = "by-kind"
-            filterDraft = "quartz"
-            resultCount = 3
+            activeRepresentationOpt = Some (ConstructorUiKey "by-kind")
+            filterDraft = ControlCaption "quartz"
+            resultCount = FacetedTreeControls.FacetItemCount 3
             materialization = FacetedTreeControls.TreeMaterialized
-            selectedCode = ""
+            selectedCodeOpt = None
         }
 
     /// Recording stub handlers (the test substitutes the functional-proxy seam): every dispatch
@@ -134,14 +134,14 @@ module FacetedTreeControlsTests =
         let calls = ResizeArray<string>()
         let handlers : FacetedTreeControls.FacetedTreeControlsHandlers =
             {
-                applyConstraint = fun group value -> calls.Add($"apply:%s{group}=%s{value}")
-                removeConstraint = fun chip -> calls.Add("remove:" + chip)
-                commitTextFilter = fun text -> calls.Add("filter:" + text)
-                chooseRepresentation = fun code -> calls.Add("repr:" + code)
+                applyConstraint = fun group value -> calls.Add($"apply:%s{group.value}=%s{value.value}")
+                removeConstraint = fun chip -> calls.Add("remove:" + chip.value)
+                commitTextFilter = fun text -> calls.Add("filter:" + text.value)
+                chooseRepresentation = fun code -> calls.Add("repr:" + code.value)
                 requestBuild = fun () -> calls.Add("build")
-                selectNode = fun code -> calls.Add("node:" + code)
-                toggleNode = fun code -> calls.Add("toggle:" + code)
-                applyManualRange = fun group text -> calls.Add($"range:%s{group}=%s{text}")
+                selectNode = fun code -> calls.Add("node:" + code.value)
+                toggleNode = fun code -> calls.Add("toggle:" + code.value)
+                applyManualRange = fun group text -> calls.Add($"range:%s{group.value}=%s{text.value}")
             }
         calls, handlers
 
@@ -154,11 +154,11 @@ module FacetedTreeControlsTests =
         Assert.Empty(s.breadcrumbs)
         Assert.Empty(s.offers)
         Assert.Empty(s.representations)
-        Assert.Equal("", s.activeRepresentation)
-        Assert.Equal("", s.filterDraft)
-        Assert.Equal(0, s.resultCount)
+        Assert.Equal<ConstructorUiKey option>(None, s.activeRepresentationOpt)
+        Assert.Equal(ControlCaption "", s.filterDraft)
+        Assert.Equal(FacetedTreeControls.FacetItemCount 0, s.resultCount)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, s.materialization)
-        Assert.Equal("", s.selectedCode)
+        Assert.Equal<ConstructorUiKey option>(None, s.selectedCodeOpt)
 
     [<Fact>]
     let ``the FacetedTree UiIds are the stable intent-named ids`` () =
@@ -289,13 +289,13 @@ module FacetedTreeControlsTests =
             // offered values, the numeric group's manual range box (and ONLY the numeric group's),
             // and the rendered tree rows.
             for r in knownState.representations do
-                Assert.True(isPresent window (ConstructorUiId.facetRepresentationOption (ConstructorUiKey r.code)).value, $"representation %s{r.code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetRepresentationOption r.code).value, $"representation %s{r.code.value} is missing")
             for chip in knownState.breadcrumbs do
-                Assert.True(isPresent window (ConstructorUiId.facetBreadcrumbChip (ConstructorUiKey chip.code)).value, $"chip %s{chip.code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetBreadcrumbChip chip.code).value, $"chip %s{chip.code.value} is missing")
             for group in knownState.offers do
-                Assert.True(isPresent window (ConstructorUiId.facetOfferGroup (ConstructorUiKey group.code)).value, $"offer group %s{group.code} is missing")
+                Assert.True(isPresent window (ConstructorUiId.facetOfferGroup group.code).value, $"offer group %s{group.code.value} is missing")
                 for v in group.values do
-                    Assert.True(isPresent window (ConstructorUiId.facetOfferedValue (ConstructorUiKey group.code) (ConstructorUiKey v.code)).value, $"offered value %s{group.code}/%s{v.code} is missing")
+                    Assert.True(isPresent window (ConstructorUiId.facetOfferedValue group.code v.code).value, $"offered value %s{group.code.value}/%s{v.code.value} is missing")
             Assert.True(isPresent window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "thickness")).value, "the numeric group's manual range box is missing")
             Assert.False(isPresent window (ConstructorUiId.facetManualRangeBox (ConstructorUiKey "category")).value, "a discrete group must offer NO manual range box")
             for code in [ "kind"; "kind/sample"; "kind/sample/quartz"; "kind/sample/mica"; "kind/polarizer" ] do
@@ -373,7 +373,7 @@ module FacetedTreeControlsTests =
         HeadlessSession.run (fun () ->
             let _, handlers = recorder ()
             // Select a rendered leaf (quartz sits under two expanded parents, so its row renders).
-            let window = mount { knownState with selectedCode = "kind/sample/quartz" } handlers
+            let window = mount { knownState with selectedCodeOpt = Some (ConstructorUiKey "kind/sample/quartz") } handlers
             let selected = labelBorderOf window "kind/sample/quartz"
             let sibling = labelBorderOf window "kind/sample/mica"
             let heading = labelBorderOf window "kind"
@@ -394,7 +394,7 @@ module FacetedTreeControlsTests =
     let ``the filter box never commits per keystroke — Enter commits once, blur commits the current text`` () =
         HeadlessSession.run (fun () ->
             let calls, handlers = recorder ()
-            let window = mount { knownState with filterDraft = "" } handlers
+            let window = mount { knownState with filterDraft = ControlCaption "" } handlers
             let commits () = calls |> Seq.filter (fun c -> c.StartsWith("filter:")) |> List.ofSeq
             let filterBox = textBoxOf window ConstructorUiId.facetFilterBox.value
             filterBox.Focus() |> ignore

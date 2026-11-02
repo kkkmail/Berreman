@@ -18,6 +18,10 @@ module Facets =
 
         member this.value = let (AttributeKey k) = this in k
 
+        /// The key read back from its text (a control's token); `None` for a blank text.
+        static member tryCreate (text : string) : AttributeKey option =
+            if String.IsNullOrWhiteSpace text then None else Some (AttributeKey text)
+
     /// The identity of one discrete value inside a facet — e.g. "uniaxial".
     /// At this layer the key doubles as the branch label; step 011's
     /// catalogues choose human-readable keys.
@@ -25,6 +29,10 @@ module Facets =
         | DiscreteKey of string
 
         member this.value = let (DiscreteKey k) = this in k
+
+        /// The key read back from its text (a control's token); `None` for a blank text.
+        static member tryCreate (text : string) : DiscreteKey option =
+            if String.IsNullOrWhiteSpace text then None else Some (DiscreteKey text)
 
     /// A plain-text filter query (the filter-box content). Matching is
     /// ordinal case-insensitive substring containment; the empty query

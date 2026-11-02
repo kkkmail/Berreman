@@ -874,7 +874,7 @@ let private chipLabel (defs : AttributeDef<LibraryEntry> list) (applied : Applie
 let private sortNodesByLabel (nodes : FacetedTreeControls.TreeNode list) : FacetedTreeControls.TreeNode list =
     nodes
     |> List.sortWith (fun (a : FacetedTreeControls.TreeNode) (b : FacetedTreeControls.TreeNode) ->
-        String.Compare(a.label, b.label, StringComparison.OrdinalIgnoreCase))
+        String.Compare(a.label.value, b.label.value, StringComparison.OrdinalIgnoreCase))
 
 /// Project the live corpus through the engine into the domain-free control state. Everything
 /// here is recomputed per render over the CURRENT proxies (offers, counts, buckets, tree,
@@ -897,8 +897,8 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
     // corpus group, under distinct codes so the tree stays uniquely keyed).
     let entryLeafNode (leafCode : string) (entry : LibraryEntry) : FacetedTreeControls.TreeNode =
         {
-            code = leafCode
-            label = (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
+            code = ConstructorUiKey leafCode
+            label = ControlCaption (if isEntryInactive activeIds entry then entry.displayName + inactiveBadge else entry.displayName)
             countOpt = None
             expansion = expansionOf leafCode
             children = []
@@ -920,9 +920,9 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
         Facets.breadcrumbCounts inputs.defs m.appliedFacets searched
         |> List.map (fun bc ->
             ({
-                code = bc.applied.key.value
-                label = chipLabel inputs.defs bc.applied
-                afterCount = bc.afterCount.value
+                code = bc.applied.key.uiKey
+                label = ControlCaption (chipLabel inputs.defs bc.applied)
+                afterCount = bc.afterCount.facetCount
              } : FacetedTreeControls.BreadcrumbChip))
     // The buckets of one numeric facet over the CURRENTLY CONSTRAINED population (step 010 —
     // recomputed here per pass; a bucket applied as a chip reproduces exactly its count).
@@ -945,17 +945,17 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                 | buckets ->
                     Some
                         ({
-                            code = def.key.value
-                            title = def.name
+                            code = def.key.uiKey
+                            title = ControlCaption def.name
                             values =
                                 buckets
                                 |> List.map (fun bucket ->
                                     ({
-                                        code = numericRangeCode bucket.range
-                                        label = numericRangeText bucket.range
+                                        code = ConstructorUiKey (numericRangeCode bucket.range)
+                                        label = ControlCaption (numericRangeText bucket.range)
                                         // The bucket derives from the constrained population,
                                         // so its count IS the apply preview (pinned, step 010).
-                                        previewCount = bucket.count.value
+                                        previewCount = bucket.count.facetCount
                                      } : FacetedTreeControls.OfferedValue))
                             manualRange = FacetedTreeControls.ManualRangeOffered
                          } : FacetedTreeControls.OfferGroup)
@@ -965,17 +965,17 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                 | values ->
                     Some
                         ({
-                            code = def.key.value
-                            title = def.name
+                            code = def.key.uiKey
+                            title = ControlCaption def.name
                             values =
                                 values
                                 |> List.map (fun k ->
                                     let candidate : AppliedConstraint =
                                         { key = def.key; selection = DiscreteSelection (Set.singleton k) }
                                     ({
-                                        code = k.value
-                                        label = k.value
-                                        previewCount = (Facets.countFor inputs.defs inputs.appliedAll candidate inputs.corpus).value
+                                        code = k.uiKey
+                                        label = k.caption
+                                        previewCount = (Facets.countFor inputs.defs inputs.appliedAll candidate inputs.corpus).facetCount
                                      } : FacetedTreeControls.OfferedValue))
                             manualRange = FacetedTreeControls.NoManualRange
                          } : FacetedTreeControls.OfferGroup))
@@ -990,9 +990,9 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
         | FacetedTreeControls.TreeMaterialized ->
             let entriesNode : FacetedTreeControls.TreeNode =
                 {
-                    code = "entries"
-                    label = "Library"
-                    countOpt = Some resultCount
+                    code = ConstructorUiKey "entries"
+                    label = ControlCaption "Library"
+                    countOpt = Some (FacetedTreeControls.FacetItemCount resultCount)
                     expansion = expansionOf "entries"
                     children =
                         filtered
@@ -1031,9 +1031,9 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                         branchesWithMembers
                         |> List.map (fun (branchCode, label, count, members) ->
                             ({
-                                code = branchCode
-                                label = label
-                                countOpt = Some count
+                                code = ConstructorUiKey branchCode
+                                label = ControlCaption label
+                                countOpt = Some (FacetedTreeControls.FacetItemCount count)
                                 expansion = expansionOf branchCode
                                 // The branch expands to its member entries as selectable leaves
                                 // (path-shaped codes keep them tree-unique), alphabetical by label.
@@ -1051,9 +1051,9 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                         |> List.distinct
                         |> List.length
                     ({
-                        code = "facet:" + facet.key.value
-                        label = facet.name
-                        countOpt = Some groupCount
+                        code = ConstructorUiKey ("facet:" + facet.key.value)
+                        label = ControlCaption facet.name
+                        countOpt = Some (FacetedTreeControls.FacetItemCount groupCount)
                         expansion = expansionOf ("facet:" + facet.key.value)
                         children = branchNodes
                      } : FacetedTreeControls.TreeNode))
@@ -1065,15 +1065,18 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
         offers = offers
         representations =
             offeredRepresentations
-            |> List.map (fun r -> ({ code = r.code; label = r.label } : FacetedTreeControls.NamedRepresentation))
-        activeRepresentation = m.representation.code
-        filterDraft = m.textFilter.value
-        resultCount = resultCount
+            |> List.map (fun r -> ({ code = ConstructorUiKey r.code; label = ControlCaption r.label } : FacetOption))
+        activeRepresentationOpt = Some (ConstructorUiKey m.representation.code)
+        filterDraft = m.textFilter.caption
+        resultCount = FacetedTreeControls.FacetItemCount resultCount
         materialization = materialization
         // The EXACT selected node code (spec 0040 step 003) — the control highlights the row whose
         // code matches, so an entry picked through a facet branch highlights that branch row, not
         // the corpus-group copy. The Model tracks the clicked code; "" = nothing selected.
-        selectedCode = m.selectedNodeCode
+        selectedCodeOpt =
+            match m.selectedNodeCode with
+            | "" -> None
+            | code -> Some (ConstructorUiKey code)
     }
 
 /// The control's behaviour seam: every token is lifted back to its domain value HERE, at the
@@ -1084,29 +1087,32 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
 let facetedHandlers (dispatch : LibraryWindowMsg -> unit) : FacetedTreeControls.FacetedTreeControlsHandlers =
     {
         applyConstraint =
-            fun groupCode valueCode ->
-                let key = AttributeKey groupCode
-                if key = sampleFilmThicknessKey then
-                    match numericRangeOfCode valueCode with
+            fun group value ->
+                match AttributeKey.tryCreate group.value with
+                | Some key when key = sampleFilmThicknessKey ->
+                    match numericRangeOfCode value.value with
                     | Some range -> dispatch (ApplyFacetConstraint (key, NumericRangeSelection range))
                     | None -> ()
-                else
-                    dispatch (ApplyFacetConstraint (key, DiscreteSelection (Set.singleton (DiscreteKey valueCode))))
-        removeConstraint = fun chipCode -> dispatch (RemoveFacet (AttributeKey chipCode))
-        commitTextFilter = fun text -> dispatch (CommitTextFilter text)
-        chooseRepresentation = fun code -> dispatch (ChooseRepresentation code)
+                | Some key ->
+                    match DiscreteKey.tryCreate value.value with
+                    | Some discrete -> dispatch (ApplyFacetConstraint (key, DiscreteSelection (Set.singleton discrete)))
+                    | None -> ()
+                | None -> ()
+        removeConstraint = fun chip -> AttributeKey.tryCreate chip.value |> Option.iter (RemoveFacet >> dispatch)
+        commitTextFilter = fun text -> dispatch (CommitTextFilter text.value)
+        chooseRepresentation = fun code -> dispatch (ChooseRepresentation code.value)
         requestBuild = fun () -> dispatch RequestTreeBuild
         selectNode =
             fun code ->
-                match entryIdOfNodeCode code with
-                | Some id -> dispatch (SelectEntryNode (id, code))
+                match entryIdOfNodeCode code.value with
+                | Some id -> dispatch (SelectEntryNode (id, code.value))
                 | None -> ()
-        toggleNode = fun code -> dispatch (ToggleNode code)
+        toggleNode = fun code -> dispatch (ToggleNode code.value)
         applyManualRange =
-            fun groupCode raw ->
-                match parseManualRange raw with
-                | Some range -> dispatch (ApplyFacetConstraint (AttributeKey groupCode, NumericRangeSelection range))
-                | None -> ()
+            fun group raw ->
+                match AttributeKey.tryCreate group.value, parseManualRange raw.value with
+                | Some key, Some range -> dispatch (ApplyFacetConstraint (key, NumericRangeSelection range))
+                | _ -> ()
     }
 
 // ---------------------------------------------------------------------------

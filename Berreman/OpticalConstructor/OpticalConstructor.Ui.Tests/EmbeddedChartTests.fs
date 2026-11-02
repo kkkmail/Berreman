@@ -160,7 +160,7 @@ module EmbeddedChartTests =
         | Some c -> Assert.Fail($"the filter box is a %s{c.GetType().Name}, not a TextBox")
         | None -> Assert.Fail("the filter box was not found")
 
-    let private hostId = "EmbeddedNkChartTestHost"
+    let private hostId = ConstructorUiId "EmbeddedNkChartTestHost"
 
     // -- the embedded control: dual axes + rasterization, over every model kind --------------------
 
@@ -169,8 +169,8 @@ module EmbeddedChartTests =
     let ``the embedded n/k chart renders one frame with n on the left and k on the right (non-dispersive)`` () =
         HeadlessSession.run (fun () ->
             let chart = chartOf (builtInProps MaterialIds.vacuumMaterial)
-            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
-            match avaUnder window hostId with
+            let window = mount (EmbeddedChart.embeddedChartView hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
+            match avaUnder window hostId.value with
             | Some ava -> assertNkDualAxis "vacuum" ava
             | None -> Assert.Fail("no embedded AvaPlot for the non-dispersive entry")
             window.Close())
@@ -180,8 +180,8 @@ module EmbeddedChartTests =
     let ``the embedded n/k chart renders one frame for a dispersive built-in (silicon)`` () =
         HeadlessSession.run (fun () ->
             let chart = chartOf (builtInProps MaterialIds.silicon)
-            let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
-            match avaUnder window hostId with
+            let window = mount (EmbeddedChart.embeddedChartView hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
+            match avaUnder window hostId.value with
             | Some ava -> assertNkDualAxis "silicon" ava
             | None -> Assert.Fail("no embedded AvaPlot for the dispersive built-in")
             window.Close())
@@ -192,8 +192,8 @@ module EmbeddedChartTests =
         HeadlessSession.run (fun () ->
             for code in [ "TaucLorentz"; "GaussianOscillator"; "ForouhiBloomer"; "BrendelBormann" ] do
                 let chart = chartOf (modelProps code)
-                let window = mount (EmbeddedChart.create hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
-                match avaUnder window hostId with
+                let window = mount (EmbeddedChart.embeddedChartView hostId chart (NkDispersionChart.nkDispersionStyle MaterialComplexityEditor.Biaxial chart))
+                match avaUnder window hostId.value with
                 | Some ava -> assertNkDualAxis code ava
                 | None -> Assert.Fail($"no embedded AvaPlot for the transcendental model %s{code}")
                 window.Close())

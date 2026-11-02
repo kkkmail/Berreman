@@ -1,12 +1,14 @@
 namespace OpticalConstructor.Ui
 
 open OpticalConstructor.Controls
+open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.Library
 open OpticalConstructor.Domain.Experiments
 open OpticalConstructor.Domain.MaterialLibrary
 
-/// The automation ids derived from a Domain value (spec 0048 R1). Controls references no Domain type, so
-/// they are extension members of its id type here, the lowest project that sees both.
+/// The Controls values derived from a Domain value: the automation ids (spec 0048 R1) and a control's
+/// keys, counts and captions. Controls references no Domain type, so they are extension members here,
+/// the lowest project that sees both.
 [<AutoOpen>]
 module ConstructorUiIdOfDomain =
 
@@ -37,3 +39,26 @@ module ConstructorUiIdOfDomain =
 
         /// The category as the key of its Category-manager row (its Guid's text).
         member this.uiKey : ConstructorUiKey = ConstructorUiKey (string this.value)
+
+    type AttributeKey with
+
+        /// The facet as the key of its faceted-tree offer group and breadcrumb chip.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+    type DiscreteKey with
+
+        /// The value as the key of its faceted-tree offered value.
+        member this.uiKey : ConstructorUiKey = ConstructorUiKey this.value
+
+        /// The value as its offered box's label (at the engine's layer a key doubles as its label).
+        member this.caption : ControlCaption = ControlCaption this.value
+
+    type ItemCount with
+
+        /// The count as the faceted tree shows it.
+        member this.facetCount : FacetedTreeControls.FacetItemCount = FacetedTreeControls.FacetItemCount this.value
+
+    type TextQuery with
+
+        /// The query as the text its filter box shows.
+        member this.caption : ControlCaption = ControlCaption this.value

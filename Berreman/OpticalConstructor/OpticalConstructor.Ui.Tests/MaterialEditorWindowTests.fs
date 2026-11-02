@@ -986,11 +986,11 @@ module MaterialEditorWindowTests =
     [<Trait("Category", "ui-smoke")>]
     let ``one frame renders per preview tab (isotropic, biaxial, active, magnetic)`` () =
         HeadlessSession.run (fun () ->
-            let render (autoId : string) chart style : unit =
-                let window = mount (OpticalConstructor.Controls.EmbeddedChart.create autoId chart style)
-                match avaUnder window autoId with
-                | Some ava -> Assert.True(rasterizes ava, $"%s{autoId} rendered no image bytes")
-                | None -> Assert.Fail($"no embedded AvaPlot for %s{autoId}")
+            let render (autoId : ConstructorUiId) chart style : unit =
+                let window = mount (OpticalConstructor.Controls.EmbeddedChart.embeddedChartView autoId chart style)
+                match avaUnder window autoId.value with
+                | Some ava -> Assert.True(rasterizes ava, $"%s{autoId.value} rendered no image bytes")
+                | None -> Assert.Fail($"no embedded AvaPlot for %s{autoId.value}")
                 window.Close()
             let range = previewRange
             // The n/k tab for an isotropic (default) and a biaxial entry.
@@ -1005,16 +1005,16 @@ module MaterialEditorWindowTests =
                     ]
             for props in [ isotropic; biaxial ] do
                 let c = NkDispersionChart.nkDispersionChart Biaxial props Nanometer range
-                render "TabRenderNk" c (NkDispersionChart.nkDispersionStyle Biaxial c)
+                render (ConstructorUiId "TabRenderNk") c (NkDispersionChart.nkDispersionStyle Biaxial c)
             // The Gyration tab for an active entry — the uniaxial class restricts it to g₁₁ / g₃₃.
             let active = propsFrom [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
             let gComponents = gyrationComponents (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }) |> List.map fst
             let g = NkDispersionChart.gyrationChart gComponents active Nanometer range
-            render "TabRenderGyration" g (NkDispersionChart.gyrationStyle g)
+            render (ConstructorUiId "TabRenderGyration") g (NkDispersionChart.gyrationStyle g)
             // The μ tab for a gyromagnetic entry.
             let magnetic = propsFrom [ SetMagnetic MagneticOn; SetMuKind GyromagneticMuKind; ChooseGyrationAxis AlongZ ]
             let mu = NkDispersionChart.muChart GyromagneticMuKind magnetic Nanometer range
-            render "TabRenderMu" mu (NkDispersionChart.muStyle mu))
+            render (ConstructorUiId "TabRenderMu") mu (NkDispersionChart.muStyle mu))
 
     // ============================ spec 0040 (006): the preview restricts the gyration / μ curves ============================
 

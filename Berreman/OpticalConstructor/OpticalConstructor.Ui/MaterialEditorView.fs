@@ -1036,7 +1036,7 @@ let applyHidden (hidden : Set<string>) (tabCode : string) (chart : ExperimentCha
 /// (`EmbeddedChart`, degrading to a placeholder rather than throwing headlessly); the toggles flip
 /// `hiddenSeries`, which `applyHidden` lowers onto the chart's style. `tabCode` namespaces the
 /// per-series toggle ids so a curve name shared across tabs never collides.
-let private chartTab (tabId : string) (tabCode : string) (header : string) (hostId : string) (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : IView =
+let private chartTab (tabId : string) (tabCode : string) (header : string) (hostId : ConstructorUiId) (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : IView =
     let toggles : IView =
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
@@ -1047,7 +1047,7 @@ let private chartTab (tabId : string) (tabCode : string) (header : string) (host
                     clickBox key s.name.value (not (Set.contains key m.hiddenSeries)) (fun () ->
                         dispatch (ToggleSeriesVisibility key))))
         ] :> IView
-    let host = OpticalConstructor.Controls.EmbeddedChart.create hostId chart (applyHidden m.hiddenSeries tabCode chart style)
+    let host = OpticalConstructor.Controls.EmbeddedChart.embeddedChartView hostId chart (applyHidden m.hiddenSeries tabCode chart style)
     TabItem.create [
         automationId<TabItem> tabId
         TabItem.header header
@@ -1087,14 +1087,14 @@ let private previewPane (m : MaterialEditorModel) (dispatch : MaterialEditorMsg 
             | EditableMaterial -> m.editor.magnetic = MagneticOn
             | ViewOnlyMaterial _ -> NkDispersionChart.hasMagnetic o
         let tabs =
-            [ chartTab ConstructorUiId.materialPreviewNkTab.value "nk" "n, k" ConstructorUiId.materialPreviewChart.value m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
+            [ chartTab ConstructorUiId.materialPreviewNkTab.value "nk" "n, k" ConstructorUiId.materialPreviewChart m dispatch nkChart (NkDispersionChart.nkDispersionStyle m.editor.anisotropy nkChart) ]
             @ (if showGyration then
                    let g = NkDispersionChart.gyrationChart (previewGyrationComponents m) o Nanometer previewRange
-                   [ chartTab ConstructorUiId.materialPreviewGyrationTab.value "gyration" "Gyration" ConstructorUiId.materialGyrationChart.value m dispatch g (NkDispersionChart.gyrationStyle g) ]
+                   [ chartTab ConstructorUiId.materialPreviewGyrationTab.value "gyration" "Gyration" ConstructorUiId.materialGyrationChart m dispatch g (NkDispersionChart.gyrationStyle g) ]
                else [])
             @ (if showMu then
                    let mu = NkDispersionChart.muChart (previewMuKind m) o Nanometer previewRange
-                   [ chartTab ConstructorUiId.materialPreviewMuTab.value "mu" "μ (Polder)" ConstructorUiId.materialMuChart.value m dispatch mu (NkDispersionChart.muStyle mu) ]
+                   [ chartTab ConstructorUiId.materialPreviewMuTab.value "mu" "μ (Polder)" ConstructorUiId.materialMuChart m dispatch mu (NkDispersionChart.muStyle mu) ]
                else [])
         let pane =
             TabControl.create [

@@ -19,14 +19,15 @@ open OpticalConstructor.Controls.ExperimentChart
 /// The window is never opened under the headless `ui-smoke` gate's frame render, so its native ScottPlot
 /// rendering cannot break that gate.
 
-/// Spec 0033 (017) — the shared renderer-neutral-style → ScottPlot mappings. The pop-out window below
-/// and the Ui `ChartSettings` projection (`scottPlotColor`) both delegate here, so each mapping lives in
+/// Spec 0033 (017) — the shared renderer-neutral-style → ScottPlot mappings, so each mapping lives in
 /// exactly ONE place beside the one shared chart model (no per-host duplicate, no third settings type).
-[<RequireQualifiedAccess>]
+[<AutoOpen>]
 module ChartRender =
 
-    /// Parse a `#RRGGBB` colour string into ScottPlot's `Color`.
-    let colorOf (hex : string) : ScottPlot.Color = ScottPlot.Color.FromHex hex
+    type ChartStyle.SeriesColorHex with
+
+        /// The colour as ScottPlot's `Color` (its `#RRGGBB` text parsed here, and only here).
+        member this.scottPlotColor : ScottPlot.Color = ScottPlot.Color.FromHex this.value
 
 /// Spec 0035 (016) — the shared renderer-neutral → ScottPlot dual-axis (n-left / k-right) rendering: the
 /// ONE cartesian "rebuild path" the pop-out `ChartWindow` below AND the embeddable `EmbeddedChart` host
@@ -35,6 +36,23 @@ module ChartRender =
 /// ScottPlot at the IO boundary; the window layers polar + interactivity on top of these primitives.
 [<RequireQualifiedAccess>]
 module ChartPlot =
+
+    /// How the window lays the series out: on the cartesian (dual Y) axes, or projected onto a polar
+    /// grid (an angular chart's toggle, spec 0027/030).
+    type ChartProjection =
+        | CartesianProjection
+        | PolarProjection
+
+        /// The other projection (what the polar ⇄ XY toggle switches to).
+        member this.flipped : ChartProjection =
+            match this with
+            | CartesianProjection -> PolarProjection
+            | PolarProjection -> CartesianProjection
+
+    /// Whether any shown series plots against an axis.
+    type AxisOccupancy =
+        | OccupiedAxis
+        | UnoccupiedAxis
 
     /// The ScottPlot vertical axis a side maps to (the one place the side → native-axis mapping lives).
     let scottYAxis (plot : ScottPlot.Plot) (side : ChartStyle.AxisSide) : ScottPlot.IYAxis =
@@ -65,10 +83,12 @@ module ChartPlot =
         |> ChartStyle.dataBounds
 
     /// Whether anything currently plots against the right axis (drives whether its limits are pushed).
-    let rightAxisInUse (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : bool =
-        chart.series
-        |> List.mapi (fun i _ -> ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style)
-        |> List.exists (fun st -> st.visible = ChartStyle.ShownOnChart && st.axisSide = ChartStyle.RightAxis)
+    let rightAxisOccupancy (chart : ExperimentChart) (style : ChartStyle.ChartStyleState) : AxisOccupancy =
+        let occupied =
+            chart.series
+            |> List.mapi (fun i _ -> ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style)
+            |> List.exists (fun st -> st.visible = ChartStyle.ShownOnChart && st.axisSide = ChartStyle.RightAxis)
+        if occupied then OccupiedAxis else UnoccupiedAxis
 
     /// Push the title / axis-label / tick-label font sizes onto the three axes.
     let applyAxisFonts (plot : ScottPlot.Plot) (style : ChartStyle.ChartStyleState) : unit =
@@ -116,26 +136,28 @@ module ChartPlot =
         // The right axis gets limits only once something plots against it (or the user pinned a manual
         // range): an untouched ScottPlot axis keeps an unset range and renders NO ticks, so pushing a
         // fallback 0…1 here would paint phantom tick labels on every single-axis chart's right edge.
-        match rightAxisInUse chart style, style.yAxisRight.fit with
-        | true, ChartStyle.AutoFitAxis -> plot.Axes.SetLimitsY(bounds.yRight.lower.value, bounds.yRight.upper.value, plot.Axes.Right)
+        match rightAxisOccupancy chart style, style.yAxisRight.fit with
+        | OccupiedAxis, ChartStyle.AutoFitAxis -> plot.Axes.SetLimitsY(bounds.yRight.lower.value, bounds.yRight.upper.value, plot.Axes.Right)
         | _, ChartStyle.PinnedAxis -> plot.Axes.SetLimitsY(style.yAxisRight.min.value, style.yAxisRight.max.value, plot.Axes.Right)
-        | false, ChartStyle.AutoFitAxis -> ()
+        | UnoccupiedAxis, ChartStyle.AutoFitAxis -> ()
 
-    /// Re-assert each scatter's look; `assignAxis` re-binds its Y-axis side (cartesian only — the polar
-    /// projection uses the hidden cartesian pair, so the window leaves the side alone there).
-    let applySeriesStyle (plot : ScottPlot.Plot) (scatters : ScottPlot.Plottables.Scatter list) (style : ChartStyle.ChartStyleState) (assignAxis : bool) : unit =
+    /// Re-assert each scatter's look; the cartesian projection also re-binds its Y-axis side (the polar
+    /// projection uses the hidden cartesian pair, so the side is left alone there).
+    let applySeriesStyle (plot : ScottPlot.Plot) (scatters : ScottPlot.Plottables.Scatter list) (style : ChartStyle.ChartStyleState) (projection : ChartProjection) : unit =
         scatters
         |> List.iteri (fun i sc ->
             let st = ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style
             sc.IsVisible <- st.visible.isDrawn
             sc.LineWidth <- float32 st.thickness.value
-            sc.Color <- ChartRender.colorOf st.colorHex.value
+            sc.Color <- st.colorHex.scottPlotColor
             sc.MarkerShape <-
                 (match st.markers with
                  | ChartStyle.ShownOnChart -> ScottPlot.MarkerShape.FilledCircle
                  | ChartStyle.HiddenOnChart -> ScottPlot.MarkerShape.None)
             sc.MarkerSize <- 5.0f
-            if assignAxis then sc.Axes.YAxis <- scottYAxis plot st.axisSide)
+            match projection with
+            | CartesianProjection -> sc.Axes.YAxis <- scottYAxis plot st.axisSide
+            | PolarProjection -> ())
 
     /// Build the cartesian scatters — one per series, each bound to its assigned (left / right) Y axis.
     /// Spec 0033 (018): the side is STYLE; n → left, k → right through the paired seed.
@@ -145,7 +167,7 @@ module ChartPlot =
             let st = ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style
             let xs = s.points |> List.map (fun p -> p.x) |> List.toArray
             let ys = s.points |> List.map (fun p -> p.y) |> List.toArray
-            let sc = plot.Add.Scatter(xs, ys, System.Nullable (ChartRender.colorOf st.colorHex.value))
+            let sc = plot.Add.Scatter(xs, ys, System.Nullable st.colorHex.scottPlotColor)
             sc.LegendText <- s.name.value
             sc.Axes.YAxis <- scottYAxis plot st.axisSide
             sc)
@@ -160,7 +182,7 @@ module ChartPlot =
         plot.XLabel(chart.xLabel.value)
         plot.YLabel(chart.yLabel.value)
         plot.ShowLegend() |> ignore
-        applySeriesStyle plot scatters style true
+        applySeriesStyle plot scatters style CartesianProjection
         applyLegendAndFonts plot style
         applyAxisFormat plot style
         applyAxisLimits plot chart style
@@ -170,7 +192,7 @@ type ChartWindow(chart : ExperimentChart) as this =
     inherit Window()
 
     let mutable style = ChartStyle.defaultChartStyleState chart
-    let mutable polar = false
+    let mutable projection = ChartPlot.CartesianProjection
     let seriesName (i : ChartStyle.ChartSeriesIndex) : ControlCaption =
         match List.tryItem i.value chart.series with
         | Some s -> s.name
@@ -201,9 +223,7 @@ type ChartWindow(chart : ExperimentChart) as this =
 
         let applyAxisLimits () : unit = ChartPlot.applyAxisLimits plot chart style
 
-        // `not polar` re-binds each scatter's Y-axis side — polar projects onto the hidden cartesian pair,
-        // so the side is left alone there (spec 0033/018).
-        let applySeriesStyle () : unit = ChartPlot.applySeriesStyle plot scatters style (not polar)
+        let applySeriesStyle () : unit = ChartPlot.applySeriesStyle plot scatters style projection
 
         /// Show / hide the rectangular (cartesian) axes. `Plot.Add.PolarAxis` HIDES them so the polar grid
         /// reads cleanly; returning to XY must show them again or the plot renders with no axes / ticks /
@@ -218,8 +238,9 @@ type ChartWindow(chart : ExperimentChart) as this =
         let applyStyle () : unit =
             applySeriesStyle ()
             applyLegendAndFonts ()
-            if polar then plot.Axes.AutoScale()
-            else
+            match projection with
+            | ChartPlot.PolarProjection -> plot.Axes.AutoScale()
+            | ChartPlot.CartesianProjection ->
                 setCartesianAxesVisible true
                 applyAxisFormat ()
                 applyAxisLimits ()
@@ -239,17 +260,18 @@ type ChartWindow(chart : ExperimentChart) as this =
         let rebuildPlot () : unit =
             plot.Clear()
             scatters <-
-                if polar then
+                match projection with
+                | ChartPlot.PolarProjection ->
                     let r = (ChartStyle.polarRadius style chart.series).value
                     let pax = plot.Add.PolarAxis(r)
                     pax.SetCircles(r, 5)
                     chart.series
                     |> List.mapi (fun i s ->
                         let coords = s.points |> List.map (fun p -> pax.GetCoordinates(p.y, p.x)) |> List.toArray
-                        let sc = plot.Add.ScatterLine(coords, System.Nullable (ChartRender.colorOf (ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style).colorHex.value))
+                        let sc = plot.Add.ScatterLine(coords, System.Nullable ((ChartStyle.seriesStyleOf (ChartStyle.ChartSeriesIndex i) style).colorHex.scottPlotColor))
                         sc.LegendText <- s.name.value
                         sc)
-                else
+                | ChartPlot.CartesianProjection ->
                     // Spec 0035 (016): the cartesian dual-axis (n-left / k-right) build is the SHARED
                     // rebuild path `ChartPlot.buildCartesianScatters`, reused by the embeddable host.
                     ChartPlot.buildCartesianScatters plot chart style
@@ -263,7 +285,9 @@ type ChartWindow(chart : ExperimentChart) as this =
         plot.ShowLegend() |> ignore
 
         ava.PointerMoved.Add(fun e ->
-            if not polar then
+            match projection with
+            | ChartPlot.PolarProjection -> ()
+            | ChartPlot.CartesianProjection ->
                 match scatters with
                 | [] -> ()
                 | sc :: _ ->
@@ -479,8 +503,11 @@ type ChartWindow(chart : ExperimentChart) as this =
         | AngularXAxis ->
             let polarBtn = Button(Name = ConstructorUiId.chartWindowPolar.value, Content = "Polar view", Margin = Thickness(0.0, 0.0, 16.0, 0.0))
             polarBtn.Click.Add(fun _ ->
-                polar <- not polar
-                polarBtn.Content <- (if polar then "XY view" else "Polar view")
+                projection <- projection.flipped
+                polarBtn.Content <-
+                    (match projection with
+                     | ChartPlot.PolarProjection -> "XY view"
+                     | ChartPlot.CartesianProjection -> "Polar view")
                 rebuildPlot ())
             toolbar.Children.Add polarBtn
 

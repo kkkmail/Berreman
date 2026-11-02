@@ -252,27 +252,27 @@ module MaterialsWindowTests =
     let ``the initial projection lists every stored material as a selectable entry leaf with the live count`` () =
         let _, m = freshModel ()
         let state = MW.facetedState m
-        Assert.Equal(12, state.resultCount)
+        Assert.Equal(12, state.resultCount.value)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, state.materialization)
         Assert.Empty(state.breadcrumbs)
-        Assert.Equal("", state.filterDraft)
+        Assert.Equal("", state.filterDraft.value)
         // The entries group leads the tree; its leaves are the whole corpus, entry-coded.
         let entries = List.head state.tree
-        Assert.Equal("entries", entries.code)
-        Assert.Equal(Some 12, entries.countOpt)
+        Assert.Equal("entries", entries.code.value)
+        Assert.Equal(Some (FacetedTreeControls.FacetItemCount 12), entries.countOpt)
         Assert.Equal(12, List.length entries.children)
         for leaf in entries.children do
-            Assert.StartsWith("entry:", leaf.code)
+            Assert.StartsWith("entry:", leaf.code.value)
         // The two named representations are offered, category-first active by default.
         Assert.Equal<string list>(
             [ "by-category"; "by-physics" ],
-            state.representations |> List.map (fun r -> r.code))
-        Assert.Equal("by-category", state.activeRepresentation)
+            state.representations |> List.map (fun r -> r.code.value))
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey "by-category"), state.activeRepresentationOpt)
         // Every material facet is discrete — no manual min–max box is ever offered.
         Assert.NotEmpty(state.offers)
         for group in state.offers do
             Assert.Equal(FacetedTreeControls.NoManualRange, group.manualRange)
-        Assert.Contains(state.offers, fun (g : FacetedTreeControls.OfferGroup) -> g.code = materialCategoryKey.value)
+        Assert.Contains(state.offers, fun (g : FacetedTreeControls.OfferGroup) -> g.code.value = materialCategoryKey.value)
 
     [<Fact>]
     let ``the committed text filter narrows the corpus and echoes as the box draft`` () =
@@ -281,7 +281,7 @@ module MaterialsWindowTests =
         Assert.Equal(4, List.length (MW.filteredEntries narrowed))
         Assert.Contains(MaterialIds.glass152, filteredIds narrowed)
         Assert.DoesNotContain(MaterialIds.silicon, filteredIds narrowed)
-        Assert.Equal("glass", (MW.facetedState narrowed).filterDraft)
+        Assert.Equal("glass", (MW.facetedState narrowed).filterDraft.value)
         let restored = MW.updateMaterialsWindow (MW.CommitTextFilter "") narrowed
         Assert.Equal(12, List.length (MW.filteredEntries restored))
 
@@ -293,13 +293,13 @@ module MaterialsWindowTests =
         Assert.Contains(MaterialIds.langasite, filteredIds constrained)
         let chips = (MW.facetedState constrained).breadcrumbs
         Assert.Equal(1, List.length chips)
-        Assert.Equal(materialCategoryKey.value, (List.head chips).code)
-        Assert.Equal("Category: Crystal", (List.head chips).label)
-        Assert.Equal(4, (List.head chips).afterCount)
+        Assert.Equal(materialCategoryKey.value, (List.head chips).code.value)
+        Assert.Equal("Category: Crystal", (List.head chips).label.value)
+        Assert.Equal(4, (List.head chips).afterCount.value)
         // Facet constraints AND the text filter compose: no glass is a crystal.
         let composed = MW.updateMaterialsWindow (MW.CommitTextFilter "glass") constrained
         Assert.Empty(MW.filteredEntries composed)
-        Assert.Equal(0, (MW.facetedState composed).resultCount)
+        Assert.Equal(0, (MW.facetedState composed).resultCount.value)
         // Removing the chip restores (the text filter stays applied).
         let removed = MW.updateMaterialsWindow (MW.RemoveFacet materialCategoryKey) composed
         Assert.Equal(4, List.length (MW.filteredEntries removed))
@@ -314,7 +314,7 @@ module MaterialsWindowTests =
             |> MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Glass"))
         let chips = (MW.facetedState replaced).breadcrumbs
         Assert.Equal(1, List.length chips)
-        Assert.Equal("Category: Glass", (List.head chips).label)
+        Assert.Equal("Category: Glass", (List.head chips).label.value)
         for entry in MW.filteredEntries replaced do
             Assert.Equal(CategoryIds.glass, entry.category)
 
@@ -325,8 +325,8 @@ module MaterialsWindowTests =
         let m = MW.initMaterialsWindow context Browse
         let valueKeysOf (state : FacetedTreeControls.FacetedTreeControlsState) : string list =
             state.offers
-            |> List.find (fun g -> g.code = materialCategoryKey.value)
-            |> fun g -> g.values |> List.map (fun v -> v.code)
+            |> List.find (fun g -> g.code.value = materialCategoryKey.value)
+            |> fun g -> g.values |> List.map (fun v -> v.code.value)
         Assert.Contains("Glass", valueKeysOf (MW.facetedState m))
         // Rename through the SAME proxy the window re-queries: the very next projection
         // re-labels (the discrete value key doubles as the branch label — step 009).
@@ -334,13 +334,13 @@ module MaterialsWindowTests =
         let after = valueKeysOf (MW.facetedState m)
         Assert.Contains("Glazing", after)
         Assert.DoesNotContain("Glass", after)
-        Assert.Equal(12, (MW.facetedState m).resultCount)
+        Assert.Equal(12, (MW.facetedState m).resultCount.value)
 
     [<Fact>]
     let ``facets vanish from the offers when constrained or inapplicable to the whole filtered population`` () =
         let _, m = freshModel ()
         let offerCodes (model : MW.MaterialsWindowModel) : string list =
-            (MW.facetedState model).offers |> List.map (fun g -> g.code)
+            (MW.facetedState model).offers |> List.map (fun g -> g.code.value)
         // A constrained facet leaves the offers (its chip is the removal surface).
         let constrained = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) m
         Assert.DoesNotContain(materialCategoryKey.value, offerCodes constrained)
@@ -493,9 +493,9 @@ module MaterialsWindowTests =
         let caseInsensitive (a : string) (b : string) : int =
             System.String.Compare(a, b, System.StringComparison.OrdinalIgnoreCase)
         let treeFacetLabels (model : MW.MaterialsWindowModel) : string list =
-            (MW.facetedState model).tree |> List.tail |> List.map (fun n -> n.label)
+            (MW.facetedState model).tree |> List.tail |> List.map (fun n -> n.label.value)
         let firstOfferCode (model : MW.MaterialsWindowModel) : string =
-            (MW.facetedState model).offers |> List.head |> fun g -> g.code
+            (MW.facetedState model).offers |> List.head |> fun g -> g.code.value
         // The tree's facet groups read alphabetically — NOT in the category-first representation
         // order (Category would otherwise lead, not Anisotropy).
         let byCategoryTree = treeFacetLabels m
@@ -504,14 +504,14 @@ module MaterialsWindowTests =
         // The physics reshuffle reorders the OFFERS (Anisotropy now leads) but leaves the tree
         // alphabetical and identical.
         let reshaped = MW.updateMaterialsWindow (MW.ChooseRepresentation "by-physics") m
-        Assert.Equal("by-physics", (MW.facetedState reshaped).activeRepresentation)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey "by-physics"), (MW.facetedState reshaped).activeRepresentationOpt)
         Assert.Equal(materialAnisotropyKey.value, firstOfferCode reshaped)
         Assert.Equal<string list>(byCategoryTree, treeFacetLabels reshaped)
         // Search order ≠ representation order: applying a constraint after the reshuffle keeps its
         // chip and count regardless of the active representation.
         let constrained = MW.updateMaterialsWindow (MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal")) reshaped
         Assert.Equal(1, List.length (MW.facetedState constrained).breadcrumbs)
-        Assert.Equal(4, (MW.facetedState constrained).resultCount)
+        Assert.Equal(4, (MW.facetedState constrained).resultCount.value)
         // An unknown code is inert.
         Assert.Equal<MW.MaterialsWindowModel>(constrained, MW.updateMaterialsWindow (MW.ChooseRepresentation "no-such") constrained)
 
@@ -526,14 +526,14 @@ module MaterialsWindowTests =
         let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
         // Level 1 — the entry leaves under the entries group (the seeded corpus is NOT alphabetical).
         let entries = List.head state.tree
-        let leafLabels = entries.children |> List.map (fun n -> n.label)
+        let leafLabels = entries.children |> List.map (fun n -> n.label.value)
         Assert.Equal(12, List.length leafLabels)
         Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
         // Level 2/3 — every facet group's branches (each material facet is discrete, so its
         // branches come straight from the engine's now-alphabetical buildTree).
         for group in state.tree |> List.tail do
-            let branchLabels = group.children |> List.map (fun n -> n.label)
-            Assert.True(isSorted branchLabels, $"branches of %s{group.label} must be alphabetical: %A{branchLabels}")
+            let branchLabels = group.children |> List.map (fun n -> n.label.value)
+            Assert.True(isSorted branchLabels, $"branches of %s{group.label.value} must be alphabetical: %A{branchLabels}")
 
     [<Fact>]
     let ``every facet group shows its total count and each branch expands to its member entry leaves`` () =
@@ -548,26 +548,26 @@ module MaterialsWindowTests =
         for group in facetGroups do
             // 1) The group carries a positive total (never a bare, countless heading).
             match group.countOpt with
-            | Some c -> Assert.True(c > 0, $"facet group %s{group.label} must show a positive total, got %d{c}")
-            | None -> Assert.Fail($"facet group %s{group.label} must show a total count")
+            | Some c -> Assert.True(c.value > 0, $"facet group %s{group.label.value} must show a positive total, got %d{c.value}")
+            | None -> Assert.Fail($"facet group %s{group.label.value} must show a total count")
             // 2) Every branch expands to member entry leaves, the leaf tally matching its (count) badge.
             Assert.NotEmpty(group.children)
             let mutable distinct = Set.empty
             for branch in group.children do
                 match branch.countOpt with
                 | Some bc ->
-                    Assert.True(bc > 0, $"branch %s{branch.label} must carry entries")
-                    Assert.Equal(bc, List.length branch.children)
-                | None -> Assert.Fail($"branch %s{branch.label} must show a count")
+                    Assert.True(bc.value > 0, $"branch %s{branch.label.value} must carry entries")
+                    Assert.Equal(bc.value, List.length branch.children)
+                | None -> Assert.Fail($"branch %s{branch.label.value} must show a count")
                 for leaf in branch.children do
                     Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
                     // Each branch-nested leaf is a SELECTABLE entry (its code resolves to a MaterialId).
-                    match MW.entryIdOfNodeCode leaf.code with
+                    match MW.entryIdOfNodeCode leaf.code.value with
                     | Some id -> distinct <- Set.add id distinct
-                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label} (%s{leaf.code}) must resolve to a material id")
+                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label.value} (%s{leaf.code.value}) must resolve to a material id")
             // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches
             //    (a material a multi-valued facet lists under several branches counts once).
-            Assert.Equal(Some (Set.count distinct), group.countOpt)
+            Assert.Equal(Some (FacetedTreeControls.FacetItemCount (Set.count distinct)), group.countOpt)
 
     [<Fact>]
     let ``a single-valued facet group totals the whole population and its branch counts sum to it`` () =
@@ -576,10 +576,10 @@ module MaterialsWindowTests =
         // must add up" for a facet.
         let _, m = freshModel ()
         let state = MW.facetedState m
-        let categoryGroup = state.tree |> List.find (fun n -> n.code = "facet:" + materialCategoryKey.value)
+        let categoryGroup = state.tree |> List.find (fun n -> n.code.value = "facet:" + materialCategoryKey.value)
         Assert.Equal(Some state.resultCount, categoryGroup.countOpt)
-        let branchSum = categoryGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c | None -> 0)
-        Assert.Equal(state.resultCount, branchSum)
+        let branchSum = categoryGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c.value | None -> 0)
+        Assert.Equal(state.resultCount.value, branchSum)
 
     [<Fact>]
     let ``a branch-nested entry leaf code selects its material, while bare branch and heading codes stay inert`` () =
@@ -593,7 +593,7 @@ module MaterialsWindowTests =
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode ("branch:" + materialCategoryKey.value + ":Glass"))
         let dispatched = ResizeArray<MW.MaterialsWindowMsg>()
         let handlers = MW.facetedHandlers dispatched.Add
-        handlers.selectNode leafCode
+        handlers.selectNode (ConstructorUiKey leafCode)
         Assert.Equal<MW.MaterialsWindowMsg list>([ MW.SelectEntryNode (MaterialIds.glass152, leafCode) ], List.ofSeq dispatched)
 
     [<Fact>]
@@ -606,13 +606,13 @@ module MaterialsWindowTests =
         let selected = MW.updateMaterialsWindow (MW.SelectEntryNode (MaterialIds.glass152, leafCode)) m
         let state = MW.facetedState selected
         // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<guid>` code.
-        Assert.Equal(leafCode, state.selectedCode)
-        Assert.NotEqual<string>(MW.entryNodeCode MaterialIds.glass152, state.selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey leafCode), state.selectedCodeOpt)
+        Assert.NotEqual<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152)), state.selectedCodeOpt)
         // The domain selection still resolves (the view panel / verbs target the material).
         Assert.Equal(Some MaterialIds.glass152, selected.selectedId)
         // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
         let viaId = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
-        Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState viaId).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152)), (MW.facetedState viaId).selectedCodeOpt)
 
     [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
@@ -641,12 +641,12 @@ module MaterialsWindowTests =
         // Spec 0040 step 003: the control highlights the row whose code is `selectedCode`; the host
         // projects it from the Model's already-tracked selection (nothing selected → empty string).
         let _, m = freshModel ()
-        Assert.Equal("", (MW.facetedState m).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(None, (MW.facetedState m).selectedCodeOpt)
         let selected = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass152) m
-        Assert.Equal(MW.entryNodeCode MaterialIds.glass152, (MW.facetedState selected).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152)), (MW.facetedState selected).selectedCodeOpt)
         // A re-selection re-targets the highlight in the same projection.
         let retargeted = MW.updateMaterialsWindow (MW.SelectEntry MaterialIds.glass200) selected
-        Assert.Equal(MW.entryNodeCode MaterialIds.glass200, (MW.facetedState retargeted).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass200)), (MW.facetedState retargeted).selectedCodeOpt)
 
     [<Fact>]
     let ``a result count above the threshold gates the tree and Show-Search materializes it`` () =
@@ -658,7 +658,7 @@ module MaterialsWindowTests =
         // A gated pass projects NO tree at all — the whole point is skipping the heavy render —
         // while the live count and the offers stay up.
         Assert.Empty(gated.tree)
-        Assert.Equal(12, gated.resultCount)
+        Assert.Equal(12, gated.resultCount.value)
         Assert.NotEmpty(gated.offers)
         let shown = MW.facetedState (MW.updateMaterialsWindow MW.RequestTreeBuild m)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, shown.materialization)
@@ -672,16 +672,16 @@ module MaterialsWindowTests =
         Assert.Equal<MaterialId option>(None, MW.entryIdOfNodeCode "entry:not-a-guid")
         let dispatched = ResizeArray<MW.MaterialsWindowMsg>()
         let handlers = MW.facetedHandlers dispatched.Add
-        handlers.selectNode (MW.entryNodeCode MaterialIds.glass152)
-        handlers.selectNode "branch:material-category:Crystal"
-        handlers.selectNode "entries"
+        handlers.selectNode (ConstructorUiKey (MW.entryNodeCode MaterialIds.glass152))
+        handlers.selectNode (ConstructorUiKey "branch:material-category:Crystal")
+        handlers.selectNode (ConstructorUiKey "entries")
         // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
         // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
         Assert.Equal<MW.MaterialsWindowMsg list>(
             [ MW.SelectEntryNode (MaterialIds.glass152, MW.entryNodeCode MaterialIds.glass152) ],
             List.ofSeq dispatched)
         // The offer click lifts its tokens back to elevated engine values at the boundary.
-        handlers.applyConstraint materialCategoryKey.value "Crystal"
+        handlers.applyConstraint materialCategoryKey.uiKey (ConstructorUiKey "Crystal")
         Assert.Equal(MW.ApplyFacetValue (materialCategoryKey, DiscreteKey "Crystal"), dispatched.[1])
 
     // ============================ headless acceptance (ui-smoke) ============================
@@ -992,7 +992,7 @@ module MaterialsWindowTests =
         let _, _, m = freshSelectModel ()
         Assert.Equal(12, List.length (MW.filteredEntries m))
         let state = MW.facetedState m
-        Assert.Equal(12, state.resultCount)
+        Assert.Equal(12, state.resultCount.value)
         Assert.Empty(state.breadcrumbs)
 
     [<Fact>]
@@ -1266,7 +1266,7 @@ module MaterialsWindowTests =
         Assert.Equal(MW.NoPendingLifecycle, retired.lifecycleGate)
         // Default scope EXCLUDES it (pickers / facet counts), and the badge count is 1.
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds retired)
-        Assert.Equal(11, (MW.facetedState retired).resultCount)
+        Assert.Equal(11, (MW.facetedState retired).resultCount.value)
         Assert.Equal(1, MW.inactiveCount retired)
         // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
         match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
@@ -1276,12 +1276,12 @@ module MaterialsWindowTests =
         let shown = MW.updateMaterialsWindow MW.ToggleShowInactive retired
         Assert.Equal(IncludeInactive, shown.showInactive)
         Assert.Contains(MaterialIds.glass200, filteredIds shown)
-        Assert.Equal(12, (MW.facetedState shown).resultCount)
+        Assert.Equal(12, (MW.facetedState shown).resultCount.value)
         let leaf =
             (MW.facetedState shown).tree
             |> List.head
-            |> fun entries -> entries.children |> List.find (fun n -> n.code = MW.entryNodeCode MaterialIds.glass200)
-        Assert.Contains("inactive", leaf.label)
+            |> fun entries -> entries.children |> List.find (fun n -> n.code.value = MW.entryNodeCode MaterialIds.glass200)
+        Assert.Contains("inactive", leaf.label.value)
         // A second toggle hides them again.
         Assert.Equal(ActiveOnly, (MW.updateMaterialsWindow MW.ToggleShowInactive shown).showInactive)
 
@@ -1348,7 +1348,7 @@ module MaterialsWindowTests =
         let selectModel = MW.initMaterialsWindow selectCtx (Select selection)
         ignore events
         Assert.DoesNotContain(MaterialIds.glass200, filteredIds selectModel)
-        Assert.Equal(11, (MW.facetedState selectModel).resultCount)
+        Assert.Equal(11, (MW.facetedState selectModel).resultCount.value)
         // The bound reference still resolves — a layer already pinning it keeps drawing.
         match materials.resolveVersion (MaterialVersionId.firstOf MaterialIds.glass200) with
         | Ok (Some _) -> ()

@@ -259,41 +259,41 @@ module LibraryWindowTests =
         let _, m = freshModel ()
         let state = LW.facetedState m
         // 11 seeded samples + 2 detectors + 3 polarizers + 1 source.
-        Assert.Equal(seededCorpus, state.resultCount)
+        Assert.Equal(seededCorpus, state.resultCount.value)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, state.materialization)
         Assert.Empty(state.breadcrumbs)
-        Assert.Equal("", state.filterDraft)
+        Assert.Equal("", state.filterDraft.value)
         let entries = List.head state.tree
-        Assert.Equal("entries", entries.code)
-        Assert.Equal(Some seededCorpus, entries.countOpt)
+        Assert.Equal("entries", entries.code.value)
+        Assert.Equal(Some (FacetedTreeControls.FacetItemCount seededCorpus), entries.countOpt)
         Assert.Equal(seededCorpus, List.length entries.children)
         for leaf in entries.children do
-            Assert.StartsWith("entry:", leaf.code)
+            Assert.StartsWith("entry:", leaf.code.value)
         // Samples AND presets both lead as leaves.
-        Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code = LW.entryNodeCode glassFilm600EntryId)
-        Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code = LW.entryNodeCode "src-600")
+        Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = LW.entryNodeCode glassFilm600EntryId)
+        Assert.Contains(entries.children, fun (n : FacetedTreeControls.TreeNode) -> n.code.value = LW.entryNodeCode "src-600")
         // The ONE seeded representation is "By kind", active by default.
-        Assert.Equal<string list>([ "by-kind" ], state.representations |> List.map (fun r -> r.code))
-        Assert.Equal("by-kind", state.activeRepresentation)
+        Assert.Equal<string list>([ "by-kind" ], state.representations |> List.map (fun r -> r.code.value))
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey "by-kind"), state.activeRepresentationOpt)
 
     [<Fact>]
     let ``acceptance (pure): the by-kind tree lists every entry kind with counts`` () =
         let _, m = freshModel ()
         let state = LW.facetedState m
         let kindNode =
-            state.tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+            state.tree |> List.find (fun n -> n.code.value = "facet:" + entryKindFacetKey.value)
         let branches =
-            kindNode.children |> List.map (fun b -> b.label, b.countOpt)
+            kindNode.children |> List.map (fun b -> b.label.value, b.countOpt |> Option.map (fun c -> c.value))
         // Every kind, with its count, in the engine's structural branch order.
         Assert.Equal<(string * int option) list>(
             [ "Detector", Some 2; "Polarizer", Some 3; "Sample", Some 11; "Source", Some (List.length SeedSources.allSeedSources) ],
             branches)
         // The kind facet is offered FIRST (the by-kind representation's head) with count-previews.
         let kindOffer = state.offers |> List.head
-        Assert.Equal(entryKindFacetKey.value, kindOffer.code)
+        Assert.Equal(entryKindFacetKey.value, kindOffer.code.value)
         Assert.Equal<(string * int) list>(
             [ "Detector", 2; "Polarizer", 3; "Sample", 11; "Source", List.length SeedSources.allSeedSources ],
-            kindOffer.values |> List.map (fun v -> v.code, v.previewCount))
+            kindOffer.values |> List.map (fun v -> v.code.value, v.previewCount.value))
 
     [<Fact>]
     let ``the projected tree lists entry leaves and facet groups in case-insensitive alphabetical label order`` () =
@@ -308,11 +308,11 @@ module LibraryWindowTests =
         let isSorted (labels : string list) : bool = labels = List.sortWith caseInsensitive labels
         // Level 1a — the entry leaves (every seeded entry, NOT in alphabetical corpus order).
         let entries = List.head state.tree
-        let leafLabels = entries.children |> List.map (fun n -> n.label)
+        let leafLabels = entries.children |> List.map (fun n -> n.label.value)
         Assert.Equal(seededCorpus, List.length leafLabels)
         Assert.True(isSorted leafLabels, $"entry leaves must be alphabetical: %A{leafLabels}")
         // Level 1b — the top-level facet groups (Kind no longer leads by representation order).
-        let facetLabels = state.tree |> List.tail |> List.map (fun n -> n.label)
+        let facetLabels = state.tree |> List.tail |> List.map (fun n -> n.label.value)
         Assert.True(List.length facetLabels > 1, "the by-kind tree offers several facet groups")
         Assert.True(isSorted facetLabels, $"facet groups must be alphabetical: %A{facetLabels}")
 
@@ -329,25 +329,25 @@ module LibraryWindowTests =
         for group in facetGroups do
             // 1) The group carries a positive total (never a bare, countless heading).
             match group.countOpt with
-            | Some c -> Assert.True(c > 0, $"facet group %s{group.label} must show a positive total, got %d{c}")
-            | None -> Assert.Fail($"facet group %s{group.label} must show a total count")
+            | Some c -> Assert.True(c.value > 0, $"facet group %s{group.label.value} must show a positive total, got %d{c.value}")
+            | None -> Assert.Fail($"facet group %s{group.label.value} must show a total count")
             // 2) Every branch expands to member entry leaves, the leaf tally matching its (count) badge.
             Assert.NotEmpty(group.children)
             let mutable distinct = Set.empty
             for branch in group.children do
                 match branch.countOpt with
                 | Some bc ->
-                    Assert.True(bc > 0, $"branch %s{branch.label} must carry entries")
-                    Assert.Equal(bc, List.length branch.children)
-                | None -> Assert.Fail($"branch %s{branch.label} must show a count")
+                    Assert.True(bc.value > 0, $"branch %s{branch.label.value} must carry entries")
+                    Assert.Equal(bc.value, List.length branch.children)
+                | None -> Assert.Fail($"branch %s{branch.label.value} must show a count")
                 for leaf in branch.children do
                     Assert.True(List.isEmpty leaf.children, "a branch entry leaf is terminal")
                     // Each branch-nested leaf is a SELECTABLE entry (its code resolves to an entryId).
-                    match LW.entryIdOfNodeCode leaf.code with
+                    match LW.entryIdOfNodeCode leaf.code.value with
                     | Some entryId -> distinct <- Set.add entryId distinct
-                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label} (%s{leaf.code}) must resolve to an entry id")
+                    | None -> Assert.Fail($"branch entry leaf %s{leaf.label.value} (%s{leaf.code.value}) must resolve to an entry id")
             // 3) The group total is exactly the DISTINCT entries reachable by expanding its branches.
-            Assert.Equal(Some (Set.count distinct), group.countOpt)
+            Assert.Equal(Some (FacetedTreeControls.FacetItemCount (Set.count distinct)), group.countOpt)
 
     [<Fact>]
     let ``the single-valued Kind facet totals the whole population and its branch counts sum to it`` () =
@@ -356,10 +356,10 @@ module LibraryWindowTests =
         // partition it — the operator's "the math must add up" for a facet.
         let _, m = freshModel ()
         let state = LW.facetedState m
-        let kindGroup = state.tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+        let kindGroup = state.tree |> List.find (fun n -> n.code.value = "facet:" + entryKindFacetKey.value)
         Assert.Equal(Some state.resultCount, kindGroup.countOpt)
-        let branchSum = kindGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c | None -> 0)
-        Assert.Equal(state.resultCount, branchSum)
+        let branchSum = kindGroup.children |> List.sumBy (fun b -> match b.countOpt with Some c -> c.value | None -> 0)
+        Assert.Equal(state.resultCount.value, branchSum)
 
     [<Fact>]
     let ``a branch-nested entry leaf code selects its entry, while bare branch and heading codes stay inert`` () =
@@ -381,13 +381,13 @@ module LibraryWindowTests =
         let selected = LW.updateLibraryWindow (LW.SelectEntryNode ("src-600", leafCode)) m
         let state = LW.facetedState selected
         // The highlight is on the clicked branch row — NOT the flat corpus-group `entry:<id>` code.
-        Assert.Equal(leafCode, state.selectedCode)
-        Assert.NotEqual<string>(LW.entryNodeCode "src-600", state.selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey leafCode), state.selectedCodeOpt)
+        Assert.NotEqual<ConstructorUiKey option>(Some (ConstructorUiKey (LW.entryNodeCode "src-600")), state.selectedCodeOpt)
         // The domain selection still resolves (the view panel / verbs target the entry).
         Assert.Equal<string option>(Some "src-600", selected.selectedEntryId)
         // The id-only path (programmatic / verb-driven) still highlights the corpus-group row.
         let viaId = LW.updateLibraryWindow (LW.SelectEntry "src-600") m
-        Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState viaId).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (LW.entryNodeCode "src-600")), (LW.facetedState viaId).selectedCodeOpt)
 
     [<Fact>]
     let ``the tree is collapsed by default and ToggleNode flips a node's expansion, re-projecting its children`` () =
@@ -408,7 +408,7 @@ module LibraryWindowTests =
         // A facet group toggles INDEPENDENTLY while entries stays expanded (the set holds both).
         let bothOpen = LW.updateLibraryWindow (LW.ToggleNode ("facet:" + entryKindFacetKey.value)) expanded
         Assert.True(bothOpen.expandedNodes.isExpanded "entries")
-        let kindNode = (LW.facetedState bothOpen).tree |> List.find (fun n -> n.code = "facet:" + entryKindFacetKey.value)
+        let kindNode = (LW.facetedState bothOpen).tree |> List.find (fun n -> n.code.value = "facet:" + entryKindFacetKey.value)
         Assert.Equal(FacetedTreeControls.ExpandedNode, kindNode.expansion)
         // A second toggle collapses entries again (persisted).
         let collapsed = LW.updateLibraryWindow (LW.ToggleNode "entries") bothOpen
@@ -420,12 +420,12 @@ module LibraryWindowTests =
         // Spec 0040 step 003: the control highlights the row whose code is `selectedCode`; the host
         // projects it from the Model's already-tracked selection (nothing selected → empty string).
         let _, m = freshModel ()
-        Assert.Equal("", (LW.facetedState m).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(None, (LW.facetedState m).selectedCodeOpt)
         let selected = LW.updateLibraryWindow (LW.SelectEntry "src-600") m
-        Assert.Equal(LW.entryNodeCode "src-600", (LW.facetedState selected).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (LW.entryNodeCode "src-600")), (LW.facetedState selected).selectedCodeOpt)
         // A re-selection re-targets the highlight in the same projection.
         let retargeted = LW.updateLibraryWindow (LW.SelectEntry "pol-lp") selected
-        Assert.Equal(LW.entryNodeCode "pol-lp", (LW.facetedState retargeted).selectedCode)
+        Assert.Equal<ConstructorUiKey option>(Some (ConstructorUiKey (LW.entryNodeCode "pol-lp")), (LW.facetedState retargeted).selectedCodeOpt)
 
     [<Fact>]
     let ``the committed text filter narrows the corpus over display names and echoes as the box draft`` () =
@@ -434,7 +434,7 @@ module LibraryWindowTests =
         Assert.Equal(6, List.length (LW.filteredEntries narrowed))
         Assert.Contains(glassFilm600EntryId, filteredEntryIds narrowed)
         Assert.DoesNotContain("src-600", filteredEntryIds narrowed)
-        Assert.Equal("glass", (LW.facetedState narrowed).filterDraft)
+        Assert.Equal("glass", (LW.facetedState narrowed).filterDraft.value)
         let restored = LW.updateLibraryWindow (LW.CommitTextFilter "") narrowed
         Assert.Equal(seededCorpus, List.length (LW.filteredEntries restored))
 
@@ -446,9 +446,9 @@ module LibraryWindowTests =
         Assert.Contains("pol-lp", filteredEntryIds constrained)
         let chips = (LW.facetedState constrained).breadcrumbs
         Assert.Equal(1, List.length chips)
-        Assert.Equal(entryKindFacetKey.value, (List.head chips).code)
-        Assert.Equal("Kind: Polarizer", (List.head chips).label)
-        Assert.Equal(3, (List.head chips).afterCount)
+        Assert.Equal(entryKindFacetKey.value, (List.head chips).code.value)
+        Assert.Equal("Kind: Polarizer", (List.head chips).label.value)
+        Assert.Equal(3, (List.head chips).afterCount.value)
         let removed = LW.updateLibraryWindow (LW.RemoveFacet entryKindFacetKey) constrained
         Assert.Equal(seededCorpus, List.length (LW.filteredEntries removed))
         Assert.Empty((LW.facetedState removed).breadcrumbs)
@@ -457,7 +457,7 @@ module LibraryWindowTests =
     let ``the polarizer-category facet rides polarizer populations only and the sample facets ride the sample subtree`` () =
         let _, m = freshModel ()
         let offerCodes (model : LW.LibraryWindowModel) : string list =
-            (LW.facetedState model).offers |> List.map (fun g -> g.code)
+            (LW.facetedState model).offers |> List.map (fun g -> g.code.value)
         // Over the whole corpus both facet families are offered (polarizers and samples exist).
         Assert.Contains(polarizerCategoryFacetKey.value, offerCodes m)
         Assert.Contains(sampleFilmMaterialKey.value, offerCodes m)
@@ -472,10 +472,10 @@ module LibraryWindowTests =
         Assert.DoesNotContain(sampleFilmMaterialKey.value, offerCodes sources)
         // The polarizer facet offers the seeded categories with previews (1 LP, 2 CP).
         let polarizerOffer =
-            (LW.facetedState polarizers).offers |> List.find (fun g -> g.code = polarizerCategoryFacetKey.value)
+            (LW.facetedState polarizers).offers |> List.find (fun g -> g.code.value = polarizerCategoryFacetKey.value)
         Assert.Equal<(string * int) list>(
             [ "Circular", 2; "Linear", 1 ],
-            polarizerOffer.values |> List.map (fun v -> v.code, v.previewCount))
+            polarizerOffer.values |> List.map (fun v -> v.code.value, v.previewCount.value))
 
     [<Fact>]
     let ``a lifted sample facet narrows to the samples carrying the constituent — any film layer matches`` () =
@@ -495,39 +495,39 @@ module LibraryWindowTests =
     let ``the film-thickness facet offers step-010 buckets with the manual range box and a bucket click reproduces its count`` () =
         let _, m = freshModel ()
         let state = LW.facetedState m
-        let thicknessOffer = state.offers |> List.find (fun g -> g.code = sampleFilmThicknessKey.value)
+        let thicknessOffer = state.offers |> List.find (fun g -> g.code.value = sampleFilmThicknessKey.value)
         Assert.Equal(FacetedTreeControls.ManualRangeOffered, thicknessOffer.manualRange)
         Assert.NotEmpty(thicknessOffer.values)
         // Every OTHER offer group is discrete: no manual box anywhere else.
         for group in state.offers do
-            if group.code <> sampleFilmThicknessKey.value then
+            if group.code.value <> sampleFilmThicknessKey.value then
                 Assert.Equal(FacetedTreeControls.NoManualRange, group.manualRange)
         // Applying a bucket through the control's token seam reproduces exactly its preview
         // count (the step-010 pin, now through the window's own handler boundary).
         let bucket = List.head thicknessOffer.values
         let mutable current = m
         let handlers = LW.facetedHandlers (fun msg -> current <- LW.updateLibraryWindow msg current)
-        handlers.applyConstraint sampleFilmThicknessKey.value bucket.code
-        Assert.Equal(bucket.previewCount, List.length (LW.filteredEntries current))
+        handlers.applyConstraint sampleFilmThicknessKey.uiKey bucket.code
+        Assert.Equal(bucket.previewCount.value, List.length (LW.filteredEntries current))
         // The chip is removable and carries the bucket-shaped range label.
         let chips = (LW.facetedState current).breadcrumbs
         Assert.Equal(1, List.length chips)
-        Assert.StartsWith("Film thickness:", (List.head chips).label)
+        Assert.StartsWith("Film thickness:", (List.head chips).label.value)
 
     [<Fact>]
     let ``the tree's film-thickness branches are buckets, never raw magnitudes`` () =
         let _, m = freshModel ()
         let state = LW.facetedState m
         let thicknessNode =
-            state.tree |> List.find (fun n -> n.code = "facet:" + sampleFilmThicknessKey.value)
+            state.tree |> List.find (fun n -> n.code.value = "facet:" + sampleFilmThicknessKey.value)
         Assert.NotEmpty(thicknessNode.children)
         for branch in thicknessNode.children do
             // A bucket branch carries a range code and a unit-labelled range text with a count.
-            Assert.StartsWith("branch:" + sampleFilmThicknessKey.value + ":", branch.code)
+            Assert.StartsWith("branch:" + sampleFilmThicknessKey.value + ":", branch.code.value)
             match branch.countOpt with
-            | Some count -> Assert.True(count > 0, "a bucket branch carries a non-zero count")
-            | None -> Assert.Fail($"bucket branch %s{branch.code} must carry its count")
-            Assert.Contains("m", branch.label)
+            | Some count -> Assert.True(count.value > 0, "a bucket branch carries a non-zero count")
+            | None -> Assert.Fail($"bucket branch %s{branch.code.value} must carry its count")
+            Assert.Contains("m", branch.label.value)
 
     [<Fact>]
     let ``a manual min–max entry applies as an ordinary constraint chip and an unparseable commit is a no-op`` () =
@@ -535,15 +535,15 @@ module LibraryWindowTests =
         let mutable current = m
         let handlers = LW.facetedHandlers (fun msg -> current <- LW.updateLibraryWindow msg current)
         // "160-260" nm: only the 200 nm glass film's layer lands inside the half-open range.
-        handlers.applyManualRange sampleFilmThicknessKey.value "160-260"
+        handlers.applyManualRange sampleFilmThicknessKey.uiKey (ControlCaption "160-260")
         Assert.Equal<string list>(
             [ string SeedSamples.glassFilm200.id.value ],
             filteredEntryIds current)
         Assert.Equal(1, List.length (LW.facetedState current).breadcrumbs)
         // An unparseable commit dispatches nothing — the constraint (and the model) survive.
         let before = current
-        handlers.applyManualRange sampleFilmThicknessKey.value "not-a-range"
-        handlers.applyManualRange sampleFilmThicknessKey.value ""
+        handlers.applyManualRange sampleFilmThicknessKey.uiKey (ControlCaption "not-a-range")
+        handlers.applyManualRange sampleFilmThicknessKey.uiKey (ControlCaption "")
         Assert.Equal<LW.LibraryWindowModel>(before, current)
         // A single value parses as the degenerate exact-value range (never asserted against a
         // store magnitude — thicknesses round-trip through meters a few ulp off, step 011).
@@ -563,13 +563,13 @@ module LibraryWindowTests =
     [<Fact>]
     let ``the projection re-queries the LIVE samples store — a store write shows in the next pass`` () =
         let samples, m = freshModelWithStores ()
-        Assert.Equal(seededCorpus, (LW.facetedState m).resultCount)
+        Assert.Equal(seededCorpus, (LW.facetedState m).resultCount.value)
         // Remove a sample directly through the SHARED store (another window's write): the very
         // next projection of the UNCHANGED model no longer lists it.
         match samples.removeSample SeedSamples.glassFilm200.id with
         | Ok () -> ()
         | Error e -> Assert.Fail($"removing the seeded sample must succeed, got %A{e}")
-        Assert.Equal(seededCorpus - 1, (LW.facetedState m).resultCount)
+        Assert.Equal(seededCorpus - 1, (LW.facetedState m).resultCount.value)
         Assert.DoesNotContain(string SeedSamples.glassFilm200.id.value, filteredEntryIds m)
 
     // ============================ pure: verbs + confirm gate ============================
@@ -618,7 +618,7 @@ module LibraryWindowTests =
         | other -> Assert.Fail($"expected ProtectedEntryRefused, got %A{other}")
         Assert.Equal(LW.NoPendingRemove, refused.removeGate)
         // Nothing changed: the corpus, the stores, the selection.
-        Assert.Equal(seededCorpus, (LW.facetedState refused).resultCount)
+        Assert.Equal(seededCorpus, (LW.facetedState refused).resultCount.value)
         Assert.Contains("src-600", filteredEntryIds refused)
         match samples.listSamples ActiveOnly with
         | Ok all -> Assert.Equal(11, List.length all)
@@ -673,7 +673,7 @@ module LibraryWindowTests =
         | Some (LW.SampleRemoveRefused (UnknownSampleId reason)) -> Assert.Contains("unknown sample id", reason)
         | other -> Assert.Fail($"expected SampleRemoveRefused UnknownSampleId, got %A{other}")
         Assert.Equal(LW.NoPendingRemove, refused.removeGate)
-        Assert.Equal(seededCorpus - 1, (LW.facetedState refused).resultCount)
+        Assert.Equal(seededCorpus - 1, (LW.facetedState refused).resultCount.value)
 
     [<Fact>]
     let ``a query or selection change disarms a pending remove and clears the refusal`` () =
@@ -702,14 +702,14 @@ module LibraryWindowTests =
         Assert.Equal<string option>(None, LW.entryIdOfNodeCode "entries")
         let dispatched = ResizeArray<LW.LibraryWindowMsg>()
         let handlers = LW.facetedHandlers dispatched.Add
-        handlers.selectNode (LW.entryNodeCode "src-600")
-        handlers.selectNode "branch:entry-kind:Sample"
-        handlers.selectNode "entries"
+        handlers.selectNode (ConstructorUiKey (LW.entryNodeCode "src-600"))
+        handlers.selectNode (ConstructorUiKey "branch:entry-kind:Sample")
+        handlers.selectNode (ConstructorUiKey "entries")
         // Only the entry-leaf click selects — carrying the EXACT clicked code (a corpus-group leaf
         // here) so the highlight lands on the clicked row; the bare branch/heading codes are inert.
         Assert.Equal<LW.LibraryWindowMsg list>([ LW.SelectEntryNode ("src-600", LW.entryNodeCode "src-600") ], List.ofSeq dispatched)
         // A discrete offer click lifts its tokens back to elevated engine values at the boundary.
-        handlers.applyConstraint entryKindFacetKey.value "Polarizer"
+        handlers.applyConstraint entryKindFacetKey.uiKey (ConstructorUiKey "Polarizer")
         Assert.Equal(kindConstraint "Polarizer", dispatched.[1])
 
     [<Fact>]
@@ -743,7 +743,7 @@ module LibraryWindowTests =
         let gated = LW.facetedState m
         Assert.Equal(FacetedTreeControls.TreeGated, gated.materialization)
         Assert.Empty(gated.tree)
-        Assert.Equal(seededCorpus, gated.resultCount)
+        Assert.Equal(seededCorpus, gated.resultCount.value)
         Assert.NotEmpty(gated.offers)
         let shown = LW.facetedState (LW.updateLibraryWindow LW.RequestTreeBuild m)
         Assert.Equal(FacetedTreeControls.TreeMaterialized, shown.materialization)
@@ -1072,7 +1072,7 @@ module LibraryWindowTests =
             [ "pol-cp-left"; "pol-cp-right" ],
             filteredEntryIds m |> List.sort)
         let state = LW.facetedState m
-        Assert.Equal(2, state.resultCount)
+        Assert.Equal(2, state.resultCount.value)
         Assert.Empty(state.breadcrumbs)
         // A LinearPolarizer constraint narrows to the one LP preset (forKinds, never re-derived).
         let _, _, lp = freshSelectModel LinearPolarizer (TableElementTarget (elementId "el-1"))
@@ -1574,7 +1574,7 @@ module LibraryWindowTests =
         Assert.Equal(LW.NoPendingLifecycle, retired.lifecycleGate)
         // Default scope EXCLUDES the retired sample (one fewer); the badge count is 1.
         Assert.DoesNotContain(glassFilm600EntryId, filteredEntryIds retired)
-        Assert.Equal(seededCorpus - 1, (LW.facetedState retired).resultCount)
+        Assert.Equal(seededCorpus - 1, (LW.facetedState retired).resultCount.value)
         Assert.Equal(1, LW.inactiveCount retired)
         // The reference still resolves IGNORING lifecycle (the table keeps drawing it).
         match samples.resolveVersion { sampleId = SeedSamples.glassFilm600.id; version = VersionNumber.first } with
@@ -1584,18 +1584,18 @@ module LibraryWindowTests =
         let shown = LW.updateLibraryWindow LW.ToggleShowInactive retired
         Assert.Equal(IncludeInactive, shown.showInactive)
         Assert.Contains(glassFilm600EntryId, filteredEntryIds shown)
-        Assert.Equal(seededCorpus, (LW.facetedState shown).resultCount)
+        Assert.Equal(seededCorpus, (LW.facetedState shown).resultCount.value)
         let leaf =
             (LW.facetedState shown).tree
             |> List.head
-            |> fun entries -> entries.children |> List.find (fun n -> n.code = LW.entryNodeCode glassFilm600EntryId)
-        Assert.Contains("inactive", leaf.label)
+            |> fun entries -> entries.children |> List.find (fun n -> n.code.value = LW.entryNodeCode glassFilm600EntryId)
+        Assert.Contains("inactive", leaf.label.value)
         // Presets never badge — a source leaf keeps its bare name.
         let srcLeaf =
             (LW.facetedState shown).tree
             |> List.head
-            |> fun entries -> entries.children |> List.find (fun n -> n.code = LW.entryNodeCode "src-600")
-        Assert.DoesNotContain("inactive", srcLeaf.label)
+            |> fun entries -> entries.children |> List.find (fun n -> n.code.value = LW.entryNodeCode "src-600")
+        Assert.DoesNotContain("inactive", srcLeaf.label.value)
 
     [<Fact>]
     let ``a sample lifecycle verb is confirm-gated and a vanished sample surfaces a typed refusal`` () =
