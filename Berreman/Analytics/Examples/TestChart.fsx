@@ -15,21 +15,20 @@ open OpticalProperties.Dispersive
 open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
-let numberOfPoints = 2000
-let numberOfPoints3D = 200
+let numberOfPoints = NumberOfPoints 2000
+let numberOfPoints3D = NumberOfPoints 200
+let i = numberOfPoints.incidenceAngleRange
+let e = numberOfPoints.ellipticityRange
+let p = numberOfPoints.polarizationRange
 
-let i = incidenceAngleRange numberOfPoints
-let e = ellipticityRange numberOfPoints
-let p = polarizationRange numberOfPoints
-
-let i3D = incidenceAngleRange numberOfPoints3D
-let e3D = ellipticityRange numberOfPoints3D
-let p3D = polarizationRange numberOfPoints3D
+let i3D = numberOfPoints3D.incidenceAngleRange
+let e3D = numberOfPoints3D.ellipticityRange
+let p3D = numberOfPoints3D.polarizationRange
 
 #time
-plot (transparentGlass light600nmNormalLPs) fn i
-plot (transparentGlass (light600nmInclinedDegreeLPs 59.0<deg>)) fn e
-plot3D (transparentGlass light600nmNormalLPs) fn e3D i3D
+plot (FixedInfo.transparentGlass light600nmNormalLPs) fn i
+plot (FixedInfo.transparentGlass (light600nmInclinedDegreeLPs 59.0<deg>)) fn e
+plot3D (FixedInfo.transparentGlass light600nmNormalLPs) fn e3D i3D
 #time
 
 let thickness = Thickness.nm 200.0<nm>
@@ -145,7 +144,7 @@ let f1 = { f0 with opticalSystem = filmSystem.fullSystem.dispersive }
 //plot3D f0 polarizationRange incidenceAngleRange fn
 //plot3D f1 wavelength500to700Range incidenceAngleRange fn
 
-let w = wavelength250to600 numberOfPoints
+let w = numberOfPoints.wavelength250to600
 
 #time
 plotN11 langasiteOpticalProperties w
@@ -165,8 +164,8 @@ let f3 = langasiteFilmOnSilicon thickness3 light600nmNormalLPs
 let f4 = langasiteSubstrateOnSilicon thickness light600nmNormalLPs
 
 #time
-plot f3 fn (wavelength200to800Range numberOfPoints)
-plot f4 fn (wavelength200to800Range numberOfPoints)
+plot f3 fn (numberOfPoints.wavelength200to800Range)
+plot f4 fn (numberOfPoints.wavelength200to800Range)
 #time
 
 printfn "Completed."

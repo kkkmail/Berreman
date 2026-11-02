@@ -2,9 +2,10 @@ namespace Analytics
 
 open Berreman.Solvers
 open Berreman.FieldFunctions
+open Analytics.Variables
 
 /// Color conversion of an R or T spectrum (Part F §F.8). `spectrumToXyz` integrates a
-/// chosen channel (R or T) — read from the `(float * Solution) array` that
+/// chosen channel (R or T) — read from the `SweepPoint` array that
 /// `Variables.calculate` produces over a `WaveLengthRange` — against the embedded CIE
 /// 1931 2° colour-matching functions and a chosen illuminant; `xyzToLab`/`xyzToSrgb`
 /// apply the standard CIE Lab and sRGB transforms. The colour-matching and D65/A
@@ -144,21 +145,21 @@ module Colorimetry =
         | IlluminantA -> aTable
 
     /// §F.8 — integrate a chosen channel (R or T) over the sweep produced by
-    /// `Variables.calculate` (whose first tuple element is the wavelength in nm) against
+    /// `Variables.calculate` (whose `plotValue` is the wavelength in nm) against
     /// the CIE 1931 2° CMFs and the chosen illuminant, returning CIE XYZ. The luminance Y
     /// is normalised so a perfect reflector (channel ≡ 1) yields the illuminant's white
     /// point (Y = 1). Consumes the §F.1 sweep output; does NOT re-run the solver.
     let spectrumToXyz
         (illuminant : Illuminant)
         (channel : OpticalFunction)
-        (spectrum : (float * Solution)[])
+        (spectrum : SweepPoint[])
         : float * float * float =
 
         let illum = illuminantCurve illuminant
 
         let samples =
             spectrum
-            |> Array.map (fun (wl, sol) -> (wl, (sol.func channel |> Option.defaultValue OpticalFunctionValue.zero).value))
+            |> Array.map (fun p -> (p.plotValue, (p.solution.func channel |> Option.defaultValue OpticalFunctionValue.zero).value))
 
         let norm =
             samples

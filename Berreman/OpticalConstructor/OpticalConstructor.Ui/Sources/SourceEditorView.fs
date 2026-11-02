@@ -78,12 +78,14 @@ let update (msg : SourceMsg) (s : SourceSpec) : SourceSpec =
 /// A ranged wavelength axis over the §E.3 preset span (200–800 nm,
 /// `StandardLightVariables.fs:64`) — a `WaveLengthRange`, no fresh `Range<_>`.
 let wavelengthAxisRanged (numberOfPoints : int) : SourceAxis<WaveLength> =
-    Ranged (wavelength200to800Range numberOfPoints)
+    let points = NumberOfPoints numberOfPoints
+    Ranged points.wavelength200to800Range
 
 /// A ranged incidence-angle axis over the §E.3 preset span (0–89°,
 /// `StandardLightVariables.fs:40`) — an `IncidenceAngleRange`, no fresh `Range<_>`.
 let incidenceAngleAxisRanged (numberOfPoints : int) : SourceAxis<IncidenceAngle> =
-    Ranged (incidenceAngleRange numberOfPoints)
+    let points = NumberOfPoints numberOfPoints
+    Ranged points.incidenceAngleRange
 
 /// A fixed (single-value) wavelength axis carrying the committed value.
 let wavelengthAxisFixed (w : WaveLength) : SourceAxis<WaveLength> = Fixed w

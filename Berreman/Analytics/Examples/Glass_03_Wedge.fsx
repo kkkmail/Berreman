@@ -14,7 +14,7 @@ open Berreman.Constants
 //===========================================================
 let fn = [ R; T ]
 
-let numberOfPoints = 2000
+let numberOfPoints = NumberOfPoints 2000
 let incidenceAngleDegree = 0.0<deg>
 let polarization = 45.0<deg> |> Angle.degree |> Polarization.create
 
@@ -88,7 +88,7 @@ let getGlassInfo useThickPlate nh1 nh2Opt light angle =
         incidentLightInfo = { light with polarization = polarization }
         opticalSystem =
             {
-                description = Some ("Glass " + (if useThickPlate then "substrate" else "film"))
+                description = Some (OpticalSystemDescription ("Glass " + (if useThickPlate then "substrate" else "film")))
                 upperWithDisp = OpticalProperties.vacuum.dispersive
                 filmsWithDisp = films
                 substrateWithDisp = substr

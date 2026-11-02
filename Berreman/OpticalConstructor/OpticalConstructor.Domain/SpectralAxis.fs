@@ -29,7 +29,7 @@ module SpectralAxis =
         {
             startValue = toWaveLength u startValue
             endValue = toWaveLength u endValue
-            numberOfPoints = points
+            numberOfPoints = NumberOfPoints points
         }
 
     /// Axis tick positions in the display unit (§D.2 `wavelengthToUnit`). RELABEL/RESCALE
@@ -40,5 +40,5 @@ module SpectralAxis =
     let axisTicks (u : UnitOfMeasure) (range : Range<WaveLength>) : float list =
         let s = range.startValue.value
         let e = range.endValue.value
-        let n = max 1 range.numberOfPoints
-        [ for i in 0 .. range.numberOfPoints -> fromMeters u (s + (e - s) * (float i) / (float n)) ]
+        let n = max 1 range.numberOfPoints.value
+        [ for i in 0 .. range.numberOfPoints.value -> fromMeters u (s + (e - s) * (float i) / (float n)) ]

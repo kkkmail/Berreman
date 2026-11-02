@@ -13,7 +13,7 @@ open Analytics.Variables
 //===========================================================
 let fn = [ R; T ]
 
-let numberOfPoints = 2000
+let numberOfPoints = NumberOfPoints 2000
 let polarization = 45.0<Berreman.Constants.deg> |> Angle.degree |> Polarization.create
 
 let light = { light600nmNormalLPs with polarization = polarization }

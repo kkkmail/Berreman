@@ -165,7 +165,7 @@ module MaterialImportTests =
             | Ok e -> e
             | Error e -> failwith (string e)
         let range : Range<WaveLength> =
-            { startValue = WaveLength.nm 450.0<nm>; endValue = WaveLength.nm 650.0<nm>; numberOfPoints = 4 }
+            { startValue = WaveLength.nm 450.0<nm>; endValue = WaveLength.nm 650.0<nm>; numberOfPoints = NumberOfPoints 4 }
         let csv = exportCsv entry range
         Assert.Contains("wavelength_nm,n,k", csv)
         match importCsv csv with

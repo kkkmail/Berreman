@@ -30,7 +30,7 @@ let g33MaxVal = 5.0e-04
 
 let thickness = Thickness.oneMilliMeter
 
-let numberOfPoints = 2000
+let numberOfPoints = NumberOfPoints 2000
 let polarization = 45.0<deg> |> Angle.degree |> Polarization.create
 //let polarization = Polarization.s
 
@@ -67,37 +67,37 @@ let updateRhoType32_42_62 w g11 g12 g33 =
     { w with layer = { w.layer with properties = { w.layer.properties with rho = Rho.type_32_42_62_Crystal g11 g12 g33 } } }
 
 
-let updateG12Planar (o: OpticalSystem) g12 =
+let updateG12Planar (o: OpticalSystem) (ArbitraryValue g12) =
     match o.substrate with
     | Some (Wedge w) -> { o with substrate = (w, RhoValue g12) ||> updateRhoPlanar |> Wedge |> Some}
     | _ -> o
 
 
-let updateG11Type3_4_6 (o: OpticalSystem) g11 =
+let updateG11Type3_4_6 (o: OpticalSystem) (ArbitraryValue g11) =
     match o.substrate with
     | Some (Wedge w) -> { o with substrate = (w, RhoValue g11, g33) |||> updateRhoType3_4_6 |> Wedge |> Some}
     | _ -> o
 
 
-let updateG33Type3_4_6 (o: OpticalSystem) g33 =
+let updateG33Type3_4_6 (o: OpticalSystem) (ArbitraryValue g33) =
     match o.substrate with
     | Some (Wedge w) -> { o with substrate = (w, g11, RhoValue g33) |||> updateRhoType3_4_6 |> Wedge |> Some}
     | _ -> o
 
 
-let updateG11Type32_42_62 (o: OpticalSystem) g11 =
+let updateG11Type32_42_62 (o: OpticalSystem) (ArbitraryValue g11) =
     match o.substrate with
     | Some (Wedge w) -> { o with substrate = updateRhoType32_42_62 w (RhoValue g11) g12 g33 |> Wedge |> Some}
     | _ -> o
 
 
-let updateG12Type32_42_62 (o: OpticalSystem) g12 =
+let updateG12Type32_42_62 (o: OpticalSystem) (ArbitraryValue g12) =
     match o.substrate with
     | Some (Wedge w) -> { o with substrate = updateRhoType32_42_62 w g11 (RhoValue g12) g33 |> Wedge |> Some}
     | _ -> o
 
 
-let updateG33Type32_42_62 (o: OpticalSystem) g33 =
+let updateG33Type32_42_62 (o: OpticalSystem) (ArbitraryValue g33) =
     match o.substrate with
     | Some (Wedge w) -> { o with substrate = updateRhoType32_42_62 w g11 g12 (RhoValue g33) |> Wedge |> Some}
     | _ -> o
@@ -105,27 +105,27 @@ let updateG33Type32_42_62 (o: OpticalSystem) g33 =
 
 let g11Range update =
     {
-        variableName = "g11"
-        range =  Range<_>.create numberOfPoints 0.0 g11MaxVal
-        scale = 1.0
+        variableName = VariableName "g11"
+        range =  Range<_>.create numberOfPoints (ArbitraryValue 0.0) (ArbitraryValue g11MaxVal)
+        scale = PlotScale 1.0
         getSys = update
     }
     |> ArbitraryVariableRange
 
 let g12Range update =
     {
-        variableName = "g12"
-        range =  Range<_>.create numberOfPoints 0.0 g12MaxVal
-        scale = 1.0
+        variableName = VariableName "g12"
+        range =  Range<_>.create numberOfPoints (ArbitraryValue 0.0) (ArbitraryValue g12MaxVal)
+        scale = PlotScale 1.0
         getSys = update
     }
     |> ArbitraryVariableRange
 
 let g33Range update =
     {
-        variableName = "g33"
-        range =  Range<_>.create numberOfPoints (-g33MaxVal) g33MaxVal
-        scale = 1.0
+        variableName = VariableName "g33"
+        range =  Range<_>.create numberOfPoints (ArbitraryValue (-g33MaxVal)) (ArbitraryValue g33MaxVal)
+        scale = PlotScale 1.0
         getSys = update
     }
     |> ArbitraryVariableRange

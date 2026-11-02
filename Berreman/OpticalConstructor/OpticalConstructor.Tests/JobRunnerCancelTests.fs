@@ -37,7 +37,7 @@ module JobRunnerCancelTests =
 
     /// A sweep over 10 wavelength points → the engine iterates 0..length inclusive.
     let private sweep : RangedVariable =
-        WaveLengthRange(Range<_>.create 10 (WaveLength.nm 500.0<nm>) (WaveLength.nm 700.0<nm>))
+        WaveLengthRange(Range<_>.create (NumberOfPoints 10) (WaveLength.nm 500.0<nm>) (WaveLength.nm 700.0<nm>))
 
     let private solvePoint (_ : int) : float =
         OpticalSystemSolver(light, sampleSystem).solution.emSys.reflected.e.value.norm

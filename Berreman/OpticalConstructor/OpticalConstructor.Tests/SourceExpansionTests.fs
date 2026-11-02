@@ -44,7 +44,7 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E5 a Flat profile samples unit weights over the wavelength range in meters`` () =
-        let range = wavelength200to800Range 10
+        let range = (NumberOfPoints 10).wavelength200to800Range
         let samples = SpectralProfile.sample Flat range
         Assert.Equal(11, List.length samples)
         Assert.All(samples, fun (_, w) -> Assert.Equal(1.0, w, 12))
@@ -56,7 +56,7 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E5 a blackbody profile weights the band by Planck's law in canonical SI`` () =
-        let range = wavelength200to800Range 10
+        let range = (NumberOfPoints 10).wavelength200to800Range
         let samples = SpectralProfile.sample (Blackbody 5000.0<K>) range
         Assert.Equal(11, List.length samples)
         Assert.All(samples, fun (_, w) -> Assert.True(w > 0.0, $"expected a positive Planck weight, got {w}"))
@@ -67,7 +67,7 @@ module SourceExpansionTests =
 
     [<Fact>]
     let ``AC-E5 a laser line is a monochromatic delta at its line wavelength`` () =
-        let samples = SpectralProfile.sample (LaserLine (WaveLength.nm 633.0<nm>)) (wavelength200to800Range 10)
+        let samples = SpectralProfile.sample (LaserLine (WaveLength.nm 633.0<nm>)) ((NumberOfPoints 10).wavelength200to800Range)
         match samples with
         | [ (wl, w) ] ->
             Assert.Equal(6.33e-7, wl.value / 1.0<meter>, 15)
@@ -85,7 +85,7 @@ module SourceExpansionTests =
             Assert.Equal(0.5, w0, 12)
             // The pure profile sampler leaves an unloaded import empty — the data
             // arrives from the sidecar (FSharp.Data), never from a `.binz` pickle.
-            Assert.Equal<(WaveLength * float) list>([], SpectralProfile.sample (ImportedSpectrum "spectrum.csv") (wavelength200to800Range 4))
+            Assert.Equal<(WaveLength * float) list>([], SpectralProfile.sample (ImportedSpectrum "spectrum.csv") ((NumberOfPoints 4).wavelength200to800Range))
         | Error e -> Assert.Fail($"expected a parsed spectrum, got {e}")
 
     [<Fact>]

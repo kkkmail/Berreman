@@ -218,7 +218,7 @@ module FsxAcceptanceTests =
     /// The script's data: `Variables.calculate` over the range, read through `fn` (what the script plots).
     let private scriptData (info : FixedInfo) (range : RangedVariable) (fn : OpticalFunction) : (float * float) list =
         calculate info range
-        |> Array.choose (fun (x, solution) -> solution.func fn |> Option.map (fun y -> x, y.value))
+        |> Array.choose (fun p -> p.solution.func fn |> Option.map (fun y -> p.plotValue, y.value))
         |> List.ofArray
 
     let private seriesNamed (run : ExperimentExport.ExportedRun) (name : string) : (float * float) list =
@@ -266,7 +266,7 @@ module FsxAcceptanceTests =
         }
 
     /// The script's incidence range (0…89° — `IncidenceAngle.maxValue`), 89 intervals ⇒ a point per degree.
-    let private incidence0to89 : RangedVariable = Range<_>.create 89 IncidenceAngle.normal IncidenceAngle.maxValue |> IncidenceAngleRange
+    let private incidence0to89 : RangedVariable = Range<_>.create (NumberOfPoints 89) IncidenceAngle.normal IncidenceAngle.maxValue |> IncidenceAngleRange
 
     let private glassOnTable (plate : bool) : unit =
         let b = bench ()
@@ -305,11 +305,11 @@ module FsxAcceptanceTests =
 
     /// A script `RangedVariable` and the table sweep it corresponds to (N intervals ⇒ N + 1 points).
     let private incidenceSweep (n : int) (topDegrees : float) : RangedVariable * (ExperimentControls.VariableChoice * float * float * int) =
-        Range<_>.create n IncidenceAngle.normal (IncidenceAngle.create (Angle.degree (topDegrees * 1.0<deg>))) |> IncidenceAngleRange,
+        Range<_>.create (NumberOfPoints n) IncidenceAngle.normal (IncidenceAngle.create (Angle.degree (topDegrees * 1.0<deg>))) |> IncidenceAngleRange,
         (ExperimentControls.VaryR2, 0.0, topDegrees, n + 1)
 
     let private waveLengthSweep (n : int) (lowNm : float) (highNm : float) : RangedVariable * (ExperimentControls.VariableChoice * float * float * int) =
-        Range<_>.create n (WaveLength.nm (lowNm * 1.0<nm>)) (WaveLength.nm (highNm * 1.0<nm>)) |> WaveLengthRange,
+        Range<_>.create (NumberOfPoints n) (WaveLength.nm (lowNm * 1.0<nm>)) (WaveLength.nm (highNm * 1.0<nm>)) |> WaveLengthRange,
         (ExperimentControls.VaryWaveLength, lowNm, highNm, n + 1)
 
     let private tableRun (source : string) (sampleEntry : string) (incidence : float) (variable, low, high, points) : TableRun =

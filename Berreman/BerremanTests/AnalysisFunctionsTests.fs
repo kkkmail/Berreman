@@ -94,7 +94,7 @@ type AnalysisFunctionsTests() =
         | Single _ -> Assert.Fail "expected a Multiple solution for a thick Plate substrate"
 
     /// AC-F2: a small `ArbitraryVariableRange` sweep driven through `Variables.calculate`
-    /// persists its bulk `array<float * Solution>` via `Softellect.Sys.Core.serialize`/
+    /// persists its bulk `SweepPoint` array via `Softellect.Sys.Core.serialize`/
     /// `deserialize` with `BinaryZippedFormat` (Core.fs:257) and round-trips with fidelity
     /// (float keys and the R channel preserved). The bulk array is NOT placed on the
     /// canonical JSON path — the payload is the zipped binary format (gzip magic), not JSON.
@@ -106,30 +106,32 @@ type AnalysisFunctionsTests() =
 
         let arb : ArbitraryVariable =
             {
-                variableName = "filmThickness"
-                range = Range<_>.create 3 50.0 200.0
-                scale = 1.0
+                variableName = VariableName "filmThickness"
+                range = Range<_>.create (NumberOfPoints 3) (ArbitraryValue 50.0) (ArbitraryValue 200.0)
+                scale = PlotScale 1.0
                 getSys =
-                    fun (sys : OpticalSystem) (z : float) ->
+                    fun (sys : OpticalSystem) (ArbitraryValue z) ->
                         match sys.films with
                         | film :: rest ->
                             { sys with films = { film with thickness = Thickness.nm (z * 1.0<nm>) } :: rest }
                         | [] -> sys
             }
 
-        let sweep : (float * Solution)[] = calculate fixedInfo (ArbitraryVariableRange arb)
+        let sweep : SweepPoint[] = calculate fixedInfo (ArbitraryVariableRange arb)
         Assert.True(sweep.Length >= 2, "sweep should produce multiple points")
 
         let bytes = serialize BinaryZippedFormat sweep
-        let restored : (float * Solution)[] = deserialize BinaryZippedFormat bytes
+        let restored : SweepPoint[] = deserialize BinaryZippedFormat bytes
 
         Assert.Equal(sweep.Length, restored.Length)
 
         Array.iter2
-            (fun (k1 : float, s1 : Solution) (k2 : float, s2 : Solution) ->
+            (fun (p1 : SweepPoint) (p2 : SweepPoint) ->
+                let k1 = p1.plotValue
+                let k2 = p2.plotValue
                 Assert.True(abs (k1 - k2) < tol, $"key mismatch {k1} vs {k2}")
-                let r1 = s1.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
-                let r2 = s2.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+                let r1 = p1.solution.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
+                let r2 = p2.solution.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
                 Assert.True(abs (r1 - r2) < tol, $"R mismatch {r1} vs {r2}"))
             sweep
             restored

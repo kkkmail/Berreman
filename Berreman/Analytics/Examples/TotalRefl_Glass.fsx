@@ -18,7 +18,7 @@ open Berreman.Constants
 let fn = [ Rp; Rs; ]
 //let fn = [ Tp; Ts; ]
 
-let numberOfPoints = 2000
+let numberOfPoints = NumberOfPoints 2000
 let incidenceAngleDegree = 0.0<deg>
 let polarization = 90.0<deg> |> Angle.degree |> Polarization.create
 //let polarization = Polarization.p

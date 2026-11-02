@@ -349,7 +349,7 @@ type OptimizationTests() =
         Assert.True(abs (r550 - 1.0) < 1.0e-2, $"TIR fixture R(550) = %g{r550}, expected ~1")
 
         let fixedInfo : FixedInfo = { incidentLightInfo = light; opticalSystem = tirSystem.dispersive }
-        let range = Range<WaveLength>.create 31 (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>)
+        let range = Range<WaveLength>.create (NumberOfPoints 31) (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>)
         let spectrum = calculate fixedInfo (WaveLengthRange range)
 
         let (_, y, _) as xyz = spectrumToXyz D65 R spectrum

@@ -55,6 +55,7 @@
     <ItemGroup>
         <PackageReference Include="FSharp.Collections.ParallelSeq" />
         <PackageReference Include="Plotly.NET" />
+        <PackageReference Include="Softellect.Sys" />
     </ItemGroup>
 
     <ItemGroup>

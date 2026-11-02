@@ -464,8 +464,8 @@ module MaterialImport =
         // meters directly and build the sample WaveLength via the engine `nmToMeter`).
         let s = range.startValue.value
         let e = range.endValue.value
-        let n = max 1 range.numberOfPoints
-        for i in 0 .. range.numberOfPoints do
+        let n = max 1 range.numberOfPoints.value
+        for i in 0 .. range.numberOfPoints.value do
             let m = s + (e - s) * (float i) / (float n)
             let w = WaveLength.Nm(m / nmToMeter)
             let nComplex = Complex.Sqrt (entry.properties.epsWithDisp.getEps w).[0, 0]

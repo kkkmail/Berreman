@@ -137,7 +137,7 @@ module SourceSpec =
                     | LaserLine _ | ImportedSpectrum _ -> fun (_ : WaveLength) -> 1.0  // handled above
                 let s = r.startValue.value
                 let e = r.endValue.value
-                let n = max 1 r.numberOfPoints   // guard n=0 (matches the cone's `max 1 samples`)
+                let n = max 1 r.numberOfPoints.value   // guard n=0 (matches the cone's `max 1 samples`)
                 [ for i in 0 .. n ->
                     let m = s + (e - s) * (float i) / (float n)
                     let wl = WaveLength.Nm (m / nmToMeter)

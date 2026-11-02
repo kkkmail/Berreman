@@ -1,6 +1,7 @@
 ﻿//===========================================================
 #load "References.fsx"
 //===========================================================
+open System.Numerics
 open Berreman.FieldFunctions
 open Berreman.MaterialProperties
 open Berreman.Media
@@ -14,18 +15,17 @@ open Analytics.Charting
 //===========================================================
 let fn = [ R; T ]
 
-let numberOfPoints = 1000
-//let numberOfPoints3D = 100
+let numberOfPoints = NumberOfPoints 1000
+//let numberOfPoints3D = NumberOfPoints 100
+let i = numberOfPoints.incidenceAngleRange60
+//let e = numberOfPoints.ellipticityRange
+//let p = numberOfPoints.polarizationRange
+let w = numberOfPoints.wavelength05to20Range
 
-let i = incidenceAngleRange60 numberOfPoints
-//let e = ellipticityRange numberOfPoints
-//let p = polarizationRange numberOfPoints
-let w = wavelength05to20Range numberOfPoints
-
-//let i3D = incidenceAngleRange80 numberOfPoints3D
-//let e3D = ellipticityRange numberOfPoints3D
-//let p3D = polarizationRange numberOfPoints3D
-//let w3D = wavelength200to800Range numberOfPoints3D
+//let i3D = numberOfPoints3D.incidenceAngleRange80
+//let e3D = numberOfPoints3D.ellipticityRange
+//let p3D = numberOfPoints3D.polarizationRange
+//let w3D = numberOfPoints3D.wavelength200to800Range
 
 //===========================================================
 
@@ -83,7 +83,7 @@ let description =
 
 let filmSystem =
     {
-        description = Some description
+        description = Some (OpticalSystemDescription description)
         upper = OpticalProperties.vacuum
         films =
             [

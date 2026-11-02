@@ -37,13 +37,12 @@ type Surface =
 /// project each point through `Solution.func` (`FieldFunctions.fs:192`). The legend
 /// name is the engine's `OpticalFunction.info.fullName` (`Charting.fs:31`).
 /// The choose-on-`Some` projection `Charting.plot` uses inside `getFuncData`
-/// (`Charting.fs:26-30`): map each `(x, Solution)` through `Solution.func` and keep
+/// (`Charting.fs:26-30`): map each `SweepPoint` through `Solution.func` and keep
 /// only the `Some` results as `(x, y)` pairs. Shared by `series1D` and
 /// `seriesComparison` so the projection is expressed once (F2).
-let private projectPoints (fn : OpticalFunction) (data : (float * Solution) []) : (float * float) [] =
+let private projectPoints (fn : OpticalFunction) (data : SweepPoint []) : (float * float) [] =
     data
-    |> Array.map (fun (v, s) -> (v, s.func fn |> Option.map (fun y -> y.value)))
-    |> Array.choose (fun (xx, yo) -> match yo with | Some y -> Some (xx, y) | None -> None)
+    |> Array.choose (fun p -> p.solution.func fn |> Option.map (fun y -> (p.plotValue, y.value)))
 
 let series1D (f : FixedInfo) (fn : OpticalFunction) (x : RangedVariable) : Series1D =
     { name = fn.info.fullName; points = projectPoints fn (calculate f x) }
@@ -68,8 +67,8 @@ let seriesComparison (systems : FixedInfo list) (fn : OpticalFunction) (x : Rang
 /// (Part H consumes whatever array it is given; it does not re-run the sweep). The
 /// X/Y axes carry the sweep plot-points; the engine's documented X/Y swap is applied
 /// by the view (`Plot3DView`), mirroring `Charting.plot3D` (`Charting.fs:74-77`).
-let surfaceFromData (data : #seq<#seq<double * double * Solution>>) (fn : OpticalFunction) (xValues : float []) (yValues : float []) : Surface =
-    { z = Charting.mapFun data fn; xValues = xValues; yValues = yValues }
+let surfaceFromData (data : #seq<#seq<SurfacePoint>>) (fn : OpticalFunction) (xValues : float []) (yValues : float []) : Surface =
+    { z = Charting.mapFun data fn |> Array.map (Array.map (fun v -> v.value)); xValues = xValues; yValues = yValues }
 
 /// §H.2/§H.5 — convenience surface builder: run `calculate3D` (`Variables.fs:270`)
 /// once, then project it through `surfaceFromData`.
@@ -95,17 +94,22 @@ let fieldDepthSeries
 /// §H.11 — n,k / ρ / ε-component dispersion series. Reuses the engine's dispersion
 /// data builders (`Variables.calculateN11Re`…`calculateRho33Im`, the bodies behind
 /// `Charting.plotN11`…`plotRho33`, `Charting.fs:95-107`) which already end in
-/// `(float*float)[]`; Part H drops only the terminal `Chart.show` (`Charting.fs:92`)
+/// a `DispersionPoint` array; Part H drops only the terminal `Chart.show` (`Charting.fs:92`)
 /// and re-derives none of the n/k/ρ formulas (owned by `OpticalPropertiesWithDisp`).
-let private dispersion name calc (o : OpticalPropertiesWithDisp) (r : Range<WaveLength>) : Series1D =
-    { name = name; points = calc o r }
+let private dispersion
+    (name : Charting.SeriesName)
+    (calc : OpticalPropertiesWithDisp -> Range<WaveLength> -> DispersionPoint [])
+    (o : OpticalPropertiesWithDisp)
+    (r : Range<WaveLength>)
+    : Series1D =
+    { name = name.value; points = calc o r |> Array.map (fun p -> (p.waveLengthPlotValue, p.propertyValue)) }
 
-let plotN11Series  o r = dispersion "Re[e11]" calculateN11Re  o r
-let plotXi11Series o r = dispersion "Im[e11]" calculateXi11Im o r
-let plotN22Series  o r = dispersion "Re[e22]" calculateN22Re  o r
-let plotXi22Series o r = dispersion "Im[e22]" calculateXi22Im o r
-let plotN33Series  o r = dispersion "Re[e33]" calculateN33Re  o r
-let plotXi33Series o r = dispersion "Im[e33]" calculateXi33Im o r
-let plotRho11Series o r = dispersion "rho11" calculateRho11Im o r
-let plotRho22Series o r = dispersion "rho22" calculateRho22Im o r
-let plotRho33Series o r = dispersion "rho33" calculateRho33Im o r
+let plotN11Series  o r = dispersion (Charting.SeriesName "Re[e11]") calculateN11Re  o r
+let plotXi11Series o r = dispersion (Charting.SeriesName "Im[e11]") calculateXi11Im o r
+let plotN22Series  o r = dispersion (Charting.SeriesName "Re[e22]") calculateN22Re  o r
+let plotXi22Series o r = dispersion (Charting.SeriesName "Im[e22]") calculateXi22Im o r
+let plotN33Series  o r = dispersion (Charting.SeriesName "Re[e33]") calculateN33Re  o r
+let plotXi33Series o r = dispersion (Charting.SeriesName "Im[e33]") calculateXi33Im o r
+let plotRho11Series o r = dispersion (Charting.SeriesName "rho11") calculateRho11Im o r
+let plotRho22Series o r = dispersion (Charting.SeriesName "rho22") calculateRho22Im o r
+let plotRho33Series o r = dispersion (Charting.SeriesName "rho33") calculateRho33Im o r
