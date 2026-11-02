@@ -1,7 +1,7 @@
 namespace OpticalConstructor.Optimization
 
 open Berreman.Solvers
-open Analytics
+open Analytics.AnalysisFunctions
 
 /// §G.6 — Ψ, Δ derivation for ellipsometric residuals (spec 0022 Part G §G.6, [Standard]).
 ///
@@ -10,7 +10,7 @@ open Analytics
 /// The ellipsometric ratio ρ = r_p / r_s yields tan(Ψ)·e^{iΔ}, so Ψ = atan(|ρ|)
 /// and Δ = arg(ρ). This module does NOT fork `Solvers.fs` or `FieldFunctions.fs`
 /// (§0 constraint 2) and does NOT re-derive Ψ/Δ: it SHARES the Part F §F.5
-/// definition by calling `Analytics.AnalysisFunctions.psiDelta` (slice 008),
+/// definition by reading `Solution.psiDelta` (`Analytics.AnalysisFunctions`, slice 008),
 /// which reads that same ρ = r_p/r_s off `EmFieldSystem.reflected`.
 ///
 /// `FieldFunctions.fs:109` `OpticalFunction` is a closed DU and §0 constraint 2
@@ -30,7 +30,7 @@ module Ellipsometry =
         /// Evaluate the quantity on a solved `Solution`, sharing the §F.5
         /// (Ψ, Δ) = (atan|ρ|, arg ρ) derivation rather than re-deriving it.
         member this.evaluate (solution : Solution) : float =
-            let (psi, delta) = AnalysisFunctions.psiDelta solution
+            let pd = solution.psiDelta
             match this with
-            | Psi -> psi
-            | Delta -> delta
+            | Psi -> pd.psi.value
+            | Delta -> pd.delta.value

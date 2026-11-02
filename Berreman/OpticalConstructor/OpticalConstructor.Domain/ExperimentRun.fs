@@ -30,7 +30,7 @@ module ExperimentRun =
     /// What a detector reads (spec 0046 — the detector decides what is captured).
     type Reading =
         | IntensityReading of intensity : float
-        | EllipsometricReading of Propagation.PsiDelta
+        | EllipsometricReading of Analytics.AnalysisFunctions.PsiDelta
 
     /// The polarization state arriving at the detector after `steps`.
     let detectorStokes (steps : RunStep list) : StokesVector =

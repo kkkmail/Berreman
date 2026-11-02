@@ -76,18 +76,18 @@ let surface (f : FixedInfo) (fn : OpticalFunction) (x : RangedVariable) (y : Ran
     surfaceFromData (calculate3D f x y) fn x.plotPoints y.plotPoints
 
 /// §H.9 — field-depth profile as a 1D series. Consumes the
-/// `(float<meter> * float) list` produced by Part F §F.6 `fieldDepthProfile`
+/// `FieldDepthPoint` list produced by Part F §F.6 `fieldDepthProfile`
 /// (`Analytics/FieldProfile.fs`) and converts each canonical-SI depth to the layer's
 /// display unit at the boundary via the §A.10 `Units` seam (`Units.fromMeters`).
 /// Part H adds no in-layer field solver and does not re-sample the layer.
 let fieldDepthSeries
     (depthUnit : Units.UnitOfMeasure)
-    (profile : (float<meter> * float) list)
+    (profile : FieldProfile.FieldDepthPoint list)
     : Series1D =
 
     let points =
         profile
-        |> List.map (fun (depth, value) -> (Units.fromMeters depthUnit depth, value))
+        |> List.map (fun p -> (Units.fromMeters depthUnit p.depth, p.electricFieldSquared))
         |> Array.ofList
     { name = "|E|^2"; points = points }
 

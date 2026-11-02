@@ -37,3 +37,10 @@ Analytics.StandardLightVariables.wavelength05to20Range	Analytics.Variables.Numbe
 Analytics.StandardSystems.transparentGlass	Analytics.Variables.FixedInfo.transparentGlass (static extension, Analytics.StandardSystems)	Softellect.Berreman.Analytics	E004
 Analytics.StandardSystems.langasiteSubstrateOnSiliconSystem	Berreman.Dispersion.OpticalSystemWithDisp.langasiteSubstrateOnSiliconSystem (static extension, Analytics.StandardSystems)	Softellect.Berreman.Analytics	E004
 Analytics.StandardSystems.langasiteFilmOnSiliconSystem	Berreman.Dispersion.OpticalSystemWithDisp.langasiteFilmOnSiliconSystem (static extension, Analytics.StandardSystems)	Softellect.Berreman.Analytics	E004
+Analytics.AnalysisFunctions.absorptance	Berreman.Solvers.Solution.absorptance (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.stokesSystem	Berreman.Solvers.Solution.stokesSystem (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.degreeOfPolarization	Berreman.Fields.StokesVector.degreeOfPolarization (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.psiDelta	Berreman.Solvers.Solution.psiDelta (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.AnalysisFunctions.ncs	Berreman.Solvers.Solution.ncs (extension, Analytics.AnalysisFunctions)	Softellect.Berreman.Analytics	E005
+Analytics.Colorimetry.xyzToLab	Analytics.Colorimetry.CieXyz.toLab (member)	Softellect.Berreman.Analytics	E005
+Analytics.Colorimetry.xyzToSrgb	Analytics.Colorimetry.CieXyz.toSrgb (member)	Softellect.Berreman.Analytics	E005

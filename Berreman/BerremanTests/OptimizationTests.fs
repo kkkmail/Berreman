@@ -290,8 +290,13 @@ type OptimizationTests() =
             }
         let light = diagonalLight (Angle.degree 50.0<deg> |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
         let solution = OpticalSystemSolver(light, interfaceSystem).solution
-        let (psi, delta) = psiDelta solution
-        let (n, c, s) = ncs solution
+        let pd = solution.psiDelta
+        let psi = pd.psi.value
+        let delta = pd.delta.value
+        let ncsCoordinates = solution.ncs
+        let n = ncsCoordinates.n.value
+        let c = ncsCoordinates.c.value
+        let s = ncsCoordinates.s.value
 
         // tan Ψ reproduces the analytic Fresnel amplitude ratio |r_p/r_s|, up to the
         // engine's own p/s amplitude-axis labelling (it reads ρ off `amplitudeP`/
@@ -314,8 +319,8 @@ type OptimizationTests() =
         let info = light600nmInclinedDegreeLPs 23.0<deg>
         let solution = OpticalSystemSolver(info, system).solution
 
-        let total = totalAbsorbedPower system info
-        let a = absorptance solution
+        let total = (totalAbsorbedPower system info).value
+        let a = solution.absorptance.value
         let r = solution.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
         let t = solution.func T |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
 
@@ -326,10 +331,10 @@ type OptimizationTests() =
 
     /// AC-F8 (colorimetry sanity): a flat near-unit R spectrum (total internal
     /// reflection at a glass→vacuum interface, R ≈ 1 across the band) integrated
-    /// under D65 and mapped through `xyzToSrgb` yields a near-white swatch (Y ≈ 1,
+    /// under D65 and mapped through `CieXyz.toSrgb` yields a near-white swatch (Y ≈ 1,
     /// all sRGB channels near 1).
     [<Fact>]
-    member _.``AC-F8 a flat R=1 spectrum under D65 maps to near-white via xyzToSrgb`` () =
+    member _.``AC-F8 a flat R=1 spectrum under D65 maps to near-white via toSrgb`` () =
         // Incidence from glass (n = 1.52) into vacuum at 60° (> critical ≈ 41°): TIR.
         let tirSystem =
             {
@@ -352,8 +357,12 @@ type OptimizationTests() =
         let range = Range<WaveLength>.create (NumberOfPoints 31) (WaveLength.nm 400.0<nm>) (WaveLength.nm 700.0<nm>)
         let spectrum = calculate fixedInfo (WaveLengthRange range)
 
-        let (_, y, _) as xyz = spectrumToXyz D65 R spectrum
-        let (sr, sg, sb) = xyzToSrgb xyz
+        let xyz = spectrumToXyz D65 R spectrum
+        let y = xyz.cieY.value
+        let srgb = xyz.toSrgb
+        let sr = srgb.red.value
+        let sg = srgb.green.value
+        let sb = srgb.blue.value
 
         Assert.True(abs (y - 1.0) < 5.0e-2, $"perfect reflector should give Y ≈ 1, got %g{y}")
         Assert.True(sr > 0.75 && sg > 0.75 && sb > 0.75,

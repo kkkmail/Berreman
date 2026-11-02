@@ -37,7 +37,7 @@ type AnalysisFunctionsTests() =
     [<Fact>]
     member _.``AC-F1 absorptance equals 1 - R - T from Solution.func`` () =
         let sol = baseSolution ()
-        let a = absorptance sol
+        let a = sol.absorptance.value
         let r = sol.func R |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
         let t = sol.func T |> Option.map (fun v -> v.value) |> Option.defaultValue 0.0
         Assert.True(abs (a - (1.0 - r - t)) < tol, $"A={a}, 1-R-T={1.0 - r - t}")
@@ -47,7 +47,7 @@ type AnalysisFunctionsTests() =
     [<Fact>]
     member _.``AC-F4 degreeOfPolarization equals sqrt(s1^2+s2^2+s3^2)/s0 in [0,1]`` () =
         let sol = baseSolution ()
-        let dop = degreeOfPolarization sol.stokesR
+        let dop = sol.stokesR.degreeOfPolarization.value
 
         let (StokesVector v) = sol.stokesR
         let manual =
@@ -65,12 +65,12 @@ type AnalysisFunctionsTests() =
     [<Fact>]
     member _.``AC-F6 fieldDepthProfile shape and monotonic meter depths`` () =
         let sys = (BaseOpticalSystem.transparentGlassFilmSystem (Thickness.nm 100.0<nm>)).fullSystem
-        let samplesPerLayer = 4
+        let samplesPerLayer = SamplesPerLayer 4
         let profile = fieldDepthProfile sys info samplesPerLayer
 
-        Assert.Equal(samplesPerLayer * sys.films.Length, List.length profile)
+        Assert.Equal(samplesPerLayer.value * sys.films.Length, List.length profile)
 
-        let depths = profile |> List.map fst
+        let depths = profile |> List.map (fun p -> p.depth)
         let rec nonDecreasing =
             function
             | a :: b :: rest -> a <= b && nonDecreasing (b :: rest)

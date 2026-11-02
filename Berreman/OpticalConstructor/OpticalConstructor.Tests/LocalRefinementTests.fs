@@ -7,7 +7,7 @@ open Berreman.Media
 open Berreman.Fields
 open Berreman.Solvers
 open Berreman.FieldFunctions
-open Analytics
+open Analytics.AnalysisFunctions
 open OpticalConstructor.Optimization
 open OpticalConstructor.Optimization.OptimizationInterface
 open OpticalConstructor.Optimization.Ellipsometry
@@ -153,12 +153,12 @@ module LocalRefinementTests =
         // is non-trivial (a pure-s default would collapse ρ to 0 — see fixtures).
         let light = diagonalLight (Angle.degree 50.0<deg> |> IncidenceAngle) (WaveLength.nm 600.0<nm>)
         let solution = OpticalSystemSolver(light, mkSystem 250.0<nm>).solution
-        let (psi, delta) = AnalysisFunctions.psiDelta solution
+        let pd = solution.psiDelta
 
         // The net-new EllipsometricFunction evaluator returns exactly the shared
         // §F.5 quantities — it does not re-derive an independent Ψ/Δ.
-        Assert.Equal(psi, Psi.evaluate solution, 12)
-        Assert.Equal(delta, Delta.evaluate solution, 12)
+        Assert.Equal(pd.psi.value, Psi.evaluate solution, 12)
+        Assert.Equal(pd.delta.value, Delta.evaluate solution, 12)
 
     // ------------------------------------------------ §G.6/§G.4 ellipsometric residual
 

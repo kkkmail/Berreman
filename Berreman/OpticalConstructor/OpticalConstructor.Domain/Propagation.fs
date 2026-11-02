@@ -422,18 +422,10 @@ module Propagation =
     // Phase 4 — Ellipsometer (Ψ / Δ readout). Scope: ONLY the ellipsometer detector readout.
     // -----------------------------------------------------------------------------------------------------
 
-    /// The ellipsometric angles Ψ and Δ (the ellipsometer detector's reading, spec §4). Elevated to a
-    /// record of `Angle`s — never a bare float pair.
-    type PsiDelta =
-        {
-            psi : Angle
-            delta : Angle
-        }
-
     /// Ellipsometric Ψ, Δ from the normalized Stokes at the detector (spec §4). For the convention
     ///   S1 = −cos 2Ψ ,  S2 = sin 2Ψ cos Δ ,  S3 = −sin 2Ψ sin Δ
     /// the inverse is  2Ψ = atan2( √(S2²+S3²), −S1 ) ,  Δ = atan2( −S3, S2 ).
-    let psiDeltaOfStokes (sv : StokesVector) : PsiDelta =
+    let psiDeltaOfStokes (sv : StokesVector) : Analytics.AnalysisFunctions.PsiDelta =
         let s0v, s1, s2, s3 = stokesComponents sv
         let n = if abs s0v > 1e-12 then s0v else 1.0
         let s1n, s2n, s3n = s1 / n, s2 / n, s3 / n
@@ -442,7 +434,7 @@ module Propagation =
         { psi = Angle (twoPsi / 2.0); delta = Angle delta }
 
     /// The ellipsometer detector readout for a propagated detector Stokes vector (spec §4).
-    let ellipsometerReadout (svDet : StokesVector) : PsiDelta = psiDeltaOfStokes svDet
+    let ellipsometerReadout (svDet : StokesVector) : Analytics.AnalysisFunctions.PsiDelta = psiDeltaOfStokes svDet
 
     // -----------------------------------------------------------------------------------------------------
     // Spec 0027 (026) — the ellipsometer and wavelength sweep builders (placed after `ellipsometerReadout`

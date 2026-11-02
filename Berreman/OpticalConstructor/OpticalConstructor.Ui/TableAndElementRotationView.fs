@@ -2729,7 +2729,7 @@ let chartForRun
                         [ series (seriesName measurement tag "Intensity")
                               (readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.IntensityReading i -> i | ExperimentRun.EllipsometricReading _ -> nan))) ]
                     | Library.Ellipsometer ->
-                        let pd (pick : Propagation.PsiDelta -> Angle) =
+                        let pd (pick : Analytics.AnalysisFunctions.PsiDelta -> Angle) =
                             readings |> List.map (fun (x, r) -> x, (match r with ExperimentRun.EllipsometricReading v -> (pick v).degrees | ExperimentRun.IntensityReading _ -> nan))
                         [ series (seriesName measurement tag "Ψ") (pd (fun v -> v.psi))
                           series (seriesName measurement tag "Δ") (pd (fun v -> v.delta)) ])
