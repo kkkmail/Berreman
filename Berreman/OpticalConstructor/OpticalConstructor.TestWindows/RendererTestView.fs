@@ -162,13 +162,13 @@ let private rotateSelected (axis : int) (notches : int) (m : RendererTestModel) 
 
 let updateRendererTest (msg : RendererTestMsg) (model : RendererTestModel) : RendererTestModel =
     match msg with
-    | SwapRenderer -> { model with render = RendererControls.swap model.render }
-    | RenderSetRailsIndex i -> { model with render = RendererControls.withRailsIndex i model.render }
-    | RenderSetCircles n -> { model with render = RendererControls.withCircles n model.render }
-    | RenderSetRadialsIndex i -> { model with render = RendererControls.withRadialsIndex i model.render }
-    | RenderSetRailOpacity v -> { model with render = RendererControls.withRailOpacity v model.render }
-    | RenderSetFaceOpacity v -> { model with render = RendererControls.withFaceOpacity v model.render }
-    | RenderSetLineOpacity v -> { model with render = RendererControls.withLineOpacity v model.render }
+    | SwapRenderer -> { model with render = model.render.swapped }
+    | RenderSetRailsIndex i -> { model with render = model.render.withRailsIndex (RendererControls.RendererPresetIndex i) }
+    | RenderSetCircles n -> { model with render = model.render.withCircles (RendererControls.CapCircles n) }
+    | RenderSetRadialsIndex i -> { model with render = model.render.withRadialsIndex (RendererControls.RendererPresetIndex i) }
+    | RenderSetRailOpacity v -> { model with render = model.render.withRailOpacity (RendererControls.RendererOpacity v) }
+    | RenderSetFaceOpacity v -> { model with render = model.render.withFaceOpacity (RendererControls.RendererOpacity v) }
+    | RenderSetLineOpacity v -> { model with render = model.render.withLineOpacity (RendererControls.RendererOpacity v) }
     | RendererTestPointerDown pt -> { model with drag = RendererTestPressed pt }
     | RendererTestPointerMove pt ->
         match model.drag with
@@ -223,12 +223,12 @@ let private tableCanvas (model : RendererTestModel) : IView =
 let private renderHandlers (dispatch : RendererTestMsg -> unit) : RendererControls.RendererControlsHandlers =
     {
         swap = fun () -> dispatch SwapRenderer
-        setRailsIndex = fun i -> dispatch (RenderSetRailsIndex i)
-        setCircles = fun n -> dispatch (RenderSetCircles n)
-        setRadialsIndex = fun i -> dispatch (RenderSetRadialsIndex i)
-        setRailOpacity = fun v -> dispatch (RenderSetRailOpacity v)
-        setFaceOpacity = fun v -> dispatch (RenderSetFaceOpacity v)
-        setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v)
+        setRailsIndex = fun i -> dispatch (RenderSetRailsIndex i.value)
+        setCircles = fun n -> dispatch (RenderSetCircles n.value)
+        setRadialsIndex = fun i -> dispatch (RenderSetRadialsIndex i.value)
+        setRailOpacity = fun v -> dispatch (RenderSetRailOpacity v.value)
+        setFaceOpacity = fun v -> dispatch (RenderSetFaceOpacity v.value)
+        setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v.value)
     }
 
 let private controlBar (model : RendererTestModel) (dispatch : RendererTestMsg -> unit) : IView =

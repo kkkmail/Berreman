@@ -1518,13 +1518,13 @@ let rec updateTableAndElementRotation (msg : TableAndElementRotationMsg) (model 
     | MoveSelectedBy (axis, d) -> moveSelectedBy axis d model
     | MoveSelectedTo (axis, v) -> moveSelectedTo axis v model
     | ToggleMoveLock axis -> toggleMoveLock axis model
-    | RenderSwap -> { model with render = RendererControls.swap model.render }
-    | RenderSetRailsIndex i -> { model with render = RendererControls.withRailsIndex i model.render }
-    | RenderSetCircles n -> { model with render = RendererControls.withCircles n model.render }
-    | RenderSetRadialsIndex i -> { model with render = RendererControls.withRadialsIndex i model.render }
-    | RenderSetRailOpacity v -> { model with render = RendererControls.withRailOpacity v model.render }
-    | RenderSetFaceOpacity v -> { model with render = RendererControls.withFaceOpacity v model.render }
-    | RenderSetLineOpacity v -> { model with render = RendererControls.withLineOpacity v model.render }
+    | RenderSwap -> { model with render = model.render.swapped }
+    | RenderSetRailsIndex i -> { model with render = model.render.withRailsIndex (RendererControls.RendererPresetIndex i) }
+    | RenderSetCircles n -> { model with render = model.render.withCircles (RendererControls.CapCircles n) }
+    | RenderSetRadialsIndex i -> { model with render = model.render.withRadialsIndex (RendererControls.RendererPresetIndex i) }
+    | RenderSetRailOpacity v -> { model with render = model.render.withRailOpacity (RendererControls.RendererOpacity v) }
+    | RenderSetFaceOpacity v -> { model with render = model.render.withFaceOpacity (RendererControls.RendererOpacity v) }
+    | RenderSetLineOpacity v -> { model with render = model.render.withLineOpacity (RendererControls.RendererOpacity v) }
     | SelectBay name -> { model with ribbon = name }
     | BindValueId entryId ->
         // Spec 0038 (017): the direct bind CONVERGES on the one targeted commit arm below —
@@ -2063,7 +2063,7 @@ let private mainTableViews (model : TableAndElementRotationModel) : IView list =
     let face =
         Polygon.create [
             Polygon.points topFace
-            Polygon.fill (brushA model.render.faceOpacity (if tableSel then plateSelectedColor else plateColor))
+            Polygon.fill (brushA model.render.faceOpacity.value (if tableSel then plateSelectedColor else plateColor))
             Polygon.stroke (brush (if tableSel then selectedStroke else edgeColor))
             Polygon.strokeThickness (if tableSel then 3.0 else 1.5)
         ] :> IView
@@ -2185,12 +2185,12 @@ let private moveBayContent (model : TableAndElementRotationModel) (dispatch : Ta
 let private renderHandlers (dispatch : TableAndElementRotationMsg -> unit) : RendererControls.RendererControlsHandlers =
     {
         swap = fun () -> dispatch RenderSwap
-        setRailsIndex = fun i -> dispatch (RenderSetRailsIndex i)
-        setCircles = fun n -> dispatch (RenderSetCircles n)
-        setRadialsIndex = fun i -> dispatch (RenderSetRadialsIndex i)
-        setRailOpacity = fun v -> dispatch (RenderSetRailOpacity v)
-        setFaceOpacity = fun v -> dispatch (RenderSetFaceOpacity v)
-        setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v)
+        setRailsIndex = fun i -> dispatch (RenderSetRailsIndex i.value)
+        setCircles = fun n -> dispatch (RenderSetCircles n.value)
+        setRadialsIndex = fun i -> dispatch (RenderSetRadialsIndex i.value)
+        setRailOpacity = fun v -> dispatch (RenderSetRailOpacity v.value)
+        setFaceOpacity = fun v -> dispatch (RenderSetFaceOpacity v.value)
+        setLineOpacity = fun v -> dispatch (RenderSetLineOpacity v.value)
     }
 
 // ---------------------------------------------------------------------------
@@ -2205,6 +2205,11 @@ let private allowedEntryIds (model : TableAndElementRotationModel) (kind : Catal
     | Ok entries -> entries |> List.map (fun e -> e.entryId) |> Set.ofList
     | Error _ -> Set.empty
 
+type Library.TreeLabel with
+
+    /// The label as the caption of a Select-bay row.
+    member this.rowCaption : ControlCaption = ControlCaption this.value
+
 /// Flatten one grouping tree to `LibraryControls.Row`s, KIND-CONSTRAINED: emit a leaf row only when its
 /// entry id is in `allowed`, and a group header only if it has a surviving descendant leaf (§2a — keep
 /// the tree shape but show only entries valid for the selected element). `boundId` highlights the bound
@@ -2213,12 +2218,13 @@ let rec private flattenNode (allowed : Set<string>) (boundId : string option) (d
     match node with
     | Library.Leaf (label, entryId) ->
         if Set.contains entryId allowed then
-            [ { label = label.value; depth = depth; entryId = entryId; isBound = (boundId = Some entryId) } ]
+            let binding = if boundId = Some entryId then LibraryControls.EntryBound else LibraryControls.EntryUnbound
+            [ { label = label.rowCaption; depth = LibraryControls.LibraryRowDepth depth; kind = LibraryControls.LibraryEntryLeaf (ConstructorUiKey entryId, binding) } ]
         else []
     | Library.Group (label, children) ->
         let childRows = children |> List.collect (flattenNode allowed boundId (depth + 1))
         if List.isEmpty childRows then []
-        else { label = label.value; depth = depth; entryId = ""; isBound = false } :: childRows
+        else { label = label.rowCaption; depth = LibraryControls.LibraryRowDepth depth; kind = LibraryControls.LibraryGroupHeader } :: childRows
 
 /// The Select bay state for the current selection: an `ElementSelected` shows the kind-constrained
 /// tree rows, the kind label, and the bound-entry readout; anything else disables the bay.
@@ -2237,7 +2243,7 @@ let private libraryState (model : TableAndElementRotationModel) : LibraryControl
             match boundId with
             | Some id ->
                 match model.library.tryGetEntry id with
-                | Ok (Some entry) -> Some entry.displayName
+                | Ok (Some entry) -> Some (ControlCaption entry.displayName)
                 | Ok None | Error _ -> None
             | None -> None
         // Spec 0027 (026): the pending (selected-not-confirmed) entry's name + full description, resolved
@@ -2246,15 +2252,15 @@ let private libraryState (model : TableAndElementRotationModel) : LibraryControl
             match model.pendingEntry with
             | Some id ->
                 match model.library.tryGetEntry id with
-                | Ok (Some entry) -> Some entry.displayName, entry.fullDescription
-                | Ok None | Error _ -> None, ""
-            | None -> None, ""
+                | Ok (Some entry) -> Some (ControlCaption entry.displayName), ControlCaption entry.fullDescription
+                | Ok None | Error _ -> None, ControlCaption ""
+            | None -> None, ControlCaption ""
         {
             rows = rows
-            kindLabel = kindName kind
+            kindLabel = Some (ControlCaption (kindName kind))
             boundName = boundName
-            enabled = true
-            pendingEntryId = model.pendingEntry
+            availability = ControlOffered
+            pendingEntryId = model.pendingEntry |> Option.map ConstructorUiKey
             pendingName = pendingName
             pendingDescription = pendingDescription
         }
@@ -2262,7 +2268,7 @@ let private libraryState (model : TableAndElementRotationModel) : LibraryControl
 
 let private libraryHandlers (dispatch : TableAndElementRotationMsg -> unit) : LibraryControls.LibraryControlsHandlers =
     {
-        selectEntry = fun entryId -> dispatch (RequestBindValueId entryId)
+        selectEntry = fun entry -> dispatch (RequestBindValueId entry.value)
         confirmEntry = fun () -> dispatch ConfirmBindValueId
         cancelEntry = fun () -> dispatch CancelBindValueId
     }
@@ -3009,11 +3015,11 @@ let sampleBandsState (s : Library.Sample) : LayerBandsControls.LayerBandsControl
         |> List.map (fun (materialId, thickness, count) ->
             let countText = if count > 1 then $" ×%d{count}" else ""
             ({
-                label = $"%s{(materialDisplayName materialId)} — %s{(bandThicknessLabel thickness)}%s{countText}"
-                heightWeight = bandWeight thickness
-                colorHex = bandColorHex materialId
+                label = ControlCaption $"%s{(materialDisplayName materialId)} — %s{(bandThicknessLabel thickness)}%s{countText}"
+                heightWeight = LayerBandsControls.BandWeight (bandWeight thickness)
+                colorHex = LayerBandsControls.BandColorHex (bandColorHex materialId)
              } : LayerBandsControls.Band))
-    ({ title = $"%s{s.name} — %s{s.description}"; bands = bands } : LayerBandsControls.LayerBandsControlsState)
+    ({ title = ControlCaption $"%s{s.name} — %s{s.description}"; bands = bands } : LayerBandsControls.LayerBandsControlsState)
 
 /// Build the `LayerBandsControls.State` for the selected element. A bound layered sample yields the band
 /// view (collapsed "×N" bands with material + thickness labels); a bound non-sample entry yields just the
@@ -3026,16 +3032,16 @@ let private detailsState (model : TableAndElementRotationModel) : LayerBandsCont
             match boundEntry model e with
             | Some (Library.SampleItem s) -> sampleBandsState s
             | Some entry ->
-                ({ title = $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.LayerBandsControlsState)
+                ({ title = ControlCaption $"%s{entry.displayName} — %s{entry.fullDescription}"; bands = [] } : LayerBandsControls.LayerBandsControlsState)
             | None ->
-                ({ title = "No Library entry bound — pick one in the Select bay to see its details."; bands = [] } : LayerBandsControls.LayerBandsControlsState)
+                ({ title = ControlCaption "No Library entry bound — pick one in the Select bay to see its details."; bands = [] } : LayerBandsControls.LayerBandsControlsState)
         // Spec 0038 (031): surface the SAME out-of-band warning text the badge tooltip shows, so the
         // Details bay states the offending material(s) and both ranges in prose besides the schematic cue.
         match outOfBandWarningFor model e with
-        | Some warning -> { baseState with title = $"%s{baseState.title}\n⚠ %s{warning}" }
+        | Some warning -> { baseState with title = ControlCaption $"%s{baseState.title.value}\n⚠ %s{warning}" }
         | None -> baseState
     | TableSelected | NothingSelected ->
-        ({ title = "Select an element to see what it is."; bands = [] } : LayerBandsControls.LayerBandsControlsState)
+        ({ title = ControlCaption "Select an element to see what it is."; bands = [] } : LayerBandsControls.LayerBandsControlsState)
 
 // ---------------------------------------------------------------------------
 // Spec 0038 steps 013/015 — the workbench strip buttons. The MATERIALS bay moved into the
@@ -3493,13 +3499,13 @@ let private rotationBayContent (model : TableAndElementRotationModel) (dispatch 
 /// (Spec 0038 step 015: no FULL-SURFACE bay remains — the samples workbench that used the mode is the
 /// Library WINDOW now; the mode itself stays in the generic Ribbon control.)
 let mainBays (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : Ribbon.Bay list =
-    [ { name = BayNames.add; content = ElementPaletteControls.elementPaletteControlsView (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
-      { name = BayNames.rotation; content = rotationBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.move; content = moveBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.render; content = RendererControls.rendererControlsView model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
-      { name = BayNames.selector; content = selectorBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.experiments; content = experimentsBayContent model dispatch; mode = Ribbon.InRibbonPane }
-      { name = BayNames.details; content = LayerBandsControls.layerBandsControlsView (detailsState model); mode = Ribbon.InRibbonPane } ]
+    [ { name = Ribbon.BayName BayNames.add; content = ElementPaletteControls.elementPaletteControlsView (paletteState model) (paletteHandlers model dispatch); mode = Ribbon.InRibbonPane }
+      { name = Ribbon.BayName BayNames.rotation; content = rotationBayContent model dispatch; mode = Ribbon.InRibbonPane }
+      { name = Ribbon.BayName BayNames.move; content = moveBayContent model dispatch; mode = Ribbon.InRibbonPane }
+      { name = Ribbon.BayName BayNames.render; content = RendererControls.rendererControlsView model.render (renderHandlers dispatch); mode = Ribbon.InRibbonPane }
+      { name = Ribbon.BayName BayNames.selector; content = selectorBayContent model dispatch; mode = Ribbon.InRibbonPane }
+      { name = Ribbon.BayName BayNames.experiments; content = experimentsBayContent model dispatch; mode = Ribbon.InRibbonPane }
+      { name = Ribbon.BayName BayNames.details; content = (detailsState model).view; mode = Ribbon.InRibbonPane } ]
 
 let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRotationModel) (dispatch : TableAndElementRotationMsg -> unit) : IView =
     StackPanel.create [
@@ -3527,7 +3533,7 @@ let private mainControlBar (bays : Ribbon.Bay list) (model : TableAndElementRota
                             Border.margin (Thickness(0.0, 8.0, 0.0, 0.0))
                             Border.child (workbenchButton WorkbenchIds.openLibraryButton "Library…" (fun () -> dispatch OpenLibraryWindow))
                         ]
-                        Ribbon.ribbonView { bays = bays; selected = model.ribbon } (fun name -> dispatch (SelectBay name))
+                        Ribbon.ribbonView { bays = bays; selected = Ribbon.BayName model.ribbon } (fun name -> dispatch (SelectBay name.value))
                     ]
                 ] :> IView
                 TextBlock.create [ TextBlock.name ConstructorUiId.teReadout.value; TextBlock.margin (Thickness(8.0, 0.0, 0.0, 4.0)); TextBlock.text (readoutText model) ] :> IView
@@ -3852,7 +3858,7 @@ let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
     // canvas, no gestures — the workbench owns the whole surface); every in-pane / table bay keeps the
     // shared table canvas and its pan / zoom / rotate gestures.
     let belowStrip : IView =
-        match Ribbon.activeBay { bays = bays; selected = model.ribbon } with
+        match ({ bays = bays; selected = Ribbon.BayName model.ribbon } : Ribbon.RibbonState).activeBay with
         | Some b ->
             match b.mode with
             | Ribbon.FullSurface ->
@@ -3863,7 +3869,7 @@ let mainView (model : TableAndElementRotationModel) (dispatch : TableAndElementR
                 // `Types` `View<'t>` type are both in scope here).
                 let surface =
                     Border.create [ Border.child b.content ]
-                    |> Avalonia.FuncUI.DSL.View.withKey b.name
+                    |> Avalonia.FuncUI.DSL.View.withKey b.name.value
                 surface :> IView
             | Ribbon.InRibbonPane -> tableSurface ()
         | None -> tableSurface ()

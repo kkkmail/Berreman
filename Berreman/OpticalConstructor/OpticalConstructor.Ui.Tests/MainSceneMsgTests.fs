@@ -208,30 +208,30 @@ module MainSceneMsgTests =
     [<Fact>]
     let ``RenderSetRailsIndex clamps to the option ends`` () =
         let m = initMain ()
-        Assert.Equal(4, (updateTableAndElementRotation (RenderSetRailsIndex -5) m).render.rails)
-        Assert.Equal(72, (updateTableAndElementRotation (RenderSetRailsIndex 99) m).render.rails)
+        Assert.Equal(4, (updateTableAndElementRotation (RenderSetRailsIndex -5) m).render.rails.value)
+        Assert.Equal(72, (updateTableAndElementRotation (RenderSetRailsIndex 99) m).render.rails.value)
 
     [<Fact>]
     let ``RenderSetCircles clamps at the minimum`` () =
-        Assert.Equal(1, (updateTableAndElementRotation (RenderSetCircles 0) (initMain ())).render.circles)
+        Assert.Equal(1, (updateTableAndElementRotation (RenderSetCircles 0) (initMain ())).render.circles.value)
 
     [<Fact>]
     let ``RenderSetRadialsIndex clamps to the option ends`` () =
         let m = initMain ()
-        Assert.Equal(4, (updateTableAndElementRotation (RenderSetRadialsIndex -1) m).render.radials)
-        Assert.Equal(36, (updateTableAndElementRotation (RenderSetRadialsIndex 99) m).render.radials)
+        Assert.Equal(4, (updateTableAndElementRotation (RenderSetRadialsIndex -1) m).render.radials.value)
+        Assert.Equal(36, (updateTableAndElementRotation (RenderSetRadialsIndex 99) m).render.radials.value)
 
     [<Fact>]
     let ``RenderSetLineOpacity clamps into the unit interval`` () =
         let m = initMain ()
-        Assert.Equal(0.0, (updateTableAndElementRotation (RenderSetLineOpacity -0.5) m).render.lineOpacity)
-        Assert.Equal(1.0, (updateTableAndElementRotation (RenderSetLineOpacity 1.5) m).render.lineOpacity)
+        Assert.Equal(0.0, (updateTableAndElementRotation (RenderSetLineOpacity -0.5) m).render.lineOpacity.value)
+        Assert.Equal(1.0, (updateTableAndElementRotation (RenderSetLineOpacity 1.5) m).render.lineOpacity.value)
 
     [<Fact>]
     let ``in-range opacities are stored exactly`` () =
         let m = initMain ()
-        Assert.Equal(0.5, (updateTableAndElementRotation (RenderSetRailOpacity 0.5) m).render.railOpacity)
-        Assert.Equal(0.25, (updateTableAndElementRotation (RenderSetFaceOpacity 0.25) m).render.faceOpacity)
+        Assert.Equal(0.5, (updateTableAndElementRotation (RenderSetRailOpacity 0.5) m).render.railOpacity.value)
+        Assert.Equal(0.25, (updateTableAndElementRotation (RenderSetFaceOpacity 0.25) m).render.faceOpacity.value)
 
     [<Fact>]
     let ``render tuning leaves the scene itself untouched`` () =

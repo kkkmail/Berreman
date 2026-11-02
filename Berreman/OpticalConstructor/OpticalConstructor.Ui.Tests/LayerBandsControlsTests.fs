@@ -33,7 +33,7 @@ module LayerBandsControlsTests =
     let ``the empty LayerBands state has no bands and an empty title`` () =
         let s = LayerBandsControls.emptyLayerBandsControls
         Assert.Empty(s.bands)
-        Assert.Equal("", s.title)
+        Assert.Equal("", s.title.value)
 
     [<Fact>]
     let ``the LayerBands UiIds prefix band ids and are stable`` () =
@@ -55,7 +55,7 @@ module LayerBandsControlsTests =
         Assert.DoesNotContain("Library", BayNames.allBayNames)
         let m = initMain ()
         let bays = mainBays m ignore
-        let names = bays |> List.map (fun b -> b.name)
+        let names = bays |> List.map (fun b -> b.name.value)
         Assert.Equal<string list>(BayNames.allBayNames, names)
         // Details comes immediately after Experiments.
         let idxExp = List.findIndex ((=) BayNames.experiments) names
@@ -72,7 +72,7 @@ module LayerBandsControlsTests =
             |> updateTableAndElementRotation (AddElement Sample)             // index 2
             |> bind 2 multilayerQwId
         let bays = mainBays m ignore
-        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
+        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name.value))
         // Re-derive the band view through the same public seam the host uses (the ribbon bay's content is the
         // LayerBandsControls.view of detailsState); assert the band shape via the rendered Details bay below.
         // Here assert that the bound entry resolves to a multilayer whose description spells out the stack.
@@ -87,7 +87,7 @@ module LayerBandsControlsTests =
         // initMain selects the table first; with no element selected the Details bay shows a hint (no bands).
         let m = { (initMain ()) with selection = TableSelected }
         let bays = mainBays m ignore
-        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name))
+        Assert.Contains(BayNames.details, bays |> List.map (fun b -> b.name.value))
 
     // ============================ headless render proofs (ui-smoke) ============================
 
@@ -97,16 +97,16 @@ module LayerBandsControlsTests =
         HeadlessSession.run (fun () ->
             let state : LayerBandsControls.LayerBandsControlsState =
                 {
-                    title = "A three-band test stack."
+                    title = ControlCaption "A three-band test stack."
                     bands =
                         [
-                            { LayerBandsControls.Band.label = "Glass — 100 nm ×21"; heightWeight = 2.0; colorHex = "#C8E1F5" }
-                            { LayerBandsControls.Band.label = "Vacuum — 150 nm ×20"; heightWeight = 2.2; colorHex = "#F2F2F2" }
-                            { LayerBandsControls.Band.label = "Glass — 100 nm"; heightWeight = 2.0; colorHex = "#C8E1F5" }
+                            { LayerBandsControls.Band.label = ControlCaption "Glass — 100 nm ×21"; heightWeight = LayerBandsControls.BandWeight 2.0; colorHex = LayerBandsControls.BandColorHex "#C8E1F5" }
+                            { LayerBandsControls.Band.label = ControlCaption "Vacuum — 150 nm ×20"; heightWeight = LayerBandsControls.BandWeight 2.2; colorHex = LayerBandsControls.BandColorHex "#F2F2F2" }
+                            { LayerBandsControls.Band.label = ControlCaption "Glass — 100 nm"; heightWeight = LayerBandsControls.BandWeight 2.0; colorHex = LayerBandsControls.BandColorHex "#C8E1F5" }
                         ]
                 }
             let window = Window(Width = 420.0, Height = 480.0)
-            window.Content <- Component(fun _ -> LayerBandsControls.layerBandsControlsView state)
+            window.Content <- Component(fun _ -> state.view)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let named (name : string) : bool =
@@ -124,7 +124,7 @@ module LayerBandsControlsTests =
     let ``the empty LayerBands view renders just the title, no bands`` () =
         HeadlessSession.run (fun () ->
             let window = Window(Width = 420.0, Height = 320.0)
-            window.Content <- Component(fun _ -> LayerBandsControls.layerBandsControlsView { LayerBandsControls.emptyLayerBandsControls with title = "Nothing here." })
+            window.Content <- Component(fun _ -> { LayerBandsControls.emptyLayerBandsControls with title = ControlCaption "Nothing here." }.view)
             window.Show()
             Dispatcher.UIThread.RunJobs()
             let bandPresent () : bool =

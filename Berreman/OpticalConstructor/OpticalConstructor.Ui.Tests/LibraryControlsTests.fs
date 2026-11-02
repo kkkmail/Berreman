@@ -32,7 +32,7 @@ module LibraryControlsTests =
     [<Fact>]
     let ``the empty Library state is disabled with no rows and no binding`` () =
         let s = LibraryControls.empty
-        Assert.False(s.enabled)
+        Assert.Equal(ControlWithheld, s.availability)
         Assert.Empty(s.rows)
         Assert.Equal(None, s.boundName)
 
@@ -62,7 +62,7 @@ module LibraryControlsTests =
         let m = withSampleSelected ()
         let bays = mainBays m ignore
         // The Select bay exists and is offered.
-        Assert.Contains(BayNames.selector, bays |> List.map (fun b -> b.name))
+        Assert.Contains(BayNames.selector, bays |> List.map (fun b -> b.name.value))
         // Its rows: every selectable leaf is a Sample entry id; the kind label is "Sample".
         // (Re-derive the bay state the same way the host does — through the live model.)
         let sampleIds =
@@ -115,7 +115,7 @@ module LibraryControlsTests =
             BayNames.allBayNames |> List.truncate 5)
         let m = initMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
+        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
 
     // ============================ Spec 0027 (026) confirm-gated bind (pure) ============================
 
@@ -251,11 +251,11 @@ module LibraryControlsTests =
         // recreates the shifted rows instead.
         HeadlessSession.run (fun () ->
             let rowFor (id : string) (label : string) : LibraryControls.Row =
-                { label = label; depth = 0; entryId = id; isBound = false }
+                { label = ControlCaption label; depth = LibraryControls.LibraryRowDepth 0; kind = LibraryControls.LibraryEntryLeaf (ConstructorUiKey id, LibraryControls.EntryUnbound) }
             let fullRows = [ rowFor "alpha" "Alpha"; rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
             let shiftedRows = [ rowFor "beta" "Beta"; rowFor "gamma" "Gamma" ]
             let stateFor (rows : LibraryControls.Row list) : LibraryControls.LibraryControlsState =
-                { LibraryControls.empty with rows = rows; kindLabel = "Sample"; enabled = true }
+                { LibraryControls.empty with rows = rows; kindLabel = Some (ControlCaption "Sample"); availability = ControlOffered }
             let handlers : LibraryControls.LibraryControlsHandlers =
                 { selectEntry = ignore; confirmEntry = ignore; cancelEntry = ignore }
             let setRows : (LibraryControls.Row list -> unit) ref = ref (fun _ -> ())

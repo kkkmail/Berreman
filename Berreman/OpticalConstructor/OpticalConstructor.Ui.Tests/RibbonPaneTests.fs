@@ -36,7 +36,7 @@ module RibbonPaneTests =
     let private bays : Ribbon.Bay list =
         bayNames
         |> List.map (fun n ->
-            ({ name = n
+            ({ name = Ribbon.BayName n
                content = TextBlock.create [ TextBlock.name (marker n); TextBlock.text n ] :> IView
                mode = Ribbon.InRibbonPane } : Ribbon.Bay))
 
@@ -71,7 +71,7 @@ module RibbonPaneTests =
         let window = HostWindow(Width = 640.0, Height = 480.0)
         let update (name : string) (_ : string) : string = name
         let view (selected : string) (dispatch : string -> unit) : IView =
-            Ribbon.ribbonView ({ bays = bays; selected = selected } : Ribbon.RibbonState) dispatch
+            Ribbon.ribbonView ({ bays = bays; selected = Ribbon.BayName selected } : Ribbon.RibbonState) (fun name -> dispatch name.value)
         Program.mkSimple (fun () -> initial) update view
         |> Program.withHost window
         |> Program.run

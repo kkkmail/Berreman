@@ -213,8 +213,8 @@ let private cylinderViews (cfg : RendererControls.RendererControlsState) (projec
     let w = if selected then 2.5 else 1.5
     let unbound = isUnbound e
     [ capPolygon (capPts project n1 n2 n3 c (-halfLen) r) plateColor 0.0 sc (w * 0.7) unbound ]
-    @ railViews project n1 n2 n3 c halfLen (-halfLen) r cfg.rails cfg.railOpacity (w * 0.7)
-    @ [ capPolygon (capPts project n1 n2 n3 c halfLen r) (kindColor e.placement.catalogueKind) cfg.faceOpacity sc w unbound ]
+    @ railViews project n1 n2 n3 c halfLen (-halfLen) r cfg.rails.value cfg.railOpacity.value (w * 0.7)
+    @ [ capPolygon (capPts project n1 n2 n3 c halfLen r) (kindColor e.placement.catalogueKind) cfg.faceOpacity.value sc w unbound ]
 
 /// A lens — the cylinder with two SPHERICAL caps that FIT THE BOUNDING BOX (biconvex apexes out to the box
 /// faces for a converging sign, biconcave rims at the faces for diverging).
@@ -229,9 +229,9 @@ let private lensViews (cfg : RendererControls.RendererControlsState) (project : 
     let sc = strokeOf selected
     let w = if selected then 2.5 else 1.5
     let kc = kindColor Lens
-    capSurface project n1 n2 n3 c r rimD apexD cfg.circles cfg.radials kc sc cfg.faceOpacity cfg.lineOpacity w
-    @ capSurface project n1 n2 n3 c r (-rimD) (-apexD) cfg.circles cfg.radials kc sc cfg.faceOpacity cfg.lineOpacity w
-    @ railViews project n1 n2 n3 c rimD (-rimD) r cfg.rails cfg.railOpacity (w * 0.7)
+    capSurface project n1 n2 n3 c r rimD apexD cfg.circles.value cfg.radials.value kc sc cfg.faceOpacity.value cfg.lineOpacity.value w
+    @ capSurface project n1 n2 n3 c r (-rimD) (-apexD) cfg.circles.value cfg.radials.value kc sc cfg.faceOpacity.value cfg.lineOpacity.value w
+    @ railViews project n1 n2 n3 c rimD (-rimD) r cfg.rails.value cfg.railOpacity.value (w * 0.7)
 
 /// A curved mirror — a cylinder with ONE spherical reflective cap (concave for converging, convex for
 /// diverging) plus a flat back, kept inside the bounding box.
@@ -247,8 +247,8 @@ let private mirrorViews (cfg : RendererControls.RendererControlsState) (project 
     let w = if selected then 2.5 else 1.5
     let kc = kindColor CurvedMirror
     [ Polygon.create [ Polygon.points (capPts project n1 n2 n3 c (-halfLen) r); Polygon.fill (brushA 0.0 kc); Polygon.stroke (brush sc); Polygon.strokeThickness (w * 0.7) ] :> IView ]
-    @ railViews project n1 n2 n3 c rimD (-halfLen) r cfg.rails cfg.railOpacity (w * 0.7)
-    @ capSurface project n1 n2 n3 c r rimD apexD cfg.circles cfg.radials kc sc cfg.faceOpacity cfg.lineOpacity w
+    @ railViews project n1 n2 n3 c rimD (-halfLen) r cfg.rails.value cfg.railOpacity.value (w * 0.7)
+    @ capSurface project n1 n2 n3 c r rimD apexD cfg.circles.value cfg.radials.value kc sc cfg.faceOpacity.value cfg.lineOpacity.value w
 
 let private codeLabel (project : Vector3 -> ScreenPoint) (selected : bool) (e : Drawable) : IView =
     let c = project e.centre

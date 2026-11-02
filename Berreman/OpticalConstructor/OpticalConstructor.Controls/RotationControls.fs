@@ -26,7 +26,7 @@ type ControlAvailability =
         | ControlOffered -> true
         | ControlWithheld -> false
 
-/// The text a bar's button shows.
+/// The text a control shows: a button's caption, a knob's or a row's label, a title or a description.
 type ControlCaption =
     | ControlCaption of string
 

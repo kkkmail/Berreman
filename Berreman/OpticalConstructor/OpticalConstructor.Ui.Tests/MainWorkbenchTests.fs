@@ -127,7 +127,7 @@ module MainWorkbenchTests =
         Assert.Equal(Some BayNames.details, List.tryLast BayNames.allBayNames)
         let m = freshMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
+        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
         for bay in bays do
             Assert.Equal(Ribbon.InRibbonPane, bay.mode)
 
@@ -179,12 +179,12 @@ module MainWorkbenchTests =
     [<Fact>]
     let ``sampleBandsState collapses a period group to x-N bands (the Details-bay shape)`` () =
         let st = sampleBandsState SeedSamples.multilayerQw
-        Assert.Contains("Quarter-wave", st.title)
+        Assert.Contains("Quarter-wave", st.title.value)
         // One band per unit-cell layer (kept collapsed, ×20) plus the closing single layer.
         Assert.Equal(3, List.length st.bands)
-        Assert.Contains("×20", st.bands.[0].label)
-        Assert.Contains("×20", st.bands.[1].label)
-        Assert.DoesNotContain("×", st.bands.[2].label)
+        Assert.Contains("×20", st.bands.[0].label.value)
+        Assert.Contains("×20", st.bands.[1].label.value)
+        Assert.DoesNotContain("×", st.bands.[2].label.value)
 
     // ============================ headless proofs (ui-smoke) ============================
 

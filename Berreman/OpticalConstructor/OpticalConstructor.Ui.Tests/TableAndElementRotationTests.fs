@@ -106,13 +106,13 @@ module TableAndElementRotationTests =
     let ``the Render bay tunes how elements are drawn (swap + the serializable config)`` () =
         let m = initMain ()
         Assert.Equal(RendererControls.Wireframe, m.render.kind)
-        Assert.Equal(72, m.render.rails)
+        Assert.Equal(72, m.render.rails.value)
         Assert.Equal(RendererControls.Shapes, (updateTableAndElementRotation RenderSwap m).render.kind)
-        Assert.Equal(4, (updateTableAndElementRotation (RenderSetRailsIndex 0) m).render.rails)
-        Assert.Equal(8, (updateTableAndElementRotation (RenderSetCircles 99) m).render.circles)       // clamps to 8
-        Assert.Equal(36, (updateTableAndElementRotation (RenderSetRadialsIndex 4) m).render.radials)
-        Assert.Equal(1.0, (updateTableAndElementRotation (RenderSetFaceOpacity 2.0) m).render.faceOpacity)   // clamps to 1
-        Assert.Equal(0.0, (updateTableAndElementRotation (RenderSetRailOpacity -1.0) m).render.railOpacity)  // clamps to 0
+        Assert.Equal(4, (updateTableAndElementRotation (RenderSetRailsIndex 0) m).render.rails.value)
+        Assert.Equal(8, (updateTableAndElementRotation (RenderSetCircles 99) m).render.circles.value)       // clamps to 8
+        Assert.Equal(36, (updateTableAndElementRotation (RenderSetRadialsIndex 4) m).render.radials.value)
+        Assert.Equal(1.0, (updateTableAndElementRotation (RenderSetFaceOpacity 2.0) m).render.faceOpacity.value)   // clamps to 1
+        Assert.Equal(0.0, (updateTableAndElementRotation (RenderSetRailOpacity -1.0) m).render.railOpacity.value)  // clamps to 0
 
     [<Fact>]
     let ``Main: adding a flat mirror reflects the beam, so a downstream element leaves the straight ray`` () =
@@ -162,7 +162,7 @@ module TableAndElementRotationTests =
         let m = initMain ()
         Assert.Equal(BayNames.add, m.ribbon)                           // the first tab, Add, is open at start (spec 0046)
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
+        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
         Assert.Equal(BayNames.render, (updateTableAndElementRotation (SelectBay BayNames.render) m).ribbon)
 
     [<Fact>]

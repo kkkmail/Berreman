@@ -90,7 +90,7 @@ module ExperimentControlsTests =
             BayNames.allBayNames)
         let m = initMain ()
         let bays = mainBays m ignore
-        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name))
+        Assert.Equal<string list>(BayNames.allBayNames, bays |> List.map (fun b -> b.name.value))
 
     // ============================ host MVU: choose / vary / capture / range ============================
 
