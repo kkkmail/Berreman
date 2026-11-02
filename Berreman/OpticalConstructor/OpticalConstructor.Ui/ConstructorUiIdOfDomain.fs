@@ -78,3 +78,8 @@ module ConstructorUiIdOfDomain =
 
         /// The query as the text its filter box shows.
         member this.caption : ControlCaption = ControlCaption this.value
+
+    type FacetCaption with
+
+        /// A facet's name or a branch's label as its faceted-tree caption.
+        member this.caption : ControlCaption = ControlCaption this.value

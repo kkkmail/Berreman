@@ -137,7 +137,7 @@ module MaterialStore =
                             | Some versions ->
                                 let latest = latestOf versions
                                 let usage = usageAt entry.id latest.versionNo
-                                match decideVersioning (=) (=) (payloadOf latest.entry) (payloadOf entry) usage with
+                                match decideVersioning (payloadOf latest.entry) (payloadOf entry) usage with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =

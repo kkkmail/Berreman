@@ -59,20 +59,20 @@ module LibraryFacetsTests =
         |> List.map (fun value ->
             match value with
             | DiscreteValue k -> k.value
-            | NumericValue v -> $"%g{v}")
+            | NumericValue v -> $"%g{v.value}")
 
     let private numericValues (def : AttributeDef<'Item>) (item : 'Item) : double list =
         def.extract item
         |> List.choose (fun value ->
             match value with
-            | NumericValue v -> Some v
+            | NumericValue v -> Some v.value
             | DiscreteValue _ -> None)
 
     let private discrete (key : AttributeKey) (values : string list) : AppliedConstraint =
         { key = key; selection = DiscreteSelection (values |> List.map DiscreteKey |> Set.ofList) }
 
     let private branchSummary (node : FacetNode) : (string * int) list =
-        node.branches |> List.map (fun b -> b.label, b.count.value)
+        node.branches |> List.map (fun b -> b.label.value, b.count.value)
 
     let private materialRepresentation : Representation =
         Representation (materialFacets |> List.map (fun d -> d.key))
@@ -93,7 +93,7 @@ module LibraryFacetsTests =
         }
 
     let private modelOfKind (kindCode : string) : DispersionModel =
-        defaultModelChoices |> List.find (fun m -> modelKindCode m = kindCode)
+        defaultModelChoices |> List.find (fun m -> m.kindCode = kindCode)
 
     let private nmInterval (lowerNm : float) (upperNm : float) : WaveLengthInterval =
         { lower = toWaveLength Nanometer (UnitMagnitude lowerNm); upper = toWaveLength Nanometer (UnitMagnitude upperNm) }
@@ -275,7 +275,7 @@ module LibraryFacetsTests =
         // CASE, with NO engine-tensor evaluation.
         let anisotropyOfEntry (entry : MaterialEntry) : Anisotropy =
             match entry.complexity with
-            | Some c -> anisotropyOf c
+            | Some c -> c.anisotropy
             | None -> failwith $"{entry.name} must carry a complexity value tree"
         Assert.Equal(Isotropic, anisotropyOfEntry siliconEntry)
         Assert.Equal(Uniaxial, anisotropyOfEntry langasiteEntry)
@@ -292,7 +292,7 @@ module LibraryFacetsTests =
         // engine uniaxial shape), so the facet classifies the encoding.
         Assert.Equal<string list>([ "Biaxial" ], extractedKeys def uniaxialEntry)
         // The Uniaxial vocabulary key exists even though no seed extracts it.
-        Assert.Equal("Uniaxial", (anisotropyKey Uniaxial).value)
+        Assert.Equal("Uniaxial", Uniaxial.facetKey.value)
 
     [<Fact>]
     let ``the constant-vs-dispersive facet applies to every entry including coded presets`` () =
@@ -358,7 +358,7 @@ module LibraryFacetsTests =
         let node = List.exactlyOne tree.facets
         let absorbingCount =
             node.branches
-            |> List.filter (fun b -> b.label = (transparencyKey Absorbing).value)
+            |> List.filter (fun b -> b.label.value = Absorbing.facetKey.value)
             |> List.sumBy (fun b -> b.count.value)
         Assert.True(absorbingCount >= List.length dispersiveEntries)
 
@@ -442,7 +442,7 @@ module LibraryFacetsTests =
         Assert.Equal(7, offeredGyrationClassKeys |> List.distinct |> List.length)
         for anisotropy in [ Isotropic; Uniaxial; Biaxial ] do
             for gyration in availableGyrationClasses anisotropy do
-                Assert.Contains(gyrationClassKey gyration, offeredGyrationClassKeys)
+                Assert.Contains(gyration.facetKey, offeredGyrationClassKeys)
 
     [<Fact>]
     let ``the magnetic facet is offered only when magnetic and classifies scalar vs gyromagnetic`` () =
@@ -479,7 +479,7 @@ module LibraryFacetsTests =
         // defaultModelChoices carries one representative of each of the ten kinds.
         Assert.Equal(10, List.length defaultModelChoices)
         for model in defaultModelChoices do
-            Assert.Equal(expected[modelKindCode model], (modelDispersionKey model).value)
+            Assert.Equal(expected[model.kindCode], model.facetKey.value)
 
     [<Fact>]
     let ``the dispersion-model facet applies only to data-dispersive entries`` () =
@@ -654,7 +654,7 @@ module LibraryFacetsTests =
         let node = List.exactlyOne tree.facets
         Assert.Equal<string list>(
             [ "Molybdenum (Mo, EUV)"; "Silicon (Si, EUV)"; "Transparent glass (n = 1.52)"; "Vacuum" ],
-            node.branches |> List.map (fun b -> b.label))
+            node.branches |> List.map (fun b -> b.label.value))
 
     // =======================================================================
     // Per-film thickness → the step-10 buckets.
@@ -695,7 +695,7 @@ module LibraryFacetsTests =
         // over [12, 700]: 10, 20, 50, 100, 200, 500, 1000; empty buckets drop.
         Assert.Equal<(float * float * int) list>(
             [ 10.0, 20.0, 2; 20.0, 50.0, 2; 500.0, 1000.0, 1 ],
-            buckets |> List.map (fun b -> b.range.lower, b.range.upper, b.count.value))
+            buckets |> List.map (fun b -> b.range.lower.value, b.range.upper.value, b.count.value))
 
     [<Fact>]
     let ``a thickness bucket applies as an ordinary constraint chip reproducing its count`` () =

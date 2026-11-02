@@ -84,7 +84,7 @@ type PrincipalAxisSlot =
 
 /// One independent component of a symmetric gyration tensor (spec 0033 gap G9 —
 /// the missing per-component entry). Only the subset a class's point-group
-/// symmetry admits is ever exposed (see `gyrationComponents`); a free 3×3 is
+/// symmetry admits is ever exposed (see `GyrationClass.components`); a free 3×3 is
 /// never offered (spec 0033 §0.4).
 type GyrationComponent =
     | G11
@@ -93,6 +93,32 @@ type GyrationComponent =
     | G12
     | G13
     | G23
+
+    /// A picker-stable code for the component (the derived automation-id key).
+    member this.code : string =
+        match this with
+        | G11 -> "g11"
+        | G22 -> "g22"
+        | G33 -> "g33"
+        | G12 -> "g12"
+        | G13 -> "g13"
+        | G23 -> "g23"
+
+    /// A human label for the component (the entry-box caption).
+    member this.label : string =
+        match this with
+        | G11 -> "g₁₁"
+        | G22 -> "g₂₂"
+        | G33 -> "g₃₃"
+        | G12 -> "g₁₂"
+        | G13 -> "g₁₃"
+        | G23 -> "g₂₃"
+
+/// A dispersion segment's 0-based position in the editor's segment list.
+type SegmentIndex =
+    | SegmentIndex of int
+
+    member this.value = let (SegmentIndex i) = this in i
 
 /// One dispersion segment under edit: the shared `wavelengthInterval` bounds
 /// plus one `DispersionModel` PER AXIS SLOT (so an existing per-axis segment
@@ -155,10 +181,10 @@ type MaterialComplexityEditState =
 /// evaluated segment), so there is no `SegmentNotLowerable`.
 type MaterialComplexityEditError =
     /// A segment edit aimed at an index outside the segment list.
-    | NoSuchSegment of reason : string
+    | NoSuchSegmentErr of reason : string
     /// The dispersive eps needs at least one segment (the engine's segment
     /// selection extrapolates from the topmost segment and cannot run on none).
-    | LastSegmentNotRemovable of reason : string
+    | LastSegmentNotRemovableErr of reason : string
 
 /// The editor's message DU: one arm per ladder operation, applied by
 /// `applyMaterialComplexityMsg`.
@@ -169,23 +195,23 @@ type MaterialComplexityMsg =
     | SetPrincipalIndex of PrincipalAxisSlot * ComplexRefractionIndex
     /// Append one default segment to the list.
     | AddSegment
-    | RemoveSegment of segmentIndex : int
-    | SetSegmentInterval of segmentIndex : int * WaveLengthInterval
+    | RemoveSegment of segmentIndex : SegmentIndex
+    | SetSegmentInterval of segmentIndex : SegmentIndex * WaveLengthInterval
     /// Choose a segment's dispersion model KIND (applied to every axis slot; a
     /// same-kind re-pick keeps the current coefficients).
-    | ChooseSegmentModel of segmentIndex : int * DispersionModel
+    | ChooseSegmentModel of segmentIndex : SegmentIndex * DispersionModel
     /// Replace a segment's dispersion model UNCONDITIONALLY on every axis slot
     /// (spec 0033 gap G7 — a coefficient edit rebuilds the model in place and
     /// must NOT be discarded as a same-kind no-op the way `ChooseSegmentModel`
     /// treats a re-pick).
-    | SetSegmentModel of segmentIndex : int * DispersionModel
+    | SetSegmentModel of segmentIndex : SegmentIndex * DispersionModel
     /// Choose the model KIND of ONE principal axis of a segment (spec 0033
     /// comment 009 — uniaxial / biaxial dispersive media carry an independent
     /// formula per axis); a same-kind re-pick keeps that axis's coefficients.
-    | ChooseSegmentAxisModel of segmentIndex : int * axis : PrincipalAxisSlot * DispersionModel
+    | ChooseSegmentAxisModel of segmentIndex : SegmentIndex * axis : PrincipalAxisSlot * DispersionModel
     /// Replace ONE principal axis's model unconditionally (a per-axis coefficient
     /// edit — spec 0033 comment 009 + the gap-G7 coefficient surface).
-    | SetSegmentAxisModel of segmentIndex : int * axis : PrincipalAxisSlot * DispersionModel
+    | SetSegmentAxisModel of segmentIndex : SegmentIndex * axis : PrincipalAxisSlot * DispersionModel
     | SetActivity of ActivityChoice
     /// Flip the activity rung's Constant vs Dispersive sub-branch (spec Part C —
     /// the gyration analogue of `SetDispersion`).
@@ -217,35 +243,54 @@ type MaterialComplexityMsg =
 // ---------------------------------------------------------------------------
 
 /// The default real index of a fresh material (an ordinary glass-like value).
-let defaultIndexValue : float = 1.5
+let defaultRefractionIndex : RefractionIndex = RefractionIndex 1.5
 
-/// The default gyration component of a freshly-unlocked activity rung — the
-/// active-crystal built-in's magnitude (`MaterialLibrary.activeCrystalComplexity`).
-let defaultGyrationComponent : RhoValue = RhoValue 1.5e-6
+type RefractionIndex with
 
-/// A real constant `DispersionFormula` over an nm-reduced abscissa (the raw
-/// `SumOfTerms` default and nothing else — models carry their own scales).
-let private constantFormula (value : float) : DispersionFormula =
-    {
-        terms = [ { lambda = 0.0; coefficients = [| value |]; power = 1; multiplier = 1.0 } ]
-        wavelengthScale = toMeters Nanometer (UnitMagnitude 1.0)
-    }
+    /// This real index as the complex n + 0i.
+    member private n.withoutAbsorption : ComplexRefractionIndex = ComplexRefractionIndex (Complex.create n.value 0.0)
+
+type ComplexRefractionIndex with
+
+    /// The real part n of n + ik (what a transparent rung reads).
+    member private index.realPart : RefractionIndex = RefractionIndex index.value.Real
+
+type DispersionValue with
+
+    /// The formula whose value is this one at every wavelength: a real constant over an nm-reduced abscissa
+    /// (the dispersive gyration / Polder seeds — models carry their own scales).
+    member private value.constantFormula : DispersionFormula =
+        {
+            terms = [ { lambda = 0.0; coefficients = [| value.value |]; power = 1; multiplier = 1.0 } ]
+            wavelengthScale = toMeters Nanometer (UnitMagnitude 1.0)
+        }
+
+/// The active-crystal built-in's gyration magnitude (`MaterialLibrary.activeCrystalComplexity`).
+let private defaultGyrationValue : DispersionValue = DispersionValue 1.5e-6
+
+/// The default gyration component of a freshly-unlocked activity rung.
+let defaultGyrationComponent : RhoValue = defaultGyrationValue.toRhoValue
 
 /// The default dispersive gyration component: the constant active magnitude as a
 /// flat `DispersionFormula`, so switching Dispersive on starts from the constant
 /// value (the raw `SumOfTerms` identity the segment ladder also seeds from).
-let defaultGyrationFormula : DispersionFormula = constantFormula defaultGyrationComponent.value
+let defaultGyrationFormula : DispersionFormula = defaultGyrationValue.constantFormula
 
 /// The default dispersive Polder facet: each component the constant Polder default
 /// (μ 1.0, μ∥ 1.0, gyration 0.1) as a flat `DispersionFormula`, so switching
 /// Dispersive on starts from the constant value.
 let defaultPolderDispersion : PolderValue<DispersionFormula> =
     {
-        muDiagonal = constantFormula 1.0
-        muParallel = constantFormula 1.0
-        gyration = constantFormula 0.1
+        muDiagonal = (DispersionValue 1.0).constantFormula
+        muParallel = (DispersionValue 1.0).constantFormula
+        gyration = (DispersionValue 0.1).constantFormula
         axis = GyrationAxis.defaultValue
     }
+
+/// The default segment model, a flat n = `defaultRefractionIndex`, k = 0; lowered, it is also the raw
+/// `SumOfTerms` default (the nm scale and the real constant terms `toEpsAxis` writes).
+let private defaultConstantNk : DispersionModel =
+    ConstantNK { n = defaultRefractionIndex.value; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
 
 /// The dispersion-model choices the segment picker offers, each seeded with a
 /// representative published/default coefficient set (the Forouhi–Bloomer set is
@@ -255,7 +300,7 @@ let defaultPolderDispersion : PolderValue<DispersionFormula> =
 /// `toEpsAxis`).
 let defaultModelChoices : DispersionModel list =
     [
-        ConstantNK { n = defaultIndexValue; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
+        defaultConstantNk
         // Length-based models are seeded in NANOMETRES (spec 0033 comment 009): the BK7 / a-glass
         // coefficients converted from their conventional µm form — the wavelength-squared / -fourth
         // terms scale by 1e6 / 1e12 so the evaluated index is identical, just displayed in nm.
@@ -284,37 +329,39 @@ let defaultModelChoices : DispersionModel list =
                 wavelengthUnit = ElectronVolt
                 thermoOptic = None
             }
-        SumOfTerms (RealNK { nFormula = constantFormula defaultIndexValue; kFormula = constantFormula 0.0 })
+        SumOfTerms defaultConstantNk.toEpsAxis
     ]
 
-/// A picker-stable code for a model's KIND (its coefficient values do not
-/// change the code — the derived automation-id key).
-let modelKindCode (model : DispersionModel) : string =
-    match model with
-    | Sellmeier _ -> "Sellmeier"
-    | Cauchy _ -> "Cauchy"
-    | Lorentz _ -> "Lorentz"
-    | Drude _ -> "Drude"
-    | TaucLorentz _ -> "TaucLorentz"
-    | GaussianOscillator _ -> "GaussianOscillator"
-    | ForouhiBloomer _ -> "ForouhiBloomer"
-    | BrendelBormann _ -> "BrendelBormann"
-    | ConstantNK _ -> "ConstantNK"
-    | SumOfTerms _ -> "SumOfTerms"
+type DispersionModel with
 
-/// A human label for a model's kind (the picker option text).
-let modelKindLabel (model : DispersionModel) : string =
-    match model with
-    | Sellmeier _ -> "Sellmeier"
-    | Cauchy _ -> "Cauchy"
-    | Lorentz _ -> "Lorentz"
-    | Drude _ -> "Drude"
-    | TaucLorentz _ -> "Tauc–Lorentz"
-    | GaussianOscillator _ -> "Gaussian"
-    | ForouhiBloomer _ -> "Forouhi–Bloomer"
-    | BrendelBormann _ -> "Brendel–Bormann"
-    | ConstantNK _ -> "Constant n + ik"
-    | SumOfTerms _ -> "Sum of terms (raw)"
+    /// A picker-stable code for the model's KIND (its coefficient values do not
+    /// change the code — the derived automation-id key).
+    member this.kindCode : string =
+        match this with
+        | Sellmeier _ -> "Sellmeier"
+        | Cauchy _ -> "Cauchy"
+        | Lorentz _ -> "Lorentz"
+        | Drude _ -> "Drude"
+        | TaucLorentz _ -> "TaucLorentz"
+        | GaussianOscillator _ -> "GaussianOscillator"
+        | ForouhiBloomer _ -> "ForouhiBloomer"
+        | BrendelBormann _ -> "BrendelBormann"
+        | ConstantNK _ -> "ConstantNK"
+        | SumOfTerms _ -> "SumOfTerms"
+
+    /// A human label for the model's kind (the picker option text).
+    member this.kindLabel : string =
+        match this with
+        | Sellmeier _ -> "Sellmeier"
+        | Cauchy _ -> "Cauchy"
+        | Lorentz _ -> "Lorentz"
+        | Drude _ -> "Drude"
+        | TaucLorentz _ -> "Tauc–Lorentz"
+        | GaussianOscillator _ -> "Gaussian"
+        | ForouhiBloomer _ -> "Forouhi–Bloomer"
+        | BrendelBormann _ -> "Brendel–Bormann"
+        | ConstantNK _ -> "Constant n + ik"
+        | SumOfTerms _ -> "Sum of terms (raw)"
 
 /// The default segment: the visible band, a flat `ConstantNK` on every axis.
 let defaultSegment : EditSegment =
@@ -385,64 +432,46 @@ let availableGyrationClasses (anisotropy : Anisotropy) : GyrationClass<RhoValue>
             Triclinic1 { g11 = g; g22 = g; g33 = g; g23 = g; g13 = g; g12 = g }  // triclinic 1
         ]
 
-/// A picker-stable code for a gyration CLASS (component values do not change
-/// the code — the derived automation-id key).
-let gyrationClassCode (gyration : GyrationClass<'g>) : string =
-    match gyration with
-    | CubicActive _ -> "Cubic"
-    | UniaxialActive _ -> "Uniaxial"
-    | PlanarActive _ -> "Planar"
-    | Orthorhombic222 _ -> "Orthorhombic222"
-    | Monoclinic2 _ -> "Monoclinic2"
-    | MonoclinicM _ -> "MonoclinicM"
-    | Triclinic1 _ -> "Triclinic1"
+type GyrationClass<'g> with
 
-/// A human label for a gyration class (the picker option text).
-let gyrationClassLabel (gyration : GyrationClass<'g>) : string =
-    match gyration with
-    | CubicActive _ -> "Cubic 23 / 432"
-    | UniaxialActive _ -> "Uniaxial 3 / 4 / 6 (g₁₁, g₃₃)"
-    | PlanarActive _ -> "Planar mm2 (g₁₂)"
-    | Orthorhombic222 _ -> "Orthorhombic 222"
-    | Monoclinic2 _ -> "Monoclinic 2"
-    | MonoclinicM _ -> "Monoclinic m"
-    | Triclinic1 _ -> "Triclinic 1"
+    /// A picker-stable code for the CLASS (component values do not change the
+    /// code — the derived automation-id key).
+    member this.classCode : string =
+        match this with
+        | CubicActive _ -> "Cubic"
+        | UniaxialActive _ -> "Uniaxial"
+        | PlanarActive _ -> "Planar"
+        | Orthorhombic222 _ -> "Orthorhombic222"
+        | Monoclinic2 _ -> "Monoclinic2"
+        | MonoclinicM _ -> "MonoclinicM"
+        | Triclinic1 _ -> "Triclinic1"
 
-/// A picker-stable code for a gyration component (the derived automation-id key).
-let gyrationComponentCode (comp : GyrationComponent) : string =
-    match comp with
-    | G11 -> "g11"
-    | G22 -> "g22"
-    | G33 -> "g33"
-    | G12 -> "g12"
-    | G13 -> "g13"
-    | G23 -> "g23"
+    /// A human label for the class (the picker option text).
+    member this.classLabel : string =
+        match this with
+        | CubicActive _ -> "Cubic 23 / 432"
+        | UniaxialActive _ -> "Uniaxial 3 / 4 / 6 (g₁₁, g₃₃)"
+        | PlanarActive _ -> "Planar mm2 (g₁₂)"
+        | Orthorhombic222 _ -> "Orthorhombic 222"
+        | Monoclinic2 _ -> "Monoclinic 2"
+        | MonoclinicM _ -> "Monoclinic m"
+        | Triclinic1 _ -> "Triclinic 1"
 
-/// A human label for a gyration component (the entry-box caption).
-let gyrationComponentLabel (comp : GyrationComponent) : string =
-    match comp with
-    | G11 -> "g₁₁"
-    | G22 -> "g₂₂"
-    | G33 -> "g₃₃"
-    | G12 -> "g₁₂"
-    | G13 -> "g₁₃"
-    | G23 -> "g₂₃"
-
-/// The editable components of a gyration class, IN DISPLAY ORDER, paired with
-/// their current value. Exactly the components the class's symmetry admits
-/// appear — one for the single-valued cubic/planar forms, two for uniaxial /
-/// monoclinic-m, and up to the full six for triclinic (spec 0033 gap G9).
-/// Generic over the component value (`RhoValue` for the constant facet,
-/// `DispersionFormula` for the dispersive facet — spec Part C).
-let gyrationComponents (gyration : GyrationClass<'g>) : (GyrationComponent * 'g) list =
-    match gyration with
-    | CubicActive g -> [ (G11, g) ]
-    | UniaxialActive u -> [ (G11, u.g11); (G33, u.g33) ]
-    | PlanarActive g12 -> [ (G12, g12) ]
-    | Orthorhombic222 o -> [ (G11, o.g11); (G22, o.g22); (G33, o.g33) ]
-    | Monoclinic2 m -> [ (G11, m.g11); (G22, m.g22); (G33, m.g33); (G13, m.g13) ]
-    | MonoclinicM m -> [ (G12, m.g12); (G23, m.g23) ]
-    | Triclinic1 t -> [ (G11, t.g11); (G22, t.g22); (G33, t.g33); (G13, t.g13); (G23, t.g23); (G12, t.g12) ]
+    /// The editable components of the class, IN DISPLAY ORDER, paired with
+    /// their current value. Exactly the components the class's symmetry admits
+    /// appear — one for the single-valued cubic/planar forms, two for uniaxial /
+    /// monoclinic-m, and up to the full six for triclinic (spec 0033 gap G9).
+    /// Generic over the component value (`RhoValue` for the constant facet,
+    /// `DispersionFormula` for the dispersive facet — spec Part C).
+    member this.components : (GyrationComponent * 'g) list =
+        match this with
+        | CubicActive g -> [ (G11, g) ]
+        | UniaxialActive u -> [ (G11, u.g11); (G33, u.g33) ]
+        | PlanarActive g12 -> [ (G12, g12) ]
+        | Orthorhombic222 o -> [ (G11, o.g11); (G22, o.g22); (G33, o.g33) ]
+        | Monoclinic2 m -> [ (G11, m.g11); (G22, m.g22); (G33, m.g33); (G13, m.g13) ]
+        | MonoclinicM m -> [ (G12, m.g12); (G23, m.g23) ]
+        | Triclinic1 t -> [ (G11, t.g11); (G22, t.g22); (G33, t.g33); (G13, t.g13); (G23, t.g23); (G12, t.g12) ]
 
 /// Set ONE component of the gyration tensor to `value`, keeping the class and
 /// its other components. A component the class does not carry is a no-op — the
@@ -500,9 +529,9 @@ let defaultState : MaterialComplexityEditState =
         anisotropy = Isotropic
         transparency = Transparent
         dispersion = NonDispersive
-        index1 = ComplexRefractionIndex (Complex.create defaultIndexValue 0.0)
-        index2 = ComplexRefractionIndex (Complex.create defaultIndexValue 0.0)
-        index3 = ComplexRefractionIndex (Complex.create defaultIndexValue 0.0)
+        index1 = defaultRefractionIndex.withoutAbsorption
+        index2 = defaultRefractionIndex.withoutAbsorption
+        index3 = defaultRefractionIndex.withoutAbsorption
         segments = [ defaultSegment ]
         activity = ActivityOff
         activityDispersion = ConstantComponents
@@ -527,7 +556,7 @@ let defaultState : MaterialComplexityEditState =
 /// defaults (`MaterialComplexity.toProperties`).
 let defaultComplexity : MaterialComplexity =
     {
-        eps = EpsWithoutDispValue (IsotropicTransparent (RefractionIndex defaultIndexValue))
+        eps = EpsWithoutDispValue (IsotropicTransparent defaultRefractionIndex)
         magnetic = None
         active = None
     }
@@ -536,33 +565,36 @@ let defaultComplexity : MaterialComplexity =
 // The advisory gain rule (restated — see the module doc).
 // ---------------------------------------------------------------------------
 
-/// Physical-sanity warning: a finite, negative imaginary refractive index
-/// implies optical GAIN (an amplifying medium) rather than absorption. The
-/// `Validation.imaginaryIndexGainWarning` rule (Ui/Validation.fs:92), restated
-/// with identical semantics and message; advisory — it never gates a save.
-let imaginaryIndexGainWarning (k : float) : string option =
-    if Double.IsFinite k && k < 0.0 then
-        Some "Imaginary refractive index k < 0 implies gain (an amplifying medium), not absorption."
-    else None
+/// The extinction coefficient k, the imaginary part of a refractive index n + ik.
+type ExtinctionCoefficient =
+    | ExtinctionCoefficient of float
+
+    member this.value = let (ExtinctionCoefficient k) = this in k
+
+    /// Physical-sanity warning: a finite, negative k implies optical GAIN (an
+    /// amplifying medium) rather than absorption. The
+    /// `Validation.imaginaryIndexGainWarning` rule (Ui/Validation.fs), restated
+    /// with identical semantics and message; advisory — it never gates a save.
+    member this.gainWarning : string option =
+        if Double.IsFinite this.value && this.value < 0.0 then
+            Some "Imaginary refractive index k < 0 implies gain (an amplifying medium), not absorption."
+        else None
 
 // ---------------------------------------------------------------------------
 // applyMaterialComplexityMsg — one message onto one immutable transform.
 // ---------------------------------------------------------------------------
 
-/// Whether the class is one the anisotropy choice offers (compared by class
-/// CASE — component values are irrelevant to the constraint).
-let private isOffered (anisotropy : Anisotropy) (gyration : GyrationClass<RhoValue>) : bool =
-    availableGyrationClasses anisotropy
-    |> List.exists (fun offered -> gyrationClassCode offered = gyrationClassCode gyration)
-
-/// Keep an offered class; snap an un-offered one to the choice's first offered
-/// class (applied when the activity rung UNLOCKS or the anisotropy changes
-/// under an unlocked rung — never during `ofComplexity` seeding, which must
-/// stay verbatim).
+/// Keep a class the anisotropy choice offers (compared by class CASE — component
+/// values are irrelevant to the constraint); snap an un-offered one to the
+/// choice's first offered class (applied when the activity rung UNLOCKS or the
+/// anisotropy changes under an unlocked rung — never during `ofComplexity`
+/// seeding, which must stay verbatim).
 let private snapGyration (anisotropy : Anisotropy) (gyration : GyrationClass<RhoValue>) : GyrationClass<RhoValue> =
-    if isOffered anisotropy gyration then gyration
-    else
-        match availableGyrationClasses anisotropy with
+    let offered = availableGyrationClasses anisotropy
+    match offered |> List.tryFind (fun o -> o.classCode = gyration.classCode) with
+    | Some _ -> gyration
+    | None ->
+        match offered with
         | first :: _ -> first
         | [] -> gyration
 
@@ -573,15 +605,15 @@ let private snapGyration (anisotropy : Anisotropy) (gyration : GyrationClass<Rho
 /// the default magnitude (`availableGyrationClasses`); a same-class re-pick keeps
 /// the user's edited formulas (the lossless discipline).
 let private syncGyrationDispersion (gyration : GyrationClass<RhoValue>) (gyrationDispersion : GyrationClass<DispersionFormula>) : GyrationClass<DispersionFormula> =
-    if gyrationClassCode gyration = gyrationClassCode gyrationDispersion then gyrationDispersion
+    if gyration.classCode = gyrationDispersion.classCode then gyrationDispersion
     else gyration.map (fun _ -> defaultGyrationFormula)
 
-let private checkSegmentIndex (segmentIndex : int) (segments : EditSegment list) : Result<unit, MaterialComplexityEditError> =
-    if segmentIndex >= 0 && segmentIndex < List.length segments then Ok ()
-    else Error (NoSuchSegment $"segment index %d{segmentIndex} is out of range (%d{List.length segments} segments)")
+let private checkSegmentIndex (segmentIndex : SegmentIndex) (segments : EditSegment list) : Result<unit, MaterialComplexityEditError> =
+    if segmentIndex.value >= 0 && segmentIndex.value < List.length segments then Ok ()
+    else Error (NoSuchSegmentErr $"segment index %d{segmentIndex.value} is out of range (%d{List.length segments} segments)")
 
-let private mapSegment (segmentIndex : int) (f : EditSegment -> EditSegment) (segments : EditSegment list) : EditSegment list =
-    segments |> List.mapi (fun i seg -> if i = segmentIndex then f seg else seg)
+let private mapSegment (segmentIndex : SegmentIndex) (f : EditSegment -> EditSegment) (segments : EditSegment list) : EditSegment list =
+    segments |> List.mapi (fun i seg -> if SegmentIndex i = segmentIndex then f seg else seg)
 
 /// The dispersion model a segment carries on one principal-axis slot (spec 0033
 /// comment 009): isotropic reads the first only; uniaxial the first two (ordinary,
@@ -626,12 +658,12 @@ let applyMaterialComplexityMsg
         checkSegmentIndex segmentIndex state.segments
         |> Result.bind (fun () ->
             match state.segments with
-            | [ _ ] -> Error (LastSegmentNotRemovable "the segment list cannot be emptied — a dispersive eps needs at least one segment")
+            | [ _ ] -> Error (LastSegmentNotRemovableErr "the segment list cannot be emptied — a dispersive eps needs at least one segment")
             | _ ->
                 let segments =
                     state.segments
                     |> List.indexed
-                    |> List.filter (fun (i, _) -> i <> segmentIndex)
+                    |> List.filter (fun (i, _) -> SegmentIndex i <> segmentIndex)
                     |> List.map snd
                 Ok { state with segments = segments })
     | SetSegmentInterval (segmentIndex, interval) ->
@@ -643,7 +675,7 @@ let applyMaterialComplexityMsg
             let pick (seg : EditSegment) : EditSegment =
                 // A same-kind re-pick keeps the segment's current coefficients
                 // (notably the seeded raw SumOfTerms axis data).
-                if modelKindCode seg.model1 = modelKindCode model then seg
+                if seg.model1.kindCode = model.kindCode then seg
                 else { seg with model1 = model; model2 = model; model3 = model }
             { state with segments = mapSegment segmentIndex pick state.segments })
     | SetSegmentModel (segmentIndex, model) ->
@@ -659,7 +691,7 @@ let applyMaterialComplexityMsg
         checkSegmentIndex segmentIndex state.segments
         |> Result.map (fun () ->
             let pick (seg : EditSegment) : EditSegment =
-                if modelKindCode (axisModelOf slot seg) = modelKindCode model then seg
+                if (axisModelOf slot seg).kindCode = model.kindCode then seg
                 else setAxisModel slot model seg
             { state with segments = mapSegment segmentIndex pick state.segments })
     | SetSegmentAxisModel (segmentIndex, slot, model) ->
@@ -678,7 +710,7 @@ let applyMaterialComplexityMsg
     | SetActivityDispersion choice -> Ok { state with activityDispersion = choice }
     | ChooseGyrationClass gyration ->
         // A same-class re-pick keeps the current components (constant AND dispersive).
-        if gyrationClassCode gyration = gyrationClassCode state.gyration then Ok state
+        if gyration.classCode = state.gyration.classCode then Ok state
         else Ok { state with gyration = gyration; gyrationDispersion = syncGyrationDispersion gyration state.gyrationDispersion }
     | SetGyrationComponent (comp, value) ->
         Ok { state with gyration = setGyrationComponent comp value state.gyration }
@@ -706,93 +738,89 @@ let applyMaterialComplexityMsg
 // toComplexity — the pure derivation onto the serializable value trees.
 // ---------------------------------------------------------------------------
 
-let private realIndex (index : ComplexRefractionIndex) : RefractionIndex =
-    RefractionIndex index.value.Real
+type MaterialComplexityEditState with
 
-/// The constant eps of the current (anisotropy × transparency) rung.
-let private constantEps (state : MaterialComplexityEditState) : ConstantEpsValue =
-    match state.anisotropy, state.transparency with
-    | Isotropic, Transparent -> IsotropicTransparent (realIndex state.index1)
-    | Isotropic, Absorbing -> IsotropicAbsorbing state.index1
-    | Uniaxial, Transparent -> UniaxialTransparent { ordinary = realIndex state.index1; extraordinary = realIndex state.index2 }
-    | Uniaxial, Absorbing -> UniaxialAbsorbing { ordinaryComplex = state.index1; extraordinaryComplex = state.index2 }
-    | Biaxial, Transparent -> BiaxialTransparent { nx = realIndex state.index1; ny = realIndex state.index2; nz = realIndex state.index3 }
-    | Biaxial, Absorbing -> BiaxialAbsorbing { nxComplex = state.index1; nyComplex = state.index2; nzComplex = state.index3 }
+    /// The constant eps of the current (anisotropy × transparency) rung.
+    member private state.constantEps : ConstantEpsValue =
+        match state.anisotropy, state.transparency with
+        | Isotropic, Transparent -> IsotropicTransparent state.index1.realPart
+        | Isotropic, Absorbing -> IsotropicAbsorbing state.index1
+        | Uniaxial, Transparent -> UniaxialTransparent { ordinary = state.index1.realPart; extraordinary = state.index2.realPart }
+        | Uniaxial, Absorbing -> UniaxialAbsorbing { ordinaryComplex = state.index1; extraordinaryComplex = state.index2 }
+        | Biaxial, Transparent -> BiaxialTransparent { nx = state.index1.realPart; ny = state.index2.realPart; nz = state.index3.realPart }
+        | Biaxial, Absorbing -> BiaxialAbsorbing { nxComplex = state.index1; nyComplex = state.index2; nzComplex = state.index3 }
 
-/// The dispersive eps of the current anisotropy: each edit segment lowers its
-/// active axis models into the engine's per-symmetry segment records through
-/// `DispersionModels.toEpsAxis`. Lowering is TOTAL — every model lowers, the
-/// transcendental cases to the evaluated segment — so this never fails.
-let private dispersiveEps (state : MaterialComplexityEditState) : EpsDispersiveValue =
-    match state.anisotropy with
-    | Isotropic ->
-        state.segments
-        |> List.map (fun seg -> { wavelengthInterval = seg.interval; dispersion = seg.model1.toEpsAxis })
-        |> IsotropicDispersive
-    | Uniaxial ->
-        state.segments
-        |> List.map (fun seg ->
+    /// The dispersive eps of the current anisotropy: each edit segment lowers its
+    /// active axis models into the engine's per-symmetry segment records through
+    /// `DispersionModels.toEpsAxis`. Lowering is TOTAL — every model lowers, the
+    /// transcendental cases to the evaluated segment — so this never fails.
+    member private state.dispersiveEps : EpsDispersiveValue =
+        match state.anisotropy with
+        | Isotropic ->
+            state.segments
+            |> List.map (fun seg -> { wavelengthInterval = seg.interval; dispersion = seg.model1.toEpsAxis })
+            |> IsotropicDispersive
+        | Uniaxial ->
+            state.segments
+            |> List.map (fun seg ->
+                {
+                    wavelengthInterval = seg.interval
+                    ordinaryDispersion = seg.model1.toEpsAxis
+                    extraordinaryDispersion = seg.model2.toEpsAxis
+                })
+            |> UniaxialDispersive
+        | Biaxial ->
+            state.segments
+            |> List.map (fun seg ->
+                {
+                    wavelengthInterval = seg.interval
+                    xDispersion = seg.model1.toEpsAxis
+                    yDispersion = seg.model2.toEpsAxis
+                    zDispersion = seg.model3.toEpsAxis
+                })
+            |> BiaxialDispersive
+
+    /// Derive the `MaterialComplexity` the state currently denotes. Each toggle
+    /// off means its aspect's DEFAULT (constant eps / absent option) regardless of
+    /// the stored facet — the lossless-uncheck mechanic. Derivation never fails now
+    /// (every segment model lowers, the transcendental cases to the evaluated
+    /// segment); the `Result` return is kept for the consumer contract, mirroring
+    /// `ofComplexity`.
+    member state.toComplexity : Result<MaterialComplexity, MaterialComplexityEditError> =
+        let eps =
+            match state.dispersion with
+            | NonDispersive -> EpsWithoutDispValue state.constantEps
+            | DispersiveSegments -> EpsWithDispValue state.dispersiveEps
+        Ok
             {
-                wavelengthInterval = seg.interval
-                ordinaryDispersion = seg.model1.toEpsAxis
-                extraordinaryDispersion = seg.model2.toEpsAxis
-            })
-        |> UniaxialDispersive
-    | Biaxial ->
-        state.segments
-        |> List.map (fun seg ->
-            {
-                wavelengthInterval = seg.interval
-                xDispersion = seg.model1.toEpsAxis
-                yDispersion = seg.model2.toEpsAxis
-                zDispersion = seg.model3.toEpsAxis
-            })
-        |> BiaxialDispersive
-
-/// Derive the `MaterialComplexity` the state currently denotes. Each toggle
-/// off means its aspect's DEFAULT (constant eps / absent option) regardless of
-/// the stored facet — the lossless-uncheck mechanic. Derivation never fails now
-/// (every segment model lowers, the transcendental cases to the evaluated
-/// segment); the `Result` return is kept for the consumer contract, mirroring
-/// `ofComplexity`.
-let toComplexity (state : MaterialComplexityEditState) : Result<MaterialComplexity, MaterialComplexityEditError> =
-    let eps =
-        match state.dispersion with
-        | NonDispersive -> EpsWithoutDispValue (constantEps state)
-        | DispersiveSegments -> EpsWithDispValue (dispersiveEps state)
-    Ok
-        {
-            eps = eps
-            magnetic =
-                match state.magnetic with
-                | MagneticOff -> None
-                | MagneticOn ->
-                    match state.magneticDispersion with
-                    | ConstantComponents ->
-                        match state.muKind with
-                        | ScalarMuKind -> Some (MuWithoutDispValue (ScalarMu state.polder.muDiagonal))
-                        | GyromagneticMuKind -> Some (MuWithoutDispValue (GyromagneticMu state.polder))
-                    // The dispersive branch is always the full Polder tensor — the engine's
-                    // `MuWithDispValue` carries no scalar dispersive case; `toMuWithDisp`
-                    // evaluates each component's formula per wavelength.
-                    | DispersiveComponents -> Some (MuWithDispValue state.polderDispersion)
-            active =
-                match state.activity with
-                | ActivityOff -> None
-                | ActivityOn ->
-                    match state.activityDispersion with
-                    | ConstantComponents -> Some (RhoWithoutDispValue { gyration = state.gyration; hand = state.hand })
-                    // `toRhoWithDisp` evaluates each component's formula per wavelength and
-                    // assembles the symmetry-class gyration tensor.
-                    | DispersiveComponents -> Some (RhoWithDispValue { gyration = state.gyrationDispersion; hand = state.hand })
-        }
+                eps = eps
+                magnetic =
+                    match state.magnetic with
+                    | MagneticOff -> None
+                    | MagneticOn ->
+                        match state.magneticDispersion with
+                        | ConstantComponents ->
+                            match state.muKind with
+                            | ScalarMuKind -> Some (MuWithoutDispValue (ScalarMu state.polder.muDiagonal))
+                            | GyromagneticMuKind -> Some (MuWithoutDispValue (GyromagneticMu state.polder))
+                        // The dispersive branch is always the full Polder tensor — the engine's
+                        // `MuWithDispValue` carries no scalar dispersive case; `toMuWithDisp`
+                        // evaluates each component's formula per wavelength.
+                        | DispersiveComponents -> Some (MuWithDispValue state.polderDispersion)
+                active =
+                    match state.activity with
+                    | ActivityOff -> None
+                    | ActivityOn ->
+                        match state.activityDispersion with
+                        | ConstantComponents -> Some (RhoWithoutDispValue { gyration = state.gyration; hand = state.hand })
+                        // `toRhoWithDisp` evaluates each component's formula per wavelength and
+                        // assembles the symmetry-class gyration tensor.
+                        | DispersiveComponents -> Some (RhoWithDispValue { gyration = state.gyrationDispersion; hand = state.hand })
+            }
 
 // ---------------------------------------------------------------------------
 // ofComplexity — seed the ladder from an existing entry's edit model.
 // ---------------------------------------------------------------------------
-
-let private complexIndexOf (n : RefractionIndex) : ComplexRefractionIndex =
-    ComplexRefractionIndex (Complex.create n.value 0.0)
 
 /// Seed a segment's axis slots from per-axis engine term data through the raw
 /// `SumOfTerms` escape hatch — the identity under `toEpsAxis`, so the
@@ -810,30 +838,37 @@ let private seedSegment
         model3 = SumOfTerms axis3
     }
 
-/// Whether a complexity can be LOSSLESSLY edited through this ladder (spec 0040
-/// step 004). A dispersive eps segment lowered to the OPAQUE evaluated case
-/// (`EpsAxisEvaluated` — a coded closure with no editable term coefficients, the
-/// form the re-seeded engine presets Silicon / Langasite carry) cannot be
-/// re-derived into model coefficients, so an editor seeded from it would surface a
-/// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
-/// entry opens VIEW-ONLY instead: the host editability seams
-/// (`MaterialEditorView.init`, `MaterialsWindowView.editableSelection`) gate on
-/// this predicate rather than on `complexity` presence alone. A constant or
-/// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
-let isEditableComplexity (complexity : MaterialComplexity) : bool =
-    let axisIsEvaluated (axis : EpsAxisDispersion) : bool =
-        match axis with
-        | EpsAxisEvaluated _ -> true
-        | RealNK _ | ComplexEps _ -> false
-    match complexity.eps with
-    | EpsWithoutDispValue _ -> true
-    | EpsWithDispValue dispersive ->
-        let axes =
-            match dispersive with
-            | IsotropicDispersive segments -> segments |> List.map (fun s -> s.dispersion)
-            | UniaxialDispersive segments -> segments |> List.collect (fun s -> [ s.ordinaryDispersion; s.extraordinaryDispersion ])
-            | BiaxialDispersive segments -> segments |> List.collect (fun s -> [ s.xDispersion; s.yDispersion; s.zDispersion ])
-        not (axes |> List.exists axisIsEvaluated)
+type EpsDispersiveValue with
+
+    /// Every per-axis/segment dispersion, in segment order — the symmetry decides
+    /// how many axes each segment carries (isotropic 1, uniaxial 2, biaxial 3),
+    /// exactly the slots `toComplexity` writes.
+    member this.axisDispersions : EpsAxisDispersion list =
+        match this with
+        | IsotropicDispersive segments -> segments |> List.map (fun s -> s.dispersion)
+        | UniaxialDispersive segments -> segments |> List.collect (fun s -> [ s.ordinaryDispersion; s.extraordinaryDispersion ])
+        | BiaxialDispersive segments -> segments |> List.collect (fun s -> [ s.xDispersion; s.yDispersion; s.zDispersion ])
+
+type MaterialComplexity with
+
+    /// Whether the complexity can be LOSSLESSLY edited through this ladder (spec 0040
+    /// step 004). A dispersive eps segment lowered to the OPAQUE evaluated case
+    /// (`EpsAxisEvaluated` — a coded closure with no editable term coefficients, the
+    /// form the re-seeded engine presets Silicon / Langasite carry) cannot be
+    /// re-derived into model coefficients, so an editor seeded from it would surface a
+    /// misleading `SumOfTerms` segment the user cannot meaningfully change. Such an
+    /// entry opens VIEW-ONLY instead: the host editability seams
+    /// (`MaterialEditorView.init`, `MaterialsWindowView.editableSelection`) gate on
+    /// this predicate rather than on `complexity` presence alone. A constant or
+    /// finite-term (`RealNK` / `ComplexEps`) dispersion is fully editable.
+    member this.isEditable : bool =
+        let axisIsEvaluated (axis : EpsAxisDispersion) : bool =
+            match axis with
+            | EpsAxisEvaluated _ -> true
+            | RealNK _ | ComplexEps _ -> false
+        match this.eps with
+        | EpsWithoutDispValue _ -> true
+        | EpsWithDispValue dispersive -> not (dispersive.axisDispersions |> List.exists axisIsEvaluated)
 
 /// Seed the editor from an existing `MaterialComplexity` (the entry's editable
 /// source of truth). Verbatim — no snapping, no clamping — so
@@ -849,15 +884,15 @@ let ofComplexity (complexity : MaterialComplexity) : Result<MaterialComplexityEd
             let anisotropy, transparency, i1, i2, i3 =
                 match constant with
                 | IsotropicTransparent n ->
-                    let i = complexIndexOf n
+                    let i = n.withoutAbsorption
                     Isotropic, Transparent, i, i, i
                 | IsotropicAbsorbing n -> Isotropic, Absorbing, n, n, n
                 | UniaxialTransparent u ->
-                    let o = complexIndexOf u.ordinary
-                    Uniaxial, Transparent, o, complexIndexOf u.extraordinary, o
+                    let o = u.ordinary.withoutAbsorption
+                    Uniaxial, Transparent, o, u.extraordinary.withoutAbsorption, o
                 | UniaxialAbsorbing u -> Uniaxial, Absorbing, u.ordinaryComplex, u.extraordinaryComplex, u.ordinaryComplex
                 | BiaxialTransparent b ->
-                    Biaxial, Transparent, complexIndexOf b.nx, complexIndexOf b.ny, complexIndexOf b.nz
+                    Biaxial, Transparent, b.nx.withoutAbsorption, b.ny.withoutAbsorption, b.nz.withoutAbsorption
                 | BiaxialAbsorbing b -> Biaxial, Absorbing, b.nxComplex, b.nyComplex, b.nzComplex
             Ok (anisotropy, transparency, NonDispersive, i1, i2, i3, defaultState.segments)
         | EpsWithDispValue dispersive ->

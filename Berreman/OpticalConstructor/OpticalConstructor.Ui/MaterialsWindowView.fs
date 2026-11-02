@@ -32,6 +32,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 open OpticalConstructor.Domain.LibraryFacets
+open OpticalConstructor.Domain.MaterialComplexityEditor
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Lifecycle
 open OpticalConstructor.Domain.WindowMode
@@ -351,7 +352,7 @@ let effectiveScope (m : MaterialsWindowModel) : InactiveVisibility =
     | Browse -> m.showInactive
 
 let private projectionInputs (m : MaterialsWindowModel) : ProjectionInputs =
-    let textDef = textFilterDef materialTextFilterKey "Text" (fun (e : MaterialEntry) -> e.name.value) m.textFilter
+    let textDef = textFilterDef materialTextFilterKey (FacetCaption "Text") (fun (e : MaterialEntry) -> e.name) m.textFilter
     let defs = textDef :: liveMaterialFacets m.context.categories
     let textApplied =
         match m.textFilter.value with
@@ -390,13 +391,13 @@ let selectedEntry (m : MaterialsWindowModel) : MaterialEntry option =
 /// The selected entry when it carries a LOSSLESSLY EDITABLE edit model — the Edit verb's
 /// target. A view-only engine preset offers NO Edit affordance (removed, not greyed — the
 /// `MaterialsControls` discipline). Since spec 0040 step 004 every entry carries
-/// `complexity = Some`, so the gate is `MaterialComplexityEditor.isEditableComplexity`: a
+/// `complexity = Some`, so the gate is `MaterialComplexity.isEditable` (MaterialComplexityEditor): a
 /// coded preset whose eps is an opaque evaluated closure (Silicon / Langasite) stays view-only.
 let editableSelection (m : MaterialsWindowModel) : MaterialEntry option =
     match selectedEntry m with
     | Some entry ->
         match entry.complexity with
-        | Some complexity when MaterialComplexityEditor.isEditableComplexity complexity -> Some entry
+        | Some complexity when complexity.isEditable -> Some entry
         | Some _ | None -> None
     | None -> None
 
@@ -708,12 +709,12 @@ let private offeredValuesFor (def : AttributeDef<MaterialEntry>) (filtered : Mat
 let private chipLabel (defs : AttributeDef<MaterialEntry> list) (applied : AppliedConstraint) : string =
     let facetName =
         match defs |> List.tryFind (fun d -> d.key = applied.key) with
-        | Some def -> def.name
+        | Some def -> def.name.value
         | None -> applied.key.value
     let valueText =
         match applied.selection with
         | DiscreteSelection keys -> keys |> Set.toList |> List.map (fun k -> k.value) |> String.concat ", "
-        | NumericRangeSelection range -> $"%g{range.lower}–%g{range.upper}"
+        | NumericRangeSelection range -> $"%g{range.lower.value}–%g{range.upper.value}"
     $"%s{facetName}: %s{valueText}"
 
 /// Sort projected tree nodes alphabetically (case-insensitive, ordinal) by their display
@@ -796,7 +797,7 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
                 Some
                     ({
                         code = def.key.uiKey
-                        title = ControlCaption def.name
+                        title = def.name.caption
                         values =
                             values
                             |> List.map (fun k ->
@@ -842,7 +843,7 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
                             let branchCode = "branch:" + facet.key.value + ":" + branch.value.label
                             ({
                                 code = ConstructorUiKey branchCode
-                                label = ControlCaption branch.label
+                                label = branch.label.caption
                                 countOpt = Some branch.count.facetCount
                                 expansion = expansionOf branchCode
                                 // The branch expands to its member entries as selectable leaves
@@ -863,7 +864,7 @@ let facetedState (m : MaterialsWindowModel) : FacetedTreeControls.FacetedTreeCon
                         |> List.length
                     ({
                         code = ConstructorUiKey ("facet:" + facet.key.value)
-                        label = ControlCaption facet.name
+                        label = facet.name.caption
                         countOpt = Some (FacetedTreeControls.FacetItemCount groupCount)
                         expansion = expansionOf ("facet:" + facet.key.value)
                         children = branchNodes
@@ -1172,7 +1173,7 @@ let private viewPanel (m : MaterialsWindowModel) (dispatch : MaterialsWindowMsg 
             if viewingOlder then $" (version {shownVersion.value} — view-only)"
             else
                 match shownEntry.complexity with
-                | Some complexity when MaterialComplexityEditor.isEditableComplexity complexity -> ""
+                | Some complexity when complexity.isEditable -> ""
                 | Some _ | None -> " (view-only engine preset)"
         let viewOnlyNote : IView list =
             if viewingOlder then

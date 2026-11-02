@@ -160,7 +160,7 @@ let private cancelRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEdit
     let editorResult =
         match snapshotById m.editor id with
         | None -> CategoryEditor.applyCategoryMsg (RemoveCategoryRow id) m.editor
-        | Some original -> CategoryEditor.applyCategoryMsg (SetCategoryName (id, original.name.value)) m.editor
+        | Some original -> CategoryEditor.applyCategoryMsg (SetCategoryName (id, original.name)) m.editor
     match editorResult with
     | Ok editor -> { m with editor = editor; pendingRemove = None; blockMessage = "" }
     | Error _ -> { m with pendingRemove = None; blockMessage = "" }
@@ -169,7 +169,7 @@ let private cancelRow (m : CategoryEditorModel) (id : CategoryId) : CategoryEdit
 /// (validated there), dispatching each intent to the matching proxy verb and stopping on the first
 /// refusal (surfaced into the block, the window stays open). On a clean flush the window closes.
 let private commitAll (m : CategoryEditorModel) : CategoryEditorModel =
-    match CategoryEditor.commit m.editor with
+    match m.editor.commit with
     | Error e -> { m with blockMessage = categoryErrorReason e }
     | Ok intents ->
         let applyIntent (acc : Result<unit, CategoryError>) (intent : CategoryCommit) : Result<unit, CategoryError> =
@@ -205,7 +205,7 @@ let updateCategoryEditor (msg : CategoryEditorMsg) (m : CategoryEditorModel) : C
         | Ok editor -> { m with editor = editor; pendingRemove = None; blockMessage = "" }
         | Error e -> { m with blockMessage = categoryErrorReason e }
     | SetCategoryEditorName (id, name) ->
-        match CategoryEditor.applyCategoryMsg (SetCategoryName (id, name)) m.editor with
+        match CategoryEditor.applyCategoryMsg (SetCategoryName (id, CategoryName name)) m.editor with
         | Ok editor -> { m with editor = editor; pendingRemove = None; blockMessage = "" }
         | Error _ -> m
     | SaveRow id -> saveRow m id

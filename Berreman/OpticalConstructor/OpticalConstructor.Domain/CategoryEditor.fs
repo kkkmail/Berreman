@@ -12,7 +12,7 @@
 /// the step-2 `CategoryError`: a blank display name surfaces `InvalidCategoryErr`
 /// at `commit` (via the shared `MaterialCategory.validate`), and a name/remove aimed at a
 /// row the working set does not hold surfaces `UnknownCategoryIdErr` — the
-/// `MaterialComplexityEditor.NoSuchSegment` precedent. The store's own guards
+/// `MaterialComplexityEditor.NoSuchSegmentErr` precedent. The store's own guards
 /// (`DuplicateCategoryIdErr`, `BuiltInNotRemovableErr`, `CategoryStillReferencedErr`) stay
 /// where they belong, in the proxy the host dispatches the intents to.
 module OpticalConstructor.Domain.CategoryEditor
@@ -29,7 +29,7 @@ type CategoryMsg =
     /// Set the display name of the row with the given id (an inline rename or the
     /// name of a Begin-added row). An id the working rows do not hold is an
     /// `UnknownCategoryIdErr`.
-    | SetCategoryName of categoryId : CategoryId * name : string
+    | SetCategoryName of categoryId : CategoryId * name : CategoryName
     /// Drop the row with the given id from the working set (removal is projected
     /// as a `RemoveCategory` intent — the store enforces the actual block). An id
     /// the working rows do not hold is an `UnknownCategoryIdErr`.
@@ -64,13 +64,11 @@ let init (categories : MaterialCategory list) : CategoryEditState =
         editingRow = None
     }
 
-/// Whether the working rows hold a row with the given id.
-let private hasRow (id : CategoryId) (rows : MaterialCategory list) : bool =
-    rows |> List.exists (fun c -> c.id = id)
+type CategoryId with
 
-/// The typed "no such row" rejection, reusing the step-2 `UnknownCategoryIdErr`.
-let private unknownRow (id : CategoryId) : CategoryError =
-    UnknownCategoryIdErr $"category row '%s{string id.value}' is not in the editor"
+    /// The typed "no such row" rejection, reusing the step-2 `UnknownCategoryIdErr`.
+    member private id.unknownEditorRow : CategoryError =
+        UnknownCategoryIdErr $"category row '%s{string id.value}' is not in the editor"
 
 /// Apply one message onto one immutable transform (the `applyMaterialComplexityMsg`
 /// discipline). The structural transitions succeed; `SetCategoryName` /
@@ -93,19 +91,19 @@ let applyCategoryMsg
             }
         Ok { state with rows = state.rows @ [ row ]; editingRow = Some id }
     | SetCategoryName (id, name) ->
-        if hasRow id state.rows then
-            let rows = state.rows |> List.map (fun c -> if c.id = id then { c with name = CategoryName name } else c)
+        if state.rows |> List.exists (fun c -> c.id = id) then
+            let rows = state.rows |> List.map (fun c -> if c.id = id then { c with name = name } else c)
             Ok { state with rows = rows }
-        else Error (unknownRow id)
+        else Error id.unknownEditorRow
     | RemoveCategoryRow id ->
-        if hasRow id state.rows then
+        if state.rows |> List.exists (fun c -> c.id = id) then
             let rows = state.rows |> List.filter (fun c -> c.id <> id)
             let editingRow =
                 match state.editingRow with
                 | Some editing when editing = id -> None
                 | other -> other
             Ok { state with rows = rows; editingRow = editingRow }
-        else Error (unknownRow id)
+        else Error id.unknownEditorRow
 
 /// Sequence a `Result`-producing map over a list, keeping the produced values in
 /// order and short-circuiting on the first error (the `MaterialComplexityEditor`
@@ -122,28 +120,30 @@ let private traverse (f : 'Item -> Result<'Out, CategoryError>) (xs : 'Item list
         xs
         (Ok [])
 
-/// The commit projection: diff the working rows against the opened-over snapshot
-/// into the `CategoryProxy` write intents the host dispatches. A row whose id is
-/// new is an `AddCategory`; a row whose record differs from its snapshot (only the
-/// display name is editable) is a `RenameCategory`; a snapshot id no longer among
-/// the rows is a `RemoveCategory`. Every add and rename is validated through the
-/// shared `MaterialCategory.validate`, so a blank display name surfaces the typed
-/// `InvalidCategory` (the first offending row wins); removes need no validation.
-/// Adds and renames appear in working-row order, then removes in snapshot order.
-let commit (state : CategoryEditState) : Result<CategoryCommit list, CategoryError> =
-    let originalById = state.original |> List.map (fun c -> c.id, c) |> Map.ofList
-    let rowIds = state.rows |> List.map (fun c -> c.id) |> Set.ofList
-    let intentOf (c : MaterialCategory) : Result<CategoryCommit option, CategoryError> =
-        match Map.tryFind c.id originalById with
-        | None -> c.validate |> Result.map (fun () -> Some (AddCategory c))
-        | Some existing when existing <> c -> c.validate |> Result.map (fun () -> Some (RenameCategory c))
-        | Some _ -> Ok None
-    state.rows
-    |> traverse intentOf
-    |> Result.map (fun intents ->
-        let addsAndRenames = intents |> List.choose id
-        let removes =
-            state.original
-            |> List.filter (fun c -> not (Set.contains c.id rowIds))
-            |> List.map (fun c -> RemoveCategory c.id)
-        addsAndRenames @ removes)
+type CategoryEditState with
+
+    /// The commit projection: diff the working rows against the opened-over snapshot
+    /// into the `CategoryProxy` write intents the host dispatches. A row whose id is
+    /// new is an `AddCategory`; a row whose record differs from its snapshot (only the
+    /// display name is editable) is a `RenameCategory`; a snapshot id no longer among
+    /// the rows is a `RemoveCategory`. Every add and rename is validated through the
+    /// shared `MaterialCategory.validate`, so a blank display name surfaces the typed
+    /// `InvalidCategory` (the first offending row wins); removes need no validation.
+    /// Adds and renames appear in working-row order, then removes in snapshot order.
+    member state.commit : Result<CategoryCommit list, CategoryError> =
+        let originalById = state.original |> List.map (fun c -> c.id, c) |> Map.ofList
+        let rowIds = state.rows |> List.map (fun c -> c.id) |> Set.ofList
+        let intentOf (c : MaterialCategory) : Result<CategoryCommit option, CategoryError> =
+            match Map.tryFind c.id originalById with
+            | None -> c.validate |> Result.map (fun () -> Some (AddCategory c))
+            | Some existing when existing <> c -> c.validate |> Result.map (fun () -> Some (RenameCategory c))
+            | Some _ -> Ok None
+        state.rows
+        |> traverse intentOf
+        |> Result.map (fun intents ->
+            let addsAndRenames = intents |> List.choose id
+            let removes =
+                state.original
+                |> List.filter (fun c -> not (Set.contains c.id rowIds))
+                |> List.map (fun c -> RemoveCategory c.id)
+            addsAndRenames @ removes)

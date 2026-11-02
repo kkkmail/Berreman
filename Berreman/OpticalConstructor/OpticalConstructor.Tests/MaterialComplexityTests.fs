@@ -192,7 +192,7 @@ module MaterialComplexityTests =
         msgs |> List.fold (fun s m -> applyOk m s) defaultState
 
     let private derived (s : MaterialComplexityEditState) : MaterialComplexity =
-        match toComplexity s with
+        match s.toComplexity with
         | Ok c -> c
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
@@ -324,8 +324,8 @@ module MaterialComplexityTests =
         // from the segment picker's default choices) now LOWERS to the evaluated
         // case — toComplexity DERIVES it (no SegmentNotLowerable), and the derived
         // eps reproduces `evaluate` across the grid.
-        let model = defaultModelChoices |> List.find (fun m -> modelKindCode m = "ForouhiBloomer")
-        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, model) ]
+        let model = defaultModelChoices |> List.find (fun m -> m.kindCode = "ForouhiBloomer")
+        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, model) ]
         let c = derived st
         match c.eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->

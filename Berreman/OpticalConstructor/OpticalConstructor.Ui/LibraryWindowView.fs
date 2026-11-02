@@ -407,7 +407,7 @@ let private projectionInputs (m : LibraryWindowModel) : ProjectionInputs =
         match m.context.materials.listMaterials ActiveOnly with
         | Ok entries -> entries
         | Error _ -> []
-    let textDef = textFilterDef libraryTextFilterKey "Text" (fun (e : LibraryEntry) -> e.displayName) m.textFilter
+    let textDef = textFilterDef libraryTextFilterKey (FacetCaption "Text") (fun (e : LibraryEntry) -> e.entryName) m.textFilter
     let defs = textDef :: libraryFacets materialCorpus
     let textApplied =
         match m.textFilter.value with
@@ -553,13 +553,13 @@ let private tryParseDouble (s : string) : double option =
 /// separator no numeric text form contains (an exponent's '-' could split a hyphen scheme).
 let numericRangeCode (range : NumericRange) : string =
     let part (v : double) : string = v.ToString("R", CultureInfo.InvariantCulture)
-    $"{part range.lower}:{part range.upper}"
+    $"{part range.lower.value}:{part range.upper.value}"
 
 let numericRangeOfCode (code : string) : NumericRange option =
     match code.Split ':' with
     | [| lo; hi |] ->
         match tryParseDouble lo, tryParseDouble hi with
-        | Some lower, Some upper -> Some { lower = lower; upper = upper }
+        | Some lower, Some upper -> Some { lower = Units.UnitMagnitude lower; upper = Units.UnitMagnitude upper }
         | _ -> None
     | _ -> None
 
@@ -572,10 +572,10 @@ let parseManualRange (raw : string) : NumericRange option =
     | "" -> None
     | _ ->
         match text.Split '-' with
-        | [| single |] -> tryParseDouble single |> Option.map (fun v -> { lower = v; upper = v })
+        | [| single |] -> tryParseDouble single |> Option.map (fun v -> { lower = Units.UnitMagnitude v; upper = Units.UnitMagnitude v })
         | [| lo; hi |] ->
             match tryParseDouble lo, tryParseDouble hi with
-            | Some lower, Some upper -> Some { lower = lower; upper = upper }
+            | Some lower, Some upper -> Some { lower = Units.UnitMagnitude lower; upper = Units.UnitMagnitude upper }
             | _ -> None
         | _ -> None
 
@@ -860,7 +860,7 @@ let private offeredValuesFor (def : AttributeDef<LibraryEntry>) (filtered : Libr
 let private chipLabel (defs : AttributeDef<LibraryEntry> list) (applied : AppliedConstraint) : string =
     let facetName =
         match defs |> List.tryFind (fun d -> d.key = applied.key) with
-        | Some def -> def.name
+        | Some def -> def.name.value
         | None -> applied.key.value
     let valueText =
         match applied.selection with
@@ -946,7 +946,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                     Some
                         ({
                             code = def.key.uiKey
-                            title = ControlCaption def.name
+                            title = def.name.caption
                             values =
                                 buckets
                                 |> List.map (fun bucket ->
@@ -966,7 +966,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                     Some
                         ({
                             code = def.key.uiKey
-                            title = ControlCaption def.name
+                            title = def.name.caption
                             values =
                                 values
                                 |> List.map (fun k ->
@@ -1026,7 +1026,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                                     match branch.value with
                                     | DiscreteValue dk -> Facets.filter inputs.defs (inputs.appliedAll @ [ { key = facet.key; selection = DiscreteSelection (Set.singleton dk) } ]) inputs.corpus
                                     | NumericValue _ -> []
-                                branchCode, branch.label, branch.count.value, members)
+                                branchCode, branch.label.value, branch.count.value, members)
                     let branchNodes =
                         branchesWithMembers
                         |> List.map (fun (branchCode, label, count, members) ->
@@ -1052,7 +1052,7 @@ let facetedState (m : LibraryWindowModel) : FacetedTreeControls.FacetedTreeContr
                         |> List.length
                     ({
                         code = ConstructorUiKey ("facet:" + facet.key.value)
-                        label = ControlCaption facet.name
+                        label = facet.name.caption
                         countOpt = Some (FacetedTreeControls.FacetItemCount groupCount)
                         expansion = expansionOf ("facet:" + facet.key.value)
                         children = branchNodes
@@ -1416,7 +1416,7 @@ let private viewPanel (m : LibraryWindowModel) (dispatch : LibraryWindowMsg -> u
                                 TextBlock.fontWeight FontWeight.SemiBold
                                 TextBlock.textWrapping TextWrapping.Wrap
                                 TextBlock.maxWidth 380.0
-                                TextBlock.text $"%s{displayName} — %s{(entryKindKey entry).value}%s{note}"
+                                TextBlock.text $"%s{displayName} — %s{entry.kindFacetKey.value}%s{note}"
                             ] :> IView
                             TextBlock.create [
                                 TextBlock.textWrapping TextWrapping.Wrap

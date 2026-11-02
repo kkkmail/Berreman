@@ -1,6 +1,7 @@
 namespace OpticalConstructor.Domain
 
 open System
+open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.Facets
 
 /// Spec 0038 Part D (step 010): the numeric bucket builder every
@@ -19,22 +20,31 @@ module FacetBuckets =
     /// The 1–2–5 rung mantissas of one decade, ascending.
     let private mantissas = [| 1.0; 2.0; 5.0 |]
 
-    /// The ladder rung at (decade exponent, mantissa index): `m × 10^k`.
-    let private valueAt (exponent : int, index : int) : double =
-        mantissas[index] * Math.Pow(10.0, float exponent)
+    /// A rung of the 1–2–5 ladder by its position n = 3k + i on it: the rung `m × 10^k` with `m` the
+    /// mantissa at index i (one position per rung, so stepping is ±1 — spec 0048 E018).
+    type private LadderRung =
+        | LadderRung of int
 
-    let private stepUp (exponent : int, index : int) : int * int =
-        if index = 2 then (exponent + 1, 0) else (exponent, index + 1)
+        member this.magnitude : UnitMagnitude =
+            let (LadderRung n) = this
+            let exponent = if n >= 0 then n / 3 else -((2 - n) / 3)
+            UnitMagnitude (mantissas[n - 3 * exponent] * Math.Pow(10.0, float exponent))
 
-    let private stepDown (exponent : int, index : int) : int * int =
-        if index = 0 then (exponent - 1, 2) else (exponent, index - 1)
+        member this.up : LadderRung = let (LadderRung n) = this in LadderRung (n + 1)
 
-    /// One endpoint of a length label. Magnitudes are lengths in NANOMETERS;
-    /// the §7.5 unit switch shows nm below 1 µm and µm at or above, the unit
-    /// symbols reused from `UnitOfMeasure.abbreviation` (the sole home of unit names).
-    let private lengthPart (v : double) : string * string =
-        if v < 1000.0 then $"%g{v}", Units.Nanometer.abbreviation
-        else $"%g{v / 1000.0}", Units.Micrometer.abbreviation
+        member this.down : LadderRung = let (LadderRung n) = this in LadderRung (n - 1)
+
+    type UnitMagnitude with
+
+        /// A length label's number, the magnitude read in NANOMETERS: the §7.5
+        /// unit switch shows nm below 1 µm and µm at or above.
+        member this.lengthNumber : string =
+            if this.value < 1000.0 then $"%g{this.value}" else $"%g{this.value / 1000.0}"
+
+        /// A length label's unit symbol (reused from `UnitOfMeasure.abbreviation`,
+        /// the sole home of unit names) under the same switch.
+        member this.lengthUnit : string =
+            if this.value < 1000.0 then Nanometer.abbreviation else Micrometer.abbreviation
 
     /// One display bucket of a numeric facet: a half-open `[lower, upper)`
     /// interval carrying the count of population magnitudes inside it, with
@@ -47,12 +57,9 @@ module FacetBuckets =
             count : ItemCount
         }
 
-        /// Half-open membership mirroring `NumericRange`'s documented
-        /// contract: `lower <= v < upper`, with the degenerate
-        /// `lower = upper` bucket containing exactly its value.
-        member this.contains (v : double) : bool =
-            if this.range.lower = this.range.upper then v = this.range.lower
-            else this.range.lower <= v && v < this.range.upper
+        /// Half-open membership, `NumericRange`'s own: `lower <= v < upper`,
+        /// with the degenerate `lower = upper` bucket containing exactly its value.
+        member this.contains (v : double) : bool = this.range.contains v
 
         /// The display label, magnitudes read as lengths in nm: range buckets
         /// as `10-20 nm (7)`, exact-value buckets as `42 nm (3)`; nm below
@@ -60,16 +67,15 @@ module FacetBuckets =
         /// endpoint's own unit (`500 nm-1 µm (2)`).
         member this.label : string =
             let count = this.count.value
+            let lower = this.range.lower
+            let upper = this.range.upper
 
-            if this.range.lower = this.range.upper then
-                let number, suffix = lengthPart this.range.lower
-                $"{number} {suffix} ({count})"
+            if lower.value = upper.value then
+                $"{lower.lengthNumber} {lower.lengthUnit} ({count})"
+            elif lower.lengthUnit = upper.lengthUnit then
+                $"{lower.lengthNumber}-{upper.lengthNumber} {lower.lengthUnit} ({count})"
             else
-                let lowerNumber, lowerSuffix = lengthPart this.range.lower
-                let upperNumber, upperSuffix = lengthPart this.range.upper
-
-                if lowerSuffix = upperSuffix then $"{lowerNumber}-{upperNumber} {lowerSuffix} ({count})"
-                else $"{lowerNumber} {lowerSuffix}-{upperNumber} {upperSuffix} ({count})"
+                $"{lower.lengthNumber} {lower.lengthUnit}-{upper.lengthNumber} {upper.lengthUnit} ({count})"
 
     /// The 1–2–5 log-ladder boundaries spanning `[minValue, maxValue]`:
     /// strictly increasing rungs `m × 10^k` (`m ∈ {1, 2, 5}`) from the
@@ -81,52 +87,53 @@ module FacetBuckets =
     /// exact under floating rounding. The ladder spans positive finite reals
     /// only: a non-positive, non-finite, or inverted span yields `[]`
     /// (total, no throw).
-    let ladderBoundaries (minValue : double) (maxValue : double) : double list =
-        if not (Double.IsFinite minValue) || not (Double.IsFinite maxValue)
-           || minValue <= 0.0 || minValue > maxValue then []
+    let ladderBoundaries (minValue : UnitMagnitude) (maxValue : UnitMagnitude) : UnitMagnitude list =
+        let lowest = minValue.value
+        let highest = maxValue.value
+
+        if not (Double.IsFinite lowest) || not (Double.IsFinite highest)
+           || lowest <= 0.0 || lowest > highest then []
         else
             let start =
-                let guess = (int (Math.Floor(Math.Log10 minValue)), 2)
-                let rec down pos = if valueAt pos > minValue then down (stepDown pos) else pos
-                let rec up pos = if valueAt (stepUp pos) <= minValue then up (stepUp pos) else pos
+                // The 5 × 10^k rung of the decade holding min.
+                let guess = LadderRung (3 * int (Math.Floor(Math.Log10 lowest)) + 2)
+                let rec down (rung : LadderRung) = if rung.magnitude.value > lowest then down rung.down else rung
+                let rec up (rung : LadderRung) = if rung.up.magnitude.value <= lowest then up rung.up else rung
                 guess |> down |> up
 
-            let rec collect pos acc =
-                let v = valueAt pos
-                if v > maxValue then List.rev (v :: acc)
-                else collect (stepUp pos) (v :: acc)
+            let rec collect (rung : LadderRung) (acc : UnitMagnitude list) =
+                let v = rung.magnitude
+                if v.value > highest then List.rev (v :: acc)
+                else collect rung.up (v :: acc)
 
             collect start []
 
-    /// The merge of the adjacent pair at `index` (with the bucket after it):
-    /// the union interval spans both — absorbing any dropped-empty gap
-    /// between them, which holds no population magnitude by construction —
-    /// and the counts add.
-    let rec private mergePairAt (index : int) (buckets : NumericBucket list) : NumericBucket list =
-        match index, buckets with
-        | 0, first :: second :: rest ->
-            {
-                range = { lower = first.range.lower; upper = second.range.upper }
-                count = ItemCount (first.count.value + second.count.value)
-            } :: rest
-        | _, [] -> []
-        | remaining, head :: tail -> head :: mergePairAt (remaining - 1) tail
-
     /// Fewest-items-first merging: while the bucket count exceeds the cap,
     /// the adjacent PAIR with the fewest combined items merges (the leftmost
-    /// pair on ties — `List.minBy` keeps the first minimum), then the scan
-    /// repeats over the shortened list.
-    let rec private mergeToCap (cap : int) (buckets : NumericBucket list) : NumericBucket list =
-        if List.length buckets <= cap then buckets
+    /// pair on ties), then the scan repeats over the shortened list. A merge's
+    /// union interval spans both buckets — absorbing any dropped-empty gap
+    /// between them, which holds no population magnitude by construction —
+    /// and the counts add.
+    let rec private mergeToCap (cap : WorkbenchSettings.ThicknessBucketCap) (buckets : NumericBucket list) : NumericBucket list =
+        if List.length buckets <= cap.value then buckets
         else
-            let pairIndex =
+            let fewest =
                 buckets
                 |> List.pairwise
-                |> List.mapi (fun index (first, second) -> index, first.count.value + second.count.value)
-                |> List.minBy snd
-                |> fst
+                |> List.map (fun (first, second) -> first.count.value + second.count.value)
+                |> List.min
 
-            mergeToCap cap (mergePairAt pairIndex buckets)
+            let rec mergeLeftmost (remaining : NumericBucket list) : NumericBucket list =
+                match remaining with
+                | first :: second :: rest when first.count.value + second.count.value = fewest ->
+                    {
+                        range = { lower = first.range.lower; upper = second.range.upper }
+                        count = ItemCount (first.count.value + second.count.value)
+                    } :: rest
+                | head :: tail -> head :: mergeLeftmost tail
+                | [] -> []
+
+            mergeToCap cap (mergeLeftmost buckets)
 
     /// The bucket set of one population of magnitudes — the CURRENTLY
     /// CONSTRAINED population; callers re-derive on every constraint change:
@@ -138,8 +145,8 @@ module FacetBuckets =
     /// in nm by contract (the elevated upstream types already forbid
     /// anything else); non-positive or non-finite values lie outside the log
     /// ladder's domain and are dropped defensively.
-    let buildBuckets (cap : WorkbenchSettings.ThicknessBucketCap) (magnitudes : double list) : NumericBucket list =
-        let population = magnitudes |> List.filter (fun v -> Double.IsFinite v && v > 0.0)
+    let buildBuckets (cap : WorkbenchSettings.ThicknessBucketCap) (magnitudes : UnitMagnitude list) : NumericBucket list =
+        let population = magnitudes |> List.filter (fun v -> Double.IsFinite v.value && v.value > 0.0)
 
         match population |> List.distinct with
         | [] -> []
@@ -156,10 +163,10 @@ module FacetBuckets =
             |> List.map (fun (lo, hi) ->
                 {
                     range = { lower = lo; upper = hi }
-                    count = ItemCount (population |> List.filter (fun v -> lo <= v && v < hi) |> List.length)
+                    count = ItemCount (population |> List.filter (fun v -> lo.value <= v.value && v.value < hi.value) |> List.length)
                 })
             |> List.filter (fun bucket -> bucket.count.value > 0)
-            |> mergeToCap cap.value
+            |> mergeToCap cap
 
     /// A bucket applied as an ORDINARY constraint chip: the bucket's
     /// half-open range as a `NumericRangeSelection` under the facet's key —
@@ -187,10 +194,7 @@ module FacetBuckets =
         : NumericBucket list =
         let magnitudes =
             filter defs applied items
-            |> List.filter (fun item ->
-                match attribute.appliesTo item with
-                | ApplicableAttribute -> true
-                | InapplicableAttribute -> false)
+            |> attribute.applicableItems
             |> List.collect (fun item ->
                 attribute.extract item
                 |> List.distinct

@@ -116,9 +116,9 @@ module EmbeddedChartTests =
     /// The engine properties of a single-segment dispersive material whose model is `code` — the
     /// `MaterialComplexityTests` derive-and-evaluate recipe (used for the four transcendental models).
     let private modelProps (code : string) : OpticalPropertiesWithDisp =
-        let model = defaultModelChoices |> List.find (fun m -> modelKindCode m = code)
-        let st = [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, model) ] |> List.fold (fun s m -> applyOk m s) defaultState
-        match toComplexity st with
+        let model = defaultModelChoices |> List.find (fun m -> m.kindCode = code)
+        let st = [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, model) ] |> List.fold (fun s m -> applyOk m s) defaultState
+        match st.toComplexity with
         | Ok c -> c.toProperties
         | Error e -> failwith $"expected a derivable complexity for %s{code}, got %A{e}"
 

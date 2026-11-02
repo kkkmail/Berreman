@@ -547,16 +547,16 @@ module LibraryWindowTests =
         Assert.Equal<LW.LibraryWindowModel>(before, current)
         // A single value parses as the degenerate exact-value range (never asserted against a
         // store magnitude — thicknesses round-trip through meters a few ulp off, step 011).
-        Assert.Equal<NumericRange option>(Some { lower = 42.0; upper = 42.0 }, LW.parseManualRange "42")
+        Assert.Equal<NumericRange option>(Some { lower = Units.UnitMagnitude 42.0; upper = Units.UnitMagnitude 42.0 }, LW.parseManualRange "42")
 
     [<Fact>]
     let ``the numeric range codes round-trip and the range text reuses the step-010 unit switch`` () =
-        let range : NumericRange = { lower = 200.0; upper = 500.0 }
+        let range : NumericRange = { lower = Units.UnitMagnitude 200.0; upper = Units.UnitMagnitude 500.0 }
         Assert.Equal<NumericRange option>(Some range, LW.numericRangeOfCode (LW.numericRangeCode range))
         Assert.Equal<NumericRange option>(None, LW.numericRangeOfCode "garbage")
         Assert.Equal("200-500 nm", LW.numericRangeText range)
-        Assert.Equal("150 nm", LW.numericRangeText { lower = 150.0; upper = 150.0 })
-        Assert.Equal("500 nm-1 µm", LW.numericRangeText { lower = 500.0; upper = 1000.0 })
+        Assert.Equal("150 nm", LW.numericRangeText { lower = Units.UnitMagnitude 150.0; upper = Units.UnitMagnitude 150.0 })
+        Assert.Equal("500 nm-1 µm", LW.numericRangeText { lower = Units.UnitMagnitude 500.0; upper = Units.UnitMagnitude 1000.0 })
 
     // ============================ pure: live corpus over the shared stores ============================
 

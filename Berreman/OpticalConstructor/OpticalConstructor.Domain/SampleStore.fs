@@ -140,7 +140,7 @@ module SampleStore =
                             | Some versions ->
                                 let latest = latestOf versions
                                 let usage = usageAt sample.id latest.versionNo
-                                match decideVersioning (=) (=) (payloadOf latest.sample) (payloadOf sample) usage with
+                                match decideVersioning (payloadOf latest.sample) (payloadOf sample) usage with
                                 | KeepCurrent -> Ok ()
                                 | MutateInPlace ->
                                     let updated =

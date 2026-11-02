@@ -132,12 +132,12 @@ module MaterialEditorWindowTests =
 
     /// Derive the complexity, failing the test on an unexpected typed rejection.
     let private derived (s : MaterialComplexityEditState) : MaterialComplexity =
-        match toComplexity s with
+        match s.toComplexity with
         | Ok c -> c
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
     let private modelOfKind (code : string) : DispersionModel =
-        defaultModelChoices |> List.find (fun m -> modelKindCode m = code)
+        defaultModelChoices |> List.find (fun m -> m.kindCode = code)
 
     let private newModel () : MaterialEditorModel =
         let _, _, context = recordingContext ()
@@ -170,7 +170,7 @@ module MaterialEditorWindowTests =
     /// The engine properties derived from a fold of ladder edits (for the per-tab render proofs).
     let private propsFrom (msgs : MaterialComplexityMsg list) : Berreman.Dispersion.OpticalPropertiesWithDisp =
         let st = applied msgs
-        match toComplexity st with
+        match st.toComplexity with
         | Ok c -> c.toProperties
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
@@ -281,21 +281,21 @@ module MaterialEditorWindowTests =
         let st = applied [ SetDispersion DispersiveSegments; AddSegment ]
         Assert.Equal(2, List.length st.segments)
         let interval = { lower = toWaveLength Nanometer (UnitMagnitude 700.0); upper = toWaveLength Nanometer (UnitMagnitude 1000.0) }
-        let edited = applyOk (SetSegmentInterval (1, interval)) st
+        let edited = applyOk (SetSegmentInterval (SegmentIndex 1, interval)) st
         Assert.Equal<WaveLengthInterval>(interval, edited.segments.[1].interval)
-        match applyMaterialComplexityMsg (SetSegmentInterval (5, interval)) st with
-        | Error (NoSuchSegment reason) -> Assert.Contains("5", reason)
-        | other -> Assert.Fail($"expected NoSuchSegment, got %A{other}")
-        match applyMaterialComplexityMsg (RemoveSegment 0) (applied [ SetDispersion DispersiveSegments ]) with
-        | Error (LastSegmentNotRemovable _) -> ()
-        | other -> Assert.Fail($"expected LastSegmentNotRemovable, got %A{other}")
-        let removed = applyOk (RemoveSegment 1) st
+        match applyMaterialComplexityMsg (SetSegmentInterval (SegmentIndex 5, interval)) st with
+        | Error (NoSuchSegmentErr reason) -> Assert.Contains("5", reason)
+        | other -> Assert.Fail($"expected NoSuchSegmentErr, got %A{other}")
+        match applyMaterialComplexityMsg (RemoveSegment (SegmentIndex 0)) (applied [ SetDispersion DispersiveSegments ]) with
+        | Error (LastSegmentNotRemovableErr _) -> ()
+        | other -> Assert.Fail($"expected LastSegmentNotRemovableErr, got %A{other}")
+        let removed = applyOk (RemoveSegment (SegmentIndex 1)) st
         Assert.Equal(1, List.length removed.segments)
 
     [<Fact>]
     let ``picking Sellmeier lowers it via toEpsAxis into the segment tree`` () =
         let sellmeier = modelOfKind "Sellmeier"
-        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, sellmeier) ]
+        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, sellmeier) ]
         match (derived st).eps with
         | EpsWithDispValue (IsotropicDispersive [ seg ]) ->
             Assert.Equal<EpsAxisDispersion>(sellmeier.toEpsAxis, seg.dispersion)
@@ -304,8 +304,8 @@ module MaterialEditorWindowTests =
     [<Fact>]
     let ``ForouhiBloomer and BrendelBormann are pickable and lower to the evaluated segment`` () =
         for code in [ "ForouhiBloomer"; "BrendelBormann" ] do
-            let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, modelOfKind code) ]
-            Assert.Equal(code, modelKindCode st.segments.[0].model1)
+            let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, modelOfKind code) ]
+            Assert.Equal(code, st.segments.[0].model1.kindCode)
             // The transcendental pick now DERIVES (no rejection): one isotropic
             // dispersive segment carrying the evaluated case.
             match (derived st).eps with
@@ -318,7 +318,7 @@ module MaterialEditorWindowTests =
     [<Fact>]
     let ``the raw SumOfTerms escape hatch is the identity under lowering`` () =
         let sumOfTerms = modelOfKind "SumOfTerms"
-        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, sumOfTerms) ]
+        let st = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, sumOfTerms) ]
         match (derived st).eps, sumOfTerms with
         | EpsWithDispValue (IsotropicDispersive [ seg ]), SumOfTerms axis ->
             Assert.Equal<EpsAxisDispersion>(axis, seg.dispersion)
@@ -326,18 +326,18 @@ module MaterialEditorWindowTests =
 
     [<Fact>]
     let ``availableGyrationClasses is constrained by the anisotropy choice`` () =
-        Assert.Equal<string list>([ "Cubic" ], availableGyrationClasses Isotropic |> List.map gyrationClassCode)
-        Assert.Equal<string list>([ "Uniaxial" ], availableGyrationClasses Uniaxial |> List.map gyrationClassCode)
+        Assert.Equal<string list>([ "Cubic" ], availableGyrationClasses Isotropic |> List.map (fun g -> g.classCode))
+        Assert.Equal<string list>([ "Uniaxial" ], availableGyrationClasses Uniaxial |> List.map (fun g -> g.classCode))
         // spec 0033 gap G9: biaxial optics ⇐ orthorhombic (222 AND mm2/Planar) / monoclinic /
         // triclinic. `Planar` (mm2) was previously unreachable from every anisotropy.
         Assert.Equal<string list>(
             [ "Orthorhombic222"; "Planar"; "Monoclinic2"; "MonoclinicM"; "Triclinic1" ],
-            availableGyrationClasses Biaxial |> List.map gyrationClassCode)
+            availableGyrationClasses Biaxial |> List.map (fun g -> g.classCode))
 
     [<Fact>]
     let ``enabling activity snaps an un-offered class to the first offered and derives the gyration rho`` () =
         let st = applied [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
-        Assert.Equal("Uniaxial", gyrationClassCode st.gyration)
+        Assert.Equal("Uniaxial", st.gyration.classCode)
         match (derived st).active with
         | Some (RhoWithoutDispValue g) ->
             Assert.Equal(RightHanded, g.hand)
@@ -356,7 +356,7 @@ module MaterialEditorWindowTests =
     let ``spec 0033 G9: SetGyrationComponent edits a symmetry-allowed component, others are no-ops`` () =
         // A uniaxial active medium's class carries exactly g11 and g33.
         let st = applied [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
-        Assert.Equal<string list>([ "g11"; "g33" ], gyrationComponents st.gyration |> List.map (fst >> gyrationComponentCode))
+        Assert.Equal<string list>([ "g11"; "g33" ], st.gyration.components |> List.map (fun (comp, _) -> comp.code))
         // Editing g33 changes only g33; g11 is untouched.
         let edited = applyOk (SetGyrationComponent (G33, RhoValue 7.0e-5)) st
         match edited.gyration with
@@ -373,7 +373,7 @@ module MaterialEditorWindowTests =
         // The seeded active crystal is biaxial + PlanarActive; it must derive (and thus be
         // editable, not view-only) now that mm2 is offered under biaxial.
         let st = applied [ ChooseAnisotropy Biaxial; SetActivity ActivityOn; ChooseGyrationClass (PlanarActive (RhoValue 1.5e-6)) ]
-        Assert.Equal("Planar", gyrationClassCode st.gyration)
+        Assert.Equal("Planar", st.gyration.classCode)
         match (derived st).active with
         | Some (RhoWithoutDispValue g) ->
             match g.gyration with
@@ -386,12 +386,12 @@ module MaterialEditorWindowTests =
         let st = applied [ SetDispersion DispersiveSegments ]
         let ninefold = ConstantNK { n = 9.0; k = 0.0; wavelengthUnit = Nanometer; thermoOptic = None }
         // A same-kind ChooseSegmentModel keeps the segment's current (default) coefficients…
-        let repick = applyOk (ChooseSegmentModel (0, ninefold)) st
+        let repick = applyOk (ChooseSegmentModel (SegmentIndex 0, ninefold)) st
         // …so a coefficient edit must use SetSegmentModel, which applies them verbatim.
-        let edited = applyOk (SetSegmentModel (0, ninefold)) st
+        let edited = applyOk (SetSegmentModel (SegmentIndex 0, ninefold)) st
         match (List.head repick.segments).model1, (List.head edited.segments).model1 with
         | ConstantNK a, ConstantNK b ->
-            Assert.Equal(defaultIndexValue, a.n)
+            Assert.Equal(defaultRefractionIndex.value, a.n)
             Assert.Equal(9.0, b.n)
         | other -> Assert.Fail($"expected ConstantNK segments, got %A{other}")
 
@@ -438,7 +438,7 @@ module MaterialEditorWindowTests =
         Assert.Equal<MaterialComplexity>(baseline, derived absorbingOff)
         Assert.Equal<MaterialComplexity>(derived absorbing, derived (applyOk (SetTransparency Absorbing) absorbingOff))
         // Dispersive: unlock (segment list), uncheck — the constant default returns.
-        let dispersive = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (0, modelOfKind "Sellmeier") ]
+        let dispersive = applied [ SetDispersion DispersiveSegments; ChooseSegmentModel (SegmentIndex 0, modelOfKind "Sellmeier") ]
         Assert.NotEqual<MaterialComplexity>(baseline, derived dispersive)
         let dispersiveOff = applyOk (SetDispersion NonDispersive) dispersive
         Assert.Equal<MaterialComplexity>(baseline, derived dispersiveOff)
@@ -471,17 +471,17 @@ module MaterialEditorWindowTests =
             match entry.complexity with
             | Some c ->
                 match ofComplexity c with
-                | Ok st -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity st)
+                | Ok st -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, st.toComplexity)
                 | Error e -> Assert.Fail($"%s{entry.name.value} must seed the editor, got %A{e}")
             | None -> Assert.Fail($"%s{entry.name.value} must carry an edit model")
 
     [<Fact>]
     let ``the imaginaryIndexGainWarning rule flags a finite negative k only`` () =
-        match imaginaryIndexGainWarning -0.1 with
+        match (ExtinctionCoefficient -0.1).gainWarning with
         | Some message -> Assert.Contains("gain", message)
         | None -> Assert.Fail("a finite negative k implies gain and must warn")
         for k in [ 0.0; 0.1; nan; infinity; -infinity ] do
-            match imaginaryIndexGainWarning k with
+            match (ExtinctionCoefficient k).gainWarning with
             | None -> ()
             | Some message -> Assert.Fail($"k = %g{k} must not warn, got '%s{message}'")
 
@@ -504,7 +504,7 @@ module MaterialEditorWindowTests =
         Assert.Equal(glass.name.value, existing.name)
         Assert.Equal(EditableMaterial, existing.mode)
         match glass.complexity with
-        | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, toComplexity existing.editor)
+        | Some c -> Assert.Equal<Result<MaterialComplexity, MaterialComplexityEditError>>(Ok c, existing.editor.toComplexity)
         | None -> Assert.Fail("glass must carry an edit model")
         // A complexity-less entry (engine-coded physics) opens view-only.
         let silicon = initMaterialEditor context (EditMaterial (builtIn MaterialIds.silicon))
@@ -1008,7 +1008,7 @@ module MaterialEditorWindowTests =
                 render (ConstructorUiId "TabRenderNk") c (NkDispersionChart.nkDispersionStyle Biaxial c)
             // The Gyration tab for an active entry — the uniaxial class restricts it to g₁₁ / g₃₃.
             let active = propsFrom [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
-            let gComponents = gyrationComponents (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }) |> List.map fst
+            let gComponents = (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }).components |> List.map fst
             let g = NkDispersionChart.gyrationChart gComponents active Nanometer range
             render (ConstructorUiId "TabRenderGyration") g (NkDispersionChart.gyrationStyle g)
             // The μ tab for a gyromagnetic entry.

@@ -39,7 +39,7 @@ module NkDispersionChartTests =
     /// The engine properties derived from a fold of ladder edits over the default edit state.
     let private propsOf (msgs : MaterialComplexityMsg list) : OpticalPropertiesWithDisp =
         let st = msgs |> List.fold (fun s m -> applyOk m s) MaterialComplexityEditor.defaultState
-        match toComplexity st with
+        match st.toComplexity with
         | Ok c -> c.toProperties
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
@@ -48,7 +48,7 @@ module NkDispersionChartTests =
     /// for a view-only entry that has no ladder to read.
     let private complexityOf (msgs : MaterialComplexityMsg list) : MaterialComplexity =
         let st = msgs |> List.fold (fun s m -> applyOk m s) MaterialComplexityEditor.defaultState
-        match toComplexity st with
+        match st.toComplexity with
         | Ok c -> c
         | Error e -> failwith $"expected a derivable complexity, got %A{e}"
 
@@ -179,8 +179,8 @@ module NkDispersionChartTests =
     let ``spec 0040 006: the gyration builder emits only the components the class admits — uniaxial-active carries g₁₁, g₃₃`` () =
         let active = propsOf [ ChooseAnisotropy Uniaxial; SetActivity ActivityOn ]
         let range = SpectralAxis.spectralRange Nanometer (UnitMagnitude 400.0) (UnitMagnitude 800.0) (Analytics.Variables.NumberOfPoints 8)
-        // The uniaxial gyration class admits exactly g₁₁ and g₃₃ (`gyrationComponents`).
-        let components = gyrationComponents (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }) |> List.map fst
+        // The uniaxial gyration class admits exactly g₁₁ and g₃₃ (`GyrationClass.components`).
+        let components = (UniaxialActive { g11 = defaultGyrationComponent; g33 = defaultGyrationComponent }).components |> List.map fst
         let chart = NkDispersionChart.gyrationChart components active Nanometer range
         Assert.Equal<string list>([ "g₁₁"; "g₃₃" ], chart.series |> List.map (fun s -> s.name.value))
         // Both admitted components are non-zero for a uniaxial active medium (the default 1.5e-6).

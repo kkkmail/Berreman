@@ -48,14 +48,14 @@ module CategoryEditorTests =
         // The acceptance: Begin then name produces the typed row, and commit projects the Add intent.
         let state1 = okState (applyCategoryMsg BeginAddCategory (init standardCategories))
         let id = inProgressId state1
-        let state2 = okState (applyCategoryMsg (SetCategoryName (id, "Ferroelectrics")) state1)
+        let state2 = okState (applyCategoryMsg (SetCategoryName (id, CategoryName "Ferroelectrics")) state1)
         match state2.rows |> List.tryFind (fun c -> c.id = id) with
         | Some row ->
             Assert.Equal("Ferroelectrics", row.name.value)
             Assert.Equal(SelectableOnCreate, row.visibility)
             Assert.Equal(UserCategory, row.origin)
         | None -> Assert.Fail("the named row vanished from the working rows")
-        match commit state2 with
+        match state2.commit with
         | Ok [ AddCategory row ] ->
             Assert.Equal(id, row.id)
             Assert.Equal("Ferroelectrics", row.name.value)
@@ -68,23 +68,23 @@ module CategoryEditorTests =
         // The acceptance's negative half: a Begin-added (blank) row, and a name explicitly cleared
         // to whitespace, both surface the typed InvalidCategoryErr when the round is committed.
         let state1 = okState (applyCategoryMsg BeginAddCategory (init standardCategories))
-        match commit state1 with
+        match state1.commit with
         | Error (InvalidCategoryErr reason) -> Assert.False(String.IsNullOrWhiteSpace reason)
         | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
         let id = inProgressId state1
-        let state2 = okState (applyCategoryMsg (SetCategoryName (id, "   ")) state1)
-        match commit state2 with
+        let state2 = okState (applyCategoryMsg (SetCategoryName (id, CategoryName "   ")) state1)
+        match state2.commit with
         | Error (InvalidCategoryErr _) -> ()
         | other -> Assert.Fail($"expected Error (InvalidCategoryErr _), got %A{other}")
 
     [<Fact>]
     let ``SetCategoryName renames a seeded built-in row and commit projects a RenameCategory intent`` () =
         // Built-ins ARE renamable (step 3) — the editor projects a RenameCategory the proxy accepts.
-        let state1 = okState (applyCategoryMsg (SetCategoryName (CategoryIds.glass, "Glass (renamed)")) (init standardCategories))
+        let state1 = okState (applyCategoryMsg (SetCategoryName (CategoryIds.glass, CategoryName "Glass (renamed)")) (init standardCategories))
         match state1.rows |> List.tryFind (fun c -> c.id = CategoryIds.glass) with
         | Some row -> Assert.Equal("Glass (renamed)", row.name.value)
         | None -> Assert.Fail("the glass row vanished from the working rows")
-        match commit state1 with
+        match state1.commit with
         | Ok [ RenameCategory row ] ->
             Assert.Equal(CategoryIds.glass, row.id)
             Assert.Equal("Glass (renamed)", row.name.value)
@@ -94,7 +94,7 @@ module CategoryEditorTests =
     [<Fact>]
     let ``SetCategoryName on an id the working rows do not hold surfaces the typed UnknownCategoryId`` () =
         let ghost = CategoryId.create ()
-        match applyCategoryMsg (SetCategoryName (ghost, "Nowhere")) (init standardCategories) with
+        match applyCategoryMsg (SetCategoryName (ghost, CategoryName "Nowhere")) (init standardCategories) with
         | Error (UnknownCategoryIdErr reason) -> Assert.Contains(string ghost.value, reason)
         | other -> Assert.Fail($"expected Error (UnknownCategoryIdErr _), got %A{other}")
 
@@ -103,7 +103,7 @@ module CategoryEditorTests =
         let state1 = okState (applyCategoryMsg (RemoveCategoryRow CategoryIds.metal) (init standardCategories))
         Assert.Equal(List.length standardCategories - 1, List.length state1.rows)
         Assert.DoesNotContain(CategoryIds.metal, state1.rows |> List.map (fun c -> c.id))
-        match commit state1 with
+        match state1.commit with
         | Ok [ RemoveCategory id ] -> Assert.Equal(CategoryIds.metal, id)
         | other -> Assert.Fail($"expected Ok [ RemoveCategory _ ], got %A{other}")
 
@@ -115,7 +115,7 @@ module CategoryEditorTests =
         let state2 = okState (applyCategoryMsg (RemoveCategoryRow id) state1)
         Assert.True(Option.isNone state2.editingRow)
         Assert.Equal(List.length standardCategories, List.length state2.rows)
-        match commit state2 with
+        match state2.commit with
         | Ok [] -> ()
         | other -> Assert.Fail($"expected Ok [] (Begin-then-Remove nets nothing), got %A{other}")
 
@@ -128,7 +128,7 @@ module CategoryEditorTests =
 
     [<Fact>]
     let ``commit over an untouched editor projects no intents`` () =
-        match commit (init standardCategories) with
+        match (init standardCategories).commit with
         | Ok [] -> ()
         | other -> Assert.Fail($"expected Ok [] for an untouched editor, got %A{other}")
 
@@ -137,10 +137,10 @@ module CategoryEditorTests =
         // One round touching all three verbs — the commit projection separates them by diff.
         let s1 = okState (applyCategoryMsg BeginAddCategory (init standardCategories))
         let newId = inProgressId s1
-        let s2 = okState (applyCategoryMsg (SetCategoryName (newId, "New user category")) s1)
-        let s3 = okState (applyCategoryMsg (SetCategoryName (CategoryIds.glass, "Glass (renamed)")) s2)
+        let s2 = okState (applyCategoryMsg (SetCategoryName (newId, CategoryName "New user category")) s1)
+        let s3 = okState (applyCategoryMsg (SetCategoryName (CategoryIds.glass, CategoryName "Glass (renamed)")) s2)
         let s4 = okState (applyCategoryMsg (RemoveCategoryRow CategoryIds.metal) s3)
-        match commit s4 with
+        match s4.commit with
         | Ok intents ->
             Assert.Equal(3, List.length intents)
             let added = { id = newId; name = CategoryName "New user category"; visibility = SelectableOnCreate; origin = UserCategory }

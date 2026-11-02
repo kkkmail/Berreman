@@ -1,6 +1,8 @@
 namespace OpticalConstructor.Tests
 
 open Xunit
+open OpticalConstructor.Domain.Units
+open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.Facets
 
 /// Spec 0038 Part D (step 009) — the generic faceted-navigation engine, proven
@@ -40,7 +42,7 @@ module FacetsTests =
     let private familyDef : AttributeDef<TestEntry> =
         {
             key = familyKey
-            name = "Family"
+            name = FacetCaption "Family"
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
             extract = fun e -> [ DiscreteValue (DiscreteKey e.family) ]
@@ -49,7 +51,7 @@ module FacetsTests =
     let private kindDef : AttributeDef<TestEntry> =
         {
             key = kindKey
-            name = "Kind"
+            name = FacetCaption "Kind"
             kind = DiscreteAttribute
             appliesTo = fun _ -> ApplicableAttribute
             extract = fun e -> e.kinds |> List.map (fun k -> DiscreteValue (DiscreteKey k))
@@ -58,7 +60,7 @@ module FacetsTests =
     let private thicknessDef : AttributeDef<TestEntry> =
         {
             key = thicknessKey
-            name = "Thickness"
+            name = FacetCaption "Thickness"
             kind = NumericAttribute
             appliesTo =
                 fun e ->
@@ -68,7 +70,7 @@ module FacetsTests =
             extract =
                 fun e ->
                     match e.thicknessNm with
-                    | Some t -> [ NumericValue t ]
+                    | Some t -> [ NumericValue (UnitMagnitude t) ]
                     | None -> []
         }
 
@@ -78,13 +80,13 @@ module FacetsTests =
         { key = key; selection = DiscreteSelection (values |> List.map DiscreteKey |> Set.ofList) }
 
     let private numericRange (key : AttributeKey) (lower : double) (upper : double) : AppliedConstraint =
-        { key = key; selection = NumericRangeSelection { lower = lower; upper = upper } }
+        { key = key; selection = NumericRangeSelection { lower = UnitMagnitude lower; upper = UnitMagnitude upper } }
 
     let private discreteBranch (key : string) (count : int) : FacetBranch =
-        { value = DiscreteValue (DiscreteKey key); label = key; count = ItemCount count }
+        { value = DiscreteValue (DiscreteKey key); label = FacetCaption key; count = ItemCount count }
 
     let private numericBranch (v : double) (label : string) (count : int) : FacetBranch =
-        { value = NumericValue v; label = label; count = ItemCount count }
+        { value = NumericValue (UnitMagnitude v); label = FacetCaption label; count = ItemCount count }
 
     // ---- filter ----
 
@@ -173,17 +175,17 @@ module FacetsTests =
                     [
                         {
                             key = familyKey
-                            name = "Family"
+                            name = FacetCaption "Family"
                             branches = [ discreteBranch "glass" 3; discreteBranch "metal" 2; discreteBranch "polymer" 1 ]
                         }
                         {
                             key = kindKey
-                            name = "Kind"
+                            name = FacetCaption "Kind"
                             branches = [ discreteBranch "blue" 2; discreteBranch "green" 1; discreteBranch "red" 3 ]
                         }
                         {
                             key = thicknessKey
-                            name = "Thickness"
+                            name = FacetCaption "Thickness"
                             branches = [ numericBranch 10.0 "10" 1; numericBranch 20.0 "20" 2; numericBranch 500.0 "500" 1 ]
                         }
                     ]
@@ -209,7 +211,7 @@ module FacetsTests =
         let tree = buildTree (Representation [ kindKey ]) defs [] [ alphaPrime ]
         let expected =
             {
-                facets = [ { key = kindKey; name = "Kind"; branches = [ discreteBranch "red" 1 ] } ]
+                facets = [ { key = kindKey; name = FacetCaption "Kind"; branches = [ discreteBranch "red" 1 ] } ]
             }
         Assert.Equal<FacetTree>(expected, tree)
 
@@ -222,7 +224,7 @@ module FacetsTests =
                     [
                         {
                             key = kindKey
-                            name = "Kind"
+                            name = FacetCaption "Kind"
                             // metal = gamma, delta — "red" exists in the corpus but
                             // in no filtered item, so no red branch appears.
                             branches = [ discreteBranch "blue" 1; discreteBranch "green" 1 ]
@@ -246,7 +248,7 @@ module FacetsTests =
         let tree = buildTree (Representation [ kindKey; familyKey ]) defs [] [ epsilon ]
         let expected =
             {
-                facets = [ { key = familyKey; name = "Family"; branches = [ discreteBranch "glass" 1 ] } ]
+                facets = [ { key = familyKey; name = FacetCaption "Family"; branches = [ discreteBranch "glass" 1 ] } ]
             }
         Assert.Equal<FacetTree>(expected, tree)
 
@@ -259,12 +261,12 @@ module FacetsTests =
                     [
                         {
                             key = thicknessKey
-                            name = "Thickness"
+                            name = FacetCaption "Thickness"
                             branches = [ numericBranch 10.0 "10" 1; numericBranch 20.0 "20" 1 ]
                         }
                         {
                             key = familyKey
-                            name = "Family"
+                            name = FacetCaption "Family"
                             branches = [ discreteBranch "glass" 3 ]
                         }
                     ]
@@ -286,7 +288,7 @@ module FacetsTests =
         let labelDef : AttributeDef<TestEntry> =
             {
                 key = labelKey
-                name = "Label"
+                name = FacetCaption "Label"
                 kind = DiscreteAttribute
                 appliesTo = fun _ -> ApplicableAttribute
                 extract = fun e -> [ DiscreteValue (DiscreteKey e.family) ]
@@ -300,14 +302,14 @@ module FacetsTests =
         let tree = buildTree (Representation [ labelKey ]) [ labelDef ] [] items
         let labels =
             match tree.facets with
-            | [ node ] -> node.branches |> List.map (fun b -> b.label)
+            | [ node ] -> node.branches |> List.map (fun b -> b.label.value)
             | other -> failwith $"expected exactly the label facet, got %A{other}"
         Assert.Equal<string list>([ "apple"; "Banana"; "Zinc" ], labels)
 
     // ---- the plain-text filter as an ordinary constraint ----
 
     let private nameDef (query : string) : AttributeDef<TestEntry> =
-        textFilterDef nameFilterKey "Name" (fun e -> e.entryName) (TextQuery query)
+        textFilterDef nameFilterKey (FacetCaption "Name") (fun e -> EntryName e.entryName) (TextQuery query)
 
     [<Fact>]
     let ``the text filter matches case-insensitively over the supplied extractor`` () =

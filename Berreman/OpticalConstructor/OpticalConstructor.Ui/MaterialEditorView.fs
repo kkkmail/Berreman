@@ -10,7 +10,7 @@
 /// The live preview embeds the step-19 dual-axis n/k chart (`NkDispersionChart` +
 /// `nkDispersionStyle`, per-side bounds from the 018 `ChartStyle.dataBounds`) as an inline
 /// canvas; a negative sampled k surfaces the advisory gain warning (the
-/// `imaginaryIndexGainWarning` rule, restated in Domain — Ui/Validation.fs:92). Save persists
+/// `imaginaryIndexGainWarning` rule, restated in Domain as `ExtinctionCoefficient.gainWarning` — Ui/Validation.fs:92). Save persists
 /// through `MaterialProxy`, routing on the target's `EntryFreshness` (spec 0038 step 008):
 /// `addMaterial` for a `NewUnsaved` entry — whose `MaterialId` was minted AT WINDOW OPEN
 /// (`MaterialEditorIntent.NewMaterial`), off the save path — and `updateMaterial` for a
@@ -204,8 +204,8 @@ let private parseFloat (s : string) : float option =
 
 let editErrorReason (e : MaterialComplexityEditError) : string =
     match e with
-    | NoSuchSegment reason
-    | LastSegmentNotRemovable reason -> reason
+    | NoSuchSegmentErr reason
+    | LastSegmentNotRemovableErr reason -> reason
 
 let private materialErrorReason (e : MaterialError) : string =
     match e with
@@ -225,7 +225,7 @@ let private previewProperties (m : MaterialEditorModel) : OpticalPropertiesWithD
     match m.mode with
     | ViewOnlyMaterial _ -> m.presetProperties
     | EditableMaterial ->
-        match toComplexity m.editor with
+        match m.editor.toComplexity with
         | Ok c -> Some c.toProperties
         | Error _ -> None
 
@@ -236,7 +236,7 @@ let private previewProperties (m : MaterialEditorModel) : OpticalPropertiesWithD
 /// threading without a rendered frame.
 let previewGyrationComponents (m : MaterialEditorModel) : GyrationComponent list =
     match m.mode with
-    | EditableMaterial -> gyrationComponents m.editor.gyration |> List.map fst
+    | EditableMaterial -> m.editor.gyration.components |> List.map fst
     | ViewOnlyMaterial _ ->
         match m.viewOnlyComplexity with
         | Some complexity -> NkDispersionChart.gyrationComponentsOfComplexity complexity
@@ -254,14 +254,14 @@ let previewMuKind (m : MaterialEditorModel) : MuKind =
         | None -> GyromagneticMuKind
 
 /// The advisory gain warning over the n/k chart's sampled k curves — every per-axis k series (the
-/// restated `imaginaryIndexGainWarning` rule; empty when nothing warns).
+/// restated `ExtinctionCoefficient.gainWarning` rule; empty when nothing warns).
 let private gainWarningOf (chartOpt : ExperimentChart option) : string =
     match chartOpt with
     | None -> ""
     | Some chart ->
         chart.series
         |> List.filter (fun s -> s.name.value.StartsWith "k")
-        |> List.tryPick (fun s -> s.points |> List.tryPick (fun p -> imaginaryIndexGainWarning p.y))
+        |> List.tryPick (fun s -> s.points |> List.tryPick (fun p -> (ExtinctionCoefficient p.y).gainWarning))
         |> Option.defaultValue ""
 
 let private epsCaseLabel (eps : EpsWithDispValue) : string =
@@ -283,7 +283,7 @@ let complexitySummary (m : MaterialEditorModel) : string =
     match m.mode with
     | ViewOnlyMaterial _ -> "view-only engine preset"
     | EditableMaterial ->
-        match toComplexity m.editor with
+        match m.editor.toComplexity with
         | Error e -> $"not derivable — %s{editErrorReason e}"
         | Ok c ->
             let aspect (label : string) (o : 'a option) : string =
@@ -347,11 +347,11 @@ let initMaterialEditor (context : MaterialEditorContext) (intent : MaterialEdito
                     status = None
                 }
             // Since spec 0040 step 004 every entry carries `complexity = Some`, so
-            // editability is gated on `isEditableComplexity`, not on complexity
+            // editability is gated on `MaterialComplexity.isEditable`, not on complexity
             // presence: a coded preset whose eps is an opaque evaluated closure
             // (Silicon / Langasite — no editable coefficients to seed) stays VIEW-ONLY.
             match entry.complexity with
-            | Some complexity when isEditableComplexity complexity ->
+            | Some complexity when complexity.isEditable ->
                 match ofComplexity complexity with
                 | Ok editor -> { seeded with editor = editor }
                 | Error e ->
@@ -399,7 +399,7 @@ let updateMaterialEditor (msg : MaterialEditorMsg) (m : MaterialEditorModel) : M
         match m.mode with
         | ViewOnlyMaterial reason -> { m with status = Some reason }
         | EditableMaterial ->
-            match toComplexity m.editor with
+            match m.editor.toComplexity with
             | Error e -> { m with status = Some (editErrorReason e) }
             | Ok complexity ->
                 let entryUnder (id : MaterialId) : MaterialEntry =
@@ -778,7 +778,7 @@ let private segmentParamsView (dispatch : MaterialEditorMsg -> unit) (segmentInd
         model.parameters
         |> List.map (fun p ->
             paramBoxWithUnit (ConstructorUiId.segmentParamBoxOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt p.key.uiKey).value p (fun v ->
-                dispatch (EditorMsg (SetSegmentAxisModel (segmentIndex, slot, p.update (CoefficientValue v))))))
+                dispatch (EditorMsg (SetSegmentAxisModel (SegmentIndex segmentIndex, slot, p.update (CoefficientValue v))))))
     match boxes with
     | [] -> TextBlock.create [ TextBlock.text "(no editable coefficients)"; TextBlock.foreground (brush hintColor) ] :> IView
     | _ ->
@@ -800,7 +800,7 @@ let private axisSlotsOf (anisotropy : Anisotropy) : (PrincipalAxisSlot * string 
 let private segmentAxisView (dispatch : MaterialEditorMsg -> unit) (segmentIndex : int) (slot : PrincipalAxisSlot) (axisLabel : string) (axisCode : string) (model : DispersionModel) : IView =
     let isFirst = (slot = FirstAxis)
     let laterAxisOpt = if isFirst then None else Some (ConstructorUiKey axisCode)
-    let currentCode = modelKindCode model
+    let currentCode = model.kindCode
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
         StackPanel.spacing 2.0
@@ -813,9 +813,9 @@ let private segmentAxisView (dispatch : MaterialEditorMsg -> unit) (segmentIndex
                     WrapPanel.children (
                         defaultModelChoices
                         |> List.map (fun candidate ->
-                            let code = modelKindCode candidate
-                            clickBox (ConstructorUiId.dispersionModelOptionOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt (ConstructorUiKey code)).value (modelKindLabel candidate) (currentCode = code) (fun () ->
-                                dispatch (EditorMsg (ChooseSegmentAxisModel (segmentIndex, slot, candidate))))))
+                            let code = candidate.kindCode
+                            clickBox (ConstructorUiId.dispersionModelOptionOfAxis (ConstructorUiPosition segmentIndex) laterAxisOpt (ConstructorUiKey code)).value candidate.kindLabel (currentCode = code) (fun () ->
+                                dispatch (EditorMsg (ChooseSegmentAxisModel (SegmentIndex segmentIndex, slot, candidate))))))
                 ] :> IView
                 segmentParamsView dispatch segmentIndex slot isFirst axisCode model
             ])
@@ -837,11 +837,11 @@ let private segmentView (m : MaterialEditorModel) (dispatch : MaterialEditorMsg 
                     WrapPanel.children [
                         labelBlock $"Segment {segmentIndex} —"
                         labelled "λ from (nm):" (numberBox (ConstructorUiId.segmentLowerBox (ConstructorUiPosition segmentIndex)).value 70.0 lowerNm (fun v ->
-                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = toWaveLength Nanometer (UnitMagnitude v); upper = segment.interval.upper })))))
+                            dispatch (EditorMsg (SetSegmentInterval (SegmentIndex segmentIndex, { lower = toWaveLength Nanometer (UnitMagnitude v); upper = segment.interval.upper })))))
                         labelled "to (nm):" (numberBox (ConstructorUiId.segmentUpperBox (ConstructorUiPosition segmentIndex)).value 70.0 upperNm (fun v ->
-                            dispatch (EditorMsg (SetSegmentInterval (segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer (UnitMagnitude v) })))))
+                            dispatch (EditorMsg (SetSegmentInterval (SegmentIndex segmentIndex, { lower = segment.interval.lower; upper = toWaveLength Nanometer (UnitMagnitude v) })))))
                         verbButton (ConstructorUiId.segmentRemoveButton (ConstructorUiPosition segmentIndex)).value "Remove" (List.length m.editor.segments > 1) (fun () ->
-                            dispatch (EditorMsg (RemoveSegment segmentIndex)))
+                            dispatch (EditorMsg (RemoveSegment (SegmentIndex segmentIndex))))
                     ]
                 ] :> IView
             ]
@@ -873,9 +873,9 @@ let private gyrationComponentsSection (m : MaterialEditorModel) (dispatch : Mate
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (
-                gyrationComponents m.editor.gyration
+                m.editor.gyration.components
                 |> List.map (fun (comp, RhoValue value) ->
-                    labelled (gyrationComponentLabel comp + ":") (coeffNumberBox (ConstructorUiId.gyrationComponentBox (ConstructorUiKey (gyrationComponentCode comp))).value 100.0 value (fun v ->
+                    labelled (comp.label + ":") (coeffNumberBox (ConstructorUiId.gyrationComponentBox (ConstructorUiKey comp.code)).value 100.0 value (fun v ->
                         dispatch (EditorMsg (SetGyrationComponent (comp, RhoValue v)))))))
         ] :> IView
     | DispersiveComponents ->
@@ -883,14 +883,14 @@ let private gyrationComponentsSection (m : MaterialEditorModel) (dispatch : Mate
             StackPanel.orientation Orientation.Vertical
             StackPanel.spacing 4.0
             StackPanel.children (
-                gyrationComponents m.editor.gyrationDispersion
+                m.editor.gyrationDispersion.components
                 |> List.map (fun (comp, formula) ->
-                    let code = gyrationComponentCode comp
+                    let code = comp.code
                     StackPanel.create [
                         StackPanel.orientation Orientation.Vertical
                         StackPanel.spacing 2.0
                         StackPanel.children [
-                            labelBlock (gyrationComponentLabel comp + " (dispersion formula):")
+                            labelBlock (comp.label + " (dispersion formula):")
                             componentFormulaView (ConstructorUiId.gyrationFormulaEditor (ConstructorUiKey code)).value (fun key -> (ConstructorUiId.gyrationFormulaBox (ConstructorUiKey code) key).value) formula (fun f ->
                                 dispatch (EditorMsg (SetGyrationComponentDispersion (comp, f))))
                         ]
@@ -900,7 +900,7 @@ let private gyrationComponentsSection (m : MaterialEditorModel) (dispatch : Mate
 /// The symmetry-class gyration panel (the activity rung): the class picker CONSTRAINED by the
 /// anisotropy choice, the Constant/Dispersive component sub-toggle, and the handedness switch.
 let private gyrationPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMsg -> unit) : IView =
-    let currentCode = gyrationClassCode m.editor.gyration
+    let currentCode = m.editor.gyration.classCode
     let dispersive = m.editor.activityDispersion = DispersiveComponents
     StackPanel.create [
         StackPanel.orientation Orientation.Vertical
@@ -913,8 +913,8 @@ let private gyrationPanel (m : MaterialEditorModel) (dispatch : MaterialEditorMs
                 WrapPanel.children (
                     availableGyrationClasses m.editor.anisotropy
                     |> List.map (fun offered ->
-                        let code = gyrationClassCode offered
-                        clickBox (ConstructorUiId.gyrationClassOption (ConstructorUiKey code)).value (gyrationClassLabel offered) (currentCode = code) (fun () ->
+                        let code = offered.classCode
+                        clickBox (ConstructorUiId.gyrationClassOption (ConstructorUiKey code)).value offered.classLabel (currentCode = code) (fun () ->
                             dispatch (EditorMsg (ChooseGyrationClass offered)))))
             ] :> IView
             labelBlock "Gyration component model (off = constant g):"

@@ -388,8 +388,8 @@ module MaterialLibrary =
     // ==========================================================================
     // The three coded-preset complexities (spec 0040 step 004, Part B). Silicon,
     // Langasite and the Vacuum spacer used to carry `complexity = None` (their
-    // physics is a coded engine closure, not data), so `anisotropyOf` /
-    // `transparencyOf` could not read their single-valued class and the facets did
+    // physics is a coded engine closure, not data), so `MaterialComplexity.anisotropy` /
+    // `ConstantEpsValue.transparency` could not read their single-valued class and the facets did
     // not sum to the population (spec 0040 Part B.0). They now carry a
     // `complexity = Some` value tree that ENCODES the class as data — Silicon
     // Isotropic, Langasite Uniaxial (retaining its optical activity), Vacuum
@@ -407,7 +407,7 @@ module MaterialLibrary =
     // reproduction to the engine preset at 1e-12; a Langasite ε reproduction test
     // guards the copied index. Because a coded preset carries an OPAQUE evaluated
     // segment (no editable coefficients), the editor keeps it VIEW-ONLY through
-    // `MaterialComplexityEditor.isEditableComplexity`.
+    // `MaterialComplexity.isEditable` (MaterialComplexityEditor).
     // ==========================================================================
 
     /// The spectrum-spanning interval of a coded preset's single segment (spec 0040
@@ -448,7 +448,7 @@ module MaterialLibrary =
 
     /// Silicon (spec 0040 step 004): Isotropic, dispersive, absorbing. The isotropic
     /// dispersive tree carries the engine index through the ladder's evaluated rung,
-    /// so `anisotropyOf` reads Isotropic from the CASE and `toProperties` reproduces
+    /// so `MaterialComplexity.anisotropy` reads Isotropic from the CASE and `toProperties` reproduces
     /// `siliconOpticalProperties`.
     let private siliconComplexity : MaterialComplexity =
         {
@@ -459,7 +459,7 @@ module MaterialLibrary =
 
     /// Langasite (spec 0040 step 004): Uniaxial, dispersive, optically active. The
     /// uniaxial dispersive tree carries the engine ordinary/extraordinary indices, so
-    /// `anisotropyOf` reads Uniaxial from the CASE. The optical-activity component is
+    /// `MaterialComplexity.anisotropy` reads Uniaxial from the CASE. The optical-activity component is
     /// RETAINED as a representative uniaxial gyration (class 3/4/6): the engine's
     /// dispersive gyration ρ (`rhoLa3Ga5SiO14`) is transcendental and
     /// `RhoWithDispValue` carries only `DispersionFormula` components — it has NO

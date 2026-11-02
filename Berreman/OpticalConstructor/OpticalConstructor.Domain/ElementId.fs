@@ -361,12 +361,15 @@ module Library =
             | DetectorItem d -> d.id
             | PolarizerItem p -> p.id
 
-        member this.displayName : string =
+        /// The entry's name (what the Library window's text filter matches).
+        member this.entryName : EntryName =
             match this with
-            | SampleItem s -> s.name.value
-            | SourceItem s -> s.name.value
-            | DetectorItem d -> d.name.value
-            | PolarizerItem p -> p.name.value
+            | SampleItem s -> s.name
+            | SourceItem s -> s.name
+            | DetectorItem d -> d.name
+            | PolarizerItem p -> p.name
+
+        member this.displayName : string = this.entryName.value
 
         /// Whether this entry is a protected built-in or user-managed (spec 0038 Part F). The
         /// presets carry protection as data; a sample is ALWAYS `UserManaged` — seeded samples are

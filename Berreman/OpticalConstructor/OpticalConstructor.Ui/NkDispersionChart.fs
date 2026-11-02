@@ -33,6 +33,7 @@ open OpticalConstructor.Domain
 open OpticalConstructor.Domain.Units
 open OpticalConstructor.Domain.MaterialLibrary
 open OpticalConstructor.Domain.MaterialComplexityEditor
+open OpticalConstructor.Domain.LibraryFacets
 open OpticalConstructor.Controls
 open OpticalConstructor.Controls.ExperimentChart
 
@@ -69,12 +70,12 @@ let private nkAxisSpec (anisotropy : Anisotropy) : (int * string * string) list 
 
 /// The anisotropy to draw a VIEW-ONLY material entry with (the Materials window's preview panel, which
 /// has no editor ladder to read): read from the entry's stored complexity value tree
-/// (`LibraryFacets.anisotropyOf` — data, no physics re-derived) when it has one, else — a coded engine
+/// (`MaterialComplexity.anisotropy`, LibraryFacets — data, no physics re-derived) when it has one, else — a coded engine
 /// preset whose physics is a closure, not data — fall back to all three principal axes (Biaxial), which
 /// is safe: coincident axes simply draw coincident curves, as before.
 let anisotropyOfEntry (entry : OpticalConstructor.Domain.MaterialLibrary.MaterialEntry) : Anisotropy =
     match entry.complexity with
-    | Some complexity -> LibraryFacets.anisotropyOf complexity
+    | Some complexity -> complexity.anisotropy
     | None -> Biaxial
 
 /// The per-axis n/k dispersion chart, restricted to the axes the anisotropy distinguishes
@@ -123,18 +124,18 @@ let private gyrationSlot (comp : GyrationComponent) : int * int =
 let allGyrationComponents : GyrationComponent list = [ G11; G22; G33; G12; G13; G23 ]
 
 /// The gyration components a VIEW-ONLY entry's stored optical-activity value tree admits: the ones
-/// its `active` gyration CLASS carries (`gyrationComponents`, generic over the constant `RhoValue`
+/// its `active` gyration CLASS carries (`GyrationClass.components`, generic over the constant `RhoValue`
 /// vs the dispersive `DispersionFormula` payload) — data, no physics re-derived, mirroring
 /// `anisotropyOfEntry`. A tree with no activity falls back to every component.
 let gyrationComponentsOfComplexity (complexity : MaterialComplexity) : GyrationComponent list =
     match complexity.active with
-    | Some (RhoWithoutDispValue g) -> gyrationComponents g.gyration |> List.map fst
-    | Some (RhoWithDispValue g) -> gyrationComponents g.gyration |> List.map fst
+    | Some (RhoWithoutDispValue g) -> g.gyration.components |> List.map fst
+    | Some (RhoWithDispValue g) -> g.gyration.components |> List.map fst
     | None -> allGyrationComponents
 
 /// The gyration chart (shown only when the entry is optically active), restricted to the components
 /// the entry's symmetry class admits (spec 0040 step 006): ONE series per component in `components`,
-/// named by `gyrationComponentLabel` and read as g₍ᵢⱼ₎ = Im[ρᵢⱼ] at the `gyrationSlot` (i,j). ρ is
+/// named by `GyrationComponent.label` and read as g₍ᵢⱼ₎ = Im[ρᵢⱼ] at the `gyrationSlot` (i,j). ρ is
 /// sampled through the engine `rhoWithDisp.getRho` seam that `RhoWithDispValue.toRhoWithDisp` built.
 /// All components share ONE (left) axis — they are the same physical scale (~10⁻⁵). A uniaxial-active
 /// entry draws only g₁₁ and g₃₃; a coded preset with no stored class draws all six.
@@ -144,7 +145,7 @@ let gyrationChart (components : GyrationComponent list) (o : OpticalPropertiesWi
     let series (comp : GyrationComponent) : ExperimentControls.ChartSeries =
         let i, j = gyrationSlot comp
         {
-            ExperimentControls.ChartSeries.name = ControlCaption (gyrationComponentLabel comp)
+            ExperimentControls.ChartSeries.name = ControlCaption comp.label
             points = List.map2 (fun x y -> { ExperimentControls.ChartPoint.x = x; y = y }) xs (rhos |> List.map (fun r -> r.[i, j].Imaginary))
         }
     {
