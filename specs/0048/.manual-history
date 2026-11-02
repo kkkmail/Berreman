@@ -3,3 +3,6 @@
 {"at": "2026-11-02T13:03:48Z", "who": "agent", "event": "start", "round": "batch-002", "note": "batch 2 opened: row E001 (the baseline, 002 section 6), 44 open"}
 {"at": "2026-11-02T13:03:48Z", "who": "agent", "event": "gates-done", "round": "batch-002", "note": "E001: build exit 0 (NU1603 expected, MathNet SYSLIB0051 only); elevation-full ELEV-GATE OK, 0 new, 0 stale, 3757 known in 13 projects, 152 s"}
 {"at": "2026-11-02T13:03:48Z", "who": "agent", "event": "commit", "round": "batch-002", "note": "E001 closed (baseline confirmed, no source edit); open 44 -> 43"}
+{"at": "2026-11-02T13:04:31Z", "who": "agent", "event": "start", "round": "batch-003", "note": "batch 3 opened: row E002 (the Softellect.Sys pin 10.1.402.120 -> 10.1.402.136, R4), 43 open"}
+{"at": "2026-11-02T13:08:28Z", "who": "agent", "event": "gates-done", "round": "batch-003", "note": "E002: build exit 0, no NU1603, only MathNet SYSLIB0051; constructor-unit-tests 727/727; ui-smoke 208/208; ui-tests 559/559; unit-tests AnalysisFunctionsTests 5/5"}
+{"at": "2026-11-02T13:08:28Z", "who": "agent", "event": "commit", "round": "batch-003", "note": "E002 closed (Softellect.Sys pin 10.1.402.120 -> 10.1.402.136, no API drift); open 43 -> 42"}

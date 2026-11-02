@@ -59,7 +59,7 @@
     <PackageVersion Include="ScottPlot.Avalonia" Version="5.1.59" />
     <PackageVersion Include="Softellect.Analyzers" Version="10.1.402.136" />
     <PackageVersion Include="Softellect.DistributedProcessing.SolverRunner" Version="10.1.301.54" />
-    <PackageVersion Include="Softellect.Sys" Version="10.1.402.120" />
+    <PackageVersion Include="Softellect.Sys" Version="10.1.402.136" />
     <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.2" />
   </ItemGroup>
   <ItemGroup Condition="'$(ManagePackageVersionsCentrally)' != 'true'">
