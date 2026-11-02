@@ -24,6 +24,8 @@ module SourceAndDetectorMoveTests =
     let private tol = 1.0e-9
     let private close (a : float) (b : float) : bool = abs (a - b) <= tol
     let private elem (i : int) (m : Model) : TestElement = List.item i m.elements
+    let private boundedRange (lowest : float) (highest : float) : RayPositionControls.PositionRange =
+        RayPositionControls.BoundedRange { lowest = BarMeters lowest; highest = BarMeters highest }
 
     /// The canvas point an element is drawn at (its snapped centre through the live view).
     let private canvasPointOf (i : int) (m : Model) : ScreenPoint =
@@ -159,7 +161,7 @@ module SourceAndDetectorMoveTests =
     [<Fact>]
     let ``a detector slides anywhere past the start of its ray, uncapped, and Reset puts it 1 m along`` () =
         let m = { initMain () with selection = ElementSelected 1 }
-        Assert.Equal(RayPositionControls.AtLeast -1.0, alongBeamRange m 1)
+        Assert.Equal(RayPositionControls.AtLeast (BarMeters -1.0), alongBeamRange m 1)
         let far = update (SlideSelectedTo 7.5) m
         Assert.True(close (elementX (elem 1 far)) 7.5)
         Assert.True(abs (((snappedCentres far).[1]).x - 7.5) < 1.0e-9, "laid out 7.5 m along the straight beam")
@@ -173,20 +175,20 @@ module SourceAndDetectorMoveTests =
     let ``an element is held between the source and the detector, and moving the detector out extends its ray`` () =
         // initMain = [ source (x = -1); detector (x = +1) ] + a sample (2, selected).
         let s = update (AddElement Sample) (initMain ())
-        Assert.Equal(RayPositionControls.BoundedRange (-1.0, 1.0), alongBeamRange s 2)
+        Assert.Equal(boundedRange -1.0 1.0, alongBeamRange s 2)
         Assert.True(close (elementX (elem 2 (update (SlideSelectedTo 7.5) s))) 1.0, "stops at the detector")
         Assert.True(close (elementX (elem 2 (update (SlideSelectedTo -7.5) s))) -1.0, "stops at the source")
         // Move the detector 5 m out: the sample may now follow it.
         let detectorOut = { s with selection = ElementSelected 1 } |> update (SlideSelectedTo 5.0)
         let s' = { detectorOut with selection = ElementSelected 2 }
-        Assert.Equal(RayPositionControls.BoundedRange (-1.0, 5.0), alongBeamRange s' 2)
+        Assert.Equal(boundedRange -1.0 5.0, alongBeamRange s' 2)
         Assert.True(close (elementX (elem 2 (update (SlideSelectedTo 4.0) s'))) 4.0)
         // A moved source carries its ray: the span moves with it, its length unchanged.
         let shifted =
             { s with selection = ElementSelected 0 }
             |> unlockAllMoves
             |> update (MoveSelectedTo (TableX, -3.0))
-        Assert.Equal(RayPositionControls.BoundedRange (-3.0, -1.0), alongBeamRange shifted 2)
+        Assert.Equal(boundedRange -3.0 -1.0, alongBeamRange shifted 2)
 
     [<Fact>]
     let ``with no detector on it a ray ends 1 m along; a reflected ray starts at its host`` () =
@@ -195,7 +197,7 @@ module SourceAndDetectorMoveTests =
             { initMain () with selection = ElementSelected 1 }
             |> update RemoveSelected
             |> update (AddElement Sample)
-        Assert.Equal(RayPositionControls.BoundedRange (-1.0, openRayEndX open'), alongBeamRange open' 1)
+        Assert.Equal(boundedRange -1.0 (openRayEndX open'), alongBeamRange open' 1)
         // A sample bound to a glass plate (emits R and T) opens a reflected ray; a lens moved onto it is
         // held between the plate and 1 m.
         let plateId = (Library.SampleItem Library.SeedSamples.glassPlate1mm).entryId
@@ -207,7 +209,7 @@ module SourceAndDetectorMoveTests =
             |> update (AddElement Lens)
         let onReflected = update (PlaceOnBeam ((elem 3 scene).id, BeamLayout.OnReflectedBeamOf (elem 2 scene).id)) scene
         let hostX = elementX (elem 2 onReflected)
-        Assert.Equal(RayPositionControls.BoundedRange (hostX, openRayEndX onReflected), alongBeamRange onReflected 3)
+        Assert.Equal(boundedRange hostX (openRayEndX onReflected), alongBeamRange onReflected 3)
         Assert.True(close (elementX (elem 3 onReflected)) (elementX (elem 3 scene)), "already past its host, it keeps its place")
 
     // ------------------------------ the bays (headless) ------------------------------

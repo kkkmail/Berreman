@@ -27,8 +27,8 @@ open OpticalConstructor.Ui
 let canvasWidth : float = TableScene.canvasWidth
 let canvasHeight : float = TableScene.canvasHeight
 let private drawZoom : float = 5.0
-let stepMeters : float = RayPositionControls.stepMeters false
-let bigStepMeters : float = RayPositionControls.stepMeters true
+let stepMeters : float = (RayPositionControls.stepMeters KeyModifiers.None).value
+let bigStepMeters : float = (RayPositionControls.stepMeters KeyModifiers.Shift).value
 let private selectRadiusPx : float = 70.0
 
 type Model =
@@ -139,11 +139,11 @@ let private kindName (k : CatalogueKind) : string =
 let private controlBar (model : Model) (dispatch : Msg -> unit) : IView =
     let half = halfLength model
     let state : RayPositionControls.State =
-        { position = elementX model; range = RayPositionControls.BoundedRange (-half, half); enabled = true }
+        { position = BarMeters (elementX model); range = RayPositionControls.BoundedRange { lowest = BarMeters (-half); highest = BarMeters half }; availability = ControlOffered }
     let handlers : RayPositionControls.Handlers =
         {
-            moveBy = fun dx -> dispatch (SlideBy dx)
-            setPosition = fun x -> dispatch (SlideTo x)
+            moveBy = fun dx -> dispatch (SlideBy dx.value)
+            setPosition = fun x -> dispatch (SlideTo x.value)
             reset = fun () -> dispatch ResetPosition
         }
     StackPanel.create [

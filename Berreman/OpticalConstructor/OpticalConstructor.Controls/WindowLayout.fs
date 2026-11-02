@@ -54,13 +54,20 @@ type MinWidthPanel() =
             child.Arrange(Rect final)
             final
 
+/// The narrowest width, in device-independent pixels, a `MinWidthPanel` lays its child out at.
+type PanelMinWidth =
+    | PanelMinWidth of float
+
+    member this.value = let (PanelMinWidth w) = this in w
+
+    /// The width as the panel's `MinContentWidth` attribute.
+    member this.minWidthPanelAttribute<'t when 't :> MinWidthPanel> () : IAttr<'t> =
+        AttrBuilder<'t>.CreateProperty<float>(MinWidthPanel.MinContentWidthProperty, this.value, ValueNone)
+
 /// The FuncUI DSL for `MinWidthPanel`.
 [<RequireQualifiedAccess>]
 module MinWidthPanel =
     let create (attrs : IAttr<MinWidthPanel> list) : IView<MinWidthPanel> = ViewBuilder.Create<MinWidthPanel> attrs
-
-    let minContentWidth<'t when 't :> MinWidthPanel> (width : float) : IAttr<'t> =
-        AttrBuilder<'t>.CreateProperty<float>(MinWidthPanel.MinContentWidthProperty, width, ValueNone)
 
     let child<'t when 't :> MinWidthPanel> (content : IView) : IAttr<'t> =
         AttrBuilder<'t>.CreateContentSingle(Decorator.ChildProperty, Some content)
@@ -71,13 +78,25 @@ module MinWidthPanel =
 /// content included — is ever off-screen. Its content then scrolls (`MinWidthPanel`, `ScrollViewer`).
 module WindowFit =
 
+    /// A screen's device pixels per device-independent pixel (Avalonia's `Screen.Scaling`).
+    type ScreenScaling =
+        | ScreenScaling of float
+
+        member this.value = let (ScreenScaling s) = this in s
+
+        /// A length in device pixels, in device-independent pixels.
+        member this.dipsOf (pixels : int) : float = float pixels / this.value
+
+        /// A length in device-independent pixels, in whole device pixels (rounded up).
+        member this.pixelsOf (dips : float) : int = int (ceil (dips * this.value))
+
     /// PURE: the client size and frame position that keep a window inside a screen's working area.
     /// `workArea` and `position` are device pixels; `client` and `decoration` (the frame around the client
-    /// area: title bar, borders) are device-independent pixels; `scaling` is device pixels per DIP.
-    let fitWithin (workArea : PixelRect) (scaling : float) (decoration : Size) (position : PixelPoint) (client : Size) : Size * PixelPoint =
-        let available = Size(float workArea.Width / scaling - decoration.Width, float workArea.Height / scaling - decoration.Height)
+    /// area: title bar, borders) are device-independent pixels.
+    let fitWithin (workArea : PixelRect) (scaling : ScreenScaling) (decoration : Size) (position : PixelPoint) (client : Size) : Size * PixelPoint =
+        let available = Size(scaling.dipsOf workArea.Width - decoration.Width, scaling.dipsOf workArea.Height - decoration.Height)
         let fitted = Size(max 1.0 (min client.Width available.Width), max 1.0 (min client.Height available.Height))
-        let frameOf (length : float) (frame : float) : int = int (ceil ((length + frame) * scaling))
+        let frameOf (length : float) (frame : float) : int = scaling.pixelsOf (length + frame)
         let clampAxis (at : int) (start : int) (length : int) (frame : int) : int = max start (min at (start + length - frame))
         let x = clampAxis position.X workArea.X workArea.Width (frameOf fitted.Width decoration.Width)
         let y = clampAxis position.Y workArea.Y workArea.Height (frameOf fitted.Height decoration.Height)
@@ -97,7 +116,8 @@ module WindowFit =
                         let client = window.ClientSize
                         let frame = window.FrameSize |> Option.ofNullable |> Option.defaultValue client
                         let decoration = Size(max 0.0 (frame.Width - client.Width), max 0.0 (frame.Height - client.Height))
-                        let fitted, position = fitWithin screen.WorkingArea screen.Scaling decoration window.Position client
+                        let scaling = ScreenScaling screen.Scaling
+                        let fitted, position = fitWithin screen.WorkingArea scaling decoration window.Position client
                         if fitted <> client then
                             window.Width <- fitted.Width
                             window.Height <- fitted.Height

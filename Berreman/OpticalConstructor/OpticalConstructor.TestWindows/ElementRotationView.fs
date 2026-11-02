@@ -132,7 +132,7 @@ type Msg =
     | ToggleR3Lock
     /// Rotation-controls bar (task 008): set an axis to an exact angle, and confirmation-gated
     /// Reset (the selected element's rotations) / Reset All (every element's rotations).
-    | RotSetAxis of RotationControls.Axis * float
+    | RotSetAxis of RotationControls.RotationAxis * float
     | RotRequestReset
     | RotRequestResetAll
     | RotConfirm
@@ -188,7 +188,7 @@ let private rotate2 (deg : float) (model : Model) : Model = editSelectedPlacemen
 let private rotate3 (deg : float) (model : Model) : Model = editSelectedPlacement (fun p -> withR3 (addDeg p.r3 deg) p) model
 
 /// Set the selected element's axis to an exact angle (lock-respecting for R3, task 008).
-let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (model : Model) : Model =
+let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (model : Model) : Model =
     let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
     editSelectedPlacement (fun p -> match axis with RotationControls.R1 -> withR1 a p | RotationControls.R2 -> withR2 a p | RotationControls.R3 -> withR3 a p) model
 
@@ -374,8 +374,8 @@ let private elementViews (model : Model) : IView list =
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
-        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
-        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d.value | RotationControls.R2 -> RotateR2By d.value | RotationControls.R3 -> RotateR3By d.value)
+        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v.value))
         toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
@@ -401,13 +401,13 @@ let private selectedElement (model : Model) : TestElement = List.item model.sele
 let private rotationState (model : Model) : RotationControls.State =
     let p = (selectedElement model).placement
     {
-        r1 = p.r1.degrees
-        r2 = p.r2.degrees
-        r3 = p.r3.degrees
+        r1 = BarDegrees p.r1.degrees
+        r2 = BarDegrees p.r2.degrees
+        r3 = BarDegrees p.r3.degrees
         r1Lock = RotationControls.NotLockable
         r2Lock = RotationControls.NotLockable
-        r3Locked = p.r3Locked
-        enabled = true
+        r3Lock = (if p.r3Locked then RotationControls.AxisLocked else RotationControls.AxisFree)
+        availability = ControlOffered
         confirm = model.rotationConfirm
     }
 

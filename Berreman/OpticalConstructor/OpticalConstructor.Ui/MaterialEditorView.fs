@@ -1109,7 +1109,7 @@ let private leftPaneMinWidth : float = 520.0
 let private splitterWidth : float = 6.0
 let private rightPaneMinWidth : float = 380.0
 /// The narrowest split that gives BOTH panes their minimum under the 3* : 2* column ratio.
-let private twoPaneMinWidth : float = splitterWidth + 5.0 * max (leftPaneMinWidth / 3.0) (rightPaneMinWidth / 2.0)
+let private twoPaneMinWidth : PanelMinWidth = PanelMinWidth (splitterWidth + 5.0 * max (leftPaneMinWidth / 3.0) (rightPaneMinWidth / 2.0))
 
 /// Spec 0046: the two panes keep their minimum widths, so a window narrower than both scrolls
 /// horizontally (`MinWidthPanel`) instead of clipping the editor; vertically the panes fill the window
@@ -1120,7 +1120,7 @@ let private twoPane (leftPane : IView) (rightPane : IView) : IView =
         ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
         ScrollViewer.content (
             MinWidthPanel.create [
-                MinWidthPanel.minContentWidth twoPaneMinWidth
+                twoPaneMinWidth.minWidthPanelAttribute ()
                 MinWidthPanel.child (
                     Grid.create [
                         Grid.columnDefinitions "3*,Auto,2*"

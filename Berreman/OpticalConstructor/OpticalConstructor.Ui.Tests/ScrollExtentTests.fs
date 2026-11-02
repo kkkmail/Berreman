@@ -168,18 +168,18 @@ module ScrollExtentTests =
         // A 1080p laptop at 150 %: 1920 × 1032 px of working area = 1280 × 688 DIP; the frame adds 16 × 39 DIP.
         let work = PixelRect(0, 0, 1920, 1032)
         let decoration = Size(16.0, 39.0)
-        let fitted, at = WindowFit.fitWithin work 1.5 decoration (PixelPoint(300, 200)) (Size(1400.0, 1000.0))
+        let fitted, at = WindowFit.fitWithin work (WindowFit.ScreenScaling 1.5) decoration (PixelPoint(300, 200)) (Size(1400.0, 1000.0))
         Assert.Equal(Size(1264.0, 649.0), fitted)
         Assert.Equal(PixelPoint(0, 0), at)
         // A window that fits keeps its size and its position.
-        let small, same = WindowFit.fitWithin work 1.5 decoration (PixelPoint(300, 200)) (Size(620.0, 280.0))
+        let small, same = WindowFit.fitWithin work (WindowFit.ScreenScaling 1.5) decoration (PixelPoint(300, 200)) (Size(620.0, 280.0))
         Assert.Equal(Size(620.0, 280.0), small)
         Assert.Equal(PixelPoint(300, 200), same)
         // One that fits but hangs off the bottom-right is moved back inside, unshrunk.
-        let _, moved = WindowFit.fitWithin work 1.0 decoration (PixelPoint(1800, 1000)) (Size(620.0, 280.0))
+        let _, moved = WindowFit.fitWithin work (WindowFit.ScreenScaling 1.0) decoration (PixelPoint(1800, 1000)) (Size(620.0, 280.0))
         Assert.Equal(PixelPoint(1920 - 636, 1032 - 319), moved)
         // A second monitor's work area to the right is honoured (positions are virtual-screen pixels).
-        let _, onSecond = WindowFit.fitWithin (PixelRect(1920, 0, 1280, 1024)) 1.0 decoration (PixelPoint(100, 100)) (Size(620.0, 280.0))
+        let _, onSecond = WindowFit.fitWithin (PixelRect(1920, 0, 1280, 1024)) (WindowFit.ScreenScaling 1.0) decoration (PixelPoint(100, 100)) (Size(620.0, 280.0))
         Assert.Equal(PixelPoint(1920, 100), onSecond)
 
     [<Fact>]

@@ -159,8 +159,8 @@ module TableRotationTests =
         let m = update (RotSetAxis (RotationControls.R1, 42.5)) (selectedModel ())
         Assert.True(close m.view.r1.degrees 42.5, $"R1 = {m.view.r1.degrees}")
         // The degree-field parser accepts non-integers and rejects garbage.
-        Assert.Equal(Some 12.5, RotationControls.parseDegrees "12.5")
-        Assert.Equal(None, RotationControls.parseDegrees "abc")
+        Assert.Equal(Some (BarDegrees 12.5), BarDegrees.tryCreate "12.5")
+        Assert.Equal(None, BarDegrees.tryCreate "abc")
 
     [<Fact>]
     let ``Reset is confirmation-gated and zeros the rotations only on confirm`` () =

@@ -44,7 +44,8 @@ module RotationControlsTests =
           cancel = fun () -> () }
 
     let private enabledState : RotationControls.State =
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Locked = false; enabled = true; confirm = RotationControls.NoConfirm }
+        { r1 = BarDegrees 0.0; r2 = BarDegrees 0.0; r3 = BarDegrees 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
+          r3Lock = RotationControls.AxisFree; availability = ControlOffered; confirm = RotationControls.NoConfirm }
 
     /// The light-accent fill the bar paints onto an armed axis's buttons (#CCE8FF, from the control).
     let private accent : Color = Color.FromRgb(204uy, 232uy, 255uy)
@@ -108,7 +109,8 @@ module RotationControlsTests =
                 Component(fun ctx ->
                     let locked = ctx.useState false
                     setLocked.Value <- locked.Set
-                    RotationControls.view { enabledState with r3Locked = locked.Current } noopHandlers)
+                    let r3Lock = if locked.Current then RotationControls.AxisLocked else RotationControls.AxisFree
+                    RotationControls.view { enabledState with r3Lock = r3Lock } noopHandlers)
             let window = Window(Width = 760.0, Height = 200.0)
             window.Content <- host
             window.Show()

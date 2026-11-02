@@ -210,15 +210,15 @@ let private readoutText (m : Model) : string =
 /// source (no beam change) and R3 tips the beam out of the table plane.
 let private rotationState (model : Model) : RotationControls.State =
     {
-        r1 = model.source.r1.degrees; r2 = model.source.r2.degrees; r3 = model.source.r3.degrees
+        r1 = BarDegrees model.source.r1.degrees; r2 = BarDegrees model.source.r2.degrees; r3 = BarDegrees model.source.r3.degrees
         r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
-        r3Locked = model.sourceR3Locked; enabled = true; confirm = model.rotationConfirm
+        r3Lock = (if model.sourceR3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm
     }
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
-        rotate = fun axis d -> dispatch (RotateSourceAxisBy ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), d))
-        setAngle = fun axis v -> dispatch (SetSourceAxis ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), v))
+        rotate = fun axis d -> dispatch (RotateSourceAxisBy ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), d.value))
+        setAngle = fun axis v -> dispatch (SetSourceAxis ((match axis with RotationControls.R1 -> 1 | RotationControls.R2 -> 2 | RotationControls.R3 -> 3), v.value))
         toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleSourceR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll

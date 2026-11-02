@@ -11,6 +11,27 @@ open Avalonia.FuncUI.Builder
 open Avalonia.FuncUI.DSL
 open Avalonia.FuncUI.Types
 
+/// A length in metres, as the position bars show and take it: a position, a bound or a step.
+type BarMeters =
+    | BarMeters of float
+
+    member this.value = let (BarMeters m) = this in m
+
+    /// Three decimals with an explicit sign, invariant culture: the text the position bars show.
+    member this.signedText : string = System.String.Format(CultureInfo.InvariantCulture, "{0:+0.000;-0.000;0.000}", this.value)
+
+    /// This step, signed for `direction`.
+    member this.inDirection (direction : StepDirection) : BarMeters =
+        match direction with
+        | StepDecrease -> BarMeters -this.value
+        | StepIncrease -> this
+
+    /// A typed length (metres, non-integers allowed), invariant culture; `None` if malformed.
+    static member tryCreate (text : string) : BarMeters option =
+        match System.Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture) with
+        | true, v -> Some (BarMeters v)
+        | _ -> None
+
 /// The reusable "position-on-the-ray" control bar (Spec 0027, task 014): − / + step buttons, an editable
 /// metres field, and a Reset, for sliding an element ALONG THE BEAM (§E.4 — the along-ray position is a
 /// distance from the source; the host clamps it to the element's ray — a detector only from below). It is the
@@ -19,98 +40,96 @@ open Avalonia.FuncUI.Types
 /// domain types — so any screen that moves something along the ray reuses ONE control.
 module RayPositionControls =
 
+    /// The two bounds of a `BoundedRange`.
+    type PositionSpan =
+        {
+            lowest : BarMeters
+            highest : BarMeters
+        }
+
     /// How far the host lets the position go (spec 0046): between two bounds (an element between the
     /// start and the end of its ray), from a lower bound on (a detector — moving it extends its ray), or
     /// anywhere.
     type PositionRange =
-        | BoundedRange of minPosition : float * maxPosition : float
-        | AtLeast of minPosition : float
+        | BoundedRange of PositionSpan
+        | AtLeast of lowest : BarMeters
         | UnboundedRange
 
-    /// The current along-ray position the bar displays. `position` is in metres; `range` is the clamp the
-    /// host applies.
+    /// The current along-ray position the bar displays. `position` is in metres along the beam (0 = the
+    /// host's chosen origin, e.g. table centre); `range` is the clamp the host applies.
     type State =
         {
-            position : float        // metres along the beam (0 = the host's chosen origin, e.g. table centre)
+            position : BarMeters
             range : PositionRange
-            /// `false` when nothing is selected → the whole bar is disabled (nothing to move).
-            enabled : bool
+            /// `ControlWithheld` when nothing is selected → the whole bar is disabled (nothing to move).
+            availability : ControlAvailability
         }
+
+        /// The readout line: the position and the range it may move in.
+        member this.readoutText : string =
+            let rangeText =
+                match this.range with
+                | BoundedRange span -> $"range {span.lowest.signedText} … {span.highest.signedText} m"
+                | AtLeast lowest -> $"from {lowest.signedText} m, uncapped"
+                | UnboundedRange -> "uncapped"
+            $"x = {this.position.signedText} m along the beam ({rangeText})"
 
     /// What the bar does. The host owns the selection and the clamping.
     type Handlers =
         {
-            moveBy : float -> unit          // nudge the position by N metres (the − / + buttons)
-            setPosition : float -> unit     // set the position to exactly N metres (the field)
-            reset : unit -> unit            // Reset → host returns the element to its origin
+            moveBy : BarMeters -> unit          // nudge the position by N metres (the − / + buttons)
+            setPosition : BarMeters -> unit     // set the position to exactly N metres (the field)
+            reset : unit -> unit                // Reset → host returns the element to its origin
         }
 
     /// The step a − / + button applies: 0.05 m, or a larger 0.20 m with Shift held (matching the
     /// element-movement screen's arrow-key steps).
-    let stepMeters (shiftHeld : bool) : float = if shiftHeld then 0.20 else 0.05
+    let stepMeters (modifiers : KeyModifiers) : BarMeters =
+        if modifiers.HasFlag KeyModifiers.Shift then BarMeters 0.20 else BarMeters 0.05
 
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private idleBorder = color 120 120 120
-    let private textForeground = color 0 0 0
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
+    let private textForeground = Color.FromRgb(0uy, 0uy, 0uy)
 
-    /// Parse a typed position value (metres, non-integers allowed), invariant culture; `None` if malformed.
-    let parseMeters (s : string) : float option =
-        match System.Double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture) with
-        | true, v -> Some v
-        | _ -> None
-
-    let private formatMeters (v : float) : string =
-        System.String.Format(CultureInfo.InvariantCulture, "{0:+0.000;-0.000;0.000}", v)
-
-    /// The readout line: the position and the range it may move in.
-    let readoutText (state : State) : string =
-        let rangeText =
-            match state.range with
-            | BoundedRange (lo, hi) -> System.String.Format(CultureInfo.InvariantCulture, "range {0:+0.000;-0.000;0.000} … {1:+0.000;-0.000;0.000} m", lo, hi)
-            | AtLeast lo -> System.String.Format(CultureInfo.InvariantCulture, "from {0:+0.000;-0.000;0.000} m, uncapped", lo)
-            | UnboundedRange -> "uncapped"
-        $"x = %s{formatMeters state.position} m along the beam (%s{rangeText})"
-
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
-    /// `Control.Name`) through FuncUI's attr builder: the bar's boxes are regenerable per host
-    /// re-render, and Avalonia forbids renaming a styled control — an AutomationId survives control
-    /// reuse (the `MaterialsControls` precedent).
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
-
-    /// A small clickable, button-styled Border, matching `RotationControls`. `e.Handled <- true` drops
-    /// FuncUI's duplicate Tunnel|Bubble invocation so one click is one action.
-    let private clickBox (id : string) (label : string) (enabled : bool) (onClick : PointerPressedEventArgs -> unit) : IView =
+    /// A small clickable, button-styled Border, matching `RotationControls`, its id set as the
+    /// `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`):
+    /// the bar's boxes are regenerable per host re-render, and Avalonia forbids renaming a styled control
+    /// (the `MaterialsControls` precedent). `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble
+    /// invocation so one click is one action.
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : PointerPressedEventArgs -> unit) : IView =
         Border.create [
-            automationId id
-            Border.isEnabled enabled
-            Border.opacity (if enabled then 1.0 else 0.4)
+            id.automationAttribute<Border> ()
+            Border.isEnabled availability.isEnabled
+            Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
             Border.background (brush idleBackground)
             Border.borderBrush (brush idleBorder)
             Border.borderThickness 1.0
             Border.cornerRadius (CornerRadius 3.0)
             Border.padding (Thickness(10.0, 5.0))
             Border.verticalAlignment VerticalAlignment.Center
-            Border.child (TextBlock.create [ TextBlock.text label; TextBlock.foreground (brush textForeground) ])
-            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box label))
+            Border.child (TextBlock.create [ TextBlock.text caption.value; TextBlock.foreground (brush textForeground) ])
+            Border.onPointerPressed ((fun e -> e.Handled <- true; onClick e), SubPatchOptions.OnChangeOf (box caption.value))
         ] :> IView
 
-    let private stepButton (handlers : Handlers) (id : string) (label : string) (sign : float) (enabled : bool) : IView =
-        clickBox id label enabled (fun e ->
-            handlers.moveBy (sign * stepMeters (e.KeyModifiers.HasFlag KeyModifiers.Shift)))
+    let private stepButton (handlers : Handlers) (direction : StepDirection) (availability : ControlAvailability) : IView =
+        let id, caption =
+            match direction with
+            | StepDecrease -> ConstructorUiId.rayPositionMinusButton, ControlCaption "−"
+            | StepIncrease -> ConstructorUiId.rayPositionPlusButton, ControlCaption "+"
+        clickBox id caption availability (fun e ->
+            handlers.moveBy ((stepMeters e.KeyModifiers).inDirection direction))
 
-    let private field (handlers : Handlers) (value : float) (enabled : bool) : IView =
+    let private field (handlers : Handlers) (value : BarMeters) (availability : ControlAvailability) : IView =
         let commit (src : obj) =
             match src with
-            | :? TextBox as tb when not (isNull tb.Text) -> parseMeters tb.Text |> Option.iter handlers.setPosition
+            | :? TextBox as tb when not (isNull tb.Text) -> BarMeters.tryCreate tb.Text |> Option.iter handlers.setPosition
             | _ -> ()
         TextBox.create [
             TextBox.name ConstructorUiId.rayPositionField.value
             TextBox.width 80.0
-            TextBox.isEnabled enabled
-            TextBox.text (formatMeters value)
+            TextBox.isEnabled availability.isEnabled
+            TextBox.text value.signedText
             TextBox.onKeyDown (fun e -> if e.Key = Key.Enter then commit e.Source)
             TextBox.onLostFocus (fun e -> commit e.Source)
         ] :> IView
@@ -122,20 +141,20 @@ module RayPositionControls =
             StackPanel.orientation Orientation.Horizontal
             StackPanel.spacing 6.0
             StackPanel.margin (Thickness 8.0)
-            StackPanel.isEnabled state.enabled
-            StackPanel.opacity (if state.enabled then 1.0 else 0.5)
+            StackPanel.isEnabled state.availability.isEnabled
+            StackPanel.opacity (match state.availability with ControlOffered -> 1.0 | ControlWithheld -> 0.5)
             StackPanel.children [
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "Along beam:" ]
-                stepButton handlers ConstructorUiId.rayPositionMinusButton.value "−" -1.0 state.enabled
-                stepButton handlers ConstructorUiId.rayPositionPlusButton.value "+" 1.0 state.enabled
-                field handlers state.position state.enabled
+                stepButton handlers StepDecrease state.availability
+                stepButton handlers StepIncrease state.availability
+                field handlers state.position state.availability
                 TextBlock.create [ TextBlock.verticalAlignment VerticalAlignment.Center; TextBlock.text "m" ]
-                clickBox ConstructorUiId.rayPositionResetButton.value "Reset position" state.enabled (fun _ -> handlers.reset ())
+                clickBox ConstructorUiId.rayPositionResetButton (ControlCaption "Reset position") state.availability (fun _ -> handlers.reset ())
                 TextBlock.create [
                     TextBlock.name ConstructorUiId.rayPositionReadout.value
                     TextBlock.verticalAlignment VerticalAlignment.Center
                     TextBlock.margin (Thickness(10.0, 0.0, 0.0, 0.0))
-                    TextBlock.text (readoutText state)
+                    TextBlock.text state.readoutText
                 ]
             ]
         ] :> IView

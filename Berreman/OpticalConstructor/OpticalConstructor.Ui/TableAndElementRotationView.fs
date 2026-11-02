@@ -619,7 +619,7 @@ type Msg =
     | ToggleR2Lock
     /// Rotation-controls bar (task 008): set the selection's axis to an exact angle, and the
     /// confirmation-gated Reset (selection's rotations) / Reset All (every object's rotations).
-    | RotSetAxis of RotationControls.Axis * float
+    | RotSetAxis of RotationControls.RotationAxis * float
     | RotRequestReset
     | RotRequestResetAll
     | RotConfirm
@@ -889,7 +889,7 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
     | _ -> if TableView.tableHit pixelsPerMeter center m.view m.table pt then TableSelected else NothingSelected
 
 /// Set the selection's axis to an exact angle (lock-respecting for R3, task 008).
-let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
+let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (m : Model) : Model =
     let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
     match m.selection with
     | TableSelected ->
@@ -1097,15 +1097,16 @@ let alongBeamRange (m : Model) (i : int) : RayPositionControls.PositionRange =
     match List.tryItem i m.elements, List.tryItem i (sceneLayout m).elements with
     | Some e, Some placed when i > 0 ->
         match e.placement.catalogueKind with
-        | Detector -> RayPositionControls.AtLeast (rayStartX m placed.beam)
+        | Detector -> RayPositionControls.AtLeast (BarMeters (rayStartX m placed.beam))
         | LightSource | LinearPolarizer | CircularPolarizer | Sample | Lens | FlatMirror | CurvedMirror ->
-            RayPositionControls.BoundedRange (raySpan m placed.beam (Some i))
+            let lowest, highest = raySpan m placed.beam (Some i)
+            RayPositionControls.BoundedRange { lowest = BarMeters lowest; highest = BarMeters highest }
     | Some _, Some _ | Some _, None | None, _ -> RayPositionControls.UnboundedRange
 
 let private clampTo (range : RayPositionControls.PositionRange) (v : float) : float =
     match range with
-    | RayPositionControls.BoundedRange (lo, hi) -> clamp lo hi v
-    | RayPositionControls.AtLeast lo -> max lo v
+    | RayPositionControls.BoundedRange span -> clamp span.lowest.value span.highest.value v
+    | RayPositionControls.AtLeast lowest -> max lowest.value v
     | RayPositionControls.UnboundedRange -> v
 
 /// Move the selected element to `v` metres along a table axis (spec 0046), lock-respecting: the light
@@ -1894,22 +1895,22 @@ let private rotationState (model : Model) : RotationControls.State =
         RotationControls.Lockable (if locked then RotationControls.AxisLocked else RotationControls.AxisFree)
     match model.selection with
     | TableSelected ->
-        { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+        { r1 = BarDegrees model.view.r1.degrees; r2 = BarDegrees model.view.r2.degrees; r3 = BarDegrees model.view.r3.degrees
           r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
-          r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
+          r3Lock = (if model.tableR3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
     | ElementSelected i ->
         let p = (List.item i model.elements).placement
-        { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+        { r1 = BarDegrees p.r1.degrees; r2 = BarDegrees p.r2.degrees; r3 = BarDegrees p.r3.degrees
           r1Lock = offer p.r1Locked; r2Lock = offer p.r2Locked
-          r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
+          r3Lock = (if p.r3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
     | NothingSelected ->
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
-          r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+        { r1 = BarDegrees 0.0; r2 = BarDegrees 0.0; r3 = BarDegrees 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
+          r3Lock = RotationControls.AxisFree; availability = ControlWithheld; confirm = model.rotationConfirm }
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
-        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
-        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d.value | RotationControls.R2 -> RotateR2By d.value | RotationControls.R3 -> RotateR3By d.value)
+        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v.value))
         toggleLock = fun axis -> dispatch (match axis with RotationControls.R1 -> ToggleR1Lock | RotationControls.R2 -> ToggleR2Lock | RotationControls.R3 -> ToggleR3Lock)
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll
@@ -1980,13 +1981,13 @@ let paletteButtons (model : Model) : PaletteButton list =
 /// unchanged. It is the shared `ElementPaletteControls` bar, styled to match the rotation bar.
 let private paletteState (model : Model) : ElementPaletteControls.State =
     {
-        addItems = paletteButtons model |> List.map (fun b -> { ElementPaletteControls.AddItem.id = b.code; label = b.label })
-        canRemove = (match model.selection with ElementSelected _ -> true | _ -> false)
+        addItems = paletteButtons model |> List.map (fun b -> { ElementPaletteControls.AddItem.id = ConstructorUiKey b.code; label = ControlCaption b.label })
+        removeAvailability = (match model.selection with ElementSelected _ -> ControlOffered | _ -> ControlWithheld)
     }
 
 let private paletteHandlers (model : Model) (dispatch : Msg -> unit) : ElementPaletteControls.Handlers =
     {
-        add = fun id -> paletteButtons model |> List.tryFind (fun b -> b.code = id) |> Option.iter (fun b -> dispatch (AddElementBoundTo (b.kind, b.prebind)))
+        add = fun id -> paletteButtons model |> List.tryFind (fun b -> b.code = id.value) |> Option.iter (fun b -> dispatch (AddElementBoundTo (b.kind, b.prebind)))
         removeSelected = fun () -> dispatch RemoveSelected
     }
 
@@ -2123,13 +2124,13 @@ let private moveState (model : Model) : RayPositionControls.State =
     match model.selection with
     | ElementSelected i ->
         let e = List.item i model.elements
-        { position = elementX e; range = alongBeamRange model i; enabled = true }
-    | TableSelected | NothingSelected -> { position = 0.0; range = RayPositionControls.UnboundedRange; enabled = false }
+        { position = BarMeters (elementX e); range = alongBeamRange model i; availability = ControlOffered }
+    | TableSelected | NothingSelected -> { position = BarMeters 0.0; range = RayPositionControls.UnboundedRange; availability = ControlWithheld }
 
 let private moveHandlers (dispatch : Msg -> unit) : RayPositionControls.Handlers =
     {
-        moveBy = fun dx -> dispatch (SlideSelectedBy dx)
-        setPosition = fun x -> dispatch (SlideSelectedTo x)
+        moveBy = fun dx -> dispatch (SlideSelectedBy dx.value)
+        setPosition = fun x -> dispatch (SlideSelectedTo x.value)
         reset = fun () -> dispatch ResetSelectedPosition
     }
 
@@ -2144,17 +2145,17 @@ let private ofPositionAxis (axis : TablePositionControls.Axis) : TableAxis =
 /// the three move locks.
 let private sourcePositionState (p : ElementPlacement) : TablePositionControls.State =
     let axisState (axis : TableAxis) : TablePositionControls.AxisState =
-        { position = positionOn axis p / 1.0<meter>
+        { position = BarMeters (positionOn axis p / 1.0<meter>)
           lock =
             match moveLockOf axis p with
-            | MoveLocked -> TablePositionControls.AxisLocked
-            | MoveFree -> TablePositionControls.AxisFree }
-    { x = axisState TableX; y = axisState TableY; z = axisState TableZ; enabled = true }
+            | MoveLocked -> RotationControls.AxisLocked
+            | MoveFree -> RotationControls.AxisFree }
+    { x = axisState TableX; y = axisState TableY; z = axisState TableZ; availability = ControlOffered }
 
 let private sourcePositionHandlers (dispatch : Msg -> unit) : TablePositionControls.Handlers =
     {
-        moveBy = fun axis d -> dispatch (MoveSelectedBy (ofPositionAxis axis, d))
-        setPosition = fun axis v -> dispatch (MoveSelectedTo (ofPositionAxis axis, v))
+        moveBy = fun axis d -> dispatch (MoveSelectedBy (ofPositionAxis axis, d.value))
+        setPosition = fun axis v -> dispatch (MoveSelectedTo (ofPositionAxis axis, v.value))
         toggleLock = fun axis -> dispatch (ToggleMoveLock (ofPositionAxis axis))
         reset = fun () -> dispatch ResetSelectedPosition
     }
@@ -3879,7 +3880,7 @@ let mainView (model : Model) (dispatch : Msg -> unit) : IView =
         ScrollViewer.verticalScrollBarVisibility Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
         ScrollViewer.content (
             MinWidthPanel.create [
-                MinWidthPanel.minContentWidth canvasWidth
+                (PanelMinWidth canvasWidth).minWidthPanelAttribute ()
                 MinWidthPanel.child (
                     DockPanel.create [
                         DockPanel.children [

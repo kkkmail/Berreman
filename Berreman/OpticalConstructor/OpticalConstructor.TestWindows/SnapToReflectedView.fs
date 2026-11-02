@@ -107,7 +107,7 @@ type Msg =
     | RotateR2By of float
     | RotateR3By of float
     | ToggleR3Lock
-    | RotSetAxis of RotationControls.Axis * float
+    | RotSetAxis of RotationControls.RotationAxis * float
     | RotRequestReset
     | RotRequestResetAll
     | RotConfirm
@@ -223,7 +223,7 @@ let private selectionAt (pt : ScreenPoint) (m : Model) : Selection =
     | Some (i, d) when d <= elementSelectRadiusPx -> ElementSelected i
     | _ -> if TableScene.tableHit m.view m.table pt then TableSelected else NothingSelected
 
-let private setSelectedAxis (axis : RotationControls.Axis) (v : float) (m : Model) : Model =
+let private setSelectedAxis (axis : RotationControls.RotationAxis) (v : float) (m : Model) : Model =
     let a = Angle.degree (normalizeDegrees v * 1.0<deg>)
     match m.selection with
     | TableSelected ->
@@ -369,21 +369,21 @@ let private tableCanvas (model : Model) : IView =
 let private rotationState (model : Model) : RotationControls.State =
     match model.selection with
     | TableSelected ->
-        { r1 = model.view.r1.degrees; r2 = model.view.r2.degrees; r3 = model.view.r3.degrees
+        { r1 = BarDegrees model.view.r1.degrees; r2 = BarDegrees model.view.r2.degrees; r3 = BarDegrees model.view.r3.degrees
           r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
-          r3Locked = model.tableR3Locked; enabled = true; confirm = model.rotationConfirm }
+          r3Lock = (if model.tableR3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
     | ElementSelected i ->
         let p = List.item i model.elements
-        { r1 = p.r1.degrees; r2 = p.r2.degrees; r3 = p.r3.degrees
+        { r1 = BarDegrees p.r1.degrees; r2 = BarDegrees p.r2.degrees; r3 = BarDegrees p.r3.degrees
           r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable
-          r3Locked = p.r3Locked; enabled = true; confirm = model.rotationConfirm }
+          r3Lock = (if p.r3Locked then RotationControls.AxisLocked else RotationControls.AxisFree); availability = ControlOffered; confirm = model.rotationConfirm }
     | NothingSelected ->
-        { r1 = 0.0; r2 = 0.0; r3 = 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Locked = false; enabled = false; confirm = model.rotationConfirm }
+        { r1 = BarDegrees 0.0; r2 = BarDegrees 0.0; r3 = BarDegrees 0.0; r1Lock = RotationControls.NotLockable; r2Lock = RotationControls.NotLockable; r3Lock = RotationControls.AxisFree; availability = ControlWithheld; confirm = model.rotationConfirm }
 
 let private rotationHandlers (dispatch : Msg -> unit) : RotationControls.Handlers =
     {
-        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d | RotationControls.R2 -> RotateR2By d | RotationControls.R3 -> RotateR3By d)
-        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v))
+        rotate = fun axis d -> dispatch (match axis with RotationControls.R1 -> RotateR1By d.value | RotationControls.R2 -> RotateR2By d.value | RotationControls.R3 -> RotateR3By d.value)
+        setAngle = fun axis v -> dispatch (RotSetAxis (axis, v.value))
         toggleLock = fun axis -> match axis with RotationControls.R3 -> dispatch ToggleR3Lock | RotationControls.R1 | RotationControls.R2 -> ()
         requestReset = fun () -> dispatch RotRequestReset
         requestResetAll = fun () -> dispatch RotRequestResetAll

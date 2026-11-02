@@ -20,8 +20,8 @@ module ElementPaletteControls =
     /// the label shown on the button.
     type AddItem =
         {
-            id : string
-            label : string
+            id : ConstructorUiKey
+            label : ControlCaption
         }
 
     type State =
@@ -29,38 +29,33 @@ module ElementPaletteControls =
             /// The addable kinds, in display order (each becomes a "+ label" button).
             addItems : AddItem list
             /// Whether "Remove selected" is enabled (i.e. an element is currently selected).
-            canRemove : bool
+            removeAvailability : ControlAvailability
         }
 
     type Handlers =
         {
             /// Add the entry with this id (the host maps the id back to its catalogue kind).
-            add : string -> unit
+            add : ConstructorUiKey -> unit
             removeSelected : unit -> unit
         }
 
     // -- The button look, identical to the rotation-controls bar's idle button (so they MATCH). --
-    let private color (r : int) (g : int) (b : int) : Color = Color.FromRgb(byte r, byte g, byte b)
     let private brush (c : Color) : IBrush = SolidColorBrush(c) :> IBrush
-    let private idleBackground = color 232 232 232
-    let private idleBorder = color 120 120 120
-
-    /// Set `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike
-    /// `Control.Name`) through FuncUI's attr builder. The add buttons are GENERATED from the host's
-    /// `addItems` (variable membership), so a sibling can shift onto a reused control's slot — Avalonia
-    /// forbids renaming a styled control, and an AutomationId survives that reuse (the
-    /// `MaterialsControls` precedent).
-    let private automationId (autoId : string) : IAttr<Border> =
-        AttrBuilder<Border>.CreateProperty<string>(AutomationProperties.AutomationIdProperty, autoId, ValueNone)
+    let private idleBackground = Color.FromRgb(232uy, 232uy, 232uy)
+    let private idleBorder = Color.FromRgb(120uy, 120uy, 120uy)
 
     /// A clickable, button-styled box, KEYED by its id so a membership change recreates the box at a
-    /// shifted slot instead of patching another entry's styled control in place.
-    let private clickBox (id : string) (label : string) (enabled : bool) (onClick : unit -> unit) : IView =
+    /// shifted slot instead of patching another entry's styled control in place. The id is its
+    /// `AutomationProperties.AutomationId` (a freely-mutable attached property — unlike `Control.Name`):
+    /// the add buttons are GENERATED from the host's `addItems` (variable membership), so a sibling can
+    /// shift onto a reused control's slot, and Avalonia forbids renaming a styled control (the
+    /// `MaterialsControls` precedent).
+    let private clickBox (id : ConstructorUiId) (caption : ControlCaption) (availability : ControlAvailability) (onClick : unit -> unit) : IView =
         let button =
             Border.create [
-                automationId id
-                Border.isEnabled enabled
-                Border.opacity (if enabled then 1.0 else 0.4)
+                id.automationAttribute<Border> ()
+                Border.isEnabled availability.isEnabled
+                Border.opacity (match availability with ControlOffered -> 1.0 | ControlWithheld -> 0.4)
                 Border.background (brush idleBackground)
                 Border.borderBrush (brush idleBorder)
                 Border.borderThickness 1.0
@@ -68,23 +63,23 @@ module ElementPaletteControls =
                 Border.padding (Thickness(10.0, 5.0))
                 Border.margin (Thickness(0.0, 0.0, 6.0, 6.0))
                 Border.verticalAlignment VerticalAlignment.Center
-                Border.child (TextBlock.create [ TextBlock.text label ])
+                Border.child (TextBlock.create [ TextBlock.text caption.value ])
                 // `e.Handled <- true` drops FuncUI's duplicate Tunnel|Bubble pass; re-subscribe when the
                 // label changes (matching the rotation bar) so a reused button can't keep a stale handler.
-                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box label))
+                Border.onPointerPressed ((fun e -> e.Handled <- true; onClick ()), SubPatchOptions.OnChangeOf (box caption.value))
             ]
             // Fully qualified: `Avalonia.FuncUI.Types` (opened above for `IView`) also exports a
             // `View<'t>` type, so the bare `View` name would be ambiguous with the DSL `View` module.
-            |> Avalonia.FuncUI.DSL.View.withKey id
+            |> Avalonia.FuncUI.DSL.View.withKey id.value
         button :> IView
 
     /// The palette bar — a wrapping row of "+ label" add buttons followed by "Remove selected".
     let view (state : State) (handlers : Handlers) : IView =
         let addButtons =
             state.addItems
-            |> List.map (fun item -> clickBox (ConstructorUiId.paletteAddButton (ConstructorUiKey item.id)).value ("+ " + item.label) true (fun () -> handlers.add item.id))
+            |> List.map (fun item -> clickBox (ConstructorUiId.paletteAddButton item.id) (ControlCaption $"+ {item.label.value}") ControlOffered (fun () -> handlers.add item.id))
         let removeButton =
-            clickBox ConstructorUiId.paletteRemoveSelectedButton.value "Remove selected" state.canRemove (fun () -> handlers.removeSelected ())
+            clickBox ConstructorUiId.paletteRemoveSelectedButton (ControlCaption "Remove selected") state.removeAvailability (fun () -> handlers.removeSelected ())
         WrapPanel.create [
             WrapPanel.orientation Orientation.Horizontal
             WrapPanel.children (addButtons @ [ removeButton ])
